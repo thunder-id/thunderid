@@ -1,0 +1,89 @@
+// Copyright 2026 The ThunderID Authors
+// SPDX-License-Identifier: Apache-2.0
+
+import type {useTranslation} from 'react-i18next';
+import {humanize} from './groupByResource';
+import type {ValueKind, ValueReference} from '../models/deploy';
+
+type Translate = ReturnType<typeof useTranslation>['t'];
+
+/** One value a resource uses, as it refers to it. */
+export interface ResourceValue {
+  kind: ValueKind;
+  name: string;
+  /** The field the value stands in, such as `clientSecret`. */
+  field?: string;
+  /** Whether the value is a list, entered one item per line. */
+  list: boolean;
+}
+
+/** A resource and the values it uses, in the order it refers to them. */
+export interface ResourceValues {
+  key: string;
+  resourceType: string;
+  resourceId?: string;
+  resourceName?: string;
+  values: ResourceValue[];
+}
+
+// A name the server derives for a value: the resource type, the resource ID and the field, in upper case,
+// joined by double underscores. No part holds a double underscore, so the parts read back exactly.
+const VALUE_NAME = /^([A-Z][A-Z0-9_]*?)__(H?)([0-9A-F]{32})__([A-Z0-9_]+)$/;
+
+/**
+ * Reads the resource type and field back from a value's name when the server derived it, as in
+ * `APPLICATION__019000000000700080000000000000F1__CLIENT_ID`. A name someone chose does not read back.
+ * The resource's ID is read back too when the name holds it whole, as a UUID with its dashes taken
+ * out; a name that holds a hash of the ID gives none.
+ */
+export function parseValueName(name: string): {resourceType: string; field: string; resourceId?: string} | null {
+  const match = VALUE_NAME.exec(name);
+  if (!match) return null;
+  const [, type, hashed, id, field] = match;
+  const parsed: {resourceType: string; field: string; resourceId?: string} = {resourceType: type.toLowerCase(), field};
+  if (!hashed) {
+    const hex = id.toLowerCase();
+    parsed.resourceId = [hex.slice(0, 8), hex.slice(8, 12), hex.slice(12, 16), hex.slice(16, 20), hex.slice(20)].join(
+      '-',
+    );
+  }
+  return parsed;
+}
+
+/** What a field is called for a person: `clientSecret` reads "Client secret". */
+export function fieldLabel(t: Translate, field: string | undefined): string {
+  return field
+    ? t(`deploy:values.fields.${field}`, {defaultValue: humanize(field)})
+    : t('deploy:values.value', 'Value');
+}
+
+/**
+ * Groups the places values are referred to by the resource that refers to them. A value a resource refers
+ * to more than once is listed once for it.
+ */
+export function valuesByResource(references: ValueReference[]): ResourceValues[] {
+  const resources = new Map<string, ResourceValues>();
+  references.forEach((reference: ValueReference) => {
+    const key = `${reference.resourceType}/${reference.resourceId ?? reference.resourceName ?? ''}`;
+    const resource = resources.get(key) ?? {
+      key,
+      resourceType: reference.resourceType,
+      resourceId: reference.resourceId,
+      resourceName: reference.resourceName,
+      values: [],
+    };
+    const same = resource.values.find(
+      (value: ResourceValue) => value.kind === reference.kind && value.name === reference.name,
+    );
+    if (same) same.list = same.list || reference.list === true;
+    else
+      resource.values.push({
+        kind: reference.kind,
+        name: reference.name,
+        field: reference.field,
+        list: reference.list === true,
+      });
+    resources.set(key, resource);
+  });
+  return [...resources.values()];
+}

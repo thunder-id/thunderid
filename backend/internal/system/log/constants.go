@@ -11,7 +11,9 @@ const (
 	// LoggerKeyExecutionID is the key used to identify the flow execution ID in the logger.
 	LoggerKeyExecutionID = "executionID"
 	// LoggerKeyNodeID is the key used to identify the node ID in the logger.
-	LoggerKeyNodeID = "nodeId"
+	LoggerKeyNodeID = "nodeID"
+	// LoggerKeyIDPID is the key used to identify the identity provider ID in the logger.
+	LoggerKeyIDPID = "idpID"
 	// LoggerKeyTraceID is the key used to identify the trace ID (correlation ID) in the logger.
 	LoggerKeyTraceID = "trace_id"
 	// LoggerKeyUserID is the key used to identify the user ID in the logger.

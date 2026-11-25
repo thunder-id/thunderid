@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
+	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/deployment"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -24,6 +25,9 @@ type typeStoreInterface interface {
 	ListTypes(ctx context.Context) ([]providers.AuthorizationDetailType, error)
 	CountTypes(ctx context.Context) (int, error)
 	ListTypePage(ctx context.Context, limit, offset int) ([]providers.AuthorizationDetailType, error)
+	CountTypesByProject(ctx context.Context, projectID string) (int, error)
+	ListTypePageByProject(ctx context.Context, projectID string, limit, offset int) (
+		[]providers.AuthorizationDetailType, error)
 	UpdateType(ctx context.Context, t providers.AuthorizationDetailType, bumpVersion bool) error
 	DeleteType(ctx context.Context, id string) error
 	IsTypeDeclarative(ctx context.Context, id string) (bool, error)
@@ -48,7 +52,7 @@ func (s *typeStore) CreateType(ctx context.Context, t providers.AuthorizationDet
 	return s.withDBClient(func(dbClient provider.DBClientInterface) error {
 		if _, err := dbClient.ExecuteContext(ctx, queryCreateType,
 			t.ID, t.Type, t.Name, resolveNullableString(t.Description), t.Version,
-			[]byte(t.Schema), props, deployment.Resolve(ctx)); err != nil {
+			[]byte(t.Schema), props, resolveNullableString(t.ProjectID), deployment.Resolve(ctx)); err != nil {
 			return fmt.Errorf("failed to create authorization details type: %w", err)
 		}
 		return nil
@@ -90,23 +94,7 @@ func (s *typeStore) getOne(
 
 // ListTypes lists the authorization details types of the deployment.
 func (s *typeStore) ListTypes(ctx context.Context) ([]providers.AuthorizationDetailType, error) {
-	var types []providers.AuthorizationDetailType
-	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
-		results, err := dbClient.QueryContext(ctx, queryListTypes, deployment.Resolve(ctx))
-		if err != nil {
-			return fmt.Errorf("failed to list authorization details types: %w", err)
-		}
-		types = make([]providers.AuthorizationDetailType, 0, len(results))
-		for _, row := range results {
-			t, err := buildTypeFromRow(row)
-			if err != nil {
-				return err
-			}
-			types = append(types, t)
-		}
-		return nil
-	})
-	return types, err
+	return s.queryTypes(ctx, queryListTypes, deployment.Resolve(ctx))
 }
 
 // CountTypes counts the authorization details types of the deployment.
@@ -126,9 +114,35 @@ func (s *typeStore) CountTypes(ctx context.Context) (int, error) {
 // ListTypePage lists one page of the authorization details types of the deployment, ordered by type value.
 func (s *typeStore) ListTypePage(ctx context.Context, limit, offset int) ([]providers.AuthorizationDetailType,
 	error) {
+	return s.queryTypes(ctx, queryListTypePage, limit, offset, deployment.Resolve(ctx))
+}
+
+// CountTypesByProject counts the authorization details types of a project.
+func (s *typeStore) CountTypesByProject(ctx context.Context, projectID string) (int, error) {
+	var count int
+	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
+		results, err := dbClient.QueryContext(ctx, queryCountTypesByProject, projectID, deployment.Resolve(ctx))
+		if err != nil {
+			return fmt.Errorf("failed to count authorization details types: %w", err)
+		}
+		count, err = parseCount(results)
+		return err
+	})
+	return count, err
+}
+
+// ListTypePageByProject lists one page of the authorization details types of a project, ordered by type value.
+func (s *typeStore) ListTypePageByProject(ctx context.Context, projectID string, limit, offset int) (
+	[]providers.AuthorizationDetailType, error) {
+	return s.queryTypes(ctx, queryListTypePageByProject, limit, offset, projectID, deployment.Resolve(ctx))
+}
+
+// queryTypes runs a query that lists authorization details types and builds each from its row.
+func (s *typeStore) queryTypes(ctx context.Context, query dbmodel.DBQuery,
+	args ...any) ([]providers.AuthorizationDetailType, error) {
 	var types []providers.AuthorizationDetailType
 	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
-		results, err := dbClient.QueryContext(ctx, queryListTypePage, limit, offset, deployment.Resolve(ctx))
+		results, err := dbClient.QueryContext(ctx, query, args...)
 		if err != nil {
 			return fmt.Errorf("failed to list authorization details types: %w", err)
 		}
@@ -159,7 +173,7 @@ func (s *typeStore) UpdateType(ctx context.Context, t providers.AuthorizationDet
 	return s.withDBClient(func(dbClient provider.DBClientInterface) error {
 		rows, err := dbClient.ExecuteContext(ctx, queryUpdateType,
 			t.ID, t.Name, resolveNullableString(t.Description), []byte(t.Schema), props,
-			increment, t.Version, deployment.Resolve(ctx))
+			increment, t.Version, resolveNullableString(t.ProjectID), deployment.Resolve(ctx))
 		if err != nil {
 			return fmt.Errorf("failed to update authorization details type: %w", err)
 		}
@@ -242,6 +256,7 @@ func buildTypeFromRow(row map[string]interface{}) (providers.AuthorizationDetail
 	t.Type, _ = row["type"].(string)
 	t.Name, _ = row["name"].(string)
 	t.Description, _ = row["description"].(string)
+	t.ProjectID, _ = row["project_id"].(string)
 
 	version, _ := sysutils.ToInt64(row["version"])
 	t.Version = int(version)

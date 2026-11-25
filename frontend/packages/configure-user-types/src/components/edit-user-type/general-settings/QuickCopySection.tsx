@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {SettingsCard} from '@thunderid/components';
-import {Stack, TextField, InputAdornment, Tooltip, IconButton, FormControl, FormLabel} from '@wso2/oxygen-ui';
+import {Stack, TextField, InputAdornment, Tooltip, IconButton} from '@wso2/oxygen-ui';
 import {Copy, Check} from '@wso2/oxygen-ui-icons-react';
 import {useTranslation} from 'react-i18next';
 import type {ApiUserType} from '../../../types/user-types';
@@ -25,95 +25,89 @@ export default function QuickCopySection({userType, copiedField, onCopyToClipboa
       )}
     >
       <Stack spacing={3}>
-        <FormControl fullWidth>
-          <FormLabel htmlFor="user-type-handle-input">
-            {t('userTypes:edit.general.labels.userTypeHandle', 'User type handle')}
-          </FormLabel>
-          <TextField
-            fullWidth
-            id="user-type-handle-input"
-            value={userType.handle}
-            InputProps={{
-              readOnly: true,
-              endAdornment: (
-                <InputAdornment position="end">
-                  <Tooltip
-                    title={
+        <TextField
+          labelPlacement="top"
+          label={t('userTypes:edit.general.labels.userTypeHandle', 'User type handle')}
+          fullWidth
+          id="user-type-handle-input"
+          value={userType.handle}
+          InputProps={{
+            readOnly: true,
+            endAdornment: (
+              <InputAdornment position="end">
+                <Tooltip
+                  title={
+                    copiedField === 'user_type_handle'
+                      ? t('common:actions.copied', 'Copied')
+                      : t('userTypes:edit.copyHandle', 'Copy user type handle')
+                  }
+                >
+                  <IconButton
+                    aria-label={
                       copiedField === 'user_type_handle'
                         ? t('common:actions.copied', 'Copied')
                         : t('userTypes:edit.copyHandle', 'Copy user type handle')
                     }
+                    onClick={() => {
+                      onCopyToClipboard(userType.handle, 'user_type_handle').catch(() => null);
+                    }}
+                    edge="end"
                   >
-                    <IconButton
-                      aria-label={
-                        copiedField === 'user_type_handle'
-                          ? t('common:actions.copied', 'Copied')
-                          : t('userTypes:edit.copyHandle', 'Copy user type handle')
-                      }
-                      onClick={() => {
-                        onCopyToClipboard(userType.handle, 'user_type_handle').catch(() => null);
-                      }}
-                      edge="end"
-                    >
-                      {copiedField === 'user_type_handle' ? <Check size={16} /> : <Copy size={16} />}
-                    </IconButton>
-                  </Tooltip>
-                </InputAdornment>
-              ),
-            }}
-            sx={{
-              '& input': {
-                fontFamily: 'monospace',
-                fontSize: '0.875rem',
-              },
-            }}
-          />
-        </FormControl>
+                    {copiedField === 'user_type_handle' ? <Check size={16} /> : <Copy size={16} />}
+                  </IconButton>
+                </Tooltip>
+              </InputAdornment>
+            ),
+          }}
+          sx={{
+            '& input': {
+              fontFamily: 'monospace',
+              fontSize: '0.875rem',
+            },
+          }}
+        />
 
-        <FormControl fullWidth>
-          <FormLabel htmlFor="user-type-id-input">
-            {t('userTypes:edit.general.labels.userTypeId', 'User type ID')}
-          </FormLabel>
-          <TextField
-            fullWidth
-            id="user-type-id-input"
-            value={userType.id}
-            InputProps={{
-              readOnly: true,
-              endAdornment: (
-                <InputAdornment position="end">
-                  <Tooltip
-                    title={
+        <TextField
+          labelPlacement="top"
+          label={t('userTypes:edit.general.labels.userTypeId', 'User type ID')}
+          fullWidth
+          id="user-type-id-input"
+          value={userType.id}
+          InputProps={{
+            readOnly: true,
+            endAdornment: (
+              <InputAdornment position="end">
+                <Tooltip
+                  title={
+                    copiedField === 'user_type_id'
+                      ? t('common:actions.copied', 'Copied')
+                      : t('userTypes:edit.copyId', 'Copy user type ID')
+                  }
+                >
+                  <IconButton
+                    aria-label={
                       copiedField === 'user_type_id'
                         ? t('common:actions.copied', 'Copied')
                         : t('userTypes:edit.copyId', 'Copy user type ID')
                     }
+                    onClick={() => {
+                      onCopyToClipboard(userType.id, 'user_type_id').catch(() => null);
+                    }}
+                    edge="end"
                   >
-                    <IconButton
-                      aria-label={
-                        copiedField === 'user_type_id'
-                          ? t('common:actions.copied', 'Copied')
-                          : t('userTypes:edit.copyId', 'Copy user type ID')
-                      }
-                      onClick={() => {
-                        onCopyToClipboard(userType.id, 'user_type_id').catch(() => null);
-                      }}
-                      edge="end"
-                    >
-                      {copiedField === 'user_type_id' ? <Check size={16} /> : <Copy size={16} />}
-                    </IconButton>
-                  </Tooltip>
-                </InputAdornment>
-              ),
-            }}
-            sx={{
-              '& input': {
-                fontFamily: 'monospace',
-                fontSize: '0.875rem',
-              },
-            }}
-          />
-        </FormControl>
+                    {copiedField === 'user_type_id' ? <Check size={16} /> : <Copy size={16} />}
+                  </IconButton>
+                </Tooltip>
+              </InputAdornment>
+            ),
+          }}
+          sx={{
+            '& input': {
+              fontFamily: 'monospace',
+              fontSize: '0.875rem',
+            },
+          }}
+        />
       </Stack>
     </SettingsCard>
   );

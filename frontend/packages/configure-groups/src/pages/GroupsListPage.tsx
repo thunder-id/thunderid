@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, ExternalLink} from '@thunderid/components';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {Stack, Button, PageContent, PageTitle} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
@@ -16,6 +17,7 @@ export default function GroupsListPage(): JSX.Element {
   const {t} = useTranslation();
   const logger = useLogger('GroupsListPage');
   const routes = useGroupRoutes();
+  const {can} = useCapabilitiesContext();
 
   return (
     <PageContent>
@@ -27,19 +29,21 @@ export default function GroupsListPage(): JSX.Element {
         </PageTitle.SubHeader>
         <PageTitle.Actions>
           <Stack direction="row" spacing={2}>
-            <Button
-              variant="contained"
-              startIcon={<Plus size={18} />}
-              onClick={() => {
-                (async () => {
-                  await navigate(routes.groups.create());
-                })().catch((error: unknown) => {
-                  logger.error('Failed to navigate to create group page', {error});
-                });
-              }}
-            >
-              {t('groups:listing.addGroup')}
-            </Button>
+            {can('group', 'create') && (
+              <Button
+                variant="contained"
+                startIcon={<Plus size={18} />}
+                onClick={() => {
+                  (async () => {
+                    await navigate(routes.groups.create());
+                  })().catch((error: unknown) => {
+                    logger.error('Failed to navigate to create group page', {error});
+                  });
+                }}
+              >
+                {t('groups:listing.addGroup')}
+              </Button>
+            )}
           </Stack>
         </PageTitle.Actions>
       </PageTitle>

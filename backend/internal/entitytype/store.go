@@ -249,6 +249,9 @@ func (s *entityTypeStore) CreateEntityType(ctx context.Context, entityType Entit
 		sysAttrs,
 		s.scope(ctx),
 	)
+	if provider.IsUniqueIndexViolation(err, agentTypeOUIndexName, agentTypeOUIndexColumns) {
+		return fmt.Errorf("%w: %w", errAgentTypeExistsInOU, err)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to create entity type: %w", err)
 	}
@@ -321,6 +324,9 @@ func (s *entityTypeStore) UpdateEntityTypeByID(ctx context.Context, category Typ
 		s.scope(ctx),
 		string(category),
 	)
+	if provider.IsUniqueIndexViolation(err, agentTypeOUIndexName, agentTypeOUIndexColumns) {
+		return fmt.Errorf("%w: %w", errAgentTypeExistsInOU, err)
+	}
 	if err != nil {
 		return fmt.Errorf("failed to update entity type: %w", err)
 	}

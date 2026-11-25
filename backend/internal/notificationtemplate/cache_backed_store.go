@@ -74,6 +74,30 @@ func (s *cacheBackedStore) CountTemplates(ctx context.Context, channel ChannelTy
 	return s.inner.CountTemplates(ctx, channel)
 }
 
+// ListTemplatesByOUIDs always delegates; the list is not cached.
+func (s *cacheBackedStore) ListTemplatesByOUIDs(ctx context.Context, channel ChannelType, ouIDs []string,
+	limit, offset int) ([]templateDAO, error) {
+	return s.inner.ListTemplatesByOUIDs(ctx, channel, ouIDs, limit, offset)
+}
+
+// CountTemplatesByOUIDs always delegates; the count is not cached.
+func (s *cacheBackedStore) CountTemplatesByOUIDs(ctx context.Context, channel ChannelType, ouIDs []string) (
+	int, error) {
+	return s.inner.CountTemplatesByOUIDs(ctx, channel, ouIDs)
+}
+
+// ListTemplatesByProject always delegates; the list is not cached.
+func (s *cacheBackedStore) ListTemplatesByProject(ctx context.Context, channel ChannelType, projectID string,
+	limit, offset int) ([]templateDAO, error) {
+	return s.inner.ListTemplatesByProject(ctx, channel, projectID, limit, offset)
+}
+
+// CountTemplatesByProject always delegates; the count is not cached.
+func (s *cacheBackedStore) CountTemplatesByProject(ctx context.Context, channel ChannelType, projectID string) (
+	int, error) {
+	return s.inner.CountTemplatesByProject(ctx, channel, projectID)
+}
+
 // UpdateTemplate delegates then re-caches the new row. The only cache key, (channel, handle), is
 // immutable, so re-caching overwrites the existing entry; there is no secondary key an update could
 // leave stale, so no separate invalidation is needed.

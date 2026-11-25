@@ -47,7 +47,7 @@ func (suite *InitTestSuite) TestInitialize_MutableMode() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, exporter, err := Initialize(mux, runtime.Config.Translation)
+	service, exporter, err := Initialize(mux, runtime.Config.Translation, nil)
 
 	// Verify
 	assert.NoError(suite.T(), err)
@@ -67,7 +67,7 @@ func (suite *InitTestSuite) TestInitialize_DeclarativeMode() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, exporter, err := Initialize(mux, runtime.Config.Translation)
+	service, exporter, err := Initialize(mux, runtime.Config.Translation, nil)
 
 	// Verify
 	assert.NoError(suite.T(), err)
@@ -109,7 +109,7 @@ func (suite *InitTestSuite) TestInitialize_DeclarativeMode_LoadError() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, exporter, err := Initialize(mux, config.GetServerRuntime().Config.Translation)
+	service, exporter, err := Initialize(mux, config.GetServerRuntime().Config.Translation, nil)
 
 	// Verify
 	assert.Error(suite.T(), err)
@@ -120,7 +120,7 @@ func (suite *InitTestSuite) TestInitialize_DeclarativeMode_LoadError() {
 func (suite *InitTestSuite) TestRegisterRoutes() {
 	mux := http.NewServeMux()
 	store := newI18nStoreInterfaceMock(suite.T())
-	service := newI18nService(store)
+	service := newI18nService(store, nil)
 	handler := newI18nHandler(service)
 
 	registerRoutes(mux, handler)

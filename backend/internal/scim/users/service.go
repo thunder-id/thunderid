@@ -619,6 +619,8 @@ func mapUserServiceErrorToSCIM(svcErr *tidcommon.ServiceError) *tidcommon.Servic
 		return &scim.ErrorUnknownUserType
 	case user.ErrorCannotModifyDeclarativeResource.Code:
 		return &scim.ErrorMutabilityViolation
+	case user.ErrorManagedUser.Code:
+		return &scim.ErrorManagedResource
 	case tidcommon.ErrorUnauthorized.Code:
 		return svcErr
 	default:

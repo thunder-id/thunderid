@@ -32,6 +32,10 @@ type definitionStoreInterface interface {
 	GetPresentationDefinitionByHandle(ctx context.Context, handle string) (*PresentationDefinitionDTO, error)
 	ListPresentationDefinitions(ctx context.Context) ([]PresentationDefinitionDTO, error)
 	ListPresentationDefinitionSummaries(ctx context.Context) ([]PresentationDefinitionList, error)
+	ListPresentationDefinitionSummariesByOUID(ctx context.Context, ouID string) ([]PresentationDefinitionList, error)
+	ListPresentationDefinitionSummariesByProject(
+		ctx context.Context, projectID string) ([]PresentationDefinitionList, error)
+	CountPresentationDefinitionsByProject(ctx context.Context, projectID string) (int, error)
 	UpdatePresentationDefinition(ctx context.Context, dto PresentationDefinitionDTO) error
 	DeletePresentationDefinition(ctx context.Context, id string) error
 	IsPresentationDefinitionDeclarative(ctx context.Context, id string) (bool, error)
@@ -70,7 +74,7 @@ func (s *definitionStore) CreatePresentationDefinition(ctx context.Context, dto 
 	}
 	_, err = dbClient.ExecuteContext(ctx, queryCreateDefinition,
 		dto.ID, dto.Handle, dto.OUID, dto.Name, dto.Description, dto.VCT, dto.Format, claimsJSON,
-		nullableBool(dto.EnforceTrustedIssuer), authoritiesJSON, s.scope(ctx))
+		nullableBool(dto.EnforceTrustedIssuer), authoritiesJSON, nullableString(dto.ProjectID), s.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to create presentation definition: %w", err)
 	}
@@ -134,26 +138,49 @@ func (s *definitionStore) ListPresentationDefinitions(ctx context.Context) ([]Pr
 func (s *definitionStore) ListPresentationDefinitionSummaries(
 	ctx context.Context,
 ) ([]PresentationDefinitionList, error) {
+	return s.listSummaries(ctx, queryListDefinitionSummaries, s.scope(ctx))
+}
+
+// ListPresentationDefinitionSummariesByOUID returns summary rows for the presentation definitions an
+// organization unit owns in the config database.
+func (s *definitionStore) ListPresentationDefinitionSummariesByOUID(
+	ctx context.Context, ouID string,
+) ([]PresentationDefinitionList, error) {
+	return s.listSummaries(ctx, queryListDefinitionSummariesByOUID, ouID, s.scope(ctx))
+}
+
+// ListPresentationDefinitionSummariesByProject returns summary rows for the presentation definitions of a
+// project in the config database.
+func (s *definitionStore) ListPresentationDefinitionSummariesByProject(
+	ctx context.Context, projectID string,
+) ([]PresentationDefinitionList, error) {
+	return s.listSummaries(ctx, queryListDefinitionSummariesByProject, projectID, s.scope(ctx))
+}
+
+// CountPresentationDefinitionsByProject returns the number of presentation definitions of a project in the config
+// database.
+func (s *definitionStore) CountPresentationDefinitionsByProject(ctx context.Context, projectID string) (int, error) {
 	dbClient, err := s.dbProvider.GetConfigDBClient()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get database client: %w", err)
+		return 0, fmt.Errorf("failed to get database client: %w", err)
 	}
-	results, err := dbClient.QueryContext(ctx, queryListDefinitionSummaries, s.scope(ctx))
+	results, err := dbClient.QueryContext(ctx, queryCountDefinitionsByProject, projectID, s.scope(ctx))
 	if err != nil {
-		return nil, fmt.Errorf("failed to list presentation definition summaries: %w", err)
+		return 0, fmt.Errorf("failed to count the presentation definitions of a project: %w", err)
 	}
-	summaries := make([]PresentationDefinitionList, 0, len(results))
-	for _, row := range results {
-		summaries = append(summaries, PresentationDefinitionList{
-			ID:     columnString(row["id"]),
-			Handle: columnString(row["handle"]),
-			OUID:   columnString(row["ou_id"]),
-			Name:   columnString(row["name"]),
-			VCT:    columnString(row["vct"]),
-			Format: columnString(row["format"]),
-		})
+	if len(results) == 0 {
+		return 0, fmt.Errorf("no result from the count of the presentation definitions of a project")
 	}
-	return summaries, nil
+	switch total := results[0]["total"].(type) {
+	case int64:
+		return int(total), nil
+	case int:
+		return total, nil
+	case float64:
+		return int(total), nil
+	default:
+		return 0, fmt.Errorf("unexpected count type %T", total)
+	}
 }
 
 // UpdatePresentationDefinition persists changes to an existing presentation definition in the config database.
@@ -172,7 +199,7 @@ func (s *definitionStore) UpdatePresentationDefinition(ctx context.Context, dto 
 	}
 	_, err = dbClient.ExecuteContext(ctx, queryUpdateDefinition,
 		dto.ID, dto.Handle, dto.OUID, dto.Name, dto.Description, dto.VCT, dto.Format, claimsJSON,
-		nullableBool(dto.EnforceTrustedIssuer), authoritiesJSON, s.scope(ctx))
+		nullableBool(dto.EnforceTrustedIssuer), authoritiesJSON, nullableString(dto.ProjectID), s.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to update presentation definition: %w", err)
 	}
@@ -195,6 +222,33 @@ func (s *definitionStore) DeletePresentationDefinition(ctx context.Context, id s
 // The database store only holds mutable resources, so this always returns false.
 func (s *definitionStore) IsPresentationDefinitionDeclarative(_ context.Context, _ string) (bool, error) {
 	return false, nil
+}
+
+// listSummaries runs a summary list query and maps its rows.
+func (s *definitionStore) listSummaries(
+	ctx context.Context, query dbmodel.DBQuery, args ...any,
+) ([]PresentationDefinitionList, error) {
+	dbClient, err := s.dbProvider.GetConfigDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+	results, err := dbClient.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list presentation definition summaries: %w", err)
+	}
+	summaries := make([]PresentationDefinitionList, 0, len(results))
+	for _, row := range results {
+		summaries = append(summaries, PresentationDefinitionList{
+			ID:        columnString(row["id"]),
+			Handle:    columnString(row["handle"]),
+			OUID:      columnString(row["ou_id"]),
+			ProjectID: columnString(row["project_id"]),
+			Name:      columnString(row["name"]),
+			VCT:       columnString(row["vct"]),
+			Format:    columnString(row["format"]),
+		})
+	}
+	return summaries, nil
 }
 
 // marshalClaims serializes the claim sets to the CLAIMS JSON column.
@@ -224,6 +278,14 @@ func marshalTrustedAuthorities(authorities []TrustedAuthority) (interface{}, err
 	return string(b), nil
 }
 
+// nullableString stores an empty string as NULL.
+func nullableString(value string) interface{} {
+	if value == "" {
+		return nil
+	}
+	return value
+}
+
 // nullableBool maps an optional bool to its SQL value, preserving NULL (inherit).
 func nullableBool(v *bool) interface{} {
 	if v == nil {
@@ -238,6 +300,7 @@ func buildDefinitionDTOFromRow(row map[string]interface{}) (*PresentationDefinit
 		ID:          columnString(row["id"]),
 		Handle:      columnString(row["handle"]),
 		OUID:        columnString(row["ou_id"]),
+		ProjectID:   columnString(row["project_id"]),
 		Name:        columnString(row["name"]),
 		Description: columnString(row["description"]),
 		VCT:         columnString(row["vct"]),

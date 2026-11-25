@@ -5,6 +5,7 @@ package executor
 
 import (
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -47,9 +48,10 @@ func newAgentTypeResolver(
 			SupportedFlowTypes: []providers.FlowType{
 				providers.FlowTypeAdministration,
 				providers.FlowTypeAuthentication,
+				providers.FlowTypeRegistration,
 			},
 			SupportedProperties: []providers.ExecutorSupportedProperties{
-				{Property: propertyKeyAllowedAgentTypes},
+				{Property: common.NodePropertyAllowedAgentTypes},
 			},
 		})
 
@@ -78,13 +80,8 @@ func (a *agentTypeResolver) Execute(ctx *providers.NodeContext) (*providers.Exec
 	switch ctx.FlowType {
 	case providers.FlowTypeAuthentication:
 		return a.resolveAuthFlow(ctx, entitytype.TypeCategoryAgent, execResp), nil
-	case providers.FlowTypeAdministration:
+	case providers.FlowTypeAdministration, providers.FlowTypeRegistration:
 		return a.resolveOnboardingFlow(ctx, entitytype.TypeCategoryAgent, execResp, logger)
-	case providers.FlowTypeRegistration:
-		// An agent is provisioned on an administrator's behalf and never registers itself.
-		execResp.Status = providers.ExecFailure
-		execResp.Error = &ErrSelfRegNotSupportedForAgents
-		return execResp, nil
 	default:
 		logger.Debug(ctx.Context, "Agent type resolver is not applicable for the flow type",
 			log.String("flowType", string(ctx.FlowType)))

@@ -7,6 +7,7 @@ import {
   useGetOrganizationUnit,
   useHasMultipleOUs,
 } from '@thunderid/configure-organization-units';
+import {useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage} from '@thunderid/utils';
 import {
@@ -26,7 +27,7 @@ import {
 import {Home} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useState, type ChangeEvent, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import {useNavigate} from 'react-router';
+import {Navigate, useNavigate} from 'react-router';
 import useCreateVerifiablePresentation from '../api/useCreateVerifiablePresentation';
 import ConfigureName from '../components/create-verifiable-presentation/ConfigureName';
 import ClaimsEditor from '../components/PresentationClaimsEditor';
@@ -35,14 +36,32 @@ import {claimRowsToRequest, emptyClaimRow, findDuplicateClaimNames, type ClaimRo
 
 type Step = 'ORGANIZATION_UNIT' | 'NAME' | 'DETAILS' | 'CLAIMS';
 
-export default function VerifiablePresentationCreatePage(): JSX.Element {
+/**
+ * Props for the {@link VerifiablePresentationCreatePage} component.
+ */
+export interface VerifiablePresentationCreatePageProps {
+  /**
+   * Whether a presentation definition is created in a project only. When set, the page returns to the list
+   * outside a selected project, since a definition created there would be refused.
+   */
+  createInProjectsOnly?: boolean;
+}
+
+export default function VerifiablePresentationCreatePage({
+  createInProjectsOnly = false,
+}: VerifiablePresentationCreatePageProps): JSX.Element {
   const navigate = useNavigate();
   const {t} = useTranslation('verifiable-presentations');
   const logger = useLogger('VerifiablePresentationCreatePage');
   const routes = useVerifiableCredentialRoutes();
   const createVP = useCreateVerifiablePresentation();
 
-  const {hasMultipleOUs, isLoading: isOuLoading, ouList} = useHasMultipleOUs();
+  // Inside a project the definition goes to the system organization unit or one of the project's own, picked
+  // on the organization unit step. The step is offered only when the project has organization units; without
+  // any, the API places the definition in the system organization unit.
+  const {projectId} = useProjectScope();
+  const isInProject = Boolean(projectId);
+  const {hasMultipleOUs, isLoading: isOuLoading, ouList} = useHasMultipleOUs(projectId);
 
   const [step, setStep] = useState<Step>('ORGANIZATION_UNIT');
   const [name, setName] = useState<string>('');
@@ -53,7 +72,8 @@ export default function VerifiablePresentationCreatePage(): JSX.Element {
   const [format, setFormat] = useState<string>('dc+sd-jwt');
   const [claims, setClaims] = useState<ClaimRow[]>([emptyClaimRow()]);
 
-  const effectiveOuId: string = ouId !== '' ? ouId : !hasMultipleOUs && ouList.length === 1 ? ouList[0].id : '';
+  const effectiveOuId: string =
+    ouId !== '' ? ouId : !isInProject && !hasMultipleOUs && ouList.length === 1 ? ouList[0].id : '';
 
   // The organization unit whose name is shown in the Details step's summary chip.
   const {data: resolvedOrganizationUnit, isLoading: isResolvedOuLoading} = useGetOrganizationUnit(
@@ -84,7 +104,7 @@ export default function VerifiablePresentationCreatePage(): JSX.Element {
   const stepReady: Record<Step, boolean> = {
     ORGANIZATION_UNIT: effectiveOuId !== '',
     NAME: name.trim() !== '' && handle.trim() !== '',
-    DETAILS: vct.trim() !== '' && effectiveOuId !== '',
+    DETAILS: vct.trim() !== '' && (isInProject || effectiveOuId !== ''),
     CLAIMS: claims.some((c) => c.name.trim() !== '') && Object.keys(duplicateClaimNames).length === 0,
   };
 
@@ -105,7 +125,7 @@ export default function VerifiablePresentationCreatePage(): JSX.Element {
     createVP.mutate(
       {
         handle: handle.trim(),
-        ouId: effectiveOuId,
+        ...(isInProject ? {projectId, ...(effectiveOuId ? {ouId: effectiveOuId} : {})} : {ouId: effectiveOuId}),
         name: name.trim() || undefined,
         vct: vct.trim(),
         format: format.trim() || undefined,
@@ -148,20 +168,20 @@ export default function VerifiablePresentationCreatePage(): JSX.Element {
     required?: boolean,
     helperText?: string,
   ): JSX.Element => (
-    <FormControl fullWidth required={required}>
-      <FormLabel htmlFor={id}>{label}</FormLabel>
-      <TextField
-        fullWidth
-        id={id}
-        value={value}
-        placeholder={placeholder}
-        helperText={helperText}
-        onChange={(e: ChangeEvent<HTMLInputElement>): void => {
-          clearCreateError();
-          setValue(e.target.value);
-        }}
-      />
-    </FormControl>
+    <TextField
+      labelPlacement="top"
+      label={label}
+      required={required}
+      fullWidth
+      id={id}
+      value={value}
+      placeholder={placeholder}
+      helperText={helperText}
+      onChange={(e: ChangeEvent<HTMLInputElement>): void => {
+        clearCreateError();
+        setValue(e.target.value);
+      }}
+    />
   );
 
   const renderStep = (): JSX.Element => {
@@ -231,6 +251,10 @@ export default function VerifiablePresentationCreatePage(): JSX.Element {
 
   const pageTitle = t('create.title', 'New presentation definition');
 
+  if (createInProjectsOnly && !isInProject) {
+    return <Navigate to={routes.verifiablePresentations.list()} replace />;
+  }
+
   if (effectiveStep === 'ORGANIZATION_UNIT') {
     if (isOuLoading || !hasMultipleOUs) {
       return (
@@ -252,6 +276,7 @@ export default function VerifiablePresentationCreatePage(): JSX.Element {
             "Choose the organization unit that will own this verifiable presentation. You can't change this once created.",
           )}
           value={effectiveOuId}
+          projectId={projectId}
           onChange={(value: string): void => {
             clearCreateError();
             setOuId(value);

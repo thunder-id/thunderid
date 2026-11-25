@@ -11,7 +11,10 @@ import (
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -29,21 +32,33 @@ func KeepingValueReferences() Option {
 //
 // valueCapturer is optional. Given one, the service hands it every resource server it creates or
 // changes, so the values the resource server's export refers to are kept where a reference finds them.
+// projectValidator is nil on a deployment that serves no projects, where a project ID is kept unchecked.
+//
+// bus is required: the service publishes the audit event of every resource server, resource and action
+// it creates, updates or deletes on it.
 func Initialize(
 	mux *http.ServeMux,
 	ouService oupkg.OrganizationUnitServiceInterface,
 	authZENPDPService authzenpdp.AuthZENPDPServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
+	projectValidator projectOUValidator,
+	bus eventbus.EventBusInterface,
+	authzService sysauthz.SystemAuthorizationServiceInterface,
 	options ...Option,
 ) (ResourceServiceInterface, declarativeresource.ResourceExporter, error) {
+	if bus == nil {
+		return nil, nil, errNilEventBus
+	}
+
 	// Initialize store and transactioner based on store mode
 	resourceStore, transactioner, err := initializeStore()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to initialize resource store: %w", err)
 	}
 
+	options = append(options, func(s *resourceService) { s.managed = managedresource.GetStore() })
 	resourceService, err := newResourceService(ouService, resourceStore, transactioner, authZENPDPService,
-		valueCapturer, options...)
+		valueCapturer, projectValidator, bus, authzService, options...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -230,4 +245,16 @@ func registerRoutes(mux *http.ServeMux, handler *resourceHandler) {
 		func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		}, actionResourceDetailOpts))
+}
+
+// SetSystemFlowProvider gives the resource service the engine that runs the system flows around its
+// writes. It is bound after the service, once the engine exists, and only on a server that issues
+// tokens. A service that cannot take it is reported rather than left without one.
+func SetSystemFlowProvider(service ResourceServiceInterface, provider systemFlowProvider) error {
+	rs, ok := service.(*resourceService)
+	if !ok {
+		return fmt.Errorf("resource service does not support system flow provider injection")
+	}
+	rs.systemFlows = provider
+	return nil
 }

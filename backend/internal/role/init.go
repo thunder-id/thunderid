@@ -17,12 +17,17 @@ import (
 	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize initializes the role service and registers its routes.
+//
+// bus is required: the role and role assignment services publish the audit event of every role they
+// create, update or delete, and of every assignee they add or remove, on it.
 func Initialize(
 	mux *http.ServeMux,
 	entityService entity.EntityServiceInterface,
@@ -32,10 +37,16 @@ func Initialize(
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
 	sharingService sharing.SharingServiceInterface,
+	bus eventbus.EventBusInterface,
+	projectValidator projectOUValidator,
 ) (
 	RoleServiceInterface, RoleAssignmentServiceInterface, oupkg.OURoleResolver,
 	declarativeresource.ResourceExporter, error,
 ) {
+	if bus == nil {
+		return nil, nil, nil, nil, errNilEventBus
+	}
+
 	// Step 1: Initialize store and transactioner based on store mode (no declarative loading yet)
 	roleStore, transactioner, fileStore, dbStore, err := initializeStore()
 	if err != nil {
@@ -45,11 +56,14 @@ func Initialize(
 	// Step 2: Create service with store
 	roleService := newRoleService(
 		roleStore, entityService, groupService, ouService, resourceService, transactioner, authzService,
-		sharingService)
+		sharingService, bus, projectValidator)
 	assignmentService := newRoleAssignmentService(
 		roleStore, entityService, groupService, entityTypeService, resourceService, transactioner, authzService,
-		sharingService,
+		sharingService, bus,
 	)
+	managed := managedresource.GetStore()
+	setManagedStore(roleService, managed)
+	assignmentService.managed = managed
 
 	// Registered before declarative resources load, because loading seeds the sharing policies those
 	// files declare and the framework refuses a type it does not know.
@@ -251,4 +265,29 @@ func registerRoutes(mux *http.ServeMux, roleHandler *roleHandler) {
 		func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusNoContent)
 		}, opts6))
+}
+
+// SetSystemFlowProvider gives the role service the engine that runs the system flows around its writes.
+// It is bound after the service, once the engine exists, and only on a server that issues tokens. A
+// service that cannot take it is reported rather than left without one.
+func SetSystemFlowProvider(service RoleServiceInterface, provider systemFlowProvider) error {
+	rs, ok := service.(*roleService)
+	if !ok {
+		return fmt.Errorf("role service does not support system flow provider injection")
+	}
+	rs.systemFlows = provider
+	return nil
+}
+
+// SetAssignmentSystemFlowProvider gives the role assignment service the engine that runs the system flows around
+// its writes. It is bound after the service, once the engine exists, and only on a server that issues
+// tokens. A service that cannot take it is reported rather than left without one.
+func SetAssignmentSystemFlowProvider(service RoleAssignmentServiceInterface,
+	provider systemFlowProvider) error {
+	as, ok := service.(*roleAssignmentService)
+	if !ok {
+		return fmt.Errorf("role assignment service does not support system flow provider injection")
+	}
+	as.systemFlows = provider
+	return nil
 }

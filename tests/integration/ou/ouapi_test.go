@@ -428,11 +428,12 @@ func (suite *OUAPITestSuite) TestCreateOrganizationUnitWithInvalidParent() {
 }
 
 func (suite *OUAPITestSuite) TestCreateOrganizationUnitWithDuplicateName() {
+	// A root OU reaches the server only through import, so the conflict is between siblings.
 	duplicateOU := CreateOURequest{
-		Name:        ouToCreate.Name,
+		Name:        childOUToCreate.Name,
 		Handle:      "duplicate-name-test",
 		Description: "Duplicate name test",
-		Parent:      nil,
+		Parent:      &createdOUID,
 	}
 
 	jsonData, err := json.Marshal(duplicateOU)
@@ -463,11 +464,12 @@ func (suite *OUAPITestSuite) TestCreateOrganizationUnitWithDuplicateName() {
 }
 
 func (suite *OUAPITestSuite) TestCreateOrganizationUnitWithDuplicateHandle() {
+	// A root OU reaches the server only through import, so the conflict is between siblings.
 	duplicateHandleOU := CreateOURequest{
 		Name:        "OU with Duplicate Handle",
-		Handle:      ouToCreate.Handle,
+		Handle:      childOUToCreate.Handle,
 		Description: "Duplicate handle test",
-		Parent:      nil,
+		Parent:      &createdOUID,
 	}
 
 	jsonData, err := json.Marshal(duplicateHandleOU)
@@ -523,6 +525,28 @@ func (suite *OUAPITestSuite) TestDeleteOrganizationUnitWithChildren() {
 
 	suite.Equal("OU-1006", errorResp["code"])
 	suite.Equal("Organization unit has children", errorResp["message"].(map[string]interface{})["defaultValue"])
+}
+
+// The system organization unit the deployment configuration names cannot be deleted, though this server
+// serves no projects.
+func (suite *OUAPITestSuite) TestDeleteSystemOrganizationUnitIsRefused() {
+	const systemOUID = "01900000-0000-7000-8000-000000000001"
+
+	req, err := http.NewRequest("DELETE", testServerURL+"/organization-units/"+systemOUID, nil)
+	suite.Require().NoError(err)
+	resp, err := testutils.GetHTTPClient().Do(req)
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+
+	suite.Equal(http.StatusBadRequest, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	suite.Require().NoError(err)
+	var errorResp map[string]interface{}
+	suite.Require().NoError(json.Unmarshal(body, &errorResp))
+	suite.Equal("OU-1021", errorResp["code"])
+
+	_, err = testutils.GetOrganizationUnit(systemOUID)
+	suite.NoError(err, "the system organization unit was deleted")
 }
 
 func (suite *OUAPITestSuite) TestDeleteOrganizationUnitWithUserType() {
@@ -1111,6 +1135,10 @@ func (suite *OUAPITestSuite) fetchOU(id string) OrganizationUnit {
 }
 
 func createOU(ts *OUAPITestSuite, ouRequest CreateOURequest) (string, error) {
+	if ouRequest.Parent == nil {
+		return testutils.ImportRootOrganizationUnit(ouRequest)
+	}
+
 	jsonData, err := json.Marshal(ouRequest)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal OU request: %w", err)

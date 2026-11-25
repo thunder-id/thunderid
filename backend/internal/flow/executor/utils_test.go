@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package executor
@@ -8,13 +8,17 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/system/cache"
+	"github.com/thunder-id/thunderid/internal/system/config"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
@@ -916,7 +920,7 @@ func externalClaim(runtimeData map[string]string, name string) string {
 func (s *UtilsTestSuite) TestSetExternalIdentity_KeepsClaimsOutOfFlowState() {
 	execResp := &providers.ExecutorResponse{RuntimeData: map[string]string{}}
 
-	err := setExternalIdentity(execResp, "idp-1", "sub-123", map[string]interface{}{
+	err := setExternalIdentity(execResp, &providers.IDPDTO{ID: "idp-1"}, "sub-123", map[string]interface{}{
 		"sub":                             "sub-123",
 		"email":                           "user@example.com",
 		"groups":                          []interface{}{"eng", "ops"},
@@ -947,25 +951,43 @@ func (s *UtilsTestSuite) TestSetExternalIdentity_DropsTokenMetadata() {
 	}
 	execResp := &providers.ExecutorResponse{}
 
-	s.NoError(setExternalIdentity(execResp, "idp-1", "sub-123", claims))
+	s.NoError(setExternalIdentity(execResp, &providers.IDPDTO{ID: "idp-1"}, "sub-123", claims))
 
 	identity := core.GetExternalIdentity(execResp.RuntimeData)
 	s.Equal("sub-123", identity.Sub)
 	s.Equal(map[string]interface{}{"email": "user@example.com"}, identity.Claims)
 	s.Len(claims, 12)
 
-	s.NoError(setExternalIdentity(execResp, "", "", map[string]interface{}{"sub": "holder"}))
+	s.NoError(setExternalIdentity(execResp, nil, "", map[string]interface{}{"sub": "holder"}))
 	s.Equal("holder", core.GetExternalIdentity(execResp.RuntimeData).Claims["sub"])
+}
+
+// A connection's attributes sync mode is recorded with the identity, its default when unset. A credential
+// issuer has none.
+func (s *UtilsTestSuite) TestSetExternalIdentity_RecordsTheAttributesSyncMode() {
+	execResp := &providers.ExecutorResponse{}
+	connection := &providers.IDPDTO{ID: "idp-1", AttributeConfiguration: &providers.AttributeConfiguration{
+		Sync: &providers.SyncConfiguration{Attributes: providers.SyncModeSessionOnly},
+	}}
+
+	s.NoError(setExternalIdentity(execResp, connection, "sub-123", nil))
+	s.Equal(providers.SyncModeSessionOnly, core.GetExternalIdentity(execResp.RuntimeData).AttributesSync)
+
+	s.NoError(setExternalIdentity(execResp, &providers.IDPDTO{ID: "idp-1"}, "sub-123", nil))
+	s.Equal(providers.SyncModeOverrideReceived, core.GetExternalIdentity(execResp.RuntimeData).AttributesSync)
+
+	s.NoError(setExternalIdentity(execResp, nil, "", map[string]interface{}{"email": "holder@example.com"}))
+	s.Empty(core.GetExternalIdentity(execResp.RuntimeData).AttributesSync)
 }
 
 // Only a login at an identity provider, which names the connection and the subject, marks a
 // federated login completed. An OpenID4VP presentation names neither and leaves no mark.
 func (s *UtilsTestSuite) TestSetExternalIdentity_MarksFederatedLoginCompleted() {
 	execResp := &providers.ExecutorResponse{}
-	s.NoError(setExternalIdentity(execResp, "", "", map[string]interface{}{"sub": "holder"}))
+	s.NoError(setExternalIdentity(execResp, nil, "", map[string]interface{}{"sub": "holder"}))
 	s.Empty(execResp.SharedRuntimeData)
 
-	s.NoError(setExternalIdentity(execResp, "idp-1", "sub-123", nil))
+	s.NoError(setExternalIdentity(execResp, &providers.IDPDTO{ID: "idp-1"}, "sub-123", nil))
 	s.Equal(map[string]string{common.RuntimeKeyFederatedLoginCompleted: dataValueTrue},
 		execResp.SharedRuntimeData)
 }
@@ -977,7 +999,7 @@ func (s *UtilsTestSuite) TestSetExternalIdentity_ReplacesEarlierEntry() {
 			map[string]interface{}{"given_name": "First"}),
 	}}
 
-	err := setExternalIdentity(execResp, "idp-second", "sub-second",
+	err := setExternalIdentity(execResp, &providers.IDPDTO{ID: "idp-second"}, "sub-second",
 		map[string]interface{}{"email": "second@example.com"})
 
 	s.NoError(err)
@@ -1029,4 +1051,114 @@ func (s *UtilsTestSuite) TestStatedDecision_StatesOnlyANamedHold() {
 	s.Equal(&ErrAccountLocked, statedDecision(providers.AccessDecision{Reason: providers.AccessRefusalReasonLocked}))
 	s.Equal(&ErrAccountSuspended,
 		statedDecision(providers.AccessDecision{Reason: providers.AccessRefusalReasonSuspended}))
+}
+
+// Evidence that has no pin is an error rather than an absent proof.
+func (s *UtilsTestSuite) TestCorruptVerificationEvidenceIsAnError() {
+	for _, raw := range []string{"{", `{"passed":true}`} {
+		_, err := pinnedVerificationEvidence(&providers.NodeContext{
+			SharedRuntimeData: map[string]string{common.RuntimeKeyAttributeVerificationEvidence: raw}})
+		s.Error(err, raw)
+	}
+	proof, err := pinnedVerificationEvidence(&providers.NodeContext{})
+	s.NoError(err)
+	s.Nil(proof)
+}
+
+// newVerificationTestFactory returns a flow factory over a fresh server runtime.
+func newVerificationTestFactory(t *testing.T) core.FlowFactoryInterface {
+	if err := config.InitializeServerRuntime(t.TempDir(), &config.Config{}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(config.ResetServerRuntime)
+	factory, _ := core.Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "verification-test"))
+	return factory
+}
+
+// verificationEvidenceData returns shared runtime data holding the given evidence.
+func verificationEvidenceData(t *testing.T, proof *verificationEvidence) map[string]string {
+	t.Helper()
+	data, err := sharedVerificationEvidence(*proof)
+	require.NoError(t, err)
+	return data
+}
+
+// deliveredTo encodes the recipients as senders record them.
+func deliveredTo(t *testing.T, recipients ...string) string {
+	encoded, err := json.Marshal(recipients)
+	require.NoError(t, err)
+	return string(encoded)
+}
+
+// emailPin is a pinned email contact for user-a.
+func emailPin() *providers.AttributeVerificationPin {
+	return &providers.AttributeVerificationPin{Subject: "user-a", Attribute: "email",
+		Value: "User@example.com", Channel: providers.VerificationChannelEmail}
+}
+
+// evidenceIn decodes the evidence a response wrote to shared runtime data.
+func evidenceIn(t *testing.T, shared map[string]string) *verificationEvidence {
+	t.Helper()
+	proof, err := pinnedVerificationEvidence(&providers.NodeContext{SharedRuntimeData: shared})
+	require.NoError(t, err)
+	require.NotNil(t, proof)
+	return proof
+}
+
+// testPinnedMobile is the number a mobile verification test pins.
+const testPinnedMobile = "+94714627887"
+
+// mobilePin is a pinned mobile contact for user-a.
+func mobilePin() *providers.AttributeVerificationPin {
+	return &providers.AttributeVerificationPin{Subject: "user-a", Attribute: "mobile_number",
+		Value: testPinnedMobile, Channel: providers.VerificationChannelSMS}
+}
+
+func (suite *UtilsTestSuite) TestTakeSessionValues() {
+	suite.Nil(takeSessionValues(map[string]interface{}{"sub": "s"}))
+
+	claims := map[string]interface{}{"sub": "s", authnprovidercm.ClaimSessionValues: nil}
+	suite.Equal(&authnprovidercm.SessionValues{}, takeSessionValues(claims))
+	suite.NotContains(claims, authnprovidercm.ClaimSessionValues)
+}
+
+// Writing nothing clears what an earlier sign-in kept to the session.
+func (suite *UtilsTestSuite) TestWriteSessionValues_ClearsWithNil() {
+	execResp := &providers.ExecutorResponse{}
+	suite.Require().NoError(writeSessionValues(execResp, &authnprovidercm.SessionValues{
+		Attributes:            map[string]interface{}{"email": "a@example.com"},
+		GroupIDs:              []string{"group-a"},
+		GroupIDsWithAncestors: []string{"group-a", "parent-a"},
+		RoleIDs:               []string{"role-a"},
+		Permissions: []providers.AuthorizationTarget{
+			{Type: providers.AuthorizationTargetPermission, ResourceServerID: "rs-1", Permission: "read"},
+		},
+	}))
+	suite.Equal(map[string]interface{}{"email": "a@example.com"}, getSessionAttributes(execResp.RuntimeData))
+	suite.Equal("group-a", execResp.RuntimeData[common.RuntimeKeySessionDirectGroupIDs])
+	suite.NotEqual("[]", execResp.RuntimeData[common.RuntimeKeyMappedPermissions])
+
+	suite.Require().NoError(writeSessionValues(execResp, nil))
+	suite.Nil(getSessionAttributes(execResp.RuntimeData))
+	groups, roles := getSessionGroupAndRoleIDs(execResp.RuntimeData)
+	suite.Empty(groups)
+	suite.Empty(roles)
+	suite.Empty(execResp.RuntimeData[common.RuntimeKeySessionDirectGroupIDs])
+	suite.Equal("[]", execResp.RuntimeData[common.RuntimeKeyMappedPermissions])
+}
+
+func (suite *UtilsTestSuite) TestStatedHold_FederatedSyncFailed() {
+	suite.Equal(&ErrFederatedUserSyncFailed, statedHold(&authnprovidermgr.ErrorFederatedSyncFailed))
+}
+
+func (s *UtilsTestSuite) TestFederatedSignInMetadata_DefersSyncInRegistrationAndOnboarding() {
+	cases := map[providers.FlowType]bool{
+		providers.FlowTypeAuthentication: false,
+		providers.FlowTypeRegistration:   true,
+		providers.FlowTypeUserOnboarding: true,
+	}
+	for flowType, deferred := range cases {
+		metadata := federatedSignInMetadata(&providers.NodeContext{FlowType: flowType})
+		s.Equal(deferred, metadata.DeferSync, string(flowType))
+	}
 }

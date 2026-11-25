@@ -454,3 +454,68 @@ func (_c *ServerConfigServiceMock_SetConfig_Call) RunAndReturn(run func(ctx cont
 	_c.Call.Return(run)
 	return _c
 }
+
+// UpdateConfig provides a mock function for the type ServerConfigServiceMock
+func (_mock *ServerConfigServiceMock) UpdateConfig(ctx context.Context, name ConfigName, updater ConfigUpdater) *common.ServiceError {
+	ret := _mock.Called(ctx, name, updater)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateConfig")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ConfigName, ConfigUpdater) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, name, updater)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// ServerConfigServiceMock_UpdateConfig_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateConfig'
+type ServerConfigServiceMock_UpdateConfig_Call struct {
+	*mock.Call
+}
+
+// UpdateConfig is a helper method to define mock.On call
+//   - ctx context.Context
+//   - name ConfigName
+//   - updater ConfigUpdater
+func (_e *ServerConfigServiceMock_Expecter) UpdateConfig(ctx any, name any, updater any) *ServerConfigServiceMock_UpdateConfig_Call {
+	return &ServerConfigServiceMock_UpdateConfig_Call{Call: _e.mock.On("UpdateConfig", ctx, name, updater)}
+}
+
+func (_c *ServerConfigServiceMock_UpdateConfig_Call) Run(run func(ctx context.Context, name ConfigName, updater ConfigUpdater)) *ServerConfigServiceMock_UpdateConfig_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 ConfigName
+		if args[1] != nil {
+			arg1 = args[1].(ConfigName)
+		}
+		var arg2 ConfigUpdater
+		if args[2] != nil {
+			arg2 = args[2].(ConfigUpdater)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *ServerConfigServiceMock_UpdateConfig_Call) Return(serviceError *common.ServiceError) *ServerConfigServiceMock_UpdateConfig_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *ServerConfigServiceMock_UpdateConfig_Call) RunAndReturn(run func(ctx context.Context, name ConfigName, updater ConfigUpdater) *common.ServiceError) *ServerConfigServiceMock_UpdateConfig_Call {
+	_c.Call.Return(run)
+	return _c
+}

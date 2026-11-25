@@ -26,6 +26,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/authzdetailprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/authzmock"
@@ -104,7 +105,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) SetupTest() {
 		actorProvider:   suite.mockEntityProvider,
 		resourceService: suite.mockResourceService,
 	}
-	suite.mockEntityProvider.On("GetActorGroups", mock.Anything).
+	suite.mockEntityProvider.On("GetActorGroups", mock.Anything, mock.Anything).
 		Return([]providers.EntityGroup{}, nil).Maybe()
 
 	suite.oauthApp = &providers.OAuthClient{
@@ -693,6 +694,72 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_EmptyScope_
 	suite.mockAuthzService.AssertNotCalled(suite.T(), "EvaluateAccessBatch", mock.Anything, mock.Anything)
 }
 
+// Only an agent's token for an organization unit counts the roles held in that unit. Without a named unit an
+// agent counts its own unit's roles, and an application always does.
+func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_EvaluatesRolesInTheTokensUnit() {
+	testCases := []struct {
+		name        string
+		category    providers.EntityCategory
+		accessingOU string
+		wantOU      string
+	}{
+		{name: "AgentTokenForAUnit", category: providers.EntityCategoryAgent, accessingOU: "ou-shared",
+			wantOU: "ou-shared"},
+		{name: "AgentTokenWithNoUnit", category: providers.EntityCategoryAgent, wantOU: testAppOUID},
+		{name: "ApplicationTokenForAUnit", category: providers.EntityCategoryApp, accessingOU: "ou-shared",
+			wantOU: testAppOUID},
+	}
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.mockAuthzService.Mock = mock.Mock{}
+			suite.mockTokenBuilder.Mock = mock.Mock{}
+			client := *suite.oauthApp
+			client.EntityCategory = tc.category
+			mockEvaluateAccessBatch(suite.mockAuthzService, client.ID, tc.wantOU, defaultRSID,
+				[]string{testScopeRead}, []string{testScopeRead})
+			suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+				mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+					return tokenservice.JoinScopes(ctx.Scopes) == testScopeRead
+				})).Return(&model.TokenDTO{Token: testJWTToken, TokenType: constants.TokenTypeBearer,
+				Scopes: []string{testScopeRead}, ClientID: testClientID}, nil)
+			ctx := context.Background()
+			if tc.accessingOU != "" {
+				ctx = syscontext.WithAccessingOUID(ctx, tc.accessingOU)
+			}
+
+			result, errResp := suite.handler.HandleGrant(ctx, &model.TokenRequest{
+				GrantType: "client_credentials", ClientID: testClientID, ClientSecret: "secret123",
+				Scope: testScopeRead,
+			}, &client)
+
+			suite.Require().Nil(errResp)
+			suite.Equal([]string{testScopeRead}, result.AccessToken.Scopes)
+		})
+	}
+}
+
+// An agent's token for an organization unit has its authorization details decided in that unit as well.
+func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_AgentDetailsForAUnitAreDecidedThere() {
+	authzDetails := authzdetailprovidermock.NewAuthorizationDetailProviderMock(suite.T())
+	suite.handler.authzDetails = authzDetails
+	agent := *suite.oauthApp
+	agent.EntityCategory = providers.EntityCategoryAgent
+	inUnit := providers.EntityReference{EntityID: agent.ID, EntityCategory: string(agent.EntityCategory),
+		OUID: "ou-shared"}
+	authzDetails.EXPECT().PrepareAuthorizationDetails(mock.Anything, json.RawMessage(testAuthorizationDetails)).
+		Return(testPreparedDetails, nil)
+	authzDetails.EXPECT().ProcessAuthorizationDetails(mock.Anything, mock.Anything, inUnit, agent.ClientID, inUnit,
+		mock.Anything).Return(admitted(`{"type":"payment_initiation","amount":"10"}`), nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).Return(&model.TokenDTO{
+		Token: testJWTToken, TokenType: constants.TokenTypeBearer, ClientID: testClientID}, nil)
+
+	_, errResp := suite.handler.HandleGrant(syscontext.WithAccessingOUID(context.Background(), "ou-shared"),
+		&model.TokenRequest{GrantType: "client_credentials", ClientID: testClientID, ClientSecret: "secret123",
+			AuthorizationDetails: testAuthorizationDetails}, &agent)
+
+	suite.Nil(errResp)
+}
+
 func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_AgentOwnAttributes_EmbeddedInClientAttributes() {
 	tokenRequest := &model.TokenRequest{
 		GrantType:    "client_credentials",
@@ -714,7 +781,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_AgentOwnAtt
 		},
 	}
 
-	suite.mockEntityProvider.On("GetActor", agentApp.ID).Return(&providers.Entity{
+	suite.mockEntityProvider.On("GetActor", mock.Anything, agentApp.ID).Return(&providers.Entity{
 		ID:         agentApp.ID,
 		Attributes: []byte(`{"modelProvider":"anthropic"}`),
 	}, (*tidcommon.ServiceError)(nil))
@@ -759,11 +826,12 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_AgentSystem
 		},
 	}
 
-	suite.mockEntityProvider.On("GetActor", agentApp.ID).Return(&providers.Entity{
-		ID:               agentApp.ID,
-		Category:         providers.EntityCategoryAgent,
-		Attributes:       []byte(`{"name":"Ledger Agent"}`),
-		SystemAttributes: []byte(`{"owner":"user-123","clientId":"cid"}`),
+	suite.mockEntityProvider.On("GetActor", mock.Anything, agentApp.ID).Return(&providers.Entity{
+		ID:         agentApp.ID,
+		Category:   providers.EntityCategoryAgent,
+		Attributes: []byte(`{"name":"Ledger Agent"}`),
+		SystemAttributes: []byte(`{"owner":{"id":"user-123","idType":"uuid","isLocal":true},` +
+			`"clientId":"cid"}`),
 	}, (*tidcommon.ServiceError)(nil))
 
 	suite.mockTokenBuilder.On("BuildAccessToken",
@@ -809,7 +877,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_Application
 	}
 
 	// Applications store name in SystemAttributes too; the category gate must keep it out of the token.
-	suite.mockEntityProvider.On("GetActor", appApp.ID).Return(&providers.Entity{
+	suite.mockEntityProvider.On("GetActor", mock.Anything, appApp.ID).Return(&providers.Entity{
 		ID:               appApp.ID,
 		Category:         providers.EntityCategoryApp,
 		SystemAttributes: []byte(`{"name":"My Application","clientId":"cid"}`),

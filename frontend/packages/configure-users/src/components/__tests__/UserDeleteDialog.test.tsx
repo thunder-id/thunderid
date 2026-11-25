@@ -157,6 +157,49 @@ describe('UserDeleteDialog', () => {
       expect(screen.getByRole('button', {name: 'Delete'})).toBeEnabled();
     });
 
+    it('should list the personal agents deleted with the user and allow deletion', () => {
+      getUsagesMock.mockReturnValue({
+        data: {
+          totalResults: 1,
+          count: 1,
+          summary: {agent: 1},
+          usages: [
+            {resourceType: 'agent', id: 'agent-1', displayName: 'Travel Assistant', behaviorOnDelete: 'cascade'},
+          ],
+        },
+        isLoading: false,
+      });
+
+      render(<UserDeleteDialog open userId="user-123" onClose={mockOnClose} />);
+
+      expect(
+        screen.getByText('These personal agents will be deleted with the user, and their tokens revoked:'),
+      ).toBeInTheDocument();
+      expect(screen.getByText('Travel Assistant')).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Delete'})).toBeEnabled();
+    });
+
+    it('should list only the blocking agents when the user also has personal agents', () => {
+      getUsagesMock.mockReturnValue({
+        data: {
+          totalResults: 2,
+          count: 2,
+          summary: {agent: 2},
+          usages: [
+            {resourceType: 'agent', id: 'agent-1', displayName: 'Travel Assistant', behaviorOnDelete: 'cascade'},
+            {resourceType: 'agent', id: 'agent-2', displayName: 'Billing Agent', behaviorOnDelete: 'restrict'},
+          ],
+        },
+        isLoading: false,
+      });
+
+      render(<UserDeleteDialog open userId="user-123" onClose={mockOnClose} />);
+
+      expect(screen.getByText('Billing Agent')).toBeInTheDocument();
+      expect(screen.queryByText('Travel Assistant')).not.toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Delete'})).toBeDisabled();
+    });
+
     it('should fall back to the disclaimer when usage data is unknown', () => {
       getUsagesMock.mockReturnValue({
         data: {totalResults: null, count: 0, summary: null, usages: []},

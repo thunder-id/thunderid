@@ -34,13 +34,23 @@ type userSharingDeclaration struct {
 	roleAssignments role.RoleAssignmentServiceInterface
 	// pendingDeclared holds the declared policies loaded before roleAssignments, whose mandates wait for it.
 	pendingDeclared []sharing.Policy
+	// authorizeShare decides whether the caller may share a user into an organization unit from a flow.
+	authorizeShare func(ctx context.Context, userID, targetOUID string) *tidcommon.ServiceError
 }
 
 // newUserSharingDeclaration returns the declaration registered with the sharing framework.
 func newUserSharingDeclaration(
 	service UserServiceInterface, sharingService sharing.SharingServiceInterface,
+	authorizeShare func(ctx context.Context, userID, targetOUID string) *tidcommon.ServiceError,
 ) *userSharingDeclaration {
-	return &userSharingDeclaration{service: service, sharingService: sharingService}
+	return &userSharingDeclaration{service: service, sharingService: sharingService, authorizeShare: authorizeShare}
+}
+
+// AuthorizeShareInto refuses unless the caller may bring the user into the target organization unit.
+func (d *userSharingDeclaration) AuthorizeShareInto(
+	ctx context.Context, userID, targetOUID string,
+) *tidcommon.ServiceError {
+	return d.authorizeShare(ctx, userID, targetOUID)
 }
 
 // ResourceType identifies users to the sharing framework.

@@ -18,7 +18,17 @@ export type AccessHoldReason =
   | 'FAILED_ATTEMPTS'
   | 'SUSPENSION_RELEASE_LOCK'
   | 'ADMINISTRATIVE_SUSPENSION'
-  | 'LIFESPAN_ENDED';
+  | 'LIFESPAN_ENDED'
+  | 'OWNER_SUSPENSION'
+  | 'CASCADED_SUSPENSION';
+
+/**
+ * Who placed a suspension: an administrator of the organization, the identity's owner, or a cascade from the
+ * identity it depends on.
+ *
+ * @public
+ */
+export type SuspensionAppliedBy = 'organization' | 'owner' | 'cascade';
 
 /**
  * One live automatic lock: the authentication method it holds, and when it lifts.
@@ -54,6 +64,10 @@ export interface AccessStatusDetails {
    * The operator's optional note on the hold. Render as text, never as markup.
    */
   operatorNote?: string;
+  /**
+   * Who placed the suspensions in force. Absent for a status that is not a suspension.
+   */
+  appliedBy?: SuspensionAppliedBy[];
   /**
    * Every live automatic lock. Absent for a status that is not a lock.
    */

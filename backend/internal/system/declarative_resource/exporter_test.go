@@ -187,20 +187,23 @@ func TestCredentialPlaceholdersNameEachCredentialAfterTheResource(t *testing.T) 
 		want       map[string]interface{}
 	}{
 		{name: "template", want: map[string]interface{}{
-			"password": "{{.AGENT_MY_BOT_PASSWORD}}", "pin": "{{.AGENT_MY_BOT_PIN}}",
+			"password": "{{.AGENT__0198F3A17C2E7B109A445D3E8F21C6B7__PASSWORD}}",
+			"pin":      "{{.AGENT__0198F3A17C2E7B109A445D3E8F21C6B7__PIN}}",
 		}},
 		{name: "reference", references: true, want: map[string]interface{}{
-			"password": "sec:AGENT_MY_BOT_PASSWORD", "pin": "sec:AGENT_MY_BOT_PIN",
+			"password": "sec:AGENT__0198F3A17C2E7B109A445D3E8F21C6B7__PASSWORD",
+			"pin":      "sec:AGENT__0198F3A17C2E7B109A445D3E8F21C6B7__PIN",
 		}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := CredentialPlaceholders("agent", "My Bot", []string{"password", "pin"}, tc.references)
+			got := CredentialPlaceholders("agent", "0198f3a1-7c2e-7b10-9a44-5d3e8f21c6b7",
+				[]string{"password", "pin"}, tc.references)
 			assert.Equal(t, tc.want, got)
 		})
 	}
 }
 
 func TestCredentialPlaceholdersOfNoCredentialsIsEmpty(t *testing.T) {
-	assert.Empty(t, CredentialPlaceholders("user", "alice", nil, false))
+	assert.Empty(t, CredentialPlaceholders("user", "0198f3a1-7c2e-7b10-9a44-5d3e8f21c6b7", nil, false))
 }

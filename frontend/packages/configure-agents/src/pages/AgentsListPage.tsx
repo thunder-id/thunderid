@@ -2,36 +2,35 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, ExternalLink} from '@thunderid/components';
-import {useGetAgentTypes} from '@thunderid/configure-agent-types';
+import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {Button, PageContent, PageTitle} from '@wso2/oxygen-ui';
-import {FileCog, Plus} from '@wso2/oxygen-ui-icons-react';
+import {Plus} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import AgentsList from '../components/AgentsList';
 import useAgentRoutes from '../hooks/useAgentRoutes';
-import {DEFAULT_AGENT_TYPE_HANDLE} from '../models/agent';
 
-export default function AgentsListPage(): JSX.Element {
+/**
+ * Props for the {@link AgentsListPage} component.
+ */
+export interface AgentsListPageProps {
+  /**
+   * Whether an agent is created in a project only. When set, an agent can be created inside a selected project and
+   * not outside one.
+   */
+  createInProjectsOnly?: boolean;
+}
+
+export default function AgentsListPage({createInProjectsOnly = false}: AgentsListPageProps): JSX.Element {
   const routes = useAgentRoutes();
   const navigate = useNavigate();
   const {t} = useTranslation();
   const logger = useLogger('AgentsListPage');
-
-  // Agent types are restricted to a single bootstrap-provisioned `default` schema; the Schema
-  // button jumps to its edit page so operators can manage attribute definitions in place.
-  const {data: agentTypesData, isLoading: isAgentTypesLoading} = useGetAgentTypes();
-  const defaultAgentType = agentTypesData?.types?.find((s) => s.handle === DEFAULT_AGENT_TYPE_HANDLE);
-
-  const handleSchemaClick = (): void => {
-    if (!defaultAgentType) return;
-    (async () => {
-      await navigate(routes.agentTypes.detail(defaultAgentType.id));
-    })().catch((error: unknown) => {
-      logger.error('Failed to navigate to agent type page', {error});
-    });
-  };
+  const {can} = useCapabilitiesContext();
+  const {projectId} = useProjectScope();
+  const canCreate = !createInProjectsOnly || Boolean(projectId);
 
   return (
     <PageContent>
@@ -43,29 +42,22 @@ export default function AgentsListPage(): JSX.Element {
           <ExternalLink docKey="agents" confirmBeforeNavigate={false} />
         </PageTitle.SubHeader>
         <PageTitle.Actions>
-          <Button
-            data-testid="agent-schema-button"
-            variant="outlined"
-            startIcon={<FileCog size={18} />}
-            disabled={isAgentTypesLoading || !defaultAgentType}
-            onClick={handleSchemaClick}
-          >
-            {t('agents:listing.schema', 'Schema')}
-          </Button>
-          <Button
-            data-testid="agent-add-button"
-            variant="contained"
-            startIcon={<Plus size={18} />}
-            onClick={() => {
-              (async () => {
-                await navigate(routes.agents.create());
-              })().catch((error: unknown) => {
-                logger.error('Failed to navigate to create agent page', {error});
-              });
-            }}
-          >
-            {t('agents:listing.addAgent', 'Add agent')}
-          </Button>
+          {canCreate && can('agent', 'create') && (
+            <Button
+              data-testid="agent-add-button"
+              variant="contained"
+              startIcon={<Plus size={18} />}
+              onClick={() => {
+                (async () => {
+                  await navigate(routes.agents.create());
+                })().catch((error: unknown) => {
+                  logger.error('Failed to navigate to create agent page', {error});
+                });
+              }}
+            >
+              {t('agents:listing.addAgent', 'Add agent')}
+            </Button>
+          )}
         </PageTitle.Actions>
       </PageTitle>
 

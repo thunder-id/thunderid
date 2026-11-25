@@ -24,7 +24,10 @@ import type {OrganizationUnit} from './organization-unit';
  * };
  * ```
  */
-export type CreateOrganizationUnitRequest = Pick<OrganizationUnit, 'handle' | 'name' | 'description' | 'parent'>;
+export type CreateOrganizationUnitRequest = Pick<
+  OrganizationUnit,
+  'handle' | 'name' | 'description' | 'parent' | 'projectId'
+>;
 
 /**
  * Request body for updating an organization unit.
@@ -79,4 +82,21 @@ export interface OrganizationUnitListParams {
    * @example 0
    */
   offset?: number;
+
+  /**
+   * List only the organization units of this project
+   * @example '019a3000-0000-7000-8000-0000000000a1'
+   */
+  projectId?: string;
+
+  /**
+   * With `projectId`, list where a project resource can be placed: the system organization unit
+   * first, then the project's top organization units
+   */
+  placement?: boolean;
+
+  /**
+   * With `placement`, keep only the placements in this organization unit's subtree
+   */
+  within?: string;
 }

@@ -62,3 +62,19 @@ func TestViewResourceRefusesAnUnreadableTheme(t *testing.T) {
 	_, err := exporter.ViewResource(context.Background(), viewThemeDocument(t, "displayName: [not, a, name]"))
 	assert.Error(t, err)
 }
+
+// An exported theme in a project is shown with its project.
+func TestViewResourceKeepsTheProjectOfATheme(t *testing.T) {
+	exported, err := yaml.Marshal(map[string]interface{}{
+		"id": "theme-1", "handle": "classic", "displayName": "Classic", "projectId": "project-1",
+		"theme": `{"a":1}`,
+	})
+	require.NoError(t, err)
+
+	view, err := newThemeExporter(nil).ViewResource(context.Background(), viewThemeDocument(t, string(exported)))
+
+	require.NoError(t, err)
+	theme, ok := view.(Theme)
+	require.True(t, ok)
+	assert.Equal(t, "project-1", theme.ProjectID)
+}

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen, waitFor} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import ApplicationsListPage from '../ApplicationsListPage';
@@ -36,6 +37,11 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  isLoading: false,
+};
+
 describe('ApplicationsListPage', () => {
   const renderWithProviders = () => render(<ApplicationsListPage />);
 
@@ -64,6 +70,32 @@ describe('ApplicationsListPage', () => {
 
     it('should render the Create Application button', () => {
       renderWithProviders();
+
+      expect(screen.getByRole('button', {name: /Create Application/i})).toBeInTheDocument();
+    });
+
+    it('hides the Create Application button when the admin may not create applications', () => {
+      render(
+        <CapabilitiesProvider capabilities={viewOnly}>
+          <ApplicationsListPage />
+        </CapabilitiesProvider>,
+      );
+
+      expect(screen.queryByRole('button', {name: /Create Application/i})).not.toBeInTheDocument();
+    });
+
+    it('offers no create action outside a project when applications are created in projects only', () => {
+      render(<ApplicationsListPage createInProjectsOnly />);
+
+      expect(screen.queryByRole('button', {name: /Create Application/i})).not.toBeInTheDocument();
+    });
+
+    it('offers the create action inside a project when applications are created in projects only', () => {
+      render(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <ApplicationsListPage createInProjectsOnly />
+        </ProjectScopeProvider>,
+      );
 
       expect(screen.getByRole('button', {name: /Create Application/i})).toBeInTheDocument();
     });

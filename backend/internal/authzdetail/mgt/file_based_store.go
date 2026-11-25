@@ -100,6 +100,22 @@ func (f *typeFileBasedStore) ListTypePage(ctx context.Context, limit, offset int
 	return pageOf(types, limit, offset), nil
 }
 
+// CountTypesByProject counts the types of a project.
+func (f *typeFileBasedStore) CountTypesByProject(ctx context.Context, projectID string) (int, error) {
+	types, err := f.ListTypes(ctx)
+	return len(typesOfProject(types, projectID)), err
+}
+
+// ListTypePageByProject lists one page of the types of a project, ordered by type value.
+func (f *typeFileBasedStore) ListTypePageByProject(ctx context.Context, projectID string, limit, offset int) (
+	[]providers.AuthorizationDetailType, error) {
+	types, err := f.ListTypes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return pageOf(typesOfProject(types, projectID), limit, offset), nil
+}
+
 // UpdateType is not supported in the file-based store.
 func (f *typeFileBasedStore) UpdateType(_ context.Context, _ providers.AuthorizationDetailType, _ bool) error {
 	return errTypeImmutable
@@ -126,6 +142,17 @@ func typeFromDeclarativeData(id string, data interface{}) (providers.Authorizati
 	stored := *t
 	stored.IsReadOnly = true
 	return stored, nil
+}
+
+// typesOfProject keeps the types that belong to the project.
+func typesOfProject(types []providers.AuthorizationDetailType, projectID string) []providers.AuthorizationDetailType {
+	kept := make([]providers.AuthorizationDetailType, 0, len(types))
+	for _, t := range types {
+		if t.ProjectID == projectID {
+			kept = append(kept, t)
+		}
+	}
+	return kept
 }
 
 // sortTypes orders types by type value, as the database store lists them.

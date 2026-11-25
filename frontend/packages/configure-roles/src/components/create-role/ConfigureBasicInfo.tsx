@@ -3,7 +3,7 @@
 
 import {NameSuggestion, OrganizationUnitSummaryChip} from '@thunderid/components';
 import {OrganizationUnitTreeConstants} from '@thunderid/configure-organization-units';
-import {Typography, Stack, TextField, FormControl, FormLabel} from '@wso2/oxygen-ui';
+import {Typography, Stack, TextField} from '@wso2/oxygen-ui';
 import type {ChangeEvent, JSX} from 'react';
 import {useEffect, useMemo} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -96,9 +96,11 @@ export default function ConfigureBasicInfo({
         />
       )}
 
-      <FormControl fullWidth required>
-        <FormLabel htmlFor="role-name-input">{t('roles:create.form.name.label')}</FormLabel>
+      <Stack>
         <TextField
+          labelPlacement="top"
+          label={t('roles:create.form.name.label')}
+          required
           fullWidth
           id="role-name-input"
           value={name}
@@ -109,7 +111,7 @@ export default function ConfigureBasicInfo({
         />
 
         <NameSuggestion onSelect={onNameChange} />
-      </FormControl>
+      </Stack>
     </Stack>
   );
 }

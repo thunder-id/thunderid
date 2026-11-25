@@ -447,7 +447,7 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key: "error.userservice.shared_user_cannot_move_description",
 			DefaultValue: "The user is shared into other organization units. Delete its sharing policies " +
-				"before moving it to another organization unit",
+				"before moving it to another organization unit or project",
 		},
 	}
 	// ErrorRolesNotOnNamedUnit is returned when roles are mandated off a named child unit of reach unit.
@@ -477,6 +477,76 @@ var (
 			DefaultValue: "A roles rule must list at least one role in value, without excludedValues",
 		},
 	}
+	// ErrorInvalidCredentialValue is the error returned when a new credential value does not meet the
+	// user type schema, such as a password that does not match its regex.
+	ErrorInvalidCredentialValue = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1041",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.invalid_credential_value",
+			DefaultValue: "Invalid credential value",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.userservice.invalid_credential_value_description",
+			DefaultValue: "The credential value does not meet the requirements of the user type",
+		},
+	}
+	// ErrorInvalidProject is the error returned when a user names a project that does not exist.
+	ErrorInvalidProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1042",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.invalid_project",
+			DefaultValue: "Invalid project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.userservice.invalid_project_description",
+			DefaultValue: "No project exists with the given project ID",
+		},
+	}
+	// ErrorOUNotInProject is the error returned when a user names an organization unit outside the
+	// project it names.
+	ErrorOUNotInProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1043",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.ou_not_in_project",
+			DefaultValue: "Organization unit not in project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.userservice.ou_not_in_project_description",
+			DefaultValue: "A user in a project must be in the system organization unit " +
+				"or in an organization unit of the project",
+		},
+	}
+	// ErrorSharedUserReadOnly is the error returned when an organization unit a user is shared into tries to
+	// change or delete the user.
+	ErrorSharedUserReadOnly = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1045",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.shared_user_read_only",
+			DefaultValue: "Shared user is read only",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.userservice.shared_user_read_only_description",
+			DefaultValue: "Only the organization unit that owns the user can change or delete it",
+		},
+	}
+	// ErrorDelegatedTokenNotAllowed is the error returned when a delegated token, one issued to a client acting
+	// for the user, is used to change the user's own credentials.
+	ErrorDelegatedTokenNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1046",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.delegated_token_not_allowed",
+			DefaultValue: "Delegated token not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.userservice.delegated_token_not_allowed_description",
+			DefaultValue: "Credentials cannot be changed with a delegated token",
+		},
+	}
 )
 
 // Error variables
@@ -486,4 +556,28 @@ var (
 
 	// ErrBadAttributesInRequest is returned when the attributes in the request are invalid.
 	ErrBadAttributesInRequest = errors.New("failed to marshal attributes")
+
+	// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+	errNilEventBus = errors.New("the user service needs an event bus")
+	// ErrorManagedUser is the error returned when attempting to change a user a control plane deployed,
+	// its credentials and attributes included. Only a deploy from the control plane changes or removes it.
+	ErrorManagedUser = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1044",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.managed_user",
+			DefaultValue: "Cannot modify a user deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.userservice.managed_user_description",
+			DefaultValue: "The user was deployed by the control plane and can only be changed there",
+		},
+	}
 )
+
+// errSharingPolicyNotFoundNoop is returned by deleteSharingPolicy when the user holds no policy under the
+// requested id. DeleteSharingPolicy turns it into a success, so it never reaches a caller.
+var errSharingPolicyNotFoundNoop = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: ErrorSharingPolicyNotFound.Code,
+}

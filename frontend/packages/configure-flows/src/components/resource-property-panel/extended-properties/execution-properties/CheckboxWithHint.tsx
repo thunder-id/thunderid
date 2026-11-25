@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {Box, Checkbox, FormControlLabel, Typography} from '@wso2/oxygen-ui';
-import type {ReactElement} from 'react';
+import type {ReactElement, ReactNode} from 'react';
 
 /**
  * Props interface of {@link CheckboxWithHint}
@@ -15,11 +15,15 @@ export interface CheckboxWithHintProps {
   /**
    * The checkbox label.
    */
-  label: string;
+  label: ReactNode;
   /**
    * Explanatory caption shown underneath the label, aligned with it.
    */
   hint?: string;
+  /**
+   * Whether the checkbox is disabled.
+   */
+  disabled?: boolean;
   /**
    * Change handler receiving the new checked state.
    */
@@ -34,11 +38,19 @@ export interface CheckboxWithHintProps {
  * @param props - Props injected to the component.
  * @returns The CheckboxWithHint component.
  */
-function CheckboxWithHint({checked, label, hint = undefined, onChange}: CheckboxWithHintProps): ReactElement {
+function CheckboxWithHint({
+  checked,
+  label,
+  hint = undefined,
+  disabled = false,
+  onChange,
+}: CheckboxWithHintProps): ReactElement {
   return (
     <Box>
       <FormControlLabel
-        control={<Checkbox checked={checked} onChange={(e) => onChange(e.target.checked)} size="small" />}
+        control={
+          <Checkbox checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} size="small" />
+        }
         label={<Typography variant="subtitle2">{label}</Typography>}
         sx={{mr: 0}}
       />

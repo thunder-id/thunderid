@@ -697,7 +697,7 @@ func (s *FlowStoreTestSuite) TestCreateFlow_ExecError() {
 
 	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
 	s.mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryCreateFlow, "flow-1", "login-handle", "Login Flow",
-		providers.FlowTypeAuthentication, int64(1), "ou-1", "test-deployment").
+		providers.FlowTypeAuthentication, int64(1), "ou-1", nil, "test-deployment").
 		Return(int64(0), errors.New("insert error"))
 
 	result, err := s.store.CreateFlow(context.Background(), "flow-1", flowDef)
@@ -965,7 +965,7 @@ func (s *FlowStoreTestSuite) TestCreateFlow_InsertFlowVersionError() {
 	nodesJSON := `[{"id":"node1","type":"start"}]`
 	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
 	s.mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryCreateFlow, "flow-1", "login-handle", "Login Flow",
-		providers.FlowTypeAuthentication, int64(1), "ou-1", "test-deployment").Return(int64(0), nil)
+		providers.FlowTypeAuthentication, int64(1), "ou-1", nil, "test-deployment").Return(int64(0), nil)
 	s.mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryInsertFlowVersion, "flow-1", 1, nodesJSON, "null",
 		"test-deployment").Return(int64(0), errors.New("version insert error"))
 
@@ -1368,7 +1368,7 @@ func (s *FlowStoreTestSuite) TestCreateFlowWithInterceptors() {
 
 	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
 	s.mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryCreateFlow, "flow-1", "login-handle", "Login Flow",
-		providers.FlowTypeAuthentication, int64(1), "ou-1", "test-deployment").Return(int64(1), nil)
+		providers.FlowTypeAuthentication, int64(1), "ou-1", nil, "test-deployment").Return(int64(1), nil)
 	s.mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryInsertFlowVersion, "flow-1", 1, nodesJSON,
 		interceptorsJSON, "test-deployment").Return(int64(1), nil)
 
@@ -1547,7 +1547,7 @@ func (s *FlowStoreTestSuite) TestListActiveFlowsWithNodes_ReadsTheOwner() {
 func (s *FlowStoreTestSuite) TestCreateFlow_StoresTheOwner() {
 	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
 	s.mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryCreateFlow, "flow-1", "handle-1", "Flow 1",
-		providers.FlowTypeAuthentication, int64(1), "ou-1", "test-deployment").Return(int64(1), nil)
+		providers.FlowTypeAuthentication, int64(1), "ou-1", nil, "test-deployment").Return(int64(1), nil)
 	s.mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryInsertFlowVersion, "flow-1", 1, ownedFlowNodes, "null",
 		"test-deployment").Return(int64(1), nil)
 	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryGetFlow, "flow-1", "test-deployment").
@@ -1659,4 +1659,102 @@ func (s *FlowStoreTestSuite) TestListFlowsByIDsReportsAFailure() {
 
 	s.ErrorContains(err, "failed to list flows by ID")
 	s.Nil(flows)
+}
+
+func (s *FlowStoreTestSuite) TestCreateFlow_StoresTheProject() {
+	row := ownedFlowRow(providers.FlowTypeAuthentication, "ou-1")
+	row[colProjectID] = "project-1"
+	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
+	s.mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryCreateFlow, "flow-1", "handle-1", "Flow 1",
+		providers.FlowTypeAuthentication, int64(1), "ou-1", "project-1", "test-deployment").Return(int64(1), nil)
+	s.mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryInsertFlowVersion, "flow-1", 1, ownedFlowNodes, "null",
+		"test-deployment").Return(int64(1), nil)
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryGetFlow, "flow-1", "test-deployment").
+		Return([]map[string]interface{}{row}, nil)
+
+	flow, err := s.store.CreateFlow(context.Background(), "flow-1", &FlowDefinition{
+		Handle: "handle-1", Name: "Flow 1", FlowType: providers.FlowTypeAuthentication, OUID: "ou-1",
+		ProjectID: "project-1", Nodes: []providers.NodeDefinition{{Type: "START", ID: "START"}},
+	})
+
+	s.NoError(err)
+	s.Equal("project-1", flow.ProjectID)
+}
+
+func (s *FlowStoreTestSuite) TestUpdateFlow_StoresTheProject() {
+	current := ownedFlowRow(providers.FlowTypeAuthentication, "ou-1")
+	updated := ownedFlowRow(providers.FlowTypeAuthentication, "ou-1")
+	updated[colActiveVersion] = int64(2)
+	updated[colProjectID] = []byte("project-1")
+	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryGetFlow, "flow-1", "test-deployment").
+		Return([]map[string]interface{}{current}, nil).Once()
+	s.mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryInsertFlowVersion, "flow-1", 2, ownedFlowNodes, "null",
+		"test-deployment").Return(int64(1), nil)
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryCountFlowVersions, "flow-1", "test-deployment").
+		Return([]map[string]interface{}{{colCount: int64(2)}}, nil)
+	s.mockDBClient.EXPECT().ExecuteContext(mock.Anything, queryUpdateFlow, "flow-1", "Flow 1", 2, "project-1",
+		"test-deployment").Return(int64(1), nil)
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, queryGetFlow, "flow-1", "test-deployment").
+		Return([]map[string]interface{}{updated}, nil).Once()
+
+	flow, err := s.store.UpdateFlow(context.Background(), "flow-1", &FlowDefinition{
+		Name: "Flow 1", ProjectID: "project-1", Nodes: []providers.NodeDefinition{{Type: "START", ID: "START"}},
+	})
+
+	s.NoError(err)
+	s.Equal("project-1", flow.ProjectID)
+}
+
+func (s *FlowStoreTestSuite) TestBuildListFlowsByProjectQueries() {
+	listQuery, listArgs, countQuery, countArgs := buildListFlowsByProjectQueries("p", "", "", "dep", 10, 5)
+	s.Equal(`SELECT COUNT(*) AS count FROM "FLOW" WHERE PROJECT_ID = $1 AND DEPLOYMENT_ID = $2`, countQuery.Query)
+	s.Equal([]interface{}{"p", "dep"}, countArgs)
+	s.Contains(listQuery.Query,
+		`WHERE PROJECT_ID = $1 AND DEPLOYMENT_ID = $2 ORDER BY CREATED_AT DESC LIMIT $3 OFFSET $4`)
+	s.Equal([]interface{}{"p", "dep", 10, 5}, listArgs)
+
+	listQuery, listArgs, countQuery, countArgs = buildListFlowsByProjectQueries(
+		"p", "ou", "AUTHENTICATION", "dep", 10, 0)
+	s.Equal(`SELECT COUNT(*) AS count FROM "FLOW" `+
+		`WHERE PROJECT_ID = $1 AND OU_ID = $2 AND FLOW_TYPE = $3 AND DEPLOYMENT_ID = $4`, countQuery.Query)
+	s.Equal([]interface{}{"p", "ou", "AUTHENTICATION", "dep"}, countArgs)
+	s.Contains(listQuery.Query, `AND DEPLOYMENT_ID = $4 ORDER BY CREATED_AT DESC LIMIT $5 OFFSET $6`)
+	s.Equal([]interface{}{"p", "ou", "AUTHENTICATION", "dep", 10, 0}, listArgs)
+}
+
+func (s *FlowStoreTestSuite) TestListFlowsByProjectReadsThePageOfThatProject() {
+	listQuery, listArgs, countQuery, countArgs := buildListFlowsByProjectQueries(
+		"project-1", "", "", "test-deployment", 2, 0)
+	row := flowRow("flow-1", "AUTHENTICATION")
+	row[colProjectID] = "project-1"
+	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil)
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, countQuery, countArgs...).
+		Return([]map[string]interface{}{{colCount: int64(3)}}, nil).Once()
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, listQuery, listArgs...).
+		Return([]map[string]interface{}{row}, nil).Once()
+
+	flows, count, err := s.store.ListFlowsByProject(context.Background(), "project-1", "", 2, 0, "")
+
+	s.NoError(err)
+	s.Equal(3, count)
+	s.Require().Len(flows, 1)
+	s.Equal("project-1", flows[0].ProjectID)
+}
+
+func (s *FlowStoreTestSuite) TestListFlowsByProjectReportsEitherQueryFailing() {
+	listQuery, listArgs, countQuery, countArgs := buildListFlowsByProjectQueries(
+		"project-1", "", "", "test-deployment", 10, 0)
+	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(s.mockDBClient, nil).Twice()
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, countQuery, countArgs...).
+		Return(nil, errors.New("count failed")).Once()
+	_, _, err := s.store.ListFlowsByProject(context.Background(), "project-1", "", 10, 0, "")
+	s.ErrorContains(err, "failed to count the flows of a project")
+
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, countQuery, countArgs...).
+		Return([]map[string]interface{}{{colCount: int64(1)}}, nil).Once()
+	s.mockDBClient.EXPECT().QueryContext(mock.Anything, listQuery, listArgs...).
+		Return(nil, errors.New("list failed")).Once()
+	_, _, err = s.store.ListFlowsByProject(context.Background(), "project-1", "", 10, 0, "")
+	s.ErrorContains(err, "failed to list the flows of a project")
 }

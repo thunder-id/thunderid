@@ -9,6 +9,7 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -591,6 +592,46 @@ func (_c *IdentityGovernanceServiceInterfaceMock_RecordLogin_Call) Return(servic
 
 func (_c *IdentityGovernanceServiceInterfaceMock_RecordLogin_Call) RunAndReturn(run func(ctx context.Context, entityID string) *common.ServiceError) *IdentityGovernanceServiceInterfaceMock_RecordLogin_Call {
 	_c.Call.Return(run)
+	return _c
+}
+
+// SetDependencyRegistry provides a mock function for the type IdentityGovernanceServiceInterfaceMock
+func (_mock *IdentityGovernanceServiceInterfaceMock) SetDependencyRegistry(registry resourcedependency.Registry) {
+	_mock.Called(registry)
+	return
+}
+
+// IdentityGovernanceServiceInterfaceMock_SetDependencyRegistry_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetDependencyRegistry'
+type IdentityGovernanceServiceInterfaceMock_SetDependencyRegistry_Call struct {
+	*mock.Call
+}
+
+// SetDependencyRegistry is a helper method to define mock.On call
+//   - registry resourcedependency.Registry
+func (_e *IdentityGovernanceServiceInterfaceMock_Expecter) SetDependencyRegistry(registry any) *IdentityGovernanceServiceInterfaceMock_SetDependencyRegistry_Call {
+	return &IdentityGovernanceServiceInterfaceMock_SetDependencyRegistry_Call{Call: _e.mock.On("SetDependencyRegistry", registry)}
+}
+
+func (_c *IdentityGovernanceServiceInterfaceMock_SetDependencyRegistry_Call) Run(run func(registry resourcedependency.Registry)) *IdentityGovernanceServiceInterfaceMock_SetDependencyRegistry_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 resourcedependency.Registry
+		if args[0] != nil {
+			arg0 = args[0].(resourcedependency.Registry)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *IdentityGovernanceServiceInterfaceMock_SetDependencyRegistry_Call) Return() *IdentityGovernanceServiceInterfaceMock_SetDependencyRegistry_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *IdentityGovernanceServiceInterfaceMock_SetDependencyRegistry_Call) RunAndReturn(run func(registry resourcedependency.Registry)) *IdentityGovernanceServiceInterfaceMock_SetDependencyRegistry_Call {
+	_c.Run(run)
 	return _c
 }
 

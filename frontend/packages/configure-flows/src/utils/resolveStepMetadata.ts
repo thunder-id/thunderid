@@ -1,8 +1,8 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import merge from 'lodash-es/merge';
-import type {Resources} from '../models/resources';
+import type {Resource, Resources} from '../models/resources';
 import type {Step, StepData} from '../models/steps';
 
 /**
@@ -29,24 +29,18 @@ const resolveStepMetadata = (resources: Resources, steps: Step[]): Step[] => {
     const executorMode = (stepData?.action?.executor as {mode?: string} | undefined)?.mode;
 
     if (executorName && resources?.executors) {
-      // For executors with modes (like OTPExecutor), match on both name and mode
-      const executorWithMeta = resources.executors.find((executor) => {
-        const executorData = executor.data as StepData | undefined;
-        const metaExecutorName = executorData?.action?.executor?.name;
-        const metaExecutorMode = (executorData?.action?.executor as {mode?: string} | undefined)?.mode;
-
-        // Match by name first
-        if (metaExecutorName !== executorName) {
-          return false;
-        }
-
-        // If the step has a mode, try to match it; otherwise, use the first matching executor
-        if (executorMode && metaExecutorMode) {
-          return metaExecutorMode === executorMode;
-        }
-
-        return true;
-      });
+      const metaModeOf = (executor: Resource): string | undefined =>
+        ((executor.data as StepData | undefined)?.action?.executor as {mode?: string} | undefined)?.mode;
+      const sameName = resources.executors.filter(
+        (executor) => (executor.data as StepData | undefined)?.action?.executor?.name === executorName,
+      );
+      // For executors with modes (like OTPExecutor), the entry for the step's mode wins. Otherwise the
+      // entry without a mode, whatever its place in the catalog; a step without a mode whose executor
+      // has no such entry takes the first one.
+      const executorWithMeta =
+        (executorMode ? sameName.find((executor) => metaModeOf(executor) === executorMode) : undefined) ??
+        sameName.find((executor) => !metaModeOf(executor)) ??
+        (executorMode ? undefined : sameName[0]);
 
       if (executorWithMeta) {
         const defaultProps = (executorWithMeta.data as StepData & {properties?: Record<string, unknown>})?.properties;

@@ -28,6 +28,10 @@ var (
 	// SyncOAuthProfile/Delete) when the targeted entity is sourced from a declarative file.
 	// Callers translate this into their own "declarative resource is read-only" error.
 	ErrCannotModifyDeclarative = errors.New("cannot modify declarative inbound client")
+
+	// errRevocationFailed is returned when revoking what a client issued failed before its deletion. Nothing
+	// is deleted.
+	errRevocationFailed = errors.New("revocation before the inbound client deletion failed")
 )
 
 var (
@@ -57,6 +61,9 @@ var (
 	ErrFKInvalidSubjectAttributeMapping = errors.New("invalid subject attribute mapping")
 	// ErrFKInvalidAgentType is returned when the specified agent type is invalid.
 	ErrFKInvalidAgentType = errors.New("invalid agent type")
+	// ErrFKAnyAgentTypeNotAlone is returned when the any agent type entry is combined with other allowed agent
+	// types.
+	ErrFKAnyAgentTypeNotAlone = errors.New("any agent type combined with other allowed agent types")
 	// ErrUserSchemaLookupFailed is returned when the user-schema service fails (e.g. DB outage)
 	// while validating allowed user types. Distinct from ErrFKInvalidUserType so the handler
 	// can map it to a server error instead of a client validation error.
@@ -240,10 +247,9 @@ func (e *CIMDValidationError) Error() string {
 	return e.Underlying.ErrorDescription.DefaultValue
 }
 
-// FlowMismatchError is returned when a flow reached from one of the inbound client's configured flows
-// does not align with the inbound client's per-type flow ID (registration/recovery). SourceFlowType
-// is the type of the client-level flow whose flow reached the mismatched reference; FlowType
-// is the type of the referenced flow.
+// FlowMismatchError is returned when a flow reachable from one of the inbound client's configured
+// flows does not match the inbound client's assigned flow for that type. SourceFlowType is the type
+// of the configured flow that reaches the mismatch; FlowType is the type of the referenced flow.
 type FlowMismatchError struct {
 	SourceFlowType providers.FlowType
 	FlowType       providers.FlowType

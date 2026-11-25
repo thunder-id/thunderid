@@ -87,6 +87,9 @@ type Session struct {
 	IdleExpiresAt     time.Time
 	AbsoluteExpiresAt time.Time
 
+	// Properties is the client metadata recorded on the session, stored as JSON in the PROPERTIES column.
+	Properties SessionProperties
+
 	// State is the lifecycle state of the session.
 	State State
 	// Version is the optimistic-lock token, incremented on every successful update.
@@ -95,12 +98,15 @@ type Session struct {
 
 // Participant records an application that has used (joined) an SSO session. A session is shared
 // across the applications that authenticate through its flow; each such application is tracked so
-// the session's audience is known — the basis for logout and subject-scoped revocation.
+// the session's audience is known — the basis for logout and subject-scoped revocation. An application
+// signed in under several organization units is one participant per unit, each with its own token family.
 type Participant struct {
 	// SessionID is the owning session's internal id.
 	SessionID string
 	// AppID is the participating application's id.
 	AppID string
+	// OUID is the organization unit the application signed in under, or empty when the sign-in had none.
+	OUID string
 	// TokenFamilyID is the token family id (tfid) minted for this application's most recent grant in
 	// the session. It links the session to the grant's tokens so logout can revoke the whole family.
 	// Refreshed on each re-authorization (latest grant wins); empty for participants recorded before
@@ -138,4 +144,25 @@ func SSOInputsFrom(ctx context.Context) SSOInputs {
 		return in
 	}
 	return SSOInputs{}
+}
+
+// SessionProperties is the client metadata recorded on a session so it can be recognized later. It is
+// stored as one JSON document, so a new field needs no schema change.
+type SessionProperties struct {
+	// UserAgent is the User-Agent of the client that established the session, recorded once at creation.
+	UserAgent string `json:"userAgent,omitempty"`
+	// CreationIP is the client IP address the session was established from, recorded once at creation.
+	CreationIP string `json:"creationIp,omitempty"`
+	// LastActiveIP is the client IP address the session was last used from: recorded at creation, and
+	// refreshed when a login flow reuses the session or the subject authenticates again inside it.
+	LastActiveIP string `json:"lastActiveIp,omitempty"`
+}
+
+// ClientInfo is the request-scoped client metadata recorded on a session so it can be recognized
+// later (the device and the network location it was used from).
+type ClientInfo struct {
+	// IP is the client IP address.
+	IP string
+	// UserAgent is the client's User-Agent header.
+	UserAgent string
 }

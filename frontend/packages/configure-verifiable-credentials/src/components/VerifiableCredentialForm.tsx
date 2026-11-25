@@ -1,8 +1,9 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {SettingsCard, UnsavedChangesBar} from '@thunderid/components';
+import {ReadOnlyFieldset, SettingsCard, UnsavedChangesBar} from '@thunderid/components';
 import {OrganizationUnitTreePicker, useHasMultipleOUs} from '@thunderid/configure-organization-units';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {
   Box,
   Button,
@@ -55,6 +56,8 @@ export interface VerifiableCredentialFormProps {
   submitLabel: string;
   onSubmit: (data: CreateVerifiableCredentialRequest) => void;
   onDelete?: () => void;
+  /** Whether the form is shown without edit controls. */
+  readOnly?: boolean;
   /** Resolved message from the last failed save, shown in the unsaved-changes bar. */
   error?: string;
   /** Called to clear a stale save error once the user edits a field or resets the form. */
@@ -65,12 +68,17 @@ interface TabPanelProps {
   children: ReactNode;
   value: number;
   index: number;
+  disabled?: boolean;
 }
 
-function TabPanel({children, value, index}: TabPanelProps): JSX.Element {
+function TabPanel({children, value, index, disabled = false}: TabPanelProps): JSX.Element {
   return (
     <div role="tabpanel" hidden={value !== index}>
-      {value === index && <Box sx={{pb: 3}}>{children}</Box>}
+      {value === index && (
+        <Box sx={{pb: 3}}>
+          <ReadOnlyFieldset readOnly={disabled}>{children}</ReadOnlyFieldset>
+        </Box>
+      )}
     </div>
   );
 }
@@ -89,10 +97,12 @@ export default function VerifiableCredentialForm({
   submitLabel,
   onSubmit,
   onDelete = undefined,
+  readOnly = false,
   error = undefined,
   onErrorClear = undefined,
 }: VerifiableCredentialFormProps): JSX.Element {
   const {t} = useTranslation('verifiable-credentials');
+  const {can} = useCapabilitiesContext();
 
   const {hasMultipleOUs, ouList} = useHasMultipleOUs();
 
@@ -218,17 +228,17 @@ export default function VerifiableCredentialForm({
     required?: boolean,
     helperText?: string,
   ): JSX.Element => (
-    <FormControl fullWidth required={required}>
-      <FormLabel htmlFor={id}>{label}</FormLabel>
-      <TextField
-        fullWidth
-        id={id}
-        value={value}
-        placeholder={placeholder}
-        helperText={helperText}
-        onChange={(e: ChangeEvent<HTMLInputElement>): void => setValue(e.target.value)}
-      />
-    </FormControl>
+    <TextField
+      labelPlacement="top"
+      label={label}
+      required={required}
+      fullWidth
+      id={id}
+      value={value}
+      placeholder={placeholder}
+      helperText={helperText}
+      onChange={(e: ChangeEvent<HTMLInputElement>): void => setValue(e.target.value)}
+    />
   );
 
   return (
@@ -237,7 +247,7 @@ export default function VerifiableCredentialForm({
         <Tab label={t('form.tabs.general')} />
         <Tab label={t('form.tabs.protocolSettings')} />
         <Tab label={t('form.tabs.claims')} />
-        {initial?.id && onDelete && <Tab label={t('form.tabs.advanced', 'Advanced')} />}
+        {initial?.id && onDelete && can('vc', 'delete') && <Tab label={t('form.tabs.advanced', 'Advanced')} />}
       </Tabs>
 
       <TabPanel value={tab} index={0}>
@@ -245,64 +255,62 @@ export default function VerifiableCredentialForm({
           {configurationId && (
             <SettingsCard title={t('form.quickCopy.title')} description={t('form.quickCopy.description')}>
               <Stack spacing={3}>
-                <FormControl fullWidth>
-                  <FormLabel htmlFor="vc-id">{t('form.id.label')}</FormLabel>
-                  <TextField
-                    fullWidth
-                    id="vc-id"
-                    value={configurationId}
-                    InputProps={{
-                      readOnly: true,
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          <Tooltip title={copiedField === 'id' ? t('common:actions.copied') : t('form.copyId')}>
-                            <IconButton
-                              aria-label={t('form.copyId')}
-                              edge="end"
-                              onClick={(): void => {
-                                handleCopy(configurationId, 'id').catch(() => null);
-                              }}
-                            >
-                              {copiedField === 'id' ? <Check size={16} /> : <Copy size={16} />}
-                            </IconButton>
-                          </Tooltip>
-                        </InputAdornment>
-                      ),
-                    }}
-                    helperText={t('form.quickCopy.idHint')}
-                    sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
-                  />
-                </FormControl>
-                <FormControl fullWidth>
-                  <FormLabel htmlFor="vc-handle">{t('form.handle.label')}</FormLabel>
-                  <TextField
-                    fullWidth
-                    id="vc-handle"
-                    value={handle}
-                    InputProps={{
-                      readOnly: true,
-                      endAdornment: (
-                        <InputAdornment position="end">
-                          <Tooltip
-                            title={copiedField === 'handle' ? t('common:actions.copied') : t('common:actions.copy')}
+                <TextField
+                  labelPlacement="top"
+                  label={t('form.id.label')}
+                  fullWidth
+                  id="vc-id"
+                  value={configurationId}
+                  InputProps={{
+                    readOnly: true,
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <Tooltip title={copiedField === 'id' ? t('common:actions.copied') : t('form.copyId')}>
+                          <IconButton
+                            aria-label={t('form.copyId')}
+                            edge="end"
+                            onClick={(): void => {
+                              handleCopy(configurationId, 'id').catch(() => null);
+                            }}
                           >
-                            <IconButton
-                              aria-label={t('common:actions.copy')}
-                              edge="end"
-                              onClick={(): void => {
-                                handleCopy(handle, 'handle').catch(() => null);
-                              }}
-                            >
-                              {copiedField === 'handle' ? <Check size={16} /> : <Copy size={16} />}
-                            </IconButton>
-                          </Tooltip>
-                        </InputAdornment>
-                      ),
-                    }}
-                    helperText={t('form.handle.hint')}
-                    sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
-                  />
-                </FormControl>
+                            {copiedField === 'id' ? <Check size={16} /> : <Copy size={16} />}
+                          </IconButton>
+                        </Tooltip>
+                      </InputAdornment>
+                    ),
+                  }}
+                  helperText={t('form.quickCopy.idHint')}
+                  sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
+                />
+                <TextField
+                  labelPlacement="top"
+                  label={t('form.handle.label')}
+                  fullWidth
+                  id="vc-handle"
+                  value={handle}
+                  InputProps={{
+                    readOnly: true,
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <Tooltip
+                          title={copiedField === 'handle' ? t('common:actions.copied') : t('common:actions.copy')}
+                        >
+                          <IconButton
+                            aria-label={t('common:actions.copy')}
+                            edge="end"
+                            onClick={(): void => {
+                              handleCopy(handle, 'handle').catch(() => null);
+                            }}
+                          >
+                            {copiedField === 'handle' ? <Check size={16} /> : <Copy size={16} />}
+                          </IconButton>
+                        </Tooltip>
+                      </InputAdornment>
+                    ),
+                  }}
+                  helperText={t('form.handle.hint')}
+                  sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
+                />
               </Stack>
             </SettingsCard>
           )}
@@ -323,68 +331,66 @@ export default function VerifiableCredentialForm({
               )}
               {initial && (
                 <>
-                  <FormControl fullWidth>
-                    <FormLabel htmlFor="vc-ou-handle">{t('form.organizationUnit.handleLabel')}</FormLabel>
-                    <TextField
-                      id="vc-ou-handle"
-                      fullWidth
-                      size="small"
-                      value={initial.ouHandle ?? '-'}
-                      InputProps={{
-                        readOnly: true,
-                        endAdornment: initial.ouHandle ? (
-                          <InputAdornment position="end">
-                            <Tooltip
-                              title={copiedField === 'ouHandle' ? t('common:actions.copied') : t('common:actions.copy')}
+                  <TextField
+                    labelPlacement="top"
+                    label={t('form.organizationUnit.handleLabel')}
+                    id="vc-ou-handle"
+                    fullWidth
+                    size="small"
+                    value={initial.ouHandle ?? '-'}
+                    InputProps={{
+                      readOnly: true,
+                      endAdornment: initial.ouHandle ? (
+                        <InputAdornment position="end">
+                          <Tooltip
+                            title={copiedField === 'ouHandle' ? t('common:actions.copied') : t('common:actions.copy')}
+                          >
+                            <IconButton
+                              aria-label={t('common:actions.copy')}
+                              edge="end"
+                              onClick={(): void => {
+                                handleCopy(initial.ouHandle!, 'ouHandle').catch(() => null);
+                              }}
                             >
-                              <IconButton
-                                aria-label={t('common:actions.copy')}
-                                edge="end"
-                                onClick={(): void => {
-                                  handleCopy(initial.ouHandle!, 'ouHandle').catch(() => null);
-                                }}
-                              >
-                                {copiedField === 'ouHandle' ? <Check size={16} /> : <Copy size={16} />}
-                              </IconButton>
-                            </Tooltip>
-                          </InputAdornment>
-                        ) : undefined,
-                      }}
-                      helperText={t('form.organizationUnit.handleHint')}
-                      sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
-                    />
-                  </FormControl>
-                  <FormControl fullWidth>
-                    <FormLabel htmlFor="vc-ou-id">{t('form.organizationUnit.idLabel')}</FormLabel>
-                    <TextField
-                      id="vc-ou-id"
-                      fullWidth
-                      size="small"
-                      value={initial.ouId}
-                      InputProps={{
-                        readOnly: true,
-                        endAdornment: (
-                          <InputAdornment position="end">
-                            <Tooltip
-                              title={copiedField === 'ouId' ? t('common:actions.copied') : t('common:actions.copy')}
+                              {copiedField === 'ouHandle' ? <Check size={16} /> : <Copy size={16} />}
+                            </IconButton>
+                          </Tooltip>
+                        </InputAdornment>
+                      ) : undefined,
+                    }}
+                    helperText={t('form.organizationUnit.handleHint')}
+                    sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
+                  />
+                  <TextField
+                    labelPlacement="top"
+                    label={t('form.organizationUnit.idLabel')}
+                    id="vc-ou-id"
+                    fullWidth
+                    size="small"
+                    value={initial.ouId}
+                    InputProps={{
+                      readOnly: true,
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <Tooltip
+                            title={copiedField === 'ouId' ? t('common:actions.copied') : t('common:actions.copy')}
+                          >
+                            <IconButton
+                              aria-label={t('common:actions.copy')}
+                              edge="end"
+                              onClick={(): void => {
+                                handleCopy(initial.ouId, 'ouId').catch(() => null);
+                              }}
                             >
-                              <IconButton
-                                aria-label={t('common:actions.copy')}
-                                edge="end"
-                                onClick={(): void => {
-                                  handleCopy(initial.ouId, 'ouId').catch(() => null);
-                                }}
-                              >
-                                {copiedField === 'ouId' ? <Check size={16} /> : <Copy size={16} />}
-                              </IconButton>
-                            </Tooltip>
-                          </InputAdornment>
-                        ),
-                      }}
-                      helperText={t('form.organizationUnit.idHint')}
-                      sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
-                    />
-                  </FormControl>
+                              {copiedField === 'ouId' ? <Check size={16} /> : <Copy size={16} />}
+                            </IconButton>
+                          </Tooltip>
+                        </InputAdornment>
+                      ),
+                    }}
+                    helperText={t('form.organizationUnit.idHint')}
+                    sx={{'& input': {fontFamily: 'monospace', fontSize: '0.875rem'}}}
+                  />
                 </>
               )}
             </Stack>
@@ -392,13 +398,18 @@ export default function VerifiableCredentialForm({
         </Stack>
       </TabPanel>
 
-      <TabPanel value={tab} index={1}>
+      <TabPanel value={tab} index={1} disabled={readOnly}>
         <SettingsCard title={t('form.protocol.title')} description={t('form.protocol.description')}>
           <Stack spacing={3}>
             {text('vc-vct', t('form.vct.label'), vct, handleVctChange, 'urn:eudi:pid:de:1', true, t('form.vct.hint'))}
             <FormControl fullWidth>
               <FormLabel htmlFor="vc-format">{t('form.format.label')}</FormLabel>
-              <Select id="vc-format" value={format} onChange={(e): void => handleFormatChange(e.target.value)}>
+              <Select
+                id="vc-format"
+                value={format}
+                disabled={readOnly}
+                onChange={(e): void => handleFormatChange(e.target.value)}
+              >
                 <MenuItem value="dc+sd-jwt">{t('form.format.sdJwt')}</MenuItem>
               </Select>
               <FormHelperText>{t('form.format.hint')}</FormHelperText>
@@ -425,11 +436,11 @@ export default function VerifiableCredentialForm({
         </SettingsCard>
       </TabPanel>
 
-      <TabPanel value={tab} index={2}>
+      <TabPanel value={tab} index={2} disabled={readOnly}>
         <ClaimsEditor claims={claims} onChange={handleClaimsChange} nameErrors={claimNameErrors} />
       </TabPanel>
 
-      {initial?.id && onDelete && (
+      {initial?.id && onDelete && can('vc', 'delete') && (
         <TabPanel value={tab} index={3}>
           <SettingsCard title={t('form.dangerZone.title')} description={t('form.dangerZone.description')}>
             <Typography variant="h6" gutterBottom color="error">
@@ -445,14 +456,14 @@ export default function VerifiableCredentialForm({
         </TabPanel>
       )}
 
-      {dirty && (
+      {dirty && !readOnly && (
         <UnsavedChangesBar
           message={t('form.unsavedChanges')}
           resetLabel={t('common:actions.reset')}
           saveLabel={submitLabel}
           savingLabel={t('common:status.saving')}
           isSaving={submitting}
-          saveDisabled={!valid}
+          saveDisabled={!valid || !can('vc', 'update')}
           error={error}
           onReset={handleReset}
           onSave={(): void => onSubmit(buildRequest())}

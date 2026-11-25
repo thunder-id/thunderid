@@ -5,7 +5,17 @@ import {zodResolver} from '@hookform/resolvers/zod';
 import {SettingsCard} from '@thunderid/components';
 import {useGetUserTypes} from '@thunderid/configure-user-types';
 import {getUserTypeLabel} from '@thunderid/utils';
-import {Autocomplete, Chip, CircularProgress, FormControl, FormLabel, Stack, Switch, TextField} from '@wso2/oxygen-ui';
+import {
+  Autocomplete,
+  Chip,
+  CircularProgress,
+  FormControl,
+  FormLabel,
+  Stack,
+  Switch,
+  TextField,
+  Typography,
+} from '@wso2/oxygen-ui';
 import {useEffect} from 'react';
 import {useForm, Controller} from 'react-hook-form';
 import {useTranslation} from 'react-i18next';
@@ -41,6 +51,10 @@ interface AccessSectionProps {
    * clients with no user-facing grant.
    */
   showUserAccessConfig?: boolean;
+  /**
+   * Whether the application can't be edited here
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -62,6 +76,7 @@ export default function AccessSection({
   onFieldChange,
   onValidationChange = undefined,
   showUserAccessConfig = true,
+  readOnly = false,
 }: AccessSectionProps) {
   const {t} = useTranslation();
   const {data: userTypesData, isLoading: loadingUserTypes} = useGetUserTypes();
@@ -70,12 +85,17 @@ export default function AccessSection({
   const userTypeOptions = userTypesData?.types.map((schema) => schema.handle) ?? [];
   const getLabel = (handle: string): string => getUserTypeLabel(userTypesData?.types ?? [], handle);
 
-  // Agent access is a single on/off choice in the console for now: on means the default agent type (only type)
-  // is the only allowed one, off means no agent type is allowed.
-  const isAgentSignInEnabled = (editedApp.allowedAgentTypes ?? application.allowedAgentTypes ?? []).length > 0;
+  // Agent access is a single on/off choice in the console: on allows every agent type, off allows none.
+  // Any non-empty list, such as an older `['default']`, shows as on, and a list that names agent types
+  // is spelled out, since turning the switch back on allows every agent type instead.
+  const allowedAgentTypes = editedApp.allowedAgentTypes ?? application.allowedAgentTypes ?? [];
+  const isAgentSignInEnabled = allowedAgentTypes.length > 0;
+  const restrictedAgentTypes = allowedAgentTypes.includes(ApplicationConstants.ALL_AGENT_TYPES)
+    ? []
+    : allowedAgentTypes;
 
   const handleAgentSignInToggle = (enabled: boolean): void => {
-    onFieldChange('allowedAgentTypes', enabled ? [ApplicationConstants.DEFAULT_AGENT_TYPE_HANDLE] : []);
+    onFieldChange('allowedAgentTypes', enabled ? [ApplicationConstants.ALL_AGENT_TYPES] : []);
   };
 
   const agentSignInLabel = t('applications:edit.access.agentSignIn.toggle.label', 'Enable agent sign-in');
@@ -133,7 +153,7 @@ export default function AccessSection({
               value={editedApp.allowedUserTypes ?? application.allowedUserTypes ?? []}
               onChange={(_event, newValue) => onFieldChange('allowedUserTypes', newValue)}
               loading={loadingUserTypes}
-              disabled={application.isReadOnly}
+              disabled={readOnly}
               renderInput={(params) => (
                 <TextField
                   {...params}
@@ -165,18 +185,26 @@ export default function AccessSection({
           title={t('applications:edit.access.sections.agentSignIn.title', 'Agent sign-in')}
           description={t(
             'applications:edit.access.sections.agentSignIn.description',
-            'Allow agents to sign in to this application using the sign-in flow.',
+            'Allow agents of any agent type to sign in to this application using the sign-in flow.',
           )}
           headerAction={
             <Switch
               checked={isAgentSignInEnabled}
               onChange={(event) => handleAgentSignInToggle(event.target.checked)}
-              disabled={application.isReadOnly}
+              disabled={readOnly}
               slotProps={{input: {'aria-label': agentSignInLabel}}}
             />
           }
         >
-          {null}
+          {restrictedAgentTypes.length > 0 ? (
+            <Typography variant="body2" color="text.secondary">
+              {t(
+                'applications:edit.access.agentSignIn.restricted',
+                'Only agents of these agent types can sign in now: {{types}}. Turning agent sign-in off and on again allows every agent type.',
+                {types: restrictedAgentTypes.join(', ')},
+              )}
+            </Typography>
+          ) : null}
         </SettingsCard>
       )}
 
@@ -187,28 +215,27 @@ export default function AccessSection({
           'Configure where this application is accessed from.',
         )}
       >
-        <FormControl fullWidth>
-          <FormLabel htmlFor="application-url-input">{t('applications:edit.general.labels.applicationUrl')}</FormLabel>
-          <Controller
-            name="url"
-            control={control}
-            render={({field}) => (
-              <TextField
-                {...field}
-                onChange={(e) => {
-                  field.onChange(e);
-                  onFieldChange('url', e.target.value);
-                }}
-                fullWidth
-                id="application-url-input"
-                placeholder="https://example.com"
-                error={!!errors.url}
-                helperText={errors.url?.message ?? t('applications:edit.general.applicationUrl.hint')}
-                disabled={application.isReadOnly}
-              />
-            )}
-          />
-        </FormControl>
+        <Controller
+          name="url"
+          control={control}
+          render={({field}) => (
+            <TextField
+              labelPlacement="top"
+              label={t('applications:edit.general.labels.applicationUrl')}
+              {...field}
+              onChange={(e) => {
+                field.onChange(e);
+                onFieldChange('url', e.target.value);
+              }}
+              fullWidth
+              id="application-url-input"
+              placeholder="https://example.com"
+              error={!!errors.url}
+              helperText={errors.url?.message ?? t('applications:edit.general.applicationUrl.hint')}
+              disabled={readOnly}
+            />
+          )}
+        />
       </SettingsCard>
     </Stack>
   );

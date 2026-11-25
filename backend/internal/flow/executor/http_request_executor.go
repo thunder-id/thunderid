@@ -17,7 +17,6 @@ import (
 	"strings"
 	"time"
 
-	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/internal/flow/core"
@@ -556,10 +555,7 @@ func (h *httpRequestExecutor) handleRequestError(
 	if failOnError {
 		logger.Debug(ctx, "Failing execution due to HTTP request error", log.String("error", errorMessage))
 		execResp.Status = providers.ExecFailure
-		execResp.Error = tidcommon.CustomServiceError(ErrHTTPRequestFailed, tidcommon.I18nMessage{
-			Key:          ErrHTTPRequestFailed.ErrorDescription.Key,
-			DefaultValue: errorMessage,
-		})
+		execResp.Error = &ErrHTTPRequestFailed
 	} else {
 		logger.Debug(ctx, "Continuing execution despite HTTP request error",
 			log.String("error", errorMessage))

@@ -19,6 +19,14 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
+// ClientRulesResolverInterface resolves the runtime rules of the clients whose entities belong to one entity
+// category. The domain that owns the category implements it; the actor provider does not know why a
+// client has its rules.
+type ClientRulesResolverInterface interface {
+	// GetClientRules returns the rules of the client of the given entity, or nil when none apply.
+	GetClientRules(ctx context.Context, entityID string) (*providers.ClientRules, *tidcommon.ServiceError)
+}
+
 // actorProvider delegates actor resolution to inbound-client and entity-provider services, and
 // actor authentication to the authentication provider.
 type actorProvider struct {
@@ -27,17 +35,19 @@ type actorProvider struct {
 	authnProvider  providers.AuthnProviderManager
 	roleService    role.RoleServiceInterface
 	entityTypeSvc  entitytype.EntityTypeServiceInterface
+	rulesResolvers map[providers.EntityCategory]ClientRulesResolverInterface
 	logger         *log.Logger
 }
 
 // newActorProvider creates a new actorProvider backed by the given inbound-client, entity-provider,
-// authentication provider, and role service.
+// authentication provider, and role service, with the client rules resolver of each entity category.
 func newActorProvider(
 	inboundClient inboundclient.InboundClientServiceInterface,
 	entityProvider entityprovider.EntityProviderInterface,
 	authnProvider providers.AuthnProviderManager,
 	roleService role.RoleServiceInterface,
 	entityTypeSvc entitytype.EntityTypeServiceInterface,
+	rulesResolvers map[providers.EntityCategory]ClientRulesResolverInterface,
 ) providers.ActorProvider {
 	return &actorProvider{
 		inboundClient:  inboundClient,
@@ -45,6 +55,7 @@ func newActorProvider(
 		authnProvider:  authnProvider,
 		roleService:    roleService,
 		entityTypeSvc:  entityTypeSvc,
+		rulesResolvers: rulesResolvers,
 		logger:         log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ActorProvider")),
 	}
 }
@@ -59,7 +70,7 @@ func (p *actorProvider) GetOAuthClientByClientID(
 		p.logger.Error(ctx, "Failed to fetch OAuth client", log.String("clientID", clientID), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
-	return toProviderOAuthClient(client), nil
+	return p.withClientRules(ctx, toProviderOAuthClient(client))
 }
 
 // IsOAuthClientAccessibleFromOU reports whether an OAuth2 client may act on behalf of an
@@ -80,7 +91,32 @@ func (p *actorProvider) GetOAuthClientByID(
 		p.logger.Error(ctx, "Failed to fetch OAuth client by entity ID", log.String("id", id), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
-	return toProviderOAuthClient(client), nil
+	return p.withClientRules(ctx, toProviderOAuthClient(client))
+}
+
+// withClientRules adds to a client the runtime rules its entity category's resolver returns. A client of
+// a category without a resolver has no rules. A failed lookup is a server error, so no client is served
+// without rules that may apply to it.
+func (p *actorProvider) withClientRules(
+	ctx context.Context, client *providers.OAuthClient,
+) (*providers.OAuthClient, *tidcommon.ServiceError) {
+	if client == nil {
+		return nil, nil
+	}
+	resolver, ok := p.rulesResolvers[client.EntityCategory]
+	if !ok {
+		return client, nil
+	}
+	rules, svcErr := resolver.GetClientRules(ctx, client.ID)
+	if svcErr != nil {
+		p.logger.Error(ctx, "Failed to resolve the client rules",
+			log.String("id", client.ID), log.String("errorCode", svcErr.Code))
+		return nil, &tidcommon.InternalServerError
+	}
+	if rules != nil {
+		client.Rules = *rules
+	}
+	return client, nil
 }
 
 // GetOAuthProfileByID returns the stored OAuth profile for the given entity UUID.
@@ -127,13 +163,13 @@ func (p *actorProvider) AuthenticateActor(
 }
 
 // GetActor returns the backing entity record for the given actor ID.
-func (p *actorProvider) GetActor(actorID string) (*providers.Entity, *tidcommon.ServiceError) {
-	entity, epErr := p.entityProvider.GetEntityProfile(actorID)
+func (p *actorProvider) GetActor(ctx context.Context, actorID string) (*providers.Entity, *tidcommon.ServiceError) {
+	entity, epErr := p.entityProvider.GetEntityProfile(ctx, actorID)
 	if epErr != nil {
 		return nil, mapEntityProviderError(epErr)
 	}
 	if entity.Category == providers.EntityCategoryAgent {
-		ctx := security.WithRuntimeContext(context.Background())
+		ctx := security.WithRuntimeContext(ctx)
 		displayPaths := entitytype.ResolveDisplayAttributePaths(
 			ctx, entitytype.TypeCategoryAgent, []string{entity.Type}, p.entityTypeSvc, p.logger)
 		entity.Display = utils.ResolveDisplay(entity.ID, entity.Type, entity.Attributes, displayPaths)
@@ -143,9 +179,9 @@ func (p *actorProvider) GetActor(actorID string) (*providers.Entity, *tidcommon.
 
 // GetActorGroups returns transitive group memberships for the given actor ID.
 func (p *actorProvider) GetActorGroups(
-	actorID string,
+	ctx context.Context, actorID string,
 ) ([]providers.EntityGroup, *tidcommon.ServiceError) {
-	groups, epErr := p.entityProvider.GetTransitiveEntityGroups(actorID)
+	groups, epErr := p.entityProvider.GetTransitiveEntityGroups(ctx, actorID)
 	if epErr != nil {
 		if epErr.Code == entityprovider.ErrorCodeNotImplemented {
 			return nil, nil
@@ -157,9 +193,9 @@ func (p *actorProvider) GetActorGroups(
 
 // GetTransitiveGroupAncestors returns the ancestor chain of a single group.
 func (p *actorProvider) GetTransitiveGroupAncestors(
-	groupID string,
+	ctx context.Context, groupID string,
 ) ([]string, *tidcommon.ServiceError) {
-	ancestors, epErr := p.entityProvider.GetTransitiveGroupAncestors(groupID)
+	ancestors, epErr := p.entityProvider.GetTransitiveGroupAncestors(ctx, groupID)
 	if epErr != nil {
 		if epErr.Code == entityprovider.ErrorCodeNotImplemented {
 			return nil, nil
@@ -171,20 +207,20 @@ func (p *actorProvider) GetTransitiveGroupAncestors(
 
 // GetActorRoles returns the roles assigned to the actor, directly and through the given groups.
 func (p *actorProvider) GetActorRoles(
-	actorID string, groupIDs []string,
+	ctx context.Context, actorID string, groupIDs []string,
 ) ([]string, *tidcommon.ServiceError) {
-	return p.GetActorRolesInOU(actorID, groupIDs, "")
+	return p.GetActorRolesInOU(ctx, actorID, groupIDs, "")
 }
 
 // GetActorRolesInOU returns the names of the roles assigned to the actor directly or through
 // groupIDs, counting only the assignments made in ouID, or those made anywhere when it is empty.
 func (p *actorProvider) GetActorRolesInOU(
-	actorID string, groupIDs []string, ouID string,
+	ctx context.Context, actorID string, groupIDs []string, ouID string,
 ) ([]string, *tidcommon.ServiceError) {
 	if p.roleService == nil {
 		return nil, nil
 	}
-	return p.roleService.GetUserRoles(context.Background(), actorID, groupIDs, ouID)
+	return p.roleService.GetUserRoles(ctx, actorID, groupIDs, ouID)
 }
 
 func mapEntityProviderError(epErr *entityprovider.EntityProviderError) *tidcommon.ServiceError {

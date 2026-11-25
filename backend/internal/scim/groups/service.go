@@ -189,21 +189,22 @@ func (s *scimGroupsService) PatchGroup(ctx context.Context, groupID string, acti
 			log.String("groupID", groupID), log.Any("error", svcErr))
 		return nil, mapGroupServiceErrorToSCIM(svcErr)
 	}
-	if g.IsReadOnly {
-		s.logger.Debug(ctx, "SCIM PatchGroup: group is read-only", log.String("groupID", groupID))
-		return nil, &scim.ErrorMutabilityViolation
-	}
-
-	for _, action := range actions {
-		var applyErr *tidcommon.ServiceError
-		switch action.Target {
-		case scimGroupPatchTargetDisplayName:
-			applyErr = s.applyDisplayNamePatch(ctx, groupID, g.OUID, g.Description, action)
-		case scimGroupPatchTargetMembers:
-			applyErr = s.applyMembersPatch(ctx, groupID, action)
-		}
-		if applyErr != nil {
-			return nil, applyErr
+	// A rename is applied before any member change. A read only group refuses a rename and takes member
+	// changes, so refusing first leaves the group unchanged when the PATCH holds both.
+	for _, target := range []string{scimGroupPatchTargetDisplayName, scimGroupPatchTargetMembers} {
+		for _, action := range actions {
+			if action.Target != target {
+				continue
+			}
+			var applyErr *tidcommon.ServiceError
+			if target == scimGroupPatchTargetDisplayName {
+				applyErr = s.applyDisplayNamePatch(ctx, groupID, g.OUID, g.Description, action)
+			} else {
+				applyErr = s.applyMembersPatch(ctx, groupID, action)
+			}
+			if applyErr != nil {
+				return nil, applyErr
+			}
 		}
 	}
 
@@ -420,6 +421,8 @@ func mapGroupServiceErrorToSCIM(svcErr *tidcommon.ServiceError) *tidcommon.Servi
 		return &scim.ErrorResourceNotFound
 	case group.ErrorImmutableGroup.Code:
 		return &scim.ErrorMutabilityViolation
+	case group.ErrorManagedGroup.Code, group.ErrorManagedGroupMember.Code:
+		return &scim.ErrorManagedResource
 	case group.ErrorInvalidMemberID.Code, group.ErrorInvalidGroupMemberID.Code, group.ErrorMemberOUMismatch.Code:
 		return &scim.ErrorInvalidGroupMember
 	case group.ErrorGroupNameConflict.Code:

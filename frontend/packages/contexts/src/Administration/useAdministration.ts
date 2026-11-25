@@ -65,14 +65,14 @@ export default function useAdministration(): AdministrationConfig {
  *
  * @example
  * ```ts
- * const mode = useAdministrationOperation<[string], void>('users', 'delete');
+ * const mode = useAdministrationOperation<[string], void>('groups', 'delete');
  *
  * if (typeof mode === 'function') {
- *   await mode(userId);
+ *   await mode(groupId);
  * } else if (mode === AdministrationModes.NATIVE) {
- *   await deleteUserNatively(http, serverUrl, userId);
+ *   await deleteGroupNatively(http, serverUrl, groupId);
  * } else {
- *   await deleteUserViaFlow(http, serverUrl, userId);
+ *   await deleteGroupViaFlow(http, serverUrl, groupId);
  * }
  * ```
  *

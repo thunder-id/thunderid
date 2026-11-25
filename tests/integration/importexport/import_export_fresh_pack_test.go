@@ -253,17 +253,11 @@ func (suite *ImportExportFreshPackSuite) getMergedServerConfig(section string) j
 	return layers.Merged
 }
 
+// putServerConfigCORS sets the cors writable layer through an import with the management API key, the
+// only way a data plane takes server configuration.
 func (suite *ImportExportFreshPackSuite) putServerConfigCORS(allowedOrigins string) {
-	body := `{"allowedOrigins":` + allowedOrigins + `}`
-	req, err := http.NewRequest(http.MethodPut,
-		testutils.TestServerURL+"/server-config/cors", bytes.NewReader([]byte(body)))
-	suite.Require().NoError(err)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := testutils.GetHTTPClient().Do(req)
-	suite.Require().NoError(err)
-	defer resp.Body.Close()
-	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+	suite.Require().NoError(testutils.PutWritableServerConfig("cors",
+		[]byte(`{"allowedOrigins":`+allowedOrigins+`}`)))
 }
 
 func (suite *ImportExportFreshPackSuite) getServerConfigCORS() string {
@@ -313,17 +307,11 @@ func (suite *ImportExportFreshPackSuite) TestDefaultResourceServerExportImportRo
 	suite.putServerConfigDefaultResourceServer("")
 }
 
+// putServerConfigDefaultResourceServer sets the defaultResourceServer writable layer through an import
+// with the management API key, the only way a data plane takes server configuration.
 func (suite *ImportExportFreshPackSuite) putServerConfigDefaultResourceServer(resourceServerID string) {
-	body := `{"resourceServerId":"` + resourceServerID + `"}`
-	req, err := http.NewRequest(http.MethodPut,
-		testutils.TestServerURL+"/server-config/defaultResourceServer", bytes.NewReader([]byte(body)))
-	suite.Require().NoError(err)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := testutils.GetHTTPClient().Do(req)
-	suite.Require().NoError(err)
-	defer resp.Body.Close()
-	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+	suite.Require().NoError(testutils.PutWritableServerConfig("defaultResourceServer",
+		[]byte(`{"resourceServerId":"`+resourceServerID+`"}`)))
 }
 
 func (suite *ImportExportFreshPackSuite) getServerConfigDefaultResourceServer() string {
@@ -606,6 +594,60 @@ vct: https://credentials.thunderid.local/ImportPresentation
 	suite.assertFound("/openid4vci/credential-configurations/" + credentialID)
 	suite.assertFound("/openid4vp/presentation-definitions/" + presentationID)
 
+	takenIDContent := fmt.Sprintf(`resource_type: credential_configuration
+id: %s
+handle: import-vci-taken-id-%s
+ouId: %s
+vct: https://credentials.thunderid.local/ImportCredential
+---
+resource_type: presentation_definition
+id: %s
+handle: import-vp-taken-id-%s
+ouId: %s
+vct: https://credentials.thunderid.local/ImportPresentation
+`, credentialID, suffix, ouID, presentationID, suffix, ouID)
+	response, err = suite.importResources(testutils.ImportRequest{
+		Content: takenIDContent,
+		Options: testutils.ImportOptions{Upsert: false, ContinueOnError: true, Target: "runtime"},
+	})
+	suite.Require().NoError(err)
+	suite.Equal(0, response.Summary.Imported)
+	suite.Equal(2, response.Summary.Failed)
+	codes := make([]string, 0, len(response.Results))
+	for _, result := range response.Results {
+		suite.Equal("failed", result.Status)
+		codes = append(codes, result.Code)
+	}
+	suite.ElementsMatch([]string{"VCI-2012", "VP-2017"}, codes)
+
+	// The IDs of the declarative fixtures under resources/declarative_resources, which the composite
+	// stores load: the database must not take an ID a declarative item holds.
+	declaredIDContent := fmt.Sprintf(`resource_type: credential_configuration
+id: decl-credential-config-1
+handle: import-vci-declared-id-%s
+ouId: %s
+vct: https://credentials.thunderid.local/ImportCredential
+---
+resource_type: presentation_definition
+id: decl-presentation-def-1
+handle: import-vp-declared-id-%s
+ouId: %s
+vct: https://credentials.thunderid.local/ImportPresentation
+`, suffix, ouID, suffix, ouID)
+	response, err = suite.importResources(testutils.ImportRequest{
+		Content: declaredIDContent,
+		Options: testutils.ImportOptions{Upsert: false, ContinueOnError: true, Target: "runtime"},
+	})
+	suite.Require().NoError(err)
+	suite.Equal(0, response.Summary.Imported)
+	suite.Equal(2, response.Summary.Failed)
+	codes = codes[:0]
+	for _, result := range response.Results {
+		suite.Equal("failed", result.Status)
+		codes = append(codes, result.Code)
+	}
+	suite.ElementsMatch([]string{"VCI-2012", "VP-2017"}, codes)
+
 	updatedContent := fmt.Sprintf(`resource_type: credential_configuration
 id: %s
 handle: import-vci-%s
@@ -773,7 +815,9 @@ func postImport(reqBody testutils.ImportRequest) (*testutils.ImportResponse, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := testutils.GetHTTPClient().Do(req)
+	// A deployment pipeline imports into a data plane with the management API key, which is what lets
+	// the import create root organization units.
+	resp, err := testutils.GetManagementAPIKeyHTTPClient().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send import request: %w", err)
 	}
@@ -796,84 +840,16 @@ func postImport(reqBody testutils.ImportRequest) (*testutils.ImportResponse, err
 	return &parsed, nil
 }
 
+// createTheme imports a theme with the management API key, the only way a data plane takes one, and
+// returns its id.
 func (suite *ImportExportFreshPackSuite) createTheme(request createThemeRequest) (string, error) {
-	payload, err := json.Marshal(request)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal theme request: %w", err)
-	}
-
-	req, err := http.NewRequest(http.MethodPost, testutils.TestServerURL+"/design/themes", bytes.NewReader(payload))
-	if err != nil {
-		return "", fmt.Errorf("failed to create theme request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := testutils.GetHTTPClient().Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to send theme request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read theme response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusCreated {
-		return "", fmt.Errorf("theme creation failed with status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var created map[string]interface{}
-	if err := json.Unmarshal(body, &created); err != nil {
-		return "", fmt.Errorf("failed to parse theme response: %w", err)
-	}
-
-	themeID, _ := created["id"].(string)
-	if themeID == "" {
-		return "", fmt.Errorf("theme response does not contain id")
-	}
-
-	return themeID, nil
+	return testutils.ImportResource("theme", request, false)
 }
 
+// createLayout imports a layout with the management API key, the only way a data plane takes one, and
+// returns its id.
 func (suite *ImportExportFreshPackSuite) createLayout(request createLayoutRequest) (string, error) {
-	payload, err := json.Marshal(request)
-	if err != nil {
-		return "", fmt.Errorf("failed to marshal layout request: %w", err)
-	}
-
-	req, err := http.NewRequest(http.MethodPost, testutils.TestServerURL+"/design/layouts", bytes.NewReader(payload))
-	if err != nil {
-		return "", fmt.Errorf("failed to create layout request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := testutils.GetHTTPClient().Do(req)
-	if err != nil {
-		return "", fmt.Errorf("failed to send layout request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read layout response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusCreated {
-		return "", fmt.Errorf("layout creation failed with status %d: %s", resp.StatusCode, string(body))
-	}
-
-	var created map[string]interface{}
-	if err := json.Unmarshal(body, &created); err != nil {
-		return "", fmt.Errorf("failed to parse layout response: %w", err)
-	}
-
-	layoutID, _ := created["id"].(string)
-	if layoutID == "" {
-		return "", fmt.Errorf("layout response does not contain id")
-	}
-
-	return layoutID, nil
+	return testutils.ImportResource("layout", request, false)
 }
 
 func (suite *ImportExportFreshPackSuite) assertFound(path string) {
@@ -1643,7 +1619,9 @@ func (s *GroupRoleResourceImportExportSuite) importResources(reqBody testutils.I
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := testutils.GetHTTPClient().Do(req)
+	// A deployment pipeline imports into a data plane with the management API key, which is what lets
+	// the import create root organization units.
+	resp, err := testutils.GetManagementAPIKeyHTTPClient().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send import request: %w", err)
 	}

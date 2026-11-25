@@ -17,6 +17,7 @@ import {
   Zap,
 } from '@wso2/oxygen-ui-icons-react';
 import {ComponentType, JSX, useState} from 'react';
+import DIAGRAMS from './diagramRegistry';
 import {CodeCard, Cta, Note, Pill, SectionHeading, TabStrip} from './primitives';
 import StepShell from './StepShell';
 import {useCyan, useInk, useToneColour} from './theme';
@@ -26,6 +27,7 @@ import type {
   EcosystemGuide,
   EcosystemApiSection,
   EcosystemCommandsSection,
+  EcosystemDiagramSection,
   EcosystemDocs,
   EcosystemGuidesSection,
   EcosystemLinkGridSection,
@@ -125,9 +127,10 @@ function Step({step, index, total, accent}: {step: EcosystemStep; index: number;
   return (
     <StepShell index={index} total={total} title={step.title} accent={accent}>
       {step.description && (
-        <Typography sx={{fontSize: '13.5px', lineHeight: 1.65, color: ink(0.55, 0.47), maxWidth: 620, mb: 1.75}}>
-          {step.description}
-        </Typography>
+        <Prose
+          text={step.description}
+          sx={{fontSize: '13.5px', lineHeight: 1.65, color: ink(0.55, 0.47), maxWidth: 620, mb: 1.75}}
+        />
       )}
       {code && <CodeCard code={code} accent={accent} tabs={tabs} />}
       {step.uiPath && (
@@ -333,6 +336,17 @@ function CommandsSection({section, accent}: SectionProps<EcosystemCommandsSectio
 }
 
 /** Grid of outbound links, e.g. "Beyond this guide". */
+function DiagramSection({section, accent}: SectionProps<EcosystemDiagramSection>): JSX.Element {
+  const Diagram = DIAGRAMS[section.diagram];
+
+  return (
+    <Box component="section">
+      <SectionHeading id={section.id} title={section.title} intro={section.intro} />
+      <Diagram accent={accent} />
+    </Box>
+  );
+}
+
 function LinkGridSection({section, accent}: SectionProps<EcosystemLinkGridSection>): JSX.Element {
   const ink = useInk();
 
@@ -918,6 +932,8 @@ export default function Section({
       return <StepsSection section={section} accent={accent} />;
     case 'table':
       return <TableSection section={section} accent={accent} />;
+    case 'diagram':
+      return <DiagramSection section={section} accent={accent} />;
     case 'commands':
       return <CommandsSection section={section} accent={accent} />;
     case 'linkGrid':

@@ -3,6 +3,7 @@
 
 import {SettingsCard} from '@thunderid/components';
 import {TokenEndpointAuthMethods} from '@thunderid/configure-applications';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {Button, FormControl, FormLabel, Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -22,6 +23,7 @@ export default function ClientSecretSection({
   disabled = false,
 }: ClientSecretSectionProps): JSX.Element | null {
   const {t} = useTranslation();
+  const {can} = useCapabilitiesContext();
   const [regenerateDialogOpen, setRegenerateDialogOpen] = useState(false);
   const [secretDialogOpen, setSecretDialogOpen] = useState(false);
   const [newClientSecret, setNewClientSecret] = useState('');
@@ -63,7 +65,7 @@ export default function ClientSecretSection({
             variant="contained"
             color="error"
             onClick={() => setRegenerateDialogOpen(true)}
-            disabled={disabled}
+            disabled={disabled || !can('agent', 'update')}
             sx={{flex: '0 0 20%'}}
           >
             {t('agents:edit.credentials.sections.secret.regenerateButton', 'Regenerate client secret')}

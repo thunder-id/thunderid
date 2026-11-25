@@ -5,6 +5,7 @@ package serverconfig
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -69,4 +70,14 @@ func (suite *CompositeStoreTestSuite) TestUpsertServerConfig_GoesToDB() {
 
 	assert.NoError(suite.T(), suite.composite.UpsertServerConfig(suite.ctx, cfg))
 	suite.mockFile.AssertNotCalled(suite.T(), "UpsertServerConfig", mock.Anything, mock.Anything)
+}
+
+func (suite *CompositeStoreTestSuite) TestReplaceServerConfigIf_GoesToDB() {
+	cfg := ServerConfig{Name: ConfigNameCORS, Value: corsValue}
+	suite.mockDB.EXPECT().ReplaceServerConfigIf(mock.Anything, cfg, json.RawMessage(nil)).Return(true, nil)
+
+	written, err := suite.composite.ReplaceServerConfigIf(suite.ctx, cfg, nil)
+
+	assert.NoError(suite.T(), err)
+	assert.True(suite.T(), written)
 }

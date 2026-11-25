@@ -11,6 +11,7 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/notification"
@@ -27,13 +28,15 @@ type emailExecutor struct {
 	notifSenderSvc   notification.NotificationSenderServiceInterface
 	templateRenderer notificationTemplateRenderer
 	entityProvider   entityprovider.EntityProviderInterface
+	authnProvider    providers.AuthnProviderManager
 }
 
 // newEmailExecutor creates a new instance of the email executor.
 func newEmailExecutor(flowFactory core.FlowFactoryInterface,
 	notifSenderSvc notification.NotificationSenderServiceInterface,
 	templateRenderer notificationTemplateRenderer,
-	entityProvider entityprovider.EntityProviderInterface) *emailExecutor {
+	entityProvider entityprovider.EntityProviderInterface,
+	authnProvider providers.AuthnProviderManager) *emailExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "EmailExecutor"))
 	base := flowFactory.CreateExecutor(
 		ExecutorNameEmailExecutor,
@@ -61,6 +64,7 @@ func newEmailExecutor(flowFactory core.FlowFactoryInterface,
 		notifSenderSvc:   notifSenderSvc,
 		templateRenderer: templateRenderer,
 		entityProvider:   entityProvider,
+		authnProvider:    authnProvider,
 	}
 }
 
@@ -110,7 +114,7 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 		return failOrSkip(errors.New("template renderer is not configured"))
 	}
 
-	recipient, err := e.resolveRecipientEmail(ctx, logger)
+	recipient, err := e.resolveRecipientEmail(ctx, execResp, logger)
 	if err != nil {
 		return failOrSkip(err)
 	}
@@ -121,6 +125,7 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 		}
 		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrEmailRecipientMissing
+		withUndeliveredInviteLink(ctx, execResp)
 		return execResp, nil
 	}
 
@@ -157,6 +162,11 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 		return failOrSkip(fmt.Errorf("failed to render email template: %s", svcErr.Code))
 	}
 
+	delivered, err := withDeliveredRecipient(ctx, recipient)
+	if err != nil {
+		return failOrSkip(err)
+	}
+
 	notifSvcErr := e.notifSenderSvc.SendEmail(ctx.Context, senderID, notifcm.EmailData{
 		To:      []string{recipient},
 		Subject: rendered.Subject,
@@ -174,6 +184,7 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 			execResp.AdditionalData[common.DataEmailSent] = dataValueFalse
 			execResp.Status = providers.ExecFailure
 			execResp.Error = &ErrEmailProviderNotConfigured
+			withUndeliveredInviteLink(ctx, execResp)
 			return execResp, nil
 		}
 		return failOrSkip(fmt.Errorf("email send failed: %s", notifSvcErr.Code))
@@ -181,9 +192,22 @@ func (e *emailExecutor) executeSend(ctx *providers.NodeContext) (*providers.Exec
 
 	logger.Debug(ctx.Context, "Email sent successfully", log.MaskedString("recipient", recipient))
 
+	execResp.SharedRuntimeData = delivered
 	execResp.AdditionalData[common.DataEmailSent] = dataValueTrue
 	execResp.Status = providers.ExecComplete
 	return execResp, nil
+}
+
+// withUndeliveredInviteLink hands an invite link the email could not carry to the screen that shows it instead.
+// Only user onboarding and invitation flows have that screen, for the administrator who sends the invite. Every
+// other flow delivers its link by email alone.
+func withUndeliveredInviteLink(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) {
+	switch ctx.FlowType {
+	case providers.FlowTypeUserOnboarding, providers.FlowTypeInvitation:
+		if link := ctx.RuntimeData[common.RuntimeKeyInviteLink]; link != "" {
+			execResp.AdditionalData[common.DataInviteLink] = link
+		}
+	}
 }
 
 // bestEffortResponse completes a node that sent nothing, with emailSent set to false.
@@ -208,12 +232,14 @@ func (e *emailExecutor) resolveSenderID(ctx *providers.NodeContext) (string, err
 	return senderID, nil
 }
 
-// resolveRecipientEmail retrieves the recipient email from user inputs, runtime data, or forwarded data.
-func (e *emailExecutor) resolveRecipientEmail(ctx *providers.NodeContext, logger *log.Logger) (string, error) {
+// resolveRecipientEmail resolves the address the email is sent to.
+func (e *emailExecutor) resolveRecipientEmail(ctx *providers.NodeContext, execResp *providers.ExecutorResponse,
+	logger *log.Logger) (string, error) {
 	emailAttr := resolveInputIdentifierByType(ctx, providers.InputTypeEmail, userAttributeEmail)
 
-	if isConstantNodeInput(ctx, emailAttr) && ctx.UserInputs[emailAttr] != "" {
-		return ctx.UserInputs[emailAttr], nil
+	if recipientEmail, known, err := resolveKnownRecipient(ctx, execResp, e.authnProvider, e.entityProvider,
+		entitytypemodel.TypeEmail, emailAttr, logger); known || err != nil {
+		return recipientEmail, err
 	}
 
 	if recipientEmail, ok := ctx.ForwardedData[emailAttr].(string); ok && recipientEmail != "" {
@@ -231,24 +257,6 @@ func (e *emailExecutor) resolveRecipientEmail(ctx *providers.NodeContext, logger
 	// External claims are only a fallback and must never take priority over runtime data or user inputs.
 	if recipientEmail, ok := core.GetExternalClaim(ctx.RuntimeData, emailAttr); ok && recipientEmail != "" {
 		return recipientEmail, nil
-	}
-
-	if userID, ok := ctx.RuntimeData[userAttributeUserID]; ok && userID != "" {
-		if e.entityProvider == nil {
-			return "", errors.New("entity provider is not configured for email resolution")
-		}
-		user, providerErr := e.entityProvider.GetEntityProfile(userID)
-		if providerErr != nil {
-			if providerErr.Code == entityprovider.ErrorCodeEntityNotFound {
-				return "", nil
-			}
-			return "", fmt.Errorf("failed to fetch user from entity provider: %w", providerErr)
-		}
-		if recipientEmail, err := GetUserAttribute(user, emailAttr); err == nil {
-			return recipientEmail, nil
-		}
-		logger.Debug(ctx.Context, "Email attribute not found on user entity",
-			log.String("attribute", emailAttr))
 	}
 
 	return "", nil

@@ -1,8 +1,8 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {describe, it, expect} from 'vitest';
-import RouteConfig, {ROUTE_SEGMENTS} from '../RouteConfig';
+import {afterEach, describe, it, expect, vi} from 'vitest';
+import RouteConfig, {projectRouteConfig, ROUTE_SEGMENTS} from '../RouteConfig';
 
 describe('RouteConfig', () => {
   it('gateways builds paths from the segment', () => {
@@ -14,6 +14,11 @@ describe('RouteConfig', () => {
     expect(RouteConfig.deploy.list()).toBe('/deploy');
     expect(RouteConfig.deploy.explore('gw 1')).toBe('/deploy/gateways/gw%201/explore');
     expect(RouteConfig.deploy.values('gw-1')).toBe('/deploy/gateways/gw-1/values');
+    expect(RouteConfig.deploy.gateway('gw 1')).toBe('/deploy/gateways/gw%201');
+    expect(RouteConfig.deploy.gateway('gw-1')).toBe('/deploy/gateways/gw-1');
+    expect(RouteConfig.deploy.project?.('p-1')).toBe('/projects');
+    expect(RouteConfig.projects.home('my shop')).toBe('/project/my%20shop');
+    expect(RouteConfig.projects.home('shop', '/applications')).toBe('/project/shop/applications');
   });
 
   it('organizationUnits builds paths from the segment', () => {
@@ -35,7 +40,9 @@ describe('RouteConfig', () => {
   });
 
   it('agentTypes builds paths from the segment', () => {
+    expect(RouteConfig.agentTypes.list()).toBe('/agent-types');
     expect(RouteConfig.agentTypes.detail('agent-type-1')).toBe('/agent-types/agent-type-1');
+    expect(RouteConfig.agentTypes.create()).toBe('/agent-types/create');
   });
 
   it('agents builds paths from the segment', () => {
@@ -54,6 +61,15 @@ describe('RouteConfig', () => {
 
   it('trustedIssuers builds paths from the segment', () => {
     expect(RouteConfig.trustedIssuers.detail('issuer-1')).toBe('/trusted-issuers/issuer-1');
+  });
+
+  it('authorizationDetailTypes builds paths from the segment, under the project inside one', () => {
+    expect(RouteConfig.authorizationDetailTypes.list()).toBe('/authorization-detail-types');
+    expect(RouteConfig.authorizationDetailTypes.detail('type-1')).toBe('/authorization-detail-types/type-1');
+    expect(RouteConfig.authorizationDetailTypes.create()).toBe('/authorization-detail-types/create');
+    expect(projectRouteConfig('shop').authorizationDetailTypes.create()).toBe(
+      '/project/shop/authorization-detail-types/create',
+    );
   });
 
   it('resourceServers builds paths from the segment', () => {
@@ -130,28 +146,52 @@ describe('RouteConfig', () => {
     expect(RouteConfig.importConfiguration.summary()).toBe('/import-configuration/summary');
   });
 
-  it('welcome builds paths from the segment', () => {
-    expect(RouteConfig.welcome.root()).toBe('/welcome');
-    expect(RouteConfig.welcome.createProject()).toBe('/welcome/create-project');
-    expect(RouteConfig.welcome.getStarted()).toBe('/welcome/get-started');
-    expect(RouteConfig.welcome.getStartedApplicationsTypes()).toBe('/welcome/get-started/applications/types');
-    expect(RouteConfig.welcome.getStartedApplicationsCreate()).toBe('/welcome/get-started/applications/create');
-    expect(RouteConfig.welcome.getStartedAgentsCreate()).toBe('/welcome/get-started/agents/create');
-    expect(RouteConfig.welcome.tryoutSecuringApplication).toBeUndefined();
-    expect(RouteConfig.welcome.tryoutAiAgents).toBeUndefined();
-    expect(RouteConfig.welcome.tryoutMcp).toBeUndefined();
-    expect(RouteConfig.welcome.importConfigurationUpload()).toBe('/welcome/import-configuration');
-    expect(RouteConfig.welcome.importConfigurationValidate()).toBe('/welcome/import-configuration/validate');
-    expect(RouteConfig.welcome.importConfigurationSummary()).toBe('/welcome/import-configuration/summary');
-  });
-
   it('settings builds paths from the segment', () => {
     expect(RouteConfig.settings.list()).toBe('/settings');
+  });
+
+  it('projects builds paths from the segment', () => {
+    expect(RouteConfig.projects.list()).toBe('/projects');
+    expect(RouteConfig.projects.create()).toBe('/projects/create');
+  });
+
+  it("puts a project's pages under the project's path, and leaves the organization's where they are", () => {
+    const inShop = projectRouteConfig('shop');
+
+    expect(inShop.applications.list()).toBe('/project/shop/applications');
+    expect(inShop.groups.detail('group-1')).toBe('/project/shop/groups/group-1');
+    expect(inShop.notificationTemplates.channel('email')).toBe('/project/shop/notification-templates/email');
+    expect(inShop.deploy.gateway('gw-1')).toBe('/project/shop/deploy/gateways/gw-1');
+    expect(inShop.deploy.project?.('p-shop')).toBe('/project/shop');
+    expect(inShop.connections.list()).toBe('/connections');
+    expect(inShop.projects.list()).toBe('/projects');
+    expect(inShop.home.list()).toBe('/home');
+    // The organization's own configuration is untouched.
+    expect(RouteConfig.applications.list()).toBe('/applications');
+    expect(RouteConfig.deploy.project?.('p-shop')).toBe('/projects');
   });
 
   it('every builder derives its path from ROUTE_SEGMENTS rather than a separate literal', () => {
     expect(RouteConfig.organizationUnits.list()).toBe(`/${ROUTE_SEGMENTS.organizationUnits}`);
     expect(RouteConfig.users.list()).toBe(`/${ROUTE_SEGMENTS.users}`);
-    expect(RouteConfig.welcome.root()).toBe(`/${ROUTE_SEGMENTS.welcome}`);
+  });
+
+  describe('with the gateway page path the deployment sets', () => {
+    const runtimeConfig = window.__THUNDERID_RUNTIME_CONFIG__;
+
+    afterEach(() => {
+      window.__THUNDERID_RUNTIME_CONFIG__ = runtimeConfig;
+      vi.resetModules();
+    });
+
+    it("places a gateway's page there, within a project too", async () => {
+      window.__THUNDERID_RUNTIME_CONFIG__ = {...runtimeConfig!, deploy: {gateway_path: 'environments'}};
+      vi.resetModules();
+      const {default: configured} = await import('../RouteConfig');
+
+      expect(configured.deploy.gateway('gw-1')).toBe('/environments/gw-1');
+      // The explorer and values pages stay where they are.
+      expect(configured.deploy.explore('gw-1')).toBe('/deploy/gateways/gw-1/explore');
+    });
   });
 });

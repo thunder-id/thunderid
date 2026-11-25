@@ -24,25 +24,23 @@ var rolesTestOU = testutils.OrganizationUnit{
 	Parent:      nil,
 }
 
-// rolesTestAgentTypeName is the shipped agent type this suite stores its agent as. The suite does
-// not declare a type of its own: testutils.CreateAgentType always writes the singleton "default"
-// type, so declaring one would rewrite the schema that the agent type API suite asserts on. Using
-// the type as it ships keeps this suite out of that shared state, at the cost of not being able to
-// store a custom attribute, which is why the list tests locate the agent by id rather than by
-// filtering on one.
-const rolesTestAgentTypeName = "default"
+// rolesTestAgentTypeName is the agent type of the suite's organization unit, which its agent is of: an
+// agent is placed within its agent type's organization unit tree. The schema declares only the name,
+// which is why the list tests locate the agent by id rather than by filtering on a custom attribute.
+const rolesTestAgentTypeName = "agent-roles-display-agents"
 
 // AgentRolesDisplayTestSuite covers GET /agents/{id}/roles, which reports the roles an agent holds
 // directly and through its groups, and the include=display variants of the agent get and list
 // endpoints, which resolve the agent's OU handle.
 type AgentRolesDisplayTestSuite struct {
 	suite.Suite
-	ouID       string
-	agentID    string
-	directRole string
-	groupRole  string
-	roleIDs    []string
-	groupID    string
+	ouID        string
+	agentTypeID string
+	agentID     string
+	directRole  string
+	groupRole   string
+	roleIDs     []string
+	groupID     string
 }
 
 func TestAgentRolesDisplayTestSuite(t *testing.T) {
@@ -53,6 +51,13 @@ func (ts *AgentRolesDisplayTestSuite) SetupSuite() {
 	ouID, err := testutils.CreateOrganizationUnit(rolesTestOU)
 	ts.Require().NoError(err, "Failed to create the test organization unit")
 	ts.ouID = ouID
+
+	agentTypeID, err := testutils.CreateNewAgentType(testutils.UserType{
+		Handle: rolesTestAgentTypeName, DisplayName: "Agent Roles Display Agents", OUID: ts.ouID,
+		Schema: map[string]interface{}{"name": map[string]interface{}{"type": "string", "required": true}},
+	})
+	ts.Require().NoError(err, "Failed to create the test agent type")
+	ts.agentTypeID = agentTypeID
 
 	agentID, err := createAgent(Agent{
 		OUID:        ts.ouID,
@@ -110,6 +115,11 @@ func (ts *AgentRolesDisplayTestSuite) TearDownSuite() {
 	if ts.agentID != "" {
 		if err := deleteAgent(ts.agentID); err != nil {
 			ts.T().Logf("Failed to delete agent during teardown: %v", err)
+		}
+	}
+	if ts.agentTypeID != "" {
+		if err := testutils.DeleteAgentType(ts.agentTypeID); err != nil {
+			ts.T().Errorf("Failed to delete agent type during teardown: %v", err)
 		}
 	}
 	if ts.ouID != "" {

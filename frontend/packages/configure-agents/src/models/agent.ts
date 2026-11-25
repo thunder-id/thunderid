@@ -1,14 +1,13 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import type {AssertionConfig, OAuth2Config} from '@thunderid/configure-applications';
+import type {AssertionConfig, LoginConsentConfig, OAuth2Config} from '@thunderid/configure-applications';
 import type {AccessStatusReport} from '@thunderid/types';
 
 /**
- * Handle of the bootstrap-provisioned `default` agent type, which the agent listing's Schema button
- * looks up to show the schema behind the listed agents.
+ * Kind of an agent a user registered for themselves, which acts only for that user.
  */
-export const DEFAULT_AGENT_TYPE_HANDLE = 'default';
+export const PERSONAL_AGENT_KIND = 'personal-assistant';
 
 export type OAuthAgentConfig = OAuth2Config;
 
@@ -17,9 +16,7 @@ export interface AgentInboundAuthConfig {
   config?: OAuthAgentConfig;
 }
 
-export interface AgentLoginConsentConfig {
-  validityPeriod?: number;
-}
+export type AgentLoginConsentConfig = LoginConsentConfig;
 
 /**
  * Where an agent stands in its lifespan, derived by the server on every read.
@@ -30,28 +27,47 @@ export interface AgentLifespan {
   phase: AgentLifespanPhase;
 }
 
+/** What an agent owner's ID holds. */
+export type AgentOwnerIdType = 'uuid' | 'email' | 'mobile';
+
+/** Who is accountable for an agent. A local owner is an entity of this deployment. */
+export interface AgentOwner {
+  id: string;
+  idType?: AgentOwnerIdType;
+  /** Absent reads as local. */
+  isLocal?: boolean;
+}
+
 export interface Agent {
   id: string;
   ouId: string;
+  /** The project the agent belongs to, if any. */
+  projectId?: string;
   ouHandle?: string;
   type: string;
   display?: string;
   description?: string;
   logoUrl?: string;
-  owner?: string;
+  owner?: AgentOwner;
+  /** The agent's kind, such as `personal-assistant`. Absent for an ordinary agent. */
+  kind?: string;
   clientId?: string;
   attributes?: Record<string, unknown>;
   allowedUserTypes?: string[];
   allowedAgentTypes?: string[];
   inboundAuthConfig?: AgentInboundAuthConfig[];
   // Inbound-client fields the agent shares with applications. Populated only when an inbound
-  // client row exists for the agent (i.e., create modes 2 or 3 — not entity-only).
+  // client row exists for the agent (i.e., create modes 2 or 3, not entity-only).
   authFlowId?: string;
+  /** Device Grant flow used when this agent accepts the OAuth Device Code grant. */
+  deviceGrantFlowId?: string;
   registrationFlowId?: string;
   isRegistrationFlowEnabled?: boolean;
   assertion?: AssertionConfig;
   loginConsent?: AgentLoginConsentConfig;
   isReadOnly?: boolean;
+  /** False for an agent shared into the organization unit it is read in, which that unit cannot change */
+  isOwnedByOU?: boolean;
   /**
    * Effective access status, derived by the server at read time. Read-only.
    */
@@ -76,8 +92,12 @@ export interface BasicAgent {
   description?: string;
   logoUrl?: string;
   clientId?: string;
+  /** The agent's kind, such as `personal-assistant`. Absent for an ordinary agent. */
+  kind?: string;
   attributes?: Record<string, unknown>;
   isReadOnly?: boolean;
+  /** False for an agent shared into the organization unit it is read in, which that unit cannot change */
+  isOwnedByOU?: boolean;
   /**
    * Effective access status, derived by the server at read time. Read-only.
    */
@@ -101,11 +121,14 @@ export interface AgentListResponse {
 }
 
 export interface CreateAgentRequest {
-  ouId: string;
+  /** Where the agent is placed. Without it, an agent created in a project is placed in the system organization unit. */
+  ouId?: string;
+  /** The project the agent belongs to. */
+  projectId?: string;
   type: string;
   description?: string;
   logoUrl?: string;
-  owner?: string;
+  owner?: AgentOwner;
   attributes?: Record<string, unknown>;
   inboundAuthConfig?: AgentInboundAuthConfig[];
 }
@@ -115,7 +138,7 @@ export interface UpdateAgentRequest {
   type?: string;
   description?: string;
   logoUrl?: string;
-  owner?: string;
+  owner?: AgentOwner;
   /** Whether the agent acts on behalf of a user. Not stored; it selects the grant rules checked on save. */
   delegated?: boolean;
   attributes?: Record<string, unknown>;
@@ -123,6 +146,7 @@ export interface UpdateAgentRequest {
   allowedAgentTypes?: string[];
   inboundAuthConfig?: AgentInboundAuthConfig[];
   authFlowId?: string;
+  deviceGrantFlowId?: string;
   registrationFlowId?: string;
   isRegistrationFlowEnabled?: boolean;
   /** Absent leaves the lifespan unchanged; null removes its end. */

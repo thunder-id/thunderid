@@ -37,6 +37,20 @@ var APIErrorInvalidSessionData = apierror.ErrorResponse{
 	},
 }
 
+// APIErrorOUIDNotAllowed defines the error response for an organization unit named on a request that does
+// not start a sign-in flow.
+var APIErrorOUIDNotAllowed = apierror.ErrorResponse{
+	Code: "FES-1026",
+	Message: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.ou_id_not_allowed",
+		DefaultValue: "Invalid request",
+	},
+	Description: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.ou_id_not_allowed_description",
+		DefaultValue: "An organization unit can be named only on a request that starts a sign-in flow",
+	},
+}
+
 // ErrorNodeResponse defines the error response for errors received from nodes.
 var ErrorNodeResponse = tidcommon.ServiceError{
 	Code: "FES-1002",
@@ -268,9 +282,9 @@ var ErrorAttestationNotConfigured = tidcommon.ServiceError{
 	},
 }
 
-// ErrorAdministrationAuthenticationRequired defines the error returned when an administrative
-// flow is invoked without an authenticated caller.
-var ErrorAdministrationAuthenticationRequired = tidcommon.ServiceError{
+// ErrorFlowAuthenticationRequired defines the error returned when a flow that requires an
+// authenticated caller is invoked without one.
+var ErrorFlowAuthenticationRequired = tidcommon.ServiceError{
 	Code: "FES-1017",
 	Type: tidcommon.ClientErrorType,
 	Error: tidcommon.I18nMessage{
@@ -279,7 +293,7 @@ var ErrorAdministrationAuthenticationRequired = tidcommon.ServiceError{
 	},
 	ErrorDescription: tidcommon.I18nMessage{
 		Key:          "error.flowexecservice.administration_authentication_required_description",
-		DefaultValue: "Administrative flows require an authenticated caller",
+		DefaultValue: "This flow requires an authenticated caller",
 	},
 }
 
@@ -297,8 +311,9 @@ var ErrorFlowIDExecutionNotPermitted = tidcommon.ServiceError{
 	},
 }
 
-// ErrorAdministrationPermissionRequired defines the error returned when an authenticated caller
-// invokes an administrative flow without the root system permission.
+// ErrorAdministrationPermissionRequired defines the error returned when a flow that acts for its caller runs for
+// a caller holding no system permission: the caller who sent the step, or the caller who started the flow,
+// whom a step without a token runs as.
 var ErrorAdministrationPermissionRequired = tidcommon.ServiceError{
 	Code: "FES-1019",
 	Type: tidcommon.ClientErrorType,
@@ -308,7 +323,7 @@ var ErrorAdministrationPermissionRequired = tidcommon.ServiceError{
 	},
 	ErrorDescription: tidcommon.I18nMessage{
 		Key:          "error.flowexecservice.administration_permission_required_description",
-		DefaultValue: "Administrative flows require the system permission",
+		DefaultValue: "This flow requires a caller holding a system permission",
 	},
 }
 
@@ -327,17 +342,135 @@ var ErrorFlowApplicationNotUsable = tidcommon.ServiceError{
 	},
 }
 
-// ErrorFlowConnectionNotSet is returned when a flow needs a connection that was never set for the organization unit of
-// the application driving it.
+// ErrorFlowConnectionNotSet is returned when a flow needs an identity provider that was never set for the
+// organization unit of the application driving it.
 var ErrorFlowConnectionNotSet = tidcommon.ServiceError{
 	Code: "FES-1022",
 	Type: tidcommon.ClientErrorType,
 	Error: tidcommon.I18nMessage{
-		Key:          "error.flowexecservice.connection_not_set",
-		DefaultValue: "Flow not available",
+		Key:          "error.flowexecservice.identity_provider_not_set",
+		DefaultValue: "Identity provider not found",
 	},
 	ErrorDescription: tidcommon.I18nMessage{
-		Key:          "error.flowexecservice.connection_not_set_description",
-		DefaultValue: "The flow is not available for this organization yet. Contact your administrator",
+		Key: "error.flowexecservice.identity_provider_not_set_description",
+		DefaultValue: "No identity provider has been set up for your organization. " +
+			"Contact your administrator",
+	},
+}
+
+// ErrorInvalidOrganizationUnit is returned when a sign-in names an organization unit the application is
+// not accessible from. It does not say whether the organization unit exists.
+var ErrorInvalidOrganizationUnit = tidcommon.ServiceError{
+	Code: "FES-1028",
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.invalid_organization_unit",
+		DefaultValue: "Invalid organization unit",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.invalid_organization_unit_description",
+		DefaultValue: "The application cannot be used to sign in to the requested organization unit",
+	},
+}
+
+// ErrorInvitationOUMissing is returned when an invitation flow is started with a token that names no
+// organization unit.
+var ErrorInvitationOUMissing = tidcommon.ServiceError{
+	Code: "FES-1027",
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.invitation_ou_missing",
+		DefaultValue: "Organization unit required",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.invitation_ou_missing_description",
+		DefaultValue: "An invitation flow requires a token issued for an organization unit",
+	},
+}
+
+// ErrorFlowNotSharedWithOU is returned when an invitation flow is started from an organization unit that neither
+// owns the flow nor was shared it.
+var ErrorFlowNotSharedWithOU = tidcommon.ServiceError{
+	Code: "FES-1029",
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.flow_not_shared_with_ou",
+		DefaultValue: "Flow not shared",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.flow_not_shared_with_ou_description",
+		DefaultValue: "The flow is not shared with the organization unit the token was issued for",
+	},
+}
+
+// ErrorFlowHandleRequired is returned when the start of a flow named by its handle names none.
+var ErrorFlowHandleRequired = tidcommon.ServiceError{
+	Code: "FES-1023",
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.flow_handle_required",
+		DefaultValue: "Invalid request",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.flow_handle_required_description",
+		DefaultValue: "A flow handle is required to start this flow",
+	},
+}
+
+// ErrorFlowHandleNotFound is returned when a requested flow handle does not resolve.
+var ErrorFlowHandleNotFound = tidcommon.ServiceError{
+	Code: "FES-1025",
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.flow_handle_not_found",
+		DefaultValue: "Flow not found",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.flow_handle_not_found_description",
+		DefaultValue: "No flow matches the specified handle and flow type",
+	},
+}
+
+// ErrorFlowStartedByAnotherCaller is returned when a caller continues a flow another caller started.
+var ErrorFlowStartedByAnotherCaller = tidcommon.ServiceError{
+	Code: "FES-1030",
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.flow_started_by_another_caller",
+		DefaultValue: "Flow not permitted",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.flow_started_by_another_caller_description",
+		DefaultValue: "Only the caller who started this flow can continue it",
+	},
+}
+
+// ErrorCallTargetNotPermitted is returned when a flow running with the system's authority calls a flow that
+// acts for its caller.
+var ErrorCallTargetNotPermitted = tidcommon.ServiceError{
+	Code: "FES-1031",
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.call_target_not_permitted",
+		DefaultValue: "Call target not permitted",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.call_target_not_permitted_description",
+		DefaultValue: "A flow that runs with the system's authority cannot call a flow that acts for its caller",
+	},
+}
+
+// ErrorFlowRestartRequired is returned when a flow that acts for its caller has no recorded authority, because it
+// was started before the server recorded one. No caller can continue it.
+var ErrorFlowRestartRequired = tidcommon.ServiceError{
+	Code: "FES-1032",
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.flow_restart_required",
+		DefaultValue: "Flow cannot be continued",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.flow_restart_required_description",
+		DefaultValue: "This flow was started by an earlier server version. Start the flow again",
 	},
 }

@@ -27,6 +27,11 @@ vi.mock('@thunderid/configure-organization-units', async (importOriginal) => ({
   OrganizationUnitPickerScreen: () => null,
 }));
 
+vi.mock('@thunderid/contexts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/contexts')>()),
+  useConfig: () => ({config: {brand: {product_name: 'Acme IAM'}}}),
+}));
+
 let translationLookup = (key: string): string => key;
 
 vi.mock('react-i18next', async (importOriginal) => ({
@@ -190,6 +195,58 @@ describe('ConfigureDetails', () => {
     );
 
     expect(screen.getByTestId('application-configure-redirect-uris')).toBeInTheDocument();
+  });
+
+  describe('redirect URI readiness for a template with a prefilled redirect URI', () => {
+    const renderReactTemplate = (contextOverrides: Partial<ApplicationCreateContextType>) => {
+      const onReadyChange = vi.fn();
+      renderWithContext(
+        {
+          technology: TechnologyApplicationTemplate.REACT,
+          platform: PlatformApplicationTemplate.BROWSER,
+          onReadyChange,
+        },
+        {selectedTemplateConfig: createTemplate('React app', ['http://localhost:5173']), ...contextOverrides},
+      );
+      return onReadyChange;
+    };
+
+    it('blocks the step while no redirect URI is entered', async () => {
+      const onReadyChange = renderReactTemplate({redirectUris: ['  ']});
+      await waitFor(() => expect(onReadyChange).toHaveBeenLastCalledWith(false));
+    });
+
+    it('blocks the step for a javascript: redirect URI', async () => {
+      const onReadyChange = renderReactTemplate({redirectUris: ['javascript:alert(1)']});
+      await waitFor(() => expect(onReadyChange).toHaveBeenLastCalledWith(false));
+    });
+
+    it('blocks the step for an invalid post-logout redirect URI', async () => {
+      const onReadyChange = renderReactTemplate({
+        redirectUris: ['https://example.com/callback'],
+        postLogoutRedirectUris: ['javascript:alert(1)'],
+      });
+      await waitFor(() => expect(onReadyChange).toHaveBeenLastCalledWith(false));
+    });
+
+    it('allows the step once a valid redirect URI is entered', async () => {
+      const onReadyChange = renderReactTemplate({redirectUris: ['https://example.com/callback']});
+      await waitFor(() => expect(onReadyChange).toHaveBeenLastCalledWith(true));
+    });
+
+    it('does not require a redirect URI for the embedded sign-in approach', async () => {
+      const onReadyChange = vi.fn();
+      renderWithContext(
+        {
+          technology: TechnologyApplicationTemplate.REACT,
+          platform: PlatformApplicationTemplate.BROWSER,
+          onReadyChange,
+          selectedApproach: ApplicationCreateFlowSignInApproach.EMBEDDED,
+        },
+        {selectedTemplateConfig: createTemplate('React app', ['http://localhost:5173'])},
+      );
+      await waitFor(() => expect(onReadyChange).toHaveBeenLastCalledWith(true));
+    });
   });
 
   it('renders no configuration UI for a non-redirect-capable template with a prefilled redirect URI', () => {
@@ -800,7 +857,7 @@ describe('ConfigureDetails', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('initializes passkey relying party defaults from hostname and app name', () => {
+  it('leaves the passkey relying party ID empty and defaults the name to the app name', () => {
     const template = createTemplate('Browser app', ['https://example.com/callback']);
 
     renderWithContext(
@@ -820,11 +877,66 @@ describe('ConfigureDetails', () => {
       },
     );
 
-    const relyingPartyIdInput = screen.getByDisplayValue(window.location.hostname);
-    const relyingPartyNameInput = screen.getByDisplayValue('Test App');
+    expect(
+      screen.getByPlaceholderText('applications:onboarding.configure.details.relyingPartyId.placeholder'),
+    ).toHaveValue('');
+    expect(screen.getByDisplayValue('Test App')).toBeInTheDocument();
+  });
 
-    expect(relyingPartyIdInput).toHaveValue(window.location.hostname);
-    expect(relyingPartyNameInput).toHaveValue('Test App');
+  it('requires the relying party ID for the embedded sign-in approach', async () => {
+    const onReadyChange = vi.fn();
+    renderWithContext(
+      {
+        technology: TechnologyApplicationTemplate.REACT,
+        platform: PlatformApplicationTemplate.BROWSER,
+        onReadyChange,
+        selectedApproach: ApplicationCreateFlowSignInApproach.EMBEDDED,
+      },
+      {
+        selectedTemplateConfig: createTemplate('React app', ['http://localhost:5173']),
+        integrations: {[AuthenticatorTypes.PASSKEY]: true},
+        relyingPartyId: '',
+        relyingPartyName: '',
+      },
+    );
+
+    await waitFor(() => expect(onReadyChange).toHaveBeenLastCalledWith(false));
+
+    await userEvent
+      .setup()
+      .type(
+        screen.getByPlaceholderText('applications:onboarding.configure.details.relyingPartyId.placeholder'),
+        'app.example.com',
+      );
+
+    await waitFor(() => expect(onReadyChange).toHaveBeenLastCalledWith(true));
+  });
+
+  it('is ready with passkeys on and no relying party ID', async () => {
+    const onReadyChange = vi.fn();
+    renderWithContext(
+      {
+        technology: TechnologyApplicationTemplate.REACT,
+        platform: PlatformApplicationTemplate.BROWSER,
+        onReadyChange,
+      },
+      {
+        selectedTemplateConfig: createTemplate('Browser app', []),
+        integrations: {[AuthenticatorTypes.PASSKEY]: true},
+        relyingPartyId: '',
+        relyingPartyName: '',
+      },
+    );
+
+    const user = userEvent.setup();
+    await user.type(
+      screen.getByPlaceholderText('applications:onboarding.configure.details.hostingUrl.placeholder'),
+      'https://example.com',
+    );
+
+    await waitFor(() => {
+      expect(onReadyChange).toHaveBeenLastCalledWith(true);
+    });
   });
 
   it('falls back to default passkey labels and placeholders when translations are empty', () => {

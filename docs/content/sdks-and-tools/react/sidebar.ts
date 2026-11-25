@@ -78,6 +78,23 @@ const sidebar: SidebarsConfig = {
             },
             {
               type: 'category',
+              label: 'Delegated Admin Components',
+              collapsed: true,
+              items: [
+                {
+                  type: 'doc',
+                  id: 'sdks-and-tools/react/apis/components/shared-flow-list',
+                  label: '<SharedFlowList />',
+                },
+                {
+                  type: 'doc',
+                  id: 'sdks-and-tools/react/apis/components/flow-variables-form',
+                  label: '<FlowVariablesForm />',
+                },
+              ],
+            },
+            {
+              type: 'category',
               label: 'User Self-care Components',
               collapsed: true,
               items: [
@@ -101,6 +118,33 @@ const sidebar: SidebarsConfig = {
                   id: 'sdks-and-tools/react/apis/components/change-credential',
                   label: '<ChangeCredential />',
                 },
+                {
+                  type: 'doc',
+                  id: 'sdks-and-tools/react/apis/components/organization-unit-switcher',
+                  label: '<OrganizationUnitSwitcher />',
+                },
+              ],
+            },
+            {
+              type: 'category',
+              label: 'Consent Components',
+              collapsed: true,
+              items: [
+                {
+                  type: 'doc',
+                  id: 'sdks-and-tools/react/apis/components/consent',
+                  label: '<Consent />',
+                },
+                {
+                  type: 'doc',
+                  id: 'sdks-and-tools/react/apis/components/consent-authorization-detail',
+                  label: '<ConsentAuthorizationDetail />',
+                },
+                {
+                  type: 'doc',
+                  id: 'sdks-and-tools/react/apis/components/consent-detail-field',
+                  label: '<ConsentDetailField />',
+                },
               ],
             },
           ],
@@ -119,6 +163,16 @@ const sidebar: SidebarsConfig = {
               type: 'doc',
               id: 'sdks-and-tools/react/apis/hooks/management-hooks',
               label: 'Management Hooks',
+            },
+            {
+              type: 'doc',
+              id: 'sdks-and-tools/react/apis/hooks/use-consent-detail-field',
+              label: 'useConsentDetailField()',
+            },
+            {
+              type: 'doc',
+              id: 'sdks-and-tools/react/apis/hooks/use-flow-variables',
+              label: 'useFlowVariables()',
             },
           ],
         },

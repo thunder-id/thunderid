@@ -79,8 +79,8 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key: "error.ouservice.organization_unit_has_children_description",
-			DefaultValue: "Cannot delete an organization unit that has child organization units, users, " +
-				"groups, user types, agent types, connections, flows, or sharing policies it issued",
+			DefaultValue: "Cannot delete an organization unit while other resources, such as child organization " +
+				"units, users, groups, roles or applications, belong to it or refer to it",
 		},
 	}
 	// ErrorCircularDependency is the error returned when a circular dependency is detected.
@@ -177,74 +177,116 @@ var (
 			DefaultValue: "The filter parameter is invalid. Use format: attribute (eq|gt|lt) \"value\"",
 		},
 	}
-	// ErrorInvalidAuthFlowID is the error returned when authFlowId does not
-	// reference an existing authentication flow.
-	ErrorInvalidAuthFlowID = tidcommon.ServiceError{
+	// ErrorSignedInUserRequired is the error returned when the organization units a sign-in may land in are
+	// asked for without a signed-in user the entity store holds.
+	ErrorSignedInUserRequired = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "OU-1015",
+		Code: "OU-1020",
 		Error: tidcommon.I18nMessage{
-			Key:          "error.ouservice.invalid_auth_flow_id",
-			DefaultValue: "Invalid default authentication flow ID",
+			Key:          "error.ouservice.signed_in_user_required",
+			DefaultValue: "Signed-in user required",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.ouservice.invalid_auth_flow_id_description",
-			DefaultValue: "The authFlowId does not reference an existing authentication flow",
+			Key:          "error.ouservice.signed_in_user_required_description",
+			DefaultValue: "Organization units are listed only for a signed-in user",
 		},
 	}
-	// ErrorInvalidRegistrationFlowID is the error returned when registrationFlowId does not
-	// reference an existing registration flow.
-	ErrorInvalidRegistrationFlowID = tidcommon.ServiceError{
+	// ErrorCannotDeleteSystemOU is the error returned when the system organization unit is deleted.
+	ErrorCannotDeleteSystemOU = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "OU-1016",
+		Code: "OU-1021",
 		Error: tidcommon.I18nMessage{
-			Key:          "error.ouservice.invalid_registration_flow_id",
-			DefaultValue: "Invalid default registration flow ID",
+			Key:          "error.ouservice.cannot_delete_system_ou",
+			DefaultValue: "System organization unit cannot be deleted",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.ouservice.invalid_registration_flow_id_description",
-			DefaultValue: "The registrationFlowId does not reference an existing registration flow",
+			Key:          "error.ouservice.cannot_delete_system_ou_description",
+			DefaultValue: "The deployment configuration names this organization unit in server.system_ou_id",
 		},
 	}
-	// ErrorInvalidRecoveryFlowID is the error returned when recoveryFlowId does not
-	// reference an existing recovery flow.
-	ErrorInvalidRecoveryFlowID = tidcommon.ServiceError{
+	// ErrorInvalidProject is returned when an organization unit names a project that does not exist.
+	ErrorInvalidProject = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "OU-1017",
+		Code: "OU-1022",
 		Error: tidcommon.I18nMessage{
-			Key:          "error.ouservice.invalid_recovery_flow_id",
-			DefaultValue: "Invalid default recovery flow ID",
+			Key:          "error.ouservice.invalid_project",
+			DefaultValue: "Invalid project",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.ouservice.invalid_recovery_flow_id_description",
-			DefaultValue: "The recoveryFlowId does not reference an existing recovery flow",
+			Key:          "error.ouservice.invalid_project_description",
+			DefaultValue: "No project exists with the given project ID",
 		},
 	}
-	// ErrorInvalidSignOutFlowID is the error returned when signOutFlowId does not
-	// reference an existing sign-out flow.
-	ErrorInvalidSignOutFlowID = tidcommon.ServiceError{
+	// ErrorProjectRequired is returned when an organization unit is created without a project on a deployment
+	// that requires one.
+	ErrorProjectRequired = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "OU-1018",
+		Code: "OU-1023",
 		Error: tidcommon.I18nMessage{
-			Key:          "error.ouservice.invalid_signout_flow_id",
-			DefaultValue: "Invalid default sign-out flow ID",
+			Key:          "error.ouservice.project_required",
+			DefaultValue: "Project required",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.ouservice.invalid_signout_flow_id_description",
-			DefaultValue: "The signOutFlowId does not reference an existing sign-out flow",
+			Key: "error.ouservice.project_required_description",
+			DefaultValue: "An organization unit must belong to a project. " +
+				"Set projectId to the project it belongs to",
 		},
 	}
-	// ErrorInvalidUserOnboardingFlowID is the error returned when userOnboardingFlowId does not
-	// reference an existing user onboarding flow.
-	ErrorInvalidUserOnboardingFlowID = tidcommon.ServiceError{
+	// ErrorParentInAnotherProject is returned when an organization unit names a parent that is not in its project.
+	ErrorParentInAnotherProject = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
-		Code: "OU-1019",
+		Code: "OU-1024",
 		Error: tidcommon.I18nMessage{
-			Key:          "error.ouservice.invalid_user_onboarding_flow_id",
-			DefaultValue: "Invalid default user onboarding flow ID",
+			Key:          "error.ouservice.parent_in_another_project",
+			DefaultValue: "Parent in another project",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.ouservice.invalid_user_onboarding_flow_id_description",
-			DefaultValue: "The userOnboardingFlowId does not reference an existing user onboarding flow",
+			Key: "error.ouservice.parent_in_another_project_description",
+			DefaultValue: "An organization unit must be in the same project as its parent, " +
+				"unless its parent is the system organization unit",
+		},
+	}
+	// ErrorSystemOUInProject is returned when the system organization unit names a project.
+	ErrorSystemOUInProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "OU-1025",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.ouservice.system_ou_in_project",
+			DefaultValue: "System organization unit in a project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.ouservice.system_ou_in_project_description",
+			DefaultValue: "The system organization unit is shared by every project and cannot belong to one",
+		},
+	}
+	// ErrorProjectMoveWithResources is returned when an organization unit moves to another project while it, or an
+	// organization unit beneath it, still holds resources.
+	ErrorProjectMoveWithResources = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "OU-1027",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.ouservice.project_move_with_resources",
+			DefaultValue: "Organization unit holds resources",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.ouservice.project_move_with_resources_description",
+			DefaultValue: "An organization unit can move to another project only while it and the organization " +
+				"units beneath it hold no resources",
+		},
+	}
+	// ErrorPlacementWithFilter is the error returned when a placement listing is asked for with a filter. The
+	// listing leads with the system organization unit, which a filter could not page around.
+	ErrorPlacementWithFilter = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "OU-1028",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.ouservice.placement_with_filter",
+			DefaultValue: "Filter not supported with placement",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.ouservice.placement_with_filter_description",
+			DefaultValue: "The placement listing cannot be filtered. Remove the filter parameter or the placement " +
+				"parameter",
 		},
 	}
 )
@@ -259,4 +301,22 @@ var (
 	ErrCannotDeleteDeclarativeOU = errors.New("cannot delete declarative organization unit")
 	// ErrResultLimitExceededInCompositeMode is returned when the result limit is exceeded in composite mode.
 	ErrResultLimitExceededInCompositeMode = errors.New("result limit exceeded in composite mode")
+
+	// ErrorManagedOrganizationUnit is the error returned when attempting to change an organization unit a
+	// control plane deployed. Only a deploy from the control plane changes or removes it.
+	ErrorManagedOrganizationUnit = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "OU-1026",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.ouservice.cannot_modify_managed_resource",
+			DefaultValue: "Cannot modify an organization unit deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.ouservice.cannot_modify_managed_resource_description",
+			DefaultValue: "The organization unit was deployed by the control plane and can only be changed there",
+		},
+	}
+
+	// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+	errNilEventBus = errors.New("the organization unit service needs an event bus")
 )

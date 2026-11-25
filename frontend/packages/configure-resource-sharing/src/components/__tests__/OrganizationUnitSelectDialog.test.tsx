@@ -50,7 +50,7 @@ describe('OrganizationUnitSelectDialog', () => {
     );
 
     fireEvent.click(screen.getByRole('checkbox', {name: /Acme Retail/}));
-    fireEvent.click(screen.getByRole('button', {name: 'This unit only'}));
+    fireEvent.click(screen.getByRole('button', {name: 'Only this OU'}));
     fireEvent.click(screen.getByRole('button', {name: 'Done'}));
 
     expect(baseProps.onConfirm).toHaveBeenCalledWith([{ouId: 'retail', reach: 'unit'}]);
@@ -90,9 +90,9 @@ describe('OrganizationUnitSelectDialog', () => {
   it('marks the units below a picked unit as included with it when browsing every tree', () => {
     renderWithProviders(<OrganizationUnitSelectDialog {...baseProps} source={{type: 'allTrees'}} tone="exclude" />);
 
-    fireEvent.click(screen.getByRole('button', {name: 'Show units under Acme Corp'}));
+    fireEvent.click(screen.getByRole('button', {name: 'Show organization units under Acme Corp'}));
     fireEvent.click(screen.getByRole('checkbox', {name: /Acme Retail/}));
-    fireEvent.click(screen.getByRole('button', {name: 'Show units under Acme Retail'}));
+    fireEvent.click(screen.getByRole('button', {name: 'Show organization units under Acme Retail'}));
 
     const child = screen.getByRole('checkbox', {name: /Retail EU/});
     expect(child).toBeChecked();

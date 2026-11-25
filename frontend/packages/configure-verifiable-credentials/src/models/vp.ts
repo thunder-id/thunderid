@@ -11,6 +11,8 @@ export interface VerifiablePresentation {
   handle: string;
   ouId: string;
   ouHandle?: string;
+  /** The project this definition belongs to. */
+  projectId?: string;
   name?: string;
   description?: string;
   vct: string;
@@ -43,6 +45,8 @@ export interface VerifiablePresentationSummary {
   handle: string;
   ouId: string;
   ouHandle?: string;
+  /** The project this definition belongs to. */
+  projectId?: string;
   name?: string;
   vct: string;
   format: string;

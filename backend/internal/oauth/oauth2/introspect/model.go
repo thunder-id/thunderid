@@ -23,10 +23,13 @@ type IntrospectResponse struct {
 	Nbf       int64     `json:"nbf,omitempty"`
 	Sub       string    `json:"sub,omitempty"`
 	SubType   string    `json:"sub_type,omitempty"`
+	Idp       string    `json:"idp,omitempty"`
 	Aud       any       `json:"aud,omitempty"`
 	Iss       string    `json:"iss,omitempty"`
 	Jti       string    `json:"jti,omitempty"`
 	Cnf       *CnfClaim `json:"cnf,omitempty"`
+	// Act carries the token's RFC 8693 actor claim, including any nested delegation chain.
+	Act map[string]interface{} `json:"act,omitempty"`
 	// AuthorizationDetails carries the RFC 9396 authorization details of the token.
 	AuthorizationDetails json.RawMessage `json:"authorization_details,omitempty"`
 }

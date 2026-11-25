@@ -194,3 +194,8 @@ func (suite *ValueUtilTestSuite) TestDerefOr() {
 	suite.Equal(1, DerefOr(nil, 1))
 	suite.Equal("", DerefOr[string](nil, ""))
 }
+
+func (suite *ValueUtilTestSuite) TestNullableString() {
+	suite.Nil(NullableString(""))
+	suite.Equal("project-1", NullableString("project-1"))
+}

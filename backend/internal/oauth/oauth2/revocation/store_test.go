@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -283,7 +284,7 @@ func (suite *RevocationStoreTestSuite) TestInsertCriteria_EmptySliceSkipsTheClie
 func (suite *RevocationStoreTestSuite) TestInsertCriteria_GeneratesIDsForRowsWithoutOne() {
 	suite.expectNoOpTransaction()
 	rows := []revocationCriterion{
-		{Type: CriterionTypeApplicationKey, Value: "client-1", Reason: RevocationReasonApplicationDeleted,
+		{Type: CriterionTypeApplicationKey, Value: "client-1", Reason: RevocationReasonUserDeleted,
 			RevokedAt: suite.testCriterion.RevokedAt, ExpiryTime: suite.testCriterion.ExpiryTime},
 		{ID: "already-set", Type: CriterionTypeSubject, Value: "user-1",
 			Reason:    RevocationReasonUserDeleted,
@@ -492,8 +493,6 @@ func (suite *RevocationStoreTestSuite) TestAreCriteriaRevoked_PassesEstablishedA
 	assert.True(suite.T(), revoked)
 }
 
-// Every dimension must be covered by one statement: token validation is a hot path, so a second
-// criterion must not cost a second round trip.
 func (suite *RevocationStoreTestSuite) TestAreCriteriaRevoked_ChecksAllDimensionsInOneQuery() {
 	suite.mockdbProvider.On("GetRuntimePersistentDBClient").Return(suite.mockDBClient, nil)
 	suite.mockDBClient.On("QueryContext", mock.Anything, mock.Anything,
@@ -624,7 +623,7 @@ func (suite *RevocationStoreTestSuite) TestBuildInsertRevocationCriteriaQuery_Wr
 	rows := []revocationCriterion{
 		// A fresh key: must simply be inserted.
 		{ID: "fresh-1", Type: CriterionTypeApplicationKey, Value: "client-1",
-			Reason: RevocationReasonApplicationDeleted, RevokedAt: now, ExpiryTime: now.Add(time.Hour)},
+			Reason: RevocationReasonUserDeleted, RevokedAt: now, ExpiryTime: now.Add(time.Hour)},
 		// Conflicts with the pre-existing terminal row.
 		{ID: "conflict-terminal", Type: CriterionTypeSubject, Value: "user-1",
 			Reason: RevocationReasonRoleAssignmentRemoved, RevokedAt: now.Add(2 * time.Hour),
@@ -644,7 +643,7 @@ func (suite *RevocationStoreTestSuite) TestBuildInsertRevocationCriteriaQuery_Wr
 		WHERE DEPLOYMENT_ID = ? AND CRITERION_TYPE = ? AND CRITERION_VALUE = ?`,
 		"deployment-1", "app.key", "client-1").Scan(&reason, &revokedAt)
 	suite.Require().NoError(err, "the fresh row must have been written")
-	suite.Equal(string(RevocationReasonApplicationDeleted), reason)
+	suite.Equal(string(RevocationReasonUserDeleted), reason)
 
 	err = db.QueryRow(`SELECT REASON, REVOKED_AT FROM "REVOCATION_CRITERIA"
 		WHERE DEPLOYMENT_ID = ? AND CRITERION_TYPE = ? AND CRITERION_VALUE = ?`,
@@ -749,6 +748,87 @@ func (suite *RevocationStoreTestSuite) TestCriterionUpsertKeepsNewestBoundary() 
 					suite.ErrorIs(err, sql.ErrNoRows)
 				}
 			}
+		})
+	}
+}
+
+func (suite *RevocationStoreTestSuite) TestAreCriteriaRevoked_GroupsValuesByType() {
+	establishedAt := time.Now().UTC().Add(-time.Hour)
+	suite.mockdbProvider.On("GetRuntimePersistentDBClient").Return(suite.mockDBClient, nil).Once()
+	suite.mockDBClient.On("QueryContext", mock.Anything,
+		mock.MatchedBy(func(query dbmodel.DBQuery) bool {
+			suite.Contains(query.Query, "(CRITERION_TYPE = $4 AND CRITERION_VALUE IN ($5, $6))")
+			suite.Contains(query.Query, "(CRITERION_TYPE = $7 AND CRITERION_VALUE IN ($8, $9))")
+			suite.Contains(query.Query, "DEPLOYMENT_ID = $1 AND EXPIRY_TIME > $2")
+			suite.Contains(query.Query, "$3 <= REVOKED_AT")
+			return true
+		}), testDeploymentID, mock.Anything, establishedAt,
+		string(CriterionTypeSubject), "user-1", "user-2",
+		string(CriterionTypeScope), "scope-1", "scope-2").
+		Return([]map[string]interface{}{}, nil).Once()
+	revoked, err := suite.store.areCriteriaRevoked(context.Background(), []Criterion{
+		{Type: CriterionTypeSubject, Value: "user-1"},
+		{Type: CriterionTypeScope, Value: "scope-1"},
+		{Type: CriterionTypeSubject, Value: "user-2"},
+		{Type: CriterionTypeScope, Value: "scope-2"},
+		{Type: CriterionTypeSubject, Value: "user-1"},
+	}, establishedAt)
+	suite.NoError(err)
+	suite.False(revoked)
+}
+
+func (suite *RevocationStoreTestSuite) TestAreCriteriaRevoked_ChunksLargeIdentities() {
+	tests := []struct {
+		name       string
+		count      int
+		matchChunk int
+		errorChunk int
+		wantCalls  int
+	}{
+		{name: "AtBoundary", count: 500, wantCalls: 1},
+		{name: "OverBoundary", count: 501, wantCalls: 2},
+		{name: "ThreeChunks", count: 1001, wantCalls: 3},
+		{name: "MatchInSecondChunk", count: 1001, matchChunk: 2, wantCalls: 2},
+		{name: "ErrorInSecondChunk", count: 1001, errorChunk: 2, wantCalls: 2},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			establishedAt := time.Now().UTC().Add(-time.Hour)
+			criteria := make([]Criterion, tc.count)
+			for i := range criteria {
+				criteria[i] = Criterion{Type: CriterionTypeEntityScopeSubtree, Value: fmt.Sprintf("scope-%d", i)}
+			}
+			suite.mockdbProvider.On("GetRuntimePersistentDBClient").Return(suite.mockDBClient, nil).Once()
+			for chunk := 0; chunk < tc.wantCalls; chunk++ {
+				start, end := chunk*500, min((chunk+1)*500, tc.count)
+				args := []interface{}{mock.Anything, mock.MatchedBy(func(query dbmodel.DBQuery) bool {
+					return query.ID == criteriaRevokedQueryID &&
+						strings.Contains(query.Query, "CRITERION_VALUE IN (") &&
+						strings.Contains(query.Query, "DEPLOYMENT_ID = $1 AND EXPIRY_TIME > $2") &&
+						strings.Contains(query.Query, "$3 <= REVOKED_AT")
+				}), testDeploymentID, mock.Anything, establishedAt, string(CriterionTypeEntityScopeSubtree)}
+				for i := start; i < end; i++ {
+					args = append(args, fmt.Sprintf("scope-%d", i))
+				}
+				rows := []map[string]interface{}{}
+				if tc.matchChunk == chunk+1 {
+					rows = append(rows, map[string]interface{}{"1": 1})
+				}
+				var queryErr error
+				if tc.errorChunk == chunk+1 {
+					queryErr = errors.New("later chunk failed")
+				}
+				suite.mockDBClient.On("QueryContext", args...).Return(rows, queryErr).Once()
+			}
+			revoked, err := suite.store.areCriteriaRevoked(context.Background(), criteria, establishedAt)
+			if tc.errorChunk != 0 {
+				suite.ErrorContains(err, "later chunk failed")
+			} else {
+				suite.NoError(err)
+			}
+			suite.Equal(tc.matchChunk != 0, revoked)
+			suite.mockDBClient.AssertNumberOfCalls(suite.T(), "QueryContext", tc.wantCalls)
 		})
 	}
 }

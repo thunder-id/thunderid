@@ -1,12 +1,19 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {AccessStatusIndicator, QueryErrorNotice, ResourceAvatar} from '@thunderid/components';
-import {useConfig} from '@thunderid/contexts';
+import {
+  AccessStatusIndicator,
+  EditOrViewAction,
+  QueryErrorNotice,
+  ResourceAvatar,
+  ResourceDeployStatus,
+  useDeployStatusSource,
+} from '@thunderid/components';
+import {isRecordLocked, useCapabilitiesContext, useConfig, useHiddenResources} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {Box, Chip, IconButton, Tooltip, Typography, ListingTable, DataGrid} from '@wso2/oxygen-ui';
-import {Eye, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
+import {Eye, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useCallback, useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
@@ -23,11 +30,18 @@ export default function ApplicationsList(): JSX.Element {
   const routes = useApplicationRoutes();
   const navigate = useNavigate();
   const {config} = useConfig();
+  const {can} = useCapabilitiesContext();
   const {t} = useTranslation();
   const logger = useLogger('ApplicationsList');
   const dataGridLocaleText = useDataGridLocaleText();
   const {data, isLoading, error, refetch} = useGetApplications();
   const consoleClientId = config?.client?.client_id;
+  const {isHiddenApplication} = useHiddenResources();
+  const rows = useMemo(
+    () =>
+      (data?.applications ?? []).filter((application: BasicApplication) => !isHiddenApplication(application.clientId)),
+    [data?.applications, isHiddenApplication],
+  );
 
   // Resolves an error through the `applications` catalog. `t` defaults to the `common` namespace,
   // so this forwards explicit `ns:` prefixes unchanged and prefixes bare keys with `applications:`,
@@ -62,6 +76,7 @@ export default function ApplicationsList(): JSX.Element {
     setSelectedAppId(null);
   };
 
+  const deploys = useDeployStatusSource() !== null;
   const columns: DataGrid.GridColDef<BasicApplication>[] = useMemo(
     () => [
       {
@@ -129,6 +144,21 @@ export default function ApplicationsList(): JSX.Element {
           <AccessStatusIndicator status={params.row.status} category="application" tabIndex={params.tabIndex} />
         ),
       },
+      // Where each application is along the deploy path is shown only where the app says so.
+      ...(deploys
+        ? [
+            {
+              field: 'deployment',
+              headerName: t('applications:listing.columns.deployment', 'Deployment'),
+              flex: 0.6,
+              minWidth: 150,
+              sortable: false,
+              renderCell: (params: DataGrid.GridRenderCellParams<BasicApplication>): JSX.Element => (
+                <ResourceDeployStatus resourceType="application" id={params.row.id} tabIndex={params.tabIndex} />
+              ),
+            } satisfies DataGrid.GridColDef<BasicApplication>,
+          ]
+        : []),
       {
         field: 'actions',
         headerName: t('applications:listing.columns.actions'),
@@ -140,7 +170,7 @@ export default function ApplicationsList(): JSX.Element {
         hideable: false,
         renderCell: (params: DataGrid.GridRenderCellParams<BasicApplication>): JSX.Element => (
           <ListingTable.RowActions>
-            {params.row.isReadOnly ? (
+            {isRecordLocked(params.row) ? (
               <Tooltip title={t('common:status.readOnly', 'Read only')}>
                 <IconButton
                   aria-label={t('common:status.readOnly', 'Read only')}
@@ -153,19 +183,8 @@ export default function ApplicationsList(): JSX.Element {
               </Tooltip>
             ) : (
               <>
-                <Tooltip title={t('common:actions.edit', 'Edit')}>
-                  <IconButton
-                    aria-label={t('common:actions.edit', 'Edit')}
-                    size="small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleEditClick(params.row.id);
-                    }}
-                  >
-                    <Pencil size={16} />
-                  </IconButton>
-                </Tooltip>
-                {!isSystemConsoleClient(params.row.clientId, consoleClientId) && (
+                <EditOrViewAction canEdit={can('app', 'update')} onClick={() => handleEditClick(params.row.id)} />
+                {can('app', 'delete') && !isSystemConsoleClient(params.row.clientId, consoleClientId) && (
                   <Tooltip title={t('common:actions.delete', 'Delete')}>
                     <IconButton
                       aria-label={t('common:actions.delete', 'Delete')}
@@ -186,7 +205,7 @@ export default function ApplicationsList(): JSX.Element {
         ),
       },
     ],
-    [consoleClientId, handleDeleteClick, handleEditClick, t],
+    [can, consoleClientId, deploys, handleDeleteClick, handleEditClick, t],
   );
 
   if (error) {
@@ -206,7 +225,7 @@ export default function ApplicationsList(): JSX.Element {
       <ListingTable.Provider variant="data-grid-card" loading={isLoading}>
         <ListingTable.Container disablePaper>
           <ListingTable.DataGrid
-            rows={data?.applications ?? []}
+            rows={rows}
             columns={columns}
             getRowId={(row): string => (row as BasicApplication).id}
             onRowClick={(params) => {

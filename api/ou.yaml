@@ -30,13 +30,59 @@ paths:
       tags:
         - Organization Units
       summary: List root organization units
+      description: |
+        Lists the root organization units. With `projectId`, lists the top organization units of the
+        project instead: its root organization units, and any organization unit whose parent is not in the
+        project. The other organization units of the project are listed under their parent. A project that
+        does not exist has no organization units. A caller who may list only some organization units gets
+        every organization unit of the project it may list, at any level, as the list without `projectId`
+        does.
+
+        On the Data Plane, listing the root organization units requires the `system` permission. A token
+        holding `org` or `org:ou` reaches only the organization unit it names, and lists that unit's children
+        with `GET /organization-units/{id}/ous` instead.
+
+        With `projectId` and `placement=true`, lists where a resource of the project can be placed: the
+        system organization unit first, marked `isSystem`, then the project's top organization units. The
+        system organization unit counts towards `totalResults` and is listed without its children, which
+        belong to other projects too. A caller who may not list it gets the project's organization units
+        alone. A project that does not exist has none. Combining `placement` with `filter` fails with `OU-1028`.
+
+        With `within`, the placement listing keeps only the organization units in that organization unit's
+        subtree, such as the ones a user type or an agent type allows. Within the system organization unit,
+        that is the system organization unit and the project's organization units placed directly under it.
+        Within an organization unit of the project, it is that organization unit alone, listed with its
+        children under it. Within any other organization unit, it is empty.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
         - $ref: '#/components/parameters/ouFilterParam'
+        - in: query
+          name: projectId
+          required: false
+          description: ID of the project whose organization units are listed.
+          schema:
+            type: string
+            maxLength: 36
+        - in: query
+          name: placement
+          required: false
+          description: |
+            With `projectId`, lists the organization units a resource of the project can be placed in: the
+            system organization unit, then the project's top organization units.
+          schema:
+            type: boolean
+        - in: query
+          name: within
+          required: false
+          description: |
+            With `placement=true`, keeps only the placements in the subtree of this organization unit, for
+            example the organization unit of the user type or agent type being placed.
+          schema:
+            type: string
       responses:
         "200":
-          description: List of root organization units
+          description: List of root organization units, or of the top organization units of a project
           content:
             application/json:
               schema:
@@ -50,6 +96,7 @@ paths:
                     handle: "engineering"
                     name: "Engineering"
                     description: "Engineering Unit"
+                    projectId: "019a3000-0000-7000-8000-0000000000a1"
                     logoUrl: "https://example.com/logos/engineering.png"
                   - id: "b7c40de6-95cd-4c45-8725-9c7cb5b9cafd"
                     handle: "sales"
@@ -96,6 +143,32 @@ paths:
                     description:
                       key: "error.ouservice.invalid_filter_description"
                       defaultValue: "The filter parameter is invalid. Use format: attribute (eq|gt|lt) \"value\""
+                placement-with-filter:
+                  summary: Placement listing with a filter
+                  value:
+                    code: "OU-1028"
+                    message:
+                      key: "error.ouservice.placement_with_filter"
+                      defaultValue: "Filter not supported with placement"
+                    description:
+                      key: "error.ouservice.placement_with_filter_description"
+                      defaultValue: "The placement listing cannot be filtered. Remove the filter parameter or the placement parameter"
+        "403":
+          description: |
+            The caller may not list the root organization units. On a data plane, only the `system`
+            permission lists them.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "500":
           description: Internal server error
 
@@ -117,6 +190,7 @@ paths:
                   name: "Engineering"
                   description: "Engineering Unit"
                   parent: null
+                  projectId: "019a3000-0000-7000-8000-0000000000a1"
               nested-ou:
                 summary: Nested organization unit
                 value:
@@ -124,6 +198,7 @@ paths:
                   name: "Frontend Team"
                   description: "Handles UI/UX work"
                   parent: "afc77cfd-620b-4cf0-a31c-7377b0ea8902"
+                  projectId: "019a3000-0000-7000-8000-0000000000a1"
       responses:
         "201":
           description: Organization unit created
@@ -140,6 +215,7 @@ paths:
                     name: "Engineering"
                     description: "Engineering Unit"
                     parent: null
+                    projectId: "019a3000-0000-7000-8000-0000000000a1"
                 nested-ou:
                   summary: Nested organization unit
                   value:
@@ -148,6 +224,7 @@ paths:
                     name: "Frontend Team"
                     description: "Handles UI/UX work"
                     parent: "afc77cfd-620b-4cf0-a31c-7377b0ea8902"
+                    projectId: "019a3000-0000-7000-8000-0000000000a1"
         "400":
           description: Bad request
           content:
@@ -185,6 +262,63 @@ paths:
                     description:
                       key: "error.ouservice.circular_dependency_detected_description"
                       defaultValue: "Setting this parent would create a circular dependency"
+                project-required:
+                  summary: Project required on the Control Plane
+                  value:
+                    code: "OU-1023"
+                    message:
+                      key: "error.ouservice.project_required"
+                      defaultValue: "Project required"
+                    description:
+                      key: "error.ouservice.project_required_description"
+                      defaultValue: "An organization unit must belong to a project. Set projectId to the project it belongs to"
+                invalid-project:
+                  summary: Project does not exist
+                  value:
+                    code: "OU-1022"
+                    message:
+                      key: "error.ouservice.invalid_project"
+                      defaultValue: "Invalid project"
+                    description:
+                      key: "error.ouservice.invalid_project_description"
+                      defaultValue: "No project exists with the given project ID"
+                parent-in-another-project:
+                  summary: Parent in another project
+                  value:
+                    code: "OU-1024"
+                    message:
+                      key: "error.ouservice.parent_in_another_project"
+                      defaultValue: "Parent in another project"
+                    description:
+                      key: "error.ouservice.parent_in_another_project_description"
+                      defaultValue: "An organization unit must be in the same project as its parent, unless its parent is the system organization unit"
+                system-ou-in-project:
+                  summary: System organization unit in a project
+                  value:
+                    code: "OU-1025"
+                    message:
+                      key: "error.ouservice.system_ou_in_project"
+                      defaultValue: "System organization unit in a project"
+                    description:
+                      key: "error.ouservice.system_ou_in_project_description"
+                      defaultValue: "The system organization unit is shared by every project and cannot belong to one"
+        "403":
+          description: |
+            The caller may not create an organization unit under the parent. On a data plane, no token
+            creates a root organization unit, whatever its permissions: only an import with the
+            management API key does.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "409":
           description: 'Conflict: Organization unit already exists'
           content:
@@ -220,6 +354,9 @@ paths:
       tags:
         - Organization Units
       summary: Get an organization unit by id
+      description: |
+        On the Data Plane, a token holding `org` or `org:ou` without `system` reads the organization unit it
+        names and that unit's direct children. Any other organization unit is refused with `403`.
       parameters:
         - in: path
           name: id
@@ -240,6 +377,22 @@ paths:
                 name: "Engineering Team"
                 description: "Engineering unit that handles all engineering tasks"
                 parent: null
+        "403":
+          description: |
+            The caller may not read the organization unit. On a data plane, a token holding `org` or
+            `org:ou` without `system` reads only the organization unit it names and its direct children.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "404":
           description: Organization unit not found
           content:
@@ -261,6 +414,10 @@ paths:
       tags:
         - Organization Units
       summary: Update an organization unit by id
+      description: |
+        On the Data Plane, a token holding `org` or `org:ou` without `system` updates only the direct
+        children of the organization unit it names. Its own unit and any other organization unit are refused
+        with `403`.
       parameters:
         - in: path
           name: id
@@ -279,6 +436,7 @@ paths:
               name: "Engineering Team"
               description: "Engineering unit that handles all engineering tasks"
               parent: null
+              projectId: "019a3000-0000-7000-8000-0000000000a1"
       responses:
         "200":
           description: Organization unit updated
@@ -329,6 +487,75 @@ paths:
                     description:
                       key: "error.ouservice.circular_dependency_detected_description"
                       defaultValue: "Setting this parent would create a circular dependency"
+                invalid-project:
+                  summary: Project does not exist
+                  value:
+                    code: "OU-1022"
+                    message:
+                      key: "error.ouservice.invalid_project"
+                      defaultValue: "Invalid project"
+                    description:
+                      key: "error.ouservice.invalid_project_description"
+                      defaultValue: "No project exists with the given project ID"
+                parent-in-another-project:
+                  summary: Parent in another project
+                  value:
+                    code: "OU-1024"
+                    message:
+                      key: "error.ouservice.parent_in_another_project"
+                      defaultValue: "Parent in another project"
+                    description:
+                      key: "error.ouservice.parent_in_another_project_description"
+                      defaultValue: "An organization unit must be in the same project as its parent, unless its parent is the system organization unit"
+                system-ou-in-project:
+                  summary: System organization unit in a project
+                  value:
+                    code: "OU-1025"
+                    message:
+                      key: "error.ouservice.system_ou_in_project"
+                      defaultValue: "System organization unit in a project"
+                    description:
+                      key: "error.ouservice.system_ou_in_project_description"
+                      defaultValue: "The system organization unit is shared by every project and cannot belong to one"
+                declarative-descendant:
+                  summary: Project move reaches a declarative descendant
+                  value:
+                    code: "OU-1012"
+                    message:
+                      key: "error.ouservice.cannot_modify_declarative_resource"
+                      defaultValue: "Cannot modify declarative resource"
+                    description:
+                      key: "error.ouservice.cannot_modify_declarative_resource_description"
+                      defaultValue: "The organization unit is declarative and cannot be modified or deleted"
+                project-move-with-resources:
+                  summary: Project move while the organization units hold resources
+                  value:
+                    code: "OU-1027"
+                    message:
+                      key: "error.ouservice.project_move_with_resources"
+                      defaultValue: "Organization unit holds resources"
+                    description:
+                      key: "error.ouservice.project_move_with_resources_description"
+                      defaultValue: "An organization unit can move to another project only while it and the organization units beneath it hold no resources"
+        "403":
+          description: |
+            The caller may not update the organization unit. Moving it also needs the permission to
+            create an organization unit beneath its new parent, or at the root for a move to the root.
+            On a data plane, no token moves an organization
+            unit to the root, whatever its permissions: only an import with the management API key
+            does.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "404":
           description: Organization unit not found
           content:
@@ -377,6 +604,10 @@ paths:
       tags:
         - Organization Units
       summary: Delete an organization unit by id
+      description: |
+        On the Data Plane, a token holding `org` or `org:ou` without `system` deletes only the direct
+        children of the organization unit it names. Its own unit and any other organization unit are refused
+        with `403`.
       parameters:
         - in: path
           name: id
@@ -403,7 +634,33 @@ paths:
                       defaultValue: "Organization unit has children"
                     description:
                       key: "error.ouservice.organization_unit_has_children_description"
-                      defaultValue: "Cannot delete an organization unit that has child organization units, users, groups, user types, agent types, connections, flows, or sharing policies it issued"
+                      defaultValue: "Cannot delete an organization unit while other resources, such as child organization units, users, groups, roles or applications, belong to it or refer to it"
+                system-ou:
+                  summary: The system organization unit
+                  value:
+                    code: "OU-1021"
+                    message:
+                      key: "error.ouservice.cannot_delete_system_ou"
+                      defaultValue: "System organization unit cannot be deleted"
+                    description:
+                      key: "error.ouservice.cannot_delete_system_ou_description"
+                      defaultValue: "The deployment configuration names this organization unit in server.system_ou_id"
+        "403":
+          description: |
+            The caller may not delete the organization unit. On a data plane, a token holding `org` or
+            `org:ou` without `system` deletes only the direct children of the organization unit it names.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "404":
           description: Organization unit not found
           content:
@@ -426,6 +683,9 @@ paths:
       tags:
         - Organization Units
       summary: List child organization units
+      description: |
+        On the Data Plane, a token holding `org` or `org:ou` without `system` lists the children of the
+        organization unit it names only. The children of any other organization unit are refused with `403`.
       parameters:
         - in: path
           name: id
@@ -498,6 +758,23 @@ paths:
                     description:
                       key: "error.ouservice.invalid_filter_description"
                       defaultValue: "The filter parameter is invalid. Use format: attribute (eq|gt|lt) \"value\""
+        "403":
+          description: |
+            The caller may not list the children of the organization unit. On a data plane, a token
+            holding `org` or `org:ou` without `system` lists only the children of the organization unit it
+            names.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "404":
           description: Organization unit not found
           content:
@@ -745,6 +1022,8 @@ paths:
                     description:
                       key: "error.ouservice.invalid_offset_parameter_description"
                       defaultValue: "The offset parameter must be a non-negative integer"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Organization unit not found
           content:
@@ -767,6 +1046,11 @@ paths:
       tags:
         - organization-units-by-path
       summary: Get an organization unit by hierarchical handle path
+      description: |
+        The path resolves to the last organization unit it names, and the request is authorized as the
+        matching request by id. On the Data Plane, a token holding `org` or `org:ou` without `system` is
+        refused with `403` for a path that names no organization unit, as it is for one out of its reach, so a
+        path reveals nothing about the organization units outside its reach.
       parameters:
         - in: path
           name: path
@@ -806,6 +1090,23 @@ paths:
                     handle: "frontend"
                     description: "Handles UI/UX work"
                     parent: "afc77cfd-620b-4cf0-a31c-7377b0ea8902"
+        "403":
+          description: |
+            The caller may not read the organization unit. On a data plane, a token holding `org` or
+            `org:ou` without `system` reads only the organization unit it names and its direct children, and
+            is refused for a path that names no organization unit.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "404":
           description: Organization unit not found
           content:
@@ -899,6 +1200,25 @@ paths:
                 description:
                   key: "error.ouservice.invalid_request_format_description"
                   defaultValue: "The request body is malformed, contains invalid data, or required fields are missing/empty"
+        "403":
+          description: |
+            The caller may not update the organization unit. Moving it also needs the permission to
+            create an organization unit beneath its new parent, or at the root for a move to the root.
+            On a data plane, no token moves an organization
+            unit to the root, whatever its permissions: only an import with the management API key
+            does.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "404":
           description: Organization unit not found
           content:
@@ -981,7 +1301,33 @@ paths:
                       defaultValue: "Organization unit has children"
                     description:
                       key: "error.ouservice.organization_unit_has_children_description"
-                      defaultValue: "Cannot delete an organization unit that has child organization units, users, groups, user types, agent types, connections, flows, or sharing policies it issued"
+                      defaultValue: "Cannot delete an organization unit while other resources, such as child organization units, users, groups, roles or applications, belong to it or refer to it"
+                system-ou:
+                  summary: The system organization unit
+                  value:
+                    code: "OU-1021"
+                    message:
+                      key: "error.ouservice.cannot_delete_system_ou"
+                      defaultValue: "System organization unit cannot be deleted"
+                    description:
+                      key: "error.ouservice.cannot_delete_system_ou_description"
+                      defaultValue: "The deployment configuration names this organization unit in server.system_ou_id"
+        "403":
+          description: |
+            The caller may not delete the organization unit. On a data plane, a token holding `org` or
+            `org:ou` without `system` deletes only the direct children of the organization unit it names.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "404":
           description: Organization unit not found
           content:
@@ -1004,6 +1350,11 @@ paths:
       tags:
         - organization-units-by-path
       summary: List child organization units by handle path
+      description: |
+        The path resolves to the last organization unit it names, and its children are listed as
+        `GET /organization-units/{id}/ous` lists them. On the Data Plane, a token holding `org` or `org:ou`
+        without `system` lists only the children of the organization unit it names, and is refused with
+        `403` for a path that names no organization unit.
       parameters:
         - in: path
           name: path
@@ -1083,6 +1434,23 @@ paths:
                     description:
                       key: "error.ouservice.invalid_filter_description"
                       defaultValue: "The filter parameter is invalid. Use format: attribute (eq|gt|lt) \"value\""
+        "403":
+          description: |
+            The caller may not list the children of the organization unit. On a data plane, a token
+            holding `org` or `org:ou` without `system` lists only the children of the organization unit it
+            names, and is refused for a path that names no organization unit.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "404":
           description: Organization unit not found
           content:
@@ -1348,6 +1716,8 @@ paths:
                     description:
                       key: "error.ouservice.invalid_offset_parameter_description"
                       defaultValue: "The offset parameter must be a non-negative integer"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Organization unit not found
           content:
@@ -1448,6 +1818,21 @@ components:
           summary: Combine conditions with OR
           value: 'name eq "Engineering" OR name eq "Sales"'
 
+  responses:
+    Forbidden:
+      description: The caller may not perform the operation in the organization unit of the resource
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "SSE-4030"
+            message:
+              key: "error.unauthorized"
+              defaultValue: "Unauthorized"
+            description:
+              key: "error.unauthorized_description"
+              defaultValue: "The caller is not authorized to perform this operation"
   schemas:
     OrganizationUnitBasic:
       type: object
@@ -1462,6 +1847,15 @@ components:
           type: string
         description:
           type: string
+        projectId:
+          type: string
+          maxLength: 36
+          description: "ID of the project the organization unit belongs to. The system organization unit belongs to none."
+        parent:
+          type: string
+          format: uuid
+          readOnly: true
+          description: "ID of the parent organization unit. Omitted for a root organization unit. In a placement listing, a project's organization unit placed under the system organization unit names it here."
         logoUrl:
           type: string
           format: uri
@@ -1470,6 +1864,10 @@ components:
           type: boolean
           readOnly: true
           description: "Whether the organization unit is immutable by clients."
+        isSystem:
+          type: boolean
+          readOnly: true
+          description: "Marks the system organization unit in a placement listing (`placement=true`)."
         createdAt:
           type: string
           format: date-time
@@ -1485,6 +1883,13 @@ components:
       type: object
       required: [id, handle, name, createdAt, updatedAt]
       properties:
+        isReadOnly:
+          type: boolean
+          readOnly: true
+          description: |
+            Whether the organization unit is read only: declared in a resource file, or deployed by a control
+            plane, which only a later deploy from the control plane changes.
+          example: false
         id:
           type: string
           format: uuid
@@ -1498,6 +1903,10 @@ components:
           type: string
           format: uuid
           nullable: true
+        projectId:
+          type: string
+          maxLength: 36
+          description: "ID of the project the organization unit belongs to. The system organization unit belongs to none."
         themeId:
           type: string
           format: uuid
@@ -1630,6 +2039,19 @@ components:
           type: string
           description: "Optional description of the organization unit"
           example: "Team responsible for frontend development and UI/UX"
+        projectId:
+          type: string
+          maxLength: 36
+          description: |
+            ID of the project the organization unit belongs to. Its parent is in the same project or is the
+            system organization unit, which every project shares and which belongs to no project. On the
+            Control Plane, every organization unit but the system one belongs to a project, so a create
+            without `projectId` fails with `OU-1023`, and a project that does not exist fails with
+            `OU-1022`. An update without `projectId` keeps the organization unit in its project, and an update
+            that names another project moves the organization unit and its descendants there. A move
+            that reaches a declarative descendant moves nothing and fails with `OU-1012`, and a move out of
+            a project while the organization unit or a descendant holds resources fails with `OU-1027`.
+            A server without projects keeps the `projectId` it receives without checking it.
         themeId:
           type: string
           format: uuid
@@ -1693,6 +2115,19 @@ components:
           type: string
           description: "Optional description of the organization unit"
           example: "Team responsible for frontend development and UI/UX"
+        projectId:
+          type: string
+          maxLength: 36
+          description: |
+            ID of the project the organization unit belongs to. Its parent is in the same project or is the
+            system organization unit, which every project shares and which belongs to no project. On the
+            Control Plane, every organization unit but the system one belongs to a project, so a create
+            without `projectId` fails with `OU-1023`, and a project that does not exist fails with
+            `OU-1022`. An update without `projectId` keeps the organization unit in its project, and an update
+            that names another project moves the organization unit and its descendants there. A move
+            that reaches a declarative descendant moves nothing and fails with `OU-1012`, and a move out of
+            a project while the organization unit or a descendant holds resources fails with `OU-1027`.
+            A server without projects keeps the `projectId` it receives without checking it.
         themeId:
           type: string
           format: uuid

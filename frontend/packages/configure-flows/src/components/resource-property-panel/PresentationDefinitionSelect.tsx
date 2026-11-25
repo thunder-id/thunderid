@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useGetVerifiablePresentations} from '@thunderid/configure-verifiable-credentials';
-import {FormControl, FormHelperText, FormLabel, MenuItem, TextField} from '@wso2/oxygen-ui';
+import {useProjectScope} from '@thunderid/contexts';
+import {MenuItem, TextField} from '@wso2/oxygen-ui';
 import type {ChangeEvent, ReactElement} from 'react';
 import {useTranslation} from 'react-i18next';
 
@@ -19,7 +20,8 @@ export interface PresentationDefinitionSelectProps {
 
 /**
  * A dropdown that lets a flow step pick a configured OpenID4VP presentation
- * definition (by handle) instead of typing a free-text id.
+ * definition (by handle) instead of typing a free-text id. Inside a project it offers the project's
+ * definitions, since a deploy of the project carries only its own.
  */
 export default function PresentationDefinitionSelect({
   propertyKey,
@@ -28,30 +30,31 @@ export default function PresentationDefinitionSelect({
   errorMessage = '',
 }: PresentationDefinitionSelectProps): ReactElement {
   const {t} = useTranslation();
-  const {data, isLoading} = useGetVerifiablePresentations();
+  const {projectId} = useProjectScope();
+  const {data, isLoading} = useGetVerifiablePresentations(projectId);
   const options = data ?? [];
   const hasError = !!errorMessage;
 
   return (
-    <FormControl fullWidth sx={{mb: 3}} error={hasError}>
-      <FormLabel htmlFor={propertyKey}>{t('verifiable-presentations:select.label')}</FormLabel>
-      <TextField
-        select
-        fullWidth
-        id={propertyKey}
-        value={value ?? ''}
-        disabled={isLoading}
-        error={hasError}
-        onChange={(e: ChangeEvent<HTMLInputElement>) => onChange(e.target.value)}
-        placeholder={t('verifiable-presentations:select.placeholder')}
-      >
-        {options.map((vp) => (
-          <MenuItem key={vp.id} value={vp.handle}>
-            {vp.name ?? vp.handle}
-          </MenuItem>
-        ))}
-      </TextField>
-      {hasError && <FormHelperText error>{errorMessage}</FormHelperText>}
-    </FormControl>
+    <TextField
+      labelPlacement="top"
+      label={t('verifiable-presentations:select.label')}
+      select
+      fullWidth
+      sx={{mb: 3}}
+      id={propertyKey}
+      value={value ?? ''}
+      disabled={isLoading}
+      error={hasError}
+      helperText={hasError ? errorMessage : undefined}
+      onChange={(e: ChangeEvent<HTMLInputElement>) => onChange(e.target.value)}
+      placeholder={t('verifiable-presentations:select.placeholder')}
+    >
+      {options.map((vp) => (
+        <MenuItem key={vp.id} value={vp.handle}>
+          {vp.name ?? vp.handle}
+        </MenuItem>
+      ))}
+    </TextField>
   );
 }

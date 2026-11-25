@@ -3,15 +3,18 @@
 
 import {SettingsCard} from '@thunderid/components';
 import {useGetUsers} from '@thunderid/configure-users';
-import {FormControl, FormLabel, MenuItem, Select, Typography} from '@wso2/oxygen-ui';
+import {MenuItem, Select, Typography} from '@wso2/oxygen-ui';
 import {useMemo, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import type {Agent} from '../../../models/agent';
+import {PERSONAL_AGENT_KIND, type Agent} from '../../../models/agent';
+import AgentOwnerField from '../../AgentOwnerField';
 
 interface OwnerSectionProps {
   agent: Agent;
   editedAgent: Partial<Agent>;
   onFieldChange: (field: keyof Agent, value: unknown) => void;
+  /** Whether the signed-in admin may change the agent here. */
+  readOnly?: boolean;
 }
 
 interface UserOption {
@@ -27,7 +30,15 @@ const formatUserLabel = (user: {id: string; display?: string; attributes?: Recor
   return username ?? email ?? user.id;
 };
 
-export default function OwnerSection({agent, editedAgent, onFieldChange}: OwnerSectionProps): JSX.Element {
+/**
+ * Shows and edits the agent's owner. A read-only agent's owner, and a personal agent's, cannot be changed.
+ */
+export default function OwnerSection({
+  agent,
+  editedAgent,
+  onFieldChange,
+  readOnly = false,
+}: OwnerSectionProps): JSX.Element {
   const {t} = useTranslation();
 
   const {data: usersData, isLoading: usersLoading} = useGetUsers({limit: 100, offset: 0});
@@ -37,38 +48,65 @@ export default function OwnerSection({agent, editedAgent, onFieldChange}: OwnerS
     [usersData],
   );
 
-  const ownerId = editedAgent.owner ?? agent.owner ?? '';
+  const owner = editedAgent.owner ?? agent.owner;
+  // An owner managed in another identity system is not one of these users, so the picker shows none.
+  const internalOwnerId = owner?.isLocal === false ? '' : (owner?.id ?? '');
+  // A personal agent keeps the owner it was registered for.
+  const isPersonal = agent.kind === PERSONAL_AGENT_KIND;
+  const isOwnerLocked = readOnly || isPersonal;
 
   return (
     <SettingsCard
       title={t('agents:edit.general.sections.owner.title', 'Owner')}
-      description={t('agents:edit.general.sections.owner.description', 'The user accountable for this agent.')}
-    >
-      <FormControl fullWidth size="small">
-        <FormLabel htmlFor="agent-owner-select">{t('agents:edit.general.sections.owner.label', 'Owner')}</FormLabel>
-        <Select
-          id="agent-owner-select"
-          value={ownerId}
-          displayEmpty
-          disabled={usersLoading || agent.isReadOnly}
-          onChange={(e) => onFieldChange('owner', e.target.value || undefined)}
-          renderValue={(selected) =>
-            !selected ? (
-              <Typography color="text.secondary" variant="body2">
-                {t('agents:edit.general.owner.empty', 'No owner assigned')}
-              </Typography>
-            ) : (
-              (options.find((opt) => opt.id === selected)?.label ?? selected)
+      description={
+        isPersonal
+          ? t(
+              'agents:edit.general.sections.owner.personalDescription',
+              'The user this personal agent acts for. It keeps the owner it was registered for.',
             )
-          }
-        >
-          {options.map((opt) => (
-            <MenuItem key={opt.id} value={opt.id}>
-              {opt.label}
-            </MenuItem>
-          ))}
-        </Select>
-      </FormControl>
+          : t('agents:edit.general.sections.owner.description', 'The user accountable for this agent.')
+      }
+    >
+      <AgentOwnerField
+        id="agent-owner"
+        size="small"
+        initialOwner={agent.owner}
+        disabled={isOwnerLocked}
+        // Choosing Internal again leaves the saved owner in place until a user is picked.
+        onExternalChange={(external) => onFieldChange('owner', external)}
+        internalPicker={
+          <Select
+            id="agent-owner-select"
+            labelId="agent-owner-label"
+            size="small"
+            fullWidth
+            value={internalOwnerId}
+            displayEmpty
+            disabled={usersLoading || isOwnerLocked}
+            onChange={(e) =>
+              onFieldChange(
+                'owner',
+                e.target.value ? {id: String(e.target.value), idType: 'uuid', isLocal: true} : undefined,
+              )
+            }
+            renderValue={(selected) =>
+              !selected ? (
+                <Typography color="text.secondary" variant="body2">
+                  {t('agents:edit.general.owner.empty', 'No owner assigned')}
+                </Typography>
+              ) : (
+                (options.find((opt) => opt.id === selected)?.label ?? selected)
+              )
+            }
+          >
+            {options.map((opt) => (
+              <MenuItem key={opt.id} value={opt.id}>
+                {opt.label}
+              </MenuItem>
+            ))}
+          </Select>
+        }
+      />
     </SettingsCard>
   );
 }

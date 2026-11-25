@@ -18,8 +18,11 @@ import (
 	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -28,7 +31,9 @@ import (
 // valueCapturer is optional. Given one, the service hands it every application it creates or changes,
 // so the values the application's export refers to are kept where a reference finds them.
 //
-// projectResolver is nil on a deployment that serves no projects, where a project is never found.
+// projectValidator is nil on a deployment that serves no projects, where a project ID is kept unchecked.
+// bus is required: the service publishes the audit event of every application it creates, updates or
+// deletes on it.
 func Initialize(
 	mux *http.ServeMux,
 	mcpServer *mcp.Server,
@@ -40,14 +45,21 @@ func Initialize(
 	serverConfigSvc serverconfig.ServerConfigService,
 	artifactLifetime artifactLifetimeResolver,
 	sharingService sharing.SharingServiceInterface,
+	authzService sysauthz.SystemAuthorizationServiceInterface,
 	valueCapturer declarativeresource.ValueCapturer,
 	governance identitygovernance.IdentityGovernanceServiceInterface,
-	projectResolver projectOUResolver,
+	projectValidator projectOUValidator,
+	bus eventbus.EventBusInterface,
 ) (ApplicationServiceInterface, declarativeresource.ResourceExporter, error) {
+	if bus == nil {
+		return nil, nil, errNilEventBus
+	}
+
 	appService := newApplicationService(
 		inboundClient, entityService, ouService, i18nService, cryptoSvc, serverConfigSvc, artifactLifetime,
-		valueCapturer, sharingService, governance, projectResolver,
+		valueCapturer, sharingService, authzService, governance, projectValidator, bus,
 	)
+	appService.(*applicationService).managed = managedresource.GetStore()
 
 	// Registered before declarative resources load, because loading seeds the sharing policies those
 	// files declare and the framework refuses a type it does not know.
@@ -85,7 +97,7 @@ func Initialize(
 		registerMCPTools(mcpServer, appService)
 	}
 
-	exporter := newApplicationExporter(appService, sharingService)
+	exporter := newApplicationExporter(appService, entityService, sharingService)
 	return appService, exporter, nil
 }
 
@@ -141,6 +153,14 @@ func registerRoutes(mux *http.ServeMux, appHandler *applicationHandler) {
 		}, opts3))
 	mux.HandleFunc(middleware.WithCORS("GET /applications/{id}/overlay-rules",
 		appHandler.HandleOverlayRuleGetRequest, opts3))
+	mux.HandleFunc(middleware.WithCORS("POST /applications/{id}/client-secret/regenerate",
+		appHandler.HandleClientSecretRegenerateRequest, opts3))
+	// Without its own preflight route this action falls to OPTIONS /applications/, which does not
+	// allow POST, and the browser blocks the request.
+	mux.HandleFunc(middleware.WithCORS("OPTIONS /applications/{id}/client-secret/regenerate",
+		func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}, opts3))
 
 	opts4 := middleware.CORSOptions{
 		AllowedMethods:   []string{"GET", "PUT", "DELETE"},

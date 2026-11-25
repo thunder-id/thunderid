@@ -13,7 +13,7 @@ I have an Android application (Kotlin, Jetpack Compose) and I want to integrate 
 
 ## Configuration
 - **Application ID**: {{applicationId}}
-- **Base URL**: https://10.0.2.2:8090 on the Android Emulator (or your {{productName}} instance URL; use your host machine's LAN IP instead of `10.0.2.2` on a physical device — `localhost` refers to the device itself, not the host)
+- **Base URL**: {{baseUrl}} (if it points to `localhost`, use `10.0.2.2` on the Android Emulator or your host machine's LAN IP on a physical device, since `localhost` refers to the device itself, not the host)
 - **SDK**: JitPack coordinate `com.github.thunder-id:android-sdks:<latest-release-tag>`
 
 ## IMPORTANT Configuration Rules

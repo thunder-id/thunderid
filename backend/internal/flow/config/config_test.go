@@ -4,11 +4,14 @@
 package flowconfig
 
 import (
+	"context"
 	"testing"
 	"time"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
@@ -36,7 +39,8 @@ func (s *FlowConfigTestSuite) TestFromServerRuntime() {
 		Server: engineconfig.ServerConfig{
 			HTTPOnly: true,
 		},
-		JWT: engineconfig.JWTConfig{Leeway: 30},
+		JWT:        engineconfig.JWTConfig{Leeway: 30},
+		GateClient: engineconfig.GateClientConfig{Hostname: "signin.example.org"},
 	}
 	err := config.InitializeServerRuntime("/tmp/test-flow-config", cfg)
 	s.Require().NoError(err)
@@ -45,6 +49,7 @@ func (s *FlowConfigTestSuite) TestFromServerRuntime() {
 
 	s.False(result.SecureCookies, "HTTPOnly deployment must not mark cookies Secure")
 	s.Equal(30*time.Second, result.TokenLeeway)
+	s.Equal("signin.example.org", result.GateHostname)
 	// Session config is sourced from the server-config section at the composition root, not here.
 	s.Zero(result.Session.IdleTimeoutSeconds)
 	s.Zero(result.Session.AbsoluteTimeoutSeconds)
@@ -78,4 +83,31 @@ func (s *FlowConfigTestSuite) TestFromServerRuntimeSecureCookies() {
 			s.Equal(tc.want, FromServerRuntime().SecureCookies)
 		})
 	}
+}
+
+func (s *FlowConfigTestSuite) TestReadFlowSectionConfig() {
+	section := FlowSectionConfig{DefaultReturnURL: "https://home.example.com"}
+	testCases := []struct {
+		name     string
+		merged   any
+		svcErr   *tidcommon.ServiceError
+		expected FlowSectionConfig
+	}{
+		{"Section", section, nil, section},
+		{"ReadError", nil, &tidcommon.InternalServerError, FlowSectionConfig{}},
+		{"UnexpectedType", "not a section", nil, FlowSectionConfig{}},
+	}
+
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			reader := NewServerConfigReaderMock(s.T())
+			reader.EXPECT().GetMergedConfig(mock.Anything, "flow").Return(tc.merged, tc.svcErr).Once()
+
+			s.Equal(tc.expected, ReadFlowSectionConfig(context.Background(), reader))
+		})
+	}
+}
+
+func (s *FlowConfigTestSuite) TestReadFlowSectionConfig_NilReader() {
+	s.Equal(FlowSectionConfig{}, ReadFlowSectionConfig(context.Background(), nil))
 }

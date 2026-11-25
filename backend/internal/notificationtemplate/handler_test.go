@@ -247,3 +247,20 @@ func (s *HandlerTestSuite) TestHandleTemplatePut_NotFound() {
 	s.Require().Equal(http.StatusNotFound, w.Code)
 	s.Require().Equal(ErrorTemplateNotFound.Code, errorCode(w.Body.Bytes()))
 }
+
+func (s *HandlerTestSuite) TestHandleTemplateList_ByProject() {
+	s.mockService.On("ListTemplatesByProject", mock.Anything, ChannelTypeEmail, "proj-1", 30, 0).
+		Return(&TemplateListResponse{
+			TotalResults: 1,
+			Count:        1,
+			Templates:    []TemplateSummary{{ID: "1", Handle: "otp", DisplayName: "OTP", ProjectID: "proj-1"}},
+		}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/notification-templates/email/templates?projectId=proj-1", nil)
+	req.SetPathValue("channel", string(ChannelTypeEmail))
+	w := httptest.NewRecorder()
+	s.handler.HandleTemplateListRequest(w, req)
+
+	s.Require().Equal(http.StatusOK, w.Code)
+	s.Require().Contains(w.Body.String(), `"projectId":"proj-1"`)
+}

@@ -179,6 +179,19 @@ describe('useNodeTypes', () => {
       expect(getByTestId('static-step-factory')).toHaveAttribute('data-type', StaticStepTypes.Start);
     });
 
+    it('should draw a step that is also a static step type with the static node', () => {
+      const {result} = renderUseNodeTypes({
+        steps: [createMockStep({id: 'variables-1', type: StaticStepTypes.Variables as unknown as Step['type']})],
+      });
+
+      const VariablesNodeType = result.current.nodeTypes[StaticStepTypes.Variables];
+      const mockNodeProps = {id: 'variables-1', type: StaticStepTypes.Variables, data: {}} as unknown as NodeProps;
+
+      const {getByTestId, queryByTestId} = render(<VariablesNodeType {...mockNodeProps} />);
+      expect(getByTestId('static-step-factory')).toHaveAttribute('data-type', StaticStepTypes.Variables);
+      expect(queryByTestId('step-factory')).not.toBeInTheDocument();
+    });
+
     it('should handle empty steps array', () => {
       const {result} = renderUseNodeTypes({steps: []});
 

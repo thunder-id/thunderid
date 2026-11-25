@@ -7,6 +7,7 @@ import {
   useGetOrganizationUnit,
   useHasMultipleOUs,
 } from '@thunderid/configure-organization-units';
+import {useProjectScope} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {Alert, Box, Button, CircularProgress, Stack} from '@wso2/oxygen-ui';
 import {Home} from '@wso2/oxygen-ui-icons-react';
@@ -32,6 +33,19 @@ import type {CreateTemplateRequest} from '../models/requests';
 type CreateStep = 'organizationUnit' | 'template' | 'identity' | 'content';
 
 /**
+ * Props for the {@link NotificationTemplateCreatePage} component.
+ *
+ * @public
+ */
+export interface NotificationTemplateCreatePageProps {
+  /**
+   * Whether a template is created in a project only. When set, the page returns to the list outside a
+   * selected project, since a template created there would be refused.
+   */
+  createInProjectsOnly?: boolean;
+}
+
+/**
  * Full-screen wizard to create a notification template. When the deployment has more than one
  * organization unit, the first step picks the owning OU (set at creation, immutable); single-OU
  * deployments skip it and adopt the only OU. The remaining steps choose a starting point (an empty
@@ -40,7 +54,9 @@ type CreateStep = 'organizationUnit' | 'template' | 'identity' | 'content';
  *
  * @public
  */
-export default function NotificationTemplateCreatePage(): JSX.Element {
+export default function NotificationTemplateCreatePage({
+  createInProjectsOnly = false,
+}: NotificationTemplateCreatePageProps): JSX.Element {
   const {t} = useTranslation('notificationTemplates');
   const navigate = useNavigate();
   const routes = useNotificationTemplateRoutes();
@@ -58,7 +74,12 @@ export default function NotificationTemplateCreatePage(): JSX.Element {
     [templatesData],
   );
 
-  const {hasMultipleOUs, isLoading: isOuLoading, ouList} = useHasMultipleOUs();
+  // Inside a project the template goes to the system organization unit or one of the project's own, picked on
+  // the organization unit step. The step is offered only when the project has organization units; without
+  // any, the API places the template in the system organization unit.
+  const {projectId} = useProjectScope();
+  const isInProject = Boolean(projectId);
+  const {hasMultipleOUs, isLoading: isOuLoading, ouList} = useHasMultipleOUs(projectId);
 
   const [step, setStep] = useState<CreateStep>('organizationUnit');
   const [ouId, setOuId] = useState('');
@@ -73,7 +94,7 @@ export default function NotificationTemplateCreatePage(): JSX.Element {
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   // A single-OU deployment adopts its only OU; otherwise the user's pick on the OU step.
-  const soleOuId: string = !hasMultipleOUs && ouList.length === 1 ? ouList[0].id : '';
+  const soleOuId: string = !isInProject && !hasMultipleOUs && ouList.length === 1 ? ouList[0].id : '';
   const effectiveOuId: string = ouId !== '' ? ouId : soleOuId;
   const {data: resolvedOrganizationUnit, isLoading: isResolvedOuLoading} = useGetOrganizationUnit(
     effectiveOuId,
@@ -118,7 +139,11 @@ export default function NotificationTemplateCreatePage(): JSX.Element {
     if (!identityReady || !contentReady) return;
     setSubmitError(null);
 
-    const base = {handle: handle.trim(), ouId: effectiveOuId, displayName: displayName.trim()};
+    const base = {
+      handle: handle.trim(),
+      ...(isInProject ? {projectId, ...(effectiveOuId ? {ouId: effectiveOuId} : {})} : {ouId: effectiveOuId}),
+      displayName: displayName.trim(),
+    };
     const data: CreateTemplateRequest = isEmail
       ? {...base, design: {colorScheme}, content: {subject: subject.trim(), body}}
       : {...base, content: {body}};
@@ -158,6 +183,9 @@ export default function NotificationTemplateCreatePage(): JSX.Element {
   if (!channelValid) {
     return <Navigate to={routes.notificationTemplates.list()} replace />;
   }
+  if (createInProjectsOnly && !isInProject) {
+    return <Navigate to={routes.notificationTemplates.channel(channel)} replace />;
+  }
 
   const stepIndex = steps.indexOf(effectiveStep);
   const isFirstStep = stepIndex === 0;
@@ -187,6 +215,7 @@ export default function NotificationTemplateCreatePage(): JSX.Element {
             "Choose the organization unit that will own this template. You can't change this once created.",
           )}
           value={effectiveOuId}
+          projectId={projectId}
           onChange={(value: string): void => {
             setSubmitError(null);
             setOuId(value);

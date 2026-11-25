@@ -209,3 +209,13 @@ var (
 		},
 	}
 )
+
+// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+var errNilEventBus = errors.New("the HTTP connection service needs an event bus")
+
+// errConnectionNotFoundNoop is returned by deleteHTTPConnection when the connection does not exist.
+// DeleteHTTPConnection turns it into a success, so it never reaches a caller.
+var errConnectionNotFoundNoop = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: ErrorNotFound.Code,
+}

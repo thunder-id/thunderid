@@ -76,6 +76,7 @@ if (step3.flowStatus === EmbeddedRecoveryFlowStatusV2.Complete) {
 | `type` | `EmbeddedRecoveryFlowTypeV2` | `View` or `Redirection` |
 | `data` | `EmbeddedFlowResponseDataV2` | Component tree or redirect data |
 | `challengeToken` | `string` | Present when a verification step is required |
+| `expiresIn` | `number` | Present when `flowStatus` is `Incomplete`. How many seconds the execution stays valid |
 | `error` | `FlowExecutionError` | Present when `flowStatus` is `Error`. Contains `code`, `message`, and `description` |
 
 ## Enums

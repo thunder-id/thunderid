@@ -96,6 +96,19 @@ describe('useGetFlows', () => {
     });
   });
 
+  it('should list only the flows of the given project', async () => {
+    mockHttpRequest.mockResolvedValueOnce({data: mockFlowListResponse});
+
+    const {result} = renderHook(() => useGetFlows({projectId: 'project-1'}));
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+    expect(mockHttpRequest).toHaveBeenCalledWith(
+      expect.objectContaining({url: 'https://localhost:8090/flows?limit=30&offset=0&projectId=project-1'}),
+    );
+  });
+
   it('should fetch flows with custom pagination parameters', async () => {
     mockHttpRequest.mockResolvedValueOnce({
       data: mockFlowListResponse,

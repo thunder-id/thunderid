@@ -8,10 +8,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
-
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -19,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
@@ -39,6 +39,10 @@ func (s *stubDependencyRegistry) GetDependencies(
 
 func (s *stubDependencyRegistry) CascadeDelete(context.Context, string, string) (int, error) {
 	return 0, nil
+}
+
+func (s *stubDependencyRegistry) SuspensionDependents(context.Context, string, string) ([]string, error) {
+	return nil, nil
 }
 
 func (s *stubDependencyRegistry) ValidateReferenceUpdate(
@@ -234,6 +238,7 @@ func (suite *OrganizationUnitServiceTestSuite) newServiceWithResolvers(
 		transactioner: mtx,
 		userResolver:  userResolver,
 		groupResolver: groupResolver,
+		bus:           discardingBus{},
 	}
 }
 
@@ -249,21 +254,7 @@ func (suite *OrganizationUnitServiceTestSuite) newServiceWithRoleResolver(
 		authzService:  authzService,
 		transactioner: mtx,
 		roleResolver:  roleResolver,
-	}
-}
-
-func (suite *OrganizationUnitServiceTestSuite) newServiceWithFlowResolver(
-	store *organizationUnitStoreInterfaceMock,
-	authzService *sysauthzmock.SystemAuthorizationServiceInterfaceMock,
-	flowResolver ouFlowResolver,
-) *organizationUnitService {
-	mtx := new(mockTransactioner)
-	mtx.On("Transact", mock.Anything, mock.Anything).Return(nil).Maybe()
-	return &organizationUnitService{
-		ouStore:       store,
-		authzService:  authzService,
-		transactioner: mtx,
-		flowResolver:  flowResolver,
+		bus:           discardingBus{},
 	}
 }
 
@@ -288,6 +279,7 @@ func newAllowAllAuthz(t interface {
 		Return(true, nil).Maybe()
 	authzMock.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
 		Return(&sysauthz.AccessibleResources{AllAllowed: true}, nil).Maybe()
+	authzMock.On("GetBoundary", mock.Anything).Return(sysauthz.Boundary{Type: sysauthz.BoundaryTypeDeployment}).Maybe()
 	return authzMock
 }
 
@@ -419,19 +411,16 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 }
 
 func (suite *OrganizationUnitServiceTestSuite) TestOUService_SetResolvers() {
-	service := &organizationUnitService{}
+	service := &organizationUnitService{bus: discardingBus{}}
 
 	userResolver := new(OUUserResolverMock)
 	groupResolver := new(OUGroupResolverMock)
-	flowResolver := newOuFlowResolverMock(suite.T())
 
 	service.SetOUUserResolver(userResolver)
 	service.SetOUGroupResolver(groupResolver)
-	service.SetOUFlowResolver(flowResolver)
 
 	suite.Require().Equal(userResolver, service.userResolver)
 	suite.Require().Equal(groupResolver, service.groupResolver)
-	suite.Require().Equal(flowResolver, service.flowResolver)
 }
 
 func (suite *OrganizationUnitServiceTestSuite) TestOUService_CreateOrganizationUnit() {
@@ -635,26 +624,6 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_CreateOrganizationU
 	}
 }
 
-func (suite *OrganizationUnitServiceTestSuite) TestOUService_CreateOrganizationUnit_InvalidDefaultFlow() {
-	store := newOrganizationUnitStoreInterfaceMock(suite.T())
-	flowResolver := newOuFlowResolverMock(suite.T())
-	flowResolver.On("IsValidFlow", mock.Anything, "bad-auth-flow", providers.FlowTypeAuthentication).
-		Return(false, nil).Once()
-
-	service := suite.newServiceWithFlowResolver(store, newAllowAllAuthz(suite.T()), flowResolver)
-	result, err := service.CreateOrganizationUnit(context.Background(), OrganizationUnitRequestWithID{
-		Handle:     "finance",
-		Name:       "Finance",
-		AuthFlowID: "bad-auth-flow",
-	})
-
-	suite.Require().NotNil(err)
-	suite.Require().Equal(ErrorInvalidAuthFlowID, *err)
-	suite.Require().Equal(OrganizationUnit{}, result)
-	store.AssertNumberOfCalls(suite.T(), "CheckOrganizationUnitNameConflict", 0)
-	store.AssertNumberOfCalls(suite.T(), "CreateOrganizationUnit", 0)
-}
-
 func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit() {
 	testCases := []struct {
 		name    string
@@ -707,6 +676,55 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 			}
 		})
 	}
+}
+
+// A handle path that names no organization unit is refused, as a path out of reach is, for a caller confined to the
+// organization unit its token names, so a path tells it nothing about units outside its reach. A caller holding the
+// system root permission, or one the deployment does not confine, is told the unit is not found.
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_PathNamingNoUnitForAConfinedCaller() {
+	security.ForEachPermissionPlaneForTest(func(plane string) {
+		if plane != "DataPlane" {
+			return
+		}
+		confined := func(permissions ...string) context.Context {
+			return security.WithSecurityContextTest(context.Background(),
+				security.NewSecurityContextForTest("admin-1", "ou-1", "", permissions, nil))
+		}
+		tests := []struct {
+			name     string
+			ctx      context.Context
+			boundary sysauthz.BoundaryType
+			want     tidcommon.ServiceError
+		}{
+			{name: "org in a unit", ctx: confined("org"), boundary: sysauthz.BoundaryTypeOU,
+				want: tidcommon.ErrorUnauthorized},
+			{name: "system in a unit", ctx: confined("system"), boundary: sysauthz.BoundaryTypeOU,
+				want: ErrorOrganizationUnitNotFound},
+			{name: "runtime", ctx: security.WithRuntimeContext(confined("org")), boundary: sysauthz.BoundaryTypeOU,
+				want: ErrorOrganizationUnitNotFound},
+			{name: "deployment boundary", ctx: confined("org"), boundary: sysauthz.BoundaryTypeDeployment,
+				want: ErrorOrganizationUnitNotFound},
+		}
+		for _, tc := range tests {
+			suite.Run(tc.name, func() {
+				store := newOrganizationUnitStoreInterfaceMock(suite.T())
+				store.On("GetOrganizationUnitByPath", mock.Anything, []string{"root", "gone"}).
+					Return(OrganizationUnit{}, ErrOrganizationUnitNotFound)
+				authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+				authz.On("GetBoundary", mock.Anything).
+					Return(sysauthz.Boundary{Type: tc.boundary, OUID: "ou-1"}).Maybe()
+				service := suite.newService(store, authz)
+
+				_, err := service.GetOrganizationUnitByPath(tc.ctx, "root/gone")
+				suite.Require().NotNil(err)
+				suite.Equal(tc.want.Code, err.Code)
+
+				_, err = service.GetOrganizationUnitChildrenByPath(tc.ctx, "root/gone", 10, 0, nil)
+				suite.Require().NotNil(err)
+				suite.Equal(tc.want.Code, err.Code)
+			})
+		}
+	})
 }
 
 func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnitByPath() {
@@ -1274,33 +1292,6 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_UpdateOrganizationU
 	}
 }
 
-func (suite *OrganizationUnitServiceTestSuite) TestOUService_UpdateOrganizationUnit_InvalidDefaultFlow() {
-	store := newOrganizationUnitStoreInterfaceMock(suite.T())
-	existing := OrganizationUnit{ID: "ou-1", Handle: "root", Name: "Root"}
-	store.On("GetOrganizationUnit", mock.Anything, "ou-1").
-		Return(existing, nil).
-		Once()
-	store.On("IsOrganizationUnitDeclarative", mock.Anything, "ou-1").
-		Return(false).
-		Once()
-
-	flowResolver := newOuFlowResolverMock(suite.T())
-	flowResolver.On("IsValidFlow", mock.Anything, "bad-signout-flow", providers.FlowTypeSignOut).
-		Return(false, nil).Once()
-
-	service := suite.newServiceWithFlowResolver(store, newAllowAllAuthz(suite.T()), flowResolver)
-	result, err := service.UpdateOrganizationUnit(context.Background(), "ou-1", OrganizationUnitRequestWithID{
-		Handle:        "root",
-		Name:          "Root",
-		SignOutFlowID: "bad-signout-flow",
-	})
-
-	suite.Require().NotNil(err)
-	suite.Require().Equal(ErrorInvalidSignOutFlowID, *err)
-	suite.Require().Equal(OrganizationUnit{}, result)
-	store.AssertNumberOfCalls(suite.T(), "UpdateOrganizationUnit", 0)
-}
-
 func (suite *OrganizationUnitServiceTestSuite) TestOUService_UpdateOrganizationUnitByPath() {
 	request := OrganizationUnitRequestWithID{Handle: "root", Name: "Root"}
 
@@ -1548,6 +1539,106 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetResourceDependen
 	})
 }
 
+// The system organization unit is the one the configuration names, and it must exist.
+// The project an organization unit belongs to is read without checking the caller's access.
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnitProjectID() {
+	for name, tc := range map[string]struct {
+		ou       OrganizationUnit
+		storeErr error
+		expected string
+		err      *tidcommon.ServiceError
+	}{
+		"a unit in a project":  {ou: OrganizationUnit{ID: testOUID, ProjectID: testProjectID}, expected: testProjectID},
+		"a unit in no project": {ou: OrganizationUnit{ID: testOUID}},
+		"a unit that does not exist": {
+			storeErr: ErrOrganizationUnitNotFound, err: &ErrorOrganizationUnitNotFound,
+		},
+		"a store error": {storeErr: errors.New("boom"), err: &tidcommon.InternalServerError},
+	} {
+		suite.Run(name, func() {
+			store := newOrganizationUnitStoreInterfaceMock(suite.T())
+			store.On("GetOrganizationUnit", mock.Anything, testOUID).Return(tc.ou, tc.storeErr).Once()
+			service := suite.newService(store, sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T()))
+
+			projectID, err := service.GetOrganizationUnitProjectID(context.Background(), testOUID)
+
+			suite.Equal(tc.err, err)
+			suite.Equal(tc.expected, projectID)
+		})
+	}
+}
+
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetSystemOUID() {
+	for name, tc := range map[string]struct {
+		systemOUID string
+		exists     bool
+		storeErr   error
+		expectErr  bool
+	}{
+		"configured and present": {systemOUID: "ou-1", exists: true},
+		"not configured":         {expectErr: true},
+		"missing":                {systemOUID: "ou-1", expectErr: true},
+		"store failure":          {systemOUID: "ou-1", storeErr: errors.New("boom"), expectErr: true},
+	} {
+		suite.Run(name, func() {
+			config.ResetServerRuntime()
+			cfg := &config.Config{}
+			cfg.Server.SystemOUID = tc.systemOUID
+			suite.Require().NoError(config.InitializeServerRuntime("/tmp/test", cfg))
+			store := newOrganizationUnitStoreInterfaceMock(suite.T())
+			if tc.systemOUID != "" {
+				store.On("IsOrganizationUnitExists", mock.Anything, tc.systemOUID).Return(tc.exists, tc.storeErr).Once()
+			}
+			service := suite.newService(store, newAllowAllAuthz(suite.T()))
+
+			ouID, svcErr := service.GetSystemOUID(context.Background())
+
+			if tc.expectErr {
+				suite.Empty(ouID)
+				suite.Equal(&tidcommon.InternalServerError, svcErr)
+				return
+			}
+			suite.Nil(svcErr)
+			suite.Equal(tc.systemOUID, ouID)
+		})
+	}
+}
+
+// The system organization unit cannot be deleted, by ID or by path, whatever depends on it.
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_DeleteSystemOrganizationUnit() {
+	config.ResetServerRuntime()
+	cfg := &config.Config{}
+	cfg.Server.SystemOUID = "ou-1"
+	suite.Require().NoError(config.InitializeServerRuntime("/tmp/test", cfg))
+
+	suite.Run("by ID", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		store.On("IsOrganizationUnitExists", mock.Anything, "ou-1").Return(true, nil).Once()
+		service := suite.newService(store, newAllowAllAuthz(suite.T()))
+		service.SetDependencyRegistry(&stubDependencyRegistry{resp: emptyDeps()})
+
+		err := service.DeleteOrganizationUnit(context.Background(), "ou-1")
+
+		suite.Require().NotNil(err)
+		suite.Equal(ErrorCannotDeleteSystemOU, *err)
+		store.AssertNotCalled(suite.T(), "DeleteOrganizationUnit", mock.Anything, mock.Anything)
+	})
+	suite.Run("by path", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		store.On("GetOrganizationUnitByPath", mock.Anything, []string{"default"}).
+			Return(OrganizationUnit{ID: "ou-1"}, nil).Once()
+		store.On("IsOrganizationUnitDeclarative", mock.Anything, "ou-1").Return(false).Once()
+		service := suite.newService(store, newAllowAllAuthz(suite.T()))
+		service.SetDependencyRegistry(&stubDependencyRegistry{resp: emptyDeps()})
+
+		err := service.DeleteOrganizationUnitByPath(context.Background(), "default")
+
+		suite.Require().NotNil(err)
+		suite.Equal(ErrorCannotDeleteSystemOU, *err)
+		store.AssertNotCalled(suite.T(), "DeleteOrganizationUnit", mock.Anything, mock.Anything)
+	})
+}
+
 func (suite *OrganizationUnitServiceTestSuite) TestOUService_DeleteOrganizationUnitByPath() {
 	suite.Run("invalid path", func() {
 		store := newOrganizationUnitStoreInterfaceMock(suite.T())
@@ -1761,6 +1852,10 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 			} else {
 				suite.Require().Nil(err)
 				suite.assertOUListResponse(resp, tc.wantResult)
+				for _, child := range resp.OrganizationUnits {
+					suite.Require().NotNil(child.Parent, "a child names the unit it was listed under")
+					suite.Equal("ou-1", *child.Parent)
+				}
 			}
 
 			if tc.wantErr == &ErrorInvalidLimit || tc.wantErr == &ErrorInvalidFilter {
@@ -1771,7 +1866,7 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 }
 
 func (suite *OrganizationUnitServiceTestSuite) TestOUService_validateOUHandle() {
-	service := &organizationUnitService{}
+	service := &organizationUnitService{bus: discardingBus{}}
 
 	suite.Run("blank handle", func() {
 		err := service.validateOUHandle("   ")
@@ -1786,111 +1881,6 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_validateOUHandle() 
 	suite.Run("valid handle", func() {
 		err := service.validateOUHandle("finance")
 		suite.Require().Nil(err)
-	})
-}
-
-func (suite *OrganizationUnitServiceTestSuite) TestOUService_validateDefaultFlows() {
-	suite.Run("no flow resolver configured skips validation", func() {
-		service := &organizationUnitService{}
-		err := service.validateDefaultFlows(context.Background(), OrganizationUnitRequestWithID{
-			AuthFlowID: "auth-flow-1",
-		})
-		suite.Require().Nil(err)
-	})
-
-	suite.Run("empty flow IDs are not validated", func() {
-		flowResolver := newOuFlowResolverMock(suite.T())
-		service := &organizationUnitService{flowResolver: flowResolver}
-		err := service.validateDefaultFlows(context.Background(), OrganizationUnitRequestWithID{})
-		suite.Require().Nil(err)
-		flowResolver.AssertNumberOfCalls(suite.T(), "IsValidFlow", 0)
-	})
-
-	suite.Run("all valid flows", func() {
-		flowResolver := newOuFlowResolverMock(suite.T())
-		flowResolver.On("IsValidFlow", mock.Anything, "auth-flow-1", providers.FlowTypeAuthentication).
-			Return(true, nil).Once()
-		flowResolver.On("IsValidFlow", mock.Anything, "reg-flow-1", providers.FlowTypeRegistration).
-			Return(true, nil).Once()
-		flowResolver.On("IsValidFlow", mock.Anything, "recovery-flow-1", providers.FlowTypeRecovery).
-			Return(true, nil).Once()
-		flowResolver.On("IsValidFlow", mock.Anything, "signout-flow-1", providers.FlowTypeSignOut).
-			Return(true, nil).Once()
-		service := &organizationUnitService{flowResolver: flowResolver}
-
-		err := service.validateDefaultFlows(context.Background(), OrganizationUnitRequestWithID{
-			AuthFlowID:         "auth-flow-1",
-			RegistrationFlowID: "reg-flow-1",
-			RecoveryFlowID:     "recovery-flow-1",
-			SignOutFlowID:      "signout-flow-1",
-		})
-
-		suite.Require().Nil(err)
-	})
-
-	suite.Run("invalid auth flow", func() {
-		flowResolver := newOuFlowResolverMock(suite.T())
-		flowResolver.On("IsValidFlow", mock.Anything, "bad-flow", providers.FlowTypeAuthentication).
-			Return(false, nil).Once()
-		service := &organizationUnitService{flowResolver: flowResolver}
-
-		err := service.validateDefaultFlows(context.Background(), OrganizationUnitRequestWithID{
-			AuthFlowID: "bad-flow",
-		})
-
-		suite.Require().Equal(ErrorInvalidAuthFlowID, *err)
-	})
-
-	suite.Run("invalid registration flow", func() {
-		flowResolver := newOuFlowResolverMock(suite.T())
-		flowResolver.On("IsValidFlow", mock.Anything, "bad-flow", providers.FlowTypeRegistration).
-			Return(false, nil).Once()
-		service := &organizationUnitService{flowResolver: flowResolver}
-
-		err := service.validateDefaultFlows(context.Background(), OrganizationUnitRequestWithID{
-			RegistrationFlowID: "bad-flow",
-		})
-
-		suite.Require().Equal(ErrorInvalidRegistrationFlowID, *err)
-	})
-
-	suite.Run("invalid recovery flow", func() {
-		flowResolver := newOuFlowResolverMock(suite.T())
-		flowResolver.On("IsValidFlow", mock.Anything, "bad-flow", providers.FlowTypeRecovery).
-			Return(false, nil).Once()
-		service := &organizationUnitService{flowResolver: flowResolver}
-
-		err := service.validateDefaultFlows(context.Background(), OrganizationUnitRequestWithID{
-			RecoveryFlowID: "bad-flow",
-		})
-
-		suite.Require().Equal(ErrorInvalidRecoveryFlowID, *err)
-	})
-
-	suite.Run("invalid signout flow", func() {
-		flowResolver := newOuFlowResolverMock(suite.T())
-		flowResolver.On("IsValidFlow", mock.Anything, "bad-flow", providers.FlowTypeSignOut).
-			Return(false, nil).Once()
-		service := &organizationUnitService{flowResolver: flowResolver}
-
-		err := service.validateDefaultFlows(context.Background(), OrganizationUnitRequestWithID{
-			SignOutFlowID: "bad-flow",
-		})
-
-		suite.Require().Equal(ErrorInvalidSignOutFlowID, *err)
-	})
-
-	suite.Run("flow resolver server error propagates", func() {
-		flowResolver := newOuFlowResolverMock(suite.T())
-		flowResolver.On("IsValidFlow", mock.Anything, "auth-flow-1", providers.FlowTypeAuthentication).
-			Return(false, &tidcommon.InternalServerError).Once()
-		service := &organizationUnitService{flowResolver: flowResolver}
-
-		err := service.validateDefaultFlows(context.Background(), OrganizationUnitRequestWithID{
-			AuthFlowID: "auth-flow-1",
-		})
-
-		suite.Require().Equal(tidcommon.InternalServerError, *err)
 	})
 }
 
@@ -2318,6 +2308,38 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 		suite.Contains(link.Href, "/organization-units/tree/engineering/users",
 			"pagination link %q href must use tree path, got %q", link.Rel, link.Href)
 	}
+}
+
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnitRoles_AccessDenied() {
+	store := newOrganizationUnitStoreInterfaceMock(suite.T())
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, security.ActionReadRole, mock.Anything).
+		Return(false, nil).Once()
+
+	service := suite.newServiceWithResolvers(store, authzMock, nil, nil)
+	service.roleResolver = NewOURoleResolverMock(suite.T())
+
+	resp, err := service.GetOrganizationUnitRoles(context.Background(), "ou-1", 5, 0)
+	suite.Require().Nil(resp)
+	suite.Require().Equal(tidcommon.ErrorUnauthorized.Code, err.Code)
+	store.AssertNumberOfCalls(suite.T(), "IsOrganizationUnitExists", 0)
+}
+
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnitRolesByPath_AccessDenied() {
+	store := newOrganizationUnitStoreInterfaceMock(suite.T())
+	store.On("GetOrganizationUnitByPath", mock.Anything, []string{"root"}).
+		Return(OrganizationUnit{ID: "ou-1"}, nil).Once()
+
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, security.ActionReadRole, mock.Anything).
+		Return(false, nil).Once()
+
+	service := suite.newServiceWithResolvers(store, authzMock, nil, nil)
+	service.roleResolver = NewOURoleResolverMock(suite.T())
+
+	resp, err := service.GetOrganizationUnitRolesByPath(context.Background(), "root", 5, 0)
+	suite.Require().Nil(resp)
+	suite.Require().Equal(tidcommon.ErrorUnauthorized.Code, err.Code)
 }
 
 func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnitUsersByPath_AccessDenied() {
@@ -2923,6 +2945,82 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_UpdateOrganizationU
 	})
 }
 
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_UpdateOrganizationUnit_ParentChangeAuthz() {
+	parentID := testParentOUID
+	otherParentID := "other-parent"
+
+	tests := []struct {
+		name          string
+		existing      *string
+		requested     *string
+		checksCreate  bool
+		createAllowed bool
+	}{
+		{name: "moving to root is refused without root creation", existing: &parentID, requested: nil,
+			checksCreate: true, createAllowed: false},
+		{name: "moving to root is allowed with root creation", existing: &parentID, requested: nil,
+			checksCreate: true, createAllowed: true},
+		{name: "moving under another parent is refused without creation there", existing: &parentID,
+			requested: &otherParentID, checksCreate: true, createAllowed: false},
+		{name: "moving under another parent is allowed with creation there", existing: &parentID,
+			requested: &otherParentID, checksCreate: true, createAllowed: true},
+		{name: "updating a root without moving it needs only the update", existing: nil, requested: nil},
+	}
+
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			store := newOrganizationUnitStoreInterfaceMock(suite.T())
+			store.On("GetOrganizationUnit", mock.Anything, testOUID).
+				Return(OrganizationUnit{ID: testOUID, Handle: "finance", Name: "Finance", Parent: tc.existing}, nil).
+				Once()
+			store.On("IsOrganizationUnitDeclarative", mock.Anything, testOUID).Return(false).Once()
+			wantUpdated := !tc.checksCreate || tc.createAllowed
+			if wantUpdated {
+				if tc.requested != nil {
+					store.On("IsOrganizationUnitExists", mock.Anything, *tc.requested).Return(true, nil).Once()
+					store.On("GetOrganizationUnit", mock.Anything, *tc.requested).
+						Return(OrganizationUnit{ID: *tc.requested}, nil).Once()
+				}
+				if !stringPtrEqual(tc.existing, tc.requested) {
+					store.On("CheckOrganizationUnitNameConflict", mock.Anything, "Finance", tc.requested).
+						Return(false, nil).Once()
+					store.On("CheckOrganizationUnitHandleConflict", mock.Anything, "finance", tc.requested).
+						Return(false, nil).Once()
+				}
+				store.On("UpdateOrganizationUnit", mock.Anything, mock.Anything).Return(nil).Once()
+			}
+
+			// The mock refuses any call it does not expect, so an update that is not a move fails if it checks
+			// creation.
+			authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+			authzMock.On("IsActionAllowed", mock.Anything, security.ActionUpdateOU,
+				mock.MatchedBy(func(c *sysauthz.ActionContext) bool { return c.OUID == testOUID })).
+				Return(true, nil).Once()
+			if tc.checksCreate {
+				newParentID := ""
+				if tc.requested != nil {
+					newParentID = *tc.requested
+				}
+				authzMock.On("IsActionAllowed", mock.Anything, security.ActionCreateOU,
+					mock.MatchedBy(func(c *sysauthz.ActionContext) bool { return c.OUID == newParentID })).
+					Return(tc.createAllowed, nil).Once()
+			}
+
+			service := suite.newService(store, authzMock)
+			_, err := service.UpdateOrganizationUnit(context.Background(), testOUID,
+				OrganizationUnitRequestWithID{Handle: "finance", Name: "Finance", Parent: tc.requested})
+
+			if wantUpdated {
+				suite.Require().Nil(err)
+			} else {
+				suite.Require().NotNil(err)
+				suite.Equal(tidcommon.ErrorUnauthorized.Code, err.Code)
+				store.AssertNotCalled(suite.T(), "UpdateOrganizationUnit", mock.Anything, mock.Anything)
+			}
+		})
+	}
+}
+
 func (suite *OrganizationUnitServiceTestSuite) TestOUService_StringPtrEqual() {
 	suite.Run("both nil", func() {
 		suite.Require().True(stringPtrEqual(nil, nil))
@@ -3016,6 +3114,22 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 			},
 			wantErr: &ErrorResultLimitExceeded,
 		},
+		{
+			name:   "list all count out of bounds",
+			limit:  10,
+			offset: 0,
+			setupAuthz: func(authz *sysauthzmock.SystemAuthorizationServiceInterfaceMock) {
+				authz.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
+					Return(&sysauthz.AccessibleResources{AllAllowed: true}, nil).
+					Once()
+			},
+			setupStore: func(store *organizationUnitStoreInterfaceMock) {
+				store.On("GetOrganizationUnitListCount", mock.Anything, mock.Anything).
+					Return(0, ErrResultLimitExceededInCompositeMode).
+					Once()
+			},
+			wantErr: &ErrorResultLimitExceeded,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -3031,7 +3145,7 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 				tc.setupAuthz(authz)
 			}
 
-			service := &organizationUnitService{ouStore: store, authzService: authz}
+			service := &organizationUnitService{ouStore: store, authzService: authz, bus: discardingBus{}}
 			resp, err := service.GetOrganizationUnitList(context.Background(), tc.limit, tc.offset, nil)
 
 			if tc.wantErr != nil {
@@ -3181,9 +3295,9 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_listAccessibleOrgan
 			if tc.setupStore != nil {
 				tc.setupStore(store)
 			}
-			service := &organizationUnitService{ouStore: store}
+			service := &organizationUnitService{ouStore: store, bus: discardingBus{}}
 			resp, err := service.listAccessibleOrganizationUnits(
-				context.Background(), tc.ids, tc.limit, tc.offset, tc.filter)
+				context.Background(), tc.ids, "", tc.limit, tc.offset, tc.filter)
 
 			if tc.wantErr != nil {
 				suite.Require().NotNil(err)
@@ -3203,7 +3317,7 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_IsOrganizationUnitD
 	store := newOrganizationUnitStoreInterfaceMock(suite.T())
 	store.On("IsOrganizationUnitDeclarative", mock.Anything, "ou-1").Return(true).Once()
 
-	service := &organizationUnitService{ouStore: store}
+	service := &organizationUnitService{ouStore: store, bus: discardingBus{}}
 	res := service.IsOrganizationUnitDeclarative(context.Background(), "ou-1")
 	suite.Require().True(res)
 	store.AssertExpectations(suite.T())
@@ -3211,7 +3325,7 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_IsOrganizationUnitD
 
 func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnitHandlesByIDs() {
 	suite.Run("empty ids returns empty map", func() {
-		service := &organizationUnitService{}
+		service := &organizationUnitService{bus: discardingBus{}}
 		result, svcErr := service.GetOrganizationUnitHandlesByIDs(
 			context.Background(), []string{})
 		suite.Require().Nil(svcErr)
@@ -3226,7 +3340,7 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 				{ID: "ou-2", Handle: "handle-2"},
 			}, nil).Once()
 
-		service := &organizationUnitService{ouStore: store}
+		service := &organizationUnitService{ouStore: store, bus: discardingBus{}}
 		result, svcErr := service.GetOrganizationUnitHandlesByIDs(
 			context.Background(), []string{"ou-1", "ou-2"})
 		suite.Require().Nil(svcErr)
@@ -3241,7 +3355,7 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 		store.On("GetOrganizationUnitsByIDs", mock.Anything, []string{"ou-1"}).
 			Return(nil, errors.New("db error")).Once()
 
-		service := &organizationUnitService{ouStore: store}
+		service := &organizationUnitService{ouStore: store, bus: discardingBus{}}
 		result, svcErr := service.GetOrganizationUnitHandlesByIDs(
 			context.Background(), []string{"ou-1"})
 		suite.Require().Nil(result)
@@ -3249,4 +3363,1022 @@ func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnit
 		suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 		store.AssertExpectations(suite.T())
 	})
+}
+
+func TestConfiguredSystemOUID(t *testing.T) {
+	t.Cleanup(config.ResetServerRuntime)
+
+	config.ResetServerRuntime()
+	assert.Empty(t, configuredSystemOUID(), "no runtime names no system organization unit")
+
+	cfg := &config.Config{}
+	cfg.Server.SystemOUID = "system-ou"
+	require.NoError(t, config.InitializeServerRuntime("/tmp/test", cfg))
+	assert.Equal(t, "system-ou", configuredSystemOUID())
+}
+
+const (
+	testProjectID      = "019a0000-0000-7000-8000-0000000000a1"
+	testOtherProjectID = "019a0000-0000-7000-8000-0000000000a2"
+	testSystemOUID     = "system-ou"
+)
+
+// useSystemOU names the system organization unit in the deployment configuration.
+func (suite *OrganizationUnitServiceTestSuite) useSystemOU() {
+	config.ResetServerRuntime()
+	cfg := &config.Config{}
+	cfg.Server.SystemOUID = testSystemOUID
+	suite.Require().NoError(config.InitializeServerRuntime("/tmp/test", cfg))
+}
+
+// newProjectService builds a service on a deployment that serves projects, checking them with checker.
+func (suite *OrganizationUnitServiceTestSuite) newProjectService(
+	store *organizationUnitStoreInterfaceMock, checker projectChecker,
+) *organizationUnitService {
+	service := suite.newService(store, newAllowAllAuthz(suite.T()))
+	service.projectRequired = true
+	service.hierarchy = newOUHierarchyEnumerator(store)
+	service.SetProjectChecker(checker)
+	return service
+}
+
+// expectCreate expects a root or child organization unit to be created in the given project.
+func expectCreate(store *organizationUnitStoreInterfaceMock, parent *string, projectID string) {
+	store.On("CheckOrganizationUnitNameConflict", mock.Anything, "Finance", parent).Return(false, nil).Once()
+	store.On("CheckOrganizationUnitHandleConflict", mock.Anything, "finance", parent).Return(false, nil).Once()
+	store.On("CreateOrganizationUnit", mock.Anything, mock.MatchedBy(func(ou OrganizationUnit) bool {
+		return ou.ProjectID == projectID
+	})).Return(nil).Once()
+}
+
+// On a deployment that serves projects, an organization unit belongs to an existing project, and its parent is
+// in the same project.
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_CreateOrganizationUnit_Project() {
+	parentID := testParentOUID
+	request := func(projectID string, parent *string) OrganizationUnitRequestWithID {
+		return OrganizationUnitRequestWithID{Handle: "finance", Name: "Finance", ProjectID: projectID, Parent: parent}
+	}
+
+	suite.Run("requires a project", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		service := suite.newProjectService(store, newProjectCheckerMock(suite.T()))
+
+		_, err := service.CreateOrganizationUnit(context.Background(), request("", nil))
+
+		suite.Equal(&ErrorProjectRequired, err)
+	})
+
+	suite.Run("refuses a project that does not exist", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		checker := newProjectCheckerMock(suite.T())
+		checker.EXPECT().ProjectExists(mock.Anything, testProjectID).Return(false, nil).Once()
+		service := suite.newProjectService(store, checker)
+
+		_, err := service.CreateOrganizationUnit(context.Background(), request(testProjectID, nil))
+
+		suite.Equal(&ErrorInvalidProject, err)
+	})
+
+	suite.Run("fails when the project cannot be checked", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		checker := newProjectCheckerMock(suite.T())
+		checker.EXPECT().ProjectExists(mock.Anything, testProjectID).
+			Return(false, &tidcommon.InternalServerError).Once()
+		service := suite.newProjectService(store, checker)
+
+		_, err := service.CreateOrganizationUnit(context.Background(), request(testProjectID, nil))
+
+		suite.Equal(&tidcommon.InternalServerError, err)
+	})
+
+	suite.Run("refuses a parent in another project", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		store.On("IsOrganizationUnitExists", mock.Anything, parentID).Return(true, nil).Once()
+		store.On("GetOrganizationUnit", mock.Anything, parentID).
+			Return(OrganizationUnit{ID: parentID, ProjectID: testOtherProjectID}, nil).Once()
+		checker := newProjectCheckerMock(suite.T())
+		checker.EXPECT().ProjectExists(mock.Anything, testProjectID).Return(true, nil).Once()
+		service := suite.newProjectService(store, checker)
+
+		_, err := service.CreateOrganizationUnit(context.Background(), request(testProjectID, &parentID))
+
+		suite.Equal(&ErrorParentInAnotherProject, err)
+	})
+
+	suite.Run("fails when the parent cannot be read", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		store.On("IsOrganizationUnitExists", mock.Anything, parentID).Return(true, nil).Once()
+		store.On("GetOrganizationUnit", mock.Anything, parentID).Return(OrganizationUnit{}, errors.New("boom")).Once()
+		checker := newProjectCheckerMock(suite.T())
+		checker.EXPECT().ProjectExists(mock.Anything, testProjectID).Return(true, nil).Once()
+		service := suite.newProjectService(store, checker)
+
+		_, err := service.CreateOrganizationUnit(context.Background(), request(testProjectID, &parentID))
+
+		suite.Equal(&tidcommon.InternalServerError, err)
+	})
+
+	suite.Run("creates a child in its parent's project", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		store.On("IsOrganizationUnitExists", mock.Anything, parentID).Return(true, nil).Once()
+		store.On("GetOrganizationUnit", mock.Anything, parentID).
+			Return(OrganizationUnit{ID: parentID, ProjectID: testProjectID}, nil).Once()
+		expectCreate(store, &parentID, testProjectID)
+		checker := newProjectCheckerMock(suite.T())
+		checker.EXPECT().ProjectExists(mock.Anything, testProjectID).Return(true, nil).Once()
+		service := suite.newProjectService(store, checker)
+
+		created, err := service.CreateOrganizationUnit(context.Background(), request(testProjectID, &parentID))
+
+		suite.Nil(err)
+		suite.Equal(testProjectID, created.ProjectID)
+	})
+
+	suite.Run("creates a unit under the system organization unit", func() {
+		suite.useSystemOU()
+		defer suite.SetupTest()
+		systemOUID := testSystemOUID
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		store.On("IsOrganizationUnitExists", mock.Anything, systemOUID).Return(true, nil).Once()
+		store.On("GetOrganizationUnit", mock.Anything, systemOUID).
+			Return(OrganizationUnit{ID: systemOUID}, nil).Once()
+		expectCreate(store, &systemOUID, testProjectID)
+		checker := newProjectCheckerMock(suite.T())
+		checker.EXPECT().ProjectExists(mock.Anything, testProjectID).Return(true, nil).Once()
+		service := suite.newProjectService(store, checker)
+
+		created, err := service.CreateOrganizationUnit(context.Background(), request(testProjectID, &systemOUID))
+
+		suite.Nil(err)
+		suite.Equal(testProjectID, created.ProjectID)
+	})
+
+	suite.Run("refuses a project ID longer than the column on a deployment without projects", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		service := suite.newService(store, newAllowAllAuthz(suite.T()))
+
+		_, err := service.CreateOrganizationUnit(context.Background(),
+			request("019a0000-0000-7000-8000-0000000000a1-too-long", nil))
+
+		suite.Equal(&ErrorInvalidProject, err)
+	})
+
+	suite.Run("keeps the project unchecked on a deployment without projects", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		expectCreate(store, nil, testProjectID)
+		service := suite.newService(store, newAllowAllAuthz(suite.T()))
+
+		created, err := service.CreateOrganizationUnit(context.Background(), request(testProjectID, nil))
+
+		suite.Nil(err)
+		suite.Equal(testProjectID, created.ProjectID)
+	})
+}
+
+// The system organization unit is shared by every project, so it belongs to none.
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_SystemOrganizationUnitInNoProject() {
+	suite.useSystemOU()
+
+	suite.Run("is created without a project where projects are required", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		expectCreate(store, nil, "")
+		service := suite.newProjectService(store, newProjectCheckerMock(suite.T()))
+
+		_, err := service.CreateOrganizationUnit(context.Background(), OrganizationUnitRequestWithID{
+			ID: testSystemOUID, Handle: "finance", Name: "Finance",
+		})
+
+		suite.Nil(err)
+	})
+
+	suite.Run("is not created in a project", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		service := suite.newProjectService(store, newProjectCheckerMock(suite.T()))
+
+		_, err := service.CreateOrganizationUnit(context.Background(), OrganizationUnitRequestWithID{
+			ID: testSystemOUID, Handle: "finance", Name: "Finance", ProjectID: testProjectID,
+		})
+
+		suite.Equal(&ErrorSystemOUInProject, err)
+	})
+
+	suite.Run("is not moved into a project", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		store.On("GetOrganizationUnit", mock.Anything, testSystemOUID).
+			Return(OrganizationUnit{ID: testSystemOUID, Handle: "finance", Name: "Finance"}, nil).Once()
+		store.On("IsOrganizationUnitDeclarative", mock.Anything, testSystemOUID).Return(false).Once()
+		service := suite.newProjectService(store, newProjectCheckerMock(suite.T()))
+
+		_, err := service.UpdateOrganizationUnit(context.Background(), testSystemOUID, OrganizationUnitRequestWithID{
+			Handle: "finance", Name: "Finance", ProjectID: testProjectID,
+		})
+
+		suite.Equal(&ErrorSystemOUInProject, err)
+	})
+}
+
+// An update keeps an organization unit in its project unless it names another one, and moves only a unit
+// without child organization units.
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_UpdateOrganizationUnit_Project() {
+	existing := OrganizationUnit{ID: testOUID, Handle: "finance", Name: "Finance", ProjectID: testProjectID}
+	expectExisting := func(store *organizationUnitStoreInterfaceMock) {
+		store.On("GetOrganizationUnit", mock.Anything, testOUID).Return(existing, nil).Once()
+		store.On("IsOrganizationUnitDeclarative", mock.Anything, testOUID).Return(false).Once()
+	}
+	expectUpdate := func(store *organizationUnitStoreInterfaceMock, projectID string) {
+		store.On("UpdateOrganizationUnit", mock.Anything, mock.MatchedBy(func(ou OrganizationUnit) bool {
+			return ou.ProjectID == projectID
+		})).Return(nil).Once()
+	}
+	request := func(projectID string, parent *string) OrganizationUnitRequestWithID {
+		return OrganizationUnitRequestWithID{Handle: "finance", Name: "Finance", ProjectID: projectID, Parent: parent}
+	}
+
+	suite.Run("keeps the project when the update names none", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		expectExisting(store)
+		expectUpdate(store, testProjectID)
+		service := suite.newProjectService(store, newProjectCheckerMock(suite.T()))
+
+		updated, err := service.UpdateOrganizationUnit(context.Background(), testOUID, request("", nil))
+
+		suite.Nil(err)
+		suite.Equal(testProjectID, updated.ProjectID)
+	})
+
+	moveServiceWith := func(
+		store *organizationUnitStoreInterfaceMock, registry resourcedependency.Registry,
+	) *organizationUnitService {
+		checker := newProjectCheckerMock(suite.T())
+		checker.EXPECT().ProjectExists(mock.Anything, testOtherProjectID).Return(true, nil).Once()
+		service := suite.newProjectService(store, checker)
+		if registry != nil {
+			service.SetDependencyRegistry(registry)
+		}
+		return service
+	}
+	moveService := func(store *organizationUnitStoreInterfaceMock) *organizationUnitService {
+		return moveServiceWith(store, &stubDependencyRegistry{resp: emptyDeps()})
+	}
+	expectChildren := func(store *organizationUnitStoreInterfaceMock, parentID string, childIDs ...string) {
+		children := make([]OrganizationUnitBasic, 0, len(childIDs))
+		for _, id := range childIDs {
+			children = append(children, OrganizationUnitBasic{ID: id})
+		}
+		store.On("GetOrganizationUnitChildrenList", mock.Anything, parentID, hierarchyPageSize, 0,
+			(*tidcommon.FilterGroup)(nil)).Return(children, nil).Once()
+	}
+	expectMoved := func(store *organizationUnitStoreInterfaceMock, id string) {
+		store.On("UpdateOrganizationUnit", mock.Anything, mock.MatchedBy(func(ou OrganizationUnit) bool {
+			return ou.ID == id && ou.ProjectID == testOtherProjectID
+		})).Return(nil).Once()
+	}
+
+	suite.Run("moves a unit and its descendants to another project", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		expectExisting(store)
+		expectChildren(store, testOUID, testCoverageChild1ID)
+		expectChildren(store, testCoverageChild1ID, "grandchild-1")
+		expectChildren(store, "grandchild-1")
+		descendants := []string{testCoverageChild1ID, "grandchild-1"}
+		for _, id := range descendants {
+			store.On("IsOrganizationUnitDeclarative", mock.Anything, id).Return(false).Once()
+		}
+		descendantsMoved := store.On("UpdateOrganizationUnitsProject", mock.Anything, descendants,
+			testOtherProjectID, mock.AnythingOfType("time.Time")).Return(nil).Once()
+		store.On("UpdateOrganizationUnit", mock.Anything, mock.MatchedBy(func(ou OrganizationUnit) bool {
+			return ou.ID == testOUID && ou.ProjectID == testOtherProjectID
+		})).Return(nil).Once().NotBefore(descendantsMoved)
+
+		updated, err := moveService(store).UpdateOrganizationUnit(context.Background(), testOUID,
+			request(testOtherProjectID, nil))
+
+		suite.Nil(err)
+		suite.Equal(testOtherProjectID, updated.ProjectID)
+		store.AssertExpectations(suite.T())
+	})
+
+	suite.Run("moves nothing when a descendant is declarative", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		expectExisting(store)
+		expectChildren(store, testOUID, testCoverageChild1ID, "child-2")
+		expectChildren(store, testCoverageChild1ID)
+		expectChildren(store, "child-2")
+		store.On("IsOrganizationUnitDeclarative", mock.Anything, testCoverageChild1ID).Return(false).Once()
+		store.On("IsOrganizationUnitDeclarative", mock.Anything, "child-2").Return(true).Once()
+
+		_, err := moveService(store).UpdateOrganizationUnit(context.Background(), testOUID,
+			request(testOtherProjectID, nil))
+
+		suite.Equal(&ErrorCannotModifyDeclarativeResource, err)
+		store.AssertNotCalled(suite.T(), "UpdateOrganizationUnitsProject", mock.Anything, mock.Anything,
+			mock.Anything, mock.Anything)
+		store.AssertNotCalled(suite.T(), "UpdateOrganizationUnit", mock.Anything, mock.Anything)
+	})
+
+	suite.Run("fails when the descendants cannot be listed", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		expectExisting(store)
+		store.On("GetOrganizationUnitChildrenList", mock.Anything, testOUID, hierarchyPageSize, 0,
+			(*tidcommon.FilterGroup)(nil)).Return(nil, errors.New("boom")).Once()
+
+		_, err := moveService(store).UpdateOrganizationUnit(context.Background(), testOUID,
+			request(testOtherProjectID, nil))
+
+		suite.Equal(&tidcommon.InternalServerError, err)
+		store.AssertNotCalled(suite.T(), "UpdateOrganizationUnit", mock.Anything, mock.Anything)
+	})
+
+	suite.Run("fails when the descendants cannot be moved", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		expectExisting(store)
+		expectChildren(store, testOUID, testCoverageChild1ID)
+		expectChildren(store, testCoverageChild1ID)
+		store.On("IsOrganizationUnitDeclarative", mock.Anything, testCoverageChild1ID).Return(false).Once()
+		store.On("UpdateOrganizationUnitsProject", mock.Anything, []string{testCoverageChild1ID},
+			testOtherProjectID, mock.AnythingOfType("time.Time")).Return(errors.New("boom")).Once()
+
+		_, err := moveService(store).UpdateOrganizationUnit(context.Background(), testOUID,
+			request(testOtherProjectID, nil))
+
+		suite.Equal(&tidcommon.InternalServerError, err)
+		store.AssertNotCalled(suite.T(), "UpdateOrganizationUnit", mock.Anything, mock.Anything)
+	})
+
+	suite.Run("moves a unit without descendants", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		expectExisting(store)
+		expectChildren(store, testOUID)
+		expectMoved(store, testOUID)
+
+		updated, err := moveService(store).UpdateOrganizationUnit(context.Background(), testOUID,
+			request(testOtherProjectID, nil))
+
+		suite.Nil(err)
+		suite.Equal(testOtherProjectID, updated.ProjectID)
+		store.AssertNotCalled(suite.T(), "UpdateOrganizationUnitsProject", mock.Anything, mock.Anything,
+			mock.Anything, mock.Anything)
+	})
+
+	suite.Run("moves a unit whose only dependencies are its children", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		expectExisting(store)
+		expectChildren(store, testOUID, testCoverageChild1ID)
+		expectChildren(store, testCoverageChild1ID)
+		store.On("IsOrganizationUnitDeclarative", mock.Anything, testCoverageChild1ID).Return(false).Once()
+		store.On("UpdateOrganizationUnitsProject", mock.Anything, []string{testCoverageChild1ID},
+			testOtherProjectID, mock.AnythingOfType("time.Time")).Return(nil).Once()
+		expectMoved(store, testOUID)
+		total := 1
+		childOnly := &resourcedependency.DependenciesResponse{TotalResults: &total, Count: 1,
+			Usages: []resourcedependency.ResourceDependency{{
+				ResourceType:     resourcedependency.ResourceTypeOU,
+				ID:               testCoverageChild1ID,
+				BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+			}}}
+
+		_, err := moveServiceWith(store, &stubDependencyRegistry{resp: childOnly}).UpdateOrganizationUnit(
+			context.Background(), testOUID, request(testOtherProjectID, nil))
+
+		suite.Nil(err)
+	})
+
+	for name, tc := range map[string]struct {
+		registry resourcedependency.Registry
+		expected *tidcommon.ServiceError
+	}{
+		"refuses a move while the units hold resources": {
+			registry: &stubDependencyRegistry{resp: blockingDeps()}, expected: &ErrorProjectMoveWithResources,
+		},
+		"refuses a move when the dependencies cannot be read": {
+			registry: &stubDependencyRegistry{err: errors.New("boom")}, expected: &tidcommon.InternalServerError,
+		},
+		"refuses a move when a provider did not report": {
+			registry: &stubDependencyRegistry{resp: &resourcedependency.DependenciesResponse{}},
+			expected: &tidcommon.InternalServerError,
+		},
+		"refuses a move without a dependency registry": {expected: &tidcommon.InternalServerError},
+	} {
+		suite.Run(name, func() {
+			store := newOrganizationUnitStoreInterfaceMock(suite.T())
+			expectExisting(store)
+			expectChildren(store, testOUID)
+
+			_, err := moveServiceWith(store, tc.registry).UpdateOrganizationUnit(context.Background(), testOUID,
+				request(testOtherProjectID, nil))
+
+			suite.Equal(tc.expected, err)
+			store.AssertNotCalled(suite.T(), "UpdateOrganizationUnit", mock.Anything, mock.Anything)
+		})
+	}
+
+	suite.Run("places a unit of no project in a project with its resources", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		legacy := existing
+		legacy.ProjectID = ""
+		store.On("GetOrganizationUnit", mock.Anything, testOUID).Return(legacy, nil).Once()
+		store.On("IsOrganizationUnitDeclarative", mock.Anything, testOUID).Return(false).Once()
+		expectChildren(store, testOUID)
+		expectMoved(store, testOUID)
+
+		updated, err := moveServiceWith(store, &stubDependencyRegistry{resp: blockingDeps()}).UpdateOrganizationUnit(
+			context.Background(), testOUID, request(testOtherProjectID, nil))
+
+		suite.Nil(err)
+		suite.Equal(testOtherProjectID, updated.ProjectID)
+	})
+
+	suite.Run("refuses a project that does not exist", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		expectExisting(store)
+		checker := newProjectCheckerMock(suite.T())
+		checker.EXPECT().ProjectExists(mock.Anything, testOtherProjectID).Return(false, nil).Once()
+		service := suite.newProjectService(store, checker)
+
+		_, err := service.UpdateOrganizationUnit(context.Background(), testOUID, request(testOtherProjectID, nil))
+
+		suite.Equal(&ErrorInvalidProject, err)
+	})
+
+	suite.Run("refuses a new parent in another project", func() {
+		parentID := testParentOUID
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		expectExisting(store)
+		store.On("IsOrganizationUnitExists", mock.Anything, parentID).Return(true, nil).Once()
+		store.On("GetOrganizationUnit", mock.Anything, parentID).
+			Return(OrganizationUnit{ID: parentID, ProjectID: testOtherProjectID}, nil).Twice()
+		checker := newProjectCheckerMock(suite.T())
+		checker.EXPECT().ProjectExists(mock.Anything, testProjectID).Return(true, nil).Once()
+		service := suite.newProjectService(store, checker)
+
+		_, err := service.UpdateOrganizationUnit(context.Background(), testOUID, request("", &parentID))
+
+		suite.Equal(&ErrorParentInAnotherProject, err)
+	})
+}
+
+// A placement listing leads with the system organization unit, then lists the project's top organization units.
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnitPlacementList() {
+	systemUnit := OrganizationUnit{ID: testSystemOUID, Handle: "default", Name: "Default"}
+	expectSystem := func(store *organizationUnitStoreInterfaceMock) {
+		store.On("GetOrganizationUnit", mock.Anything, testSystemOUID).Return(systemUnit, nil).Once()
+		store.On("IsOrganizationUnitDeclarative", mock.Anything, testSystemOUID).Return(false).Once()
+	}
+	expectProject := func(store *organizationUnitStoreInterfaceMock, total, limit, offset int, ids ...string) {
+		units := make([]OrganizationUnitBasic, 0, len(ids))
+		for _, id := range ids {
+			units = append(units, OrganizationUnitBasic{ID: id, ProjectID: testProjectID})
+		}
+		store.On("GetOrganizationUnitListCountByProject", mock.Anything, testProjectID,
+			(*tidcommon.FilterGroup)(nil)).Return(total, nil).Once()
+		store.On("GetOrganizationUnitListByProject", mock.Anything, testProjectID, limit, offset,
+			(*tidcommon.FilterGroup)(nil)).Return(units, nil).Once()
+	}
+	existingProject := func() *projectCheckerMock {
+		checker := newProjectCheckerMock(suite.T())
+		checker.EXPECT().ProjectExists(mock.Anything, testProjectID).Return(true, nil).Once()
+		return checker
+	}
+	ids := func(resp *OrganizationUnitListResponse) []string {
+		out := make([]string, 0, len(resp.OrganizationUnits))
+		for _, unit := range resp.OrganizationUnits {
+			out = append(out, unit.ID)
+		}
+		return out
+	}
+
+	suite.Run("leads the first page with the system organization unit", func() {
+		suite.useSystemOU()
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		expectSystem(store)
+		expectProject(store, 2, 2, 0, "ou-a", "ou-b")
+		service := suite.newProjectService(store, existingProject())
+
+		resp, err := service.GetOrganizationUnitPlacementList(context.Background(), testProjectID, "", 3, 0)
+
+		suite.Nil(err)
+		suite.Equal([]string{testSystemOUID, "ou-a", "ou-b"}, ids(resp))
+		suite.True(resp.OrganizationUnits[0].IsSystem)
+		suite.Equal("Default", resp.OrganizationUnits[0].Name)
+		suite.False(resp.OrganizationUnits[1].IsSystem)
+		suite.Equal(3, resp.TotalResults)
+		suite.Equal(3, resp.Count)
+	})
+
+	suite.Run("shifts later pages by the system organization unit", func() {
+		suite.useSystemOU()
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		expectSystem(store)
+		expectProject(store, 4, 2, 1, "ou-b", "ou-c")
+		service := suite.newProjectService(store, existingProject())
+
+		resp, err := service.GetOrganizationUnitPlacementList(context.Background(), testProjectID, "", 2, 2)
+
+		suite.Nil(err)
+		suite.Equal([]string{"ou-b", "ou-c"}, ids(resp))
+		suite.Equal(5, resp.TotalResults)
+	})
+
+	suite.Run("counts the project's units on a page with room for the system one alone", func() {
+		suite.useSystemOU()
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		expectSystem(store)
+		expectProject(store, 2, 1, 0, "ou-a")
+		service := suite.newProjectService(store, existingProject())
+
+		resp, err := service.GetOrganizationUnitPlacementList(context.Background(), testProjectID, "", 1, 0)
+
+		suite.Nil(err)
+		suite.Equal([]string{testSystemOUID}, ids(resp))
+		suite.Equal(3, resp.TotalResults)
+	})
+
+	suite.Run("lists the system organization unit for a project without units", func() {
+		suite.useSystemOU()
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		expectSystem(store)
+		expectProject(store, 0, 9, 0)
+		service := suite.newProjectService(store, existingProject())
+
+		resp, err := service.GetOrganizationUnitPlacementList(context.Background(), testProjectID, "", 10, 0)
+
+		suite.Nil(err)
+		suite.Equal([]string{testSystemOUID}, ids(resp))
+		suite.Equal(1, resp.TotalResults)
+	})
+
+	suite.Run("leaves out the system organization unit a caller cannot list", func() {
+		suite.useSystemOU()
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		store.On("GetOrganizationUnitsByIDs", mock.Anything, []string{"ou-a"}).
+			Return([]OrganizationUnitBasic{{ID: "ou-a", ProjectID: testProjectID}}, nil).Once()
+		authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+		authz.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
+			Return(&sysauthz.AccessibleResources{IDs: []string{"ou-a"}}, nil)
+		service := suite.newService(store, authz)
+		service.SetProjectChecker(existingProject())
+
+		resp, err := service.GetOrganizationUnitPlacementList(context.Background(), testProjectID, "", 10, 0)
+
+		suite.Nil(err)
+		suite.Equal([]string{"ou-a"}, ids(resp))
+		suite.Equal(1, resp.TotalResults)
+	})
+
+	suite.Run("lists the project's units alone when no system organization unit is configured", func() {
+		config.ResetServerRuntime()
+		suite.Require().NoError(config.InitializeServerRuntime("/tmp/test", &config.Config{}))
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		expectProject(store, 1, 10, 0, "ou-a")
+		service := suite.newProjectService(store, existingProject())
+
+		resp, err := service.GetOrganizationUnitPlacementList(context.Background(), testProjectID, "", 10, 0)
+
+		suite.Nil(err)
+		suite.Equal([]string{"ou-a"}, ids(resp))
+	})
+
+	suite.Run("lists none for a project that does not exist or is not named", func() {
+		suite.useSystemOU()
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		checker := newProjectCheckerMock(suite.T())
+		checker.EXPECT().ProjectExists(mock.Anything, testProjectID).Return(false, nil).Once()
+		service := suite.newProjectService(store, checker)
+
+		for _, projectID := range []string{testProjectID, ""} {
+			resp, err := service.GetOrganizationUnitPlacementList(context.Background(), projectID, "", 10, 0)
+
+			suite.Nil(err)
+			suite.Empty(resp.OrganizationUnits)
+			suite.Zero(resp.TotalResults)
+		}
+	})
+
+	for name, tc := range map[string]struct {
+		setup    func(*organizationUnitStoreInterfaceMock, *projectCheckerMock)
+		limit    int
+		expected *tidcommon.ServiceError
+	}{
+		"refuses an invalid page": {limit: 0, expected: &ErrorInvalidLimit},
+		"fails when the project cannot be checked": {
+			limit: 10,
+			setup: func(_ *organizationUnitStoreInterfaceMock, checker *projectCheckerMock) {
+				checker.EXPECT().ProjectExists(mock.Anything, testProjectID).
+					Return(false, &tidcommon.InternalServerError).Once()
+			},
+			expected: &tidcommon.InternalServerError,
+		},
+		"fails when the system organization unit cannot be read": {
+			limit: 10,
+			setup: func(store *organizationUnitStoreInterfaceMock, checker *projectCheckerMock) {
+				checker.EXPECT().ProjectExists(mock.Anything, testProjectID).Return(true, nil).Once()
+				store.On("GetOrganizationUnit", mock.Anything, testSystemOUID).
+					Return(OrganizationUnit{}, errors.New("boom")).Once()
+			},
+			expected: &tidcommon.InternalServerError,
+		},
+		"fails when the project's units cannot be listed": {
+			limit: 10,
+			setup: func(store *organizationUnitStoreInterfaceMock, checker *projectCheckerMock) {
+				checker.EXPECT().ProjectExists(mock.Anything, testProjectID).Return(true, nil).Once()
+				expectSystem(store)
+				store.On("GetOrganizationUnitListCountByProject", mock.Anything, testProjectID,
+					(*tidcommon.FilterGroup)(nil)).Return(0, errors.New("boom")).Once()
+			},
+			expected: &tidcommon.InternalServerError,
+		},
+	} {
+		suite.Run(name, func() {
+			suite.useSystemOU()
+			store := newOrganizationUnitStoreInterfaceMock(suite.T())
+			checker := newProjectCheckerMock(suite.T())
+			if tc.setup != nil {
+				tc.setup(store, checker)
+			}
+			service := suite.newProjectService(store, checker)
+
+			_, err := service.GetOrganizationUnitPlacementList(context.Background(), testProjectID, "", tc.limit, 0)
+
+			suite.Equal(tc.expected, err)
+		})
+	}
+
+	suite.Run("keeps the system organization unit and the project's units under it within the system one", func() {
+		suite.useSystemOU()
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		expectSystem(store)
+		systemParent := testSystemOUID
+		store.On("GetOrganizationUnitChildrenCountInProject", mock.Anything, testSystemOUID, testProjectID).
+			Return(1, nil).Once()
+		store.On("GetOrganizationUnitChildrenListInProject", mock.Anything, testSystemOUID, testProjectID, 9, 0).
+			Return([]OrganizationUnitBasic{
+				{ID: "under-system", ProjectID: testProjectID, Parent: &systemParent},
+			}, nil).Once()
+		service := suite.newProjectService(store, existingProject())
+
+		resp, err := service.GetOrganizationUnitPlacementList(
+			context.Background(), testProjectID, testSystemOUID, 10, 0)
+
+		suite.Nil(err)
+		suite.Equal([]string{testSystemOUID, "under-system"}, ids(resp))
+		suite.True(resp.OrganizationUnits[0].IsSystem)
+		suite.Equal(2, resp.TotalResults)
+	})
+
+	suite.Run("pages the placements within the system organization unit", func() {
+		suite.useSystemOU()
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		expectSystem(store)
+		systemParent := testSystemOUID
+		store.On("GetOrganizationUnitChildrenCountInProject", mock.Anything, testSystemOUID, testProjectID).
+			Return(2, nil).Once()
+		store.On("GetOrganizationUnitChildrenListInProject", mock.Anything, testSystemOUID, testProjectID, 2, 0).
+			Return([]OrganizationUnitBasic{
+				{ID: "under-a", ProjectID: testProjectID, Parent: &systemParent},
+				{ID: "under-b", ProjectID: testProjectID, Parent: &systemParent},
+			}, nil).Once()
+		service := suite.newProjectService(store, existingProject())
+
+		resp, err := service.GetOrganizationUnitPlacementList(
+			context.Background(), testProjectID, testSystemOUID, 2, 1)
+
+		suite.Nil(err)
+		suite.Equal([]string{"under-a", "under-b"}, ids(resp))
+		suite.Equal(3, resp.TotalResults)
+		suite.Equal(2, resp.StartIndex)
+	})
+
+	suite.Run("lists a unit of the project alone within it", func() {
+		suite.useSystemOU()
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		store.On("GetOrganizationUnit", mock.Anything, "project-ou").
+			Return(OrganizationUnit{ID: "project-ou", Name: "Retail", ProjectID: testProjectID}, nil).Once()
+		store.On("IsOrganizationUnitDeclarative", mock.Anything, "project-ou").Return(false).Once()
+		service := suite.newProjectService(store, existingProject())
+
+		resp, err := service.GetOrganizationUnitPlacementList(context.Background(), testProjectID, "project-ou", 10, 0)
+
+		suite.Nil(err)
+		suite.Equal([]string{"project-ou"}, ids(resp))
+		suite.False(resp.OrganizationUnits[0].IsSystem)
+		suite.Equal(1, resp.TotalResults)
+	})
+
+	for name, unit := range map[string]OrganizationUnit{
+		"lists none within a unit of another project": {ID: "other-ou", ProjectID: testOtherProjectID},
+		"lists none within a unit of no project":      {ID: "other-ou"},
+	} {
+		suite.Run(name, func() {
+			suite.useSystemOU()
+			store := newOrganizationUnitStoreInterfaceMock(suite.T())
+			store.On("GetOrganizationUnit", mock.Anything, "other-ou").Return(unit, nil).Once()
+			service := suite.newProjectService(store, existingProject())
+
+			resp, err := service.GetOrganizationUnitPlacementList(
+				context.Background(), testProjectID, "other-ou", 10, 0)
+
+			suite.Nil(err)
+			suite.Empty(resp.OrganizationUnits)
+			suite.Zero(resp.TotalResults)
+		})
+	}
+
+	suite.Run("lists none within a unit that does not exist", func() {
+		suite.useSystemOU()
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		store.On("GetOrganizationUnit", mock.Anything, "missing-ou").
+			Return(OrganizationUnit{}, ErrOrganizationUnitNotFound).Once()
+		service := suite.newProjectService(store, existingProject())
+
+		resp, err := service.GetOrganizationUnitPlacementList(context.Background(), testProjectID, "missing-ou", 10, 0)
+
+		suite.Nil(err)
+		suite.Empty(resp.OrganizationUnits)
+	})
+
+	suite.Run("lists none within a unit of the project the caller cannot list", func() {
+		suite.useSystemOU()
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		store.On("GetOrganizationUnit", mock.Anything, "project-ou").
+			Return(OrganizationUnit{ID: "project-ou", ProjectID: testProjectID}, nil).Once()
+		authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+		authz.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
+			Return(&sysauthz.AccessibleResources{IDs: []string{"another-ou"}}, nil)
+		service := suite.newService(store, authz)
+		service.SetProjectChecker(existingProject())
+
+		resp, err := service.GetOrganizationUnitPlacementList(context.Background(), testProjectID, "project-ou", 10, 0)
+
+		suite.Nil(err)
+		suite.Empty(resp.OrganizationUnits)
+	})
+
+	for name, setup := range map[string]func(*organizationUnitStoreInterfaceMock) string{
+		"fails when the unit within cannot be read": func(store *organizationUnitStoreInterfaceMock) string {
+			store.On("GetOrganizationUnit", mock.Anything, "project-ou").
+				Return(OrganizationUnit{}, errors.New("boom")).Once()
+			return "project-ou"
+		},
+		"fails when the project's units under the system one cannot be counted": func(
+			store *organizationUnitStoreInterfaceMock) string {
+			store.On("GetOrganizationUnitChildrenCountInProject", mock.Anything, testSystemOUID, testProjectID).
+				Return(0, errors.New("boom")).Once()
+			return testSystemOUID
+		},
+		"fails when the project's units under the system one cannot be listed": func(
+			store *organizationUnitStoreInterfaceMock) string {
+			store.On("GetOrganizationUnitChildrenCountInProject", mock.Anything, testSystemOUID, testProjectID).
+				Return(1, nil).Once()
+			store.On("GetOrganizationUnitChildrenListInProject", mock.Anything, testSystemOUID, testProjectID, 9, 0).
+				Return(nil, errors.New("boom")).Once()
+			return testSystemOUID
+		},
+	} {
+		suite.Run(name, func() {
+			suite.useSystemOU()
+			store := newOrganizationUnitStoreInterfaceMock(suite.T())
+			within := setup(store)
+			if within == testSystemOUID {
+				expectSystem(store)
+			}
+			service := suite.newProjectService(store, existingProject())
+
+			_, err := service.GetOrganizationUnitPlacementList(context.Background(), testProjectID, within, 10, 0)
+
+			suite.Equal(&tidcommon.InternalServerError, err)
+		})
+	}
+
+	suite.Run("refuses the units under the system one past the composite store's limit", func() {
+		suite.useSystemOU()
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		expectSystem(store)
+		store.On("GetOrganizationUnitChildrenCountInProject", mock.Anything, testSystemOUID, testProjectID).
+			Return(1, nil).Once()
+		store.On("GetOrganizationUnitChildrenListInProject", mock.Anything, testSystemOUID, testProjectID, 9, 0).
+			Return(nil, ErrResultLimitExceededInCompositeMode).Once()
+		service := suite.newProjectService(store, existingProject())
+
+		_, err := service.GetOrganizationUnitPlacementList(context.Background(), testProjectID, testSystemOUID, 10, 0)
+
+		suite.Equal(&ErrorResultLimitExceeded, err)
+	})
+
+	suite.Run("refuses the units under the system one when counting them passes the composite store's limit", func() {
+		suite.useSystemOU()
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		expectSystem(store)
+		store.On("GetOrganizationUnitChildrenCountInProject", mock.Anything, testSystemOUID, testProjectID).
+			Return(0, ErrResultLimitExceededInCompositeMode).Once()
+		service := suite.newProjectService(store, existingProject())
+
+		_, err := service.GetOrganizationUnitPlacementList(context.Background(), testProjectID, testSystemOUID, 10, 0)
+
+		suite.Equal(&ErrorResultLimitExceeded, err)
+	})
+
+	suite.Run("keeps the units under the system one the caller can list within it", func() {
+		suite.useSystemOU()
+		systemParent := testSystemOUID
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		expectSystem(store)
+		store.On("GetOrganizationUnitsByIDs", mock.Anything, []string{testSystemOUID, "under-system", "project-root",
+			"other-under-system"}).Return([]OrganizationUnitBasic{
+			{ID: testSystemOUID},
+			{ID: "under-system", ProjectID: testProjectID, Parent: &systemParent},
+			{ID: "project-root", ProjectID: testProjectID},
+			{ID: "other-under-system", ProjectID: testOtherProjectID, Parent: &systemParent},
+		}, nil).Once()
+		authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+		authz.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
+			Return(&sysauthz.AccessibleResources{
+				IDs: []string{testSystemOUID, "under-system", "project-root", "other-under-system"},
+			}, nil)
+		service := suite.newService(store, authz)
+		service.SetProjectChecker(existingProject())
+
+		resp, err := service.GetOrganizationUnitPlacementList(
+			context.Background(), testProjectID, testSystemOUID, 10, 0)
+
+		suite.Nil(err)
+		suite.Equal([]string{testSystemOUID, "under-system"}, ids(resp))
+		suite.Equal(2, resp.TotalResults)
+	})
+
+	suite.Run("does not list a system organization unit that does not exist", func() {
+		suite.useSystemOU()
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		store.On("GetOrganizationUnit", mock.Anything, testSystemOUID).
+			Return(OrganizationUnit{}, ErrOrganizationUnitNotFound).Once()
+		expectProject(store, 1, 10, 0, "ou-a")
+		service := suite.newProjectService(store, existingProject())
+
+		resp, err := service.GetOrganizationUnitPlacementList(context.Background(), testProjectID, "", 10, 0)
+
+		suite.Nil(err)
+		suite.Equal([]string{"ou-a"}, ids(resp))
+	})
+}
+
+// A project lists its top organization units: the ones whose parent is not in the project.
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_GetOrganizationUnitListByProject() {
+	suite.Run("lists none for an empty project ID", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		service := suite.newService(store, newAllowAllAuthz(suite.T()))
+
+		resp, err := service.GetOrganizationUnitListByProject(context.Background(), "", 10, 0, nil)
+
+		suite.Nil(err)
+		suite.Empty(resp.OrganizationUnits)
+		suite.Zero(resp.TotalResults)
+	})
+
+	suite.Run("refuses a filter on an unknown attribute", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		service := suite.newService(store, newAllowAllAuthz(suite.T()))
+		f := &tidcommon.FilterGroup{Clauses: []tidcommon.FilterClause{
+			{Expr: tidcommon.FilterExpression{Attribute: "unknown", Operator: tidcommon.OperatorEq, Value: "x"}},
+		}}
+
+		_, err := service.GetOrganizationUnitListByProject(context.Background(), testProjectID, 10, 0, f)
+
+		suite.Equal(&ErrorInvalidFilter, err)
+	})
+
+	suite.Run("refuses an invalid page", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		service := suite.newService(store, newAllowAllAuthz(suite.T()))
+
+		_, err := service.GetOrganizationUnitListByProject(context.Background(), testProjectID, 0, 0, nil)
+
+		suite.Equal(&ErrorInvalidLimit, err)
+	})
+
+	suite.Run("lists the project's organization units", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		store.On("GetOrganizationUnitListCountByProject", mock.Anything, testProjectID,
+			(*tidcommon.FilterGroup)(nil)).Return(1, nil).Once()
+		store.On("GetOrganizationUnitListByProject", mock.Anything, testProjectID, 10, 0,
+			(*tidcommon.FilterGroup)(nil)).
+			Return([]OrganizationUnitBasic{{ID: "ou-a", ProjectID: testProjectID}}, nil).Once()
+		service := suite.newService(store, newAllowAllAuthz(suite.T()))
+
+		resp, err := service.GetOrganizationUnitListByProject(context.Background(), testProjectID, 10, 0, nil)
+
+		suite.Nil(err)
+		suite.Equal(1, resp.TotalResults)
+		suite.Equal("ou-a", resp.OrganizationUnits[0].ID)
+		suite.Equal(testProjectID, resp.OrganizationUnits[0].ProjectID)
+	})
+
+	suite.Run("reports a composite count over the limit", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		store.On("GetOrganizationUnitListCountByProject", mock.Anything, testProjectID,
+			(*tidcommon.FilterGroup)(nil)).Return(0, ErrResultLimitExceededInCompositeMode).Once()
+		service := suite.newService(store, newAllowAllAuthz(suite.T()))
+
+		_, err := service.GetOrganizationUnitListByProject(context.Background(), testProjectID, 10, 0, nil)
+
+		suite.Equal(&ErrorResultLimitExceeded, err)
+	})
+
+	suite.Run("fails when the project's organization units cannot be counted", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		store.On("GetOrganizationUnitListCountByProject", mock.Anything, testProjectID,
+			(*tidcommon.FilterGroup)(nil)).Return(0, errors.New("boom")).Once()
+		service := suite.newService(store, newAllowAllAuthz(suite.T()))
+
+		_, err := service.GetOrganizationUnitListByProject(context.Background(), testProjectID, 10, 0, nil)
+
+		suite.Equal(&tidcommon.InternalServerError, err)
+	})
+
+	suite.Run("reports a composite listing over the limit", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		store.On("GetOrganizationUnitListCountByProject", mock.Anything, testProjectID,
+			(*tidcommon.FilterGroup)(nil)).Return(2000, nil).Once()
+		store.On("GetOrganizationUnitListByProject", mock.Anything, testProjectID, 10, 0,
+			(*tidcommon.FilterGroup)(nil)).Return(nil, ErrResultLimitExceededInCompositeMode).Once()
+		service := suite.newService(store, newAllowAllAuthz(suite.T()))
+
+		_, err := service.GetOrganizationUnitListByProject(context.Background(), testProjectID, 10, 0, nil)
+
+		suite.Equal(&ErrorResultLimitExceeded, err)
+	})
+
+	suite.Run("fails when the project's organization units cannot be listed", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		store.On("GetOrganizationUnitListCountByProject", mock.Anything, testProjectID,
+			(*tidcommon.FilterGroup)(nil)).Return(1, nil).Once()
+		store.On("GetOrganizationUnitListByProject", mock.Anything, testProjectID, 10, 0,
+			(*tidcommon.FilterGroup)(nil)).Return(nil, errors.New("boom")).Once()
+		service := suite.newService(store, newAllowAllAuthz(suite.T()))
+
+		_, err := service.GetOrganizationUnitListByProject(context.Background(), testProjectID, 10, 0, nil)
+
+		suite.Equal(&tidcommon.InternalServerError, err)
+	})
+
+	suite.Run("lists only the accessible organization units in the project", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		ids := []string{"ou-a", "ou-b", "ou-c"}
+		store.On("GetOrganizationUnitsByIDs", mock.Anything, ids).Return([]OrganizationUnitBasic{
+			{ID: "ou-a", ProjectID: testProjectID}, {ID: "ou-b", ProjectID: testOtherProjectID},
+			{ID: "ou-c", ProjectID: testProjectID},
+		}, nil).Once()
+		authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+		authz.On("GetAccessibleResources", mock.Anything, security.ActionListOUs, security.ResourceTypeOU).
+			Return(&sysauthz.AccessibleResources{IDs: ids}, nil).Once()
+		service := suite.newService(store, authz)
+
+		resp, err := service.GetOrganizationUnitListByProject(context.Background(), testProjectID, 1, 0, nil)
+
+		suite.Nil(err)
+		suite.Equal(2, resp.TotalResults)
+		suite.Equal("ou-a", resp.OrganizationUnits[0].ID)
+		suite.Require().NotEmpty(resp.Links)
+		suite.Contains(resp.Links[0].Href, "projectId="+testProjectID)
+	})
+
+	suite.Run("fails when the accessible organization units cannot be resolved", func() {
+		store := newOrganizationUnitStoreInterfaceMock(suite.T())
+		authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+		authz.On("GetAccessibleResources", mock.Anything, security.ActionListOUs, security.ResourceTypeOU).
+			Return(nil, &tidcommon.InternalServerError).Once()
+		service := suite.newService(store, authz)
+
+		_, err := service.GetOrganizationUnitListByProject(context.Background(), testProjectID, 10, 0, nil)
+
+		suite.Equal(&tidcommon.InternalServerError, err)
+	})
+}
+
+// A project still has organization units while one of its top organization units remains.
+func (suite *OrganizationUnitServiceTestSuite) TestOUService_ProjectHasOrganizationUnits() {
+	for name, tc := range map[string]struct {
+		count    int
+		storeErr error
+		expected bool
+	}{
+		"with organization units":    {count: 1, expected: true},
+		"without organization units": {count: 0, expected: false},
+		"store failure":              {storeErr: errors.New("boom")},
+		"more than a composite read": {storeErr: ErrResultLimitExceededInCompositeMode, expected: true},
+	} {
+		suite.Run(name, func() {
+			store := newOrganizationUnitStoreInterfaceMock(suite.T())
+			store.On("GetOrganizationUnitListCountByProject", mock.Anything, testProjectID,
+				(*tidcommon.FilterGroup)(nil)).Return(tc.count, tc.storeErr).Once()
+			service := suite.newService(store, newAllowAllAuthz(suite.T()))
+
+			has, err := service.ProjectHasOrganizationUnits(context.Background(), testProjectID)
+
+			if tc.storeErr != nil && !tc.expected {
+				suite.Equal(&tidcommon.InternalServerError, err)
+				return
+			}
+			suite.Nil(err)
+			suite.Equal(tc.expected, has)
+		})
+	}
 }

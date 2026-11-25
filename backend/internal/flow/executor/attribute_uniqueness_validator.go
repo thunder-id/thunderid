@@ -9,6 +9,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -86,20 +87,22 @@ func (e *attributeUniquenessValidator) Execute(ctx *providers.NodeContext) (*pro
 		return nil, fmt.Errorf("invalid category: %s", category)
 	}
 
-	svcCtx := security.WithRuntimeContext(context.Background())
+	svcCtx := security.WithRuntimeContext(ctx.Context)
 	uniqueAttrs, svcErr := e.entityTypeService.GetUniqueAttributes(svcCtx, category, entityType)
 	if svcErr != nil {
 		return nil, fmt.Errorf("failed to retrieve unique attributes from schema for %s type %s: %s",
 			category, entityType, svcErr.Error.DefaultValue)
 	}
 
+	// Uniqueness is deployment-wide: a holder outside the sign-in boundary must still be found.
+	identifyCtx := security.WithRuntimeContext(context.Background())
 	for _, attr := range uniqueAttrs {
 		value, exists := ctx.UserInputs[attr]
 		if !exists || value == "" {
 			continue
 		}
 
-		userID, svcErr := e.entityProvider.IdentifyEntity(map[string]interface{}{attr: value})
+		userID, svcErr := e.entityProvider.IdentifyEntity(identifyCtx, map[string]interface{}{attr: value})
 		if svcErr != nil {
 			if svcErr.Code == entityprovider.ErrorCodeEntityNotFound {
 				continue
@@ -111,10 +114,41 @@ func (e *attributeUniquenessValidator) Execute(ctx *providers.NodeContext) (*pro
 			logger.Debug(ctx.Context, "Unique attribute conflict detected", log.String("attribute", attr))
 			execResp.Status = providers.ExecUserInputRequired
 			execResp.Error = errAttributeNotUniqueFor(attr, category)
+			// Ask for the value again: a dynamic prompt only offers inputs that are still missing.
+			delete(ctx.UserInputs, attr)
+			execResp.RuntimeData[attr] = ""
+			execResp.Inputs = []providers.Input{e.reaskInput(svcCtx, category, entityType, attr)}
+			execResp.ForwardedData = map[string]interface{}{common.ForwardedDataKeyInputs: execResp.Inputs}
 			return execResp, nil
 		}
 	}
 
 	execResp.Status = providers.ExecComplete
 	return execResp, nil
+}
+
+// reaskInput builds the input that asks for a conflicting value again. It takes the display name, type
+// and choices from the schema attribute when the schema has it, and is a plain required text input otherwise.
+func (e *attributeUniquenessValidator) reaskInput(ctx context.Context, category entitytype.TypeCategory,
+	entityType, attr string) providers.Input {
+	input := providers.Input{Identifier: attr, Type: providers.InputTypeText, Required: true}
+	attrs, svcErr := e.entityTypeService.GetAttributes(ctx, category, entityType,
+		entitytype.AttributeFilter{AllowNonCredential: true})
+	if svcErr != nil {
+		return input
+	}
+	for _, schemaAttr := range attrs {
+		if schemaAttr.Attribute != attr {
+			continue
+		}
+		input.DisplayName = schemaAttr.DisplayName
+		input.Type = inputTypeForSchemaType(schemaAttr.Type)
+		if len(schemaAttr.Enum) > 0 {
+			input.Type = providers.InputTypeSelect
+			input.Options = schemaAttr.Enum
+			input.Ref = attr
+		}
+		break
+	}
+	return input
 }

@@ -113,15 +113,16 @@ func (s *securityService) Process(r *http.Request) (context.Context, error) {
 	// Add authentication context to request context if available
 	ctx := r.Context()
 	if securityCtx != nil {
-		ctx = withSecurityContext(ctx, securityCtx)
-
 		// Reject the request when the presented token has been revoked. This runs after successful
 		// authentication and is format-agnostic: it enforces on every revocation dimension the token
 		// carries. A revoked token is surfaced as an invalid token (RFC 6750 §3.1) so the response does
 		// not disclose that the token was specifically revoked.
+		// The token's security context is attached once the token passes this check, so a revoked token
+		// is handled like an expired one.
 		if err := s.revocationEnforcer.EnsureNotRevoked(ctx, securityCtx.revocationIdentity()); err != nil {
 			return s.handleAuthError(ctx, isPublic, errInvalidToken)
 		}
+		ctx = withSecurityContext(ctx, securityCtx)
 	}
 
 	// Authorize the authenticated principal based on the permissions carried in the security context.
@@ -152,8 +153,15 @@ func (s *securityService) authorize(r *http.Request) error {
 		return nil
 	}
 	permissions := GetPermissions(r.Context())
-	if !HasSufficientPermission(permissions, required) {
+	if !HasSufficientSystemPermission(permissions, required) {
 		return errInsufficientPermissions
+	}
+	// A public path also serves callers without a token, so its service decides what a token that names no
+	// organization unit may do there.
+	if LacksOrganizationUnit(r.Context()) && !s.isPublicPath(r.Context(), r.URL.Path) {
+		s.logger.Debug(r.Context(), "Request refused: the token names no organization unit",
+			log.String("path", r.URL.Path))
+		return errForbidden
 	}
 	return nil
 }
@@ -168,13 +176,8 @@ func (s *securityService) authorize(r *http.Request) error {
 // sub-resources) are listed before broader wildcards in apiPermissionEntries to
 // ensure correct precedence — no manual prefix arithmetic is required.
 func (s *securityService) getRequiredPermissionForAPI(method, path string) string {
-	key := method + " " + path
-	for _, entry := range s.compiledAPIPermissions {
-		if entry.re.MatchString(key) {
-			return entry.permission
-		}
-	}
-	return GetSystemRootPermission()
+	permission, _ := matchAPIPermission(s.compiledAPIPermissions, method+" "+path)
+	return permission
 }
 
 // isPublicPath checks if the given request path matches any of the configured public path patterns.

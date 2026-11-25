@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import LayoutBuilderPage from '../LayoutBuilderPage';
@@ -72,6 +73,7 @@ vi.mock('../../GatePreview/GatePreview', () => ({
 interface BuilderState {
   layoutId: string | null;
   handle: string | null;
+  projectId: string | null;
   displayName: string | null;
   draftLayout: Record<string, unknown> | null;
   updateDraftLayout: ReturnType<typeof vi.fn>;
@@ -90,6 +92,7 @@ function makeBuilderState(overrides: Partial<BuilderState> = {}): BuilderState {
   return {
     layoutId: 'layout-1',
     handle: 'split-screen',
+    projectId: 'project-1',
     displayName: 'Split screen',
     draftLayout: {screens: {auth: {}}},
     updateDraftLayout: vi.fn(),
@@ -106,6 +109,11 @@ function makeBuilderState(overrides: Partial<BuilderState> = {}): BuilderState {
   };
 }
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  isLoading: false,
+};
+
 describe('LayoutBuilderPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -121,6 +129,26 @@ describe('LayoutBuilderPage', () => {
     await user.click(screen.getByRole('button', {name: 'Back to design'}));
 
     expect(mockNavigate).toHaveBeenCalledWith('/design');
+  });
+
+  it('goes to the design page when the layout belongs to another project than the selected one', () => {
+    render(
+      <ProjectScopeProvider project={{id: 'project-2'}}>
+        <LayoutBuilderPage />
+      </ProjectScopeProvider>,
+    );
+
+    expect(mockNavigate).toHaveBeenCalledWith('/design', {replace: true});
+  });
+
+  it('stays on a layout of the selected project', () => {
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <LayoutBuilderPage />
+      </ProjectScopeProvider>,
+    );
+
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   it('renders the screen list and the layout preview panel for a non-centered layout', () => {
@@ -161,6 +189,17 @@ describe('LayoutBuilderPage', () => {
 
   it('disables the Save button when there are no unsaved changes', () => {
     render(<LayoutBuilderPage />);
+
+    expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+  });
+
+  it('disables the Save button when the admin may not update designs', () => {
+    mockUseLayoutBuilder.mockReturnValue(makeBuilderState({isDirty: true}));
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <LayoutBuilderPage />
+      </CapabilitiesProvider>,
+    );
 
     expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
   });

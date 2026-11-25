@@ -29,10 +29,15 @@ import (
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
+	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -48,6 +53,11 @@ var (
 type FlowMgtServiceInterface interface {
 	ListFlows(ctx context.Context, limit, offset int, flowType providers.FlowType) (
 		*FlowListResponse, *tidcommon.ServiceError)
+	// ListFlowsByProject lists the flows of a project, narrowed to the ones an organization unit owns when ouID is
+	// set.
+	ListFlowsByProject(ctx context.Context, projectID, ouID string, flowType providers.FlowType, limit, offset int) (
+		*FlowListResponse, *tidcommon.ServiceError)
+	ProjectHasFlows(ctx context.Context, projectID string) (bool, *tidcommon.ServiceError)
 	CreateFlow(
 		ctx context.Context,
 		flowDef *FlowDefinition,
@@ -81,6 +91,11 @@ type FlowMgtServiceInterface interface {
 	// GetFlowForOU returns a flow as one organization unit sees it: whole when it owns it, its variables when the
 	// flow was shared with it.
 	GetFlowForOU(ctx context.Context, flowID, ouID string) (*FlowView, *tidcommon.ServiceError)
+	// GetFlowView returns a flow as the caller sees it: whole in the organization unit that owns it, or as the
+	// organization unit the caller is confined to sees it when the flow is shared there.
+	GetFlowView(ctx context.Context, flowID string) (*FlowView, *tidcommon.ServiceError)
+	// IsFlowVisible reports whether an organization unit owns a flow or was shared it.
+	IsFlowVisible(ctx context.Context, flowID, ouID string) (bool, *tidcommon.ServiceError)
 	// UpdateFlowWithSharing updates a flow and replaces its sharing policies with the ones a document carries, in one
 	// transaction. The policies are checked against the new definition, in place of the policies the flow had, so a
 	// document whose definition and policies agree with each other is accepted whatever the flow held before.
@@ -126,6 +141,12 @@ type ouProvider interface {
 	ResolveOwnerForUpdate(
 		ctx context.Context, requestedID, requestedHandle, currentID string, errs ou.OwnerErrors,
 	) (string, *tidcommon.ServiceError)
+	GetSystemOUID(ctx context.Context) (string, *tidcommon.ServiceError)
+}
+
+// projectOUValidator checks that a resource scoped to a project is in an organization unit the project holds.
+type projectOUValidator interface {
+	ValidateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError
 }
 
 // flowOwnerErrors are the errors given when the organization unit of a flow is refused.
@@ -147,13 +168,22 @@ type flowMgtService struct {
 	transactioner       providers.Transactioner
 	dependencyRegistry  resourcedependency.Registry
 	templateResolver    notificationTemplateProvider
-	serverConfigSvc     serverConfigProvider
+	serverConfigSvc     flowconfig.ServerConfigReader
 	ouSvc               ouProvider
 	// systemFlows are the system flows, by handle, as validated at startup.
 	systemFlows map[string]json.RawMessage
 	sharingSvc  sharing.SharingServiceInterface
 	idps        idpProvider
-	logger      *log.Logger
+	bus         eventbus.EventBusInterface
+	// projectValidator is nil on a deployment that serves no projects.
+	projectValidator projectOUValidator
+	// projectRequired is set when a deployment that serves projects refuses a flow created without one.
+	projectRequired bool
+	authzService    sysauthz.SystemAuthorizationServiceInterface
+	logger          *log.Logger
+	// managed says which flows a control plane deployed, which stay read only here. Nil where nothing is
+	// deployed from one.
+	managed managedresource.StoreInterface
 }
 
 // notificationTemplateProvider maps a template handle (within a channel) to its id.
@@ -172,12 +202,15 @@ func newFlowMgtService(
 	flowValidator FlowValidatorInterface,
 	compositeStore *compositeFlowStore,
 	transactioner providers.Transactioner,
-	serverConfigSvc serverConfigProvider,
+	serverConfigSvc flowconfig.ServerConfigReader,
 	ouSvc ouProvider,
 	templateResolver notificationTemplateProvider,
 	systemFlows map[string]json.RawMessage,
 	sharingSvc sharing.SharingServiceInterface,
 	idps idpProvider,
+	bus eventbus.EventBusInterface,
+	projectValidator projectOUValidator,
+	authzService sysauthz.SystemAuthorizationServiceInterface,
 ) *flowMgtService {
 	return &flowMgtService{
 		store:               store,
@@ -194,6 +227,10 @@ func newFlowMgtService(
 		systemFlows:         systemFlows,
 		sharingSvc:          sharingSvc,
 		idps:                idps,
+		bus:                 bus,
+		projectValidator:    projectValidator,
+		projectRequired:     projectValidator != nil && projectscope.ProjectRequired(security.ResourceTypeFlow),
+		authzService:        authzService,
 		logger:              log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
 	}
 }
@@ -217,6 +254,19 @@ func (s *flowMgtService) ListFlows(ctx context.Context, limit, offset int, flowT
 		return nil, &ErrorInvalidFlowType
 	}
 
+	ouID, visible, svcErr := sysauthz.ResolveListOU(ctx, s.authzService, s.logger, security.ActionListFlows, "")
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if !visible {
+		return buildFlowListResponse([]BasicFlowDefinition{}, 0, limit, offset, flowTypeQueryParam(flowType)), nil
+	}
+	if ouID != "" {
+		// A caller confined to an organization unit lists what that unit sees: the flows it owns, then the ones
+		// shared into it.
+		return s.listFlowsForOU(ctx, ouID, flowType, limit, offset, true)
+	}
+
 	flows, totalCount, err := s.store.ListFlows(ctx, limit, offset, string(flowType))
 	if err != nil {
 		s.logger.Error(ctx, "Failed to list flows", log.Error(err))
@@ -227,6 +277,7 @@ func (s *flowMgtService) ListFlows(ctx context.Context, limit, offset int, flowT
 		flows[i].IsOwnedByOU = new(true)
 	}
 
+	s.markManaged(ctx, flows)
 	listResponse := &FlowListResponse{
 		TotalResults: totalCount,
 		StartIndex:   offset + 1,
@@ -238,13 +289,86 @@ func (s *flowMgtService) ListFlows(ctx context.Context, limit, offset int, flowT
 	return listResponse, nil
 }
 
+// ProjectHasFlows reports whether any flow belongs to the project.
+func (s *flowMgtService) ProjectHasFlows(ctx context.Context, projectID string) (bool, *tidcommon.ServiceError) {
+	_, count, err := s.store.ListFlowsByProject(ctx, projectID, "", 1, 0, "")
+	if err != nil {
+		s.logger.Error(ctx, "Failed to count the flows of a project", log.String("projectID", projectID),
+			log.Error(err))
+		return false, &tidcommon.InternalServerError
+	}
+	return count > 0, nil
+}
+
+// ListFlowsByProject retrieves a paginated list of the flows of a project, narrowed to the ones an organization unit
+// owns when ouID is set. A project that does not exist has none.
+func (s *flowMgtService) ListFlowsByProject(
+	ctx context.Context, projectID, ouID string, flowType providers.FlowType, limit, offset int,
+) (*FlowListResponse, *tidcommon.ServiceError) {
+	if flowType != "" && !isValidFlowType(flowType) {
+		return nil, &ErrorInvalidFlowType
+	}
+	if limit <= 0 {
+		limit = defaultPageSize
+	}
+	if limit > maxPageSize {
+		limit = maxPageSize
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	extraQuery := "&" + queryParamProject + "=" + url.QueryEscape(projectID) + flowTypeQueryParam(flowType)
+	if ouID != "" {
+		extraQuery += utils.FilterQueryParam(map[string]interface{}{filter.AttributeOUID: ouID})
+	}
+	ouID, visible, svcErr := sysauthz.ResolveListOU(ctx, s.authzService, s.logger, security.ActionListFlows, ouID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if projectID == "" || !visible {
+		return buildFlowListResponse([]BasicFlowDefinition{}, 0, limit, offset, extraQuery), nil
+	}
+
+	flows, totalCount, err := s.store.ListFlowsByProject(ctx, projectID, ouID, limit, offset, string(flowType))
+	if err != nil {
+		s.logger.Error(ctx, "Failed to list the flows of a project", log.String("projectID", projectID),
+			log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	for i := range flows {
+		flows[i].IsOwnedByOU = new(true)
+	}
+
+	s.markManaged(ctx, flows)
+	return buildFlowListResponse(flows, totalCount, limit, offset, extraQuery), nil
+}
+
 // CreateFlow creates a new flow definition with version 1.
 func (s *flowMgtService) CreateFlow(ctx context.Context, flowDef *FlowDefinition) (
+	*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
+	created, svcErr := s.createFlow(ctx, flowDef)
+	var flowID string
+	if svcErr == nil {
+		flowID = created.ID
+	}
+	s.publishFlowEvent(ctx, audit.EventFlowCreate, audit.ActionCreate, flowID, svcErr)
+	return created, svcErr
+}
+
+// createFlow creates a new flow definition with version 1 without publishing its audit event.
+func (s *flowMgtService) createFlow(ctx context.Context, flowDef *FlowDefinition) (
 	*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
 	if err := s.flowValidator.ValidateFlowDefinition(ctx, flowDef); err != nil {
 		return nil, err
 	}
+	if svcErr := s.checkProjectGiven(flowDef.ProjectID); svcErr != nil {
+		return nil, svcErr
+	}
 	if svcErr := s.ResolveFlowOU(ctx, flowDef); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := s.authorizeFlowAction(ctx, security.ActionCreateFlow, flowDef.OUID); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -300,21 +424,102 @@ func (s *flowMgtService) CreateFlow(ctx context.Context, flowDef *FlowDefinition
 	return createdFlow, nil
 }
 
+// checkProjectGiven refuses a flow created without a project where one is required.
+func (s *flowMgtService) checkProjectGiven(projectID string) *tidcommon.ServiceError {
+	if projectID == "" && s.projectRequired {
+		return &ErrorProjectRequired
+	}
+	return nil
+}
+
 // ResolveFlowOU sets the organization unit a flow is owned by. A flow has to name one, by id or by handle, and it has
 // to exist. The handle is replaced by the id it resolves to. It is only recorded: nothing restricts what an
-// organization unit can do with a flow it does not own.
+// organization unit can do with a flow it does not own. A flow in a project may leave the organization unit out to be
+// placed in the system organization unit; one it names has to belong to the project.
 func (s *flowMgtService) ResolveFlowOU(ctx context.Context, flowDef *FlowDefinition) *tidcommon.ServiceError {
-	ouID, svcErr := s.ouSvc.ResolveOwner(ctx, flowDef.OUID, flowDef.OUHandle, flowOwnerErrors)
+	var ouID string
+	var svcErr *tidcommon.ServiceError
+	if flowDef.ProjectID != "" && flowDef.OUID == "" && flowDef.OUHandle == "" {
+		ouID, svcErr = s.ouSvc.GetSystemOUID(ctx)
+	} else {
+		ouID, svcErr = s.ouSvc.ResolveOwner(ctx, flowDef.OUID, flowDef.OUHandle, flowOwnerErrors)
+	}
 	if svcErr != nil {
 		return svcErr
+	}
+	if flowDef.ProjectID != "" {
+		if svcErr := s.validateProjectOU(ctx, flowDef.ProjectID, ouID); svcErr != nil {
+			return svcErr
+		}
 	}
 	flowDef.OUID = ouID
 	flowDef.OUHandle = ""
 	return nil
 }
 
-// GetFlow retrieves a flow definition by its ID.
+// validateProjectOU checks that a flow's organization unit belongs to its project. It returns ErrorInvalidProject
+// when no such project exists, and ErrorOUNotInProject when the organization unit is outside the project.
+//
+// A deployment that serves no projects, such as a Data Plane, cannot check the project. It keeps the project ID as
+// given so that imported configuration retains it.
+func (s *flowMgtService) validateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError {
+	if s.projectValidator == nil {
+		return nil
+	}
+	svcErr := s.projectValidator.ValidateProjectOU(ctx, projectID, ouID)
+	switch {
+	case svcErr == nil:
+		return nil
+	case svcErr.Code == projectscope.ProjectNotFoundErrorCode:
+		return &ErrorInvalidProject
+	case svcErr.Code == projectscope.OUNotInProjectErrorCode:
+		return &ErrorOUNotInProject
+	default:
+		s.logger.Error(ctx, "Failed to check the project of a flow",
+			log.String("projectID", projectID), log.String("code", svcErr.Code))
+		return &tidcommon.InternalServerError
+	}
+}
+
+// GetFlow retrieves a flow definition by its ID, for a caller that may read the flows of its
+// organization unit.
 func (s *flowMgtService) GetFlow(ctx context.Context, flowID string) (
+	*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
+	flow, svcErr := s.getFlow(ctx, flowID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := s.authorizeFlowAction(ctx, security.ActionReadFlow, flow.OUID); svcErr != nil {
+		return nil, svcErr
+	}
+	return flow, nil
+}
+
+// GetFlowView returns a flow as the caller sees it. A caller that may read the flows of the organization unit that
+// owns the flow sees the whole definition. A caller refused there and confined to another organization unit the flow
+// is shared into sees the flow as that unit does. Any other caller is refused.
+func (s *flowMgtService) GetFlowView(ctx context.Context, flowID string) (*FlowView, *tidcommon.ServiceError) {
+	flow, svcErr := s.getFlow(ctx, flowID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	refusal := s.authorizeFlowAction(ctx, security.ActionReadFlow, flow.OUID)
+	if refusal == nil {
+		return &FlowView{Owned: &OwnedFlow{CompleteFlowDefinition: flow, IsOwnedByOU: true}}, nil
+	}
+	ouID := sysauthz.SharedAccessOU(ctx, s.authzService, flow.OUID, refusal)
+	if ouID == "" {
+		return nil, refusal
+	}
+	view, svcErr := s.GetFlowForOU(ctx, flowID, ouID)
+	if svcErr != nil && svcErr.Code == ErrorFlowNotFound.Code {
+		return nil, refusal
+	}
+	return view, svcErr
+}
+
+// getFlow retrieves a flow definition by its ID without checking the caller.
+func (s *flowMgtService) getFlow(ctx context.Context, flowID string) (
 	*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
 	if flowID == "" {
 		return nil, &ErrorMissingFlowID
@@ -327,6 +532,21 @@ func (s *flowMgtService) GetFlow(ctx context.Context, flowID string) (
 		}
 		s.logger.Error(ctx, "Failed to get flow", log.String(logKeyFlowID, flowID), log.Error(err))
 		return nil, &tidcommon.InternalServerError
+	}
+	if !flow.IsReadOnly {
+		deployed, err := managedresource.IsDeployed(ctx, s.managed, flowID, managedresource.TypeFlow)
+		if err != nil {
+			// Every write to such a flow is refused whatever the read says, so it is served without the flag.
+			s.logger.Error(ctx, "Failed to read whether a control plane deployed the flow",
+				log.String(logKeyFlowID, flowID), log.Error(err))
+		}
+		if deployed {
+			// The store may serve the flow it caches, which a later write reads to tell a declared flow: the
+			// flag is set on a copy, so that write still reaches the check that lets the managed import through.
+			marked := *flow
+			marked.IsReadOnly = true
+			return &marked, nil
+		}
 	}
 
 	return flow, nil
@@ -399,12 +619,8 @@ func (s *flowMgtService) GetFlowUsages(
 		return nil, &ErrorMissingFlowID
 	}
 
-	if _, err := s.store.GetFlowByID(ctx, flowID); err != nil {
-		if errors.Is(err, errFlowNotFound) {
-			return nil, &ErrorFlowNotFound
-		}
-		s.logger.Error(ctx, "Failed to get flow", log.String(logKeyFlowID, flowID), log.Error(err))
-		return nil, &tidcommon.InternalServerError
+	if _, svcErr := s.GetFlow(ctx, flowID); svcErr != nil {
+		return nil, svcErr
 	}
 
 	if s.dependencyRegistry == nil {
@@ -452,6 +668,9 @@ func (s *flowMgtService) GetResourceDependencies(
 		propertyKey = nodePropertyKeyNotificationSenderID
 	case resourcedependency.ResourceTypeHTTPConnection:
 		propertyKey, executorName = common.NodePropertyConnectionID, executormeta.ExecutorNameExtension
+	case resourcedependency.ResourceTypeAgentType:
+		// The node names agent types by handle, which is how an agent type target is identified.
+		propertyKey, executorName = common.NodePropertyAllowedAgentTypes, executormeta.ExecutorNameAgentTypeResolver
 	default:
 		return []resourcedependency.ResourceDependency{}, nil
 	}
@@ -582,8 +801,24 @@ func flowReferencesResource(flow *providers.CompleteFlowDefinition, executorName
 			(flow.Nodes[i].Executor == nil || flow.Nodes[i].Executor.Name != executorName) {
 			continue
 		}
-		if val, ok := flow.Nodes[i].Properties[propertyKey].(string); ok && strings.TrimSpace(val) == id {
+		if propertyNamesResource(flow.Nodes[i].Properties[propertyKey], id) {
 			return true
+		}
+	}
+	return false
+}
+
+// propertyNamesResource reports whether a node property value names the resource, either as the value
+// itself or as one entry of a list.
+func propertyNamesResource(value interface{}, id string) bool {
+	switch v := value.(type) {
+	case string:
+		return strings.TrimSpace(v) == id
+	case []interface{}:
+		for _, item := range v {
+			if s, ok := item.(string); ok && strings.TrimSpace(s) == id {
+				return true
+			}
 		}
 	}
 	return false
@@ -613,7 +848,8 @@ func (s *flowMgtService) notificationTemplateUsages(ctx context.Context, id stri
 		if tid, ok := resolved[key]; ok {
 			return tid, nil
 		}
-		tmpl, svcErr := s.templateResolver.GetTemplateByHandle(ctx, channel, handle)
+		// A flow may use a template of any organization unit, so every flow's templates are read.
+		tmpl, svcErr := s.templateResolver.GetTemplateByHandle(security.WithRuntimeContext(ctx), channel, handle)
 		if svcErr != nil {
 			if svcErr.Code == notificationtemplate.ErrorTemplateNotFound.Code {
 				// Dangling handle: cannot be the target. Cache the miss.
@@ -689,8 +925,22 @@ func (s *flowMgtService) GetSystemFlow(_ context.Context, handle string) (
 	return &flow, nil
 }
 
-// GetFlowByHandle retrieves a flow definition by its handle and type.
+// GetFlowByHandle retrieves a flow definition by its handle and type, for a caller that may read the
+// flows of its organization unit.
 func (s *flowMgtService) GetFlowByHandle(ctx context.Context, handle string, flowType providers.FlowType) (
+	*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
+	flow, svcErr := s.getFlowByHandle(ctx, handle, flowType)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := s.authorizeFlowAction(ctx, security.ActionReadFlow, flow.OUID); svcErr != nil {
+		return nil, svcErr
+	}
+	return flow, nil
+}
+
+// getFlowByHandle retrieves a flow definition by its handle and type without checking the caller.
+func (s *flowMgtService) getFlowByHandle(ctx context.Context, handle string, flowType providers.FlowType) (
 	*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
 	if handle == "" {
 		return nil, &ErrorMissingFlowHandle
@@ -716,7 +966,9 @@ func (s *flowMgtService) GetFlowByHandle(ctx context.Context, handle string, flo
 // Old versions are retained up to the configured max_version_history limit.
 func (s *flowMgtService) UpdateFlow(ctx context.Context, flowID string, flowDef *FlowDefinition) (
 	*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
-	return s.updateFlow(ctx, flowID, flowDef, nil)
+	updated, svcErr := s.updateFlow(ctx, flowID, flowDef, nil)
+	s.publishFlowEvent(ctx, audit.EventFlowUpdate, audit.ActionUpdate, flowID, svcErr)
+	return updated, svcErr
 }
 
 // UpdateFlowWithSharing updates a flow and replaces its sharing policies with the ones a document carries, in one
@@ -724,13 +976,15 @@ func (s *flowMgtService) UpdateFlow(ctx context.Context, flowID string, flowDef 
 func (s *flowMgtService) UpdateFlowWithSharing(
 	ctx context.Context, flowID string, flowDef *FlowDefinition, policies []sharing.PolicyRequest,
 ) (*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
-	return s.updateFlow(ctx, flowID, flowDef, policies)
+	updated, svcErr := s.updateFlow(ctx, flowID, flowDef, policies)
+	s.publishFlowEvent(ctx, audit.EventFlowUpdate, audit.ActionUpdate, flowID, svcErr)
+	return updated, svcErr
 }
 
 // updateFlow is UpdateFlow, optionally with the sharing policies of a document. Policies a document states take the
 // place of the checks of the new definition against the policies and saved values the flow holds: they are checked
 // against the new definition and applied, and then what the flow holds is checked, so only a conflict that survives
-// the document is refused.
+// the document is refused. It does not publish the audit event of the update.
 func (s *flowMgtService) updateFlow(
 	ctx context.Context, flowID string, flowDef *FlowDefinition, policies []sharing.PolicyRequest,
 ) (*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
@@ -756,8 +1010,7 @@ func (s *flowMgtService) updateFlow(
 		existingHandle = existingFlow.Handle
 		existingType = existingFlow.FlowType
 
-		if existingFlow.IsReadOnly {
-			validationSvcErr = &ErrorFlowDeclarativeReadOnly
+		if validationSvcErr = s.checkFlowWritable(txCtx, existingFlow); validationSvcErr != nil {
 			return errClientValidation
 		}
 
@@ -798,6 +1051,22 @@ func (s *flowMgtService) updateFlow(
 		}
 		flowDef.OUID = ouID
 		flowDef.OUHandle = ""
+
+		// A project checks that the flow's organization unit belongs to it. An update that names no project, or the
+		// current one, keeps the flow in its project without checking it again, since the organization unit cannot
+		// change.
+		if flowDef.ProjectID == "" {
+			flowDef.ProjectID = existingFlow.ProjectID
+		}
+		if flowDef.ProjectID != existingFlow.ProjectID {
+			if projectErr := s.validateProjectOU(txCtx, flowDef.ProjectID, ouID); projectErr != nil {
+				if projectErr.Type == tidcommon.ClientErrorType {
+					validationSvcErr = projectErr
+					return errClientValidation
+				}
+				return fmt.Errorf("failed to check the project of the flow: code=%s", projectErr.Code)
+			}
+		}
 
 		// A variable the flow no longer declares takes its rules and saved values with it. The ones it still
 		// declares have to still satisfy the sharing policies recorded for it, and the values organization units
@@ -871,6 +1140,18 @@ func (s *flowMgtService) updateFlow(
 
 // DeleteFlow deletes a flow definition and all its version history.
 func (s *flowMgtService) DeleteFlow(ctx context.Context, flowID string) *tidcommon.ServiceError {
+	svcErr := s.deleteFlow(ctx, flowID)
+	// A delete that found nothing to remove succeeds without an event, so no caller can record a
+	// deletion of an ID it made up.
+	if svcErr == errFlowNotFoundNoop {
+		return nil
+	}
+	s.publishFlowEvent(ctx, audit.EventFlowDelete, audit.ActionDelete, flowID, svcErr)
+	return svcErr
+}
+
+// deleteFlow deletes a flow definition and all its version history without publishing its audit event.
+func (s *flowMgtService) deleteFlow(ctx context.Context, flowID string) *tidcommon.ServiceError {
 	if flowID == "" {
 		return &ErrorMissingFlowID
 	}
@@ -881,14 +1162,23 @@ func (s *flowMgtService) DeleteFlow(ctx context.Context, flowID string) *tidcomm
 	if err != nil {
 		if errors.Is(err, errFlowNotFound) {
 			// A flow that is already gone is deleted; what is left of its sharing is not.
-			return s.purgeOrphanedSharing(ctx, flowID)
+			if svcErr := s.purgeOrphanedSharing(ctx, flowID); svcErr != nil {
+				return svcErr
+			}
+			return errFlowNotFoundNoop
 		}
 		logger.Error(ctx, "Failed to get existing flow", log.Error(err))
 		return &tidcommon.InternalServerError
 	}
 
+	if svcErr := s.authorizeFlowAction(ctx, security.ActionDeleteFlow, existingFlow.OUID); svcErr != nil {
+		return s.sharedFlowRefusal(ctx, flowID, existingFlow.OUID, svcErr)
+	}
 	if existingFlow.IsReadOnly {
 		return &ErrorFlowDeclarativeReadOnly
+	}
+	if svcErr := s.refuseManaged(ctx, flowID); svcErr != nil {
+		return svcErr
 	}
 
 	err = s.store.DeleteFlow(ctx, flowID)
@@ -921,13 +1211,16 @@ func (s *flowMgtService) ListFlowVersions(ctx context.Context, flowID string) (
 
 	logger := s.logger.With(log.String(logKeyFlowID, flowID))
 
-	_, err := s.store.GetFlowByID(ctx, flowID)
+	existing, err := s.store.GetFlowByID(ctx, flowID)
 	if err != nil {
 		if errors.Is(err, errFlowNotFound) {
 			return nil, &ErrorFlowNotFound
 		}
 		logger.Error(ctx, "Failed to get existing flow", log.Error(err))
 		return nil, &tidcommon.InternalServerError
+	}
+	if svcErr := s.authorizeFlowAction(ctx, security.ActionReadFlow, existing.OUID); svcErr != nil {
+		return nil, svcErr
 	}
 
 	versions, err := s.store.ListFlowVersions(ctx, flowID)
@@ -953,6 +1246,9 @@ func (s *flowMgtService) GetFlowVersion(ctx context.Context, flowID string, vers
 	if version <= 0 {
 		return nil, &ErrorInvalidVersion
 	}
+	if _, svcErr := s.GetFlow(ctx, flowID); svcErr != nil {
+		return nil, svcErr
+	}
 
 	flowVersion, err := s.store.GetFlowVersion(ctx, flowID, version)
 	if err != nil {
@@ -974,6 +1270,14 @@ func (s *flowMgtService) GetFlowVersion(ctx context.Context, flowID string, vers
 // Creates a new version by copying the configuration from the specified version.
 func (s *flowMgtService) RestoreFlowVersion(ctx context.Context, flowID string, version int) (
 	*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
+	restored, svcErr := s.restoreFlowVersion(ctx, flowID, version)
+	s.publishFlowEvent(ctx, audit.EventFlowRestore, audit.ActionRestore, flowID, svcErr)
+	return restored, svcErr
+}
+
+// restoreFlowVersion restores a specific version as the active version without publishing its audit event.
+func (s *flowMgtService) restoreFlowVersion(ctx context.Context, flowID string, version int) (
+	*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
 	if flowID == "" {
 		return nil, &ErrorMissingFlowID
 	}
@@ -986,6 +1290,18 @@ func (s *flowMgtService) RestoreFlowVersion(ctx context.Context, flowID string, 
 	var restoredFlow *providers.CompleteFlowDefinition
 	var conflictSvcErr *tidcommon.ServiceError
 	txErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		current, err := s.store.GetFlowByID(txCtx, flowID)
+		if err != nil {
+			return err
+		}
+		if svcErr := s.authorizeFlowAction(txCtx, security.ActionUpdateFlow, current.OUID); svcErr != nil {
+			conflictSvcErr = svcErr
+			return errClientValidation
+		}
+		if svcErr := s.refuseManaged(txCtx, flowID); svcErr != nil {
+			conflictSvcErr = svcErr
+			return errClientValidation
+		}
 		target, err := s.store.GetFlowVersion(txCtx, flowID, version)
 		if err != nil {
 			return err
@@ -994,10 +1310,6 @@ func (s *flowMgtService) RestoreFlowVersion(ctx context.Context, flowID string, 
 		// A restore that takes a variable out of the flow drops its rules and saved values, and the version has to
 		// satisfy the sharing policies recorded for the flow and the values organization units saved for its other
 		// variables, as an update does.
-		current, err := s.store.GetFlowByID(txCtx, flowID)
-		if err != nil {
-			return err
-		}
 		if svcErr := s.dropRemovedVariables(txCtx, flowID, current, target.Nodes); svcErr != nil {
 			conflictSvcErr = svcErr
 			return errClientValidation
@@ -1034,6 +1346,19 @@ func (s *flowMgtService) RestoreFlowVersion(ctx context.Context, flowID string, 
 	s.graphBuilder.InvalidateCache(ctx, flowID)
 
 	return restoredFlow, nil
+}
+
+// publishFlowEvent publishes the audit event of an attempt on the flow with flowID, after the change
+// committed or was refused. Neither the definition nor the version restored is recorded. A delete whose
+// sharing cleanup fails after the flow is removed is recorded as failed, and the registration flow
+// inferred from a created authentication flow is created without an event of its own: known limitations.
+func (s *flowMgtService) publishFlowEvent(ctx context.Context, name string, action audit.Action,
+	flowID string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the ID the caller asked for, even one that matches no flow, as forensic
+	// evidence of what was probed; the payload caps it and the sink escapes it.
+	target := audit.Ref{Type: audit.TargetTypeFlow, ID: flowID}
+	eventbus.TryPublish(ctx, s.bus,
+		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
 }
 
 // Graph building methods
@@ -1102,7 +1427,7 @@ func (s *flowMgtService) ResolveEffectiveFlowID(ctx context.Context, overriddenF
 		return "", nil
 	}
 
-	flow, svcErr := s.GetFlowByHandle(ctx, handle, flowType)
+	flow, svcErr := s.getFlowByHandle(ctx, handle, flowType)
 	if svcErr != nil {
 		return "", svcErr
 	}
@@ -1127,30 +1452,10 @@ func ouFlowIDForType(orgUnit ou.OrganizationUnit, flowType providers.FlowType) s
 	return ""
 }
 
-// getFlowSectionConfig returns the merged FlowSectionConfig from the server-config "flow" section.
-func (s *flowMgtService) getFlowSectionConfig(ctx context.Context) flowconfig.FlowSectionConfig {
-	if s.serverConfigSvc == nil {
-		return flowconfig.FlowSectionConfig{}
-	}
-
-	merged, svcErr := s.serverConfigSvc.GetMergedConfig(ctx, "flow")
-	if svcErr != nil {
-		s.logger.Warn(ctx, "Failed to read flow server config; using empty section defaults")
-		return flowconfig.FlowSectionConfig{}
-	}
-
-	cfg, ok := merged.(flowconfig.FlowSectionConfig)
-	if !ok {
-		return flowconfig.FlowSectionConfig{}
-	}
-
-	return cfg
-}
-
 // resolveDefaultFlowHandle returns the server-level default handle configured for the given flow
 // type, or "" when no default is configured.
 func (s *flowMgtService) resolveDefaultFlowHandle(ctx context.Context, flowType providers.FlowType) string {
-	cfg := s.getFlowSectionConfig(ctx)
+	cfg := flowconfig.ReadFlowSectionConfig(ctx, s.serverConfigSvc)
 
 	switch flowType {
 	case providers.FlowTypeAuthentication:
@@ -1298,7 +1603,7 @@ func (s *flowMgtService) requireVisibleFlow(
 	if ouID == "" {
 		return nil, &ErrorMissingOUID
 	}
-	flow, svcErr := s.GetFlow(ctx, flowID)
+	flow, svcErr := s.getFlow(ctx, flowID)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -1315,6 +1620,16 @@ func (s *flowMgtService) requireVisibleFlow(
 	return flow, nil
 }
 
+// IsFlowVisible reports whether an organization unit owns a flow or was shared it. It asks as the runtime, as the
+// caller may not read the units above its own.
+func (s *flowMgtService) IsFlowVisible(ctx context.Context, flowID, ouID string) (bool, *tidcommon.ServiceError) {
+	visible, svcErr := s.sharingSvc.IsVisible(security.WithRuntimeContext(ctx), FlowSharingType, flowID, ouID)
+	if svcErr != nil {
+		return false, translateSharingError(svcErr)
+	}
+	return visible, nil
+}
+
 // GetFlowForOU returns a flow as one organization unit sees it. The one that owns it sees the whole definition; one
 // it was shared with sees the variables that apply to it, resolved for it, and nothing else. A flow the organization
 // unit neither owns nor was shared is reported as not found, the same as one that does not exist.
@@ -1323,6 +1638,10 @@ func (s *flowMgtService) GetFlowForOU(
 ) (*FlowView, *tidcommon.ServiceError) {
 	flow, svcErr := s.requireVisibleFlow(ctx, flowID, ouID)
 	if svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := sysauthz.CheckActionInAnyOU(ctx, s.authzService, s.logger, security.ActionReadFlow,
+		security.ResourceTypeFlow, flow.OUID, ouID); svcErr != nil {
 		return nil, svcErr
 	}
 	if flow.OUID == ouID {
@@ -1357,6 +1676,10 @@ func (s *flowMgtService) CheckFlowAccess(
 	if svcErr != nil {
 		return svcErr
 	}
+	if svcErr := sysauthz.CheckActionInAnyOU(ctx, s.authzService, s.logger, security.ActionReadFlow,
+		security.ResourceTypeFlow, flow.OUID, ouID); svcErr != nil {
+		return svcErr
+	}
 	if flow.OUID == ouID {
 		return nil
 	}
@@ -1375,6 +1698,17 @@ func (s *flowMgtService) ListFlowsForOU(
 	if ouID == "" {
 		return nil, &ErrorMissingOUID
 	}
+	_, mayList, svcErr := sysauthz.ResolveListOU(ctx, s.authzService, s.logger, security.ActionListFlows, ouID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return s.listFlowsForOU(ctx, ouID, flowType, limit, offset, mayList)
+}
+
+// listFlowsForOU is ListFlowsForOU, given whether the caller may list the organization unit's flows.
+func (s *flowMgtService) listFlowsForOU(
+	ctx context.Context, ouID string, flowType providers.FlowType, limit, offset int, mayList bool,
+) (*FlowListResponse, *tidcommon.ServiceError) {
 	if flowType != "" && !isValidFlowType(flowType) {
 		return nil, &ErrorInvalidFlowType
 	}
@@ -1389,6 +1723,9 @@ func (s *flowMgtService) ListFlowsForOU(
 	}
 	extraQuery := utils.FilterQueryParam(map[string]interface{}{filter.AttributeOUID: ouID}) +
 		flowTypeQueryParam(flowType)
+	if !mayList {
+		return buildFlowListResponse([]BasicFlowDefinition{}, 0, limit, offset, extraQuery), nil
+	}
 
 	// One page of what the unit owns, with how many it owns, then what was shared with it, read by ID.
 	ownedFirst, ownedCount, err := s.store.ListFlowsByOU(ctx, ouID, limit, offset, string(flowType))
@@ -1458,10 +1795,36 @@ func (s *flowMgtService) ListFlowsForOU(
 		flow.OUID = ouID
 		entries = append(entries, flow)
 	}
+	s.markManaged(ctx, entries)
 	return buildFlowListResponse(entries, ownedCount+len(sharedIDs), limit, offset, extraQuery), nil
 }
 
 // buildFlowListResponse builds the response for one page of a flow list.
+// refuseManaged refuses a change to a flow a control plane deployed, unless the change is the managed
+// import's: only a deploy from the control plane changes, restores or removes it.
+func (s *flowMgtService) refuseManaged(ctx context.Context, flowID string) *tidcommon.ServiceError {
+	managed, err := managedresource.IsReadOnly(ctx, s.managed, flowID, managedresource.TypeFlow)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to read whether a control plane deployed the flow",
+			log.String(logKeyFlowID, flowID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if managed {
+		return &ErrorManagedFlow
+	}
+	return nil
+}
+
+// markManaged reports the listed flows a control plane deployed as read only.
+func (s *flowMgtService) markManaged(ctx context.Context, flows []BasicFlowDefinition) {
+	if err := managedresource.MarkDeployed(ctx, s.managed, flows,
+		func(f *BasicFlowDefinition) string { return f.ID },
+		func(f *BasicFlowDefinition) { f.IsReadOnly = true }, managedresource.TypeFlow); err != nil {
+		// Every write to such a flow is refused whatever the list says, so it is served without the flag.
+		s.logger.Error(ctx, "Failed to read which flows a control plane deployed", log.Error(err))
+	}
+}
+
 func buildFlowListResponse(
 	flows []BasicFlowDefinition, total, limit, offset int, extraQuery string,
 ) *FlowListResponse {
@@ -1608,6 +1971,10 @@ func (s *flowMgtService) GetFlowOverlayRules(
 	if svcErr != nil {
 		return sharing.ResolvedOverlay{}, svcErr
 	}
+	if svcErr := sysauthz.CheckActionInAnyOU(ctx, s.authzService, s.logger, security.ActionReadFlow,
+		security.ResourceTypeFlow, flow.OUID, ouID); svcErr != nil {
+		return sharing.ResolvedOverlay{}, svcErr
+	}
 	overlay, svcErr := s.sharingSvc.ResolveOverlayRules(ctx, FlowSharingType, flowID, ouID)
 	if svcErr != nil {
 		return sharing.ResolvedOverlay{}, translateSharingError(svcErr)
@@ -1638,26 +2005,11 @@ func (s *flowMgtService) GetVariables(
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	held, svcErr := s.sharingSvc.ResolveOverlayValues(ctx, FlowSharingType, flowID, ouID)
-	if svcErr != nil {
-		return nil, translateSharingError(svcErr)
+	if svcErr := sysauthz.CheckActionInAnyOU(ctx, s.authzService, s.logger, security.ActionReadFlow,
+		security.ResourceTypeFlow, flow.OUID, ouID); svcErr != nil {
+		return nil, svcErr
 	}
-
-	values := map[string]interface{}{}
-	for _, def := range declaredVariables(flow) {
-		v, ok := held.Values[sharingKey(def.Identifier)]
-		if !ok || v.Source != sharing.SourceOverlay || len(v.Value) != 1 {
-			continue
-		}
-		value, err := jsonValue(def, v.Value[0])
-		if err != nil {
-			s.logger.Error(ctx, "A variable value of an organization unit is not readable",
-				log.String(logKeyFlowID, flowID), log.String("variable", def.Identifier), log.Error(err))
-			return nil, &tidcommon.InternalServerError
-		}
-		values[def.Identifier] = value
-	}
-	return &VariablesResponse{Values: values}, nil
+	return s.readVariables(ctx, flow, ouID)
 }
 
 // SetVariables sets the values an organization unit holds for the variables of a flow, replacing what it held: a
@@ -1667,37 +2019,15 @@ func (s *flowMgtService) GetVariables(
 func (s *flowMgtService) SetVariables(
 	ctx context.Context, flowID, ouID string, req SetVariablesRequest,
 ) (*VariablesResponse, *tidcommon.ServiceError) {
-	flow, svcErr := s.requireVisibleFlow(ctx, flowID, ouID)
+	flow, svcErr := s.setVariables(ctx, flowID, ouID, req)
+	// The flow is the target: neither the names nor the values of its variables are recorded, since a
+	// value may be a credential. Published from the write, so a read-back refusal or failure cannot misdescribe a
+	// stored change.
+	s.publishFlowEvent(ctx, audit.EventFlowVariablesUpdate, audit.ActionUpdate, flowID, svcErr)
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	defs := variablesByID(declaredVariables(flow))
-
-	raws, svcErr := s.checkValues(ctx, flowID, ouID, defs, req.Values)
-	if svcErr != nil {
-		return nil, svcErr
-	}
-
-	// The values are replaced together, in one transaction of the sharing store, which is where they live whichever
-	// store holds the flow: a write that fails leaves the unit with what it held before.
-	declared := declaredVariables(flow)
-	keys := make([]string, 0, len(declared))
-	values := make(map[string][]string, len(raws))
-	for _, def := range declared {
-		key := sharingKey(def.Identifier)
-		keys = append(keys, key)
-		if raw, set := raws[def.Identifier]; set {
-			values[key] = []string{raw}
-		}
-	}
-	replaceErr := s.sharingSvc.ReplaceOverlayValues(ctx, FlowSharingType, flowID, ouID, keys, values)
-	if replaceErr != nil {
-		if identifier, isVariable := strings.CutPrefix(replaceErr.FieldKey, sharingFieldKey+"."); isVariable {
-			return nil, translateValueError(identifier, replaceErr.Err)
-		}
-		return nil, translateSharingError(replaceErr.Err)
-	}
-	return s.GetVariables(ctx, flowID, ouID)
+	return s.readVariables(ctx, flow, ouID)
 }
 
 // checkValues validates every value of a request, and returns the raw form of each.
@@ -1787,7 +2117,7 @@ func (s *flowMgtService) GetEffectiveVariableValues(
 	if !visible {
 		return effective, nil
 	}
-	flow, svcErr := s.GetFlow(ctx, flowID)
+	flow, svcErr := s.getFlow(ctx, flowID)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -1871,6 +2201,75 @@ func invalidValue(variable, reason string) *tidcommon.ServiceError {
 	})
 }
 
+// setVariables stores the values an organization unit holds for the variables of a flow, and returns the flow,
+// without publishing its audit event.
+func (s *flowMgtService) setVariables(
+	ctx context.Context, flowID, ouID string, req SetVariablesRequest,
+) (*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
+	flow, svcErr := s.requireVisibleFlow(ctx, flowID, ouID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	// The values are the organization unit's own, so it is the one the caller must be allowed to act for.
+	if svcErr := s.authorizeFlowAction(ctx, security.ActionUpdateFlow, ouID); svcErr != nil {
+		return nil, svcErr
+	}
+	defs := variablesByID(declaredVariables(flow))
+
+	raws, svcErr := s.checkValues(ctx, flowID, ouID, defs, req.Values)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+
+	// The values are replaced together, in one transaction of the sharing store, which is where they live whichever
+	// store holds the flow: a write that fails leaves the unit with what it held before.
+	declared := declaredVariables(flow)
+	keys := make([]string, 0, len(declared))
+	values := make(map[string][]string, len(raws))
+	for _, def := range declared {
+		key := sharingKey(def.Identifier)
+		keys = append(keys, key)
+		if raw, set := raws[def.Identifier]; set {
+			values[key] = []string{raw}
+		}
+	}
+	replaceErr := s.sharingSvc.ReplaceOverlayValues(ctx, FlowSharingType, flowID, ouID, keys, values)
+	if replaceErr != nil {
+		if identifier, isVariable := strings.CutPrefix(replaceErr.FieldKey, sharingFieldKey+"."); isVariable {
+			return nil, translateValueError(identifier, replaceErr.Err)
+		}
+		return nil, translateSharingError(replaceErr.Err)
+	}
+	return flow, nil
+}
+
+// readVariables returns the values an organization unit has set for the variables of flow, without checking that
+// the caller may view them.
+func (s *flowMgtService) readVariables(
+	ctx context.Context, flow *providers.CompleteFlowDefinition, ouID string,
+) (*VariablesResponse, *tidcommon.ServiceError) {
+	held, svcErr := s.sharingSvc.ResolveOverlayValues(ctx, FlowSharingType, flow.ID, ouID)
+	if svcErr != nil {
+		return nil, translateSharingError(svcErr)
+	}
+
+	values := map[string]interface{}{}
+	for _, def := range declaredVariables(flow) {
+		v, ok := held.Values[sharingKey(def.Identifier)]
+		if !ok || v.Source != sharing.SourceOverlay || len(v.Value) != 1 {
+			continue
+		}
+		value, err := jsonValue(def, v.Value[0])
+		if err != nil {
+			s.logger.Error(ctx, "A variable value of an organization unit is not readable",
+				log.String(logKeyFlowID, flow.ID), log.String("variable", def.Identifier), log.Error(err))
+			return nil, &tidcommon.InternalServerError
+		}
+		values[def.Identifier] = value
+	}
+	return &VariablesResponse{Values: values}, nil
+}
+
 // ---------------------------------------------------------------------------
 // Sharing
 // ---------------------------------------------------------------------------
@@ -1878,26 +2277,52 @@ func invalidValue(variable, reason string) *tidcommon.ServiceError {
 // would otherwise reach through any flow's path.
 func (s *flowMgtService) requireOwnPolicy(
 	ctx context.Context, flowID, policyID string,
-) (sharing.Policy, *tidcommon.ServiceError) {
-	if _, svcErr := s.GetFlow(ctx, flowID); svcErr != nil {
-		return sharing.Policy{}, svcErr
+) (*providers.CompleteFlowDefinition, sharing.Policy, *tidcommon.ServiceError) {
+	flow, svcErr := s.getFlow(ctx, flowID)
+	if svcErr != nil {
+		return nil, sharing.Policy{}, svcErr
 	}
 	policy, svcErr := s.sharingSvc.GetPolicy(ctx, policyID)
 	if svcErr != nil {
-		return sharing.Policy{}, translateSharingError(svcErr)
+		return nil, sharing.Policy{}, translateSharingError(svcErr)
 	}
 	if policy.ResourceType != FlowSharingType || policy.ResourceID != flowID {
-		return sharing.Policy{}, &ErrorSharingPolicyNotFound
+		return nil, sharing.Policy{}, &ErrorSharingPolicyNotFound
 	}
-	return policy, nil
+	return flow, policy, nil
 }
 
-// CreateSharingPolicy records which organization units a flow is shared with, and on what terms.
+// CreateSharingPolicy records which organization units a flow is shared with, and on what terms. A policy is the
+// initiating organization unit's decision, so that unit is the one the caller must be allowed to act for.
 func (s *flowMgtService) CreateSharingPolicy(
 	ctx context.Context, flowID string, req sharing.PolicyRequest,
 ) (sharing.Policy, *tidcommon.ServiceError) {
-	flow, svcErr := s.GetFlow(ctx, flowID)
+	policy, svcErr := s.createSharingPolicy(ctx, flowID, req)
+	var policyID string
+	if svcErr == nil {
+		policyID = policy.ID
+	}
+	s.publishSharingPolicyEvent(ctx, audit.EventFlowSharingPolicyCreate, audit.ActionCreate, flowID, policyID,
+		svcErr)
+	return policy, svcErr
+}
+
+// createSharingPolicy records a sharing policy of a flow without publishing its audit event.
+func (s *flowMgtService) createSharingPolicy(
+	ctx context.Context, flowID string, req sharing.PolicyRequest,
+) (sharing.Policy, *tidcommon.ServiceError) {
+	flow, svcErr := s.getFlow(ctx, flowID)
 	if svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	initiatingOUID := req.InitiatingOUID
+	if initiatingOUID == "" {
+		initiatingOUID = flow.OUID
+	}
+	if svcErr := s.authorizeFlowAction(ctx, security.ActionUpdateFlow, initiatingOUID); svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	if svcErr := s.refuseManaged(ctx, flowID); svcErr != nil {
 		return sharing.Policy{}, svcErr
 	}
 	if svcErr := s.validatePolicyVariables(ctx, flow, req); svcErr != nil {
@@ -1907,34 +2332,60 @@ func (s *flowMgtService) CreateSharingPolicy(
 	return policy, translateSharingError(svcErr)
 }
 
-// GetSharingPolicy returns one of a flow's sharing policies.
+// GetSharingPolicy returns one of a flow's sharing policies. The owner sees every decision about its flow; any other
+// organization unit sees its own.
 func (s *flowMgtService) GetSharingPolicy(
 	ctx context.Context, flowID, policyID string,
 ) (sharing.Policy, *tidcommon.ServiceError) {
-	return s.requireOwnPolicy(ctx, flowID, policyID)
-}
-
-// ListSharingPolicies returns one page of a flow's sharing policies.
-func (s *flowMgtService) ListSharingPolicies(
-	ctx context.Context, flowID string, limit, offset int,
-) (sharing.PolicyList, *tidcommon.ServiceError) {
-	if _, svcErr := s.GetFlow(ctx, flowID); svcErr != nil {
-		return sharing.PolicyList{}, svcErr
-	}
-	list, svcErr := s.sharingSvc.GetPolicyList(ctx, FlowSharingType, flowID, limit, offset)
-	return list, translateSharingError(svcErr)
-}
-
-// UpdateSharingPolicy replaces a sharing policy's contents.
-func (s *flowMgtService) UpdateSharingPolicy(
-	ctx context.Context, flowID, policyID string, req sharing.PolicyRequest,
-) (sharing.Policy, *tidcommon.ServiceError) {
-	policy, svcErr := s.requireOwnPolicy(ctx, flowID, policyID)
+	flow, policy, svcErr := s.requireOwnPolicy(ctx, flowID, policyID)
 	if svcErr != nil {
 		return sharing.Policy{}, svcErr
 	}
-	flow, svcErr := s.GetFlow(ctx, flowID)
+	if svcErr := sysauthz.CheckActionInAnyOU(ctx, s.authzService, s.logger, security.ActionReadFlow,
+		security.ResourceTypeFlow, flow.OUID, policy.InitiatingOUID); svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	return policy, nil
+}
+
+// ListSharingPolicies returns one page of a flow's sharing policies. A caller who may read flows in the owning
+// organization unit sees them all; any other caller sees the ones its own organization units made.
+func (s *flowMgtService) ListSharingPolicies(
+	ctx context.Context, flowID string, limit, offset int,
+) (sharing.PolicyList, *tidcommon.ServiceError) {
+	flow, svcErr := s.getFlow(ctx, flowID)
 	if svcErr != nil {
+		return sharing.PolicyList{}, svcErr
+	}
+	return sharing.ListReadablePolicies(ctx, s.sharingSvc, FlowSharingType, flowID, flow.OUID, limit,
+		offset, func(ouID string) *tidcommon.ServiceError {
+			return s.authorizeFlowAction(ctx, security.ActionReadFlow, ouID)
+		}, translateSharingError)
+}
+
+// UpdateSharingPolicy replaces a sharing policy's contents. Only the organization unit whose decision it is may change
+// it.
+func (s *flowMgtService) UpdateSharingPolicy(
+	ctx context.Context, flowID, policyID string, req sharing.PolicyRequest,
+) (sharing.Policy, *tidcommon.ServiceError) {
+	updated, svcErr := s.updateSharingPolicy(ctx, flowID, policyID, req)
+	s.publishSharingPolicyEvent(ctx, audit.EventFlowSharingPolicyUpdate, audit.ActionUpdate, flowID, policyID,
+		svcErr)
+	return updated, svcErr
+}
+
+// updateSharingPolicy replaces a sharing policy of a flow without publishing its audit event.
+func (s *flowMgtService) updateSharingPolicy(
+	ctx context.Context, flowID, policyID string, req sharing.PolicyRequest,
+) (sharing.Policy, *tidcommon.ServiceError) {
+	flow, policy, svcErr := s.requireOwnPolicy(ctx, flowID, policyID)
+	if svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	if svcErr := s.authorizeFlowAction(ctx, security.ActionUpdateFlow, policy.InitiatingOUID); svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	if svcErr := s.refuseManaged(ctx, flowID); svcErr != nil {
 		return sharing.Policy{}, svcErr
 	}
 	// The issuer of a policy is not part of an edit: it is the one the policy already has.
@@ -1948,14 +2399,30 @@ func (s *flowMgtService) UpdateSharingPolicy(
 
 // DeleteSharingPolicy removes a sharing policy and what depended on it. Deleting one that is gone succeeds.
 func (s *flowMgtService) DeleteSharingPolicy(ctx context.Context, flowID, policyID string) *tidcommon.ServiceError {
-	policy, svcErr := s.requireOwnPolicy(ctx, flowID, policyID)
+	svcErr := s.deleteSharingPolicy(ctx, flowID, policyID)
+	// A delete that found no policy of the flow succeeds without an event, so no caller can record a
+	// deletion of an ID it made up.
+	if svcErr == errSharingPolicyNotFoundNoop {
+		return nil
+	}
+	s.publishSharingPolicyEvent(ctx, audit.EventFlowSharingPolicyDelete, audit.ActionDelete, flowID, policyID,
+		svcErr)
+	return svcErr
+}
+
+// deleteSharingPolicy removes a sharing policy of a flow without publishing its audit event.
+func (s *flowMgtService) deleteSharingPolicy(ctx context.Context, flowID, policyID string) *tidcommon.ServiceError {
+	_, policy, svcErr := s.requireOwnPolicy(ctx, flowID, policyID)
 	if svcErr != nil {
 		if svcErr.Code == ErrorSharingPolicyNotFound.Code {
-			return nil
+			return errSharingPolicyNotFoundNoop
 		}
 		return svcErr
 	}
-	if _, svcErr := s.GetFlow(ctx, flowID); svcErr != nil {
+	if svcErr := s.authorizeFlowAction(ctx, security.ActionUpdateFlow, policy.InitiatingOUID); svcErr != nil {
+		return svcErr
+	}
+	if svcErr := s.refuseManaged(ctx, flowID); svcErr != nil {
 		return svcErr
 	}
 	if policy.Declared {
@@ -1964,12 +2431,26 @@ func (s *flowMgtService) DeleteSharingPolicy(ctx context.Context, flowID, policy
 	return translateSharingError(s.sharingSvc.DeletePolicy(ctx, policyID))
 }
 
+// publishSharingPolicyEvent publishes the audit event of an attempt on the sharing policy with policyID
+// of the flow with flowID, after the change committed or was refused. The policy is the target and the
+// flow the subject, which a succeeded or denied attempt names: a sharing call is refused only once the
+// flow is found. Reshares the framework re-narrows or removes beneath a changed policy write no event of
+// their own, and nor do the terms a policy states.
+func (s *flowMgtService) publishSharingPolicyEvent(ctx context.Context, name string, action audit.Action,
+	flowID, policyID string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the IDs the caller sent, as evidence of what was probed.
+	target := audit.Ref{Type: audit.TargetTypeFlowSharingPolicy, ID: policyID}
+	subject := audit.Ref{Type: audit.TargetTypeFlow, ID: flowID}
+	eventbus.TryPublish(ctx, s.bus, eventbus.NewEvent(ctx, name).With(
+		audit.ChangePayloadWithSubject(ctx, target, subject, action, svcErr)))
+}
+
 // ValidateSharingPolicies checks the terms policies state for the variables of a flow, without recording them. It is
 // what a replay of policies from a document is checked with before it is applied.
 func (s *flowMgtService) ValidateSharingPolicies(
 	ctx context.Context, flowID string, policies []sharing.PolicyRequest,
 ) *tidcommon.ServiceError {
-	flow, svcErr := s.GetFlow(ctx, flowID)
+	flow, svcErr := s.getFlow(ctx, flowID)
 	if svcErr != nil {
 		return svcErr
 	}
@@ -2090,6 +2571,11 @@ func (s *flowMgtService) replaceSharing(
 			log.String(logKeyFlowID, flowID), log.Int("policyIndex", skipped.Index+1),
 			log.String("initiatingOUID", skipped.InitiatingOUID),
 			log.String("declaredPolicyID", skipped.DeclaredPolicyID))
+	}
+	for _, removed := range replay.Removed {
+		s.logger.Info(ctx, "Sharing policy removed to match the document",
+			log.String(logKeyFlowID, flowID), log.String("policyID", removed.PolicyID),
+			log.String("initiatingOUID", removed.InitiatingOUID), log.Bool("reshare", removed.Reshare))
 	}
 	if replayErr != nil {
 		// A document names its policies only by position, so the refusal says which one.
@@ -2370,4 +2856,49 @@ var sharingErrors = sharing.ErrorTranslation{
 // reported as an internal failure.
 func translateSharingError(svcErr *tidcommon.ServiceError) *tidcommon.ServiceError {
 	return sharingErrors.Translate(svcErr)
+}
+
+// authorizeFlowAction checks the caller may perform the action on a flow of the organization unit.
+func (s *flowMgtService) authorizeFlowAction(ctx context.Context, action security.Action,
+	ouID string) *tidcommon.ServiceError {
+	allowed, svcErr := s.authzService.IsActionAllowed(ctx, action,
+		&sysauthz.ActionContext{ResourceType: security.ResourceTypeFlow, OUID: ouID})
+	if svcErr != nil {
+		s.logger.Error(ctx, "Failed to check authorization for action",
+			log.String("action", string(action)), log.Any("error", svcErr))
+		return &tidcommon.InternalServerError
+	}
+	if !allowed {
+		return &tidcommon.ErrorUnauthorized
+	}
+	return nil
+}
+
+// checkFlowWritable checks the caller may update the flow and that it is not declared in a file or deployed
+// by a control plane, unless the change is the managed import's.
+func (s *flowMgtService) checkFlowWritable(
+	ctx context.Context, flow *providers.CompleteFlowDefinition,
+) *tidcommon.ServiceError {
+	if svcErr := s.authorizeFlowAction(ctx, security.ActionUpdateFlow, flow.OUID); svcErr != nil {
+		return s.sharedFlowRefusal(ctx, flow.ID, flow.OUID, svcErr)
+	}
+	if flow.IsReadOnly {
+		return &ErrorFlowDeclarativeReadOnly
+	}
+	return s.refuseManaged(ctx, flow.ID)
+}
+
+// sharedFlowRefusal answers a change refused in the flow's owning organization unit with ErrorSharedFlowReadOnly
+// when the flow is shared into the organization unit the caller is confined to, and with the refusal otherwise.
+func (s *flowMgtService) sharedFlowRefusal(ctx context.Context, flowID, ownerOUID string,
+	refusal *tidcommon.ServiceError) *tidcommon.ServiceError {
+	ouID, svcErr := sharing.SharedIntoCallerOU(ctx, s.authzService, s.sharingSvc, s.logger, FlowSharingType,
+		flowID, ownerOUID, refusal)
+	if svcErr != nil {
+		return svcErr
+	}
+	if ouID != "" {
+		return &ErrorSharedFlowReadOnly
+	}
+	return refusal
 }

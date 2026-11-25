@@ -7,9 +7,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
+	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
+	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // JSON Schema type constants.
@@ -30,6 +35,9 @@ const (
 	TypeArray = "array"
 )
 
+// verificationClaimSuffix ends the name of the claim that carries a contact attribute's verification status.
+const verificationClaimSuffix = "_verified"
+
 type property interface {
 	isRequired() bool
 	isCredential() bool
@@ -43,9 +51,25 @@ type property interface {
 		exists func(map[string]interface{}) (bool, error), logger *log.Logger) (bool, error)
 }
 
+// Keys of the display settings a top-level property can set. They are read here rather than by
+// each property type, so nested properties do not accept them.
+const (
+	keyDisplay  = "display"
+	keyOrder    = "order"
+	keyOnCreate = "onCreate"
+	keyHidden   = "hidden"
+)
+
+// attributeHints holds a top-level property's display order and whether it is hidden on create.
+type attributeHints struct {
+	displayOrder   *int
+	hiddenOnCreate bool
+}
+
 // Schema represents an entity type schema with a set of properties.
 type Schema struct {
 	properties map[string]property
+	hints      map[string]attributeHints
 }
 
 // getPropertyByPath returns the property at the given dot-notation path
@@ -134,6 +158,117 @@ func IsStringBackedType(attrType string) bool {
 	return attrType == TypeString || attrType == TypeEmail || attrType == TypeMobile
 }
 
+// ConvertReceivedValue returns the value an external party sent for an attribute, as the attribute type
+// stores it, or nil when it's null or an empty string. Arrays and objects keep their structure, and a
+// single value received for an array becomes a one-item array. Other values are converted to the type.
+// It returns false when the value has the wrong shape for the type, or converts to a number JSON can't
+// hold.
+func ConvertReceivedValue(received interface{}, attrType string) (interface{}, bool) {
+	if text, ok := received.(string); received == nil || ok && text == "" {
+		return nil, true
+	}
+	_, isObject := received.(map[string]interface{})
+	isArray := false
+	if !isObject {
+		kind := reflect.ValueOf(received).Kind()
+		isArray = kind == reflect.Slice || kind == reflect.Array
+	}
+
+	switch attrType {
+	case TypeArray:
+		if isObject {
+			return nil, false
+		}
+		if !isArray {
+			return []interface{}{received}, true
+		}
+		return received, true
+	case TypeObject:
+		return received, isObject
+	}
+	if isObject || isArray {
+		return nil, false
+	}
+
+	value := systemutils.ConvertInterfaceValueToString(received)
+	if value == "" {
+		return nil, true
+	}
+	switch attrType {
+	case TypeBoolean:
+		parsed, err := strconv.ParseBool(value)
+		return parsed, err == nil
+	case TypeNumber:
+		parsed, err := strconv.ParseFloat(value, 64)
+		return parsed, err == nil && !math.IsNaN(parsed) && !math.IsInf(parsed, 0)
+	}
+	return value, true
+}
+
+// IsContactType reports whether the attribute type is a verifiable contact: an email or a mobile number.
+func IsContactType(attrType string) bool {
+	return attrType == TypeEmail || attrType == TypeMobile
+}
+
+// ContactChannel returns the verification channel of a contact type: SMS for a mobile number, email
+// otherwise.
+func ContactChannel(attrType string) providers.VerificationChannel {
+	if attrType == TypeMobile {
+		return providers.VerificationChannelSMS
+	}
+
+	return providers.VerificationChannelEmail
+}
+
+// ContactTypeForChannel returns the contact attribute type a channel delivers to.
+func ContactTypeForChannel(channel providers.VerificationChannel) string {
+	if channel == providers.VerificationChannelSMS {
+		return TypeMobile
+	}
+
+	return TypeEmail
+}
+
+// CanonicalContactValue returns the comparable form of a contact value: an email address is trimmed and
+// its domain lowercased. A value of any other type is returned unchanged.
+func CanonicalContactValue(attrType, value string) string {
+	if attrType != TypeEmail {
+		return value
+	}
+
+	value = strings.TrimSpace(value)
+	if at := strings.LastIndexByte(value, '@'); at >= 0 {
+		value = value[:at+1] + strings.ToLower(value[at+1:])
+	}
+
+	return value
+}
+
+// VerificationClaims returns the verification claims the server issues for a type's attributes, mapped to
+// their contact attribute: <attribute>_verified for each email or mobile attribute, unless the schema
+// declares that name itself.
+func VerificationClaims(attributes []AttributeInfo) map[string]string {
+	declared := make(map[string]bool, len(attributes))
+	for _, attribute := range attributes {
+		declared[attribute.Attribute] = true
+	}
+
+	claims := make(map[string]string)
+	for _, attribute := range attributes {
+		name := attribute.Attribute + verificationClaimSuffix
+		if IsContactType(attribute.Type) && !declared[name] {
+			claims[name] = attribute.Attribute
+		}
+	}
+
+	return claims
+}
+
+// IsVerificationClaimName reports whether a claim name has the form of a verification claim.
+func IsVerificationClaimName(name string) bool {
+	return strings.HasSuffix(name, verificationClaimSuffix)
+}
+
 // AttributeInfo holds an attribute name, its required and credential status, and its human-readable
 // display label. DisplayName may be empty when the schema definition omits the `displayName` field;
 // callers should fall back to Attribute when rendering a label.
@@ -147,6 +282,11 @@ type AttributeInfo struct {
 	// Enum holds the permitted values in schema order when the property constrains them, and is
 	// empty otherwise.
 	Enum []string
+	// DisplayOrder is the attribute's position among the others when it is collected, lower first
+	// and attribute name for the same order, and nil when the schema does not set one.
+	DisplayOrder *int
+	// HiddenOnCreate is true when an optional attribute is not asked for when an account is created.
+	HiddenOnCreate bool
 }
 
 // AttributeFilter selects top-level schema properties by their characteristics. Credential and
@@ -181,14 +321,17 @@ func (cs *Schema) GetAttributes(filter AttributeFilter) []AttributeInfo {
 		if filter.Type != "" && prop.getType() != filter.Type {
 			continue
 		}
+		attrHints := cs.hints[attr]
 		result = append(result, AttributeInfo{
-			Attribute:   attr,
-			DisplayName: prop.getDisplayName(),
-			Type:        prop.getType(),
-			Required:    prop.isRequired(),
-			Credential:  isCredential,
-			Unique:      prop.isUnique(),
-			Enum:        prop.getEnum(),
+			Attribute:      attr,
+			DisplayName:    prop.getDisplayName(),
+			Type:           prop.getType(),
+			Required:       prop.isRequired(),
+			Credential:     isCredential,
+			Unique:         prop.isUnique(),
+			Enum:           prop.getEnum(),
+			DisplayOrder:   attrHints.displayOrder,
+			HiddenOnCreate: attrHints.hiddenOnCreate,
 		})
 	}
 	return result
@@ -227,27 +370,46 @@ func (cs *Schema) Validate(
 	}
 
 	for propName, prop := range cs.properties {
-		value, exists := userAttrs[propName]
-		if !exists {
-			if prop.isRequired() && (!skipCredentialRequired || !prop.isCredential()) {
-				return false, nil
-			}
-			continue
-		}
-
-		isValid, err := prop.validateValue(ctx, value, propName, logger)
-		if err != nil {
-			return false, err
-		}
-		if !isValid {
+		if _, exists := userAttrs[propName]; !exists && prop.isRequired() &&
+			(!skipCredentialRequired || !prop.isCredential()) {
 			return false, nil
 		}
 	}
 
-	// Reject any user attributes not declared in the schema.
-	for key := range userAttrs {
-		if _, declared := cs.properties[key]; !declared {
-			logger.Debug(ctx, "Attribute not defined in schema", log.String("attribute", key))
+	return cs.validateValues(ctx, userAttrs, logger)
+}
+
+// ValidateValues validates only the given attributes against their schema properties, so a partial
+// payload such as a credential update is checked without requiring the rest of the entity.
+func (cs *Schema) ValidateValues(
+	ctx context.Context, attributes json.RawMessage, logger *log.Logger) (bool, error) {
+	if len(attributes) == 0 {
+		return true, nil
+	}
+
+	var attrs map[string]any
+	if err := json.Unmarshal(attributes, &attrs); err != nil {
+		return false, fmt.Errorf("failed to unmarshal attributes: %w", err)
+	}
+
+	return cs.validateValues(ctx, attrs, logger)
+}
+
+// validateValues checks each attribute against its schema property and rejects attributes the
+// schema does not declare.
+func (cs *Schema) validateValues(
+	ctx context.Context, attrs map[string]any, logger *log.Logger) (bool, error) {
+	for name, value := range attrs {
+		prop, declared := cs.properties[name]
+		if !declared {
+			logger.Debug(ctx, "Attribute not defined in schema", log.String("attribute", name))
+			return false, nil
+		}
+		isValid, err := prop.validateValue(ctx, value, name, logger)
+		if err != nil {
+			return false, err
+		}
+		if !isValid {
 			return false, nil
 		}
 	}
@@ -314,17 +476,81 @@ func CompileSchema(schema json.RawMessage) (*Schema, error) {
 
 	compiled := &Schema{
 		properties: make(map[string]property, len(schemaMap)),
+		hints:      make(map[string]attributeHints, len(schemaMap)),
 	}
 
 	for propName, propRaw := range schemaMap {
-		compiledProp, err := compileProperty(propName, propRaw)
+		var propMap map[string]json.RawMessage
+		if err := json.Unmarshal(propRaw, &propMap); err != nil {
+			return nil, fmt.Errorf("invalid property '%s': property definition must be an object", propName)
+		}
+		propHints, err := extractDisplay(propMap)
+		if err != nil {
+			return nil, fmt.Errorf("invalid property '%s': %w", propName, err)
+		}
+		compiledProp, err := compilePropertyMap(propName, propMap)
 		if err != nil {
 			return nil, fmt.Errorf("invalid property '%s': %w", propName, err)
 		}
 		compiled.properties[propName] = compiledProp
+		compiled.hints[propName] = propHints
 	}
 
 	return compiled, nil
+}
+
+// extractDisplay reads the display settings of a top-level property and removes them from propMap.
+func extractDisplay(propMap map[string]json.RawMessage) (attributeHints, error) {
+	var result attributeHints
+	raw, ok := propMap[keyDisplay]
+	if !ok {
+		return result, nil
+	}
+	delete(propMap, keyDisplay)
+
+	var display map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &display); err != nil || display == nil {
+		return result, fmt.Errorf("'%s' field must be an object", keyDisplay)
+	}
+	for key, value := range display {
+		switch key {
+		case keyOrder:
+			var order *int
+			if err := json.Unmarshal(value, &order); err != nil || order == nil || *order < 0 {
+				return result, fmt.Errorf("'%s.%s' field must be a non-negative integer", keyDisplay, keyOrder)
+			}
+			result.displayOrder = order
+		case keyOnCreate:
+			hidden, err := extractHidden(value)
+			if err != nil {
+				return result, err
+			}
+			result.hiddenOnCreate = hidden
+		default:
+			return result, fmt.Errorf("invalid field '%s.%s'", keyDisplay, key)
+		}
+	}
+	return result, nil
+}
+
+// extractHidden reads the hidden setting of display.onCreate.
+func extractHidden(raw json.RawMessage) (bool, error) {
+	var onCreate map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &onCreate); err != nil || onCreate == nil {
+		return false, fmt.Errorf("'%s.%s' field must be an object", keyDisplay, keyOnCreate)
+	}
+	hidden := false
+	for key, value := range onCreate {
+		if key != keyHidden {
+			return false, fmt.Errorf("invalid field '%s.%s.%s'", keyDisplay, keyOnCreate, key)
+		}
+		var val *bool
+		if err := json.Unmarshal(value, &val); err != nil || val == nil {
+			return false, fmt.Errorf("'%s.%s.%s' field must be a boolean", keyDisplay, keyOnCreate, keyHidden)
+		}
+		hidden = *val
+	}
+	return hidden, nil
 }
 
 func compileProperty(propName string, propRaw json.RawMessage) (property, error) {
@@ -332,7 +558,11 @@ func compileProperty(propName string, propRaw json.RawMessage) (property, error)
 	if err := json.Unmarshal(propRaw, &propMap); err != nil {
 		return nil, fmt.Errorf("property definition must be an object")
 	}
+	return compilePropertyMap(propName, propMap)
+}
 
+// compilePropertyMap compiles a property definition already decoded into a map.
+func compilePropertyMap(propName string, propMap map[string]json.RawMessage) (property, error) {
 	typeRaw, exists := propMap["type"]
 	if !exists {
 		return nil, fmt.Errorf("missing required 'type' field")

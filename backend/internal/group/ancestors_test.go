@@ -342,6 +342,7 @@ func TestModifyGroupMembers_RefusesDisallowedGrant(t *testing.T) {
 		store.On("GetGroup", mock.Anything, "librarianGroup").
 			Return(GroupDAO{ID: "librarianGroup", OUID: "ou-1"}, nil)
 		svc := &groupService{
+			bus:           discardingBus{},
 			groupStore:    store,
 			authzService:  newGrantRefusingAuthz(t),
 			entityService: entitymock.NewEntityServiceInterfaceMock(t),
@@ -363,6 +364,7 @@ func TestModifyGroupMembers_RefusesDisallowedGrant(t *testing.T) {
 		store.On("GetGroup", mock.Anything, "librarianGroup").
 			Return(GroupDAO{ID: "librarianGroup", OUID: "ou-1"}, nil)
 		svc := &groupService{
+			bus:           discardingBus{},
 			groupStore:    store,
 			authzService:  newGrantRefusingAuthz(t),
 			entityService: entitymock.NewEntityServiceInterfaceMock(t),
@@ -384,6 +386,7 @@ func TestModifyGroupMembers_RefusesDisallowedGrant(t *testing.T) {
 		store.On("GetGroup", mock.Anything, "librarianGroup").
 			Return(GroupDAO{ID: "librarianGroup", OUID: "ou-1"}, nil)
 		svc := &groupService{
+			bus:           discardingBus{},
 			groupStore:    store,
 			authzService:  newGrantRefusingAuthz(t),
 			entityService: entitymock.NewEntityServiceInterfaceMock(t),
@@ -407,6 +410,7 @@ func TestModifyGroupMembers_RefusesDisallowedGrant(t *testing.T) {
 			Return(GroupDAO{ID: "librarianGroup", OUID: "ou-1"}, nil)
 		entitySvc := entitymock.NewEntityServiceInterfaceMock(t)
 		svc := &groupService{
+			bus:           discardingBus{},
 			groupStore:    store,
 			authzService:  newGrantRefusingAuthz(t),
 			entityService: entitySvc,

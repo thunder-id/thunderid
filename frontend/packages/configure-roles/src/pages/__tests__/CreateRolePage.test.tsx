@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {fireEvent} from '@testing-library/react';
+import {ProjectScopeProvider, RoutesProvider} from '@thunderid/contexts';
 import {render, screen} from '@thunderid/test-utils';
 import type {NavigateFunction} from 'react-router';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
@@ -17,8 +18,16 @@ vi.mock('@thunderid/configure-organization-units', () => ({
     data: id ? {id, name: 'Test Organization Unit'} : undefined,
     isLoading: false,
   }),
-  OrganizationUnitPickerScreen: ({onBack, onContinue}: {onBack: () => void; onContinue: () => void}) => (
-    <div data-testid="organization-unit-picker-screen">
+  OrganizationUnitPickerScreen: ({
+    onBack,
+    onContinue,
+    projectId = undefined,
+  }: {
+    onBack: () => void;
+    onContinue: () => void;
+    projectId?: string;
+  }) => (
+    <div data-testid="organization-unit-picker-screen" data-project-id={projectId}>
       <button type="button" onClick={onBack}>
         Back
       </button>
@@ -531,6 +540,132 @@ describe('CreateRolePage', () => {
         expect(mockSetError).toHaveBeenCalledWith('Role name cannot exceed 100 characters');
       });
       expect(mockMutateAsync).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('inside a project', () => {
+    function mockRoleStep(currentStep: RoleCreateFlowStep, ouId = ''): void {
+      vi.mocked(useRoleCreate).mockReturnValue({
+        currentStep,
+        setCurrentStep: mockSetCurrentStep,
+        name: 'Shop Admin',
+        setName: mockSetName,
+        ouId,
+        setOuId: mockSetOuId,
+        error: null,
+        setError: mockSetError,
+        permissions: [],
+        setPermissions: mockSetPermissions,
+        reset: vi.fn(),
+      } as unknown as ReturnType<typeof useRoleCreate>);
+    }
+
+    function mockCreate(): ReturnType<typeof vi.fn> {
+      const mockMutateAsync = vi.fn().mockResolvedValue({});
+      vi.mocked(useCreateRole).mockReturnValue({
+        mutateAsync: mockMutateAsync,
+        isPending: false,
+      } as unknown as ReturnType<typeof useCreateRole>);
+      return mockMutateAsync;
+    }
+
+    function renderInProject(): void {
+      render(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <CreateRolePage />
+        </ProjectScopeProvider>,
+      );
+    }
+
+    describe('when the project has no organization units', () => {
+      beforeEach(() => {
+        vi.mocked(useHasMultipleOUs).mockReturnValue({hasMultipleOUs: false, isLoading: false, ouList: []});
+      });
+
+      it('should skip the organization unit step', () => {
+        mockRoleStep(RoleCreateFlowStep.ORGANIZATION_UNIT);
+        renderInProject();
+
+        expect(useHasMultipleOUs).toHaveBeenCalledWith('project-1');
+        expect(screen.queryByTestId('organization-unit-picker-screen')).not.toBeInTheDocument();
+        expect(mockSetCurrentStep).toHaveBeenCalledWith(RoleCreateFlowStep.BASIC_INFO);
+      });
+
+      it('should create the role in the project, without an organization unit', async () => {
+        const mockMutateAsync = mockCreate();
+        mockRoleStep(RoleCreateFlowStep.PERMISSIONS);
+        renderInProject();
+        fireEvent.click(screen.getByRole('button', {name: /continue/i}));
+
+        await vi.waitFor(() => {
+          expect(mockMutateAsync).toHaveBeenCalledWith({name: 'Shop Admin', projectId: 'project-1'});
+        });
+      });
+
+      it("should return to the project's roles list after creating the role", async () => {
+        mockCreate();
+        mockRoleStep(RoleCreateFlowStep.PERMISSIONS);
+        render(
+          <RoutesProvider
+            paths={{
+              roles: {
+                list: () => '/project/shop/roles',
+                detail: (id: string) => `/project/shop/roles/${id}`,
+                create: () => '/project/shop/roles/create',
+              },
+            }}
+          >
+            <ProjectScopeProvider project={{id: 'project-1'}}>
+              <CreateRolePage />
+            </ProjectScopeProvider>
+          </RoutesProvider>,
+        );
+        fireEvent.click(screen.getByRole('button', {name: /continue/i}));
+
+        await vi.waitFor(() => {
+          expect(mockNavigate).toHaveBeenCalledWith('/project/shop/roles');
+        });
+      });
+    });
+
+    describe('when the project has organization units', () => {
+      beforeEach(() => {
+        vi.mocked(useHasMultipleOUs).mockReturnValue({
+          hasMultipleOUs: true,
+          isLoading: false,
+          ouList: [{id: 'ou-p1', handle: 'project-ou', name: 'Project OU'}],
+        });
+      });
+
+      it("should show the project's organization unit step", () => {
+        mockRoleStep(RoleCreateFlowStep.ORGANIZATION_UNIT);
+        renderInProject();
+
+        expect(screen.getByTestId('organization-unit-picker-screen')).toHaveAttribute('data-project-id', 'project-1');
+        expect(mockSetCurrentStep).not.toHaveBeenCalled();
+      });
+
+      it('should create the role in the system organization unit the picker selects', async () => {
+        const mockMutateAsync = mockCreate();
+        mockRoleStep(RoleCreateFlowStep.PERMISSIONS, 'system-ou');
+        renderInProject();
+        fireEvent.click(screen.getByRole('button', {name: /continue/i}));
+
+        await vi.waitFor(() => {
+          expect(mockMutateAsync).toHaveBeenCalledWith({name: 'Shop Admin', projectId: 'project-1', ouId: 'system-ou'});
+        });
+      });
+
+      it('should create the role in the picked project organization unit', async () => {
+        const mockMutateAsync = mockCreate();
+        mockRoleStep(RoleCreateFlowStep.PERMISSIONS, 'ou-p1');
+        renderInProject();
+        fireEvent.click(screen.getByRole('button', {name: /continue/i}));
+
+        await vi.waitFor(() => {
+          expect(mockMutateAsync).toHaveBeenCalledWith({name: 'Shop Admin', projectId: 'project-1', ouId: 'ou-p1'});
+        });
+      });
     });
   });
 });

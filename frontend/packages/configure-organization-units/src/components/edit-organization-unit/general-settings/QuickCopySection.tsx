@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {SettingsCard} from '@thunderid/components';
-import {Stack, TextField, InputAdornment, Tooltip, IconButton, FormControl, FormLabel} from '@wso2/oxygen-ui';
+import {Stack, TextField, InputAdornment, Tooltip, IconButton} from '@wso2/oxygen-ui';
 import {Copy, Check} from '@wso2/oxygen-ui-icons-react';
 import {useTranslation} from 'react-i18next';
 import type {OrganizationUnit} from '../../../models/organization-unit';
@@ -48,71 +48,69 @@ export default function QuickCopySection({organizationUnit, copiedField, onCopyT
       description={t('organizationUnits:edit.general.sections.quickCopy.description')}
     >
       <Stack spacing={3}>
-        <FormControl fullWidth>
-          <FormLabel htmlFor="handle-input">{t('organizationUnits:edit.general.handle.label')}</FormLabel>
-          <TextField
-            fullWidth
-            id="handle-input"
-            value={organizationUnit.handle}
-            InputProps={{
-              readOnly: true,
-              endAdornment: (
-                <InputAdornment position="end">
-                  <Tooltip title={copiedField === 'handle' ? t('common:actions.copied') : t('common:actions.copy')}>
-                    <IconButton
-                      aria-label={copiedField === 'handle' ? t('common:actions.copied') : t('common:actions.copy')}
-                      onClick={() => {
-                        onCopyToClipboard(organizationUnit.handle, 'handle').catch(() => null);
-                      }}
-                      edge="end"
-                    >
-                      {copiedField === 'handle' ? <Check size={16} /> : <Copy size={16} />}
-                    </IconButton>
-                  </Tooltip>
-                </InputAdornment>
-              ),
-            }}
-            sx={{
-              '& input': {
-                fontFamily: 'monospace',
-                fontSize: '0.875rem',
-              },
-            }}
-          />
-        </FormControl>
+        <TextField
+          labelPlacement="top"
+          label={t('organizationUnits:edit.general.handle.label')}
+          fullWidth
+          id="handle-input"
+          value={organizationUnit.handle}
+          InputProps={{
+            readOnly: true,
+            endAdornment: (
+              <InputAdornment position="end">
+                <Tooltip title={copiedField === 'handle' ? t('common:actions.copied') : t('common:actions.copy')}>
+                  <IconButton
+                    aria-label={copiedField === 'handle' ? t('common:actions.copied') : t('common:actions.copy')}
+                    onClick={() => {
+                      onCopyToClipboard(organizationUnit.handle, 'handle').catch(() => null);
+                    }}
+                    edge="end"
+                  >
+                    {copiedField === 'handle' ? <Check size={16} /> : <Copy size={16} />}
+                  </IconButton>
+                </Tooltip>
+              </InputAdornment>
+            ),
+          }}
+          sx={{
+            '& input': {
+              fontFamily: 'monospace',
+              fontSize: '0.875rem',
+            },
+          }}
+        />
 
-        <FormControl fullWidth>
-          <FormLabel htmlFor="ou-id-input">{t('organizationUnits:edit.general.ou.id.label')}</FormLabel>
-          <TextField
-            fullWidth
-            id="ou-id-input"
-            value={organizationUnit.id}
-            InputProps={{
-              readOnly: true,
-              endAdornment: (
-                <InputAdornment position="end">
-                  <Tooltip title={copiedField === 'ou_id' ? t('common:actions.copied') : t('common:actions.copy')}>
-                    <IconButton
-                      aria-label={copiedField === 'ou_id' ? t('common:actions.copied') : t('common:actions.copy')}
-                      onClick={() => {
-                        onCopyToClipboard(organizationUnit.id, 'ou_id').catch(() => null);
-                      }}
-                      edge="end"
-                    >
-                      {copiedField === 'ou_id' ? <Check size={16} /> : <Copy size={16} />}
-                    </IconButton>
-                  </Tooltip>
-                </InputAdornment>
-              ),
-            }}
-            sx={{
-              '& input': {
-                fontFamily: 'monospace',
-                fontSize: '0.875rem',
-              },
-            }}
-          />
-        </FormControl>
+        <TextField
+          labelPlacement="top"
+          label={t('organizationUnits:edit.general.ou.id.label')}
+          fullWidth
+          id="ou-id-input"
+          value={organizationUnit.id}
+          InputProps={{
+            readOnly: true,
+            endAdornment: (
+              <InputAdornment position="end">
+                <Tooltip title={copiedField === 'ou_id' ? t('common:actions.copied') : t('common:actions.copy')}>
+                  <IconButton
+                    aria-label={copiedField === 'ou_id' ? t('common:actions.copied') : t('common:actions.copy')}
+                    onClick={() => {
+                      onCopyToClipboard(organizationUnit.id, 'ou_id').catch(() => null);
+                    }}
+                    edge="end"
+                  >
+                    {copiedField === 'ou_id' ? <Check size={16} /> : <Copy size={16} />}
+                  </IconButton>
+                </Tooltip>
+              </InputAdornment>
+            ),
+          }}
+          sx={{
+            '& input': {
+              fontFamily: 'monospace',
+              fontSize: '0.875rem',
+            },
+          }}
+        />
       </Stack>
     </SettingsCard>
   );

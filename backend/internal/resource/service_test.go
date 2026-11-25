@@ -6,6 +6,7 @@ package resource
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
@@ -21,9 +22,14 @@ import (
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
 const (
@@ -33,6 +39,8 @@ const (
 	testNewDescription  = "new description"
 	testWrongResourceID = "res-wrong"
 	declarativeRSID     = "declarative-rs"
+	testProjectID       = "proj-1"
+	testSystemOUID      = "01900000-0000-7000-8000-000000000001"
 )
 
 var testParentResourceID = "parent-123"
@@ -160,7 +168,8 @@ func (suite *ResourceServiceTestSuite) SetupTest() {
 	suite.mockOU = new(oumock.OrganizationUnitServiceInterfaceMock)
 	suite.mockTransactioner = &fakeTransactioner{}
 	suite.service, err = newResourceService(
-		suite.mockOU, suite.mockStore, suite.mockTransactioner, nil, nil,
+		suite.mockOU, suite.mockStore, suite.mockTransactioner, nil, nil, nil, discardingBus{},
+		allowAllAuthz(suite.T()),
 	)
 	suite.NoError(err)
 	// The resource service is its own dependency provider: deletion consults the registry, which
@@ -202,7 +211,8 @@ func (suite *ResourceServiceTestSuite) TestNewResourceService_InvalidDelimiter()
 	mockOU := new(oumock.OrganizationUnitServiceInterfaceMock)
 
 	mockTransactioner := &fakeTransactioner{}
-	service, err := newResourceService(mockOU, mockStore, mockTransactioner, nil, nil)
+	service, err := newResourceService(mockOU, mockStore, mockTransactioner, nil, nil, nil, discardingBus{},
+		allowAllAuthz(suite.T()))
 
 	suite.Error(err)
 	suite.Nil(service)
@@ -399,7 +409,8 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_MCPIdentifierRef
 		suite.Run(tc.name, func() {
 			mockStore := newResourceStoreInterfaceMock(suite.T())
 			mockOU := new(oumock.OrganizationUnitServiceInterfaceMock)
-			service, err := newResourceService(mockOU, mockStore, &fakeTransactioner{}, nil, nil, tc.options...)
+			service, err := newResourceService(mockOU, mockStore, &fakeTransactioner{}, nil, nil, nil,
+				discardingBus{}, allowAllAuthz(suite.T()), tc.options...)
 			suite.Require().NoError(err)
 			if tc.accepted {
 				mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
@@ -434,8 +445,10 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_ControlPlaneMCPI
 	reference := "var:RESOURCE_SERVER_ORDERS_IDENTIFIER"
 	mockStore := newResourceStoreInterfaceMock(suite.T())
 	mockOU := new(oumock.OrganizationUnitServiceInterfaceMock)
-	service, err := newResourceService(mockOU, mockStore, &fakeTransactioner{}, nil, nil,
-		KeepingValueReferences())
+	service, err := newResourceService(
+		mockOU, mockStore, &fakeTransactioner{}, nil, nil, nil, discardingBus{}, allowAllAuthz(suite.T()),
+		KeepingValueReferences(),
+	)
 	suite.Require().NoError(err)
 	mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(providers.ResourceServer{
 		ID: "rs-123", Name: "my-rs", Identifier: "https://mcp.example.com/mcp",
@@ -504,8 +517,8 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_ValidationErrors
 			expectedError:  ErrorInvalidRequestFormat,
 		},
 		{
-			name:           "EmptyOU",
-			resourceServer: providers.ResourceServer{Name: "test-rs", OUID: ""},
+			name:           "EmptyIdentifier",
+			resourceServer: providers.ResourceServer{Name: "test-rs", OUID: "ou-123"},
 			expectedError:  ErrorInvalidRequestFormat,
 		},
 		{
@@ -864,12 +877,6 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_ValidationErrors
 			name:           "EmptyName",
 			id:             "rs-123",
 			resourceServer: providers.ResourceServer{Name: "", OUID: "ou-123"},
-			expectedError:  ErrorInvalidRequestFormat,
-		},
-		{
-			name:           "EmptyOU",
-			id:             "rs-123",
-			resourceServer: providers.ResourceServer{Name: "test-rs", OUID: ""},
 			expectedError:  ErrorInvalidRequestFormat,
 		},
 		{
@@ -3402,6 +3409,88 @@ func (suite *ResourceServiceTestSuite) TestGetResourceServerList_ListError() {
 	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
+func (suite *ResourceServiceTestSuite) TestGetResourceServerListByOUID_Success() {
+	resourceServers := []providers.ResourceServer{
+		{ID: "rs-1", OUID: "ou-1"},
+		{ID: "rs-2", OUID: "ou-1"},
+	}
+	suite.mockStore.On("GetResourceServerListCountByOUID", mock.Anything, "ou-1").Return(5, nil)
+	suite.mockStore.On("GetResourceServerListByOUID", mock.Anything, "ou-1", 2, 2).Return(resourceServers, nil)
+
+	result, err := suite.service.GetResourceServerListByOUID(context.Background(), "ou-1", 2, 2)
+
+	suite.Nil(err)
+	suite.Require().NotNil(result)
+	suite.Equal(5, result.TotalResults)
+	suite.Equal(2, result.Count)
+	suite.Equal(3, result.StartIndex)
+	suite.Equal(resourceServers, result.ResourceServers)
+	suite.NotEmpty(result.Links)
+	for _, link := range result.Links {
+		suite.Contains(link.Href, "&filter=ouId+eq+%22ou-1%22")
+	}
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerListByOUID_InvalidInput() {
+	testCases := []struct {
+		name         string
+		ouID         string
+		limit        int
+		offset       int
+		expectedCode string
+	}{
+		{name: "EmptyOUID", ouID: "", limit: 10, offset: 0, expectedCode: ErrorInvalidRequestFormat.Code},
+		{name: "InvalidLimit", ouID: "ou-1", limit: 0, offset: 0, expectedCode: ErrorInvalidLimit.Code},
+		{name: "InvalidOffset", ouID: "ou-1", limit: 10, offset: -1, expectedCode: ErrorInvalidOffset.Code},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			result, err := suite.service.GetResourceServerListByOUID(
+				context.Background(), tc.ouID, tc.limit, tc.offset)
+
+			suite.Nil(result)
+			suite.Require().NotNil(err)
+			suite.Equal(tc.expectedCode, err.Code)
+		})
+	}
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerListByOUID_StoreErrors() {
+	testCases := []struct {
+		name         string
+		countErr     error
+		listErr      error
+		expectedCode string
+	}{
+		{name: "CountError", countErr: errors.New("database error"),
+			expectedCode: tidcommon.InternalServerError.Code},
+		{name: "CountLimitExceeded", countErr: errResultLimitExceededInCompositeMode,
+			expectedCode: ErrResultLimitExceededInCompositeMode.Code},
+		{name: "ListError", listErr: errors.New("database error"),
+			expectedCode: tidcommon.InternalServerError.Code},
+		{name: "ListLimitExceeded", listErr: errResultLimitExceededInCompositeMode,
+			expectedCode: ErrResultLimitExceededInCompositeMode.Code},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			suite.mockStore.On("GetResourceServerListCountByOUID", mock.Anything, "ou-1").Return(2, tc.countErr)
+			if tc.countErr == nil {
+				suite.mockStore.On("GetResourceServerListByOUID", mock.Anything, "ou-1", 10, 0).
+					Return(nil, tc.listErr)
+			}
+
+			result, err := suite.service.GetResourceServerListByOUID(context.Background(), "ou-1", 10, 0)
+
+			suite.Nil(result)
+			suite.Require().NotNil(err)
+			suite.Equal(tc.expectedCode, err.Code)
+		})
+	}
+}
+
 func (suite *ResourceServiceTestSuite) TestGetActionAtResourceServer_ResourceServerNotFound() {
 	suite.mockStore.On("GetResourceServer", mock.Anything,
 		"rs-123").Return(providers.ResourceServer{}, errResourceServerNotFound)
@@ -4408,154 +4497,6 @@ func (suite *ResourceServiceTestSuite) TestValidatePaginationParams() {
 	suite.Equal(ErrorInvalidOffset.Code, err.Code)
 }
 
-func (suite *ResourceServiceTestSuite) TestBuildPaginationLinks() {
-	testCases := []struct {
-		name          string
-		base          string
-		limit         int
-		offset        int
-		totalCount    int
-		expectedLinks []Link
-		description   string
-	}{
-		{
-			name:        "FirstPage_HasMorePages",
-			base:        "/test",
-			limit:       10,
-			offset:      0,
-			totalCount:  25,
-			description: "First page (offset=0) with more pages available",
-			expectedLinks: []Link{
-				{Href: "/test?offset=10&limit=10", Rel: "next"},
-				{Href: "/test?offset=20&limit=10", Rel: "last"},
-			},
-		},
-		{
-			name:        "MiddlePage_WithPrevOffset_Negative",
-			base:        "/test",
-			limit:       10,
-			offset:      5,
-			totalCount:  30,
-			description: "Middle page where prevOffset calculation goes negative (line 924-926)",
-			expectedLinks: []Link{
-				{Href: "/test?offset=0&limit=10", Rel: "first"},
-				{Href: "/test?offset=0&limit=10", Rel: "prev"}, // prevOffset = 5-10 = -5, becomes 0
-				{Href: "/test?offset=15&limit=10", Rel: "next"},
-				{Href: "/test?offset=20&limit=10", Rel: "last"},
-			},
-		},
-		{
-			name:        "MiddlePage_NormalPrevOffset",
-			base:        "/test",
-			limit:       10,
-			offset:      20,
-			totalCount:  50,
-			description: "Middle page with normal prevOffset calculation",
-			expectedLinks: []Link{
-				{Href: "/test?offset=0&limit=10", Rel: "first"},
-				{Href: "/test?offset=10&limit=10", Rel: "prev"}, // prevOffset = 20-10 = 10
-				{Href: "/test?offset=30&limit=10", Rel: "next"},
-				{Href: "/test?offset=40&limit=10", Rel: "last"},
-			},
-		},
-		{
-			name:        "LastPage_NoNext",
-			base:        "/test",
-			limit:       10,
-			offset:      20,
-			totalCount:  25,
-			description: "Last page (offset+limit >= totalCount), no next link",
-			expectedLinks: []Link{
-				{Href: "/test?offset=0&limit=10", Rel: "first"},
-				{Href: "/test?offset=10&limit=10", Rel: "prev"},
-				// No next link because offset(20) + limit(10) >= totalCount(25)
-				// No last link because offset(20) >= lastPageOffset(20)
-			},
-		},
-		{
-			name:          "SinglePage_NoLinks",
-			base:          "/test",
-			limit:         10,
-			offset:        0,
-			totalCount:    5,
-			description:   "Single page (totalCount <= limit), no pagination links",
-			expectedLinks: []Link{
-				// No links at all
-			},
-		},
-		{
-			name:          "ExactlyOnePage_OnLastPage",
-			base:          "/test",
-			limit:         10,
-			offset:        0,
-			totalCount:    10,
-			description:   "Exactly one page of results, on last page (offset+limit == totalCount)",
-			expectedLinks: []Link{
-				// No next because offset(0) + limit(10) >= totalCount(10)
-				// No last because offset(0) >= lastPageOffset(0)
-			},
-		},
-		{
-			name:        "LastPageOffset_EqualToOffset",
-			base:        "/test",
-			limit:       10,
-			offset:      30,
-			totalCount:  35,
-			description: "On last page where offset equals lastPageOffset (line 942)",
-			expectedLinks: []Link{
-				{Href: "/test?offset=0&limit=10", Rel: "first"},
-				{Href: "/test?offset=20&limit=10", Rel: "prev"},
-				// No next because offset(30) + limit(10) > totalCount(35)
-				// No last because offset(30) >= lastPageOffset(30)
-			},
-		},
-		{
-			name:        "SecondToLastPage_HasLastLink",
-			base:        "/test",
-			limit:       10,
-			offset:      20,
-			totalCount:  35,
-			description: "Second to last page, has last link",
-			expectedLinks: []Link{
-				{Href: "/test?offset=0&limit=10", Rel: "first"},
-				{Href: "/test?offset=10&limit=10", Rel: "prev"},
-				{Href: "/test?offset=30&limit=10", Rel: "next"},
-				{Href: "/test?offset=30&limit=10", Rel: "last"},
-			},
-		},
-		{
-			name:        "ExactlyAtBoundary_OffsetPlusLimitEqualsTotalCount",
-			base:        "/test",
-			limit:       10,
-			offset:      10,
-			totalCount:  20,
-			description: "Exactly at boundary where offset+limit == totalCount (line 933)",
-			expectedLinks: []Link{
-				{Href: "/test?offset=0&limit=10", Rel: "first"},
-				{Href: "/test?offset=0&limit=10", Rel: "prev"},
-				// No next because offset(10) + limit(10) == totalCount(20), not < totalCount
-				// No last because offset(10) >= lastPageOffset(10)
-			},
-		},
-	}
-
-	for _, tc := range testCases {
-		suite.Run(tc.name, func() {
-			links := buildPaginationLinks(tc.base, tc.limit, tc.offset, tc.totalCount)
-
-			suite.Equal(len(tc.expectedLinks), len(links),
-				"Expected %d links but got %d for: %s", len(tc.expectedLinks), len(links), tc.description)
-
-			for i, expectedLink := range tc.expectedLinks {
-				suite.Equal(expectedLink.Href, links[i].Href,
-					"Link %d: Expected href %s but got %s", i, expectedLink.Href, links[i].Href)
-				suite.Equal(expectedLink.Rel, links[i].Rel,
-					"Link %d: Expected rel %s but got %s", i, expectedLink.Rel, links[i].Rel)
-			}
-		})
-	}
-}
-
 func (suite *ResourceServiceTestSuite) TestListMethods_PaginationValidationErrors() {
 	paginationTestCases := []struct {
 		name          string
@@ -5028,7 +4969,7 @@ func (suite *ResourceServiceTestSuite) TestValidatePermissions() {
 			// Create a fresh service instance with the fresh mocks
 			mockTransactioner := &fakeTransactioner{}
 			svc, err := newResourceService(
-				mockOU, mockStore, mockTransactioner, nil, nil,
+				mockOU, mockStore, mockTransactioner, nil, nil, nil, discardingBus{}, allowAllAuthz(suite.T()),
 			)
 			suite.Require().NoError(err)
 
@@ -5305,6 +5246,84 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_IdentifierChange
 	suite.NotNil(result)
 	suite.Equal("https://api.example.com/new/", result.Identifier)
 	suite.mockStore.AssertExpectations(suite.T())
+}
+
+func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_EquivalentIdentifierOfItselfAllowed() {
+	rs := providers.ResourceServer{
+		Name:       "my-rs",
+		Identifier: "https://API.example.com/",
+		OUID:       "ou-123",
+	}
+
+	existingRS := providers.ResourceServer{
+		ID:         "rs-123",
+		Name:       "my-rs",
+		Identifier: "https://api.example.com",
+		Delimiter:  ":",
+		OUID:       "ou-123",
+	}
+
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(existingRS, nil)
+	suite.mockStore.On("GetResourceServerByIdentifier", mock.Anything, "https://API.example.com/").
+		Return(providers.ResourceServer{}, errResourceServerNotFound)
+	suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
+		Return(oupkg.OrganizationUnit{ID: "ou-123"}, nil)
+	suite.mockStore.On("UpdateResourceServer", mock.Anything, "rs-123",
+		mock.MatchedBy(func(r providers.ResourceServer) bool {
+			return r.Identifier == "https://API.example.com/"
+		})).Return(nil)
+
+	result, svcErr := suite.service.UpdateResourceServer(context.Background(), "rs-123", rs)
+
+	suite.Nil(svcErr)
+	suite.Require().NotNil(result)
+	suite.Equal("https://API.example.com/", result.Identifier)
+	suite.mockStore.AssertNotCalled(suite.T(), "CheckResourceServerIdentifierExists", mock.Anything, mock.Anything)
+}
+
+func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_EquivalentIdentifierHeldExactlyByAnother() {
+	rs := providers.ResourceServer{
+		Name:       "my-rs",
+		Identifier: "https://API.example.com",
+		OUID:       "ou-123",
+	}
+
+	existingRS := providers.ResourceServer{
+		ID:         "rs-123",
+		Name:       "my-rs",
+		Identifier: "https://api.example.com",
+		Delimiter:  ":",
+		OUID:       "ou-123",
+	}
+
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(existingRS, nil)
+	suite.mockStore.On("GetResourceServerByIdentifier", mock.Anything, "https://API.example.com").
+		Return(providers.ResourceServer{ID: "rs-other", Identifier: "https://API.example.com"}, nil)
+
+	result, svcErr := suite.service.UpdateResourceServer(context.Background(), "rs-123", rs)
+
+	suite.Nil(result)
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorIdentifierConflict.Code, svcErr.Code)
+	suite.mockStore.AssertNotCalled(suite.T(), "UpdateResourceServer", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *ResourceServiceTestSuite) TestNormalizeResourceIdentifier() {
+	for identifier, expected := range map[string]string{
+		"HTTPS://API.Example.com":            "https://api.example.com/",
+		"https://API.example.com:8443":       "https://api.example.com:8443/",
+		"https://API.example.com?q=A#F":      "https://api.example.com?q=A#F",
+		"https://User:Pass@API.example.com/": "https://User:Pass@API.example.com/",
+		"https://api.example.com/{a} b":      "https://api.example.com/{a} b",
+		"https://api.example.com/café":       "https://api.example.com/café",
+		"https://api.example.com/caf%C3%A9":  "https://api.example.com/caf%C3%A9",
+		"urn:Example:API":                    "urn:Example:API",
+		"Orders-API":                         "Orders-API",
+	} {
+		suite.Equal(expected, normalizeResourceIdentifier(identifier), identifier)
+	}
 }
 
 func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_InvalidMCPIdentifier() {
@@ -5709,5 +5728,614 @@ ouHandle: default
 	}
 	if rs.OUID != "" {
 		t.Errorf("OUID = %q, want empty (resolution happens later)", rs.OUID)
+	}
+}
+
+func (suite *ResourceServiceTestSuite) newProjectAwareService() (ResourceServiceInterface, *projectOUValidatorMock) {
+	validator := newProjectOUValidatorMock(suite.T())
+	service, err := newResourceService(suite.mockOU, suite.mockStore, suite.mockTransactioner, nil, nil, validator,
+		discardingBus{}, allowAllAuthz(suite.T()))
+	suite.Require().NoError(err)
+	return service, validator
+}
+
+// expectStoredCreate sets up the store calls of a create that passes validation, keeping the stored resource server.
+func (suite *ResourceServiceTestSuite) expectStoredCreate(stored *providers.ResourceServer, ouID string) {
+	suite.mockOU.On("GetOrganizationUnit", mock.Anything, ouID).Return(oupkg.OrganizationUnit{ID: ouID}, nil)
+	suite.mockStore.On("CheckResourceServerNameExists", mock.Anything, "test-rs").Return(false, nil)
+	suite.mockStore.On("CheckResourceServerIdentifierExists", mock.Anything, "test-identifier").Return(false, nil)
+	suite.mockStore.On("CreateResourceServer", mock.Anything, mock.AnythingOfType("string"),
+		mock.AnythingOfType("providers.ResourceServer")).
+		Run(func(args mock.Arguments) {
+			if rs, ok := args.Get(2).(providers.ResourceServer); ok {
+				*stored = rs
+			}
+		}).Return(nil)
+}
+
+func (suite *ResourceServiceTestSuite) TestCreateResourceServer_DefaultsToSystemOU() {
+	var stored providers.ResourceServer
+	suite.mockOU.On("GetSystemOUID", mock.Anything).Return(testSystemOUID, nil)
+	suite.expectStoredCreate(&stored, testSystemOUID)
+
+	result, err := suite.service.CreateResourceServer(context.Background(), providers.ResourceServer{
+		Name: "test-rs", Identifier: "test-identifier",
+	})
+
+	suite.Nil(err)
+	suite.Require().NotNil(result)
+	suite.Equal(testSystemOUID, result.OUID)
+	suite.Equal(testSystemOUID, stored.OUID)
+	suite.Empty(stored.ProjectID)
+}
+
+func (suite *ResourceServiceTestSuite) TestCreateResourceServer_SystemOUUnavailable() {
+	suite.mockOU.On("GetSystemOUID", mock.Anything).Return("", &tidcommon.InternalServerError)
+
+	result, err := suite.service.CreateResourceServer(context.Background(), providers.ResourceServer{
+		Name: "test-rs", Identifier: "test-identifier",
+	})
+
+	suite.Nil(result)
+	suite.Require().NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+	suite.mockStore.AssertNotCalled(suite.T(), "CreateResourceServer", mock.Anything, mock.Anything,
+		mock.Anything)
+}
+
+func (suite *ResourceServiceTestSuite) TestCreateResourceServer_InProject() {
+	testCases := []struct {
+		name       string
+		ouID       string
+		resolvedOU string
+	}{
+		{name: "ProjectOnly", ouID: "", resolvedOU: testSystemOUID},
+		{name: "ProjectAndOU", ouID: testSystemOUID, resolvedOU: testSystemOUID},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			service, validator := suite.newProjectAwareService()
+			if tc.ouID == "" {
+				suite.mockOU.On("GetSystemOUID", mock.Anything).Return(testSystemOUID, nil)
+			}
+			validator.On("ValidateProjectOU", mock.Anything, testProjectID, tc.resolvedOU).Return(nil)
+			var stored providers.ResourceServer
+			suite.expectStoredCreate(&stored, tc.resolvedOU)
+
+			result, err := service.CreateResourceServer(context.Background(), providers.ResourceServer{
+				Name: "test-rs", Identifier: "test-identifier", OUID: tc.ouID, ProjectID: testProjectID,
+			})
+
+			suite.Nil(err)
+			suite.Require().NotNil(result)
+			suite.Equal(tc.resolvedOU, result.OUID)
+			suite.Equal(testProjectID, result.ProjectID)
+			suite.Equal(testProjectID, stored.ProjectID)
+		})
+	}
+}
+
+func (suite *ResourceServiceTestSuite) TestCreateResourceServer_ProjectValidationErrors() {
+	testCases := []struct {
+		name         string
+		validateErr  *tidcommon.ServiceError
+		expectedCode string
+	}{
+		{name: "ProjectNotFound",
+			validateErr: &tidcommon.ServiceError{
+				Type: tidcommon.ClientErrorType, Code: projectscope.ProjectNotFoundErrorCode},
+			expectedCode: ErrorInvalidProject.Code},
+		{name: "OUNotInProject",
+			validateErr: &tidcommon.ServiceError{
+				Type: tidcommon.ClientErrorType, Code: projectscope.OUNotInProjectErrorCode},
+			expectedCode: ErrorOUNotInProject.Code},
+		{name: "OtherClientError",
+			validateErr:  &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "PRJ-1999"},
+			expectedCode: tidcommon.InternalServerError.Code},
+		{name: "ServerError",
+			validateErr:  &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "SSE-5000"},
+			expectedCode: tidcommon.InternalServerError.Code},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			service, validator := suite.newProjectAwareService()
+			validator.On("ValidateProjectOU", mock.Anything, testProjectID, "ou-123").Return(tc.validateErr)
+
+			result, err := service.CreateResourceServer(context.Background(), providers.ResourceServer{
+				Name: "test-rs", Identifier: "test-identifier", OUID: "ou-123", ProjectID: testProjectID,
+			})
+
+			suite.Nil(result)
+			suite.Require().NotNil(err)
+			suite.Equal(tc.expectedCode, err.Code)
+			suite.mockStore.AssertNotCalled(suite.T(), "CreateResourceServer", mock.Anything, mock.Anything,
+				mock.Anything)
+		})
+	}
+}
+
+func (suite *ResourceServiceTestSuite) TestCreateResourceServer_ProjectWithoutValidator() {
+	var stored providers.ResourceServer
+	suite.mockOU.On("GetSystemOUID", mock.Anything).Return(testSystemOUID, nil)
+	suite.expectStoredCreate(&stored, testSystemOUID)
+
+	result, err := suite.service.CreateResourceServer(context.Background(), providers.ResourceServer{
+		Name: "test-rs", Identifier: "test-identifier", ProjectID: testProjectID,
+	})
+
+	suite.Nil(err)
+	suite.Require().NotNil(result)
+	suite.Equal(testProjectID, result.ProjectID)
+	suite.Equal(testSystemOUID, stored.OUID)
+}
+
+func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_ProjectChanges() {
+	testCases := []struct {
+		name              string
+		existingProjectID string
+		requestProjectID  string
+		expectedProjectID string
+		checksProject     bool
+	}{
+		{name: "MovesIntoProject", existingProjectID: "", requestProjectID: testProjectID,
+			expectedProjectID: testProjectID, checksProject: true},
+		{name: "MovesBetweenProjects", existingProjectID: testProjectID, requestProjectID: "proj-2",
+			expectedProjectID: "proj-2", checksProject: true},
+		{name: "KeepsProjectWhenOmitted", existingProjectID: testProjectID, requestProjectID: "",
+			expectedProjectID: testProjectID},
+		{name: "KeepsProjectWhenNamedAgain", existingProjectID: testProjectID, requestProjectID: testProjectID,
+			expectedProjectID: testProjectID},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			service, validator := suite.newProjectAwareService()
+			if tc.checksProject {
+				validator.On("ValidateProjectOU", mock.Anything, tc.expectedProjectID, testSystemOUID).Return(nil)
+			}
+			suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(providers.ResourceServer{
+				ID: "rs-123", Name: "my-rs", Identifier: "test-identifier", OUID: testSystemOUID,
+				ProjectID: tc.existingProjectID, Delimiter: ":",
+			}, nil)
+			suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+			suite.mockOU.On("GetOrganizationUnit", mock.Anything, testSystemOUID).
+				Return(oupkg.OrganizationUnit{ID: testSystemOUID}, nil)
+			suite.mockStore.On("UpdateResourceServer", mock.Anything, "rs-123",
+				mock.MatchedBy(func(r providers.ResourceServer) bool {
+					return r.ProjectID == tc.expectedProjectID && r.OUID == testSystemOUID
+				})).Return(nil)
+
+			result, err := service.UpdateResourceServer(context.Background(), "rs-123", providers.ResourceServer{
+				Name: "my-rs", ProjectID: tc.requestProjectID,
+			})
+
+			suite.Nil(err)
+			suite.Require().NotNil(result)
+			suite.Equal(tc.expectedProjectID, result.ProjectID)
+			suite.Equal(testSystemOUID, result.OUID, "an update that names no organization unit keeps it")
+			if !tc.checksProject {
+				validator.AssertNotCalled(suite.T(), "ValidateProjectOU", mock.Anything, mock.Anything, mock.Anything)
+			}
+		})
+	}
+}
+
+// A resource server whose project was deleted keeps it, and an update that changes neither the project nor
+// the organization unit does not check it again.
+func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_ProjectGone() {
+	service, validator := suite.newProjectAwareService()
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(providers.ResourceServer{
+		ID: "rs-123", Name: "my-rs", Identifier: "test-identifier", OUID: testSystemOUID,
+		ProjectID: "deleted-project", Delimiter: ":",
+	}, nil)
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	suite.mockOU.On("GetOrganizationUnit", mock.Anything, testSystemOUID).
+		Return(oupkg.OrganizationUnit{ID: testSystemOUID}, nil)
+	suite.mockStore.On("CheckResourceServerNameExists", mock.Anything, "renamed-rs").Return(false, nil)
+	suite.mockStore.On("UpdateResourceServer", mock.Anything, "rs-123", mock.Anything).Return(nil)
+
+	result, err := service.UpdateResourceServer(context.Background(), "rs-123", providers.ResourceServer{
+		Name: "renamed-rs",
+	})
+
+	suite.Nil(err)
+	suite.Require().NotNil(result)
+	suite.Equal("renamed-rs", result.Name)
+	suite.Equal("deleted-project", result.ProjectID)
+	validator.AssertNotCalled(suite.T(), "ValidateProjectOU", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_ProjectRejectsOUOutsideIt() {
+	testCases := []struct {
+		name             string
+		requestProjectID string
+	}{
+		{name: "KeptProject", requestProjectID: ""},
+		{name: "NamedProject", requestProjectID: testProjectID},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			service, validator := suite.newProjectAwareService()
+			validator.On("ValidateProjectOU", mock.Anything, testProjectID, "ou-other").
+				Return(&tidcommon.ServiceError{
+					Type: tidcommon.ClientErrorType, Code: projectscope.OUNotInProjectErrorCode})
+			suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(providers.ResourceServer{
+				ID: "rs-123", Name: "my-rs", Identifier: "test-identifier", OUID: testSystemOUID,
+				ProjectID: testProjectID,
+			}, nil)
+			suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+
+			result, err := service.UpdateResourceServer(context.Background(), "rs-123", providers.ResourceServer{
+				Name: "my-rs", OUID: "ou-other", ProjectID: tc.requestProjectID,
+			})
+
+			suite.Nil(result)
+			suite.Require().NotNil(err)
+			suite.Equal(ErrorOUNotInProject.Code, err.Code)
+			suite.mockStore.AssertNotCalled(suite.T(), "UpdateResourceServer", mock.Anything, mock.Anything,
+				mock.Anything)
+		})
+	}
+}
+
+func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_InvalidRequestedProject() {
+	service, validator := suite.newProjectAwareService()
+	validator.On("ValidateProjectOU", mock.Anything, "missing", testSystemOUID).
+		Return(&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: projectscope.ProjectNotFoundErrorCode})
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(providers.ResourceServer{
+		ID: "rs-123", Name: "my-rs", Identifier: "test-identifier", OUID: testSystemOUID,
+	}, nil)
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+
+	result, err := service.UpdateResourceServer(context.Background(), "rs-123", providers.ResourceServer{
+		Name: "my-rs", ProjectID: "missing",
+	})
+
+	suite.Nil(result)
+	suite.Require().NotNil(err)
+	suite.Equal(ErrorInvalidProject.Code, err.Code)
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerListByProject_Success() {
+	resourceServers := []providers.ResourceServer{
+		{ID: "rs-1", OUID: testSystemOUID, ProjectID: testProjectID},
+		{ID: "rs-2", OUID: "ou-1", ProjectID: testProjectID},
+	}
+	suite.mockStore.On("GetResourceServerListCountByProject", mock.Anything, testProjectID, "").Return(5, nil)
+	suite.mockStore.On("GetResourceServerListByProject", mock.Anything, testProjectID, "", 2, 2).
+		Return(resourceServers, nil)
+
+	result, err := suite.service.GetResourceServerListByProject(context.Background(), testProjectID, "", 2, 2)
+
+	suite.Nil(err)
+	suite.Require().NotNil(result)
+	suite.Equal(5, result.TotalResults)
+	suite.Equal(2, result.Count)
+	suite.Equal(3, result.StartIndex)
+	suite.Equal(resourceServers, result.ResourceServers)
+	suite.NotEmpty(result.Links)
+	for _, link := range result.Links {
+		suite.Contains(link.Href, "&projectId=proj-1")
+	}
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerListByProject_NarrowedToOU() {
+	resourceServers := []providers.ResourceServer{{ID: "rs-2", OUID: "ou-1", ProjectID: testProjectID}}
+	suite.mockStore.On("GetResourceServerListCountByProject", mock.Anything, testProjectID, "ou-1").Return(3, nil)
+	suite.mockStore.On("GetResourceServerListByProject", mock.Anything, testProjectID, "ou-1", 1, 1).
+		Return(resourceServers, nil)
+
+	result, err := suite.service.GetResourceServerListByProject(context.Background(), testProjectID, "ou-1", 1, 1)
+
+	suite.Nil(err)
+	suite.Require().NotNil(result)
+	suite.Equal(resourceServers, result.ResourceServers)
+	suite.NotEmpty(result.Links)
+	for _, link := range result.Links {
+		suite.Contains(link.Href, "&projectId="+testProjectID)
+		suite.Contains(link.Href, "&filter=ouId+eq+%22ou-1%22")
+	}
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerListByProject_EmptyProject() {
+	result, err := suite.service.GetResourceServerListByProject(context.Background(), "", "", 10, 0)
+
+	suite.Nil(err)
+	suite.Require().NotNil(result)
+	suite.Equal(0, result.TotalResults)
+	suite.Empty(result.ResourceServers)
+	suite.mockStore.AssertNotCalled(suite.T(), "GetResourceServerListCountByProject", mock.Anything,
+		mock.Anything, mock.Anything)
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerListByProject_InvalidPagination() {
+	testCases := []struct {
+		name         string
+		limit        int
+		offset       int
+		expectedCode string
+	}{
+		{name: "InvalidLimit", limit: 0, offset: 0, expectedCode: ErrorInvalidLimit.Code},
+		{name: "InvalidOffset", limit: 10, offset: -1, expectedCode: ErrorInvalidOffset.Code},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			result, err := suite.service.GetResourceServerListByProject(
+				context.Background(), testProjectID, "", tc.limit, tc.offset)
+
+			suite.Nil(result)
+			suite.Require().NotNil(err)
+			suite.Equal(tc.expectedCode, err.Code)
+		})
+	}
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerListByProject_StoreErrors() {
+	storeErr := errors.New("database error")
+	testCases := []struct {
+		name         string
+		setup        func(store *resourceStoreInterfaceMock)
+		expectedCode string
+	}{
+		{name: "CountError", expectedCode: tidcommon.InternalServerError.Code,
+			setup: func(store *resourceStoreInterfaceMock) {
+				store.On("GetResourceServerListCountByProject", mock.Anything, testProjectID, "").Return(0, storeErr)
+			}},
+		{name: "CountLimitExceeded", expectedCode: ErrResultLimitExceededInCompositeMode.Code,
+			setup: func(store *resourceStoreInterfaceMock) {
+				store.On("GetResourceServerListCountByProject", mock.Anything, testProjectID, "").
+					Return(0, errResultLimitExceededInCompositeMode)
+			}},
+		{name: "ListError", expectedCode: tidcommon.InternalServerError.Code,
+			setup: func(store *resourceStoreInterfaceMock) {
+				store.On("GetResourceServerListCountByProject", mock.Anything, testProjectID, "").Return(2, nil)
+				store.On("GetResourceServerListByProject", mock.Anything, testProjectID, "", 10, 0).
+					Return(nil, storeErr)
+			}},
+		{name: "ListLimitExceeded", expectedCode: ErrResultLimitExceededInCompositeMode.Code,
+			setup: func(store *resourceStoreInterfaceMock) {
+				store.On("GetResourceServerListCountByProject", mock.Anything, testProjectID, "").Return(2, nil)
+				store.On("GetResourceServerListByProject", mock.Anything, testProjectID, "", 10, 0).
+					Return(nil, errResultLimitExceededInCompositeMode)
+			}},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			tc.setup(suite.mockStore)
+
+			result, err := suite.service.GetResourceServerListByProject(context.Background(), testProjectID, "", 10, 0)
+
+			suite.Nil(result)
+			suite.Require().NotNil(err)
+			suite.Equal(tc.expectedCode, err.Code)
+		})
+	}
+}
+
+// Whether permissions nest can be changed after creation. It decides how grants on this resource
+// server are read at evaluation time rather than being fixed into them, so the change takes effect
+// without rewriting any role. The delimiter it reads them with stays fixed, since the permission
+// strings were built from it.
+func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_PreservesHierarchicalPermissions() {
+	for _, hierarchical := range []bool{false, true} {
+		name := "exact"
+		if hierarchical {
+			name = "hierarchical"
+		}
+		suite.Run(name, func() {
+			rs := providers.ResourceServer{
+				Name:                    "updated-rs",
+				Identifier:              "original-identifier",
+				OUID:                    "ou-123",
+				HierarchicalPermissions: !hierarchical,
+				Delimiter:               "/", // Ignored: the delimiter stays as created.
+			}
+
+			existingRS := providers.ResourceServer{
+				ID:                      "rs-123",
+				Name:                    "old-name",
+				Identifier:              "original-identifier",
+				OUID:                    "ou-123",
+				Delimiter:               ":",
+				HierarchicalPermissions: hierarchical,
+			}
+
+			suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+			suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(existingRS, nil).Once()
+			suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
+				Return(oupkg.OrganizationUnit{ID: "ou-123"}, nil)
+			suite.mockStore.On("CheckResourceServerNameExists", mock.Anything, "updated-rs").Return(false, nil)
+			suite.mockStore.On("UpdateResourceServer", mock.Anything,
+				"rs-123", mock.MatchedBy(func(r providers.ResourceServer) bool {
+					return r.HierarchicalPermissions == hierarchical && r.Delimiter == ":"
+				})).Return(nil).Once()
+
+			result, err := suite.service.UpdateResourceServer(context.Background(), "rs-123", rs)
+
+			suite.Nil(err)
+			suite.Require().NotNil(result)
+			suite.Equal(hierarchical, result.HierarchicalPermissions)
+			suite.mockStore.AssertExpectations(suite.T())
+		})
+	}
+}
+
+func (suite *ResourceServiceTestSuite) TestGetDeclaredPermissionsUsesServerMatchingMode() {
+	for _, hierarchical := range []bool{false, true} {
+		suite.Run(fmt.Sprint(hierarchical), func() {
+			suite.SetupTest()
+			delimiter := ""
+			if hierarchical {
+				delimiter = "/"
+			}
+			suite.mockStore.On("GetResourceServer", mock.Anything, "api").Return(providers.ResourceServer{
+				ID: "api", Delimiter: "/", HierarchicalPermissions: hierarchical,
+			}, nil).Once()
+			suite.mockStore.On("GetDeclaredPermissions", mock.Anything, "api", []string{"reports"}, delimiter).
+				Return([]string{"reports", "reports/view"}, nil).Once()
+			permissions, svcErr := suite.service.GetDeclaredPermissions(
+				context.Background(), "api", []string{"reports"})
+			suite.Nil(svcErr)
+			suite.Equal([]string{"reports", "reports/view"}, permissions)
+		})
+	}
+}
+
+func (suite *ResourceServiceTestSuite) TestGetDeclaredPermissionsPropagatesFailures() {
+	for _, metadataFailure := range []bool{false, true} {
+		suite.Run(fmt.Sprint(metadataFailure), func() {
+			suite.SetupTest()
+			if metadataFailure {
+				suite.mockStore.On("GetResourceServer", mock.Anything, "api").
+					Return(providers.ResourceServer{}, errors.New("read failed")).Once()
+			} else {
+				suite.mockStore.On("GetResourceServer", mock.Anything, "api").
+					Return(providers.ResourceServer{ID: "api"}, nil).Once()
+				suite.mockStore.On("GetDeclaredPermissions", mock.Anything, "api", []string{"reports"}, "").
+					Return([]string(nil), errors.New("query failed")).Once()
+			}
+			permissions, svcErr := suite.service.GetDeclaredPermissions(
+				context.Background(), "api", []string{"reports"})
+			suite.Empty(permissions)
+			suite.Equal(&tidcommon.InternalServerError, svcErr)
+		})
+	}
+}
+
+func (suite *ResourceServiceTestSuite) TestGetDeclaredPermissionsSkipsEmptyRoots() {
+	permissions, svcErr := suite.service.GetDeclaredPermissions(context.Background(), "api", nil)
+	suite.Nil(svcErr)
+	suite.Empty(permissions)
+	suite.mockStore.AssertNotCalled(suite.T(), "GetResourceServer", mock.Anything, mock.Anything)
+}
+
+// Deleting an action from a flow is refused unless the caller may update resource servers in the server's unit.
+func (suite *ResourceServiceTestSuite) TestValidateDeleteAction_RequiresTheUpdateActionInTheServersUnit() {
+	for name, authzErr := range map[string]*tidcommon.ServiceError{
+		"denied": nil, "check failure": &tidcommon.InternalServerError,
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+			authz.On("IsActionAllowed", mock.Anything, security.ActionUpdateResourceServer,
+				&sysauthz.ActionContext{ResourceType: security.ResourceTypeResourceServer, OUID: "ou-rs"}).
+				Return(false, authzErr)
+			service, err := newResourceService(
+				suite.mockOU, suite.mockStore, suite.mockTransactioner, nil, nil, nil, discardingBus{}, authz)
+			suite.Require().NoError(err)
+			suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+			suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").
+				Return(providers.ResourceServer{
+					ID: "rs-123", OUID: "ou-rs", Identifier: "https://api.example.com",
+				}, nil)
+
+			target, svcErr := service.ValidateDeleteAction(context.Background(), "rs-123", nil, "action-123")
+
+			suite.Nil(target)
+			suite.Require().NotNil(svcErr)
+			if authzErr == nil {
+				suite.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+			} else {
+				suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+			}
+			suite.mockStore.AssertNotCalled(suite.T(), "GetAction",
+				mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceDependencies_OUReportsOwnedResourceServers() {
+	suite.mockStore.On("GetResourceServerListByOUID", mock.Anything, "ou-1", serverconst.MaxCompositeStoreRecords, 0).
+		Return([]providers.ResourceServer{{ID: "rs-1", Name: "Orders"}, {ID: "rs-2", Name: "Billing"}}, nil)
+
+	deps, err := suite.service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
+
+	suite.NoError(err)
+	suite.Equal([]resourcedependency.ResourceDependency{
+		{
+			ResourceType:     resourcedependency.ResourceTypeResourceServer,
+			ID:               "rs-1",
+			DisplayName:      "Orders",
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		},
+		{
+			ResourceType:     resourcedependency.ResourceTypeResourceServer,
+			ID:               "rs-2",
+			DisplayName:      "Billing",
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		},
+	}, deps)
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceDependencies_OUWithoutResourceServers() {
+	suite.mockStore.On("GetResourceServerListByOUID", mock.Anything, "ou-1", serverconst.MaxCompositeStoreRecords, 0).
+		Return([]providers.ResourceServer{}, nil)
+
+	deps, err := suite.service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
+
+	suite.NoError(err)
+	suite.NotNil(deps)
+	suite.Empty(deps)
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceDependencies_OUStoreError() {
+	suite.mockStore.On("GetResourceServerListByOUID", mock.Anything, "ou-1", serverconst.MaxCompositeStoreRecords, 0).
+		Return(nil, errors.New("db error"))
+
+	deps, err := suite.service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
+
+	suite.EqualError(err, "db error")
+	suite.Nil(deps)
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceDependencies_UnrelatedResourceType() {
+	deps, err := suite.service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeUser, "user-1")
+
+	suite.NoError(err)
+	suite.Empty(deps)
+	suite.mockStore.AssertNotCalled(suite.T(), "GetResourceServerListByOUID", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything)
+}
+
+func (suite *ResourceServiceTestSuite) TestProjectHasResourceServers() {
+	for name, tc := range map[string]struct {
+		count    int
+		err      error
+		expected bool
+		svcErr   bool
+	}{
+		"resource servers":         {count: 2, expected: true},
+		"no resource servers":      {count: 0, expected: false},
+		"more than can be counted": {err: errResultLimitExceededInCompositeMode, expected: true},
+		"store failure":            {err: errors.New("db fail"), svcErr: true},
+	} {
+		suite.Run(name, func() {
+			suite.mockStore.On("GetResourceServerListCountByProject", mock.Anything, testProjectID, "").
+				Return(tc.count, tc.err).Once()
+
+			has, svcErr := suite.service.ProjectHasResourceServers(context.Background(), testProjectID)
+
+			if tc.svcErr {
+				suite.Require().NotNil(svcErr)
+				suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+				return
+			}
+			suite.Nil(svcErr)
+			suite.Equal(tc.expected, has)
+		})
 	}
 }

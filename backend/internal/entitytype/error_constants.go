@@ -146,38 +146,6 @@ var (
 		},
 	}
 
-	// ErrorAgentTypeOnlyDefaultAllowed is returned when an agent type is created or updated with a
-	// handle other than `default`.
-	// Agent types are restricted to a single bootstrap-provisioned `default` schema.
-	ErrorAgentTypeOnlyDefaultAllowed = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "USRS-1014",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.entitytypeservice.agent_type_only_default_allowed",
-			DefaultValue: "Only the default agent type is allowed",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key: "error.entitytypeservice.agent_type_only_default_allowed_description",
-			DefaultValue: "Agent types are restricted to a single 'default' schema; " +
-				"other handles are not permitted",
-		},
-	}
-
-	// ErrorAgentTypeCannotDelete is returned when an attempt is made to delete an agent type.
-	// The default agent type cannot be removed; agent creation depends on it.
-	ErrorAgentTypeCannotDelete = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "USRS-1015",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.entitytypeservice.agent_type_cannot_delete",
-			DefaultValue: "Agent type cannot be deleted",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.entitytypeservice.agent_type_cannot_delete_description",
-			DefaultValue: "The default agent type cannot be deleted. Edit the schema instead",
-		},
-	}
-
 	// ErrorInvalidEntityTypeHandle is returned when the entity type handle has an invalid format.
 	ErrorInvalidEntityTypeHandle = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
@@ -249,6 +217,52 @@ var (
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.entitytypeservice.primary_contact_not_supported_description",
 			DefaultValue: "Primary email and mobile mappings are supported only for user types",
+		},
+	}
+
+	// ErrorAgentTypeAlreadyExistsInOU is returned when an agent type is created in, or moved to, an
+	// organization unit that already has an agent type.
+	ErrorAgentTypeAlreadyExistsInOU = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USRS-1021",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.entitytypeservice.agent_type_already_exists_in_ou",
+			DefaultValue: "Organization unit already has an agent type",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.entitytypeservice.agent_type_already_exists_in_ou_description",
+			DefaultValue: "An organization unit can have only one agent type. " +
+				"Choose an organization unit that has no agent type",
+		},
+	}
+
+	// ErrorAgentTypeInUse is returned when an agent type is deleted while agents are of that type, or while
+	// applications, agents or flows list it among their allowed agent types.
+	ErrorAgentTypeInUse = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USRS-1022",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.entitytypeservice.agent_type_in_use",
+			DefaultValue: "Agent type is in use",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.entitytypeservice.agent_type_in_use_description",
+			DefaultValue: "Delete or change the agents of this type, and remove the type from applications', " +
+				"agents' and flows' allowed agent types, first",
+		},
+	}
+	// ErrorManagedEntityType is returned when attempting to change a type a control plane deployed. Only a
+	// deploy from the control plane changes or removes it.
+	ErrorManagedEntityType = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USRS-1023",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.entitytypeservice.cannot_modify_managed_resource",
+			DefaultValue: "Cannot modify a type deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.entitytypeservice.cannot_modify_managed_resource_description",
+			DefaultValue: "The type was deployed by the control plane and can only be changed there",
 		},
 	}
 )
@@ -375,4 +389,18 @@ var (
 
 	// errResultLimitExceededInCompositeMode is returned when the result limit is exceeded in composite mode.
 	errResultLimitExceededInCompositeMode = errors.New("result limit exceeded in composite mode")
+
+	// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+	errNilEventBus = errors.New("the entity type service needs an event bus")
+
+	// errAgentTypeExistsInOU is returned when a write would leave an organization unit with more than one
+	// agent type.
+	errAgentTypeExistsInOU = errors.New("organization unit already has an agent type")
 )
+
+// errEntityTypeNotFoundNoop is returned by deleteEntityType when the entity type to delete does not
+// exist. DeleteEntityType turns it into a success, so it never reaches a caller.
+var errEntityTypeNotFoundNoop = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: ErrorEntityTypeNotFound.Code,
+}

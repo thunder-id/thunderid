@@ -20,10 +20,11 @@ import (
 // end-user login (username+password), not the suite-wide admin client every
 // other SCIM suite here uses. /Me requires only authentication, no specific
 // permission — same self-service shape as GET/PUT /users/me exercised by
-// tests/integration/user's SelfUserEndpointsSuite, whose
-// testutils.GetHTTPClientForUser this suite reuses directly.
+// tests/integration/user's SelfUserEndpointsSuite, whose sign-in this suite reuses: a sign-in is bounded
+// to its application's OU, so the user signs in through an application in its own OU.
 type SCIMMeTestSuite struct {
 	suite.Suite
+	signIn         testutils.OUSignInApps
 	ouID           string
 	entityTypeID   string
 	entityTypeName string
@@ -90,13 +91,14 @@ func (ts *SCIMMeTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "failed to create self-service user")
 	ts.selfUserID = selfUserID
 
-	selfClient, err := testutils.GetHTTPClientForUser(ts.username, ts.password)
+	selfClient, err := ts.signIn.HTTPClientForUser(ouID, ts.username, ts.password)
 	ts.Require().NoError(err, "failed to obtain self-service client")
 	ts.selfClient = selfClient
 }
 
 // TearDownSuite cleans up the test suite environment.
 func (ts *SCIMMeTestSuite) TearDownSuite() {
+	_ = ts.signIn.DeleteAll()
 	if ts.selfUserID != "" {
 		_ = testutils.DeleteUser(ts.selfUserID)
 	}

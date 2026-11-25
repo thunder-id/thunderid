@@ -3,7 +3,11 @@
 
 package consent
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
+)
 
 // PurposeElement represents an element reference within a consent purpose.
 type PurposeElement struct {
@@ -30,7 +34,16 @@ type Consent struct {
 	// ValidityTime is the Unix timestamp until which the consent is valid
 	ValidityTime   int64
 	Purposes       []ConsentPurposeItem
+	Properties     ConsentProperties
 	Authorizations []ConsentAuthorization
+}
+
+// ConsentProperties holds facts about how a consent was decided. It is stored as JSON in the PROPERTIES column,
+// which is NULL when none is set.
+type ConsentProperties struct {
+	// OneTime is set when the user chose not to remember the decision. The consent is kept for audit and
+	// expires at once.
+	OneTime bool `json:"oneTime,omitempty"`
 }
 
 // ConsentStatus defines the possible statuses for a consent record.
@@ -165,6 +178,7 @@ type ConsentRequest struct {
 	// ValidityTime is the Unix timestamp until which the consent is valid
 	ValidityTime   int64
 	Purposes       []ConsentPurposeItem
+	Properties     ConsentProperties
 	Authorizations []ConsentAuthorizationRequest
 }
 
@@ -174,3 +188,15 @@ type ConsentAuthorizationRequest struct {
 	Type   ConsentAuthorizationType
 	Status ConsentAuthorizationStatus
 }
+
+// auditedChange is an audit event with the action it records, held together so a change cannot be
+// published under an event that names another.
+type auditedChange struct {
+	event  string
+	action audit.Action
+}
+
+var (
+	consentCreate = auditedChange{audit.EventConsentCreate, audit.ActionCreate}
+	consentUpdate = auditedChange{audit.EventConsentUpdate, audit.ActionUpdate}
+)

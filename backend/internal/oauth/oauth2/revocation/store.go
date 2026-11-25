@@ -181,8 +181,7 @@ func (s *revocationStore) insertCriteria(ctx context.Context, criteria []revocat
 }
 
 // areCriteriaRevoked reports whether a non-expired criteria entry exists for any supplied
-// (type, value) pair. All dimensions are checked in one query so token validation costs a single
-// round trip regardless of how many criteria the artifact carries.
+// (type, value) pair. Large identities are split into bounded queries.
 func (s *revocationStore) areCriteriaRevoked(ctx context.Context, criteria []Criterion,
 	establishedAt time.Time) (bool, error) {
 	if len(criteria) == 0 {
@@ -194,11 +193,18 @@ func (s *revocationStore) areCriteriaRevoked(ctx context.Context, criteria []Cri
 		return false, fmt.Errorf("failed to get runtime persistent database client: %w", err)
 	}
 
-	query, args := buildCriteriaRevokedQuery(criteria, establishedAt, time.Now().UTC(), s.scope(ctx))
-	results, err := dbClient.QueryContext(ctx, query, args...)
-	if err != nil {
-		return false, fmt.Errorf("error checking revocation criteria: %w", err)
+	const maxCriteriaPerQuery = 500
+	now := time.Now().UTC()
+	for start := 0; start < len(criteria); start += maxCriteriaPerQuery {
+		query, args := buildCriteriaRevokedQuery(
+			criteria[start:min(start+maxCriteriaPerQuery, len(criteria))], establishedAt, now, s.scope(ctx))
+		results, err := dbClient.QueryContext(ctx, query, args...)
+		if err != nil {
+			return false, fmt.Errorf("error checking revocation criteria: %w", err)
+		}
+		if len(results) > 0 {
+			return true, nil
+		}
 	}
-
-	return len(results) > 0, nil
+	return false, nil
 }

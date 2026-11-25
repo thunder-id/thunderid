@@ -49,6 +49,65 @@ func (_m *SystemAuthorizationServiceInterfaceMock) EXPECT() *SystemAuthorization
 	return &SystemAuthorizationServiceInterfaceMock_Expecter{mock: &_m.Mock}
 }
 
+// CanControlEntity provides a mock function for the type SystemAuthorizationServiceInterfaceMock
+func (_mock *SystemAuthorizationServiceInterfaceMock) CanControlEntity(ctx context.Context, entityID string) *common.ServiceError {
+	ret := _mock.Called(ctx, entityID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CanControlEntity")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, entityID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// SystemAuthorizationServiceInterfaceMock_CanControlEntity_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CanControlEntity'
+type SystemAuthorizationServiceInterfaceMock_CanControlEntity_Call struct {
+	*mock.Call
+}
+
+// CanControlEntity is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+func (_e *SystemAuthorizationServiceInterfaceMock_Expecter) CanControlEntity(ctx any, entityID any) *SystemAuthorizationServiceInterfaceMock_CanControlEntity_Call {
+	return &SystemAuthorizationServiceInterfaceMock_CanControlEntity_Call{Call: _e.mock.On("CanControlEntity", ctx, entityID)}
+}
+
+func (_c *SystemAuthorizationServiceInterfaceMock_CanControlEntity_Call) Run(run func(ctx context.Context, entityID string)) *SystemAuthorizationServiceInterfaceMock_CanControlEntity_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *SystemAuthorizationServiceInterfaceMock_CanControlEntity_Call) Return(serviceError *common.ServiceError) *SystemAuthorizationServiceInterfaceMock_CanControlEntity_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *SystemAuthorizationServiceInterfaceMock_CanControlEntity_Call) RunAndReturn(run func(ctx context.Context, entityID string) *common.ServiceError) *SystemAuthorizationServiceInterfaceMock_CanControlEntity_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // CanGrantMembership provides a mock function for the type SystemAuthorizationServiceInterfaceMock
 func (_mock *SystemAuthorizationServiceInterfaceMock) CanGrantMembership(ctx context.Context, principalType sysauthz.PrincipalType, containerID string) *common.ServiceError {
 	ret := _mock.Called(ctx, principalType, containerID)
@@ -245,6 +304,133 @@ func (_c *SystemAuthorizationServiceInterfaceMock_GetAccessibleResources_Call) R
 }
 
 func (_c *SystemAuthorizationServiceInterfaceMock_GetAccessibleResources_Call) RunAndReturn(run func(ctx context.Context, action security.Action, resourceType security.ResourceType) (*sysauthz.AccessibleResources, *common.ServiceError)) *SystemAuthorizationServiceInterfaceMock_GetAccessibleResources_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetBoundary provides a mock function for the type SystemAuthorizationServiceInterfaceMock
+func (_mock *SystemAuthorizationServiceInterfaceMock) GetBoundary(ctx context.Context) sysauthz.Boundary {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetBoundary")
+	}
+
+	var r0 sysauthz.Boundary
+	if returnFunc, ok := ret.Get(0).(func(context.Context) sysauthz.Boundary); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		r0 = ret.Get(0).(sysauthz.Boundary)
+	}
+	return r0
+}
+
+// SystemAuthorizationServiceInterfaceMock_GetBoundary_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetBoundary'
+type SystemAuthorizationServiceInterfaceMock_GetBoundary_Call struct {
+	*mock.Call
+}
+
+// GetBoundary is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *SystemAuthorizationServiceInterfaceMock_Expecter) GetBoundary(ctx any) *SystemAuthorizationServiceInterfaceMock_GetBoundary_Call {
+	return &SystemAuthorizationServiceInterfaceMock_GetBoundary_Call{Call: _e.mock.On("GetBoundary", ctx)}
+}
+
+func (_c *SystemAuthorizationServiceInterfaceMock_GetBoundary_Call) Run(run func(ctx context.Context)) *SystemAuthorizationServiceInterfaceMock_GetBoundary_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *SystemAuthorizationServiceInterfaceMock_GetBoundary_Call) Return(boundary sysauthz.Boundary) *SystemAuthorizationServiceInterfaceMock_GetBoundary_Call {
+	_c.Call.Return(boundary)
+	return _c
+}
+
+func (_c *SystemAuthorizationServiceInterfaceMock_GetBoundary_Call) RunAndReturn(run func(ctx context.Context) sysauthz.Boundary) *SystemAuthorizationServiceInterfaceMock_GetBoundary_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GrantableMemberships provides a mock function for the type SystemAuthorizationServiceInterfaceMock
+func (_mock *SystemAuthorizationServiceInterfaceMock) GrantableMemberships(ctx context.Context, principalType sysauthz.PrincipalType, containerIDs []string) ([]string, *common.ServiceError) {
+	ret := _mock.Called(ctx, principalType, containerIDs)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GrantableMemberships")
+	}
+
+	var r0 []string
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, sysauthz.PrincipalType, []string) ([]string, *common.ServiceError)); ok {
+		return returnFunc(ctx, principalType, containerIDs)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, sysauthz.PrincipalType, []string) []string); ok {
+		r0 = returnFunc(ctx, principalType, containerIDs)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, sysauthz.PrincipalType, []string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, principalType, containerIDs)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// SystemAuthorizationServiceInterfaceMock_GrantableMemberships_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GrantableMemberships'
+type SystemAuthorizationServiceInterfaceMock_GrantableMemberships_Call struct {
+	*mock.Call
+}
+
+// GrantableMemberships is a helper method to define mock.On call
+//   - ctx context.Context
+//   - principalType sysauthz.PrincipalType
+//   - containerIDs []string
+func (_e *SystemAuthorizationServiceInterfaceMock_Expecter) GrantableMemberships(ctx any, principalType any, containerIDs any) *SystemAuthorizationServiceInterfaceMock_GrantableMemberships_Call {
+	return &SystemAuthorizationServiceInterfaceMock_GrantableMemberships_Call{Call: _e.mock.On("GrantableMemberships", ctx, principalType, containerIDs)}
+}
+
+func (_c *SystemAuthorizationServiceInterfaceMock_GrantableMemberships_Call) Run(run func(ctx context.Context, principalType sysauthz.PrincipalType, containerIDs []string)) *SystemAuthorizationServiceInterfaceMock_GrantableMemberships_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 sysauthz.PrincipalType
+		if args[1] != nil {
+			arg1 = args[1].(sysauthz.PrincipalType)
+		}
+		var arg2 []string
+		if args[2] != nil {
+			arg2 = args[2].([]string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *SystemAuthorizationServiceInterfaceMock_GrantableMemberships_Call) Return(strings []string, serviceError *common.ServiceError) *SystemAuthorizationServiceInterfaceMock_GrantableMemberships_Call {
+	_c.Call.Return(strings, serviceError)
+	return _c
+}
+
+func (_c *SystemAuthorizationServiceInterfaceMock_GrantableMemberships_Call) RunAndReturn(run func(ctx context.Context, principalType sysauthz.PrincipalType, containerIDs []string) ([]string, *common.ServiceError)) *SystemAuthorizationServiceInterfaceMock_GrantableMemberships_Call {
 	_c.Call.Return(run)
 	return _c
 }

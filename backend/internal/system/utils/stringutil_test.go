@@ -4,7 +4,9 @@
 package utils
 
 import (
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -581,4 +583,41 @@ func (suite *StringUtilTestSuite) TestIsScalar() {
 	suite.False(IsScalar(map[string]interface{}{"key": "val"}))
 	suite.False(IsScalar([]string{"a", "b"}))
 	suite.False(IsScalar(struct{}{}))
+}
+
+func (suite *StringUtilTestSuite) TestTruncateRunesCountsCharactersNotBytes() {
+	const limit = 8
+	for name, tc := range map[string]struct {
+		s    string
+		want string
+	}{
+		"empty":                        {"", ""},
+		"short":                        {"user-1", "user-1"},
+		"exactly at the limit":         {strings.Repeat("a", limit), strings.Repeat("a", limit)},
+		"multibyte at the limit":       {strings.Repeat("ü", limit), strings.Repeat("ü", limit)},
+		"multibyte over the limit":     {strings.Repeat("ü", limit+1), strings.Repeat("ü", limit)},
+		"four byte runes over a limit": {strings.Repeat("😀", limit+3), strings.Repeat("😀", limit)},
+		"ascii over the limit":         {strings.Repeat("a", limit+1), strings.Repeat("a", limit)},
+		"invalid UTF-8 over the limit": {strings.Repeat("\xff", limit+5), strings.Repeat("\xff", limit)},
+		"a rune after invalid bytes": {
+			strings.Repeat("\xff", limit-1) + "üü", strings.Repeat("\xff", limit-1) + "ü",
+		},
+	} {
+		suite.Run(name, func() {
+			got := TruncateRunes(tc.s, limit)
+			suite.Equal(tc.want, got)
+			suite.Equal(utf8.ValidString(tc.s), utf8.ValidString(got), "a rune is never split")
+		})
+	}
+}
+
+// A user agent header can be a megabyte long, and cutting it must not copy it.
+func (suite *StringUtilTestSuite) TestTruncateRunesDoesNotAllocate() {
+	const limit = 256
+	header := strings.Repeat("ü", 1<<19)
+	short := strings.Repeat("a", limit)
+
+	suite.Equal(strings.Repeat("ü", limit), TruncateRunes(header, limit))
+	suite.Zero(testing.AllocsPerRun(100, func() { _ = TruncateRunes(short, limit) }))
+	suite.Zero(testing.AllocsPerRun(100, func() { _ = TruncateRunes(header, limit) }))
 }

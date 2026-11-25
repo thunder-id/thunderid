@@ -29,6 +29,10 @@ interface EditAdvancedSettingsProps {
   oauth2Config?: OAuthAgentConfig;
   onFieldChange: (field: keyof Agent, value: unknown) => void;
   onDeleteSuccess?: () => void;
+  /** Whether the signed-in admin may change the agent here. */
+  readOnly?: boolean;
+  /** Whether the signed-in admin may delete the agent here. */
+  canDelete?: boolean;
   onBackchannelLogoutUriValidationChange?: (hasError: boolean) => void;
   /** Reports whether the Identity assertions (ID-JAG) card has a validation error, to gate Save. */
   onIdentityAssertionsValidationChange?: (hasError: boolean) => void;
@@ -40,6 +44,8 @@ export default function EditAdvancedSettings({
   oauth2Config = undefined,
   onFieldChange,
   onDeleteSuccess = undefined,
+  readOnly = false,
+  canDelete = false,
   onBackchannelLogoutUriValidationChange = undefined,
   onIdentityAssertionsValidationChange = undefined,
 }: EditAdvancedSettingsProps) {
@@ -107,7 +113,7 @@ export default function EditAdvancedSettings({
               <Switch
                 checked={isUnlocked}
                 onChange={(e) => handleDelegationToggle(e.target.checked)}
-                disabled={!oauth2Config || agent.isReadOnly === true}
+                disabled={!oauth2Config || readOnly}
               />
             }
             label={
@@ -127,34 +133,38 @@ export default function EditAdvancedSettings({
         </Box>
       </SettingsCard>
 
-      <OwnerSection agent={agent} editedAgent={editedAgent} onFieldChange={onFieldChange} />
+      <OwnerSection agent={agent} editedAgent={editedAgent} onFieldChange={onFieldChange} readOnly={readOnly} />
       <AllowedUserTypesSection
         agent={agent}
         editedAgent={editedAgent}
         oauth2Config={oauth2Config}
         onFieldChange={onFieldChange}
+        readOnly={readOnly}
       />
       <AgentSignInSection
         agent={agent}
         editedAgent={editedAgent}
         oauth2Config={oauth2Config}
         onFieldChange={onFieldChange}
+        readOnly={readOnly}
       />
       <OperationModesSection
         oauth2Config={oauth2Config}
         onOAuth2ConfigChange={handleOAuth2ConfigChange}
         onBackchannelLogoutUriValidationChange={onBackchannelLogoutUriValidationChange}
-        disabled={agent.isReadOnly}
+        loginConsent={editedAgent.loginConsent ?? agent.loginConsent}
+        onLoginConsentChange={readOnly ? undefined : (loginConsent) => onFieldChange('loginConsent', loginConsent)}
+        disabled={readOnly}
       />
       {oauth2Config && isUnlocked && (
         <IdentityAssertionsSection
           oauth2Config={oauth2Config}
           onTokenConfigChange={handleTokenConfigChange}
-          disabled={agent.isReadOnly}
+          disabled={readOnly}
           onValidationChange={onIdentityAssertionsValidationChange}
         />
       )}
-      {!agent.isReadOnly && <DangerZoneSection onDeleteClick={() => setDeleteDialogOpen(true)} />}
+      {canDelete && <DangerZoneSection onDeleteClick={() => setDeleteDialogOpen(true)} />}
 
       <AgentDeleteDialog
         open={deleteDialogOpen}

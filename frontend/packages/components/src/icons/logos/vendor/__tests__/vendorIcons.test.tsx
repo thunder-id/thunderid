@@ -5,6 +5,8 @@ import {render} from '@testing-library/react';
 import {describe, expect, it} from 'vitest';
 import AndroidLogo from '../AndroidLogo';
 import AppleIcon from '../AppleIcon';
+import BunIcon from '../BunIcon';
+import DenoIcon from '../DenoIcon';
 import ExpressIcon from '../ExpressIcon';
 import FlutterLogo from '../FlutterLogo';
 import GithubIcon from '../GithubIcon';
@@ -17,12 +19,16 @@ import LangChainLogo from '../LangChainLogo';
 import LissiIcon from '../LissiIcon';
 import NextjsIcon from '../NextjsIcon';
 import NodeIcon from '../NodeIcon';
+import NpmIcon from '../NpmIcon';
 import NuxtIcon from '../NuxtIcon';
 import OAuth2Logo from '../OAuth2Logo';
+import PnpmIcon from '../PnpmIcon';
 import PythonLogo from '../PythonLogo';
 import ReactIcon from '../ReactIcon';
 import StackblitzIcon from '../StackblitzIcon';
+import TypeScriptLogo from '../TypeScriptLogo';
 import VueIcon from '../VueIcon';
+import YarnIcon from '../YarnIcon';
 
 function renderSvg(element: React.ReactElement): SVGSVGElement {
   const {container} = render(element);
@@ -58,6 +64,11 @@ const SQUARE_ICONS: SquareIconCase[] = [
   {Component: NuxtIcon, defaultSize: 20, name: 'NuxtIcon'},
   {Component: OAuth2Logo, defaultSize: 36, name: 'OAuth2Logo'},
   {Component: ReactIcon, defaultSize: 20, name: 'ReactIcon'},
+  {Component: NpmIcon, defaultSize: 20, name: 'NpmIcon'},
+  {Component: YarnIcon, defaultSize: 20, name: 'YarnIcon'},
+  {Component: PnpmIcon, defaultSize: 20, name: 'PnpmIcon'},
+  {Component: BunIcon, defaultSize: 20, name: 'BunIcon'},
+  {Component: DenoIcon, defaultSize: 20, name: 'DenoIcon'},
 ];
 
 describe.each(SQUARE_ICONS)('$name', ({Component, defaultSize}) => {
@@ -111,6 +122,13 @@ const ASPECT_ICONS: AspectIconCase[] = [
     defaultSize: 64,
     heightFromSize: (size) => size * 1.018,
     name: 'PythonLogo',
+    widthFromSize: (size) => size,
+  },
+  {
+    Component: TypeScriptLogo,
+    defaultSize: 64,
+    heightFromSize: (size) => size,
+    name: 'TypeScriptLogo',
     widthFromSize: (size) => size,
   },
   {

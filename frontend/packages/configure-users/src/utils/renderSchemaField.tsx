@@ -1,6 +1,7 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CredentialFieldInput} from '@thunderid/components';
 import {resolveAttributeRegex} from '@thunderid/utils';
 import {
   Box,
@@ -12,11 +13,13 @@ import {
   MenuItem,
   Checkbox,
   FormControlLabel,
+  Stack,
+  InputAdornment,
 } from '@wso2/oxygen-ui';
+import type {ReactNode} from 'react';
 import {Controller} from 'react-hook-form';
 import type {Control, FieldErrors, Path} from 'react-hook-form';
 import ArrayFieldInput from '../components/ArrayFieldInput';
-import CredentialFieldInput from '../components/CredentialFieldInput';
 import type {PropertyDefinition} from '../models/users';
 
 /**
@@ -27,6 +30,8 @@ import type {PropertyDefinition} from '../models/users';
  * @param control - React Hook Form control object
  * @param errors - Form validation errors
  * @param resolveDisplayName - Optional callback to resolve display name (handles plain strings and i18n patterns)
+ * @param labelSuffix - Optional node shown after a string field's label, which also describes a text input
+ * @param endAdornment - Optional action shown at the end of a text input
  * @returns A rendered form field component or null for unsupported types
  */
 const renderSchemaField = <T extends Record<string, unknown>>(
@@ -35,6 +40,8 @@ const renderSchemaField = <T extends Record<string, unknown>>(
   control: Control<T>,
   errors: FieldErrors<T>,
   resolveDisplayName?: (displayName: string) => string,
+  labelSuffix?: ReactNode,
+  endAdornment?: ReactNode,
 ) => {
   const isRequired = fieldDef.required ?? false;
 
@@ -47,16 +54,33 @@ const renderSchemaField = <T extends Record<string, unknown>>(
   // String fields
   if (fieldDef.type === 'string' || fieldDef.type === 'email' || fieldDef.type === 'mobile') {
     const stringDef = fieldDef;
+    const suffixId = labelSuffix ? `${fieldName}-label-suffix` : undefined;
+    const label = (
+      <FormLabel htmlFor={fieldName} sx={labelSuffix ? {mb: 0, lineHeight: 1} : undefined}>
+        {fieldLabel}
+        {isRequired && <span style={{color: 'red'}}> *</span>}
+      </FormLabel>
+    );
+    const labelRow = labelSuffix ? (
+      <Stack direction="row" alignItems="center" spacing={1} sx={{mb: 1}}>
+        {label}
+        <Box id={suffixId}>{labelSuffix}</Box>
+      </Stack>
+    ) : (
+      label
+    );
+    const adornment = endAdornment ? (
+      <InputAdornment position="end" sx={{my: 1}}>
+        {endAdornment}
+      </InputAdornment>
+    ) : undefined;
 
     // Render as Select dropdown if enum values are provided
     if (stringDef.enum && stringDef.enum.length > 0) {
       const enumOptions = stringDef.enum;
       return (
         <FormControl key={fieldName}>
-          <FormLabel htmlFor={fieldName}>
-            {fieldLabel}
-            {isRequired && <span style={{color: 'red'}}> *</span>}
-          </FormLabel>
+          {labelRow}
           <Controller
             name={fieldName as Path<T>}
             control={control}
@@ -106,10 +130,7 @@ const renderSchemaField = <T extends Record<string, unknown>>(
 
     return (
       <FormControl key={fieldName}>
-        <FormLabel htmlFor={fieldName}>
-          {fieldLabel}
-          {isRequired && <span style={{color: 'red'}}> *</span>}
-        </FormLabel>
+        {labelRow}
         <Controller
           name={fieldName as Path<T>}
           control={control}
@@ -138,7 +159,16 @@ const renderSchemaField = <T extends Record<string, unknown>>(
                 value={field.value ?? ''}
                 id={fieldName}
                 type={fieldDef.type === 'mobile' ? 'tel' : 'text'}
-                slotProps={{htmlInput: {inputMode: fieldDef.type === 'email' ? 'email' : undefined}}}
+                slotProps={{
+                  ...(adornment && {input: {endAdornment: adornment}}),
+                  htmlInput: {
+                    inputMode: fieldDef.type === 'email' ? 'email' : undefined,
+                    // Replaces MUI's description, so the error text is added back.
+                    ...(suffixId && {
+                      'aria-describedby': errors[fieldName] ? `${suffixId} ${fieldName}-helper-text` : suffixId,
+                    }),
+                  },
+                }}
                 placeholder={`Enter ${fieldLabel.toLowerCase()}`}
                 fullWidth
                 required={isRequired}

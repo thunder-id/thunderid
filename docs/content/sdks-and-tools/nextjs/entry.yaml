@@ -32,6 +32,8 @@ sections:
       so what is listed here is what the installed version ships.
     kindTones:
       function: accent
+      hook: purple
+      component: primary
     exports:
     - group: Functions
       kind: function
@@ -104,6 +106,12 @@ sections:
       description: The {{ProductName}} Next.js SDK provides server actions for authentication, session management, and
         user operations. These run only on the server and never expose tokens to the client. Import all server actions
         from `@thunderid/nextjs/server`.
+      rowsLabel: Organization Unit Methods
+      rows:
+      - name: '(await thunderid()).getAccessibleOrganizationUnits(options?)'
+        type: Promise<AccessibleOrganizationUnitList>
+        description: 'Lists the organization units the signed-in user can access, from `/users/me/ous`, with the access
+          token of the request''s session. `scope: ''siblings''` narrows the list to the accessible units that share the parent of the current unit; `limit` and `offset` page it.'
       example: |-
         import { signInAction } from '@thunderid/nextjs/server'
 
@@ -112,6 +120,101 @@ sections:
 
         // With embedded flow payload (advanced)
         await signInAction(payload, requestConfig)
+    - group: Hooks
+      kind: hook
+      name: useThunderID()
+      description: The `useThunderID` hook gives client components the {{ProductName}} context that `ThunderIDProvider`
+        sets up. Import it from `@thunderid/nextjs`. The organization unit members are listed below.
+      rowsLabel: Organization Unit Members
+      rows:
+      - name: currentOrganizationUnit
+        type: 'CurrentOrganizationUnit | null'
+        description: The organization unit the session was issued for, read on the server from the `ouId`, `ouHandle`,
+          and `ouName` claims of the session's access token, for display only, or `null`.
+      - name: getCurrentOrganizationUnit()
+        type: 'Promise<CurrentOrganizationUnit | null>'
+        description: Reads the current organization unit from the session's access token again.
+      - name: 'switchOrganizationUnit(organizationUnitId, options?)'
+        type: 'Promise<User | undefined>'
+        description: 'Signs in again bounded to another organization unit through a server action. Redirect mode sends
+          the browser to `{baseUrl}/ou/{ouId}/oauth2/authorize`, and the callback replaces the session; `{ redirect: false }`
+          always fails with `InteractionRequired`. Embedded mode runs an `AUTHENTICATION` flow with `ouId` and replaces
+          the session cookie in place. A failed switch keeps the previous session and rejects with a code from `OrganizationUnitSwitchErrorCodes`.'
+      example: |-
+        'use client'
+        import { useThunderID } from '@thunderid/nextjs'
+
+        export default function CurrentOrganization() {
+          const { currentOrganizationUnit } = useThunderID()
+
+          return <p>Working in {currentOrganizationUnit?.name}</p>
+        }
+    - group: Components
+      kind: component
+      name: <OrganizationUnitSwitcher />
+      description: The `OrganizationUnitSwitcher` component shows the organization unit the session is in, in a field
+        that opens a menu of the units the signed-in user can access. It reads the units from `/users/me/ous` through
+        a server action, so the access token stays on the server, and switches through `switchOrganizationUnit` from
+        `useThunderID()`. A failed switch keeps the session as it was and shows a translated message under the field.
+      rowsLabel: Props
+      rows:
+      - name: scope
+        type: AccessibleOrganizationUnitScope
+        tag: optional
+        description: '`''siblings''` lists the accessible units that share the parent of the current unit. Omit it to list every
+          accessible unit.'
+      - name: limit
+        type: number
+        tag: optional
+        description: The page size. Defaults to `10`.
+      - name: onSwitch
+        type: '(unit: AccessibleOrganizationUnit, user: User) => void'
+        tag: optional
+        description: Called with the unit and the refreshed user after a switch that completes in place. A switch that
+          leaves the page completes on the callback instead.
+      - name: onSelect
+        type: '(unit: AccessibleOrganizationUnit) => void'
+        tag: optional
+        description: 'Takes over a pick: called with the unit instead of switching.'
+      - name: onError
+        type: '(error: unknown) => void'
+        tag: optional
+        description: Called when a switch or a load fails. The component shows its message either way.
+      - name: switchOptions
+        type: SwitchOrganizationUnitOptions
+        tag: optional
+        description: Options passed to `switchOrganizationUnit`. Only `redirect` applies.
+      - name: title
+        type: string
+        tag: optional
+        description: Overrides the small label above the current unit. Pass an empty string to omit it.
+      - name: className
+        type: string
+        tag: optional
+        description: Additional CSS class names.
+      - name: preferences
+        type: Preferences
+        tag: optional
+        description: Component-level preference overrides, including i18n.
+      - name: children
+        type: '(props: OrganizationUnitSwitcherRenderProps) => ReactNode'
+        tag: optional
+        description: Render function that replaces the built-in UI.
+      example: |-
+        'use client'
+        import { OrganizationUnitSwitcher, SignedIn } from '@thunderid/nextjs'
+
+        function Header() {
+          return (
+            <header>
+              <SignedIn>
+                <OrganizationUnitSwitcher scope="siblings" />
+              </SignedIn>
+            </header>
+          )
+        }
+
+        export default Header
 
   - type: quickstart
     id: quickstart

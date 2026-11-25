@@ -1,6 +1,7 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {fireEvent, render, screen, waitFor, within} from '@thunderid/test-utils';
 import {type ReactNode, useEffect} from 'react';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
@@ -29,6 +30,8 @@ const DIRECT_MAPPINGS = [{claim: 'role_name', targetType: 'role'}];
 
 const LINKING = {attributes: ['email']};
 
+const SYNC = {attributes: 'override_received'};
+
 const CONNECTION = {
   id: 'g1',
   type: 'google',
@@ -41,6 +44,7 @@ const CONNECTION = {
     ...ATTR_CONFIG,
     authorizationMapping: {rules: AUTHZ_MAPPINGS, direct: DIRECT_MAPPINGS},
     accountLinking: LINKING,
+    sync: SYNC,
   },
 };
 
@@ -141,6 +145,8 @@ const HTTP_LOCAL_CONNECTION = {
 };
 
 const ORIGIN_CHANGED_HINT = 'The URL origin changed. Enter the credentials again under Authentication before saving.';
+const SMTP_SERVER_CHANGED_HINT =
+  'The SMTP host, port, or username changed. Enter the password again under Authentication before saving.';
 const HTTPS_REQUIRED = 'Use an https URL when an authentication method is set, or set the method to None.';
 const PASSWORD_FIELD_ID = 'connection-field-authentication.properties.password';
 const USERNAME_FIELD_ID = 'connection-field-authentication.properties.username';
@@ -213,8 +219,8 @@ vi.mock('@thunderid/contexts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/contexts')>()),
   useConfig: () => ({
     config: {brand: {product_name: 'ThunderID'}},
-    getGateCallbackUrl: () => 'https://id.acme.io/gate/callback',
   }),
+  useGateCallbackUrl: () => 'https://id.acme.io/gate/callback',
   useToast: () => ({showToast: vi.fn()}),
 }));
 vi.mock('@thunderid/components', async (importOriginal) => ({
@@ -333,6 +339,9 @@ vi.mock('../../components/ConnectionForm', () => ({
         >
           edit url back
         </button>
+        <button type="button" data-testid="edit-smtp-port" onClick={() => onFieldChange('port', '465')}>
+          edit SMTP port
+        </button>
         {nameError && <div data-testid="stub-name-error">{nameError}</div>}
       </div>
     );
@@ -353,14 +362,16 @@ vi.mock('../../components/AttributeMappingSection', () => ({
 // who never opens the section behaves.
 vi.mock('../../components/AuthorizationMappingSection', () => ({
   default: function StubAuthorizationMappingSection({
+    ouId = undefined,
     onRuleChange,
     onDirectChange,
   }: {
+    ouId?: string;
     onRuleChange: (c: unknown, v: boolean) => void;
     onDirectChange: (c: unknown, v: boolean) => void;
   }) {
     return (
-      <>
+      <div data-testid="authz-mapping-section" data-ou-id={ouId}>
         <button type="button" data-testid="clear-authz-mappings" onClick={() => onRuleChange(undefined, true)}>
           clear authorization mappings
         </button>
@@ -377,7 +388,7 @@ vi.mock('../../components/AuthorizationMappingSection', () => ({
         >
           report incomplete row
         </button>
-      </>
+      </div>
     );
   },
 }));
@@ -451,6 +462,41 @@ vi.mock('../../components/SubjectMappingSection', () => ({
           restore subject mapping
         </button>
       </div>
+    );
+  },
+}));
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  isLoading: false,
+};
+
+vi.mock('../../components/SyncSection', () => ({
+  default: function StubSyncSection({sync, onChange}: {sync?: object; onChange: (s: object) => void}) {
+    return (
+      <>
+        <button
+          type="button"
+          data-testid="set-session-only"
+          onClick={() => onChange({...sync, groupsAndRoles: 'session_only'})}
+        >
+          set session only
+        </button>
+        <button
+          type="button"
+          data-testid="set-attributes-no-sync"
+          onClick={() => onChange({...sync, attributes: 'no_sync'})}
+        >
+          set attributes no sync
+        </button>
+        <button
+          type="button"
+          data-testid="set-attributes-default"
+          onClick={() => onChange({...sync, attributes: 'override_received'})}
+        >
+          set attributes default
+        </button>
+      </>
     );
   },
 }));
@@ -595,6 +641,80 @@ describe('ConnectionDetailPage', () => {
     expect(screen.queryByTestId('connection-field-authentication.properties.password-replace')).not.toBeInTheDocument();
   });
 
+  it('keeps the stored SMTP password by omitting it when the host and port are unchanged', () => {
+    mockParams.type = 'email-smtp';
+    mockParams.id = 'sm1';
+    mockConn.data = smtpConnection({username: 'mailer', password: '******'});
+    mockMeta.methods = SMTP_METHODS;
+    render(<ConnectionDetailPage />);
+
+    fireEvent.click(screen.getByTestId('edit-name'));
+    expect(screen.queryByText(SMTP_SERVER_CHANGED_HINT)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('save-bar'));
+
+    expect(updateMock.mock.calls[0][0]).toMatchObject({
+      port: 587,
+      authentication: {type: 'basic', properties: {username: 'mailer'}},
+    });
+  });
+
+  // The stored password is not sent to a different SMTP server, so a port change asks for it again.
+  it('blocks Save after an SMTP port change until the password is entered again', () => {
+    mockParams.type = 'email-smtp';
+    mockParams.id = 'sm1';
+    mockConn.data = smtpConnection({username: 'mailer', password: '******'});
+    mockMeta.methods = SMTP_METHODS;
+    render(<ConnectionDetailPage />);
+
+    fireEvent.click(screen.getByTestId('edit-smtp-port'));
+
+    expect(screen.getByTestId('save-bar')).toBeDisabled();
+    expect(screen.getByText(SMTP_SERVER_CHANGED_HINT)).toBeInTheDocument();
+    expect(document.getElementById(PASSWORD_FIELD_ID)).not.toBeDisabled();
+
+    fireEvent.change(document.getElementById(PASSWORD_FIELD_ID)!, {target: {value: 'new-pw'}});
+    expect(screen.getByTestId('save-bar')).not.toBeDisabled();
+    fireEvent.click(screen.getByTestId('save-bar'));
+
+    expect(updateMock.mock.calls[0][0]).toMatchObject({
+      port: 465,
+      authentication: {type: 'basic', properties: {username: 'mailer', password: 'new-pw'}},
+    });
+  });
+
+  it('blocks Save after an SMTP username change until the password is entered again', () => {
+    mockParams.type = 'email-smtp';
+    mockParams.id = 'sm1';
+    mockConn.data = smtpConnection({username: 'mailer', password: '******'});
+    mockMeta.methods = SMTP_METHODS;
+    render(<ConnectionDetailPage />);
+
+    fireEvent.change(document.getElementById(USERNAME_FIELD_ID)!, {target: {value: 'ops'}});
+
+    expect(screen.getByTestId('save-bar')).toBeDisabled();
+    expect(screen.getByText(SMTP_SERVER_CHANGED_HINT)).toBeInTheDocument();
+
+    fireEvent.change(document.getElementById(PASSWORD_FIELD_ID)!, {target: {value: 'new-pw'}});
+    fireEvent.click(screen.getByTestId('save-bar'));
+
+    expect(updateMock.mock.calls[0][0]).toMatchObject({
+      authentication: {type: 'basic', properties: {username: 'ops', password: 'new-pw'}},
+    });
+  });
+
+  it('blocks Save while the SMTP username is empty', () => {
+    mockParams.type = 'email-smtp';
+    mockParams.id = 'sm1';
+    mockConn.data = smtpConnection({username: 'mailer', password: '******'});
+    mockMeta.methods = SMTP_METHODS;
+    render(<ConnectionDetailPage />);
+
+    fireEvent.change(document.getElementById(USERNAME_FIELD_ID)!, {target: {value: ''}});
+    fireEvent.change(document.getElementById(PASSWORD_FIELD_ID)!, {target: {value: 'new-pw'}});
+
+    expect(screen.getByTestId('save-bar')).toBeDisabled();
+  });
+
   // The authentication card reports a failed metadata read instead of disappearing.
   it('reports a failed metadata read in the Authentication card', () => {
     mockMeta.isError = true;
@@ -607,6 +727,20 @@ describe('ConnectionDetailPage', () => {
     render(<ConnectionDetailPage />);
     fireEvent.click(screen.getByTestId('connection-tab-advanced'));
     expect(screen.getByTestId('connection-delete-button')).toBeInTheDocument();
+  });
+
+  it('omits the advanced tab and locks the form when the admin may only view connections', () => {
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <ConnectionDetailPage />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.queryByTestId('connection-tab-advanced')).not.toBeInTheDocument();
+
+    expect(screen.getByTestId('edit-client-id')).toBeDisabled();
+    fireEvent.click(screen.getByTestId('edit-client-id'));
+    expect(screen.queryByTestId('save-bar')).not.toBeInTheDocument();
   });
 
   it('shows the Configured status under the name in the card style, with no redundant subtitle', () => {
@@ -639,10 +773,18 @@ describe('ConnectionDetailPage', () => {
       ...ATTR_CONFIG,
       authorizationMapping: {rules: AUTHZ_MAPPINGS, direct: DIRECT_MAPPINGS},
       accountLinking: LINKING,
+      sync: SYNC,
     });
 
     await waitFor(() => expect(refetchMock).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(screen.queryByTestId('save-bar')).not.toBeInTheDocument());
+  });
+
+  it("passes the connection's organization unit to the authorization mapping section", () => {
+    mockConn.data = {...CONNECTION, ouId: 'ou-1'};
+    render(<ConnectionDetailPage />);
+    fireEvent.click(screen.getByTestId('connection-tab-attributes'));
+    expect(screen.getByTestId('authz-mapping-section')).toHaveAttribute('data-ou-id', 'ou-1');
   });
 
   it('omits authorization mappings and account linking from the save payload once cleared, instead of reverting to the stored value', () => {
@@ -661,6 +803,44 @@ describe('ConnectionDetailPage', () => {
     };
     expect(payload.attributeConfiguration?.authorizationMapping).toBeUndefined();
     expect(payload.attributeConfiguration?.accountLinking).toBeUndefined();
+  });
+
+  it('saves the edited groups and roles sync mode and keeps the stored attributes mode', () => {
+    render(<ConnectionDetailPage />);
+    fireEvent.click(screen.getByTestId('connection-tab-attributes'));
+    expect(screen.queryByTestId('save-bar')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('set-session-only'));
+    fireEvent.click(screen.getByTestId('save-bar'));
+
+    const payload = updateMock.mock.calls[0][0] as {attributeConfiguration?: {sync?: unknown}};
+    expect(payload.attributeConfiguration?.sync).toEqual({...SYNC, groupsAndRoles: 'session_only'});
+  });
+
+  it('does not send a sync object when saving another section of a connection without sync', () => {
+    mockConn.data = {...CONNECTION, attributeConfiguration: {...CONNECTION.attributeConfiguration, sync: undefined}};
+    render(<ConnectionDetailPage />);
+    fireEvent.click(screen.getByTestId('connection-tab-attributes'));
+    fireEvent.click(screen.getByTestId('clear-linking'));
+    fireEvent.click(screen.getByTestId('save-bar'));
+
+    const payload = updateMock.mock.calls[0][0] as {attributeConfiguration?: {sync?: unknown}};
+    expect(JSON.parse(JSON.stringify(payload.attributeConfiguration))).not.toHaveProperty('sync');
+  });
+
+  it('is clean again, and saves no sync object, after a mode is changed and changed back', () => {
+    mockConn.data = {...CONNECTION, attributeConfiguration: {...CONNECTION.attributeConfiguration, sync: undefined}};
+    render(<ConnectionDetailPage />);
+    fireEvent.click(screen.getByTestId('connection-tab-attributes'));
+    fireEvent.click(screen.getByTestId('set-attributes-no-sync'));
+    expect(screen.getByTestId('save-bar')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('set-attributes-default'));
+    expect(screen.queryByTestId('save-bar')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId('clear-linking'));
+    fireEvent.click(screen.getByTestId('save-bar'));
+
+    const payload = updateMock.mock.calls[0][0] as {attributeConfiguration?: {sync?: unknown}};
+    expect(JSON.parse(JSON.stringify(payload.attributeConfiguration))).not.toHaveProperty('sync');
   });
 
   it('clearing only the rule-based half keeps the stored direct mappings nested alongside it', () => {
@@ -868,6 +1048,37 @@ describe('ConnectionDetailPage', () => {
     expect(screen.queryByTestId('save-bar')).not.toBeInTheDocument();
   });
 
+  it('AuthZEN PDP: restores the stored API-key headers when API key is chosen again', () => {
+    mockParams.type = 'authzen-pdp';
+    mockParams.id = 'pdp1';
+    mockConn.data = AUTHZEN_PDP_API_KEYS;
+    render(<ConnectionDetailPage />);
+
+    fireEvent.click(screen.getByTestId('connection-tab-authentication'));
+    fireEvent.mouseDown(screen.getByRole('combobox'));
+    fireEvent.click(screen.getByRole('option', {name: 'Bearer token'}));
+    fireEvent.mouseDown(screen.getByRole('combobox'));
+    fireEvent.click(screen.getByRole('option', {name: 'API key'}));
+
+    expect(document.getElementById('connection-field-httpHeaders-name-1')).toHaveValue('X-First-Key');
+    expect(document.getElementById('connection-field-httpHeaders-value-1')).toBeDisabled();
+    expect(screen.queryByTestId('save-bar')).not.toBeInTheDocument();
+  });
+
+  it('AuthZEN PDP: needs a header once every stored API-key header is deleted', () => {
+    mockParams.type = 'authzen-pdp';
+    mockParams.id = 'pdp1';
+    mockConn.data = AUTHZEN_PDP_API_KEYS;
+    render(<ConnectionDetailPage />);
+
+    fireEvent.click(screen.getByTestId('connection-tab-authentication'));
+    fireEvent.click(screen.getByTestId('connection-field-httpHeaders-remove-1'));
+    fireEvent.click(screen.getByTestId('connection-field-httpHeaders-remove-1'));
+
+    expect(screen.getByTestId('save-bar')).toBeDisabled();
+    expect(screen.getByText('This field is required.')).toBeInTheDocument();
+  });
+
   it('AuthZEN PDP: handles a stored API key response with null headers', () => {
     mockParams.type = 'authzen-pdp';
     mockParams.id = 'pdp1';
@@ -960,10 +1171,14 @@ describe('ConnectionDetailPage', () => {
     fireEvent.click(screen.getByTestId('edit-endpoint'));
     expect(screen.getByTestId('save-bar')).toBeDisabled();
     fireEvent.click(screen.getByTestId('connection-tab-authentication'));
-    fireEvent.click(screen.getByTestId('connection-field-httpHeaders-update-1'));
+    // The stored values cannot be kept for the new endpoint, so each row is open for its value.
+    expect(screen.queryByTestId('connection-field-httpHeaders-update-1')).not.toBeInTheDocument();
+    expect(document.getElementById('connection-field-httpHeaders-value-1')).toHaveValue('');
+    expect(screen.getByTestId('connection-field-httpHeaders-error-2')).toHaveTextContent(
+      "Enter this header's value again.",
+    );
     fireEvent.change(document.getElementById('connection-field-httpHeaders-value-1')!, {target: {value: 'first-new'}});
     expect(screen.getByTestId('save-bar')).toBeDisabled();
-    fireEvent.click(screen.getByTestId('connection-field-httpHeaders-update-2'));
     fireEvent.change(document.getElementById('connection-field-httpHeaders-value-2')!, {target: {value: 'second-new'}});
     expect(screen.getByTestId('save-bar')).not.toBeDisabled();
     fireEvent.click(screen.getByTestId('save-bar'));

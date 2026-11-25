@@ -19,6 +19,17 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+const consentI18n = i18next.createInstance();
+await consentI18n.init({lng: 'en', resources: {en: {consent: {}}}});
+
+function renderConsent(ui: ReactNode) {
+  return renderWithProviders(
+    <I18nextProvider i18n={consentI18n}>
+      <ThemeProvider>{ui}</ThemeProvider>
+    </I18nextProvider>,
+  );
+}
+
 const noop = () => undefined;
 
 // The SDK's consent components read the SDK theme, which the Gate's ThunderIDProvider supplies.
@@ -55,13 +66,13 @@ const switchFor = (name: string) => screen.getByRole<HTMLInputElement>('switch',
 
 describe('ConsentAdapter — permission default state', () => {
   it('renders an untouched permission as unchecked', () => {
-    renderWithProviders(<ConsentAdapter consentData={permissionsPurpose} formValues={{}} onInputChange={noop} />);
+    renderConsent(<ConsentAdapter consentData={permissionsPurpose} formValues={{}} onInputChange={noop} />);
 
     expect(switchFor('system').checked).toBe(false);
   });
 
   it('renders a permission the user enabled as checked', () => {
-    renderWithProviders(
+    renderConsent(
       <ConsentAdapter
         consentData={permissionsPurpose}
         formValues={{[permissionKey('system')]: 'true'}}
@@ -73,7 +84,7 @@ describe('ConsentAdapter — permission default state', () => {
   });
 
   it('renders a permission the user disabled as unchecked', () => {
-    renderWithProviders(
+    renderConsent(
       <ConsentAdapter
         consentData={permissionsPurpose}
         formValues={{[permissionKey('system')]: 'false'}}
@@ -85,7 +96,7 @@ describe('ConsentAdapter — permission default state', () => {
   });
 
   it('leaves every permission in a nested tree unchecked when nothing is selected', () => {
-    renderWithProviders(<ConsentAdapter consentData={nestedPermissionsPurpose} formValues={{}} onInputChange={noop} />);
+    renderConsent(<ConsentAdapter consentData={nestedPermissionsPurpose} formValues={{}} onInputChange={noop} />);
 
     expect(switchFor('users').checked).toBe(false);
     expect(switchFor('users:read').checked).toBe(false);
@@ -97,7 +108,7 @@ describe('ConsentAdapter — permission rollup', () => {
   it('cascades a parent toggle to its descendants', () => {
     const onInputChange = vi.fn();
 
-    renderWithProviders(
+    renderConsent(
       <ConsentAdapter consentData={nestedPermissionsPurpose} formValues={{}} onInputChange={onInputChange} />,
     );
 
@@ -109,7 +120,7 @@ describe('ConsentAdapter — permission rollup', () => {
   });
 
   it('shows the parent as checked once every descendant is checked', () => {
-    renderWithProviders(
+    renderConsent(
       <ConsentAdapter
         consentData={nestedPermissionsPurpose}
         formValues={{
@@ -819,6 +830,8 @@ gateI18n
           'client.hosts': 'Published by {{clientIdHost}}. Returns to {{redirectUriHost}}.',
           'client.deviceWarning':
             'This app runs on your device. Other programs on your device can use the same address, so continue only if you started this app.',
+          'validity.label': 'How often to ask',
+          'validity.remember': 'Keep this',
         },
       },
     },
@@ -894,6 +907,391 @@ describe('ConsentAdapter — Gate text', () => {
   });
 });
 
+describe('ConsentAdapter validity period input', () => {
+  const key = '__consent_validity_period__';
+  const oneTimeKey = '__consent_one_time__';
+  const remember = () => screen.queryByRole('checkbox', {name: 'Keep this'});
+  const field = () => screen.queryByRole<HTMLInputElement>('combobox', {name: /How often to ask/});
+
+  // Keeps the form values the way the sign-in form does, so a change shows in what the field renders.
+  function ControlledField({
+    formValues,
+    maxValidityPeriod = undefined,
+    onInputChange,
+  }: {
+    formValues: Record<string, string>;
+    maxValidityPeriod?: number;
+    onInputChange: (name: string, value: string) => void;
+  }): JSX.Element {
+    const [values, setValues] = useState<Record<string, string>>(formValues);
+
+    return (
+      <ConsentAdapter
+        consentData={permissionsPurpose}
+        formValues={values}
+        onInputChange={(name: string, value: string) => {
+          onInputChange(name, value);
+          setValues((previous) => ({...previous, [name]: value}));
+        }}
+        promptValidityPeriod
+        maxValidityPeriod={maxValidityPeriod}
+      />
+    );
+  }
+
+  const renderField = (
+    props: {
+      maxValidityPeriod?: number;
+      formValues?: Record<string, string>;
+    } = {},
+  ) => {
+    const onInputChange = vi.fn();
+    renderWithProviders(
+      <GateText>
+        <ControlledField
+          formValues={props.formValues ?? {}}
+          maxValidityPeriod={props.maxValidityPeriod}
+          onInputChange={onInputChange}
+        />
+      </GateText>,
+    );
+
+    return {onInputChange};
+  };
+
+  const optionLabels = async () => {
+    await userEvent.click(field()!);
+    const labels = screen.getAllByRole('option').map((option) => option.textContent);
+    await userEvent.keyboard('{Escape}');
+
+    return labels;
+  };
+
+  const type = async (text: string) => {
+    await userEvent.clear(field()!);
+    if (text !== '') await userEvent.type(field()!, text);
+  };
+
+  it('shows nothing unless the flow asks for it', () => {
+    renderWithProviders(
+      <GateText>
+        <ConsentAdapter consentData={permissionsPurpose} formValues={{}} onInputChange={noop} />
+      </GateText>,
+    );
+
+    expect(remember()).toBeNull();
+    expect(screen.queryByRole('combobox')).toBeNull();
+  });
+
+  it('starts with the decision remembered, and lists the periods that fit the limit', async () => {
+    renderField({maxValidityPeriod: 86400});
+
+    expect(remember()).toBeChecked();
+    expect(screen.getByText('How often to ask')).toBeTruthy();
+    expect(field()!.value).toBe('1 minute');
+    expect(screen.getByText('Your consent expires in 1 minute.')).toBeTruthy();
+    expect(await optionLabels()).toEqual(['1 minute', '30 minutes', '1 hour', '12 hours', '1 day']);
+  });
+
+  it('puts the shortest period in the form so that what is shown is what is submitted', () => {
+    const {onInputChange} = renderField({maxValidityPeriod: 86400});
+
+    expect(onInputChange).toHaveBeenCalledTimes(1);
+    expect(onInputChange).toHaveBeenCalledWith(key, '60');
+  });
+
+  it('keeps a period the form already holds', () => {
+    const {onInputChange} = renderField({maxValidityPeriod: 86400, formValues: {[key]: '3600'}});
+
+    expect(field()!.value).toBe('1 hour');
+    expect(onInputChange).not.toHaveBeenCalled();
+  });
+
+  it('adds the limit to the list when fewer than three periods fit', async () => {
+    renderField({maxValidityPeriod: 200});
+
+    expect(field()!.value).toBe('1 minute');
+    expect(await optionLabels()).toEqual(['1 minute', '3 minutes']);
+  });
+
+  it('does not list the limit when it is not a standard period and enough periods fit', async () => {
+    renderField({maxValidityPeriod: 10000});
+
+    expect(await optionLabels()).toEqual(['1 minute', '5 minutes', '30 minutes', '1 hour']);
+  });
+
+  it('lists no more than five periods, the shortest and the longest that fit and three spread between them', async () => {
+    renderField({maxValidityPeriod: 2592000});
+
+    expect(await optionLabels()).toEqual(['1 minute', '30 minutes', '6 hours', '1 day', '30 days']);
+  });
+
+  it('ends the list with no expiry when there is no limit', async () => {
+    const {onInputChange} = renderField({});
+
+    expect(await optionLabels()).toEqual(['1 minute', '1 hour', '12 hours', '30 days', 'No expiry']);
+
+    await userEvent.click(field()!);
+    await userEvent.click(screen.getByRole('option', {name: 'No expiry'}));
+
+    expect(onInputChange).toHaveBeenLastCalledWith(key, '2147483647');
+    expect(field()!.value).toBe('No expiry');
+    expect(screen.getByText('You will not be asked again unless this application asks for more access.')).toBeTruthy();
+  });
+
+  it('reports the short value when the box is unticked, and the shortest period when it is ticked again', async () => {
+    const {onInputChange} = renderField({maxValidityPeriod: 86400});
+
+    await userEvent.click(remember()!);
+
+    expect(onInputChange).toHaveBeenCalledWith(oneTimeKey, 'true');
+    expect(onInputChange).toHaveBeenLastCalledWith(key, '1');
+    expect(remember()).not.toBeChecked();
+    expect(field()).toBeNull();
+    expect(screen.getByText('You will be asked again the next time you sign in.')).toBeTruthy();
+
+    await userEvent.click(remember()!);
+
+    expect(onInputChange).toHaveBeenCalledWith(oneTimeKey, 'false');
+    expect(onInputChange).toHaveBeenLastCalledWith(key, '60');
+    expect(field()!.value).toBe('1 minute');
+  });
+
+  it('shows the note and no list when the form holds the short value', () => {
+    renderField({maxValidityPeriod: 86400, formValues: {[key]: '1'}});
+
+    expect(remember()).not.toBeChecked();
+    expect(field()).toBeNull();
+    expect(screen.getByText('You will be asked again the next time you sign in.')).toBeTruthy();
+  });
+
+  it('reports the seconds of the period picked under the validity period key', async () => {
+    const {onInputChange} = renderField({maxValidityPeriod: 86400});
+
+    await userEvent.click(field()!);
+    await userEvent.click(screen.getByRole('option', {name: '1 hour'}));
+
+    expect(onInputChange).toHaveBeenLastCalledWith(key, '3600');
+    expect(field()!.value).toBe('1 hour');
+    expect(screen.getByText('Your consent expires in 1 hour.')).toBeTruthy();
+    expect(screen.queryByText(/asked again on/)).toBeNull();
+  });
+
+  describe('typed period', () => {
+    const unit = () => screen.queryByRole('combobox', {name: 'Unit'});
+    const pickUnit = async (name: string) => {
+      await userEvent.click(unit()!);
+      await userEvent.click(screen.getByRole('option', {name}));
+    };
+
+    it('shows the unit only while a number is typed, and not beside the name of a period', async () => {
+      renderField({maxValidityPeriod: 86400});
+
+      expect(unit()).toBeNull();
+      expect(screen.queryByText('Unit')).toBeNull();
+
+      await type('90');
+
+      expect(unit()).not.toBeNull();
+      expect(screen.getByText('Unit')).toBeTruthy();
+      expect(unit()!.textContent).toBe('minutes');
+
+      await userEvent.tab();
+      await userEvent.click(field()!);
+      await userEvent.click(screen.getByRole('option', {name: '1 hour'}));
+
+      expect(unit()).toBeNull();
+    });
+
+    it('reports the number typed as seconds in the unit, minutes at first', async () => {
+      const {onInputChange} = renderField({maxValidityPeriod: 86400});
+
+      await type('90');
+
+      expect(onInputChange).toHaveBeenLastCalledWith(key, '5400');
+      expect(field()!.value).toBe('90');
+      expect(screen.getByText('Enter a whole number, up to 1440.')).toBeTruthy();
+    });
+
+    it('does not mention a limit when there is none', async () => {
+      renderField({});
+
+      await type('90');
+
+      expect(screen.getByText('Enter a whole number.')).toBeTruthy();
+    });
+
+    it('offers only the units that fit the limit', async () => {
+      renderField({maxValidityPeriod: 10000});
+
+      await type('5');
+      await userEvent.click(unit()!);
+
+      expect((await screen.findAllByRole('option')).map((option) => option.textContent)).toEqual([
+        'seconds',
+        'minutes',
+        'hours',
+      ]);
+    });
+
+    it('works the seconds out again when the unit changes, keeping the number', async () => {
+      const {onInputChange} = renderField({maxValidityPeriod: 86400 * 10});
+
+      await type('3');
+      await pickUnit('hours');
+
+      expect(field()!.value).toBe('3');
+      expect(onInputChange).toHaveBeenLastCalledWith(key, '10800');
+
+      await pickUnit('days');
+
+      expect(onInputChange).toHaveBeenLastCalledWith(key, '259200');
+    });
+
+    it('holds what is typed at the limit, and shows the most the unit allows', async () => {
+      const {onInputChange} = renderField({maxValidityPeriod: 86400});
+
+      await type('999999');
+
+      expect(onInputChange).toHaveBeenLastCalledWith(key, '86400');
+      expect(field()!.value).toBe('1440');
+    });
+
+    it('holds the number at the limit again when the unit grows', async () => {
+      const {onInputChange} = renderField({maxValidityPeriod: 86400});
+
+      await type('600');
+      await pickUnit('hours');
+
+      expect(field()!.value).toBe('24');
+      expect(onInputChange).toHaveBeenLastCalledWith(key, '86400');
+    });
+
+    it('reports the shortest period while the input is empty or holds no number', async () => {
+      const {onInputChange} = renderField({maxValidityPeriod: 86400});
+
+      await type('90');
+      await type('');
+
+      expect(onInputChange).toHaveBeenLastCalledWith(key, '60');
+      expect(field()!.value).toBe('');
+
+      await type('abc');
+
+      expect(onInputChange).toHaveBeenLastCalledWith(key, '60');
+    });
+
+    it('keeps the decision remembered while a number in seconds passes through the value for one that is not', async () => {
+      const {onInputChange} = renderField({maxValidityPeriod: 86400});
+
+      await type('9');
+      await pickUnit('seconds');
+      await type('15');
+
+      expect(remember()).toBeChecked();
+      expect(field()!.value).toBe('15');
+      expect(onInputChange).toHaveBeenCalledWith(key, '1');
+      expect(onInputChange).not.toHaveBeenCalledWith(oneTimeKey, 'true');
+      expect(onInputChange).toHaveBeenLastCalledWith(key, '15');
+    });
+
+    it('takes digits only', async () => {
+      const {onInputChange} = renderField({maxValidityPeriod: 86400});
+
+      await type('1a2b');
+
+      expect(field()!.value).toBe('12');
+      expect(onInputChange).toHaveBeenLastCalledWith(key, '720');
+    });
+
+    it('starts a number when a digit is typed over the name of a period', async () => {
+      const {onInputChange} = renderField({maxValidityPeriod: 86400});
+
+      await userEvent.type(field()!, '5');
+
+      expect(field()!.value).toBe('5');
+      expect(onInputChange).toHaveBeenLastCalledWith(key, '300');
+    });
+
+    it('does not take a letter typed over the name of a period', async () => {
+      const {onInputChange} = renderField({maxValidityPeriod: 86400});
+      const calls: number = onInputChange.mock.calls.length;
+
+      await userEvent.type(field()!, 'x');
+
+      expect(field()!.value).toBe('1 minute');
+      expect(onInputChange.mock.calls).toHaveLength(calls);
+    });
+
+    it('clears the name of a period when part of it is deleted', async () => {
+      const {onInputChange} = renderField({maxValidityPeriod: 86400});
+
+      await userEvent.click(field()!);
+      await userEvent.keyboard('{ArrowRight}{Backspace}');
+
+      expect(field()!.value).toBe('');
+      expect(onInputChange).toHaveBeenLastCalledWith(key, '60');
+    });
+
+    it('shows a typed period that is listed by its name once the input loses focus', async () => {
+      renderField({maxValidityPeriod: 86400});
+
+      await type('60');
+      await userEvent.tab();
+
+      expect(field()!.value).toBe('60');
+
+      await userEvent.tab();
+
+      expect(field()!.value).toBe('1 hour');
+    });
+
+    it('lets the unit be changed after a number that is one of the periods', async () => {
+      const {onInputChange} = renderField({maxValidityPeriod: 86400});
+
+      await type('60');
+      await pickUnit('hours');
+
+      expect(field()!.value).toBe('24');
+      expect(onInputChange).toHaveBeenLastCalledWith(key, '86400');
+    });
+
+    it("keeps a period of the user's own as typed once the input loses focus", async () => {
+      const {onInputChange} = renderField({maxValidityPeriod: 86400});
+
+      await type('90');
+      await userEvent.tab();
+
+      expect(field()!.value).toBe('90');
+      expect(unit()!.textContent).toBe('minutes');
+      expect(onInputChange).toHaveBeenLastCalledWith(key, '5400');
+    });
+
+    it('shows a period in the form that is not one of the options in its largest whole unit', () => {
+      renderField({maxValidityPeriod: 86400, formValues: {[key]: '12345'}});
+
+      expect(remember()).toBeChecked();
+      expect(field()!.value).toBe('12345');
+      expect(unit()!.textContent).toBe('seconds');
+      expect(screen.getByText('Enter a whole number, up to 86400.')).toBeTruthy();
+    });
+
+    it('shows a period in the form that is whole minutes as minutes', () => {
+      renderField({maxValidityPeriod: 86400, formValues: {[key]: '420'}});
+
+      expect(field()!.value).toBe('7');
+      expect(unit()!.textContent).toBe('minutes');
+    });
+  });
+
+  it('shows nothing when the limit leaves no room for the short value', () => {
+    renderField({maxValidityPeriod: 1});
+
+    expect(remember()).toBeNull();
+    expect(screen.queryByRole('combobox')).toBeNull();
+  });
+});
+
 describe('ConsentAdapter — client hosts', () => {
   const renderWithHostText = (ui: ReactNode) => renderWithProviders(<GateText>{ui}</GateText>);
   const hostsText = 'Published by vscode.dev. Returns to 127.0.0.1.';
@@ -960,5 +1358,183 @@ describe('ConsentAdapter — client hosts', () => {
     expect(screen.queryByText(/Published by/)).toBeNull();
     expect(screen.queryByText(deviceWarning)).toBeNull();
     expect(switchFor('system')).toBeTruthy();
+  });
+});
+
+describe('ConsentAdapter permission choices', () => {
+  it('offers one switch for a hierarchical branch root', () => {
+    const onInputChange = vi.fn();
+    const root = JSON.stringify([
+      {
+        purposeName: 'permissions:app1',
+        purposeId: '',
+        type: 'permissions',
+        permissionDelimiter: ':',
+        essential: null,
+        optional: [{name: 'reservations'}],
+      },
+    ]);
+    renderConsent(<ConsentAdapter consentData={root} formValues={{}} onInputChange={onInputChange} />);
+
+    expect(screen.getAllByRole('switch')).toHaveLength(1);
+    expect(screen.queryByRole('treeitem')).not.toBeInTheDocument();
+    expect(screen.getByText('Review the permissions being requested')).toBeInTheDocument();
+    expect(
+      screen.getByText('Granting a resource includes current and future permissions beneath it.'),
+    ).toBeInTheDocument();
+
+    fireEvent.click(switchFor('reservations'));
+    expect(onInputChange).toHaveBeenCalledExactlyOnceWith(permissionKey('reservations'), 'true');
+  });
+
+  it('decides each hierarchical branch independently', () => {
+    const onInputChange = vi.fn();
+    const branches = JSON.stringify([
+      {
+        purposeName: 'permissions:app1',
+        purposeId: '',
+        type: 'permissions',
+        permissionDelimiter: ':',
+        essential: null,
+        optional: [{name: 'reservations:online'}, {name: 'reservations:offline:view'}],
+      },
+    ]);
+    renderConsent(<ConsentAdapter consentData={branches} formValues={{}} onInputChange={onInputChange} />);
+
+    expect(screen.getAllByRole('switch')).toHaveLength(2);
+
+    fireEvent.click(switchFor('reservations:online'));
+    expect(onInputChange).toHaveBeenCalledExactlyOnceWith(permissionKey('reservations:online'), 'true');
+  });
+
+  it('grants a branch as a whole and shows what it carries read only', () => {
+    const onInputChange = vi.fn();
+    const tree = JSON.stringify([
+      {
+        purposeName: 'permissions:app1',
+        purposeId: '',
+        type: 'permissions',
+        permissionDelimiter: ':',
+        essential: [],
+        optional: [
+          {name: 'reservations'},
+          {name: 'reservations:online', parent: 'reservations'},
+          {name: 'reservations:online:create', parent: 'reservations:online'},
+          {name: 'reservations:view', parent: 'reservations'},
+        ],
+      },
+    ]);
+    renderConsent(<ConsentAdapter consentData={tree} formValues={{}} onInputChange={onInputChange} />);
+
+    // Only the branch root is decidable. Everything under it is shown, never chosen.
+    expect(screen.getAllByRole('switch')).toHaveLength(1);
+
+    const online = screen.getByRole('treeitem', {name: 'reservations:online'});
+    expect(online).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('treeitem', {name: 'reservations:online:create'})).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText('reservations:online'));
+    expect(online).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('treeitem', {name: 'reservations:online:create'})).toBeInTheDocument();
+    expect(onInputChange).not.toHaveBeenCalled();
+
+    // Taking the root takes everything the prompt showed beneath it.
+    fireEvent.click(switchFor('reservations'));
+    expect(onInputChange.mock.calls).toEqual([
+      [permissionKey('reservations'), 'true'],
+      [permissionKey('reservations:online'), 'true'],
+      [permissionKey('reservations:online:create'), 'true'],
+      [permissionKey('reservations:view'), 'true'],
+    ]);
+  });
+
+  it('shows catalog descendants without adding child decisions', () => {
+    const onInputChange = vi.fn();
+    const data = JSON.stringify([
+      {
+        purposeName: 'permissions:app1',
+        purposeId: '',
+        type: 'permissions',
+        permissionDelimiter: ':',
+        essential: [],
+        optional: [{name: 'reservations'}],
+        displayElements: [
+          {name: 'reservations'},
+          {name: 'reservations:create', parent: 'reservations'},
+          {name: 'reservations:view', parent: 'reservations'},
+        ],
+      },
+    ]);
+    renderConsent(<ConsentAdapter consentData={data} formValues={{}} onInputChange={onInputChange} />);
+    expect(screen.getAllByRole('switch')).toHaveLength(1);
+    expect(screen.getByRole('treeitem', {name: 'reservations:view'})).toBeInTheDocument();
+    fireEvent.click(switchFor('reservations'));
+    expect(onInputChange).toHaveBeenCalledExactlyOnceWith(permissionKey('reservations'), 'true');
+  });
+
+  it('keeps exact permissions visible and selectable beside a hierarchical purpose', () => {
+    const onInputChange = vi.fn();
+    const mixed = JSON.stringify([
+      {
+        purposeName: 'permissions:hierarchical',
+        purposeId: 'hierarchical',
+        type: 'permissions',
+        permissionDelimiter: ':',
+        optional: [{name: 'reservations'}],
+        displayElements: [{name: 'reservations'}, {name: 'reservations:create', parent: 'reservations'}],
+      },
+      {
+        purposeName: 'permissions:exact',
+        purposeId: 'exact',
+        type: 'permissions',
+        optional: [{name: 'booking'}, {name: 'booking:create', parent: 'booking'}],
+      },
+    ]);
+    renderConsent(<ConsentAdapter consentData={mixed} formValues={{}} onInputChange={onInputChange} />);
+
+    expect(screen.getAllByRole('switch')).toHaveLength(3);
+    expect(switchFor('reservations')).toBeInTheDocument();
+    expect(switchFor('booking')).toBeInTheDocument();
+    expect(screen.getByRole('treeitem', {name: 'reservations:create'})).toBeInTheDocument();
+    fireEvent.click(switchFor('booking:create'));
+    expect(onInputChange).toHaveBeenCalledExactlyOnceWith('__consent_opt__exact__booking:create', 'true');
+    expect(switchFor('booking').checked).toBe(false);
+    expect(switchFor('reservations').checked).toBe(false);
+  });
+
+  it('keeps attribute consent selectable beside hierarchical permissions', () => {
+    const onInputChange = vi.fn();
+    const mixed = JSON.stringify([
+      {
+        purposeName: 'permissions:app1',
+        purposeId: 'perms',
+        type: 'permissions',
+        permissionDelimiter: ':',
+        essential: [],
+        optional: [{name: 'reservations'}],
+      },
+      {
+        purposeName: 'attributes:app1',
+        purposeId: 'attrs',
+        type: 'attributes',
+        essential: [],
+        optional: [{name: 'email'}],
+      },
+    ]);
+    renderConsent(<ConsentAdapter consentData={mixed} formValues={{}} onInputChange={onInputChange} />);
+
+    expect(screen.getAllByRole('switch')).toHaveLength(2);
+    fireEvent.click(switchFor('email'));
+    expect(onInputChange).toHaveBeenCalledExactlyOnceWith('__consent_opt__attrs__email', 'true');
+  });
+
+  it('keeps nonhierarchical permissions individually selectable', () => {
+    const onInputChange = vi.fn();
+    renderConsent(
+      <ConsentAdapter consentData={nestedPermissionsPurpose} formValues={{}} onInputChange={onInputChange} />,
+    );
+
+    fireEvent.click(switchFor('users:read'));
+    expect(onInputChange).toHaveBeenCalledExactlyOnceWith(permissionKey('users:read'), 'true');
+    expect(switchFor('users:write').checked).toBe(false);
   });
 });

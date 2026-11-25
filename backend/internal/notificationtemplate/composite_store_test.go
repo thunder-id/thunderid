@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 )
 
 type CompositeStoreTestSuite struct {
@@ -242,4 +244,127 @@ func (s *CompositeStoreTestSuite) TestDeleteTemplateDBPath() {
 
 	s.Require().NoError(composite.DeleteTemplate(s.ctx, ChannelTypeEmail, "db-1"))
 	db.AssertExpectations(s.T())
+}
+
+// TestListTemplatesByOUIDs_MergesDeclaredThenDB verifies an organization unit's list holds only its own
+// declared templates, then its DB templates, and that consecutive pages partition it.
+func (s *CompositeStoreTestSuite) TestListTemplatesByOUIDs_MergesDeclaredThenDB() {
+	ouID := testDeclaredOUID
+	fileStore := newTestFileStore()
+	loadDeclared(s.T(), fileStore, declaredZebraYAML)
+	loadDeclared(s.T(), fileStore, declaredAlphaYAML)
+	loadDeclared(s.T(), fileStore, declaredOtherOUYAML)
+
+	dbItems := []templateDAO{emailDAO("mango", "mango"), emailDAO("apple", "apple")}
+	db := newNotificationTemplateStoreInterfaceMock(s.T())
+	db.On("CountTemplatesByOUIDs", mock.Anything, ChannelTypeEmail, []string{ouID}).Return(len(dbItems), nil)
+	db.On("ListTemplatesByOUIDs", mock.Anything, ChannelTypeEmail, []string{ouID}, mock.Anything, 0).Return(
+		func(_ context.Context, _ ChannelType, _ []string, limit, _ int) []templateDAO {
+			return dbItems[:min(limit, len(dbItems))]
+		}, nil)
+	composite := newCompositeStore(fileStore, db)
+
+	list, err := composite.ListTemplatesByOUIDs(s.ctx, ChannelTypeEmail, []string{ouID}, 100, 0)
+	s.Require().NoError(err)
+	s.Require().Equal([]string{"alpha", "zebra", "mango", "apple"}, handlesOf(list))
+
+	pages := make([]string, 0, len(list))
+	for offset := range len(list) {
+		page, err := composite.ListTemplatesByOUIDs(s.ctx, ChannelTypeEmail, []string{ouID}, 1, offset)
+		s.Require().NoError(err)
+		pages = append(pages, handlesOf(page)...)
+	}
+	s.Require().Equal(handlesOf(list), pages)
+
+	count, err := composite.CountTemplatesByOUIDs(s.ctx, ChannelTypeEmail, []string{ouID})
+	s.Require().NoError(err)
+	s.Require().Equal(4, count)
+}
+
+func (s *CompositeStoreTestSuite) TestListTemplatesByOUID_LimitExceeded() {
+	ouID := testDeclaredOUID
+	fileStore := newTestFileStore()
+	loadDeclared(s.T(), fileStore, declaredAlphaYAML)
+	db := newNotificationTemplateStoreInterfaceMock(s.T())
+	db.On("CountTemplatesByOUIDs", mock.Anything, ChannelTypeEmail, []string{ouID}).
+		Return(serverconst.MaxCompositeStoreRecords, nil)
+	composite := newCompositeStore(fileStore, db)
+
+	_, err := composite.ListTemplatesByOUIDs(s.ctx, ChannelTypeEmail, []string{ouID}, 10, 0)
+	s.Require().ErrorIs(err, errResultLimitExceededInCompositeMode)
+
+	_, err = composite.CountTemplatesByOUIDs(s.ctx, ChannelTypeEmail, []string{ouID})
+	s.Require().ErrorIs(err, errResultLimitExceededInCompositeMode)
+}
+
+func (s *CompositeStoreTestSuite) TestListTemplatesByOUID_SingleStoreOverLimit() {
+	db := newNotificationTemplateStoreInterfaceMock(s.T())
+	db.On("CountTemplatesByOUIDs", mock.Anything, ChannelTypeEmail, []string{"ou-1"}).
+		Return(serverconst.MaxCompositeStoreRecords+1, nil)
+	composite := newCompositeStore(newTestFileStore(), db)
+
+	_, err := composite.ListTemplatesByOUIDs(s.ctx, ChannelTypeEmail, []string{"ou-1"}, 10, 0)
+	s.Require().ErrorIs(err, errResultLimitExceededInCompositeMode)
+}
+
+func (s *CompositeStoreTestSuite) TestListTemplatesByOUID_DBError() {
+	storeErr := errors.New("db down")
+	db := newNotificationTemplateStoreInterfaceMock(s.T())
+	db.On("CountTemplatesByOUIDs", mock.Anything, ChannelTypeEmail, []string{"ou-1"}).Return(0, storeErr)
+	composite := newCompositeStore(newTestFileStore(), db)
+
+	_, err := composite.ListTemplatesByOUIDs(s.ctx, ChannelTypeEmail, []string{"ou-1"}, 10, 0)
+	s.Require().ErrorIs(err, storeErr)
+
+	_, err = composite.CountTemplatesByOUIDs(s.ctx, ChannelTypeEmail, []string{"ou-1"})
+	s.Require().ErrorIs(err, storeErr)
+}
+
+func (s *CompositeStoreTestSuite) TestListTemplatesByProject_MergesDeclaredThenDB() {
+	fileStore := newTestFileStore()
+	loadDeclared(s.T(), fileStore, declaredInProjectYAML)
+	loadDeclared(s.T(), fileStore, declaredAlphaYAML)
+
+	dbItems := []templateDAO{emailDAO("mango", "mango")}
+	db := newNotificationTemplateStoreInterfaceMock(s.T())
+	db.On("CountTemplatesByProject", mock.Anything, ChannelTypeEmail, "proj-1").Return(len(dbItems), nil)
+	db.On("ListTemplatesByProject", mock.Anything, ChannelTypeEmail, "proj-1", mock.Anything, 0).Return(
+		func(_ context.Context, _ ChannelType, _ string, limit, _ int) []templateDAO {
+			return dbItems[:min(limit, len(dbItems))]
+		}, nil)
+	composite := newCompositeStore(fileStore, db)
+
+	list, err := composite.ListTemplatesByProject(s.ctx, ChannelTypeEmail, "proj-1", 100, 0)
+	s.Require().NoError(err)
+	s.Require().Equal([]string{"plum", "mango"}, handlesOf(list))
+
+	count, err := composite.CountTemplatesByProject(s.ctx, ChannelTypeEmail, "proj-1")
+	s.Require().NoError(err)
+	s.Require().Equal(2, count)
+}
+
+func (s *CompositeStoreTestSuite) TestListTemplatesByProject_LimitExceeded() {
+	db := newNotificationTemplateStoreInterfaceMock(s.T())
+	db.On("CountTemplatesByProject", mock.Anything, ChannelTypeEmail, "proj-1").
+		Return(serverconst.MaxCompositeStoreRecords+1, nil)
+	composite := newCompositeStore(newTestFileStore(), db)
+
+	_, err := composite.ListTemplatesByProject(s.ctx, ChannelTypeEmail, "proj-1", 10, 0)
+	s.Require().ErrorIs(err, errResultLimitExceededInCompositeMode)
+
+	_, err = composite.CountTemplatesByProject(s.ctx, ChannelTypeEmail, "proj-1")
+	s.Require().ErrorIs(err, errResultLimitExceededInCompositeMode)
+}
+
+func (s *CompositeStoreTestSuite) TestListTemplatesByProject_DBError() {
+	storeErr := errors.New("db down")
+	db := newNotificationTemplateStoreInterfaceMock(s.T())
+	db.On("CountTemplatesByProject", mock.Anything, ChannelTypeEmail, "proj-1").Return(0, storeErr)
+	composite := newCompositeStore(newTestFileStore(), db)
+
+	_, err := composite.ListTemplatesByProject(s.ctx, ChannelTypeEmail, "proj-1", 10, 0)
+	s.Require().ErrorIs(err, storeErr)
+
+	_, err = composite.CountTemplatesByProject(s.ctx, ChannelTypeEmail, "proj-1")
+	s.Require().ErrorIs(err, storeErr)
 }

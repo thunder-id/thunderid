@@ -12,9 +12,11 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/actorprovider"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
+	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	"github.com/thunder-id/thunderid/internal/ou"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -25,13 +27,16 @@ const (
 	loggerComponentName = "FlowMetaService"
 	// MetaTypeAPP represents the APP type for flow metadata.
 	MetaTypeAPP MetaType = "APP"
+	// MetaTypeRef represents an entity named by the opaque reference a sign-in page URL carries. A reference
+	// names an application today.
+	MetaTypeRef MetaType = "REF"
 	// MetaTypeOU represents the OU type for flow metadata.
 	MetaTypeOU MetaType = "OU"
 )
 
 // IsValid checks if the MetaType is valid.
 func (mt MetaType) IsValid() bool {
-	return mt == MetaTypeAPP || mt == MetaTypeOU
+	return mt == MetaTypeAPP || mt == MetaTypeRef || mt == MetaTypeOU
 }
 
 // FlowMetaServiceInterface defines the interface for flow metadata operations.
@@ -51,6 +56,7 @@ type flowMetaService struct {
 	ouService     providers.OrganizationUnitProvider
 	designResolve providers.DesignProvider
 	i18nService   providers.I18nProvider
+	serverConfig  flowconfig.ServerConfigReader
 	logger        *log.Logger
 }
 
@@ -60,6 +66,7 @@ func newFlowMetaService(
 	ouService providers.OrganizationUnitProvider,
 	designResolve providers.DesignProvider,
 	i18nService providers.I18nProvider,
+	serverConfig flowconfig.ServerConfigReader,
 ) FlowMetaServiceInterface {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	return &flowMetaService{
@@ -67,6 +74,7 @@ func newFlowMetaService(
 		ouService:     ouService,
 		designResolve: designResolve,
 		i18nService:   i18nService,
+		serverConfig:  serverConfig,
 		logger:        logger,
 	}
 }
@@ -84,11 +92,20 @@ func (fms *flowMetaService) GetFlowMetadata(
 
 	if metaType == "" {
 		fms.populateI18nMetadata(ctx, response, lang, ns)
+		response.DefaultReturnURL = flowconfig.ReadFlowSectionConfig(ctx, fms.serverConfig).DefaultReturnURL
 		return response, nil
 	}
 
 	if !metaType.IsValid() {
 		return nil, &ErrorInvalidType
+	}
+
+	if metaType == MetaTypeRef {
+		appID, err := sysutils.DecodeURLSafeID(id)
+		if err != nil {
+			return nil, &ErrorApplicationNotFound
+		}
+		metaType, id = MetaTypeAPP, appID
 	}
 
 	ouID, svcErr := fms.populateTypeMetadata(ctx, metaType, id, response)
@@ -102,6 +119,7 @@ func (fms *flowMetaService) GetFlowMetadata(
 
 	fms.populateDesignMetadata(ctx, metaType, id, ouID, response)
 	fms.populateI18nMetadata(ctx, response, lang, ns)
+	response.DefaultReturnURL = flowconfig.ReadFlowSectionConfig(ctx, fms.serverConfig).DefaultReturnURL
 
 	fms.logger.Debug(ctx, "Successfully retrieved flow metadata",
 		log.String("type", string(metaType)),
@@ -162,7 +180,7 @@ func (fms *flowMetaService) populateTypeMetadata(
 		return "", &ErrorApplicationNotFound
 	}
 
-	entity, epErr := fms.actorProvider.GetActor(id)
+	entity, epErr := fms.actorProvider.GetActor(ctx, id)
 	if epErr != nil && epErr.Code != string(entityprovider.ErrorCodeEntityNotFound) {
 		fms.logger.Error(ctx, "Failed to get actor", log.String("appID", id),
 			log.String("error", epErr.Error.DefaultValue))

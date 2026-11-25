@@ -142,6 +142,18 @@ describe('OUResolverProperties', () => {
     expect(screen.getByLabelText(/Parent OU ID/)).toBeValid();
   });
 
+  // A project flow is created with the placeholder until the console sets its system organization unit.
+  it('should show a placeholder parent organization unit as empty and invalid', () => {
+    render(
+      inFlow('AUTHENTICATION', {
+        data: {properties: {resolveFrom: 'prompt', parentOuId: '{{PARENT_OU_ID}}'}},
+      } as unknown as Resource),
+    );
+
+    expect(screen.getByLabelText(/Parent OU ID/)).toHaveValue('');
+    expect(screen.getByLabelText(/Parent OU ID/)).toBeInvalid();
+  });
+
   it('should not offer the parent organization unit in other flow types, or outside the flow builder', () => {
     const resource = {data: {properties: {resolveFrom: 'prompt'}}} as unknown as Resource;
     const {rerender} = render(inFlow('REGISTRATION', resource));

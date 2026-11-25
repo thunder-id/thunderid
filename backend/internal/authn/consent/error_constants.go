@@ -84,20 +84,6 @@ var (
 		},
 	}
 
-	// ErrorEssentialConsentDenied is returned when the user denied one or more essential consent attributes.
-	ErrorEssentialConsentDenied = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "AUTH-CES-1006",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.consentenforcerservice.essential_consent_denied",
-			DefaultValue: "Essential consent denied",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.consentenforcerservice.essential_consent_denied_description",
-			DefaultValue: "One or more essential consent attributes were denied",
-		},
-	}
-
 	// ErrorConsentPurposeCreateFailed is returned when the consent service rejects the
 	// request to create a consent purpose with a client error.
 	ErrorConsentPurposeCreateFailed = tidcommon.ServiceError{

@@ -9,6 +9,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 )
 
@@ -24,10 +26,16 @@ type ouMCPItem struct {
 	Handle      string `json:"handle"`
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
+	ProjectID   string `json:"projectId,omitempty"`
 	LogoURL     string `json:"logoUrl,omitempty"`
 	IsReadOnly  bool   `json:"isReadOnly"`
 	CreatedAt   string `json:"createdAt,omitempty"`
 	UpdatedAt   string `json:"updatedAt,omitempty"`
+}
+
+// ouListMCPInput is the MCP list tool input.
+type ouListMCPInput struct {
+	ProjectID string `json:"projectId,omitempty" jsonschema:"Project ID. Lists the project's top organization units."`
 }
 
 // ouListMCPResponse is the MCP list tool output.
@@ -41,8 +49,12 @@ func registerMCPTools(server *mcp.Server, ouService OrganizationUnitServiceInter
 	tools := &ouTools{ouService: ouService}
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "list_organization_units",
-		Description: `List all organization units.`,
+		Name: "list_organization_units",
+		Description: `List the root organization units.
+
+Behavior:
+- With projectId, lists the project's top organization units: its root organization units, and any unit
+  whose parent is not in the project. A project that does not exist has no organization units.`,
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "List Organization Units",
 			ReadOnlyHint: true,
@@ -54,9 +66,16 @@ func registerMCPTools(server *mcp.Server, ouService OrganizationUnitServiceInter
 func (t *ouTools) listOrganizationUnits(
 	ctx context.Context,
 	_ *mcp.CallToolRequest,
-	_ any,
+	input ouListMCPInput,
 ) (*mcp.CallToolResult, *ouListMCPResponse, error) {
-	resp, svcErr := t.ouService.GetOrganizationUnitList(ctx, serverconst.MaxPageSize, 0, nil)
+	var resp *OrganizationUnitListResponse
+	var svcErr *tidcommon.ServiceError
+	if input.ProjectID != "" {
+		resp, svcErr = t.ouService.GetOrganizationUnitListByProject(ctx, input.ProjectID, serverconst.MaxPageSize,
+			0, nil)
+	} else {
+		resp, svcErr = t.ouService.GetOrganizationUnitList(ctx, serverconst.MaxPageSize, 0, nil)
+	}
 	if svcErr != nil {
 		return nil, nil, fmt.Errorf("failed to list organization units: %s", svcErr.ErrorDescription)
 	}
@@ -68,6 +87,7 @@ func (t *ouTools) listOrganizationUnits(
 			Handle:      ou.Handle,
 			Name:        ou.Name,
 			Description: ou.Description,
+			ProjectID:   ou.ProjectID,
 			LogoURL:     ou.LogoURL,
 			IsReadOnly:  ou.IsReadOnly,
 			CreatedAt:   ou.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),

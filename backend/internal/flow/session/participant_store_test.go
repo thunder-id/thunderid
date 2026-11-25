@@ -42,12 +42,13 @@ func (s *ParticipantStoreTestSuite) SetupTest() {
 func (s *ParticipantStoreTestSuite) TestRecord_Upserts() {
 	now := time.Unix(1700000000, 0).UTC()
 	p := Participant{
-		SessionID: "sess-1", AppID: "app-1", TokenFamilyID: "tfid-1", FirstJoinedAt: now, LastActiveAt: now,
+		SessionID: "sess-1", AppID: "app-1", OUID: "ou-1", TokenFamilyID: "tfid-1", FirstJoinedAt: now,
+		LastActiveAt: now,
 	}
 
 	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", context.Background(), queryUpsertParticipant,
-		"sess-1", testDeploymentID, "app-1", now, now, "tfid-1").
+		"sess-1", testDeploymentID, "app-1", "ou-1", now, now, "tfid-1").
 		Return(int64(1), nil)
 
 	err := s.store.Record(context.Background(), p)
@@ -60,12 +61,13 @@ func (s *ParticipantStoreTestSuite) TestRecord_Upserts() {
 func (s *ParticipantStoreTestSuite) TestRecord_DBError() {
 	now := time.Unix(1700000000, 0).UTC()
 	p := Participant{
-		SessionID: "sess-1", AppID: "app-1", TokenFamilyID: "tfid-1", FirstJoinedAt: now, LastActiveAt: now,
+		SessionID: "sess-1", AppID: "app-1", OUID: "ou-1", TokenFamilyID: "tfid-1", FirstJoinedAt: now,
+		LastActiveAt: now,
 	}
 
 	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("ExecuteContext", context.Background(), queryUpsertParticipant,
-		"sess-1", testDeploymentID, "app-1", now, now, "tfid-1").
+		"sess-1", testDeploymentID, "app-1", "ou-1", now, now, "tfid-1").
 		Return(int64(0), errors.New("db down"))
 
 	err := s.store.Record(context.Background(), p)
@@ -78,9 +80,9 @@ func (s *ParticipantStoreTestSuite) TestListBySessionID() {
 	first := time.Unix(1700000000, 0).UTC()
 	second := time.Unix(1700000100, 0).UTC()
 	rows := []map[string]interface{}{
-		{"session_id": "sess-1", "app_id": "app-1", "tfid": "tfid-1",
+		{"session_id": "sess-1", "app_id": "app-1", "ou_id": "ou-1", "tfid": "tfid-1",
 			"first_joined_at": first, "last_active_at": first},
-		{"session_id": "sess-1", "app_id": "app-2", "first_joined_at": second, "last_active_at": second},
+		{"session_id": "sess-1", "app_id": "app-2", "ou_id": "", "first_joined_at": second, "last_active_at": second},
 	}
 	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
 	s.mockDBClient.On("QueryContext", context.Background(), queryListParticipantsBySessionID,
@@ -93,9 +95,46 @@ func (s *ParticipantStoreTestSuite) TestListBySessionID() {
 	s.Require().Len(got, 2)
 	s.Equal("app-1", got[0].AppID)
 	s.Equal("app-2", got[1].AppID)
+	s.Equal("ou-1", got[0].OUID)
+	s.Empty(got[1].OUID)
 	s.Equal(first, got[0].FirstJoinedAt)
 	s.Equal("tfid-1", got[0].TokenFamilyID)
 	s.Empty(got[1].TokenFamilyID)
+}
+
+func (s *ParticipantStoreTestSuite) TestListByAppID_ReturnsEveryOrganizationUnit() {
+	joined := time.Unix(1700000000, 0).UTC()
+	rows := []map[string]interface{}{
+		{"session_id": "sess-1", "app_id": "app-1", "ou_id": "ou-1", "tfid": "tfid-1",
+			"first_joined_at": joined, "last_active_at": joined},
+		{"session_id": "sess-1", "app_id": "app-1", "ou_id": "ou-2", "tfid": "tfid-2",
+			"first_joined_at": joined, "last_active_at": joined},
+	}
+	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("QueryContext", context.Background(), queryListParticipantsByAppID,
+		"app-1", testDeploymentID).
+		Return(rows, nil)
+
+	got, err := s.store.ListByAppID(context.Background(), "app-1")
+
+	s.NoError(err)
+	s.Require().Len(got, 2)
+	s.Equal("ou-1", got[0].OUID)
+	s.Equal("tfid-1", got[0].TokenFamilyID)
+	s.Equal("ou-2", got[1].OUID)
+	s.Equal("tfid-2", got[1].TokenFamilyID)
+}
+
+func (s *ParticipantStoreTestSuite) TestDeleteParticipant_RemovesOneOrganizationUnit() {
+	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("ExecuteContext", context.Background(), queryDeleteParticipant,
+		"sess-1", "app-1", "ou-1", testDeploymentID).
+		Return(int64(1), nil)
+
+	err := s.store.DeleteParticipant(context.Background(), "sess-1", "app-1", "ou-1")
+
+	s.NoError(err)
+	s.mockDBClient.AssertExpectations(s.T())
 }
 
 func (s *ParticipantStoreTestSuite) TestListBySessionID_Empty() {
@@ -171,13 +210,13 @@ func (s *ParticipantStoreTestSuite) TestBuildParticipantFromRow_BadFields() {
 	now := time.Unix(1700000000, 0).UTC()
 	valid := func() map[string]interface{} {
 		return map[string]interface{}{
-			"session_id": "sess-1", "app_id": "app-1", "first_joined_at": now, "last_active_at": now,
+			"session_id": "sess-1", "app_id": "app-1", "ou_id": "", "first_joined_at": now, "last_active_at": now,
 		}
 	}
 	_, err := buildParticipantFromRow(valid())
 	s.Require().NoError(err)
 
-	for _, f := range []string{"session_id", "app_id"} {
+	for _, f := range []string{"session_id", "app_id", "ou_id"} {
 		row := valid()
 		row[f] = 42
 		_, buildErr := buildParticipantFromRow(row)
@@ -211,9 +250,9 @@ func placeholderList(n int) string {
 func (s *ParticipantStoreTestSuite) TestListBySessionIDs() {
 	joined := time.Unix(1700000000, 0).UTC()
 	rows := []map[string]interface{}{
-		{"session_id": "sess-1", "app_id": "app-1", "tfid": "tfid-1",
+		{"session_id": "sess-1", "app_id": "app-1", "ou_id": "", "tfid": "tfid-1",
 			"first_joined_at": joined, "last_active_at": joined},
-		{"session_id": "sess-2", "app_id": "app-1", "tfid": "tfid-2",
+		{"session_id": "sess-2", "app_id": "app-1", "ou_id": "", "tfid": "tfid-2",
 			"first_joined_at": joined, "last_active_at": joined},
 	}
 	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
@@ -255,13 +294,14 @@ func (s *ParticipantStoreTestSuite) TestListBySessionIDs_ChunksAtTheParameterCap
 	earlier := time.Unix(1700000000, 0).UTC()
 	later := earlier.Add(time.Minute)
 	s.mockDBClient.On("QueryContext", fullArgs...).Return([]map[string]interface{}{
-		{"session_id": ids[5], "app_id": "app-0", "first_joined_at": earlier, "last_active_at": earlier},
-		{"session_id": ids[5], "app_id": "app-1", "first_joined_at": later, "last_active_at": later},
+		{"session_id": ids[5], "app_id": "app-0", "ou_id": "", "first_joined_at": earlier, "last_active_at": earlier},
+		{"session_id": ids[5], "app_id": "app-1", "ou_id": "", "first_joined_at": later, "last_active_at": later},
 	}, nil).Once()
 	// Second call carries the single remaining id.
 	s.mockDBClient.On("QueryContext", context.Background(), participantsBySessionIDsQuery(1),
 		ids[total-1], testDeploymentID).Return([]map[string]interface{}{
-		{"session_id": ids[total-1], "app_id": "app-2", "first_joined_at": earlier, "last_active_at": earlier},
+		{"session_id": ids[total-1], "app_id": "app-2", "ou_id": "", "first_joined_at": earlier,
+			"last_active_at": earlier},
 	}, nil).Once()
 
 	original := append([]string(nil), ids...)

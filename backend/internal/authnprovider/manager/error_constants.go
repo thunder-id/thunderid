@@ -5,6 +5,8 @@
 package manager
 
 import (
+	"errors"
+
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -171,4 +173,21 @@ var (
 			DefaultValue: "This account is suspended. Contact an administrator",
 		},
 	}
+	// ErrorFederatedSyncFailed is the error returned when a federated sign-in cannot be synced to the
+	// account holding its link.
+	ErrorFederatedSyncFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AUTHN-MGR-1015",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.authnmgrservice.federated_sync_failed",
+			DefaultValue: "Federated sync failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.authnmgrservice.federated_sync_failed_description",
+			DefaultValue: "The account could not be updated with the identity provider's data",
+		},
+	}
 )
+
+// errNilEventBus is returned when the manager is initialized without the event bus it audits on.
+var errNilEventBus = errors.New("the authn provider manager needs an event bus")

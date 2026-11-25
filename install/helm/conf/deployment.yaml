@@ -9,11 +9,26 @@ server:
   {{- if .Values.configuration.server.identifier }}
   identifier: {{ .Values.configuration.server.identifier | quote }}
   {{- end }}
+  {{- if .Values.configuration.server.productName }}
+  product_name: {{ .Values.configuration.server.productName | quote }}
+  {{- end }}
+  {{- if .Values.configuration.server.systemOuId }}
+  system_ou_id: {{ .Values.configuration.server.systemOuId | quote }}
+  {{- end }}
   {{- with .Values.configuration.server.timeouts }}
   timeouts:
     read_header_seconds: {{ .readHeaderSeconds }}
     write_seconds: {{ .writeSeconds }}
     idle_seconds: {{ .idleSeconds }}
+  {{- end }}
+  {{- with .Values.configuration.server.trustedProxies }}
+  trusted_proxies:
+    {{- range . }}
+    - cidr: {{ .cidr | quote }}
+      {{- if .header }}
+      header: {{ .header | quote }}
+      {{- end }}
+    {{- end }}
   {{- end }}
   {{- if or .Values.configuration.server.security .Values.setup.enabled }}
   security:
@@ -377,6 +392,8 @@ import:
 
 gateway:
   apply_timeout_seconds: {{ .Values.configuration.gateway.applyTimeoutSeconds }}
+  unused_value_grace_seconds: {{ .Values.configuration.gateway.unusedValueGraceSeconds }}
+  unused_value_sweep_interval_seconds: {{ .Values.configuration.gateway.unusedValueSweepIntervalSeconds }}
 
 direct_api:
   enabled: {{ .Values.configuration.directApi.enabled }}
@@ -492,6 +509,13 @@ log:
       - {{ . | quote }}
     {{- end }}
   {{- end }}
+{{- end }}
+
+{{- $audit := default dict .Values.configuration.audit }}
+{{- if hasKey $audit "enabled" }}
+
+audit:
+  enabled: {{ $audit.enabled }}
 {{- end }}
 
 {{- $stores := default dict .Values.configuration.stores }}

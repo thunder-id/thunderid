@@ -6,6 +6,7 @@ package flowmgt
 import (
 	"context"
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -16,6 +17,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/executor"
 	"github.com/thunder-id/thunderid/internal/flow/executormeta"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
+	"github.com/thunder-id/thunderid/internal/group"
+	"github.com/thunder-id/thunderid/internal/role"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/executormock"
@@ -81,6 +84,8 @@ type ValidatorTestSuite struct {
 	mockInterceptorRegistry *interceptormock.InterceptorRegistryInterfaceMock
 	mockGraphBuilder        *graphBuilderInterfaceMock
 	mockConnections         *httpConnectionProviderMock
+	mockGroups              *groupProviderMock
+	mockRoles               *roleProviderMock
 }
 
 func TestValidatorTestSuite(t *testing.T) {
@@ -92,8 +97,10 @@ func (s *ValidatorTestSuite) SetupTest() {
 	s.mockInterceptorRegistry = interceptormock.NewInterceptorRegistryInterfaceMock(s.T())
 	s.mockGraphBuilder = newGraphBuilderInterfaceMock(s.T())
 	s.mockConnections = newHttpConnectionProviderMock(s.T())
+	s.mockGroups = newGroupProviderMock(s.T())
+	s.mockRoles = newRoleProviderMock(s.T())
 	s.v = newFlowValidator(s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockGraphBuilder,
-		s.mockConnections, nil)
+		s.mockConnections, nil, s.mockGroups, s.mockRoles)
 }
 
 // ---------------------------------------------------------------------------
@@ -615,6 +622,27 @@ func (s *ValidatorTestSuite) TestValidateTaskExecutionNode_OnFailurePointsToNonP
 	err := s.v.validateTaskExecutionNode(node, index)
 	s.Require().NotNil(err)
 	s.Equal(ErrorInvalidNodeConfig.Code, err.Code)
+}
+
+func (s *ValidatorTestSuite) TestValidateVariablesNode_OnFailurePointsToNonPrompt() {
+	nodes := []providers.NodeDefinition{
+		{ID: "vars", Type: string(common.NodeTypeVariables), OnSuccess: "end", OnFailure: "end"},
+		{ID: "end", Type: string(common.NodeTypeEnd)},
+	}
+	index, _ := buildNodeIndex(nodes)
+	err := s.v.validateNodeFormat(&nodes[0], index)
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidNodeConfig.Code, err.Code)
+}
+
+func (s *ValidatorTestSuite) TestValidateVariablesNode_OnFailurePointsToPrompt() {
+	nodes := []providers.NodeDefinition{
+		{ID: "vars", Type: string(common.NodeTypeVariables), OnSuccess: "end", OnFailure: "retry"},
+		{ID: "retry", Type: string(common.NodeTypePrompt)},
+		{ID: "end", Type: string(common.NodeTypeEnd)},
+	}
+	index, _ := buildNodeIndex(nodes)
+	s.Nil(s.v.validateNodeFormat(&nodes[0], index))
 }
 
 func (s *ValidatorTestSuite) TestValidateTaskExecutionNode_OnIncompletePointsToNonPrompt() {
@@ -1615,6 +1643,187 @@ func (s *ValidatorTestSuite) TestValidateModeFlowTypes_IdentityGovernance() {
 	}
 }
 
+// The credential setter's reset modes run only in an administrator-initiated flow; its set mode runs in any.
+func (s *ValidatorTestSuite) TestValidateModeFlowTypes_CredentialSetter() {
+	type modeCase struct {
+		mode     string
+		flowType providers.FlowType
+		allowed  bool
+	}
+	cases := []modeCase{
+		{executor.ExecutorModeSet, providers.FlowTypeRecovery, true},
+		{executor.ExecutorModeSet, providers.FlowTypeAdminInitiated, true},
+		{"", providers.FlowTypeRegistration, true},
+		{executor.ExecutorModeValidate, providers.FlowTypeAdminInitiated, true},
+		{executor.ExecutorModeValidate, providers.FlowTypeRecovery, false},
+		{executor.ExecutorModeValidate, providers.FlowTypeAdministration, false},
+		{executor.ExecutorModeInvalidate, providers.FlowTypeAdminInitiated, true},
+		{executor.ExecutorModeInvalidate, providers.FlowTypeRecovery, false},
+		{executor.ExecutorModeInvalidate, providers.FlowTypeAdministration, false},
+	}
+	for _, tc := range cases {
+		s.Run(tc.mode+"/"+string(tc.flowType), func() {
+			nodes := companionNodes(executor.ExecutorNameCredentialSetter)
+			nodes[1].Executor.Mode = tc.mode
+
+			err := s.v.validateModeFlowTypes(tc.flowType, nodes)
+
+			if tc.allowed {
+				s.Nil(err)
+				return
+			}
+			s.Require().NotNil(err)
+			s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+			s.Equal("error.flowmgtservice.unsupported_executor_mode_flow_type_description", err.ErrorDescription.Key)
+		})
+	}
+}
+
+// The access change validator plans a role permission change only in a system flow.
+func (s *ValidatorTestSuite) TestValidateModeFlowTypes_AccessChangeValidator() {
+	cases := []struct {
+		flowType providers.FlowType
+		allowed  bool
+	}{
+		{providers.FlowTypeSystem, true},
+		{providers.FlowTypeAdministration, false},
+	}
+	for _, tc := range cases {
+		s.Run(string(tc.flowType), func() {
+			nodes := companionNodes(executor.ExecutorNameAccessChangeValidator)
+			nodes[1].Executor.Mode = executor.ExecutorModeRolePermissionRemoval
+
+			err := s.v.validateModeFlowTypes(tc.flowType, nodes)
+
+			if tc.allowed {
+				s.Nil(err)
+				return
+			}
+			s.Require().NotNil(err)
+			s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+			s.Equal("error.flowmgtservice.unsupported_executor_mode_flow_type_description", err.ErrorDescription.Key)
+		})
+	}
+}
+
+// The role executor selects roles only in an invitation flow, and assigns them only there or in a sign-up flow.
+func (s *ValidatorTestSuite) TestValidateModeFlowTypes_RoleExecutor() {
+	cases := []struct {
+		mode     string
+		flowType providers.FlowType
+		allowed  bool
+	}{
+		{executor.ExecutorModeRoleSelection, providers.FlowTypeInvitation, true},
+		{executor.ExecutorModeRoleAssignment, providers.FlowTypeInvitation, true},
+		{executor.ExecutorModeRoleSelection, providers.FlowTypeAdministration, false},
+		{executor.ExecutorModeRoleAssignment, providers.FlowTypeAdministration, false},
+	}
+	for _, tc := range cases {
+		s.Run(tc.mode+"/"+string(tc.flowType), func() {
+			nodes := companionNodes(executor.ExecutorNameRole)
+			nodes[1].Executor.Mode = tc.mode
+
+			err := s.v.validateModeFlowTypes(tc.flowType, nodes)
+
+			if tc.allowed {
+				s.Nil(err)
+				return
+			}
+			s.Require().NotNil(err)
+			s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+			s.Equal("error.flowmgtservice.unsupported_executor_mode_flow_type_description", err.ErrorDescription.Key)
+		})
+	}
+}
+
+// A sign-up flow has no admin to pick roles, so it takes role assignment but not role selection.
+func (s *ValidatorTestSuite) TestValidateModeFlowTypes_RoleAssignmentRunsInASignUp() {
+	assign := companionNodes(executor.ExecutorNameRole)
+	assign[1].Executor.Mode = executor.ExecutorModeRoleAssignment
+	s.Nil(s.v.validateModeFlowTypes(providers.FlowTypeRegistration, assign))
+
+	selection := companionNodes(executor.ExecutorNameRole)
+	selection[1].Executor.Mode = executor.ExecutorModeRoleSelection
+	err := s.v.validateModeFlowTypes(providers.FlowTypeRegistration, selection)
+	s.Require().NotNil(err)
+	s.Equal("error.flowmgtservice.unsupported_executor_mode_flow_type_description", err.ErrorDescription.Key)
+}
+
+// The sharing executor authorizes a share only in an invitation flow, and applies one there or, for what a
+// sign-up created, in a sign-in or registration flow.
+func (s *ValidatorTestSuite) TestValidateModeFlowTypes_SharingExecutor() {
+	allowedIn := map[string][]providers.FlowType{
+		executor.ExecutorModeValidate: {providers.FlowTypeInvitation},
+		executor.ExecutorModeShare: {providers.FlowTypeInvitation, providers.FlowTypeAuthentication,
+			providers.FlowTypeRegistration},
+	}
+	flowTypes := []providers.FlowType{providers.FlowTypeInvitation, providers.FlowTypeAuthentication,
+		providers.FlowTypeRegistration}
+	for mode, allowed := range allowedIn {
+		for _, flowType := range flowTypes {
+			nodes := companionNodes(executor.ExecutorNameSharing)
+			nodes[1].Executor.Mode = mode
+
+			err := s.v.validateModeFlowTypes(flowType, nodes)
+
+			if slices.Contains(allowed, flowType) {
+				s.Nil(err, "%s in %s", mode, flowType)
+				continue
+			}
+			s.Require().NotNil(err, "%s in %s", mode, flowType)
+			s.Equal("error.flowmgtservice.unsupported_executor_mode_flow_type_description", err.ErrorDescription.Key)
+		}
+	}
+}
+
+// A sign-up flow has no admin to pick roles, so its role assignment node must name them, while an invitation flow's
+// assigns what the admin picked.
+func (s *ValidatorTestSuite) TestValidateExecutorSpecificConstraints_RoleAssignmentNamesItsRolesInASignUp() {
+	cases := []struct {
+		name     string
+		flowType providers.FlowType
+		roles    interface{}
+		allowed  bool
+	}{
+		{"sign-up with roles", providers.FlowTypeRegistration, "role-1 role-2", true},
+		{"sign-up without roles", providers.FlowTypeRegistration, nil, false},
+		{"sign-up with blank roles", providers.FlowTypeRegistration, "  ", false},
+		{"invitation without roles", providers.FlowTypeInvitation, nil, true},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			node := companionNodes(executor.ExecutorNameRole)[1]
+			node.Executor.Mode = executor.ExecutorModeRoleAssignment
+			if tc.roles != nil {
+				node.Properties = map[string]interface{}{common.NodePropertyRoles: tc.roles}
+			}
+
+			err := s.v.validateExecutorSpecificConstraints(&node, nil, nil, tc.flowType)
+
+			if tc.allowed {
+				s.Nil(err)
+				return
+			}
+			s.Require().NotNil(err)
+			s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+			s.Equal("error.flowmgtservice.missing_required_executor_property_description", err.ErrorDescription.Key)
+			s.Equal(common.NodePropertyRoles, err.ErrorDescription.Params["propertyKey"])
+		})
+	}
+}
+
+// A role node that names no mode is refused at save, as before the role executor gained its invitation modes.
+func (s *ValidatorTestSuite) TestValidateExecutorMode_RoleExecutorRequiresAMode() {
+	meta, ok := executormeta.MetaFor(executormeta.ExecutorNameRole)
+	s.Require().True(ok)
+	node := companionNodes(executor.ExecutorNameRole)[1]
+
+	err := s.v.validateExecutorMode(&node, &meta)
+
+	s.Require().NotNil(err)
+	s.Equal("error.flowmgtservice.executor_mode_required_description", err.ErrorDescription.Key)
+}
+
 // ---------------------------------------------------------------------------
 // Tests for validateCompanionExecutors
 // ---------------------------------------------------------------------------
@@ -1643,7 +1852,7 @@ func companionNodes(executorNames ...string) []providers.NodeDefinition {
 func (s *ValidatorTestSuite) TestValidateCompanionExecutors_SessionRevocationWithoutCriteriaRevocation() {
 	nodes := companionNodes(executor.ExecutorNameSessionRevocation)
 
-	err := s.v.validateCompanionExecutors(nodes)
+	err := s.v.validateCompanionExecutors(providers.FlowTypeAdministration, nodes)
 
 	s.Require().NotNil(err)
 	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
@@ -1653,7 +1862,7 @@ func (s *ValidatorTestSuite) TestValidateCompanionExecutors_SessionRevocationWit
 	nodes := companionNodes(
 		executor.ExecutorNameCriteriaRevocation, executor.ExecutorNameSessionRevocation)
 
-	s.Nil(s.v.validateCompanionExecutors(nodes))
+	s.Nil(s.v.validateCompanionExecutors(providers.FlowTypeAdministration, nodes))
 }
 
 func (s *ValidatorTestSuite) TestValidateCompanionExecutors_CriteriaRevocationInRevokeMode() {
@@ -1661,7 +1870,7 @@ func (s *ValidatorTestSuite) TestValidateCompanionExecutors_CriteriaRevocationIn
 		executor.ExecutorNameCriteriaRevocation, executor.ExecutorNameSessionRevocation)
 	nodes[1].Executor.Mode = executor.ExecutorModeRevoke
 
-	s.Nil(s.v.validateCompanionExecutors(nodes))
+	s.Nil(s.v.validateCompanionExecutors(providers.FlowTypeAdministration, nodes))
 }
 
 func (s *ValidatorTestSuite) TestValidateCompanionExecutors_CriteriaRevocationOnlyAdvancingTheCutoff() {
@@ -1669,7 +1878,25 @@ func (s *ValidatorTestSuite) TestValidateCompanionExecutors_CriteriaRevocationOn
 		executor.ExecutorNameCriteriaRevocation, executor.ExecutorNameSessionRevocation)
 	nodes[1].Executor.Mode = executor.ExecutorModeAdvanceCutoff
 
-	err := s.v.validateCompanionExecutors(nodes)
+	err := s.v.validateCompanionExecutors(providers.FlowTypeAdministration, nodes)
+
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+}
+
+// A system post flow ends sessions after advancing the cutoff of a plan its pre flow already revoked.
+func (s *ValidatorTestSuite) TestValidateCompanionExecutors_SystemFlowAdvancingTheCutoff() {
+	nodes := companionNodes(
+		executor.ExecutorNameCriteriaRevocation, executor.ExecutorNameSessionRevocation)
+	nodes[1].Executor.Mode = executor.ExecutorModeAdvanceCutoff
+
+	s.Nil(s.v.validateCompanionExecutors(providers.FlowTypeSystem, nodes))
+}
+
+// A system flow still needs a criteria revocation beside its session revocation.
+func (s *ValidatorTestSuite) TestValidateCompanionExecutors_SystemFlowWithoutCriteriaRevocation() {
+	err := s.v.validateCompanionExecutors(providers.FlowTypeSystem,
+		companionNodes(executor.ExecutorNameSessionRevocation))
 
 	s.Require().NotNil(err)
 	s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
@@ -1677,11 +1904,12 @@ func (s *ValidatorTestSuite) TestValidateCompanionExecutors_CriteriaRevocationOn
 
 // Criteria revocation stands on its own; only the session executor carries the dependency.
 func (s *ValidatorTestSuite) TestValidateCompanionExecutors_CriteriaRevocationAlone() {
-	s.Nil(s.v.validateCompanionExecutors(companionNodes(executor.ExecutorNameCriteriaRevocation)))
+	s.Nil(s.v.validateCompanionExecutors(providers.FlowTypeAdministration,
+		companionNodes(executor.ExecutorNameCriteriaRevocation)))
 }
 
 func (s *ValidatorTestSuite) TestValidateCompanionExecutors_UnrelatedFlowUnaffected() {
-	s.Nil(s.v.validateCompanionExecutors(companionNodes("AuthAssertExecutor")))
+	s.Nil(s.v.validateCompanionExecutors(providers.FlowTypeAdministration, companionNodes("AuthAssertExecutor")))
 }
 
 // ---------------------------------------------------------------------------
@@ -2549,6 +2777,86 @@ func (s *ValidatorTestSuite) TestValidateSystemFlowDefinition() {
 	s.Equal("ask", svcErr.ErrorDescription.Params["nodeID"])
 }
 
+// ouResolverSSOFlow is a sign-in flow that wraps a credentials step in an SSO checkpoint, with an OU resolver
+// placed before Check SSO, between the step and Save/Load Session, after Save/Load Session, or after it behind a
+// prompt.
+func ouResolverSSOFlow(placement string) []providers.NodeDefinition {
+	task := func(id, name, next string) providers.NodeDefinition {
+		return providers.NodeDefinition{ID: id, Type: string(common.NodeTypeTaskExecution),
+			Executor: &providers.ExecutorDefinition{Name: name}, OnSuccess: next}
+	}
+	nextAfter := func(at, next string) string {
+		if placement == at {
+			return "resolve_ou"
+		}
+		return next
+	}
+	resolverNext := map[string]string{
+		"before": "sso_check", "between": "session", "after": "assert", "after a prompt": "assert",
+	}[placement]
+	sessionNext := nextAfter("after", "assert")
+	if placement == "after a prompt" {
+		sessionNext = "pick"
+	}
+
+	ssoCheck := task("sso_check", executor.ExecutorNameSSOCheck, "session")
+	ssoCheck.OnFailure = "login"
+	ssoCheck.Properties = map[string]interface{}{common.NodePropertyCheckpointRef: "session"}
+	nodes := []providers.NodeDefinition{
+		{ID: "start", Type: string(common.NodeTypeStart), OnSuccess: nextAfter("before", "sso_check")},
+		ssoCheck,
+		{ID: "login", Type: string(common.NodeTypePrompt), Prompts: []providers.PromptDefinition{
+			{Action: &providers.ActionDefinition{Ref: "submit", NextNode: "credentials"}}}},
+		task("credentials", executor.ExecutorNameCredentialsAuth, nextAfter("between", "session")),
+		task("session", executor.ExecutorNameSession, sessionNext),
+		task("resolve_ou", executor.ExecutorNameOUResolver, resolverNext),
+		task("assert", executor.ExecutorNameAuthAssert, "end"),
+		{ID: "end", Type: string(common.NodeTypeEnd)},
+	}
+	if placement == "after a prompt" {
+		nodes = append(nodes, providers.NodeDefinition{ID: "pick", Type: string(common.NodeTypePrompt),
+			Prompts: []providers.PromptDefinition{
+				{Action: &providers.ActionDefinition{Ref: "next", NextNode: "resolve_ou"}}}})
+	}
+	return nodes
+}
+
+func (s *ValidatorTestSuite) TestValidateOUResolverPlacement() {
+	tests := []struct {
+		placement   string
+		flowType    providers.FlowType
+		wantRefused bool
+	}{
+		{"before", providers.FlowTypeAuthentication, false},
+		{"between", providers.FlowTypeAuthentication, false},
+		{"after", providers.FlowTypeAuthentication, true},
+		{"after a prompt", providers.FlowTypeAuthentication, true},
+		{"after", providers.FlowTypeRegistration, false},
+		{"after", providers.FlowTypeUserOnboarding, false},
+	}
+	for _, tc := range tests {
+		s.Run(tc.placement+" in "+string(tc.flowType), func() {
+			err := validateOUResolverPlacement(tc.flowType, ouResolverSSOFlow(tc.placement))
+
+			if !tc.wantRefused {
+				s.Nil(err)
+				return
+			}
+			s.Require().NotNil(err)
+			s.Equal(ErrorOUResolverAfterSession.Code, err.Code)
+			s.Equal(map[string]string{"nodeID": "resolve_ou", "sessionNodeID": "session"},
+				err.ErrorDescription.Params)
+		})
+	}
+}
+
+func (s *ValidatorTestSuite) TestValidateFlowTypeBasedConstraints_RefusesOUResolverAfterSession() {
+	err := s.v.validateFlowTypeBasedConstraints(providers.FlowTypeAuthentication, ouResolverSSOFlow("after"))
+
+	s.Require().NotNil(err)
+	s.Equal(ErrorOUResolverAfterSession.Code, err.Code)
+}
+
 func ouResolverNode(properties map[string]interface{}) []providers.NodeDefinition {
 	return []providers.NodeDefinition{{
 		ID: "ou", Type: string(common.NodeTypeTaskExecution),
@@ -2618,6 +2926,100 @@ func (s *ValidatorTestSuite) TestValidateOUResolverExecutor() {
 			s.Equal(tc.wantKey, err.ErrorDescription.Key)
 			s.Equal(tc.wantProperty, err.ErrorDescription.Params["propertyKey"])
 		})
+	}
+}
+
+func (s *ValidatorTestSuite) TestValidateAgentTypeResolverExecutor() {
+	const wildcard = "error.flowmgtservice.agent_type_wildcard_not_supported_description"
+
+	tests := []struct {
+		name       string
+		properties map[string]interface{}
+		wantKey    string
+	}{
+		{"NoProperties", nil, ""},
+		{"Handles", map[string]interface{}{"allowedAgentTypes": []interface{}{"default", "support-agents"}}, ""},
+		{"EmptyList", map[string]interface{}{"allowedAgentTypes": []interface{}{}}, ""},
+		{"WildcardAlone", map[string]interface{}{"allowedAgentTypes": []interface{}{"*"}}, wildcard},
+		{"WildcardWithHandles", map[string]interface{}{"allowedAgentTypes": []interface{}{"default", "*"}}, wildcard},
+	}
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			nodes := []providers.NodeDefinition{{
+				ID: "agent_type", Type: string(common.NodeTypeTaskExecution),
+				Executor:   &providers.ExecutorDefinition{Name: executor.ExecutorNameAgentTypeResolver},
+				Properties: tc.properties,
+			}}
+
+			err := s.v.validateExecutorSpecificConstraints(
+				&nodes[0], nodeIndexFor(nodes), nodes, providers.FlowTypeAdministration)
+
+			if tc.wantKey == "" {
+				s.Nil(err)
+				return
+			}
+			s.Require().NotNil(err)
+			s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+			s.Equal(tc.wantKey, err.ErrorDescription.Key)
+			s.Equal("agent_type", err.ErrorDescription.Params["nodeID"])
+			s.Equal("allowedAgentTypes", err.ErrorDescription.Params["propertyKey"])
+		})
+	}
+}
+
+// attributeVerificationNodes is a flow running AttributeVerificationExecutor in each of the given modes.
+func attributeVerificationNodes(modes ...string) []providers.NodeDefinition {
+	names := make([]string, len(modes))
+	for i := range modes {
+		names[i] = executor.ExecutorNameAttributeVerification
+	}
+	nodes := companionNodes(names...)
+	for i, mode := range modes {
+		nodes[i+1].Executor.Mode = mode
+	}
+	return nodes
+}
+
+// A flow of any type that prepares a contact must record it, and one that records must prepare.
+func (s *ValidatorTestSuite) TestValidateCompanionExecutors_AttributeVerificationPair() {
+	s.Nil(s.v.validateCompanionExecutors(providers.FlowTypeAdministration,
+		attributeVerificationNodes(executor.ExecutorModePrepare, executor.ExecutorModeRecord)))
+
+	for name, test := range map[string]struct {
+		modes   []string
+		missing string
+	}{
+		"prepare without record": {[]string{executor.ExecutorModePrepare}, executor.ExecutorModeRecord},
+		"record without prepare": {[]string{executor.ExecutorModeRecord}, executor.ExecutorModePrepare},
+		"two prepares": {[]string{executor.ExecutorModePrepare, executor.ExecutorModePrepare},
+			executor.ExecutorModeRecord},
+	} {
+		s.Run(name, func() {
+			err := s.v.validateCompanionExecutors(providers.FlowTypeAdministration,
+				attributeVerificationNodes(test.modes...))
+
+			s.Require().NotNil(err)
+			s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+			s.Equal("error.flowmgtservice.companion_executor_missing_description", err.ErrorDescription.Key)
+			s.Equal(executor.ExecutorNameAttributeVerification, err.ErrorDescription.Params["executorName"])
+			s.Equal(executor.ExecutorNameAttributeVerification, err.ErrorDescription.Params["companionExecutorName"])
+			s.Equal(test.missing, err.ErrorDescription.Params["companionExecutorMode"])
+		})
+	}
+}
+
+// With more than one executor missing its companion, the error always names the first by name.
+func (s *ValidatorTestSuite) TestValidateCompanionExecutors_ReportsInNameOrder() {
+	nodes := append(attributeVerificationNodes(executor.ExecutorModePrepare), providers.NodeDefinition{
+		ID: "revoke_sessions", Type: string(common.NodeTypeTaskExecution),
+		Executor: &providers.ExecutorDefinition{Name: executor.ExecutorNameSessionRevocation},
+	})
+
+	for range 20 {
+		err := s.v.validateCompanionExecutors(providers.FlowTypeAdministration, nodes)
+
+		s.Require().NotNil(err)
+		s.Equal(executor.ExecutorNameAttributeVerification, err.ErrorDescription.Params["executorName"])
 	}
 }
 
@@ -2877,13 +3279,18 @@ func (s *ValidatorVariablesTestSuite) TestValidateVariablesNodeShape() {
 		node.OnSuccess = ""
 		s.Contains(reason(node), "onSuccess")
 	})
-	s.Run("it goes on through onSuccess only", func() {
+	s.Run("it goes on through onSuccess and onFailure only", func() {
 		node := valid()
-		node.OnFailure = endNode
-		s.Contains(reason(node), "onSuccess only")
+		node.OnIncomplete = endNode
+		s.Contains(reason(node), "onSuccess and onFailure only")
 		node = valid()
 		node.Next = endNode
-		s.Contains(reason(node), "onSuccess only")
+		s.Contains(reason(node), "onSuccess and onFailure only")
+	})
+	s.Run("its onFailure may be set", func() {
+		node := valid()
+		node.OnFailure = endNode
+		s.Nil(v.validateVariables(ctx, &FlowDefinition{Nodes: []providers.NodeDefinition{node}}))
 	})
 	s.Run("it shows and runs nothing", func() {
 		node := valid()
@@ -3141,6 +3548,28 @@ func (s *ValidatorTestSuite) TestValidateInputDefinitions_DefaultMustSatisfyVali
 	s.Nil(s.v.validateExecutorInputDefaults("task", []providers.InputDefinition{input("abc", rules[0])}))
 }
 
+func (s *ValidatorTestSuite) TestValidatePromptInputsNotOneTimeUse() {
+	promptNode := func(input providers.InputDefinition) providers.NodeDefinition {
+		return providers.NodeDefinition{ID: "prompt", Type: string(common.NodeTypePrompt),
+			Prompts: []providers.PromptDefinition{{}, {Inputs: []providers.InputDefinition{input}}}}
+	}
+	executorNode := providers.NodeDefinition{
+		ID: "verify", Type: string(common.NodeTypeTaskExecution),
+		Executor: &providers.ExecutorDefinition{Name: "test-executor",
+			Inputs: []providers.InputDefinition{{Identifier: "otp", OneTimeUse: true}}},
+	}
+
+	s.Nil(s.v.validatePromptInputsNotOneTimeUse(
+		[]providers.NodeDefinition{promptNode(providers.InputDefinition{Identifier: "otp"}), executorNode}),
+		"an executor input may be one time use")
+
+	err := s.v.validatePromptInputsNotOneTimeUse([]providers.NodeDefinition{
+		promptNode(providers.InputDefinition{Identifier: "otp", OneTimeUse: true}), executorNode})
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidInputConfig.Code, err.Code)
+	s.Equal(map[string]string{"nodeID": "prompt", "inputID": "otp"}, err.ErrorDescription.Params)
+}
+
 func (s *ValidatorTestSuite) TestValidateConstantInputsNotPrompted() {
 	executorNode := func(inputs ...providers.InputDefinition) providers.NodeDefinition {
 		return providers.NodeDefinition{
@@ -3216,4 +3645,177 @@ func (s *ValidatorTestSuite) TestValidateTaskExecutionNode_ChecksExecutorInputDe
 
 	node.Executor.Inputs[0].DefaultValue = "en-US"
 	s.Nil(s.v.validateTaskExecutionNode(node, index))
+}
+
+// The executor is allowed in every flow type, and no flow type requires it.
+func (s *ValidatorTestSuite) TestAttributeVerificationExecutorFitsAnyFlowType() {
+	meta, ok := executormeta.MetaFor(executor.ExecutorNameAttributeVerification)
+	s.Require().True(ok)
+	node := attributeVerificationNodes(executor.ExecutorModePrepare)[1]
+	for _, flowType := range providers.ValidFlowTypes {
+		s.Nil(s.v.validateExecutorFlowType(&node, &meta, flowType), string(flowType))
+	}
+	for _, flowType := range []providers.FlowType{providers.FlowTypeSelf, providers.FlowTypeAdminInitiated} {
+		s.Nil(s.v.validateFlowTypeBasedConstraints(flowType, companionNodes(executor.ExecutorNameOTPExecutor)),
+			string(flowType))
+		s.Nil(s.v.validateFlowTypeBasedConstraints(flowType,
+			attributeVerificationNodes(executor.ExecutorModePrepare, executor.ExecutorModeRecord)), string(flowType))
+		s.NotNil(s.v.validateFlowTypeBasedConstraints(flowType,
+			attributeVerificationNodes(executor.ExecutorModePrepare)), "%s must record what it prepares", flowType)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// validateProvisioningSteps
+// ---------------------------------------------------------------------------
+
+// provisioningNodes returns a flow's nodes whose task is a provisioning step with the given properties.
+func provisioningNodes(properties map[string]interface{}) []providers.NodeDefinition {
+	nodes := minimalValidNodes()
+	nodes[1].Executor = &providers.ExecutorDefinition{Name: executormeta.ExecutorNameProvisioning}
+	nodes[1].Properties = properties
+	return nodes
+}
+
+func (s *ValidatorTestSuite) TestValidateProvisioningSteps_ExistingGroupsAndRoles() {
+	s.mockGroups.EXPECT().GetGroupsByIDs(mock.Anything, []string{"group-1", "group-2"}).
+		Return(map[string]*group.Group{"group-1": {ID: "group-1"}, "group-2": {ID: "group-2"}}, nil)
+	s.mockRoles.EXPECT().GetRolesByIDs(mock.Anything, []string{"role-1"}).
+		Return(map[string]*role.Role{"role-1": {ID: "role-1"}}, nil)
+
+	err := s.v.validateProvisioningSteps(context.Background(), provisioningNodes(map[string]interface{}{
+		common.NodePropertyAssignGroup: " group-1, group-2,group-1 ,",
+		common.NodePropertyAssignRole:  "role-1",
+	}))
+
+	s.Nil(err)
+}
+
+func (s *ValidatorTestSuite) TestValidateProvisioningSteps_MissingGroupIsRefused() {
+	s.mockGroups.EXPECT().GetGroupsByIDs(mock.Anything, []string{"group-1", "group-gone"}).
+		Return(map[string]*group.Group{"group-1": {ID: "group-1"}}, nil)
+
+	err := s.v.validateProvisioningSteps(context.Background(), provisioningNodes(map[string]interface{}{
+		common.NodePropertyAssignGroup: "group-1,group-gone",
+		common.NodePropertyAssignRole:  "role-1",
+	}))
+
+	s.Require().NotNil(err)
+	s.Equal(ErrorProvisioningGroupNotFound.Code, err.Code)
+	s.Equal(map[string]string{"nodeID": "task", "groupIDs": "group-gone"}, err.ErrorDescription.Params)
+}
+
+func (s *ValidatorTestSuite) TestValidateProvisioningSteps_MissingRolesAreRefused() {
+	s.mockRoles.EXPECT().GetRolesByIDs(mock.Anything, []string{"role-gone", "role-1", "role-old"}).
+		Return(map[string]*role.Role{"role-1": {ID: "role-1"}}, nil)
+
+	err := s.v.validateProvisioningSteps(context.Background(), provisioningNodes(map[string]interface{}{
+		common.NodePropertyAssignRole: "role-gone, role-1, role-old",
+	}))
+
+	s.Require().NotNil(err)
+	s.Equal(ErrorProvisioningRoleNotFound.Code, err.Code)
+	s.Equal(map[string]string{"nodeID": "task", "roleIDs": "role-gone, role-old"}, err.ErrorDescription.Params)
+}
+
+func (s *ValidatorTestSuite) TestValidateProvisioningSteps_LookupFailureRefusesTheSave() {
+	s.Run("group", func() {
+		s.SetupTest()
+		s.mockGroups.EXPECT().GetGroupsByIDs(mock.Anything, []string{"group-1"}).
+			Return(nil, &tidcommon.InternalServerError)
+
+		err := s.v.validateProvisioningSteps(context.Background(), provisioningNodes(map[string]interface{}{
+			common.NodePropertyAssignGroup: "group-1",
+		}))
+
+		s.Require().NotNil(err)
+		s.Equal(tidcommon.InternalServerError.Code, err.Code)
+	})
+	s.Run("role", func() {
+		s.SetupTest()
+		s.mockRoles.EXPECT().GetRolesByIDs(mock.Anything, []string{"role-1"}).
+			Return(nil, &tidcommon.InternalServerError)
+
+		err := s.v.validateProvisioningSteps(context.Background(), provisioningNodes(map[string]interface{}{
+			common.NodePropertyAssignRole: "role-1",
+		}))
+
+		s.Require().NotNil(err)
+		s.Equal(tidcommon.InternalServerError.Code, err.Code)
+	})
+}
+
+// Values the step resolves when it runs, or that name nothing, are not looked up.
+func (s *ValidatorTestSuite) TestValidateProvisioningSteps_SkipsValuesThatNameNoID() {
+	cases := map[string]interface{}{
+		"empty":        "",
+		"separators":   " , ,",
+		"variable":     "{{var(groups)}}",
+		"placeholder":  "{{var(groupID)}}, {{var(other)}}",
+		"within an ID": "group-{{var(n)}}",
+		"not a string": []interface{}{"group-1"},
+	}
+	for name, value := range cases {
+		s.Run(name, func() {
+			s.SetupTest()
+
+			err := s.v.validateProvisioningSteps(context.Background(), provisioningNodes(map[string]interface{}{
+				common.NodePropertyAssignGroup: value,
+				common.NodePropertyAssignRole:  value,
+			}))
+
+			s.Nil(err)
+		})
+	}
+}
+
+func (s *ValidatorTestSuite) TestValidateProvisioningSteps_IgnoresOtherExecutors() {
+	nodes := minimalValidNodes()
+	nodes[1].Properties = map[string]interface{}{common.NodePropertyAssignGroup: "group-gone"}
+
+	s.Nil(s.v.validateProvisioningSteps(context.Background(), nodes))
+}
+
+// The IDs a step assigns beside a placeholder are still looked up, and the placeholder is resolved when it runs.
+func (s *ValidatorTestSuite) TestValidateProvisioningSteps_ChecksPlainIDsBesidePlaceholders() {
+	s.mockGroups.EXPECT().GetGroupsByIDs(mock.Anything, []string{"group-gone"}).
+		Return(map[string]*group.Group{}, nil)
+
+	err := s.v.validateProvisioningSteps(context.Background(), provisioningNodes(map[string]interface{}{
+		common.NodePropertyAssignGroup: "{{var(groupID)}},group-gone",
+	}))
+
+	s.Require().NotNil(err)
+	s.Equal(ErrorProvisioningGroupNotFound.Code, err.Code)
+	s.Equal("group-gone", err.ErrorDescription.Params["groupIDs"])
+}
+
+// Only a variable placeholder is resolved when the step runs, so any other one reaches the step as a literal ID.
+func (s *ValidatorTestSuite) TestValidateProvisioningSteps_ChecksAnIDThatIsNotAVariablePlaceholder() {
+	s.mockGroups.EXPECT().GetGroupsByIDs(mock.Anything, []string{"{{ctx(groupID)}}"}).
+		Return(map[string]*group.Group{}, nil)
+
+	err := s.v.validateProvisioningSteps(context.Background(), provisioningNodes(map[string]interface{}{
+		common.NodePropertyAssignGroup: "{{ctx(groupID)}}",
+	}))
+
+	s.Require().NotNil(err)
+	s.Equal(ErrorProvisioningGroupNotFound.Code, err.Code)
+}
+
+func (s *ValidatorTestSuite) TestValidateFlowDefinition_ProvisioningStepWithAMissingGroupIsRefused() {
+	meta, ok := executormeta.MetaFor(executormeta.ExecutorNameProvisioning)
+	s.Require().True(ok)
+	s.mockExecutorRegistry.EXPECT().IsRegistered(executormeta.ExecutorNameProvisioning).Return(true)
+	s.mockExecutorRegistry.EXPECT().GetExecutorMeta(executormeta.ExecutorNameProvisioning).Return(&meta, nil)
+	s.mockGroups.EXPECT().GetGroupsByIDs(mock.Anything, []string{"group-gone"}).
+		Return(map[string]*group.Group{}, nil)
+	fd := minimalValidFlow()
+	fd.FlowType = providers.FlowTypeAdministration
+	fd.Nodes = provisioningNodes(map[string]interface{}{common.NodePropertyAssignGroup: "group-gone"})
+
+	err := s.v.ValidateFlowDefinition(context.Background(), fd)
+
+	s.Require().NotNil(err)
+	s.Equal(ErrorProvisioningGroupNotFound.Code, err.Code)
 }

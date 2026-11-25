@@ -14,26 +14,16 @@ value:
   userOnboardingFlow:
     defaultHandle: default-flow
     expirySeconds: 86400
-  userDeletionFlow:
-    defaultHandle: default-user-deletion-flow
-  applicationDeletionFlow:
-    defaultHandle: default-application-deletion-flow
-  secretRegenerationFlow:
-    defaultHandle: default-secret-regeneration-flow
+  selfFlow:
+    expirySeconds: 1800
+  adminInitiatedFlow:
+    expirySeconds: 21600
   agentOnboardingFlow:
     defaultHandle: default-agent-onboarding-flow
-  roleAssignmentRemovalFlow:
-    defaultHandle: default-role-assignment-removal-flow
-  roleDeletionFlow:
-    defaultHandle: default-role-deletion-flow
-  rolePermissionRemovalFlow:
-    defaultHandle: default-role-permission-removal-flow
-  groupDeletionFlow:
-    defaultHandle: default-group-deletion-flow
-  groupMembershipRemovalFlow:
-    defaultHandle: default-group-membership-removal-flow
-  actionDeletionFlow:
-    defaultHandle: default-action-deletion-flow
+  adminAttributeVerificationFlow:
+    defaultHandle: default-admin-attribute-verification-flow
+  adminUserCredentialResetFlow:
+    defaultHandle: default-admin-user-credential-reset-flow
   userUnlockFlow:
     defaultHandle: default-user-unlock-flow
   userSuspendFlow:

@@ -26,19 +26,28 @@ Each layout includes the following configurable properties. For detailed propert
 
 <Stepper stepNode="h3" as="h3">
 
-### Select a Layout Preset
+### Create the Layout
 
-1. Sign in to the <ProductName /> Console.
-2. Navigate to **Design** from the sidebar.
-3. In the **Layouts** section, click a layout preset. The **Centered** layout positions the main content container at the center of the screen.
+The Console does not create layouts. Send a `POST` request to `/design/layouts` with the layout's handle, display name, and configuration. On the control plane, also set `projectId` to the project the layout belongs to. The server returns `201` with the created layout.
 
-<ProductName /> creates the layout with default settings and opens the layout builder.
-
-:::note
-Additional layout presets (Split, Full Screen, Popup) will be available in future releases.
-:::
+**Request:**
+```bash
+curl -X POST https://localhost:8090/design/layouts \
+  -H "Authorization: Bearer <access_token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "handle": "my-layout",
+    "displayName": "My Layout",
+    "projectId": "<project-id>",
+    "layout": {}
+  }'
+```
 
 ### Customize the Layout
+
+1. Sign in to the <ProductName /> Console. On the control plane, open the project the layout belongs to.
+2. Navigate to **Design** from the sidebar. On the control plane, it is under **Customize** in the project.
+3. In the **Layouts** section, click the layout. The layout builder opens.
 
 Use the layout builder to adjust your layout:
 
@@ -56,7 +65,7 @@ Open your application in the <ProductName /> Console, navigate to **Customizatio
 
 ## Update a Layout
 
-1. Navigate to **Design** in the <ProductName /> Console and click the layout you want to edit. The layout builder opens with a live preview.
+1. Navigate to **Design** in the <ProductName /> Console and click the layout you want to edit. On the control plane, open the layout's project first and select **Design** under **Customize**. The layout builder opens with a live preview.
 2. Edit your custom stylesheets in the right panel, or use the element inspector to target specific elements.
 3. Click **Save** to apply your changes.
 
@@ -77,6 +86,20 @@ curl -X DELETE https://localhost:8090/design/layouts/{id} \
 :::warning
 You cannot delete a layout that is currently assigned to an application. Remove the layout from all applications before deleting it.
 :::
+
+## Layouts in Projects
+
+On the control plane, every layout belongs to a project. Create a layout with the `projectId` of its project in the request body of `POST /design/layouts`. A request without `projectId` fails with `LAY-1020`, and a project that does not exist fails it with `LAY-1019`.
+
+- **List**: `GET /design/layouts?projectId=<project-id>` returns the layouts of the project. A project that does not exist returns an empty list.
+- **Update**: an update without `projectId` keeps the layout in its current project. A different `projectId` moves the layout to that project.
+- **Delete a project**: a project that still has layouts cannot be deleted. The request fails with `409` (`PRJ-1013`) until its layouts are deleted or moved to another project.
+
+In the control plane Console, open a project and select **Design** under **Customize** to see the layouts of that project.
+
+The built-in **Centered** layout belongs to the **Default** project. A server without projects, such as the all-in-one server, does not require a project and keeps the `projectId` it receives without checking it, but refuses one longer than 36 characters with `LAY-1019`.
+
+On the control plane, a declarative layout file must set `projectId`. A file without it stops the server from starting. Export and import keep `projectId`.
 
 
 ## Next Steps

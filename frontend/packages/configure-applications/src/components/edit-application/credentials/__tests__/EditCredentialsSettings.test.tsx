@@ -1,16 +1,29 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {render, screen, fireEvent} from '@testing-library/react';
+import {render as rtlRender, screen, fireEvent, type RenderOptions, type RenderResult} from '@testing-library/react';
+import {CapabilitiesProvider} from '@thunderid/contexts';
+import type {JSX, ReactElement, ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {Application} from '../../../../models/application';
 import type {OAuth2Config} from '../../../../models/oauth';
 import EditCredentialsSettings from '../EditCredentialsSettings';
 
+// The admin may do everything, so the component's actions show; a test nests its own provider to restrict them.
+function AllowAll({children}: {children: ReactNode}): JSX.Element {
+  return <CapabilitiesProvider capabilities={{can: () => true, isLoading: false}}>{children}</CapabilitiesProvider>;
+}
+
+const render = (ui: ReactElement, options?: RenderOptions): RenderResult =>
+  rtlRender(ui, {wrapper: AllowAll, ...options});
+
 vi.mock('@thunderid/contexts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/contexts')>()),
   useConfig: () => ({
     config: {
+      brand: {
+        product_name: 'Acme IAM',
+      },
       client: {
         client_id: 'CONSOLE',
       },
@@ -20,7 +33,8 @@ vi.mock('@thunderid/contexts', async (importOriginal) => ({
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, fallback?: string) => fallback ?? key,
+    t: (key: string, fallback?: string, options?: Record<string, string>) =>
+      (fallback ?? key).replace(/\{\{(\w+)\}\}/g, (match: string, name: string) => options?.[name] ?? match),
   }),
 }));
 
@@ -145,6 +159,23 @@ describe('EditCredentialsSettings', () => {
       expect(screen.queryByLabelText('Client ID')).not.toBeInTheDocument();
     });
 
+    it('names the configured product in the Application ID hint', () => {
+      render(
+        <EditCredentialsSettings
+          application={buildApplication({type: 'mobile'})}
+          editedApp={{}}
+          oauth2Config={publicOAuth2Config}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(
+        screen.getByText(
+          "Acme IAM's internal identifier for this application. Use it when calling the Management API.",
+        ),
+      ).toBeInTheDocument();
+    });
+
     it('falls back to the Application ID when there is no OAuth2 client ID', () => {
       render(
         <EditCredentialsSettings application={buildApplication()} editedApp={{}} onFieldChange={mockOnFieldChange} />,
@@ -216,7 +247,8 @@ describe('EditCredentialsSettings', () => {
     it('disables the Regenerate button when the application is read-only', () => {
       render(
         <EditCredentialsSettings
-          application={buildApplication({isReadOnly: true})}
+          application={buildApplication()}
+          readOnly
           editedApp={{}}
           oauth2Config={confidentialOAuth2Config}
           onFieldChange={mockOnFieldChange}

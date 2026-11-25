@@ -48,12 +48,16 @@ const (
 	shortClientID     = "introspect_short_client"
 	shortClientSecret = "introspect_short_secret"
 	// shortTokenValiditySeconds is the accessToken.clientConfig.validityPeriod registered for
-	// shortClient, in seconds.
+	// shortClient, and the refreshToken.validityPeriod registered for shortRefreshClient, in seconds.
 	shortTokenValiditySeconds = 1
 
+	// shortRefreshClient runs the authorization_code login and is issued refresh tokens that live for
+	// one second. Like userClient, it must register client_secret_post.
+	shortRefreshClientID     = "introspect_short_refresh_client"
+	shortRefreshClientSecret = "introspect_short_refresh_secret"
+
 	// jwtLeewaySeconds mirrors the server's jwt.leeway default (backend/cmd/server/config/default.json).
-	// Claim validation treats a token as expired only once now >= exp + leeway, so a test that waits for
-	// a real expiry has to clear the leeway window too.
+	// Claim validation accepts a token until exp + leeway, but introspection reports it inactive from exp.
 	jwtLeewaySeconds = 30
 
 	redirectURI              = "https://localhost:3000"
@@ -107,24 +111,21 @@ func (r introspectResult) active() bool {
 // IntrospectionTestSuite covers POST /oauth2/introspect.
 type IntrospectionTestSuite struct {
 	suite.Suite
-	client           *http.Client
-	ouID             string
-	entityTypeID     string
-	userID           string
-	flowID           string
-	resourceServerID string
-	userAppID        string
-	ccAppID          string
-	shortAppID       string
+	client            *http.Client
+	ouID              string
+	entityTypeID      string
+	userID            string
+	flowID            string
+	resourceServerID  string
+	userAppID         string
+	ccAppID           string
+	shortAppID        string
+	shortRefreshAppID string
 
 	// userAccessToken and userRefreshToken come from a single authorization_code login, reused by the
 	// tests that only read the token instead of consuming it.
 	userAccessToken  string
 	userRefreshToken string
-
-	// shortLivedToken is issued during setup so its one second lifetime starts ticking as early as
-	// possible; the expiry test only waits out whatever is left of the leeway window.
-	shortLivedToken string
 }
 
 func TestIntrospectionTestSuite(t *testing.T) {
@@ -173,16 +174,18 @@ func (ts *IntrospectionTestSuite) SetupSuite() {
 				},
 			},
 		})
+	ts.shortRefreshAppID = ts.createApp("IntrospectShortRefreshApp", shortRefreshClientID, shortRefreshClientSecret,
+		"client_secret_post", []string{"authorization_code", "refresh_token"}, ts.flowID, map[string]interface{}{
+			"refreshToken": map[string]interface{}{"validityPeriod": shortTokenValiditySeconds},
+		})
 
 	tokens := ts.loginWithAuthorizationCode()
 	ts.userAccessToken = tokens.AccessToken
 	ts.userRefreshToken = tokens.RefreshToken
-
-	ts.shortLivedToken = ts.clientCredentialsToken(shortClientID, shortClientSecret)
 }
 
 func (ts *IntrospectionTestSuite) TearDownSuite() {
-	for _, appID := range []string{ts.userAppID, ts.ccAppID, ts.shortAppID} {
+	for _, appID := range []string{ts.userAppID, ts.ccAppID, ts.shortAppID, ts.shortRefreshAppID} {
 		if appID != "" {
 			ts.deleteApp(appID)
 		}
@@ -607,31 +610,65 @@ func (ts *IntrospectionTestSuite) TestIntrospect_UserToken_OmitsSubType() {
 // Cases 2 to 5: everything that is inactive is still HTTP 200 {"active": false}.
 //
 
-// TestIntrospect_ExpiredToken_IsInactive introspects a token issued by a client registered with a one
-// second access token validity, after waiting out both the validity and the server's claim
-// validation leeway. The token is asserted to be genuinely past its own exp before the call, and the
-// endpoint must answer 200 {"active": false} rather than any 4xx.
+// TestIntrospect_ExpiredToken_IsInactive introspects an access token and a refresh token, each issued
+// by a client registered with a one second validity for that token, once it is past its exp but still
+// inside the server's claim validation leeway. The endpoint must answer 200 {"active": false} rather
+// than any 4xx.
 func (ts *IntrospectionTestSuite) TestIntrospect_ExpiredToken_IsInactive() {
-	claims, err := testutils.DecodeJWTPayloadMap(ts.shortLivedToken)
-	ts.Require().NoError(err, "failed to decode the short lived token payload")
-	exp, ok := claims["exp"].(float64)
-	ts.Require().True(ok, "the short lived token must carry a numeric exp claim")
-	iat, ok := claims["iat"].(float64)
-	ts.Require().True(ok, "the short lived token must carry a numeric iat claim")
-	ts.Require().EqualValues(shortTokenValiditySeconds, int64(exp)-int64(iat),
-		"the registered accessToken.clientConfig.validityPeriod was not applied to the issued token")
-
-	// Claim validation only rejects once now >= exp + leeway, so wait past the leeway window too.
-	if remaining := time.Until(time.Unix(int64(exp)+jwtLeewaySeconds+1, 0)); remaining > 0 {
-		time.Sleep(remaining)
+	cases := []struct {
+		name       string
+		issue      func() string
+		introspect func(token string) introspectResult
+	}{
+		{
+			name:  "access token",
+			issue: func() string { return ts.clientCredentialsToken(shortClientID, shortClientSecret) },
+			introspect: func(token string) introspectResult {
+				return ts.introspectBasic(token, shortClientID, shortClientSecret)
+			},
+		},
+		{
+			name: "refresh token",
+			issue: func() string {
+				tokens, err := testutils.ObtainAccessTokenWithPassword(shortRefreshClientID, redirectURI,
+					"openid profile email", testUsername, testPassword, true, shortRefreshClientSecret,
+					resourceServerIdentifier)
+				ts.Require().NoError(err, "failed to obtain tokens via the authorization_code flow")
+				ts.Require().NotEmpty(tokens.RefreshToken, "authorization_code flow returned no refresh token")
+				return tokens.RefreshToken
+			},
+			introspect: func(token string) introspectResult {
+				return ts.introspectPost(token, shortRefreshClientID, shortRefreshClientSecret)
+			},
+		},
 	}
-	ts.Require().Greater(time.Now().Unix(), int64(exp)+jwtLeewaySeconds,
-		"the token must actually be expired before it is introspected")
 
-	res := ts.introspectBasic(ts.shortLivedToken, shortClientID, shortClientSecret)
-	ts.Require().Equalf(http.StatusOK, res.StatusCode, "introspection body: %s", string(res.Raw))
-	ts.False(res.active(), "an expired token must be reported inactive")
-	ts.Len(res.Body, 1, "an inactive response must be exactly {\"active\": false}")
+	for _, tc := range cases {
+		ts.Run(tc.name, func() {
+			token := tc.issue()
+			claims, err := testutils.DecodeJWTPayloadMap(token)
+			ts.Require().NoError(err, "failed to decode the short lived token payload")
+			exp, ok := claims["exp"].(float64)
+			ts.Require().True(ok, "the short lived token must carry a numeric exp claim")
+			iat, ok := claims["iat"].(float64)
+			ts.Require().True(ok, "the short lived token must carry a numeric iat claim")
+			ts.Require().EqualValues(shortTokenValiditySeconds, int64(exp)-int64(iat),
+				"the registered validityPeriod was not applied to the issued token")
+
+			if remaining := time.Until(time.Unix(int64(exp)+1, 0)); remaining > 0 {
+				time.Sleep(remaining)
+			}
+			now := time.Now().Unix()
+			ts.Require().Greater(now, int64(exp), "the token must actually be expired before it is introspected")
+			ts.Require().Less(now, int64(exp)+jwtLeewaySeconds,
+				"the token must still be inside the leeway window, where claim validation accepts it")
+
+			res := tc.introspect(token)
+			ts.Require().Equalf(http.StatusOK, res.StatusCode, "introspection body: %s", string(res.Raw))
+			ts.False(res.active(), "an expired token must be reported inactive")
+			ts.Len(res.Body, 1, "an inactive response must be exactly {\"active\": false}")
+		})
+	}
 }
 
 // TestIntrospect_MalformedToken_IsInactive asserts a token value that is not even a JWS is reported

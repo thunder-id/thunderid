@@ -228,6 +228,30 @@ You should see the sign-in form. Enter your test user credentials and tap **Subm
 
 </Stepper>
 
+## Run the Sample App
+
+The [iOS sample](https://github.com/thunder-id/samples/tree/main/quickstarts/ios) is a working version of the app this guide builds. To run it instead of building the app yourself:
+
+1. Download the sample from its [releases](https://github.com/thunder-id/samples/releases?q=sample%2Fquickstarts%2Fios&expanded=true) and open its folder.
+2. Create `Sources/Config.plist` in the sample's folder with your application's values:
+
+   ```xml title="Sources/Config.plist"
+   <?xml version="1.0" encoding="UTF-8"?>
+   <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+   <plist version="1.0">
+   <dict>
+       <key>THUNDERID_BASE_URL</key>
+       <string>https://localhost:8090</string>
+       <key>THUNDERID_APPLICATION_ID</key>
+       <string>your-application-id</string>
+   </dict>
+   </plist>
+   ```
+
+   In the Simulator, `https://localhost:8090` reaches a server on your Mac. On a physical device, use an HTTPS address of the server that the device can reach, served with a certificate the device trusts.
+
+3. Open `Quickstart.xcodeproj` in Xcode and run the `Quickstart` scheme on a simulator or device.
+
 ## What's Next
 
 <NextSteps>

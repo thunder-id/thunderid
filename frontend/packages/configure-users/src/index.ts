@@ -15,8 +15,6 @@ export * from './api/useUpdateUser';
 // Components
 export {default as ArrayFieldInput} from './components/ArrayFieldInput';
 export * from './components/ArrayFieldInput';
-export {default as CredentialFieldInput} from './components/CredentialFieldInput';
-export * from './components/CredentialFieldInput';
 export {default as UserDeleteDialog} from './components/UserDeleteDialog';
 export * from './components/UserDeleteDialog';
 export {default as UsersList} from './components/UsersList';
@@ -37,6 +35,7 @@ export {default as UserAddFlowPage} from './pages/UserAddPage';
 export {default as UserAddFormPage} from './pages/UserAddFormPage';
 export {default as UserEditPage} from './pages/UserEditPage';
 export {default as UsersListPage} from './pages/UsersListPage';
+export type {UsersListPageProps} from './pages/UsersListPage';
 
 // Routes
 export type {UserRoutePaths} from './hooks/useUserRoutes';

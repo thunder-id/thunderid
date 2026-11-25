@@ -11,6 +11,7 @@ type Layout struct {
 	Handle      string          `json:"handle" yaml:"handle"`
 	DisplayName string          `json:"displayName" yaml:"displayName"`
 	Description string          `json:"description,omitempty" yaml:"description,omitempty"`
+	ProjectID   string          `json:"projectId,omitempty" yaml:"projectId,omitempty"`
 	Layout      json.RawMessage `json:"layout" yaml:"layout"`
 	CreatedAt   string          `json:"createdAt" yaml:"createdAt,omitempty"`
 	UpdatedAt   string          `json:"updatedAt" yaml:"updatedAt,omitempty"`
@@ -23,6 +24,7 @@ type LayoutListItem struct {
 	Handle      string `json:"handle"`
 	DisplayName string `json:"displayName"`
 	Description string `json:"description,omitempty"`
+	ProjectID   string `json:"projectId,omitempty"`
 	CreatedAt   string `json:"createdAt"`
 	UpdatedAt   string `json:"updatedAt"`
 	IsReadOnly  bool   `json:"isReadOnly"`
@@ -33,6 +35,7 @@ type CreateLayoutRequest struct {
 	Handle      string          `json:"handle"`
 	DisplayName string          `json:"displayName"`
 	Description string          `json:"description,omitempty"`
+	ProjectID   string          `json:"projectId,omitempty"`
 	Layout      json.RawMessage `json:"layout"`
 }
 
@@ -42,6 +45,7 @@ type CreateLayoutRequestWithID struct {
 	Handle      string          `json:"handle"`
 	DisplayName string          `json:"displayName"`
 	Description string          `json:"description,omitempty"`
+	ProjectID   string          `json:"projectId,omitempty"`
 	Layout      json.RawMessage `json:"layout"`
 }
 
@@ -50,6 +54,7 @@ type UpdateLayoutRequest struct {
 	Handle      string          `json:"handle"`
 	DisplayName string          `json:"displayName"`
 	Description string          `json:"description,omitempty"`
+	ProjectID   string          `json:"projectId,omitempty"`
 	Layout      json.RawMessage `json:"layout"`
 }
 
@@ -59,6 +64,7 @@ type layoutRequestWithID struct {
 	Handle      string      `yaml:"handle"`
 	DisplayName string      `yaml:"displayName"`
 	Description string      `yaml:"description,omitempty"`
+	ProjectID   string      `yaml:"projectId,omitempty"`
 	Layout      interface{} `yaml:"layout"`
 }
 

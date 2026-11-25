@@ -1,0 +1,375 @@
+---
+title: Manage Intents
+docType: guide
+sidebar_position: 15
+persona: iam
+description: Register the RFC 9396 authorization details types clients request, with their schema, field policies, consent summary, reuse, and processor.
+---
+
+# Manage Intents
+
+An intent describes one kind of fine-grained permission that a client asks a user or a processor to approve, such as a single payment to a named payee. In RFC 9396 terms, an intent is an authorization details type. A client sends its type identifier as the `type` of an entry in the `authorization_details` parameter. <ProductName /> checks every entry against the intent before the entry reaches consent or a token. The Console lists intents under **Intents**, and the management API calls them authorization detail types at `/authorization-detail-types`.
+
+To request intents from a client, see [Rich Authorization Requests](./protocols/oauth-oidc/rich-authorization-requests.mdx).
+
+Intents apply to the whole deployment, so where you write them depends on the plane. On a control plane, an access token with the intent permissions creates, changes, and deletes them through the Console or the API, as described below. On a data plane, which includes the all-in-one server, no access token writes an intent, whatever its permissions: a write fails with `403` (`SSE-4030` for a token that carries the root `system` permission), the Console hides **Add intent** and the **Advanced** tab, and the MCP server offers only the tools that read intents. Add or change intents there through an import with the management API key, or as declarative files. See [Resources Imported Only With the Management API Key](./declarative-configurations/import-resources.mdx#resources-imported-only-with-the-management-api-key) and [Declarative Intents](#declarative-intents).
+
+## Prerequisites
+
+- A running <ProductName /> instance. See [Get <ProductName />](../getting-started/get-thunderid.mdx).
+- For the management API, an access token that carries the root `system` permission or the intent permissions: `system:authzdetail:view` to read, and `system:authzdetail:create`, `system:authzdetail:update`, or `system:authzdetail:delete` to change. On a data plane, a token only reads intents, with the root `org` or `system` permission. See [System Permissions](./users/manage-roles.mdx#system-permissions).
+
+## Parts of an Intent
+
+| Part | Console | API field | What it controls |
+|---|---|---|---|
+| Type identifier | **Type identifier** | `type` | The value clients send as the `type` of a detail. Printable ASCII without spaces, at most 512 characters, unique, and fixed after creation. |
+| Name and description | **Name**, **Description** | `name`, `description` | How the intent appears in the Console. The name is required and at most 100 characters. |
+| Schema | **Schema** tab | `schema` | The fields a detail carries, their limits, and who may set or change each field. |
+| Consent summary | **Summary** on the consent card | `consentTemplate` | The heading of the consent card the user approves. |
+| Reuse | **Ask every time** | `reuse` | Whether an earlier approval can stand in for the consent prompt. |
+| Processor | **External processor** tab | `processor` | An endpoint of yours that approves, refuses, or fills in each detail. |
+| Version | **Version** on the settings page | `version` | A counter that moves when a change affects what users approved. |
+
+Intents are not bound to a resource server. A client can request any registered intent, and the access token audience comes from the request's `resource` parameter, or the default resource server when the request has none.
+
+## Create an Intent in the Console
+
+<!-- docs-review-style: step-count-confirmed steps=8 -->
+1. In the <ProductName /> Console, navigate to **Intents**. Click **Add intent**.
+2. Enter a **Name** and a **Type identifier**, such as `payment_initiation`. Optionally, enter a **Description**.
+3. Leave **Ask every time** on for one-off approvals, such as a single payment. Turn it off to let an earlier approval stand in. See [Reuse Earlier Approvals](#reuse-earlier-approvals). Click **Continue**.
+4. On the **Schema** step, add the fields a request carries. Under **Add a field**, select **Text**, **Number**, **Date**, **Date and time**, **Boolean**, **List**, **Object**, or **Money**.
+5. Select a field on the **Preview** card to open its settings. Set the **Field name**, the **Display name** the user sees, and whether the field is **Required**. Under **Limits** and **Who sets and changes it**, set its limits and its [field policy](#field-policies).
+6. Select the card heading and write the **Summary**. See [Consent Summary](#consent-summary). Click **Continue**.
+7. On the **External processor** step, turn on **Use an external processor** if your system approves each request. Enter the **Endpoint URL**, then select an **Authentication method**. See [Attach a Processor](#attach-a-processor).
+8. Click **Create intent**.
+
+The intent opens on its settings page, with the **General**, **Schema**, **External processor**, and **Advanced** tabs. To edit the schema as JSON instead of in the composer, select **JSON** above the preview card. After a change, click **Save**. When the change creates a new version, the page shows **Saving creates a new version of this intent. Earlier approvals no longer apply.** before you save.
+
+To delete an intent, open the **Advanced** tab. Click **Delete intent**, then confirm with **Delete**.
+
+## Create an Intent with the API
+
+Send a `POST` request to `/authorization-detail-types`:
+
+```bash
+curl -kL -X POST https://localhost:8090/authorization-detail-types \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <access-token>' \
+  -d '{
+    "type": "payment_initiation",
+    "name": "Payment initiation",
+    "description": "Initiate a single payment from the user account",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "instructedAmount": {
+          "type": "object",
+          "properties": {
+            "currency": { "type": "string", "title": "Currency", "enum": ["EUR", "USD"] },
+            "amount": {
+              "type": "number",
+              "title": "Amount",
+              "minimum": 0.01,
+              "maximum": 10000,
+              "multipleOf": 0.01,
+              "policy": { "modification": "decrease", "modifiableBy": ["user", "client"] }
+            }
+          },
+          "required": ["currency", "amount"]
+        },
+        "creditorName": { "type": "string", "title": "Payee", "maxLength": 70 }
+      },
+      "required": ["instructedAmount", "creditorName"]
+    },
+    "consentTemplate": "Pay {{instructedAmount.amount}} {{instructedAmount.currency}} to {{creditorName}}"
+  }'
+```
+
+The response returns the intent at version 1, with the schema as registered:
+
+```json
+{
+  "id": "01a1baa3-9e61-74d2-a0bf-8cd07eb47c54",
+  "type": "payment_initiation",
+  "name": "Payment initiation",
+  "description": "Initiate a single payment from the user account",
+  "version": 1,
+  "schema": { "type": "object", "properties": { "...": "..." } },
+  "consentTemplate": "Pay {{instructedAmount.amount}} {{instructedAmount.currency}} to {{creditorName}}",
+  "reuse": false,
+  "isReadOnly": false
+}
+```
+
+### Request Fields
+
+| Field | Required | Description |
+|---|---|---|
+| `type` | Yes | Type identifier clients send. Printable ASCII without spaces, at most 512 characters, unique, and immutable. |
+| `name` | Yes | Display name, at most 100 characters. |
+| `description` | No | Description shown in the Console. |
+| `schema` | Yes | JSON Schema that every detail of this intent must match. See [Define the Schema](#define-the-schema). |
+| `consentTemplate` | No | Summary shown on the consent card. See [Consent Summary](#consent-summary). |
+| `reuse` | No | `false` by default. See [Reuse Earlier Approvals](#reuse-earlier-approvals). |
+| `processor` | No | Processor endpoint and its authentication. See [Attach a Processor](#attach-a-processor). |
+
+The request is refused with `RAR-1001` when it carries a field the API does not define, so a misspelled key fails instead of being dropped. The fields a read returns, `id`, `version`, and `isReadOnly`, are accepted and ignored, so you can send a fetched intent back as an update.
+
+## Define the Schema
+
+The schema is a subset of JSON Schema draft 2020-12 that must describe an object. When it declares `$schema`, the value must be `https://json-schema.org/draft/2020-12/schema`.
+
+| Applies to | Supported keywords |
+|---|---|
+| Every schema | `type`, `title`, `description`, `enum`, `const` |
+| The root | `$schema` |
+| Properties outside a list's items | `policy` |
+| `object` | `properties`, `required` |
+| `string` | `minLength`, `maxLength`, `pattern`, `format` (`date` or `date-time` only) |
+| `number` | `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf` |
+| `array` | `items` (required), `minItems`, `maxItems`, `uniqueItems` |
+
+<ProductName /> refuses a schema that breaks these rules with `RAR-1006`, and the error description names the problem:
+
+- Any other keyword is refused, including `$ref`, `$defs`, `additionalProperties`, `patternProperties`, and `unevaluatedProperties`.
+- `type` is one of `string`, `number`, `boolean`, `object`, or `array`. `integer` and `null` are refused, so describe a whole number as a `number` with `multipleOf: 1`.
+- Every property and list item constrains its value with `type`, `const`, or `enum`.
+- Limits must be satisfiable. A minimum cannot exceed its maximum, lengths and item counts cannot be negative, and `multipleOf` must be greater than 0.
+- A property name cannot contain a dot, because field paths and summary placeholders separate names with one.
+- A `const` or `enum` on the `type` property must include the intent's type identifier.
+- The schema is at most 64 KiB, and the whole request body at most 1 MiB.
+
+Every object in the schema is closed, so a detail with a field the schema does not declare is refused. A detail always carries `type`, which the schema accepts as a string when it does not declare it. The RFC 9396 common fields, such as `locations`, `actions`, and `identifier`, are accepted only when the schema declares them. In the Console, **Add standard fields** in the **Add field** menu adds `locations` and `actions`.
+
+A property's `title` labels its row on the consent card. A field without a title is labeled by its path, such as `instructedAmount.amount`. The client's values are shown to the user, so limit free text with `maxLength`.
+
+## Field Policies
+
+A property's `policy` says who supplies the field and how it may change after the client sends the request. A property without a policy is supplied by the client and cannot change.
+
+| Setting | Values | Meaning |
+|---|---|---|
+| `suppliedBy` | `client` (default), `processor` | `processor` means the client must not send the field, and only the processor sets it. |
+| `modification` | `none` (default), `decrease`, `increase`, `removeItems`, `addItems` | The one direction a change may take. |
+| `modifiableBy` | Any of `user`, `client`, `processor` | Who may make the change. Required with a modification. |
+| `minimum`, `maximum` | A date or an RFC 3339 date and time | Limits for a `string` with format `date` or `date-time`, checked on the request and after every change. |
+
+The settings are spelled exactly as shown, and an unknown setting makes the schema invalid. The rules for combining them:
+
+- `decrease` and `increase` apply to a `number`, or to a `string` with format `date` or `date-time`, where `decrease` moves a date earlier. Text cannot change.
+- `removeItems` and `addItems` apply to an `array`. Use `addItems` only for a list whose items take permission away, such as excluded merchants. A list with `removeItems` can be emptied, and the detail then carries it as an empty list rather than leaving it out, since a missing list can read as unrestricted.
+- A `number` is limited with the schema's own `minimum` and `maximum` keywords, not with policy limits.
+- The user cannot change a `date-time` field, because the consent screen offers no way to edit one.
+- `suppliedBy: processor` cannot be combined with a modification, and cannot be set on `type`. A field inside an object the processor supplies cannot be modifiable.
+- An intent whose fields the processor supplies or may change must have a processor.
+- A `required` field the processor supplies is required only after the processor answers, not in the client's request.
+
+In the Console, these settings are under **Who sets and changes it** in a field's settings:
+
+| Console setting | Policy setting |
+|---|---|
+| **Who provides this value?** | `suppliedBy`: **The client, in its request** is `client`, and **Your external processor, after the request** is `processor`. |
+| **Can it change after the request?** | `modification`, such as **Yes, it can only go down** for `decrease`. |
+| **Who can change it?** | `modifiableBy`: **The user, on the consent screen** is `user`, **Your external processor** is `processor`, and **The client** is `client`. |
+
+A change by the user is made on the consent card. A change by the client is a narrower request at the token endpoint. A change by the processor is a patch in its answer. See [Authorization Details Consent](./consent.mdx#authorization-details-consent) and the [Authorization Details Processor](./integrations/authorization-details-processor.mdx).
+
+## Consent Summary
+
+The consent summary is the heading of the intent's card on the consent screen. Each `{{path}}` placeholder is replaced with the requested value at that dot-separated path, so `Pay {{instructedAmount.amount}} {{instructedAmount.currency}} to {{creditorName}}` shows `Pay 45 EUR to Steelworks GmbH`. A list value is shown with its items separated by commas.
+
+- Each placeholder must name a property the schema declares, or `type`. Otherwise the request fails with `RAR-1011`.
+- The summary is at most 1000 bytes and cannot carry control or bidirectional formatting characters.
+- Without a summary, the card heading is the type identifier.
+- When a detail has no value for a placeholder, such as an optional field the client left out, the card heading is the type identifier instead. The card still lists the detail's fields.
+
+Below the summary, the card lists the detail's fields with their titles. A field the user may change is shown as an input, and a field the processor supplied is shown with the processor's value.
+
+## Reuse Earlier Approvals
+
+`reuse` decides whether a user's earlier approval can stand in for the consent prompt.
+
+- **`false`, the default.** The user approves the detail on every request. The refresh token leaves the detail out, so only the access token issued with the authorization code carries it. Use it for one-off authorizations, such as a single payment. In the Console, this is **Ask every time** turned on.
+- **`true`.** A detail the user already approved for the same client is not prompted again while three conditions hold. The approval is within the client's [login consent validity period](./consent.mdx#configure-validity-period-for-granted-consent), the intent is still on the version the approval was given on, and the new request asks for no more than the approval. A narrower request is also covered. The refresh token keeps the detail while the intent stays on the version it was granted on.
+
+An approval is a standing permission rather than a count. It covers every requested detail no wider than it, including several in one request, so use `false` for an authorization that must be approved each time.
+
+## Versions
+
+An intent starts at version 1. The version moves when an update changes:
+
+- the schema,
+- the consent summary,
+- `reuse`, or
+- whether the intent has a processor, by adding or removing it.
+
+Changing only the name, the description, or the processor's endpoint or credentials keeps the version. Reordering the schema's properties changes the order of the consent card's rows but keeps the version. An update that changes nothing is not saved.
+
+Earlier approvals count only for the version they were given on. After the version moves:
+
+- A user who approved the intent is prompted again on the next request.
+- A refresh token issued before the change returns a new access token without the detail, so the user approves it again on the new version.
+
+## Attach a Processor
+
+A processor is an endpoint of yours that <ProductName /> calls to approve or refuse each detail, and to fill in or change the fields its policies allow. A request with the `client_credentials` grant has no user to consent, so it can request only intents that have a processor. See [Authorization Details Processor](./integrations/authorization-details-processor.mdx) for the call your endpoint receives.
+
+Add `processor` to the intent. Adding a processor moves the version. This update also adds a `debtorAccount` field that the processor supplies, and lets the processor lower the amount:
+
+```bash
+curl -kL -X PUT https://localhost:8090/authorization-detail-types/<intent-id> \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <access-token>' \
+  -d '{
+    "type": "payment_initiation",
+    "name": "Payment initiation",
+    "description": "Initiate a single payment from the user account",
+    "schema": {
+      "type": "object",
+      "properties": {
+        "instructedAmount": {
+          "type": "object",
+          "properties": {
+            "currency": { "type": "string", "title": "Currency", "enum": ["EUR", "USD"] },
+            "amount": {
+              "type": "number",
+              "title": "Amount",
+              "minimum": 0.01,
+              "maximum": 10000,
+              "multipleOf": 0.01,
+              "policy": { "modification": "decrease", "modifiableBy": ["user", "client", "processor"] }
+            }
+          },
+          "required": ["currency", "amount"]
+        },
+        "creditorName": { "type": "string", "title": "Payee", "maxLength": 70 },
+        "debtorAccount": {
+          "type": "object",
+          "properties": {
+            "iban": { "type": "string", "title": "From account" }
+          },
+          "policy": { "suppliedBy": "processor" }
+        }
+      },
+      "required": ["instructedAmount", "creditorName"]
+    },
+    "consentTemplate": "Pay {{instructedAmount.amount}} {{instructedAmount.currency}} to {{creditorName}}",
+    "processor": {
+      "endpoint": "https://payments.example.com/rar/process",
+      "authentication": {
+        "type": "bearer",
+        "properties": { "token": "<processor-token>" }
+      }
+    }
+  }'
+```
+
+The response returns version 2, with the credential masked:
+
+```json
+{
+  "version": 2,
+  "processor": {
+    "endpoint": "https://payments.example.com/rar/process",
+    "authentication": {
+      "type": "bearer",
+      "properties": { "token": "******" }
+    }
+  }
+}
+```
+
+The `endpoint` must be an absolute HTTPS URL with a valid host and port and no user name or password. HTTP is accepted only on a loopback host, such as `localhost` or `127.0.0.1`, for development. Any other endpoint fails with `RAR-1007`.
+
+`authentication.type` selects how <ProductName /> authenticates to the processor:
+
+| `type` | `properties` | Console label |
+|---|---|---|
+| `none` | None | **None** |
+| `bearer` | `token` | **Bearer token** |
+| `basic` | `username`, `password` | **Basic authentication** |
+| `api_key` | One or more header names, each with its value | **API key** |
+
+<ProductName /> stores credentials encrypted and returns them as `******`. On an update:
+
+- A masked credential, or an omitted `authentication` block, keeps the stored credential while the endpoint stays the same.
+- When the endpoint changes, give the credential again. Otherwise the update fails with `RAR-1009`, so a credential is never sent to an endpoint it was not given for.
+- Setting `type` to `none` removes the credential.
+
+A call to the processor times out after `oauth.authorization_details.processor_timeout` seconds, 5 by default and at most 30. See [Endpoint Rules and Limits](./integrations/authorization-details-processor.mdx#endpoint-rules-and-limits).
+
+## List, Get, Update, and Delete Intents
+
+List intents a page at a time, ordered by type identifier. `limit` is between 1 and 100 and defaults to 30:
+
+```bash
+curl -kL "https://localhost:8090/authorization-detail-types?limit=10&offset=0" \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+Get one intent:
+
+```bash
+curl -kL https://localhost:8090/authorization-detail-types/<intent-id> \
+  -H 'Accept: application/json' \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+Update an intent with `PUT`, sending the whole definition as in [Attach a Processor](#attach-a-processor). The `type` must match the registered value, or the update fails with `RAR-1010`.
+
+Delete an intent:
+
+```bash
+curl -kL -X DELETE https://localhost:8090/authorization-detail-types/<intent-id> \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+The response is `204`, also when no intent has the ID. On a data plane, the request fails with `403` instead (`SSE-4030` for a token that carries the root `system` permission). After a delete, clients can no longer request the type, the type leaves `authorization_details_types_supported` in the [server metadata](./protocols/oauth-oidc/server-metadata.mdx), and refreshed tokens leave out the details granted on it.
+
+## Declarative Intents
+
+An intent defined in a declarative file, or deployed by a control plane, is read-only. The API returns it with `isReadOnly: true`. It refuses to update or delete a file-based intent with `RAR-1013`, and an import that changes a deployed one with `RAR-1030`. The Console shows it read-only and without the **Advanced** tab, so it cannot be deleted there.
+
+Where intents are stored depends on `authorization_detail_type.store` in `deployment.yaml`:
+
+| Value | Behavior |
+|---|---|
+| `composite` (default) | Intents from files are read-only, and intents created through the Console or the API are stored in the database. |
+| `declarative` | Intents come only from files. Creating one fails with `RAR-1014`. |
+| `mutable` | Intents are stored in the database only. |
+
+For the file format, see [Authorization Detail Types](./declarative-configurations/import-resources.mdx#authorization-detail-types) in Import Resources. To move intents between deployments, see [Processor Credentials](./resource-export.mdx#processor-credentials) in Export Resources.
+
+## Errors
+
+The management API returns these errors. Each response carries the code, a message, and a description.
+
+| Code | Status | Cause |
+|---|---|---|
+| `SSE-4030` | 403 | The caller may not write intents. On a data plane, no access token writes them. |
+| `RAR-1001` | 400 | The body is malformed, larger than 1 MiB, or has a field the API does not define. |
+| `RAR-1002` | 404 | No intent has the ID. |
+| `RAR-1003` | 409 | Another intent has the same type identifier. |
+| `RAR-1004` | 400 | The type identifier is missing, longer than 512 characters, or has a character other than printable ASCII without spaces. |
+| `RAR-1005` | 400 | The name is missing or longer than 100 characters. |
+| `RAR-1006` | 400 | The schema or a field policy is not valid. The description names the problem. |
+| `RAR-1007` | 400 | The processor endpoint is not an absolute HTTPS URL, or HTTP on a loopback host. |
+| `RAR-1008` | 400 | The processor authentication is not a supported method with its required properties, or is given without a processor. |
+| `RAR-1009` | 400 | The processor endpoint changed and the credential was not given again. |
+| `RAR-1010` | 400 | An update changes the type identifier. |
+| `RAR-1011` | 400 | The consent summary is too long, has unsafe characters, or names a field the schema does not declare. |
+| `RAR-1012` | 400 | `limit` is not between 1 and 100, or `offset` is negative. |
+| `RAR-1013` | 400 | The intent is defined in a declarative file and cannot be updated or deleted. |
+| `RAR-1014` | 400 | The intent store is in `declarative` mode, so intents cannot be created. |
+| `RAR-1015` | 409 | An import creates an intent with an ID that another intent has. |
+| `RAR-1016` | 409 | The intent changed while the update was in progress. Read it again and reapply the change. |
+| `RAR-1017` | 400 | In `composite` mode, the files and the database together hold more than 1000 intents, so the list cannot be merged. |
+
+## Next Steps
+
+- [Rich Authorization Requests](./protocols/oauth-oidc/rich-authorization-requests.mdx), request intents from a client and read them from the token.
+- [Consent](./consent.mdx#authorization-details-consent), add the consent step that approves intents.
+- [Authorization Details Processor](./integrations/authorization-details-processor.mdx), build the endpoint that checks each request.

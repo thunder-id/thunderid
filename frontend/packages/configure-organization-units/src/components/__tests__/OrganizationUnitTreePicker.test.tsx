@@ -17,8 +17,8 @@ vi.mock('@thunderid/logger/react', () => ({
 // Mock the API hooks
 const mockUseGetOrganizationUnits = vi.fn();
 vi.mock('@/api/useGetOrganizationUnits', () => ({
-  default: () =>
-    mockUseGetOrganizationUnits() as {
+  default: (params?: unknown, enabled?: boolean) =>
+    mockUseGetOrganizationUnits(params, enabled) as {
       data: OrganizationUnitListResponse | undefined;
       isLoading: boolean;
       error: Error | null;
@@ -1049,6 +1049,219 @@ describe('OrganizationUnitTreePicker', () => {
       });
 
       expect(onChange).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('projectId mode', () => {
+    const placementData: OrganizationUnitListResponse = {
+      totalResults: 2,
+      startIndex: 1,
+      count: 2,
+      organizationUnits: [
+        {id: 'system-ou', handle: 'default', name: 'Default', parent: null, isSystem: true},
+        {id: 'ou-p1', handle: 'shop', name: 'Shop', parent: null, projectId: 'project-1'},
+      ],
+    };
+
+    beforeEach(() => {
+      mockUseGetOrganizationUnits.mockReturnValue({data: placementData, isLoading: false, error: null});
+    });
+
+    it('lists the system organization unit, then the project organization units, from the placement listing', async () => {
+      renderWithProviders(<OrganizationUnitTreePicker {...defaultProps} value="system-ou" projectId="project-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Default')).toBeInTheDocument();
+      });
+      expect(screen.getByText('Shop')).toBeInTheDocument();
+      expect(mockUseGetOrganizationUnits).toHaveBeenCalledWith({projectId: 'project-1', placement: true}, true);
+    });
+
+    it('selects the system organization unit when nothing is selected', async () => {
+      const onChange = vi.fn();
+      renderWithProviders(<OrganizationUnitTreePicker {...defaultProps} onChange={onChange} projectId="project-1" />);
+
+      await waitFor(() => {
+        expect(onChange).toHaveBeenCalledWith('system-ou');
+      });
+    });
+
+    it('keeps an already-selected organization unit', async () => {
+      const onChange = vi.fn();
+      renderWithProviders(
+        <OrganizationUnitTreePicker {...defaultProps} value="ou-p1" onChange={onChange} projectId="project-1" />,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Shop')).toBeInTheDocument();
+      });
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it("calls onChange with a project organization unit's id when it is chosen", async () => {
+      const onChange = vi.fn();
+      renderWithProviders(
+        <OrganizationUnitTreePicker {...defaultProps} value="system-ou" onChange={onChange} projectId="project-1" />,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Shop')).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByText('Shop'));
+
+      await waitFor(() => {
+        expect(onChange).toHaveBeenCalledWith('ou-p1');
+      });
+    });
+
+    it('shows the system organization unit as a leaf that cannot be expanded', async () => {
+      renderWithProviders(<OrganizationUnitTreePicker {...defaultProps} value="system-ou" projectId="project-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Default')).toBeInTheDocument();
+      });
+
+      const systemItem = screen.getByText('Default').closest('li');
+      const projectItem = screen.getByText('Shop').closest('li');
+      expect(systemItem).not.toHaveAttribute('aria-expanded');
+      expect(projectItem).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('shows the project organization units placed under the system one beneath it, opened', async () => {
+      mockUseGetOrganizationUnits.mockReturnValue({
+        data: {
+          totalResults: 3,
+          startIndex: 1,
+          count: 3,
+          organizationUnits: [
+            ...placementData.organizationUnits,
+            {id: 'ou-eu', handle: 'shop-eu', name: 'Shop EU', parent: 'system-ou', projectId: 'project-1'},
+          ],
+        },
+        isLoading: false,
+        error: null,
+      });
+
+      renderWithProviders(<OrganizationUnitTreePicker {...defaultProps} value="system-ou" projectId="project-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Shop EU')).toBeInTheDocument();
+      });
+      const systemItem = screen.getByText('Default').closest('li');
+      expect(systemItem).toHaveAttribute('aria-expanded', 'true');
+      expect(systemItem).toContainElement(screen.getByText('Shop EU'));
+      expect(systemItem).not.toContainElement(screen.getByText('Shop'));
+      // Its other children belong to other projects, so they are never fetched.
+      expect(mockHttpRequest).not.toHaveBeenCalledWith(
+        expect.objectContaining({url: expect.stringContaining('/organization-units/system-ou/ous') as string}),
+      );
+    });
+
+    it('puts a project organization unit placed under the system one on a later page beneath it', async () => {
+      mockUseGetOrganizationUnits.mockReturnValue({
+        data: {...placementData, totalResults: 50},
+        isLoading: false,
+        error: null,
+      });
+      mockHttpRequest.mockResolvedValue({
+        data: {
+          totalResults: 50,
+          startIndex: 3,
+          count: 1,
+          organizationUnits: [{id: 'ou-eu', handle: 'shop-eu', name: 'Shop EU', parent: 'system-ou'}],
+        },
+      });
+
+      renderWithProviders(<OrganizationUnitTreePicker {...defaultProps} value="system-ou" projectId="project-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByText(t('organizationUnits:listing.treeView.loadMore'))).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByText(t('organizationUnits:listing.treeView.loadMore')));
+
+      await waitFor(() => {
+        expect(screen.getByText('Shop EU')).toBeInTheDocument();
+      });
+      expect(screen.getByText('Default').closest('li')).toContainElement(screen.getByText('Shop EU'));
+    });
+
+    it('shows only the system organization unit when the project has no organization units', async () => {
+      mockUseGetOrganizationUnits.mockReturnValue({
+        data: {totalResults: 1, startIndex: 1, count: 1, organizationUnits: [placementData.organizationUnits[0]]},
+        isLoading: false,
+        error: null,
+      });
+
+      renderWithProviders(<OrganizationUnitTreePicker {...defaultProps} value="system-ou" projectId="project-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Default')).toBeInTheDocument();
+      });
+      expect(screen.queryByText(t('organizationUnits:treePicker.empty'))).not.toBeInTheDocument();
+    });
+
+    it('keeps only the placements within the given organization unit, also when loading more', async () => {
+      mockUseGetOrganizationUnits.mockReturnValue({
+        data: {...placementData, totalResults: 50},
+        isLoading: false,
+        error: null,
+      });
+      mockHttpRequest.mockResolvedValue({
+        data: {totalResults: 50, startIndex: 3, count: 0, organizationUnits: []},
+      });
+
+      renderWithProviders(
+        <OrganizationUnitTreePicker {...defaultProps} value="system-ou" projectId="project-1" withinOuId="system-ou" />,
+      );
+
+      expect(mockUseGetOrganizationUnits).toHaveBeenCalledWith(
+        {projectId: 'project-1', placement: true, within: 'system-ou'},
+        true,
+      );
+      await waitFor(() => {
+        expect(screen.getByText(t('organizationUnits:listing.treeView.loadMore'))).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByText(t('organizationUnits:listing.treeView.loadMore')));
+
+      await waitFor(() => {
+        expect(mockHttpRequest).toHaveBeenCalledWith(
+          expect.objectContaining({
+            url: 'http://localhost:8080/organization-units?limit=30&offset=2&projectId=project-1&placement=true&within=system-ou',
+          }),
+        );
+      });
+    });
+
+    it('loads more of the placement listing', async () => {
+      mockUseGetOrganizationUnits.mockReturnValue({
+        data: {...placementData, totalResults: 50},
+        isLoading: false,
+        error: null,
+      });
+      mockHttpRequest.mockResolvedValue({
+        data: {
+          totalResults: 50,
+          startIndex: 3,
+          count: 1,
+          organizationUnits: [{id: 'ou-p2', handle: 'sales', name: 'Sales', description: null, parent: null}],
+        },
+      });
+
+      renderWithProviders(<OrganizationUnitTreePicker {...defaultProps} value="system-ou" projectId="project-1" />);
+
+      await waitFor(() => {
+        expect(screen.getByText(t('organizationUnits:listing.treeView.loadMore'))).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByText(t('organizationUnits:listing.treeView.loadMore')));
+
+      await waitFor(() => {
+        expect(screen.getByText('Sales')).toBeInTheDocument();
+      });
+      expect(mockHttpRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: 'http://localhost:8080/organization-units?limit=30&offset=2&projectId=project-1&placement=true',
+        }),
+      );
     });
   });
 

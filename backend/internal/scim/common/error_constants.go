@@ -226,6 +226,20 @@ var (
 		},
 	}
 
+	// ErrorManagedResource is returned when attempting to modify a resource a control plane deployed.
+	ErrorManagedResource = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SCIM-1042",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.scim.managed_resource",
+			DefaultValue: "Mutability violation",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.scim.managed_resource_description",
+			DefaultValue: "The resource was deployed by the control plane and can only be changed there",
+		},
+	}
+
 	// ErrorFilterNotSupported is returned when a query filter is used but not supported.
 	ErrorFilterNotSupported = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,

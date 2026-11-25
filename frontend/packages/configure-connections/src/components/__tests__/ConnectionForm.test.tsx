@@ -310,6 +310,49 @@ describe('ConnectionForm', () => {
       expect(isFieldMarkedRequired('tls')).toBe(true);
       expect(isFieldMarkedRequired('fromName')).toBe(false);
     });
+
+    const smtpProps = {
+      ...baseProps,
+      type: 'email-smtp' as const,
+      vendorDisplayName: 'SMTP',
+      values: {name: '', host: '', port: '587', fromAddress: '', fromName: '', tls: 'starttls'},
+    };
+
+    it.each([
+      {name: 'moves a default port', port: '587', tls: 'starttls', option: 'Implicit TLS (SMTPS)', expected: 465},
+      {name: 'moves a default port', port: '465', tls: 'implicit', option: 'STARTTLS', expected: 587},
+      {name: 'fills an empty port', port: '', tls: 'starttls', option: 'Implicit TLS (SMTPS)', expected: 465},
+      {name: 'keeps a custom port', port: '2525', tls: 'starttls', option: 'Implicit TLS (SMTPS)', expected: 2525},
+      {name: 'leaves the port on None', port: '465', tls: 'implicit', option: 'None', expected: 465},
+    ])('$name on create: port $port with $option gives $expected', async ({port, tls, option, expected}) => {
+      render(<ControlledConnectionForm {...smtpProps} values={{...smtpProps.values, port, tls}} />);
+
+      fireEvent.mouseDown(getConnectionField('tls'));
+      fireEvent.click(await screen.findByRole('option', {name: option}));
+
+      expect(getConnectionField('port')).toHaveValue(expected);
+    });
+
+    it('follows each transport security choice in turn on create', async () => {
+      render(<ControlledConnectionForm {...smtpProps} />);
+
+      fireEvent.mouseDown(getConnectionField('tls'));
+      fireEvent.click(await screen.findByRole('option', {name: 'Implicit TLS (SMTPS)'}));
+      expect(getConnectionField('port')).toHaveValue(465);
+
+      fireEvent.mouseDown(getConnectionField('tls'));
+      fireEvent.click(await screen.findByRole('option', {name: 'STARTTLS'}));
+      expect(getConnectionField('port')).toHaveValue(587);
+    });
+
+    it('keeps the port when the transport security changes on edit', async () => {
+      render(<ControlledConnectionForm {...smtpProps} mode="edit" />);
+
+      fireEvent.mouseDown(getConnectionField('tls'));
+      fireEvent.click(await screen.findByRole('option', {name: 'Implicit TLS (SMTPS)'}));
+
+      expect(getConnectionField('port')).toHaveValue(587);
+    });
   });
 
   describe('SMS gateway create', () => {

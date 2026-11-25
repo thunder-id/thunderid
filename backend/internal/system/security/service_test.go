@@ -32,6 +32,7 @@ var testPublicPaths = []string{
 	"/auth/**",
 	"/register/passkey/**",
 	"/access/**",
+	"/mcp/**",
 }
 
 // SecurityServiceTestSuite defines the test suite for SecurityService
@@ -258,6 +259,72 @@ func (suite *SecurityServiceTestSuite) TestProcess_RevokedTokenFamily() {
 	assert.Nil(suite.T(), ctx)
 	assert.Equal(suite.T(), errInvalidToken, err)
 	mockRevocation.AssertExpectations(suite.T())
+}
+
+// Test Process drops the token's security context when the token fails authentication or the revocation
+// check on a public path, so the handler sees an anonymous runtime caller, and keeps it when the token
+// itself is valid.
+func (suite *SecurityServiceTestSuite) TestProcess_PublicPathTokenContext() {
+	// The registration endpoint has no API permission entry, so the gate requires the root permission there and
+	// leaves the application permission for the handler to check.
+	InitControlPlanePermissions("")
+	appCreate := []string{GetSystemPermissions().AppCreate}
+	cases := []struct {
+		name         string
+		path         string
+		canHandle    bool
+		authErr      error
+		revokedErr   error
+		wantRuntime  bool
+		wantIdentity bool
+	}{
+		{name: "no authenticator", path: "/oauth2/dcr/register", wantRuntime: true},
+		{name: "authentication fails", path: "/oauth2/dcr/register", canHandle: true, authErr: errInvalidToken,
+			wantRuntime: true},
+		{name: "token revoked", path: "/oauth2/dcr/register", canHandle: true,
+			revokedErr: errors.New("token has been revoked"), wantRuntime: true},
+		{name: "token revoked on flow execute", path: "/flow/execute", canHandle: true,
+			revokedErr: errors.New("token has been revoked"), wantRuntime: true},
+		{name: "valid token the gate does not authorize", path: "/oauth2/dcr/register", canHandle: true,
+			wantRuntime: true, wantIdentity: true},
+		{name: "valid token the gate authorizes", path: "/flow/execute", canHandle: true, wantIdentity: true},
+	}
+
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			req := httptest.NewRequest(http.MethodPost, tc.path, nil)
+			securityCtx := newSecurityContext("user123", "ou-1", "token", appCreate, nil)
+
+			auth := &AuthenticatorInterfaceMock{}
+			auth.On("CanHandle", req).Return(tc.canHandle)
+			if tc.canHandle && tc.authErr != nil {
+				auth.On("Authenticate", req).Return(nil, tc.authErr)
+			} else if tc.canHandle {
+				auth.On("Authenticate", req).Return(securityCtx, nil)
+			}
+			revocation := &RevocationEnforcerInterfaceMock{}
+			revocation.On("EnsureNotRevoked", mock.Anything, mock.Anything).Return(tc.revokedErr).Maybe()
+
+			service, err := newSecurityService(
+				[]AuthenticatorInterface{auth}, revocation, testPublicPaths, apiPermissionEntries)
+			suite.Require().NoError(err)
+
+			ctx, err := service.Process(req)
+
+			suite.Require().NoError(err)
+			auth.AssertExpectations(suite.T())
+			suite.Equal(tc.wantRuntime, IsRuntimeContext(ctx))
+			if tc.wantIdentity {
+				suite.Equal("user123", GetSubject(ctx))
+				suite.Equal(appCreate, GetPermissions(ctx))
+				return
+			}
+			suite.Nil(getSecurityContext(ctx))
+			suite.Empty(GetSubject(ctx))
+			suite.Empty(GetOUID(ctx))
+			suite.Empty(GetPermissions(ctx))
+		})
+	}
 }
 
 // Test Process consults the enforcer with the token's revocation identifier and proceeds when the
@@ -597,6 +664,66 @@ func (suite *SecurityServiceTestSuite) TestProcess_PublicPath_WithInvalidToken()
 	assert.Empty(suite.T(), userID)
 }
 
+// An authenticated caller reaches the MCP handler as itself, whatever system permission it holds, so
+// the handler checks each tool call against the caller's own permissions.
+func (suite *SecurityServiceTestSuite) TestProcess_MCPKeepsAnAuthenticatedCaller() {
+	for _, method := range []string{http.MethodPost, http.MethodGet, http.MethodDelete} {
+		suite.Run(method, func() {
+			suite.SetupTest()
+			req := httptest.NewRequest(method, "/mcp", nil)
+			narrow := newSecurityContext("admin-1", "ou-1", "token", []string{"system:user:view"}, nil)
+			suite.mockAuth1.On("CanHandle", req).Return(true)
+			suite.mockAuth1.On("Authenticate", req).Return(narrow, nil)
+
+			ctx, err := suite.service.Process(req)
+
+			suite.Require().NoError(err)
+			suite.False(IsRuntimeContext(ctx))
+			suite.Equal("admin-1", GetSubject(ctx))
+			suite.Equal([]string{"system:user:view"}, GetPermissions(ctx))
+		})
+	}
+}
+
+func (suite *SecurityServiceTestSuite) TestProcess_MCPLeavesAnAnonymousCallerRuntime() {
+	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	suite.mockAuth1.On("CanHandle", req).Return(false)
+	suite.mockAuth2.On("CanHandle", req).Return(false)
+
+	ctx, err := suite.service.Process(req)
+
+	suite.Require().NoError(err)
+	suite.True(IsRuntimeContext(ctx))
+	suite.Empty(GetSubject(ctx))
+}
+
+// An authenticated caller reaches the flow engine as itself, whatever system permission it holds.
+func (suite *SecurityServiceTestSuite) TestProcess_FlowExecuteKeepsAnAuthenticatedCaller() {
+	req := httptest.NewRequest(http.MethodPost, "/flow/execute", nil)
+	narrow := newSecurityContext("admin-1", "ou-1", "token", []string{"system:user:create"}, nil)
+	suite.mockAuth1.On("CanHandle", req).Return(true)
+	suite.mockAuth1.On("Authenticate", req).Return(narrow, nil)
+
+	ctx, err := suite.service.Process(req)
+
+	suite.Require().NoError(err)
+	suite.False(IsRuntimeContext(ctx))
+	suite.Equal("admin-1", GetSubject(ctx))
+	suite.Equal([]string{"system:user:create"}, GetPermissions(ctx))
+}
+
+func (suite *SecurityServiceTestSuite) TestProcess_FlowExecuteLeavesAnAnonymousCallerRuntime() {
+	req := httptest.NewRequest(http.MethodPost, "/flow/execute", nil)
+	suite.mockAuth1.On("CanHandle", req).Return(false)
+	suite.mockAuth2.On("CanHandle", req).Return(false)
+
+	ctx, err := suite.service.Process(req)
+
+	suite.Require().NoError(err)
+	suite.True(IsRuntimeContext(ctx))
+	suite.Empty(GetSubject(ctx))
+}
+
 // Test that the service returns errInsufficientPermissions when the authenticated
 // subject lacks the required permission for a protected path.
 func (suite *SecurityServiceTestSuite) TestProcess_AuthorizationFailure_InsufficientPermissions() {
@@ -634,12 +761,13 @@ func (suite *SecurityServiceTestSuite) TestProcess_OversizedPath_SkipsPermission
 	assert.ErrorIs(suite.T(), err, errForbidden)
 }
 
-// The organization-unit-scoped token endpoint is public for the same reason the bare one is: the
-// client authenticates with its own credentials in the request, not with a bearer token.
+// The organization-unit-scoped token and authorize endpoints are public for the same reason the bare
+// ones are: neither is called with a bearer token. The token request carries the client's own
+// credentials, and the authorize request is a browser redirect.
 //
-// The pattern is pinned to that one path rather than a subtree. "/ou/*/oauth2/**" would open every
+// The patterns are pinned to those two paths rather than a subtree. "/ou/*/oauth2/**" would open every
 // future organization-unit-scoped OAuth route, including ones nobody has reviewed yet.
-func TestOUScopedTokenEndpointIsTheOnlyPublicOUPath(t *testing.T) {
+func TestOUScopedPublicPathsArePinned(t *testing.T) {
 	var ouPaths []string
 	for _, p := range publicPaths {
 		if len(p) >= 4 && p[:4] == "/ou/" {
@@ -647,8 +775,8 @@ func TestOUScopedTokenEndpointIsTheOnlyPublicOUPath(t *testing.T) {
 		}
 	}
 
-	assert.Equal(t, []string{"/ou/*/oauth2/token"}, ouPaths,
-		"only the token endpoint is public beneath /ou/")
+	assert.Equal(t, []string{"/ou/*/oauth2/token", "/ou/*/oauth2/authorize"}, ouPaths,
+		"only the token and authorize endpoints are public beneath /ou/")
 
 	// Compiled the same way the security service compiles them, so the pattern is checked as it is
 	// actually matched rather than as a string.
@@ -665,8 +793,15 @@ func TestOUScopedTokenEndpointIsTheOnlyPublicOUPath(t *testing.T) {
 	}
 
 	assert.True(t, matches("/ou/customer-a/oauth2/token"), "the scoped token endpoint is public")
-	assert.False(t, matches("/ou/customer-a/oauth2/introspect"),
-		"nothing else beneath the prefix is")
+	assert.True(t, matches("/ou/customer-a/oauth2/authorize"), "the scoped authorize endpoint is public")
+	for _, path := range []string{
+		"/ou/customer-a/oauth2/introspect",
+		"/ou/customer-a/oauth2/authorize/extra",
+		"/ou/customer-a/b/oauth2/authorize",
+		"/ou/customer-a/oauth2",
+	} {
+		assert.False(t, matches(path), "nothing else beneath the prefix is: %s", path)
+	}
 	assert.False(t, matches("/ou/customer-a/applications"),
 		"and an organization unit prefix does not make a management path public")
 }

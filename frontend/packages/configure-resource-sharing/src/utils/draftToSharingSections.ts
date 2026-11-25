@@ -2,10 +2,32 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type {OrganizationAccessDraft} from '../models/organization-access';
-import type {SharingPolicySections} from '../models/sharing-policy';
+import type {EditsRule, SharingOverlayRules, SharingPolicySections} from '../models/sharing-policy';
 
 function withExclusions<T extends object>(section: T, excluded: string[]): T & {excludedOuIds?: string[]} {
   return excluded.length > 0 ? {...section, excludedOuIds: [...excluded]} : section;
+}
+
+/**
+ * The rules of a saved section or unit that the screen doesn't edit, which a save keeps as they are.
+ * The screen edits a user's mandated `roles`, so everything else, such as a role's `assignments`, is kept. For child
+ * units it also edits the rules the resource says it edits, which the draft supplies afresh, so those are not kept
+ * there. Every other section keeps them, since the draft holds none for them.
+ */
+function keptOverlayRules(
+  rules: SharingOverlayRules | undefined,
+  editsRule: EditsRule = () => false,
+): SharingOverlayRules {
+  const {roles: _roles, ...others} = rules ?? {};
+  void _roles;
+  return Object.fromEntries(Object.entries(others).filter(([field]) => !editsRule(field)));
+}
+
+function withOverlayRules<T extends object>(
+  target: T,
+  rules: SharingOverlayRules,
+): T & {overlayRules?: SharingOverlayRules} {
+  return Object.keys(rules).length > 0 ? {...target, overlayRules: rules} : target;
 }
 
 /**
@@ -23,34 +45,84 @@ export function hasNoSharingSections(sections: SharingPolicySections): boolean {
  * all and its policy has to go rather than be written. That is the case for the `owner` scope, and
  * for a `chosen` scope whose child-unit and other-tree sections grant nothing.
  *
+ * Rules the screen doesn't edit come from `saved`: a section keeps them while it stays the same kind,
+ * and a named unit keeps them while the draft still names it.
+ *
  * @param draft - The draft to write
+ * @param saved - The policy the draft started from, whose rules the screen doesn't edit are kept
+ * @param editsRule - Tells which rules the resource's screen edits, which the draft supplies; none by default
  * @returns The policy sections the draft amounts to
  */
-export default function draftToSharingSections(draft: OrganizationAccessDraft): SharingPolicySections {
+export default function draftToSharingSections(
+  draft: OrganizationAccessDraft,
+  saved?: SharingPolicySections,
+  editsRule: EditsRule = () => false,
+): SharingPolicySections {
   if (draft.scope === 'owner') {
     return {};
   }
   if (draft.scope === 'everyUnit') {
-    return {allUnits: withExclusions({}, draft.everyUnitExclusions)};
+    return {
+      allUnits: withOverlayRules(
+        withExclusions({}, draft.everyUnitExclusions),
+        keptOverlayRules(saved?.allUnits?.overlayRules),
+      ),
+    };
   }
 
   const sections: SharingPolicySections = {};
+  const savedChildUnits = saved?.childUnits;
+  const savedTrees = saved?.otherTreeRoots;
+
+  const rules = draft.childUnitRules && Object.keys(draft.childUnitRules).length > 0 ? draft.childUnitRules : undefined;
 
   if (draft.childUnitsAccess === 'all') {
-    sections.childUnits = withExclusions({mode: 'all' as const}, draft.childUnitExclusions);
+    sections.childUnits = withOverlayRules(withExclusions({mode: 'all' as const}, draft.childUnitExclusions), {
+      ...keptOverlayRules(savedChildUnits?.mode === 'all' ? savedChildUnits.overlayRules : undefined, editsRule),
+      ...(rules ?? {}),
+    });
   }
   if (draft.childUnitsAccess === 'selected' && draft.childUnits.length > 0) {
     sections.childUnits = {
       mode: 'selected',
-      units: draft.childUnits.map((unit) => ({ouId: unit.ouId, reach: unit.reach})),
+      units: draft.childUnits.map((unit) => {
+        const savedUnit =
+          savedChildUnits?.mode === 'selected'
+            ? savedChildUnits.units.find((candidate) => candidate.ouId === unit.ouId)
+            : undefined;
+        const unitRules: SharingOverlayRules = {
+          ...keptOverlayRules(savedUnit?.overlayRules, editsRule),
+          ...(unit.rules ?? {}),
+        };
+        // The server refuses a roles rule on a subtree, so one is only written for a unit-only reach.
+        if (unit.reach === 'unit' && unit.roles && unit.roles.length > 0) {
+          unitRules.roles = {editable: false, value: [...unit.roles]};
+        }
+        return withOverlayRules({ouId: unit.ouId, reach: unit.reach}, unitRules);
+      }),
     };
   }
 
   if (draft.otherTreesAccess === 'every') {
-    sections.otherTreeRoots = withExclusions({mode: 'all' as const}, draft.everyTreeExclusions);
+    sections.otherTreeRoots = withOverlayRules(
+      withExclusions({mode: 'all' as const}, draft.everyTreeExclusions),
+      keptOverlayRules(savedTrees?.mode === 'all' ? savedTrees.overlayRules : undefined),
+    );
   }
   if (draft.otherTreesAccess === 'selected' && draft.trees.length > 0) {
-    sections.otherTreeRoots = {mode: 'selected', units: draft.trees.map((ouId) => ({ouId}))};
+    sections.otherTreeRoots = {
+      mode: 'selected',
+      units: draft.trees.map((ouId) =>
+        withOverlayRules(
+          {ouId},
+          keptOverlayRules(
+            savedTrees?.mode === 'selected'
+              ? savedTrees.units.find((candidate) => candidate.ouId === ouId)?.overlayRules
+              : undefined,
+          ),
+        ),
+      ),
+    };
   }
 
   return sections;

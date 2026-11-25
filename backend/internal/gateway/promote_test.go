@@ -27,8 +27,8 @@ func (s *PromoteTestSuite) SetupTest() {
 	s.f.gateways.gateways = append(s.f.gateways.gateways, second)
 }
 
-// A promotion applies the version the source runs to the target, leaving out what the source holds
-// back, and records the source as where each resource came from.
+// A promotion applies the version the source runs to the target, leaving out what the source does not
+// hold, and records the source as where each resource came from.
 func (s *PromoteTestSuite) TestPromoteSendsWhatTheSourceRuns() {
 	s.f.capture(s.T(), "ou-a", "ou-b")
 	_, svcErr := s.f.svc.Apply(context.Background(), "gw-1",
@@ -62,4 +62,30 @@ func (s *PromoteTestSuite) TestPromoteRefusesItselfAndASourceThatRunsNothing() {
 		PromoteRequest{SourceGatewayID: "gw-1", TargetGatewayID: "gw-2"})
 	s.Equal(&ErrorSourceRunsNothing, svcErr)
 	s.Empty(s.f.client.sent)
+}
+
+// A promotion sends a removal, or an addition or update the source holds deployed with the version's
+// content; not a resource the source refused or holds in an earlier form, and nothing the target holds
+// back.
+func (s *PromoteTestSuite) TestPromoteSelectsWhatTheSourceHolds() {
+	role := func(id string) string { return "resource_type: role\nid: " + id + "\nname: " + id }
+	source := &Master{GatewayID: "dev", Entries: []MasterEntry{
+		{Key: "role/r1", State: EntryFailed, ContentHash: contentHash(role("r1"))},
+		{Key: "role/r3", State: EntryDeployed, ContentHash: contentHash(role("r3"))},
+		{Key: "role/r5", State: EntryDeployed, ContentHash: contentHash(role("r5-earlier"))},
+		{Key: "role/r6", State: EntryDeployed, ContentHash: contentHash(role("r6"))},
+	}}
+	version := &Version{Hash: "bbb",
+		Resources: joinBundle([]string{role("r1"), role("r2"), role("r3"), role("r5"), role("r6")})}
+	target := &Diff{Changes: []Change{
+		{Key: "role/r1", Change: ChangeAdded},
+		{Key: "role/r2", Change: ChangeUnchanged},
+		{Key: "role/r3", Change: ChangeUpdated},
+		{Key: "role/r4", Change: ChangeDeleted},
+		{Key: "role/r5", Change: ChangeAdded},
+		{Key: "role/r6", Change: ChangeUpdated, HeldBack: true},
+		{Key: "role/r7", Change: ChangeDeleted, HeldBack: true},
+	}}
+
+	s.Equal([]string{"role/r3", "role/r4"}, promoteSelection(source, version, target))
 }

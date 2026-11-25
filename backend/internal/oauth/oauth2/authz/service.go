@@ -21,6 +21,7 @@ import (
 
 	authzdetailcommon "github.com/thunder-id/thunderid/internal/authzdetail/common"
 	flowcm "github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/executor"
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
 	flowsession "github.com/thunder-id/thunderid/internal/flow/session"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
@@ -33,6 +34,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -584,7 +586,7 @@ func (as *authorizeService) handleStandardAuthorizationRequest(
 	if redirectURI == "" {
 		if len(app.RedirectURIs) == 0 {
 			as.logger.Error(ctx, "OAuth application has no registered redirect URIs",
-				log.String("client_id", app.ClientID))
+				log.String("clientID", app.ClientID))
 			return nil, &AuthorizationError{
 				Code:    oauth2const.ErrorServerError,
 				Message: "Failed to process authorization request",
@@ -602,7 +604,11 @@ func (as *authorizeService) initiateFlowAndStoreRequest(
 	ctx context.Context, oauthParams *oauth2model.OAuthParameters,
 	app *providers.OAuthClient, initiatorReq *providers.InitiatorRequest,
 ) (*AuthorizationInitResult, *AuthorizationError) {
-	identifier, executionID, authErr := as.startAuthorizationFlow(ctx, oauthParams, app, initiatorReq, nil)
+	// An organization unit the application is not accessible from gets the OU token route's refusal.
+	ouRefusal := clientAuthorizationError(oauthParams, oauth2const.ErrorUnauthorizedClient,
+		oauth2const.OUAccessRefusal)
+	identifier, executionID, authErr := as.startAuthorizationFlow(ctx, oauthParams, app, initiatorReq, nil,
+		ouRefusal)
 	if authErr != nil {
 		return nil, authErr
 	}
@@ -621,6 +627,9 @@ func (as *authorizeService) initiateFlowAndStoreRequest(
 	queryParams := make(map[string]string)
 	queryParams[oauth2const.AuthID] = identifier
 	queryParams[oauth2const.AppID] = app.ID
+	if ref := utils.EncodeURLSafeID(app.ID); ref != "" {
+		queryParams[oauth2const.Ref] = ref
+	}
 	queryParams[oauth2const.ExecutionID] = executionID
 	if oauthParams.UILocales != "" {
 		queryParams[oauth2const.RequestParamUILocales] = oauthParams.UILocales
@@ -648,11 +657,13 @@ func (as *authorizeService) initiateFlowAndStoreRequest(
 
 // startAuthorizationFlow checks a prompt=none request against the SSO session, binds the request to its
 // target resource server, stores it, and initiates the client's authentication flow with the OAuth
-// context. sessionData is the sessions the caller presents itself, ahead of the cookie. It returns the
-// stored request's id and the flow's execution id.
+// context. sessionData is the sessions the caller presents itself, ahead of the cookie, and ouRefusal the
+// answer when the requested organization unit refuses the flow start. It returns the stored request's id
+// and the flow's execution id.
 func (as *authorizeService) startAuthorizationFlow(
 	ctx context.Context, oauthParams *oauth2model.OAuthParameters,
 	app *providers.OAuthClient, initiatorReq *providers.InitiatorRequest, sessionData []oauth2model.SessionData,
+	ouRefusal *AuthorizationError,
 ) (string, string, *AuthorizationError) {
 	// prompt=none forbids any user interaction, so it can only be honored by an existing session
 	// that also satisfies id_token_hint and max_age. This is checked here, where both the standard
@@ -746,6 +757,8 @@ func (as *authorizeService) startAuthorizationFlow(
 	}
 
 	// Initiate flow with OAuth context.
+	attrCacheTTL := tokenservice.ResolveUserAttributesCacheTTL(
+		as.cfg, app, as.cfg.OAuth.AuthorizationCode.ValidityPeriod)
 	runtimeData := map[string]string{
 		flowcm.RuntimeKeyClientID:                      oauthParams.ClientID,
 		flowcm.RuntimeKeyRequestedPermissions:          utils.StringifyStringArray(oauthParams.PermissionScopes, " "),
@@ -753,7 +766,7 @@ func (as *authorizeService) startAuthorizationFlow(
 		flowcm.RuntimeKeyRequiredEssentialAttributes:   essentialAttributes,
 		flowcm.RuntimeKeyRequiredOptionalAttributes:    optionalAttributes,
 		flowcm.RuntimeKeyRequiredLocales:               oauthParams.ClaimsLocales,
-		flowcm.RuntimeKeyUserAttributesCacheTTLSeconds: fmt.Sprintf("%d", as.resolveUserAttributesCacheTTL(app)),
+		flowcm.RuntimeKeyUserAttributesCacheTTLSeconds: fmt.Sprintf("%d", attrCacheTTL),
 		flowcm.RuntimeKeyAuthorizationRequestID:        identifier,
 	}
 	if effectiveAcrValues != "" {
@@ -791,6 +804,11 @@ func (as *authorizeService) startAuthorizationFlow(
 	}
 
 	executionID, flowErr := as.flowExecService.InitiateFlow(ctx, flowInitCtx)
+	// With no refusal supplied, the organization unit refusal fails closed as the server error below.
+	if flowErr != nil && flowErr.Code == flowexec.ErrorInvalidOrganizationUnit.Code && ouRefusal != nil {
+		as.logger.Debug(ctx, "Application is not accessible from the requested organization unit")
+		return "", "", ouRefusal
+	}
 	if flowErr != nil {
 		as.logger.Error(ctx, "Failed to initiate authentication flow",
 			log.String("error_code", flowErr.Code))
@@ -814,7 +832,7 @@ func (as *authorizeService) tryCompleteWithSSOSession(
 	authID, executionID string,
 ) (string, *AuthorizationError) {
 	step, svcErr := as.flowExecService.Execute(ctx, app.ID, executionID,
-		string(providers.FlowTypeAuthentication), false, "", nil, "", "", "", nil)
+		string(providers.FlowTypeAuthentication), "", false, "", nil, "", "", "", nil)
 	completed := svcErr == nil && step != nil && step.Status == providers.FlowStatusComplete &&
 		step.Assertion != ""
 	if !completed {
@@ -844,7 +862,8 @@ func (as *authorizeService) tryCompleteWithSSOSession(
 			"User authentication is required")
 	}
 
-	redirectURI, authErr := as.HandleAuthorizationCallback(ctx, authID, step.Assertion, nil)
+	redirectURI, authErr := as.HandleAuthorizationCallback(ctx, authID, step.Assertion,
+		fromFlowSessionData(step.SessionData))
 	if authErr != nil {
 		// The callback may reject the assertion before consuming the request.
 		if err := as.authReqStore.ClearRequest(ctx, authID); err != nil {
@@ -882,13 +901,15 @@ func (as *authorizeService) AuthorizeWithSSOSession(ctx context.Context, app *pr
 	}
 
 	// The sessions the client presents stand in for the browser's per-flow cookies.
-	authID, executionID, authErr := as.startAuthorizationFlow(ctx, oauthParams, app, nil, req.SessionData)
+	authID, executionID, authErr := as.startAuthorizationFlow(ctx, oauthParams, app, nil, req.SessionData,
+		signInBoundaryRefusal(ctx))
 	if authErr != nil {
 		return nil, authErr
 	}
 
 	step, svcErr := as.flowExecService.Execute(ctx, app.ID, executionID,
-		string(providers.FlowTypeAuthentication), false, "", nil, "", "", "", toFlowSessionData(req.SessionData))
+		string(providers.FlowTypeAuthentication), "", false, "", nil, "", "", "",
+		toFlowSessionData(req.SessionData))
 	completed := svcErr == nil && step != nil && step.Status == providers.FlowStatusComplete &&
 		step.Assertion != ""
 	if !completed {
@@ -899,6 +920,11 @@ func (as *authorizeService) AuthorizeWithSSOSession(ctx context.Context, app *pr
 				Code:    oauth2const.ErrorServerError,
 				Message: "Failed to process authorization request",
 			}
+		}
+		if step != nil && step.Error != nil && isSignInBoundaryRefusal(step.Error.Code) {
+			as.logger.Debug(ctx, "The sign-in boundary refused the SSO session's subject",
+				log.String("errorCode", step.Error.Code))
+			return nil, signInBoundaryRefusal(ctx)
 		}
 		as.logger.Debug(ctx, "Flow cannot complete with the SSO session alone")
 		return nil, &AuthorizationError{
@@ -930,6 +956,25 @@ func (as *authorizeService) AuthorizeWithSSOSession(ctx context.Context, app *pr
 	return &authzCode, nil
 }
 
+// signInBoundaryRefusal answers a silent sign-in the sign-in boundary refuses, naming no organization unit.
+func signInBoundaryRefusal(ctx context.Context) *AuthorizationError {
+	message := oauth2const.AppSignInRefusal
+	if syscontext.GetAccessingOUID(ctx) != "" {
+		message = oauth2const.OUSignInRefusal
+	}
+	return &AuthorizationError{Code: oauth2const.ErrorInvalidGrant, Message: message}
+}
+
+// isSignInBoundaryRefusal reports whether a flow error code is a refusal by the sign-in boundary.
+func isSignInBoundaryRefusal(code string) bool {
+	switch code {
+	case flowexec.ErrorInvalidOrganizationUnit.Code, executor.ErrOrganizationNotResolved.Code,
+		executor.ErrNoAccessToApplication.Code:
+		return true
+	}
+	return false
+}
+
 // toFlowSessionData converts the sessions a client presents to the form the flow service takes.
 func toFlowSessionData(sessionData []oauth2model.SessionData) []flowexec.SessionData {
 	converted := make([]flowexec.SessionData, 0, len(sessionData))
@@ -942,23 +987,17 @@ func toFlowSessionData(sessionData []oauth2model.SessionData) []flowexec.Session
 	return converted
 }
 
-// bindDeviceSession keeps on the code the SSO sessions the caller posted, when the client requested the
-// device_sso scope, so the code exchange can return them in the device secret. An entry with a missing or
-// over-long field is ignored rather than failing the sign-in, which does not need it. They are not looked
-// up here: the token exchange that presents them runs the flow on them and checks they are the subject's.
-func bindDeviceSession(authzCode *AuthorizationCode, sessionData []oauth2model.SessionData) {
-	if !slices.Contains(tokenservice.ParseScopes(authzCode.Scopes), oauth2const.ScopeDeviceSSO) {
-		return
+// fromFlowSessionData converts the sessions a flow step returned to the form the callback keeps.
+func fromFlowSessionData(issued []flowexec.IssuedSessionData) []oauth2model.SessionData {
+	converted := make([]oauth2model.SessionData, 0, len(issued))
+	for _, entry := range issued {
+		converted = append(converted, oauth2model.SessionData{
+			FlowIdentifier: entry.FlowIdentifier,
+			SessionHandle:  entry.SessionHandle,
+			ExpiresIn:      new(entry.ExpiresIn),
+		})
 	}
-	for _, entry := range sessionData {
-		if len(authzCode.SessionData) == maxDeviceSessions {
-			return
-		}
-		fieldLengths := []int{len(entry.FlowIdentifier), len(entry.SessionHandle)}
-		if slices.Min(fieldLengths) > 0 && slices.Max(fieldLengths) <= maxDeviceSessionFieldLength {
-			authzCode.SessionData = append(authzCode.SessionData, entry)
-		}
-	}
+	return converted
 }
 
 // clearAuthRequest drops an authorization request no caller can resume.
@@ -1038,7 +1077,7 @@ func (as *authorizeService) handleSuccessCallback(ctx context.Context, authID st
 			authErr = mintAuthErr
 			return err
 		}
-		bindDeviceSession(&authzCode, sessionData)
+		authzCode.SessionData = oauth2utils.KeepDeviceSessions(tokenservice.ParseScopes(authzCode.Scopes), sessionData)
 		// The code is delivered to the client's redirect URI, so it needs one.
 		if authzCode.RedirectURI == "" {
 			authErr = &AuthorizationError{
@@ -1328,6 +1367,7 @@ func decodeAttributesFromAssertion(assertion string) (assertionClaims, time.Time
 
 	claims := assertionClaims{
 		userID:           base.UserID,
+		subjectID:        base.SubjectID,
 		attributeCacheID: base.AttributeCacheID,
 		completedACR:     base.CompletedACR,
 	}
@@ -1354,10 +1394,6 @@ func decodeAttributesFromAssertion(assertion string) (assertionClaims, time.Time
 
 	if v, ok := payload[oauth2const.ClaimCorrelationID].(string); ok {
 		claims.correlationID = v
-	}
-
-	if v, ok := payload[oauth2const.ClaimSubjectID].(string); ok {
-		claims.subjectID = v
 	}
 
 	if v, ok := payload[oauth2const.ClaimSubjectType].(string); ok {
@@ -1654,25 +1690,6 @@ func validateSubClaimConstraint(claimsRequest *oauth2model.ClaimsRequest, actual
 	}
 
 	return nil
-}
-
-// resolveUserAttributesCacheTTL determines the TTL for caching user attributes based on the
-// token validity configuration. The largest of the access and refresh token (if allowed) validity
-// periods is taken as the base, then the authorization code validity period is added to cover
-// the window between code issuance and token exchange.
-// A fixed buffer of attributeCacheTTLBufferSeconds is added to cover the window between
-// authentication completion and token issuance.
-func (as *authorizeService) resolveUserAttributesCacheTTL(app *providers.OAuthClient) int64 {
-	maxTTL := tokenservice.ResolveTokenConfig(
-		as.cfg, app, tokenservice.TokenTypeAccess, app.UserAccessTokenConfig().ValidityPeriodOrZero()).ValidityPeriod
-	if app.IsAllowedGrantType(providers.GrantTypeRefreshToken) {
-		refreshTTL := tokenservice.ResolveTokenConfig(as.cfg, app, tokenservice.TokenTypeRefresh, 0).ValidityPeriod
-		if refreshTTL > maxTTL {
-			maxTTL = refreshTTL
-		}
-	}
-	authCodeTTL := as.cfg.OAuth.AuthorizationCode.ValidityPeriod
-	return maxTTL + authCodeTTL + oauth2const.AttributeCacheTTLBufferSeconds
 }
 
 // addMetadataDocumentClientHosts adds the client ID host and the redirect URI host of a client registered

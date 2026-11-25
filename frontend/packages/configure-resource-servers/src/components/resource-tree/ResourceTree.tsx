@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useRecordAccess} from '@thunderid/contexts';
 import {
   Box,
   CircularProgress,
@@ -66,7 +67,7 @@ function GenericResourceTree({resourceServer, onRefresh}: ResourceTreeProps): JS
 
   const isLoading = loadingResources || loadingActions;
   const isEmpty = resources.length === 0 && serverActions.length === 0;
-  const readOnly = Boolean(resourceServer.isReadOnly);
+  const {readOnly} = useRecordAccess('rs', resourceServer);
 
   const effectiveSelectedNode = useMemo<SelectedNode | null>(() => {
     if (selectedNode) return selectedNode;

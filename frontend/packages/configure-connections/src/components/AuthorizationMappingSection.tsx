@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {SettingsCard} from '@thunderid/components';
+import {ReadOnlyFieldset, SettingsCard} from '@thunderid/components';
 import {
   PermissionCatalog,
   removePermissions,
@@ -24,7 +24,7 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import {Plus, Trash2} from '@wso2/oxygen-ui-icons-react';
-import {type JSX, useMemo, useState} from 'react';
+import {createContext, type JSX, useContext, useMemo, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import DelimiterField from './DelimiterField';
 import useGetGroupsForMapping from '../api/useGetGroupsForMapping';
@@ -52,11 +52,21 @@ import {
 } from '../utils/authorizationMapping';
 
 export interface AuthorizationMappingSectionProps {
+  /** The organization unit of the connection. Rules can grant only the roles it owns or has shared with it, and the
+   * groups it owns. */
+  ouId?: string;
   initialRuleConfig?: AuthorizationRuleMapping[];
   initialDirectConfig?: AuthorizationDirectMapping[];
   onRuleChange: (mappings: AuthorizationRuleMapping[] | undefined, valid: boolean) => void;
   onDirectChange: (mappings: AuthorizationDirectMapping[] | undefined, valid: boolean) => void;
+  /** Replaces the default card description. */
+  description?: string;
+  /** Locks every control while keeping the permission tree expandable, so it can still be read. */
+  readOnly?: boolean;
 }
+
+/** Whether the section is shown to an admin who may not change it. */
+const LockedContext = createContext(false);
 
 const VALUE_TYPES: AuthorizationValueType[] = ['string', 'number', 'boolean', 'array'];
 const TARGET_TYPES: AuthorizationTargetType[] = ['role', 'group', 'permission'];
@@ -68,22 +78,61 @@ const PICKER_PAGE_SIZE = 100;
 interface PickerOption {
   id: string;
   name: string;
+  unavailable?: boolean;
+}
+
+/**
+ * Resolves stored target ids to picker entries. An id missing from the complete list is one the organization unit can
+ * no longer grant, such as a role no longer shared with it, so it is marked unavailable for the admin to remove. An id
+ * missing from a partial list (beyond PICKER_PAGE_SIZE, or still loading) keeps a plain entry, or the next onChange,
+ * which reports only what Autocomplete rendered, would silently drop it.
+ */
+function resolveSelected(
+  value: string[],
+  options: PickerOption[],
+  listComplete: boolean,
+  unavailableLabel: (id: string) => string,
+): PickerOption[] {
+  return value.map(
+    (id) =>
+      options.find((o) => o.id === id) ??
+      (listComplete ? {id, name: unavailableLabel(id), unavailable: true} : {id, name: id}),
+  );
+}
+
+function renderTargetChips(
+  tags: PickerOption[],
+  getTagProps: (args: {index: number}) => Record<string, unknown> & {key: string | number},
+): JSX.Element[] {
+  return tags.map((option, index) => {
+    const {key, ...tagProps} = getTagProps({index});
+    return <Chip key={key} {...tagProps} label={option.name} color={option.unavailable ? 'error' : 'default'} />;
+  });
 }
 
 function targetTypeLabel(t: (key: string) => string, targetType: AuthorizationTargetType): string {
   return t(`authorizationRules.target.type.${targetType}`);
 }
 
-function RolesField({value, onChange}: {value: string[]; onChange: (ids: string[]) => void}): JSX.Element {
+function RolesField({
+  ouId = undefined,
+  value,
+  onChange,
+}: {
+  ouId?: string;
+  value: string[];
+  onChange: (ids: string[]) => void;
+}): JSX.Element {
   const {t} = useTranslation('connections');
-  const {data} = useGetRolesForMapping({limit: PICKER_PAGE_SIZE});
+  const {data} = useGetRolesForMapping({limit: PICKER_PAGE_SIZE, ouId});
   const options: PickerOption[] = useMemo(() => (data?.roles ?? []).map((r) => ({id: r.id, name: r.name})), [data]);
-  // A stored id absent from this page (beyond PICKER_PAGE_SIZE, or the page still loading) still needs
-  // a selected entry, or the next onChange - which reports only what Autocomplete rendered - would
-  // silently drop it.
+  const listComplete = data !== undefined && data.totalResults <= options.length;
   const selected = useMemo(
-    () => value.map((id) => options.find((o) => o.id === id) ?? {id, name: id}),
-    [value, options],
+    () =>
+      resolveSelected(value, options, listComplete, (id) =>
+        t('authorizationRules.target.role.unavailable', 'Unavailable: {{id}}', {id}),
+      ),
+    [value, options, listComplete, t],
   );
 
   return (
@@ -95,6 +144,7 @@ function RolesField({value, onChange}: {value: string[]; onChange: (ids: string[
       getOptionLabel={(o) => o.name}
       isOptionEqualToValue={(o, v) => o.id === v.id}
       onChange={(_event, newValue) => onChange(newValue.map((o) => o.id))}
+      renderTags={renderTargetChips}
       renderInput={(params) => (
         <TextField
           {...params}
@@ -106,16 +156,25 @@ function RolesField({value, onChange}: {value: string[]; onChange: (ids: string[
   );
 }
 
-function GroupsField({value, onChange}: {value: string[]; onChange: (ids: string[]) => void}): JSX.Element {
+function GroupsField({
+  ouId = undefined,
+  value,
+  onChange,
+}: {
+  ouId?: string;
+  value: string[];
+  onChange: (ids: string[]) => void;
+}): JSX.Element {
   const {t} = useTranslation('connections');
-  const {data} = useGetGroupsForMapping({limit: PICKER_PAGE_SIZE});
+  const {data} = useGetGroupsForMapping({limit: PICKER_PAGE_SIZE, ouId});
   const options: PickerOption[] = useMemo(() => (data?.groups ?? []).map((g) => ({id: g.id, name: g.name})), [data]);
-  // A stored id absent from this page (beyond PICKER_PAGE_SIZE, or the page still loading) still needs
-  // a selected entry, or the next onChange - which reports only what Autocomplete rendered - would
-  // silently drop it.
+  const listComplete = data !== undefined && data.totalResults <= options.length;
   const selected = useMemo(
-    () => value.map((id) => options.find((o) => o.id === id) ?? {id, name: id}),
-    [value, options],
+    () =>
+      resolveSelected(value, options, listComplete, (id) =>
+        t('authorizationRules.target.group.unavailable', 'Unavailable: {{id}}', {id}),
+      ),
+    [value, options, listComplete, t],
   );
 
   return (
@@ -127,6 +186,7 @@ function GroupsField({value, onChange}: {value: string[]; onChange: (ids: string
       getOptionLabel={(o) => o.name}
       isOptionEqualToValue={(o, v) => o.id === v.id}
       onChange={(_event, newValue) => onChange(newValue.map((o) => o.id))}
+      renderTags={renderTargetChips}
       renderInput={(params) => (
         <TextField
           {...params}
@@ -141,19 +201,22 @@ function GroupsField({value, onChange}: {value: string[]; onChange: (ids: string
 /** Permissions are picked from the full hierarchy (grouped by resource server, so a single rule can
  * span more than one server) and shown as removable chips beneath the tree. */
 function PermissionsField({
+  ouId = undefined,
   value,
   onChange,
 }: {
+  ouId?: string;
   value: ResourcePermissions[];
   onChange: (value: ResourcePermissions[]) => void;
 }): JSX.Element {
+  const locked = useContext(LockedContext);
   const chips = value.flatMap((rp) =>
     rp.permissions.map((permission) => ({resourceServerId: rp.resourceServerId, permission})),
   );
 
   return (
     <Stack direction="column" spacing={1}>
-      <PermissionCatalog selected={value} onChange={onChange} />
+      {ouId && <PermissionCatalog ouId={ouId} selected={value} onChange={onChange} readOnly={locked} />}
       {chips.length > 0 && (
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
           {chips.map((chip) => (
@@ -161,7 +224,9 @@ function PermissionsField({
               key={`${chip.resourceServerId}:${chip.permission}`}
               size="small"
               label={chip.permission}
-              onDelete={() => onChange(removePermissions(value, chip.resourceServerId, [chip.permission]))}
+              onDelete={
+                locked ? undefined : () => onChange(removePermissions(value, chip.resourceServerId, [chip.permission]))
+              }
             />
           ))}
         </Stack>
@@ -238,6 +303,7 @@ function RuleValueFields({
 }
 
 function ValueRow({
+  ouId = undefined,
   claim,
   entry,
   valueType,
@@ -247,6 +313,7 @@ function ValueRow({
   onUpdateGrants,
   onRemoveValue,
 }: {
+  ouId?: string;
   claim: string;
   entry: KeyedAuthorizationValue;
   valueType: AuthorizationValueType;
@@ -260,42 +327,53 @@ function ValueRow({
   // Flags both a rule missing its own grants, and a rule with a value and grants but whose owning
   // claim is blank — either way, toAuthorizationMappings would drop it silently on save.
   const incomplete = ruleRowAttempted(entry) && !ruleRowIsComplete(claim, entry);
+  const locked = useContext(LockedContext);
 
   return (
     <Box sx={{border: '1px dashed', borderColor: 'divider', borderRadius: 1.5, p: 1.5}}>
       <Typography variant="caption" color="text.secondary" fontWeight={600}>
         {t('authorizationRules.value.label')}
       </Typography>
-      <Stack direction="row" spacing={1.5} alignItems="center" sx={{mb: 1.5, mt: 0.5}}>
-        <RuleValueFields
-          valueType={valueType}
-          delimiter={delimiter}
-          operator={entry.operator}
-          value={entry.value}
-          error={incomplete}
-          onChange={onUpdateRule}
-        />
-        {canRemove && (
-          <IconButton onClick={onRemoveValue} aria-label={t('authorizationRules.value.remove')}>
-            <Trash2 size={16} />
-          </IconButton>
-        )}
-      </Stack>
+      <ReadOnlyFieldset readOnly={locked}>
+        <Stack direction="row" spacing={1.5} alignItems="center" sx={{mb: 1.5, mt: 0.5}}>
+          <RuleValueFields
+            valueType={valueType}
+            delimiter={delimiter}
+            operator={entry.operator}
+            value={entry.value}
+            error={incomplete}
+            onChange={onUpdateRule}
+          />
+          {canRemove && (
+            <IconButton onClick={onRemoveValue} aria-label={t('authorizationRules.value.remove')}>
+              <Trash2 size={16} />
+            </IconButton>
+          )}
+        </Stack>
+      </ReadOnlyFieldset>
       <Typography variant="caption" color="text.secondary" fontWeight={600}>
         {t('authorizationRules.target.sectionLabel')}
       </Typography>
       <Stack direction="column" spacing={1.5} sx={{mt: 0.5}}>
-        <FormControl>
-          <FormLabel sx={{mb: 0.75}}>{t('authorizationRules.target.type.role')}</FormLabel>
-          <RolesField value={entry.roleIds} onChange={(roleIds) => onUpdateGrants({roleIds})} />
-        </FormControl>
-        <FormControl>
-          <FormLabel sx={{mb: 0.75}}>{t('authorizationRules.target.type.group')}</FormLabel>
-          <GroupsField value={entry.groupIds} onChange={(groupIds) => onUpdateGrants({groupIds})} />
-        </FormControl>
+        <ReadOnlyFieldset readOnly={locked}>
+          <Stack direction="column" spacing={1.5}>
+            <FormControl>
+              <FormLabel sx={{mb: 0.75}}>{t('authorizationRules.target.type.role')}</FormLabel>
+              <RolesField ouId={ouId} value={entry.roleIds} onChange={(roleIds) => onUpdateGrants({roleIds})} />
+            </FormControl>
+            <FormControl>
+              <FormLabel sx={{mb: 0.75}}>{t('authorizationRules.target.type.group')}</FormLabel>
+              <GroupsField ouId={ouId} value={entry.groupIds} onChange={(groupIds) => onUpdateGrants({groupIds})} />
+            </FormControl>
+          </Stack>
+        </ReadOnlyFieldset>
         <FormControl>
           <FormLabel sx={{mb: 0.75}}>{t('authorizationRules.target.type.permission')}</FormLabel>
-          <PermissionsField value={entry.permissions} onChange={(permissions) => onUpdateGrants({permissions})} />
+          <PermissionsField
+            ouId={ouId}
+            value={entry.permissions}
+            onChange={(permissions) => onUpdateGrants({permissions})}
+          />
         </FormControl>
       </Stack>
     </Box>
@@ -303,13 +381,17 @@ function ValueRow({
 }
 
 function MappingRow({
+  ouId = undefined,
   mapping,
   servers,
+  serversComplete,
   onChange,
   onRemove,
 }: {
+  ouId?: string;
   mapping: KeyedAuthorizationMapping;
   servers: PickerOption[];
+  serversComplete: boolean;
   onChange: (patch: Partial<KeyedAuthorizationMapping>) => void;
   onRemove: () => void;
 }): JSX.Element {
@@ -358,71 +440,74 @@ function MappingRow({
     onChange({values: [...mapping.values, newValueRow(defaultOperatorFor(mapping.valueType, mapping.delimiter))]});
 
   const removeValue = (valueKey: number): void => onChange({values: mapping.values.filter((v) => v.key !== valueKey)});
+  const locked = useContext(LockedContext);
 
   return (
     <Box
       sx={{border: '1px solid', borderColor: 'divider', borderRadius: 2, p: 2}}
       data-testid={`authorization-mapping-${mapping.key}`}
     >
-      <Stack direction="row" spacing={2} alignItems="flex-start" sx={{mb: 2}}>
-        <FormControl sx={{flex: 1}}>
-          <FormLabel sx={{mb: 0.75}}>{t('authorizationRules.claim.label')}</FormLabel>
+      <ReadOnlyFieldset readOnly={locked}>
+        <Stack direction="row" spacing={2} alignItems="flex-start" sx={{mb: 2}}>
           <TextField
+            labelPlacement="top"
+            label={t('authorizationRules.claim.label')}
+            sx={{flex: 1}}
             placeholder={t('authorizationRules.claim.placeholder')}
             value={mapping.claim}
             onChange={(e) => onChange({claim: e.target.value})}
             error={mappingIsAttempted(mapping) && mapping.claim.trim() === ''}
             inputProps={{'aria-label': t('authorizationRules.claim.label')}}
           />
-        </FormControl>
-        {mapping.isAdvanced && (
-          <FormControl sx={{width: 160}}>
-            <FormLabel sx={{mb: 0.75}}>{t('authorizationRules.valueType.label')}</FormLabel>
-            <Select
-              value={mapping.valueType}
-              onChange={(e) => updateValueConfig({valueType: e.target.value as AuthorizationValueType})}
-              inputProps={{'aria-label': t('authorizationRules.valueType.label')}}
-            >
-              {VALUE_TYPES.map((vt) => (
-                <MenuItem key={vt} value={vt}>
-                  {t(`authorizationRules.valueType.${vt}`)}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        )}
-        {(!mapping.isAdvanced || mapping.valueType === 'string') && (
-          <FormControl sx={{width: 220}}>
-            <FormLabel sx={{mb: 0.75}}>{t('authorizationRules.delimiter.label')}</FormLabel>
-            <DelimiterField
-              value={mapping.delimiter}
-              onChange={(delimiter) => (mapping.isAdvanced ? updateValueConfig({delimiter}) : onChange({delimiter}))}
-            />
-          </FormControl>
-        )}
-        <IconButton color="error" onClick={onRemove} aria-label={t('authorizationRules.mapping.remove')}>
-          <Trash2 size={16} />
-        </IconButton>
-      </Stack>
+          {mapping.isAdvanced && (
+            <FormControl sx={{width: 160}}>
+              <FormLabel sx={{mb: 0.75}}>{t('authorizationRules.valueType.label')}</FormLabel>
+              <Select
+                value={mapping.valueType}
+                onChange={(e) => updateValueConfig({valueType: e.target.value as AuthorizationValueType})}
+                inputProps={{'aria-label': t('authorizationRules.valueType.label')}}
+              >
+                {VALUE_TYPES.map((vt) => (
+                  <MenuItem key={vt} value={vt}>
+                    {t(`authorizationRules.valueType.${vt}`)}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          )}
+          {(!mapping.isAdvanced || mapping.valueType === 'string') && (
+            <FormControl sx={{width: 220}}>
+              <FormLabel sx={{mb: 0.75}}>{t('authorizationRules.delimiter.label')}</FormLabel>
+              <DelimiterField
+                value={mapping.delimiter}
+                onChange={(delimiter) => (mapping.isAdvanced ? updateValueConfig({delimiter}) : onChange({delimiter}))}
+              />
+            </FormControl>
+          )}
+          <IconButton color="error" onClick={onRemove} aria-label={t('authorizationRules.mapping.remove')}>
+            <Trash2 size={16} />
+          </IconButton>
+        </Stack>
 
-      <Stack
-        direction="row"
-        spacing={2}
-        alignItems="center"
-        justifyContent="space-between"
-        sx={{cursor: 'pointer'}}
-        onClick={() => toggleAdvanced(!mapping.isAdvanced)}
-      >
-        <Typography variant="body2" fontWeight={600}>
-          {t('authorizationMapping.advanced.toggle.label')}
-        </Typography>
-        <Switch
-          checked={mapping.isAdvanced}
-          onChange={(e) => toggleAdvanced(e.target.checked)}
-          onClick={(e) => e.stopPropagation()}
-          slotProps={{input: {role: 'switch', 'aria-label': t('authorizationMapping.advanced.toggle.label')}}}
-        />
-      </Stack>
+        <Stack
+          direction="row"
+          spacing={2}
+          alignItems="center"
+          justifyContent="space-between"
+          sx={{cursor: locked ? 'default' : 'pointer'}}
+          onClick={locked ? undefined : () => toggleAdvanced(!mapping.isAdvanced)}
+        >
+          <Typography variant="body2" fontWeight={600}>
+            {t('authorizationMapping.advanced.toggle.label')}
+          </Typography>
+          <Switch
+            checked={mapping.isAdvanced}
+            onChange={(e) => toggleAdvanced(e.target.checked)}
+            onClick={(e) => e.stopPropagation()}
+            slotProps={{input: {role: 'switch', 'aria-label': t('authorizationMapping.advanced.toggle.label')}}}
+          />
+        </Stack>
+      </ReadOnlyFieldset>
       <Typography variant="caption" color="text.secondary" sx={{mb: 2, display: 'block'}}>
         {t('authorizationMapping.advanced.toggle.helper')}
       </Typography>
@@ -439,6 +524,7 @@ function MappingRow({
             {mapping.values.map((entry) => (
               <ValueRow
                 key={entry.key}
+                ouId={ouId}
                 claim={mapping.claim}
                 entry={entry}
                 valueType={mapping.valueType}
@@ -450,63 +536,82 @@ function MappingRow({
               />
             ))}
           </Stack>
-          <Button variant="text" size="small" startIcon={<Plus size={16} />} onClick={addValue} sx={{mt: 1.5}}>
-            {t('authorizationRules.value.add')}
-          </Button>
+          {!locked && (
+            <Button variant="text" size="small" startIcon={<Plus size={16} />} onClick={addValue} sx={{mt: 1.5}}>
+              {t('authorizationRules.value.add')}
+            </Button>
+          )}
         </>
       ) : (
-        <Stack direction="row" spacing={2}>
-          <FormControl sx={{width: 200}}>
-            <FormLabel sx={{mb: 0.75}}>{t('authorizationRules.targetType.label')}</FormLabel>
-            <Select
-              value={mapping.targetType}
-              onChange={(e) => onChange({targetType: e.target.value as AuthorizationTargetType, resourceServerId: ''})}
-              inputProps={{'aria-label': t('authorizationRules.targetType.label')}}
-            >
-              {TARGET_TYPES.map((type) => (
-                <MenuItem key={type} value={type}>
-                  {targetTypeLabel(t, type)}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-
-          {mapping.targetType === 'permission' && (
-            <FormControl sx={{flex: 1}}>
-              <FormLabel sx={{mb: 0.75}}>{t('authorizationRules.target.resourceServer.label')}</FormLabel>
+        <ReadOnlyFieldset readOnly={locked}>
+          <Stack direction="row" spacing={2}>
+            <FormControl sx={{width: 200}}>
+              <FormLabel sx={{mb: 0.75}}>{t('authorizationRules.targetType.label')}</FormLabel>
               <Select
-                fullWidth
-                displayEmpty
-                value={mapping.resourceServerId}
-                onChange={(e) => onChange({resourceServerId: e.target.value})}
-                renderValue={(value) =>
-                  servers.find((s) => s.id === value)?.name ?? t('authorizationRules.target.resourceServer.placeholder')
+                value={mapping.targetType}
+                onChange={(e) =>
+                  onChange({targetType: e.target.value as AuthorizationTargetType, resourceServerId: ''})
                 }
-                inputProps={{'aria-label': t('authorizationRules.target.resourceServer.label')}}
+                inputProps={{'aria-label': t('authorizationRules.targetType.label')}}
               >
-                {servers.map((server) => (
-                  <MenuItem key={server.id} value={server.id}>
-                    {server.name}
+                {TARGET_TYPES.map((type) => (
+                  <MenuItem key={type} value={type}>
+                    {targetTypeLabel(t, type)}
                   </MenuItem>
                 ))}
               </Select>
             </FormControl>
-          )}
-        </Stack>
+
+            {mapping.targetType === 'permission' && (
+              <FormControl sx={{flex: 1}}>
+                <FormLabel sx={{mb: 0.75}}>{t('authorizationRules.target.resourceServer.label')}</FormLabel>
+                <Select
+                  fullWidth
+                  displayEmpty
+                  value={mapping.resourceServerId}
+                  onChange={(e) => onChange({resourceServerId: e.target.value})}
+                  renderValue={(value) => {
+                    const known = servers.find((s) => s.id === value);
+                    if (known) {
+                      return known.name;
+                    }
+                    if (value) {
+                      return serversComplete
+                        ? t('authorizationRules.target.resourceServer.unavailable', 'Unavailable: {{id}}', {id: value})
+                        : value;
+                    }
+                    return t('authorizationRules.target.resourceServer.placeholder');
+                  }}
+                  inputProps={{'aria-label': t('authorizationRules.target.resourceServer.label')}}
+                >
+                  {servers.map((server) => (
+                    <MenuItem key={server.id} value={server.id}>
+                      {server.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
+          </Stack>
+        </ReadOnlyFieldset>
       )}
     </Box>
   );
 }
 
 export default function AuthorizationMappingSection({
+  ouId = undefined,
   initialRuleConfig = undefined,
   initialDirectConfig = undefined,
   onRuleChange,
   onDirectChange,
+  description = undefined,
+  readOnly = false,
 }: AuthorizationMappingSectionProps): JSX.Element {
   const {t} = useTranslation('connections');
-  const {data: serversData} = useGetResourceServers({limit: PICKER_PAGE_SIZE});
+  const {data: serversData} = useGetResourceServers({limit: PICKER_PAGE_SIZE, ouId, enabled: Boolean(ouId)});
   const servers: PickerOption[] = (serversData?.resourceServers ?? []).map((s) => ({id: s.id, name: s.name}));
+  const serversComplete = serversData !== undefined && serversData.totalResults <= servers.length;
 
   const [mappings, setMappings] = useState<KeyedAuthorizationMapping[]>(() =>
     fromAuthorizationMappings(initialDirectConfig, initialRuleConfig),
@@ -531,24 +636,39 @@ export default function AuthorizationMappingSection({
   const removeMapping = (key: number): void => emit(mappings.filter((m) => m.key !== key));
 
   return (
-    <SettingsCard title={t('authorizationMapping.title')} description={t('authorizationMapping.description')}>
-      <Stack direction="column" spacing={2.5}>
-        {mappings.map((mapping) => (
-          <MappingRow
-            key={mapping.key}
-            mapping={mapping}
-            servers={servers}
-            onChange={(patch) => updateMapping(mapping.key, patch)}
-            onRemove={() => removeMapping(mapping.key)}
-          />
-        ))}
+    <LockedContext.Provider value={readOnly}>
+      <SettingsCard
+        title={t('authorizationMapping.title')}
+        description={
+          description ??
+          t(
+            'authorizationMapping.description',
+            'Map values this provider asserts, such as group membership, to local roles, groups, or permissions.',
+          )
+        }
+      >
+        <Stack direction="column" spacing={2.5}>
+          {mappings.map((mapping) => (
+            <MappingRow
+              key={mapping.key}
+              ouId={ouId}
+              mapping={mapping}
+              servers={servers}
+              serversComplete={serversComplete}
+              onChange={(patch) => updateMapping(mapping.key, patch)}
+              onRemove={() => removeMapping(mapping.key)}
+            />
+          ))}
 
-        <Box>
-          <Button variant="text" color="primary" size="small" startIcon={<Plus size={16} />} onClick={addMapping}>
-            {t('authorizationRules.mapping.add')}
-          </Button>
-        </Box>
-      </Stack>
-    </SettingsCard>
+          {!readOnly && (
+            <Box>
+              <Button variant="text" color="primary" size="small" startIcon={<Plus size={16} />} onClick={addMapping}>
+                {t('authorizationRules.mapping.add')}
+              </Button>
+            </Box>
+          )}
+        </Stack>
+      </SettingsCard>
+    </LockedContext.Provider>
   );
 }

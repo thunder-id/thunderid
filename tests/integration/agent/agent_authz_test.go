@@ -19,10 +19,10 @@ import (
 //
 // Permission model:
 //
-//	system:agent      → create, update, delete agents
-//	system:agent:view → list, get agents and their groups and roles (implied by system:agent)
+//	org:agent      → create, update, delete agents
+//	org:agent:view → list, get agents and their groups and roles (implied by org:agent)
 //
-// An agent-manager living in OU1 holds the system:agent permission. The suite verifies that:
+// An agent-manager living in OU1 holds the org:agent permission. The suite verifies that:
 //
 //   - Read operations on agents in OU1 are allowed (200)
 //   - Read operations on agents in OU2 (sibling) are denied (403)
@@ -41,9 +41,11 @@ type AgentAuthzTestSuite struct {
 	// Admin-created OUs
 	agentOU1ID string
 	agentOU2ID string
+	// ou2AgentTypeID is OU2's own agent type.
+	ou2AgentTypeID string
 
-	// User type for the manager. The `default` agent type is a singleton shared with every other
-	// suite, so it is snapshotted and restored rather than created per OU.
+	// User type for the manager. The `default` agent type is shared with every other suite, so it is
+	// snapshotted and restored.
 	userTypeOU1ID     string
 	agentTypeSnapshot *testutils.AgentTypeSnapshot
 
@@ -55,7 +57,10 @@ type AgentAuthzTestSuite struct {
 	deletableAgentOU1ID string
 	targetAgentOU2ID    string
 
-	// HTTP client carrying the agent-manager's system:agent scoped token
+	// The OU1 application the manager signs in through.
+	signInAppID string
+
+	// HTTP client carrying the agent-manager's org:agent scoped token
 	agentAdminClient *http.Client
 }
 
@@ -69,10 +74,14 @@ const (
 	agentMgrUserType   = "authz-agent-mgr-type"
 	scopedRSIdentifier = "https://authz-test.example.com/agent"
 
-	// The server restricts agent types to a single `default` schema and refuses deletion.
+	// agentTypeName is the bootstrap agent type, which the suite points at OU1 for OU1's agents.
 	agentTypeName = "default"
+	// agentAuthzOU2AgentType is OU2's own agent type, since an agent is placed within its type's tree.
+	agentAuthzOU2AgentType = "authz-ou2-agents"
 
-	agentAuthzClientID = "CONSOLE"
+	// The manager lives in OU1, and a sign-in is bounded to its application's OU, so it signs in through an
+	// application in OU1 rather than the Console.
+	agentAuthzClientID = "agent_authz_ou1_sign_in"
 )
 
 var agentAuthzServerURL = testutils.TestServerURL
@@ -117,10 +126,10 @@ func (ts *AgentAuthzTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "create user type for agent-manager")
 	ts.userTypeOU1ID = userTypeID
 
-	// ---- 3. Point the shared `default` agent type at OU1 ----
-	// The singleton is shared with every other suite, so snapshot it before repointing and restore
-	// it in teardown. Entity creation validates attributes against the schema without requiring the
-	// type's OU to match the entity's, so agents in both OUs can use this one type.
+	// ---- 3. Point the shared `default` agent type at OU1, and give OU2 an agent type of its own ----
+	// The `default` type is shared with every other suite, so snapshot it before repointing and restore
+	// it in teardown. An agent must be placed within its agent type's organization unit tree, so OU2's
+	// agents use OU2's own type.
 	snapshot, err := testutils.SnapshotAgentType()
 	ts.Require().NoError(err, "snapshot the default agent type")
 	ts.agentTypeSnapshot = snapshot
@@ -134,6 +143,16 @@ func (ts *AgentAuthzTestSuite) SetupSuite() {
 		},
 	})
 	ts.Require().NoError(err, "point the default agent type at OU1")
+
+	ou2TypeID, err := testutils.CreateNewAgentType(testutils.UserType{
+		Handle: agentAuthzOU2AgentType, DisplayName: "Authz OU2 Agents", OUID: ts.agentOU2ID,
+		Schema: map[string]interface{}{
+			"name":    map[string]interface{}{"type": "string", "required": true, "unique": true},
+			"purpose": map[string]interface{}{"type": "string"},
+		},
+	})
+	ts.Require().NoError(err, "create OU2's agent type")
+	ts.ou2AgentTypeID = ou2TypeID
 
 	// ---- 4. Create the agent-manager in OU1 (needs username+password for the token grant) ----
 	agentMgrID, err := testutils.CreateUser(testutils.User{
@@ -165,29 +184,29 @@ func (ts *AgentAuthzTestSuite) SetupSuite() {
 	ts.deletableAgentOU1ID = deletableID
 
 	targetOU2ID, err := testutils.CreateAgent(testutils.Agent{
-		Type:       agentTypeName,
+		Type:       agentAuthzOU2AgentType,
 		OUID:       ts.agentOU2ID,
 		Attributes: map[string]interface{}{"name": "authz-target-agent-ou2", "purpose": "target in OU2"},
 	})
 	ts.Require().NoError(err, "create target agent in OU2")
 	ts.targetAgentOU2ID = targetOU2ID
 
-	// ---- 6. Create a custom resource server declaring the fine-grained system scopes ----
-	// The product ships only the root "system" scope; this reproduces "system:agent" and
-	// "system:agenttype:view" so the suite can verify resource-level enforcement when configured.
-	systemRSID, err := testutils.CreateSystemScopedResourceServer(
+	// ---- 6. Create a custom resource server declaring the fine-grained org scopes ----
+	// This reproduces the Data Plane permissions "org:agent" and
+	// "org:agenttype:view" so the suite can verify resource-level enforcement when configured.
+	systemRSID, err := testutils.CreateOrgScopedResourceServer(
 		ts.agentOU1ID, "Authz Test RS (agent)", scopedRSIdentifier, "agent", "agenttype")
 	ts.Require().NoError(err, "create scoped resource server")
 	ts.scopedRSID = systemRSID
 
-	// ---- 7. Create a role with system:agent permission and assign to the agent-manager ----
+	// ---- 7. Create a role with org:agent permission and assign to the agent-manager ----
 	roleID, err := testutils.CreateRole(testutils.Role{
 		Name: agentMgrRoleName,
 		OUID: ts.agentOU1ID,
 		Permissions: []testutils.ResourcePermissions{
 			{
 				ResourceServerID: systemRSID,
-				Permissions:      []string{"system:agent", "system:agenttype:view"},
+				Permissions:      []string{"org:agent", "org:agenttype:view"},
 			},
 		},
 		Assignments: []testutils.Assignment{
@@ -198,10 +217,12 @@ func (ts *AgentAuthzTestSuite) SetupSuite() {
 	ts.agentMgrRoleID = roleID
 
 	// ---- 8. Obtain a scoped access token for the agent-manager ----
+	ts.signInAppID, err = testutils.CreateOUSignInApplication(ts.agentOU1ID, agentAuthzClientID)
+	ts.Require().NoError(err, "create the OU1 sign-in application")
 	tokenResp, err := testutils.ObtainAccessTokenWithPassword(
 		agentAuthzClientID,
-		agentAuthzServerURL+"/console",
-		"system system:agent system:agenttype:view",
+		testutils.OUSignInRedirectURI,
+		"system org:agent org:agenttype:view",
 		agentMgrUsername,
 		agentMgrPassword,
 		true,
@@ -219,6 +240,11 @@ func (ts *AgentAuthzTestSuite) SetupSuite() {
 // ---------------------------------------------------------------------------
 
 func (ts *AgentAuthzTestSuite) TearDownSuite() {
+	if ts.signInAppID != "" {
+		if err := testutils.DeleteApplication(ts.signInAppID); err != nil {
+			ts.T().Logf("teardown: delete the OU1 sign-in application: %v", err)
+		}
+	}
 	if ts.agentMgrRoleID != "" {
 		if err := testutils.DeleteRole(ts.agentMgrRoleID); err != nil {
 			ts.T().Logf("teardown: delete agent-manager role: %v", err)
@@ -243,7 +269,12 @@ func (ts *AgentAuthzTestSuite) TearDownSuite() {
 			ts.T().Logf("teardown: delete agent-manager user: %v", err)
 		}
 	}
-	// Restore the shared agent type before deleting the OU it points at, or the singleton is left
+	if ts.ou2AgentTypeID != "" {
+		if err := testutils.DeleteAgentType(ts.ou2AgentTypeID); err != nil {
+			ts.T().Errorf("teardown: delete OU2's agent type: %v", err)
+		}
+	}
+	// Restore the shared agent type before deleting the OU it points at, or the `default` type is left
 	// referencing a deleted OU and a later suite's restore fails. A failed restore keeps the OU:
 	// leaking one is cheaper than every later suite inheriting a dangling reference.
 	agentTypeRestored := true
@@ -294,7 +325,7 @@ func (ts *AgentAuthzTestSuite) doAgent(method, path string, body []byte) *http.R
 }
 
 // ---------------------------------------------------------------------------
-// Tests — READ operations (system:agent:view implied by system:agent)
+// Tests — READ operations (org:agent:view implied by org:agent)
 // ---------------------------------------------------------------------------
 
 // TestListAgents verifies the list contains agents from the accessible OU only.
@@ -356,7 +387,7 @@ func (ts *AgentAuthzTestSuite) TestGetAgentRolesInOtherOU() {
 }
 
 // ---------------------------------------------------------------------------
-// Tests — WRITE operations (system:agent)
+// Tests — WRITE operations (org:agent)
 // ---------------------------------------------------------------------------
 
 // TestCreateAgentInOwnOU verifies the agent-manager can create an agent in their own OU.
@@ -381,6 +412,22 @@ func (ts *AgentAuthzTestSuite) TestCreateAgentInOwnOU() {
 			ts.T().Logf("cleanup: failed to delete created agent %s: %v", created.ID, delErr)
 		}
 	}
+}
+
+// TestCreateAgentWithoutOU verifies an agent the agent-manager creates without an OU goes to the
+// system OU rather than the manager's own, so the manager, who has no access there, is denied.
+func (ts *AgentAuthzTestSuite) TestCreateAgentWithoutOU() {
+	payload, err := json.Marshal(map[string]interface{}{
+		"type":       agentTypeName,
+		"attributes": map[string]interface{}{"name": "authz-agent-without-ou", "purpose": "default OU"},
+	})
+	ts.Require().NoError(err)
+
+	resp := ts.doAgent(http.MethodPost, "/agents", payload)
+	defer resp.Body.Close()
+
+	ts.Equal(http.StatusForbidden, resp.StatusCode,
+		"an agent without an OU goes to the system OU, outside the agent-manager's")
 }
 
 // TestCreateAgentInOtherOU verifies the agent-manager is denied creating an agent in OU2.

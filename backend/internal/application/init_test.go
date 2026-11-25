@@ -159,9 +159,11 @@ func (suite *InitTestSuite) TestInitialize_WithDeclarativeResourcesDisabled() {
 		nil, // serverConfigSvc - not needed for this test
 		nil, // artifactLifetime - not needed for this test
 		newSharingServiceStub(suite.T()),
+		nil, // authzService - not needed for this test
 		nil, // valueCapturer - not needed for this test
 		nil, // governance - not needed for this test
-		nil, // projectResolver - not needed for this test
+		nil, // projectValidator - not needed for this test
+		discardingBus{},
 	)
 
 	// Assert
@@ -208,9 +210,11 @@ func (suite *InitTestSuite) TestInitialize_WithMCPServer() {
 		nil, // serverConfigSvc - not needed for this test
 		nil, // artifactLifetime - not needed for this test
 		newSharingServiceStub(suite.T()),
+		nil, // authzService - not needed for this test
 		nil, // valueCapturer - not needed for this test
 		nil, // governance - not needed for this test
-		nil, // projectResolver - not needed for this test
+		nil, // projectValidator - not needed for this test
+		discardingBus{},
 	)
 
 	// Assert
@@ -593,6 +597,10 @@ func TestRegisterRoutes_SharingPreflight(t *testing.T) {
 			path:    "/applications/app-1/overlay-rules",
 			pattern: "OPTIONS /applications/",
 		},
+		{
+			path:    "/applications/app-1/client-secret/regenerate",
+			pattern: "OPTIONS /applications/{id}/client-secret/regenerate",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
@@ -604,6 +612,17 @@ func TestRegisterRoutes_SharingPreflight(t *testing.T) {
 			assert.Equal(t, tt.pattern, pattern)
 		})
 	}
+}
+
+// TestRegisterRoutes_ClientSecretRegenerate checks that a POST to regenerate a client secret reaches its
+// own route rather than falling to one of the application routes.
+func TestRegisterRoutes_ClientSecretRegenerate(t *testing.T) {
+	mux := http.NewServeMux()
+	registerRoutes(mux, &applicationHandler{})
+
+	req := httptest.NewRequest(http.MethodPost, "/applications/app-1/client-secret/regenerate", nil)
+	_, pattern := mux.Handler(req)
+	assert.Equal(t, "POST /applications/{id}/client-secret/regenerate", pattern)
 }
 
 // TestInitialize_Standalone tests Initialize function without suite dependencies
@@ -641,9 +660,11 @@ func TestInitialize_Standalone(t *testing.T) {
 		nil, // serverConfigSvc - not needed for this test
 		nil, // artifactLifetime - not needed for this test
 		newSharingServiceStub(t),
+		nil, // authzService - not needed for this test
 		nil, // valueCapturer - not needed for this test
 		nil, // governance - not needed for this test
-		nil, // projectResolver - not needed for this test
+		nil, // projectValidator - not needed for this test
+		discardingBus{},
 	)
 
 	// Assert
@@ -698,9 +719,11 @@ func TestInitialize_WithDeclarativeResources_Standalone(t *testing.T) {
 		nil, // serverConfigSvc - not needed for this test
 		nil, // artifactLifetime - not needed for this test
 		newSharingServiceStub(t),
+		nil, // authzService - not needed for this test
 		nil, // valueCapturer - not needed for this test
 		nil, // governance - not needed for this test
-		nil, // projectResolver - not needed for this test
+		nil, // projectValidator - not needed for this test
+		discardingBus{},
 	)
 
 	// Assert
@@ -936,7 +959,7 @@ func (suite *InitTestSuite) TestInitializeReportsAFailureLoadingApplications() {
 	service, _, err := Initialize(
 		http.NewServeMux(), nil, mockEntityService,
 		inboundclientmock.NewInboundClientServiceInterfaceMock(suite.T()),
-		nil, nil, nil, nil, nil, newSharingServiceStub(suite.T()), nil, nil, nil,
+		nil, nil, nil, nil, nil, newSharingServiceStub(suite.T()), nil, nil, nil, nil, discardingBus{},
 	)
 
 	assert.ErrorIs(suite.T(), err, assert.AnError)
@@ -959,9 +982,18 @@ func (suite *InitTestSuite) TestInitializeReportsAFailureLoadingSharingPolicies(
 
 	service, _, err := Initialize(
 		http.NewServeMux(), nil, mockEntityService, mockInboundClient,
-		nil, nil, nil, nil, nil, sharingService, nil, nil, nil,
+		nil, nil, nil, nil, nil, sharingService, nil, nil, nil, nil, discardingBus{},
 	)
 
 	assert.ErrorIs(suite.T(), err, assert.AnError)
 	assert.Nil(suite.T(), service)
+}
+
+func (suite *InitTestSuite) TestInitialize_RefusesANilEventBus() {
+	service, exporter, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		nil, nil, nil)
+
+	suite.ErrorIs(err, errNilEventBus)
+	suite.Nil(service)
+	suite.Nil(exporter)
 }

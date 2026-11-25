@@ -118,6 +118,13 @@ The main client class that manages the full authentication lifecycle.
 | `isSessionActive()` | Check whether the current session is active |
 | `getOpenIDProviderEndpoints()` | Retrieve the OIDC provider endpoint URLs |
 
+#### Organization Units
+
+| Method | Description |
+|--------|-------------|
+| `switchOrganizationUnit(organizationUnitId, options?)` | Sign the user in again, bounded to another organization unit, and replace the session |
+| `getCurrentOrganizationUnit()` | Read the organization unit the session was issued for, for display only |
+
 #### HTTP Requests
 
 | Method | Description |

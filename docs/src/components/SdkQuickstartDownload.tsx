@@ -56,10 +56,20 @@ interface SdkQuickstartDownloadProps {
   icon?: ReactNode;
   /**
    * Which prewritten LLM prompt to offer for copying, matching a file under
-   * `content/getting-started/connect-your-application/prompts/<packageId>/<promptFlow>.txt`.
+   * `content/getting-started/<promptSection>/prompts/<packageId>/<promptFlow>.txt`.
    * Omit for quickstarts with no matching prompt.
    */
   promptFlow?: 'redirect-based' | 'embedded';
+  /**
+   * The getting-started section whose `prompts/` directory holds the prompt. Defaults to
+   * `connect-your-application`.
+   */
+  promptSection?: 'connect-your-application' | 'connect-your-b2b-application';
+  /**
+   * The value that fills the prompt's `{{clientId}}`, for a quickstart whose import creates the application with a
+   * known client ID. Defaults to `<your-client-id>`.
+   */
+  promptClientId?: string;
 }
 
 const Callouts = styled('div')({
@@ -136,6 +146,8 @@ export default function SdkQuickstartDownload({
   prewiredWith = undefined,
   icon = undefined,
   promptFlow = undefined,
+  promptSection = 'connect-your-application',
+  promptClientId = '<your-client-id>',
 }: SdkQuickstartDownloadProps): React.ReactElement | null {
   const {withBaseUrl} = useBaseUrlUtils();
   // Resolved the way a version-less page resolves it, rather than read from the
@@ -183,14 +195,15 @@ export default function SdkQuickstartDownload({
       const versionPath = version === 'current' ? 'next' : version;
       const res = await fetch(
         withBaseUrl(
-          `/docs/${versionPath}/getting-started/connect-your-application/prompts/${packageId}/${promptFlow}.txt`,
+          `/docs/${versionPath}/getting-started/${promptSection}/prompts/${packageId}/${promptFlow}.txt`,
         ),
       );
       const text = await res.text();
       const config = siteConfig.customFields?.product as DocusaurusProductConfig;
       const filled = text
         .replace(/\{\{productName\}\}/g, config.project.name)
-        .replace(/\{\{clientId\}\}/g, '<your-client-id>');
+        .replace(/\{\{baseUrl\}\}/g, `https://localhost:8090 (or your ${config.project.name} instance URL)`)
+        .replace(/\{\{clientId\}\}/g, promptClientId);
       await navigator.clipboard.writeText(filled);
       setCopyState('copied');
       setTimeout(() => setCopyState('idle'), 1800);

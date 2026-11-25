@@ -14,7 +14,7 @@ I have a Nuxt 3 application and I want to integrate {{productName}}'s authentica
 
 ## Configuration
 - **Client ID**: {{clientId}}
-- **Base URL**: https://localhost:8090 (or your {{productName}} instance URL)
+- **Base URL**: {{baseUrl}}
 - **Callback URL**: http://localhost:3000/api/auth/callback (auto-registered by the module)
 - **SDK**: @thunderid/nuxt
 

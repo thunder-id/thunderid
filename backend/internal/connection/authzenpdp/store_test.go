@@ -5,6 +5,7 @@ package authzenpdp
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -154,4 +155,32 @@ func (s *AuthZENPDPStoreTestSuite) TestListReadsOUID() {
 	s.Require().NoError(err)
 	s.Require().Len(connections, 1)
 	s.Equal("ou-1", connections[0].OUID)
+}
+
+func (s *AuthZENPDPStoreTestSuite) TestDeleteReportsWhetherARowMatched() {
+	failure := errors.New("database unavailable")
+	cases := []struct {
+		name     string
+		affected int64
+		dbErr    error
+		want     error
+	}{
+		{name: "no row matches", affected: 0, want: errConnectionNotFound},
+		{name: "a row is deleted", affected: 1},
+		{name: "the database fails", dbErr: failure, want: failure},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.mockClient.On("ExecuteContext", s.ctx, queryDeleteAuthZENPDPConnection,
+				"pdp-1", authZENPDPConnectionType, testDeploymentID).Return(tc.affected, tc.dbErr).Once()
+
+			err := s.store.DeleteAuthZENPDP(s.ctx, "pdp-1")
+
+			if tc.want == nil {
+				s.NoError(err)
+				return
+			}
+			s.ErrorIs(err, tc.want)
+		})
+	}
 }

@@ -87,6 +87,42 @@ func (s *ConfigTestSuite) TestHandler_ValidateRejectsIncoherent() {
 	s.Require().Error(ConfigHandler{}.Validate(context.Background(), Config{IdleTimeoutSeconds: -5}, nil, nil))
 }
 
+// TestHandler_MergeResolvesUnsetToDefaults verifies that Merge resolves unset fields to their effective defaults.
+func (s *ConfigTestSuite) TestHandler_MergeResolvesUnsetToDefaults() {
+	merged := ConfigHandler{}.Merge(Config{}, Config{}).(Config)
+	s.Equal(int64(DefaultIdleTimeout.Seconds()), merged.IdleTimeoutSeconds)
+	s.Equal(int64(DefaultAbsoluteTimeout.Seconds()), merged.AbsoluteTimeoutSeconds)
+	s.Equal(int64(defaultActivityRefreshInterval.Seconds()), merged.ActivityRefreshIntervalSeconds)
+}
+
+// TestHandler_MergePartiallyUnsetResolvesRemainingFields verifies that explicit values are preserved while
+// unset fields resolve to defaults.
+func (s *ConfigTestSuite) TestHandler_MergePartiallyUnsetResolvesRemainingFields() {
+	readOnly := Config{IdleTimeoutSeconds: 900}
+	merged := ConfigHandler{}.Merge(readOnly, Config{}).(Config)
+	s.Equal(int64(900), merged.IdleTimeoutSeconds, "explicitly configured field must be preserved")
+	s.Equal(int64(DefaultAbsoluteTimeout.Seconds()), merged.AbsoluteTimeoutSeconds)
+	s.Equal(int64(defaultActivityRefreshInterval.Seconds()), merged.ActivityRefreshIntervalSeconds)
+}
+
+// TestHandler_MergeOnlyAbsoluteSetClampsIdle verifies that a defaulted idle timeout is clamped to a
+// configured absolute timeout smaller than the idle default.
+func (s *ConfigTestSuite) TestHandler_MergeOnlyAbsoluteSetClampsIdle() {
+	merged := ConfigHandler{}.Merge(Config{AbsoluteTimeoutSeconds: 3600}, Config{}).(Config)
+	s.Equal(int64(3600), merged.IdleTimeoutSeconds, "defaulted idle must be clamped to the absolute timeout")
+	s.Equal(int64(3600), merged.AbsoluteTimeoutSeconds)
+	s.Equal(int64(defaultActivityRefreshInterval.Seconds()), merged.ActivityRefreshIntervalSeconds)
+}
+
+// TestHandler_MergeOnlyWritableSetResolvesRemainingFields verifies that writable values apply over an
+// empty read-only layer and the remaining fields resolve to defaults.
+func (s *ConfigTestSuite) TestHandler_MergeOnlyWritableSetResolvesRemainingFields() {
+	merged := ConfigHandler{}.Merge(Config{}, Config{IdleTimeoutSeconds: 900}).(Config)
+	s.Equal(int64(900), merged.IdleTimeoutSeconds)
+	s.Equal(int64(DefaultAbsoluteTimeout.Seconds()), merged.AbsoluteTimeoutSeconds)
+	s.Equal(int64(defaultActivityRefreshInterval.Seconds()), merged.ActivityRefreshIntervalSeconds)
+}
+
 func (s *ConfigTestSuite) TestHandler_MergeWritableWins() {
 	readOnly := Config{IdleTimeoutSeconds: 1800, AbsoluteTimeoutSeconds: 28800, ActivityRefreshIntervalSeconds: 60}
 	writable := Config{IdleTimeoutSeconds: 600, ActivityRefreshIntervalSeconds: 30}

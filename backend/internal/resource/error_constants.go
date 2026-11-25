@@ -299,6 +299,62 @@ var (
 			DefaultValue: "Use an http or https URL with no fragment, such as https://mcp.example.com/mcp",
 		},
 	}
+	// ErrorInvalidProject is returned when a resource server names a project that does not exist.
+	ErrorInvalidProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RES-1025",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.invalid_project",
+			DefaultValue: "Invalid project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.invalid_project_description",
+			DefaultValue: "No project exists with the given project ID",
+		},
+	}
+	// ErrorOUNotInProject is returned when a resource server names an organization unit outside the project
+	// it names.
+	ErrorOUNotInProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RES-1026",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.ou_not_in_project",
+			DefaultValue: "Organization unit not in project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.ou_not_in_project_description",
+			DefaultValue: "The organization unit must belong to the project",
+		},
+	}
+	// ErrorInvalidFilter is returned when a resource server listing carries a filter it cannot apply.
+	ErrorInvalidFilter = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RES-1027",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.invalid_filter_parameter",
+			DefaultValue: "Invalid filter parameter",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.invalid_filter_parameter_description",
+			DefaultValue: "The filter must be a single ouId eq expression with a quoted organization unit ID",
+		},
+	}
+	// ErrorManagedResourceServer is the error returned when attempting to change a resource server a
+	// control plane deployed, or its resources or actions. Only a deploy from the control plane changes
+	// them.
+	ErrorManagedResourceServer = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RES-1028",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.cannot_modify_managed_resource_server",
+			DefaultValue: "Cannot modify a resource server deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.resourceservice.cannot_modify_managed_resource_server_description",
+			DefaultValue: "Resource server {{param(id)}} was deployed by the control plane and can only be " +
+				"changed there",
+		},
+	}
 )
 
 // Internal error constants.
@@ -329,4 +385,30 @@ var (
 	// errDependencyRegistryNotSet is returned when a cascade delete is attempted before the
 	// dependency registry has been injected.
 	errDependencyRegistryNotSet = errors.New("dependency registry not set")
+
+	// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+	errNilEventBus = errors.New("the resource service needs an event bus")
+)
+
+var (
+	// errResourceServerNotFoundNoop is returned by deleteResourceServer when the resource server does not
+	// exist. DeleteResourceServer turns it into a success, so it never reaches a caller.
+	errResourceServerNotFoundNoop = &tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: ErrorResourceServerNotFound.Code,
+	}
+
+	// errResourceNotFoundNoop is returned by deleteResource when the resource, or its resource server, does
+	// not exist. DeleteResource turns it into a success, so it never reaches a caller.
+	errResourceNotFoundNoop = &tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: ErrorResourceNotFound.Code,
+	}
+
+	// errActionNotFoundNoop is returned by deleteAction when the action, or the resource server or resource
+	// it is under, does not exist. DeleteAction turns it into a success, so it never reaches a caller.
+	errActionNotFoundNoop = &tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: ErrorActionNotFound.Code,
+	}
 )

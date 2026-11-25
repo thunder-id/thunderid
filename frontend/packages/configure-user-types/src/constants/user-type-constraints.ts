@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * Length rules the API enforces on user type fields, mirrored here so the console can validate
- * before the request is sent. Keep in sync with `backend/internal/entitytype/model.go`.
+ * Length rules the API enforces on user type and agent type fields, mirrored here so the console can
+ * validate before the request is sent. Keep in sync with `backend/internal/entitytype/model.go`.
  */
 const UserTypeConstraints = {
   NAME_MIN_LENGTH: 1,

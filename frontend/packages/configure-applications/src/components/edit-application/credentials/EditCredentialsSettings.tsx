@@ -53,6 +53,10 @@ interface EditCredentialsSettingsProps {
    * (feeds the page's Save bar).
    */
   onValidationChange?: (hasErrors: boolean) => void;
+  /**
+   * Whether the application can't be edited here
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -74,6 +78,7 @@ export default function EditCredentialsSettings({
   onFieldChange,
   showAttestation = false,
   onValidationChange = undefined,
+  readOnly = false,
 }: EditCredentialsSettingsProps) {
   const {config} = useConfig();
   const {t} = useTranslation();
@@ -172,7 +177,8 @@ export default function EditCredentialsSettings({
   const clientIdLabel = t('applications:edit.general.labels.clientId', 'Client ID');
   const applicationIdHint = t(
     'applications:edit.general.hints.applicationId',
-    "ThunderID's internal identifier for this application. Use it when calling the Management API.",
+    "{{productName}}'s internal identifier for this application. Use it when calling the Management API.",
+    {productName: config.brand.product_name},
   );
   const clientIdHint = t(
     'applications:edit.general.hints.clientId',
@@ -247,7 +253,7 @@ export default function EditCredentialsSettings({
                   variant="contained"
                   color="error"
                   onClick={handleSecretRegenerateClick}
-                  disabled={Boolean(application.isReadOnly) || isConsoleClient}
+                  disabled={readOnly || isConsoleClient}
                   sx={{flex: '0 0 20%'}}
                 >
                   {t('applications:edit.general.sections.dangerZone.regenerateSecret.button', 'Regenerate')}
@@ -262,14 +268,14 @@ export default function EditCredentialsSettings({
           onCertificateChange={handleCertificateChange}
           required={oauth2Config?.tokenEndpointAuthMethod === 'private_key_jwt'}
           encryptionDependsOnCert={encryptionDependsOnCert}
-          disabled={application.isReadOnly}
+          disabled={readOnly}
         />
 
         {showAttestation && (
           <AttestationSection
             attestation={currentAttestation}
             onAttestationChange={handleAttestationChange}
-            disabled={application.isReadOnly}
+            disabled={readOnly}
             onValidationChange={onValidationChange}
           />
         )}

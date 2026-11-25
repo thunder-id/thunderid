@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {GithubIcon, GoogleIcon, ResourceAvatar} from '@thunderid/components';
@@ -61,6 +61,8 @@ const TEMPLATE_ICONS: Record<string, string[]> = {
     'assets/images/icons/mobile-message.svg',
   ],
   SMS_OTP: ['assets/images/icons/mobile-message.svg'],
+  BASIC_SMS_OTP_MFA: ['assets/images/icons/password.svg', 'assets/images/icons/mobile-message.svg'],
+  BASIC_EMAIL_OTP_MFA: ['assets/images/icons/password.svg', 'assets/images/icons/email-down.svg'],
   PASSKEY: ['assets/images/icons/fingerprint.svg'],
   BASIC_PASSKEY: ['assets/images/icons/password.svg', 'assets/images/icons/fingerprint.svg'],
   BASIC: ['assets/images/icons/password.svg'],
@@ -74,6 +76,10 @@ const TEMPLATE_ICONS: Record<string, string[]> = {
   CIBA_EMAIL_NOTIFICATION: ['assets/images/icons/email-down.svg'],
   DISAMBIGUATION_LOGIN: ['assets/images/icons/magnifying-glass.svg'],
   DEFAULT: ['assets/images/icons/user.svg'],
+  SELF_ATTRIBUTE_VERIFICATION: ['assets/images/icons/email-down.svg'],
+  SELF_ATTRIBUTE_VERIFICATION_EMAIL_LINK: ['assets/images/icons/link.svg'],
+  ADMIN_ATTRIBUTE_VERIFICATION_EMAIL_LINK: ['assets/images/icons/link.svg'],
+  ADMIN_USER_CREDENTIAL_RESET_EMAIL_LINK: ['assets/images/icons/password.svg'],
 };
 
 const DEVICE_TEMPLATE_ICONS: Record<string, ReactNode> = {

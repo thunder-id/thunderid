@@ -1,7 +1,8 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {render, screen, fireEvent} from '@testing-library/react';
+import {render, screen, fireEvent, waitFor} from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type {ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import FlowBuilderElementConstants from '../../../constants/FlowBuilderElementConstants';
@@ -9,6 +10,21 @@ import {ValidationContext, type ValidationContextProps} from '../../../context/V
 import {ElementTypes} from '../../../models/elements';
 import type {Resource} from '../../../models/resources';
 import CommonElementPropertyFactory from '../CommonElementPropertyFactory';
+
+/** The options of a listbox that are at least partly in view, in order. */
+const getOptionsInView = (listbox: HTMLElement): HTMLElement[] => {
+  const view = listbox.getBoundingClientRect();
+  return screen.getAllByRole('option').filter((option) => {
+    const {top, bottom} = option.getBoundingClientRect();
+    return bottom > view.top && top < view.bottom;
+  });
+};
+
+/** Whether each option starts where the previous one ends, with no gap or overlap. */
+const areOptionsContiguous = (options: HTMLElement[]): boolean =>
+  options
+    .slice(1)
+    .every((option, index) => option.getBoundingClientRect().top === options[index].getBoundingClientRect().bottom);
 
 vi.mock('@thunderid/logger/react', () => ({
   useLogger: () => ({
@@ -19,19 +35,6 @@ vi.mock('@thunderid/logger/react', () => ({
     withComponent: vi.fn().mockReturnThis(),
   }),
 }));
-
-// Mock icons package so ICON_NAMES is predictable and icon rendering works
-vi.mock('@wso2/oxygen-ui-icons-react', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@wso2/oxygen-ui-icons-react')>();
-  const MockUserIcon = Object.assign(({size}: {size?: number}) => <svg data-testid="icon-user" data-size={size} />, {
-    displayName: 'User',
-    $$typeof: Symbol.for('react.forward_ref'),
-  });
-  return {
-    ...actual,
-    User: MockUserIcon,
-  };
-});
 
 // Mock child components
 vi.mock('../rich-text/RichTextWithTranslation', () => ({
@@ -445,6 +448,151 @@ describe('CommonElementPropertyFactory', () => {
 
       expect(screen.getByRole('combobox')).toBeInTheDocument();
     });
+
+    it('should list each icon once, under the name it is listed under', async () => {
+      const iconResource: Resource = {
+        id: 'resource-1',
+        type: ElementTypes.Icon,
+        config: {},
+      } as Resource;
+
+      render(
+        <CommonElementPropertyFactory
+          resource={iconResource}
+          propertyKey="name"
+          propertyValue=""
+          onChange={mockOnChange}
+        />,
+        {wrapper: createWrapper()},
+      );
+
+      const user = userEvent.setup();
+      const input = screen.getByRole('combobox');
+      await user.click(input);
+      // The icons are listed once the picker has loaded them.
+      await screen.findAllByRole('option', {}, {timeout: 20000});
+      await user.type(input, 'User');
+
+      expect(await screen.findByRole('option', {name: 'User'})).toBeInTheDocument();
+      expect(screen.queryByRole('option', {name: 'UserIcon'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('option', {name: 'LucideUser'})).not.toBeInTheDocument();
+    }, 30000);
+
+    it('should show a value saved under another name of an icon as the name it is listed under', async () => {
+      const iconResource: Resource = {
+        id: 'resource-1',
+        type: ElementTypes.Icon,
+        config: {},
+      } as Resource;
+
+      render(
+        <CommonElementPropertyFactory
+          resource={iconResource}
+          propertyKey="name"
+          propertyValue="UserIcon"
+          onChange={mockOnChange}
+        />,
+        {wrapper: createWrapper()},
+      );
+
+      const input = screen.getByRole('combobox');
+      fireEvent.mouseDown(input);
+
+      await waitFor(() => expect(input).toHaveValue('User'), {timeout: 30000});
+      expect(mockOnChange).not.toHaveBeenCalled();
+    }, 30000);
+
+    it('should list every icon, rendering only the ones in view', async () => {
+      const iconResource: Resource = {
+        id: 'resource-1',
+        type: ElementTypes.Icon,
+        config: {},
+      } as Resource;
+
+      render(
+        <CommonElementPropertyFactory
+          resource={iconResource}
+          propertyKey="name"
+          propertyValue=""
+          onChange={mockOnChange}
+        />,
+        {wrapper: createWrapper()},
+      );
+
+      const user = userEvent.setup();
+      await user.click(screen.getByRole('combobox'));
+      await screen.findAllByRole('option', {}, {timeout: 20000});
+      const listbox = screen.getByRole('listbox');
+
+      expect(screen.getAllByRole('option').length).toBeLessThan(100);
+      expect(screen.queryByRole('option', {name: 'ZoomOut'})).not.toBeInTheDocument();
+
+      listbox.scrollTop = listbox.scrollHeight;
+      fireEvent.scroll(listbox);
+
+      expect(await screen.findByRole('option', {name: 'ZoomOut'})).toBeInTheDocument();
+      expect(screen.getAllByRole('option').length).toBeLessThan(100);
+      // The options fill the view, one after the other.
+      const inView = getOptionsInView(listbox);
+      expect(inView.map((option) => option.textContent).slice(-2)).toEqual(['ZoomIn', 'ZoomOut']);
+      expect(areOptionsContiguous(screen.getAllByRole('option'))).toBe(true);
+    }, 30000);
+
+    it('should show the selected icon when the picker opens', async () => {
+      const iconResource: Resource = {
+        id: 'resource-1',
+        type: ElementTypes.Icon,
+        config: {},
+      } as Resource;
+
+      render(
+        <CommonElementPropertyFactory
+          resource={iconResource}
+          propertyKey="name"
+          propertyValue="User"
+          onChange={mockOnChange}
+        />,
+        {wrapper: createWrapper()},
+      );
+
+      const user = userEvent.setup();
+      await user.click(screen.getByRole('combobox'));
+      const selected = await screen.findByRole('option', {name: 'User'}, {timeout: 20000});
+
+      await waitFor(() => expect(getOptionsInView(screen.getByRole('listbox'))).toContain(selected));
+      expect(selected).toHaveAttribute('aria-selected', 'true');
+      expect(areOptionsContiguous(screen.getAllByRole('option'))).toBe(true);
+    }, 30000);
+
+    it('should scroll to an option highlighted with the keyboard', async () => {
+      const iconResource: Resource = {
+        id: 'resource-1',
+        type: ElementTypes.Icon,
+        config: {},
+      } as Resource;
+
+      render(
+        <CommonElementPropertyFactory
+          resource={iconResource}
+          propertyKey="name"
+          propertyValue=""
+          onChange={mockOnChange}
+        />,
+        {wrapper: createWrapper()},
+      );
+
+      const user = userEvent.setup();
+      const input = screen.getByRole('combobox');
+      await user.click(input);
+      await screen.findAllByRole('option', {}, {timeout: 20000});
+      const listbox = screen.getByRole('listbox');
+      // Well past the options rendered when the picker opens.
+      await user.keyboard('{ArrowDown>40/}');
+
+      const highlighted = await screen.findByRole('option', {name: 'Amphora'});
+      expect(input).toHaveAttribute('aria-activedescendant', highlighted.id);
+      expect(listbox.scrollTop).toBeGreaterThan(0);
+    }, 30000);
 
     it('should render TextPropertyField for non-name property on Icon element', () => {
       const iconResource: Resource = {

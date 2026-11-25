@@ -1,0 +1,271 @@
+# The Control Plane resource server. The Control Plane issues no tokens: an operator signs into the
+# Control Plane console through a separate identity provider, which issues a token for this resource
+# server. Import this file into that identity provider, not into the Control Plane or a Data Plane.
+# Set identifier to the Control Plane's URL, the "resource" the console requests a token for.
+#
+# The Control Plane enforces the system root and the child permissions declared here on its own APIs.
+# The System resource server in the Data Plane's bootstrap bundle is a different one: it is the Data
+# Plane's representation, which the Control Plane console builds roles on and publishes to Data Planes.
+resource_type: resource_server
+id: 01900000-0000-7000-8000-000000000021
+name: Control Plane
+description: Control Plane resource server
+identifier: https://localhost:8095
+ouHandle: default
+delimiter: ":"
+resources:
+  - name: System
+    handle: system
+    description: System resource
+  - name: Organization Units
+    handle: ou
+    parent: system
+    description: Organization unit management
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
+  - name: Users
+    handle: user
+    parent: system
+    description: User management, including SCIM users
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
+  - name: Groups
+    handle: group
+    parent: system
+    description: Group management, including SCIM groups
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
+  - name: Agents
+    handle: agent
+    parent: system
+    description: Agent management
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
+  - name: User Types
+    handle: usertype
+    parent: system
+    description: User type management
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
+  - name: Agent Types
+    handle: agenttype
+    parent: system
+    description: Agent type management
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
+  - name: Notification Templates
+    handle: notificationtemplate
+    parent: system
+    description: Notification template management
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
+  - name: Applications
+    handle: app
+    parent: system
+    description: Application management
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
+  - name: Roles
+    handle: role
+    parent: system
+    description: Role and role assignment management
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
+  - name: Resource Servers
+    handle: rs
+    parent: system
+    description: Resource server management
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
+  - name: Connections
+    handle: connection
+    parent: system
+    description: Connection management
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
+  - name: Flows
+    handle: flow
+    parent: system
+    description: Flow management
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
+  - name: Verifiable Credentials
+    handle: vc
+    parent: system
+    description: Credential configuration, presentation definition and trust anchor management
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
+  - name: Projects
+    handle: project
+    parent: system
+    description: Project management
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
+  - name: Design
+    handle: design
+    parent: system
+    description: Theme and layout management
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
+  - name: Translations
+    handle: i18n
+    parent: system
+    description: Translation management
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
+  - name: Gateways
+    handle: gateway
+    parent: system
+    description: Gateway management
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
+  - name: Authorization Detail Types
+    handle: authzdetail
+    parent: system
+    description: Authorization detail type management
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
+  - name: Server Configuration
+    handle: serverconfig
+    parent: system
+    description: Server configuration management
+    actions:
+      - name: View
+        handle: view
+      - name: Update
+        handle: update
+  - name: Configuration Versions
+    handle: configversion
+    parent: system
+    description: Configuration version management
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create

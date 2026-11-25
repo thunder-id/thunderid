@@ -1,39 +1,129 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CapabilityGuard, PageLoader} from '@thunderid/components';
+import {GroupCreateProvider} from '@thunderid/configure-groups';
+import {RoleCreateProvider} from '@thunderid/configure-roles';
 import {RoutesProvider, ToastProvider} from '@thunderid/contexts';
 import {ProtectedRoute} from '@thunderid/react-router';
-import type {JSX} from 'react';
+import {lazy, Suspense, type JSX} from 'react';
 import {BrowserRouter, Navigate, Route, Routes} from 'react-router';
-import RouteConfig, {MANAGED_RESOURCES, ROUTE_SEGMENTS, type ManagedResource} from './configs/RouteConfig';
+import RouteConfig, {ROUTE_SEGMENTS} from './configs/RouteConfig';
 import AdminLayout from './layouts/AdminLayout';
-import {ResourceCreatePage, ResourceDetailsPage, ResourceListPage} from './pages/ResourcePages';
+import FullScreenLayout from './layouts/FullScreenLayout';
+
+const AgentOnboardPage = lazy(() => import('@thunderid/configure-agents/pages/AgentAddRoute'));
+const AgentEditPage = lazy(() => import('@thunderid/configure-agents/pages/AgentEditPage'));
+const AgentsListPage = lazy(() => import('@thunderid/configure-agents/pages/AgentsListPage'));
+const CreateGroupPage = lazy(() => import('@thunderid/configure-groups/pages/CreateGroupPage'));
+const GroupEditPage = lazy(() => import('@thunderid/configure-groups/pages/GroupEditPage'));
+const GroupsListPage = lazy(() => import('@thunderid/configure-groups/pages/GroupsListPage'));
+const CreateRolePage = lazy(() => import('@thunderid/configure-roles/pages/CreateRolePage'));
+const RoleEditPage = lazy(() => import('@thunderid/configure-roles/pages/RoleEditPage'));
+const RolesListPage = lazy(() => import('@thunderid/configure-roles/pages/RolesListPage'));
+const UserAddPage = lazy(() => import('@thunderid/configure-users/pages/UserAddRoute'));
+const UserEditPage = lazy(() => import('@thunderid/configure-users/pages/UserEditPage'));
+const UsersListPage = lazy(() => import('@thunderid/configure-users/pages/UsersListPage'));
 
 export default function App(): JSX.Element {
   return (
     <BrowserRouter basename={import.meta.env.BASE_URL}>
       <RoutesProvider paths={RouteConfig}>
         <ToastProvider>
-          <Routes>
-            <Route
-              path="/"
-              element={
-                <ProtectedRoute>
-                  <AdminLayout />
-                </ProtectedRoute>
-              }
-            >
-              <Route index element={<Navigate to={RouteConfig.users.list()} replace />} />
-              {MANAGED_RESOURCES.map((resource: ManagedResource) => (
-                <Route key={resource} path={ROUTE_SEGMENTS[resource]}>
-                  <Route index element={<ResourceListPage resource={resource} />} />
-                  <Route path={ROUTE_SEGMENTS.create} element={<ResourceCreatePage resource={resource} />} />
-                  <Route path=":id" element={<ResourceDetailsPage resource={resource} />} />
-                </Route>
-              ))}
-              <Route path="*" element={<Navigate to={RouteConfig.users.list()} replace />} />
-            </Route>
-          </Routes>
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              <Route
+                path="/"
+                element={
+                  <ProtectedRoute>
+                    <AdminLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route index element={<Navigate to={RouteConfig.users.list()} replace />} />
+                <Route path={ROUTE_SEGMENTS.users} element={<UsersListPage />} />
+                <Route path={`${ROUTE_SEGMENTS.users}/:userId`} element={<UserEditPage />} />
+                <Route path={ROUTE_SEGMENTS.agents} element={<AgentsListPage />} />
+                <Route path={`${ROUTE_SEGMENTS.agents}/:agentId`} element={<AgentEditPage />} />
+                <Route path={ROUTE_SEGMENTS.groups} element={<GroupsListPage />} />
+                <Route path={`${ROUTE_SEGMENTS.groups}/:groupId`} element={<GroupEditPage />} />
+                <Route path={ROUTE_SEGMENTS.roles} element={<RolesListPage />} />
+                <Route path={`${ROUTE_SEGMENTS.roles}/:roleId`} element={<RoleEditPage />} />
+              </Route>
+              <Route
+                path={RouteConfig.users.add()}
+                element={
+                  <ProtectedRoute>
+                    <FullScreenLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route
+                  index
+                  element={
+                    <CapabilityGuard resource="user" action="create">
+                      <UserAddPage />
+                    </CapabilityGuard>
+                  }
+                />
+              </Route>
+              <Route
+                path={RouteConfig.agents.create()}
+                element={
+                  <ProtectedRoute>
+                    <FullScreenLayout />
+                  </ProtectedRoute>
+                }
+              >
+                <Route
+                  index
+                  element={
+                    <CapabilityGuard resource="agent" action="create">
+                      <AgentOnboardPage />
+                    </CapabilityGuard>
+                  }
+                />
+              </Route>
+              <Route
+                path={RouteConfig.groups.create()}
+                element={
+                  <ProtectedRoute>
+                    <GroupCreateProvider>
+                      <FullScreenLayout />
+                    </GroupCreateProvider>
+                  </ProtectedRoute>
+                }
+              >
+                <Route
+                  index
+                  element={
+                    <CapabilityGuard resource="group" action="create">
+                      <CreateGroupPage />
+                    </CapabilityGuard>
+                  }
+                />
+              </Route>
+              <Route
+                path={RouteConfig.roles.create()}
+                element={
+                  <ProtectedRoute>
+                    <RoleCreateProvider>
+                      <FullScreenLayout />
+                    </RoleCreateProvider>
+                  </ProtectedRoute>
+                }
+              >
+                <Route
+                  index
+                  element={
+                    <CapabilityGuard resource="role" action="create">
+                      <CreateRolePage />
+                    </CapabilityGuard>
+                  }
+                />
+              </Route>
+            </Routes>
+          </Suspense>
         </ToastProvider>
       </RoutesProvider>
     </BrowserRouter>

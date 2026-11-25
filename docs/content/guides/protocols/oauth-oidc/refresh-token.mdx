@@ -47,7 +47,9 @@ Each refresh re-evaluates the subject's authorization rather than replaying the 
 
 | Change since the refresh token was issued | Effect on the refresh |
 |---|---|
-| A role is unassigned from the subject, deleted, or stripped of a permission | The affected permission scopes are dropped from the new access token |
+| A role is unassigned from the subject | A refresh token that carries the role's permission scopes fails with `invalid_grant`; see [Token Revocation](../token-revocation#role-assignment-removal) |
+| A role is deleted | A refresh token that carries the role's permission scopes fails with `invalid_grant`; see [Token Revocation](../token-revocation#role-deletion) |
+| A role is stripped of a permission | The affected permission scopes are dropped from the new access token |
 | The subject loses a group membership that granted a role | The affected permission scopes are dropped from the new access token |
 | A permission is removed from the resource server | The scope is dropped from the new access token |
 | The user's password is reset | The refresh fails with `invalid_grant` |
@@ -56,9 +58,9 @@ Each refresh re-evaluates the subject's authorization rather than replaying the 
 
 OIDC scopes such as `openid`, `profile`, and `email` are not permission scopes, so authorization changes never remove them.
 
-Re-evaluation checks the subject's current roles and group memberships only; it never re-consults a connection's Authorization Mapping. A permission scope that a mapping granted, rather than a role or group actually assigned to the subject, has nothing for this check to find and is dropped on the *first* refresh, not only after something changes as the table above describes. Neither token exchange nor the jwt-bearer grant issues a refresh token in the first place, so this only matters for a mapping-derived scope that reached an access token through some other path, such as a session established via [Authorization Code](../authorization-code) after a federated sign-in.
+Re-evaluation also counts the authorization a federated sign-in granted for the session without storing it on the account: the groups and roles a connection's [Authorization Mapping](../../../identity-providers/add-oidc-provider#authorization-mapping) resolved when its groups and roles sync is **Session only**, and the permissions the mapping granted directly. The account can't hold a mapped group when groups use the `declarative` [store mode](../../../../deployment/configuration#store-modes), or a mapped role when roles do, so those count the same way whatever the sync. <ProductName /> keeps them with the session's cached user attributes, and each refresh re-checks the permissions they currently grant, so a scope is dropped as soon as its role or group is deleted or stops granting that permission. Because no assignment is stored, deleting such a role or group narrows the next refreshed token instead of failing the refresh with `invalid_grant`. The mapping itself isn't consulted again, so access the provider removes after sign-in still counts until the refresh token expires.
 
-Access tokens issued earlier are unaffected and remain valid until they expire. Clients must handle a refreshed access token that carries fewer scopes than the previous one, and an `invalid_grant` response that requires the user to sign in again.
+Access tokens issued earlier stay valid until they expire, except after a role is unassigned or deleted, which revokes the access tokens that carry its permission scopes as well. Clients must handle a refreshed access token that carries fewer scopes than the previous one, and an `invalid_grant` response that requires the user to sign in again.
 
 <details>
 <summary>How <ProductName /> Implements It</summary>
@@ -76,6 +78,7 @@ Access tokens issued earlier are unaffected and remain valid until they expire. 
 | Authorization re-evaluation | Permission scopes are re-evaluated against the subject's current role and group assignments on every refresh. Scopes the subject no longer holds are dropped |
 | Credential changes | Each entity records when its password or client secret last changed. A refresh token established at or before that instant is rejected with `invalid_grant` |
 | DPoP binding | A DPoP-bound refresh token continues to require a DPoP proof on refresh; the new access token inherits the `cnf.jkt` binding |
+| Authorization details | The refresh token keeps only the granted details whose type has `reuse` set to `true` and is still on the version it was granted on. `authorization_details` on the refresh request narrows them for the new access token only; the new refresh token keeps the whole renewable grant. See [Rich Authorization Requests](../rich-authorization-requests#refresh-tokens) |
 
 ### What Changes Between the Original and Refreshed Token
 
@@ -87,6 +90,7 @@ Access tokens issued earlier are unaffected and remain valid until they expire. 
 | `scope` | Preserved by default. Narrowed when `scope` is supplied, and narrowed further to the permissions the subject currently holds |
 | `exp` / `iat` | New values |
 | `cnf.jkt` (DPoP) | Preserved |
+| `authorization_details` | Details of reusable types are preserved while their type is unchanged; one-off details are dropped. Narrowed when `authorization_details` is supplied |
 | `auth_time` | Not carried into refreshed tokens |
 | `sid` (ID Token) | Unchanged. A refreshed ID Token names the same SSO session as the original |
 
@@ -130,3 +134,4 @@ Because rotation makes each refresh token single-use, a client must persist the 
 - [Resource Indicators](../resource-indicators), preserve and validate the resource binding during refresh
 - [DPoP](../dpop), refresh tokens issued under DPoP remain sender-constrained
 - [Token Formats](../token-formats), token lifetimes, signing and encryption settings
+- [Rich Authorization Requests](../rich-authorization-requests), which authorization details a refresh renews

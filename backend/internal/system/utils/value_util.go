@@ -180,3 +180,11 @@ func DerefOr[T any](value *T, fallback T) T {
 	}
 	return *value
 }
+
+// NullableString returns nil for an empty value, so that a SQL column is stored as NULL.
+func NullableString(value string) any {
+	if value == "" {
+		return nil
+	}
+	return value
+}

@@ -28,6 +28,8 @@ type vonageConnectionResponse struct {
 	APIKey      string `json:"apiKey,omitempty"`
 	APISecret   string `json:"apiSecret,omitempty"`
 	SenderID    string `json:"senderId,omitempty"`
+
+	connectionOwnership
 }
 
 func vonageToSenderDTO(req vonageConnectionRequest) (*ncommon.NotificationSenderDTO, error) {

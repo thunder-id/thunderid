@@ -38,15 +38,19 @@ import (
 //
 // Fixture topology, all within one OU:
 //
-//	scoped administrator — holds system:group, system:ou:view, and other non-root system permissions
-//	                       directly; holds system:ou only through its own group membership; is also
+//	scoped administrator — holds org:group, org:ou:view, and other non-root system permissions
+//	                       directly; holds org:ou only through its own group membership; is also
 //	                       assigned a role defined in the declarative file store
 //	harmless role        — confers nothing
-//	privileged role      — confers system:user, which the scoped administrator does not hold
-//	inherited group      — the scoped administrator is a member, and its role confers system:ou
-//	privileged group     — its role confers system:user
+//	privileged role      — confers org:user, which the scoped administrator does not hold
+//	inherited group      — the scoped administrator is a member, and its role confers org:ou
+//	privileged group     — its role confers org:user
 type RoleAuthzTestSuite struct {
 	suite.Suite
+
+	// Users here live outside the default OU, and a sign-in is bounded to its application's OU, so each
+	// signs in through an application in its own OU rather than the Console.
+	signIn testutils.OUSignInApps
 
 	authzOUID        string
 	authzTypeID      string
@@ -57,7 +61,7 @@ type RoleAuthzTestSuite struct {
 	harmlessRoleID   string
 	privilegedRoleID string
 
-	// The group conferring system:ou on the scoped administrator, and a group conferring a
+	// The group conferring org:ou on the scoped administrator, and a group conferring a
 	// permission the scoped administrator was never granted.
 	inheritedGroupID      string
 	inheritedRoleID       string
@@ -66,6 +70,12 @@ type RoleAuthzTestSuite struct {
 
 	// HTTP client carrying the scoped administrator's non-root token.
 	scopedClient *http.Client
+
+	// A role manager holding org on a resource server of its own, so nothing on the scoped one, and its token.
+	roleManagerRSID   string
+	roleManagerID     string
+	roleManagerRoleID string
+	roleManagerClient *http.Client
 }
 
 const (
@@ -80,11 +90,13 @@ const (
 	roleAuthzAssigneeUsername = "authz-role-assignee"
 	roleAuthzAssigneePassword = "Assignee@123"
 
-	roleAuthzClientID = "CONSOLE"
+	roleAuthzManagerUsername     = "authz-role-manager"
+	roleAuthzManagerPassword     = "RoleManager@123"
+	roleAuthzManagerRSIdentifier = "https://authz-test.example.com/role-manager"
 
 	// The permissions the scoped administrator holds and requests in its token. Deliberately
-	// excludes both the root "system" permission and "system:user".
-	roleAuthzScopedPermissions = "system:ou:view system:group system:group:view"
+	// excludes both the root "system" permission and "org:user".
+	roleAuthzScopedPermissions = "org:ou:view org:group org:group:view"
 
 	// The role loaded from the declarative resources. Its definition lives in the file store while
 	// the scoped administrator's assignment to it lives in the database, so resolving the caller's
@@ -154,9 +166,9 @@ func (ts *RoleAuthzTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "create assignee user")
 	ts.assigneeUserID = assigneeID
 
-	// The product ships only the root "system" scope, so the fine-grained system permissions the
-	// scoped administrator holds are reproduced on a resource server of the suite's own.
-	rsID, err := testutils.CreateSystemScopedResourceServer(
+	// The fine-grained org permissions the scoped administrator holds are reproduced on a resource
+	// server of the suite's own.
+	rsID, err := testutils.CreateOrgScopedResourceServer(
 		ts.authzOUID, "Authz Test RS (role)", roleAuthzRSIdentifier, "ou", "group", "user")
 	ts.Require().NoError(err, "create scoped resource server")
 	ts.scopedRSID = rsID
@@ -167,7 +179,7 @@ func (ts *RoleAuthzTestSuite) SetupSuite() {
 		Permissions: []testutils.ResourcePermissions{
 			{
 				ResourceServerID: rsID,
-				Permissions:      []string{"system:ou:view", "system:group", "system:group:view"},
+				Permissions:      []string{"org:ou:view", "org:group", "org:group:view"},
 			},
 		},
 		Assignments: []testutils.Assignment{
@@ -187,28 +199,28 @@ func (ts *RoleAuthzTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "create harmless role")
 	ts.harmlessRoleID = harmlessID
 
-	// Confers system:user, which the scoped administrator was never granted. Assigning anyone to it
+	// Confers org:user, which the scoped administrator was never granted. Assigning anyone to it
 	// would transfer a permission the caller does not hold.
 	privilegedID, err := testutils.CreateRole(testutils.Role{
 		Name:        "authz-role-privileged",
-		Description: "Role conferring system:user",
+		Description: "Role conferring org:user",
 		OUID:        ts.authzOUID,
 		Permissions: []testutils.ResourcePermissions{
 			{
 				ResourceServerID: rsID,
-				Permissions:      []string{"system:user"},
+				Permissions:      []string{"org:user"},
 			},
 		},
 	})
 	ts.Require().NoError(err, "create privileged role")
 	ts.privilegedRoleID = privilegedID
 
-	// A group the scoped administrator belongs to. Its role confers system:ou, which the scoped
-	// administrator holds nowhere else, so any decision that turns on system:ou can only be reached
+	// A group the scoped administrator belongs to. Its role confers org:ou, which the scoped
+	// administrator holds nowhere else, so any decision that turns on org:ou can only be reached
 	// by resolving the caller's permissions through its own group membership.
 	inheritedGroupID, err := testutils.CreateGroup(testutils.Group{
 		Name:        "authz-role-inherited-group",
-		Description: "Group conferring system:ou on the scoped administrator",
+		Description: "Group conferring org:ou on the scoped administrator",
 		OUID:        ts.authzOUID,
 		Members:     []testutils.Member{{Id: ts.scopedAdminID, Type: "user"}},
 	})
@@ -217,12 +229,12 @@ func (ts *RoleAuthzTestSuite) SetupSuite() {
 
 	inheritedRoleID, err := testutils.CreateRole(testutils.Role{
 		Name:        "authz-role-inherited",
-		Description: "Role conferring system:ou on the inherited group",
+		Description: "Role conferring org:ou on the inherited group",
 		OUID:        ts.authzOUID,
 		Permissions: []testutils.ResourcePermissions{
 			{
 				ResourceServerID: rsID,
-				Permissions:      []string{"system:ou"},
+				Permissions:      []string{"org:ou"},
 			},
 		},
 		Assignments: []testutils.Assignment{
@@ -232,11 +244,11 @@ func (ts *RoleAuthzTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "create inherited role")
 	ts.inheritedRoleID = inheritedRoleID
 
-	// A group whose role confers system:user, so joining anyone to it would transfer a permission the
+	// A group whose role confers org:user, so joining anyone to it would transfer a permission the
 	// scoped administrator was never granted.
 	privilegedGroupID, err := testutils.CreateGroup(testutils.Group{
 		Name:        "authz-role-privileged-group",
-		Description: "Group conferring system:user",
+		Description: "Group conferring org:user",
 		OUID:        ts.authzOUID,
 	})
 	ts.Require().NoError(err, "create privileged group")
@@ -244,12 +256,12 @@ func (ts *RoleAuthzTestSuite) SetupSuite() {
 
 	privilegedGroupRoleID, err := testutils.CreateRole(testutils.Role{
 		Name:        "authz-role-privileged-group-role",
-		Description: "Role conferring system:user on the privileged group",
+		Description: "Role conferring org:user on the privileged group",
 		OUID:        ts.authzOUID,
 		Permissions: []testutils.ResourcePermissions{
 			{
 				ResourceServerID: rsID,
-				Permissions:      []string{"system:user"},
+				Permissions:      []string{"org:user"},
 			},
 		},
 		Assignments: []testutils.Assignment{
@@ -266,22 +278,46 @@ func (ts *RoleAuthzTestSuite) SetupSuite() {
 	ts.Require().NoError(ts.assignScopedAdminToDeclarativeRole(),
 		"assign the scoped administrator to the declarative role")
 
-	tokenResp, err := testutils.ObtainAccessTokenWithPassword(
-		roleAuthzClientID,
-		roleAuthzRedirectURI,
-		roleAuthzScopedPermissions,
-		roleAuthzAdminUsername,
-		roleAuthzAdminPassword,
-		true,
-		"",
-		roleAuthzRSIdentifier,
-	)
+	tokenResp, err := ts.signIn.ObtainAccessToken(ts.authzOUID,
+		roleAuthzScopedPermissions, roleAuthzAdminUsername, roleAuthzAdminPassword, roleAuthzRSIdentifier)
 	ts.Require().NoError(err, "obtain scoped administrator token")
 	ts.Require().NotEmpty(tokenResp.AccessToken, "scoped administrator token must be non-empty")
-	ts.Require().NotContains(tokenResp.Scope, "system:user",
-		"the scoped administrator must not hold system:user, or the suite proves nothing")
+	ts.Require().NotContains(tokenResp.Scope, "org:user",
+		"the scoped administrator must not hold org:user, or the suite proves nothing")
 
 	ts.scopedClient = testutils.GetHTTPClientWithToken(tokenResp.AccessToken)
+
+	managerID, err := testutils.CreateUser(testutils.User{
+		Type: roleAuthzTypeName,
+		OUID: ts.authzOUID,
+		Attributes: json.RawMessage(fmt.Sprintf(
+			`{"username": %q, "password": %q, "display_name": "Role Manager"}`,
+			roleAuthzManagerUsername, roleAuthzManagerPassword,
+		)),
+	})
+	ts.Require().NoError(err, "create role manager")
+	ts.roleManagerID = managerID
+
+	managerRSID, err := testutils.CreateOrgScopedResourceServer(
+		ts.authzOUID, "Authz Test RS (role manager)", roleAuthzManagerRSIdentifier)
+	ts.Require().NoError(err, "create role manager resource server")
+	ts.roleManagerRSID = managerRSID
+
+	managerRoleID, err := testutils.CreateRole(testutils.Role{
+		Name: "authz-role-manager-role",
+		OUID: ts.authzOUID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: managerRSID, Permissions: []string{"org"}},
+		},
+		Assignments: []testutils.Assignment{{ID: ts.roleManagerID, Type: "user"}},
+	})
+	ts.Require().NoError(err, "create role manager role")
+	ts.roleManagerRoleID = managerRoleID
+
+	managerToken, err := ts.signIn.ObtainAccessToken(ts.authzOUID,
+		"org", roleAuthzManagerUsername, roleAuthzManagerPassword, roleAuthzManagerRSIdentifier)
+	ts.Require().NoError(err, "obtain role manager token")
+	ts.roleManagerClient = testutils.GetHTTPClientWithToken(managerToken.AccessToken)
 }
 
 // ---------------------------------------------------------------------------
@@ -289,6 +325,9 @@ func (ts *RoleAuthzTestSuite) SetupSuite() {
 // ---------------------------------------------------------------------------
 
 func (ts *RoleAuthzTestSuite) TearDownSuite() {
+	if err := ts.signIn.DeleteAll(); err != nil {
+		ts.T().Logf("teardown: delete sign-in applications: %v", err)
+	}
 	// Asserted rather than logged: the declarative role is shared with RoleAPITestSuite, which counts
 	// its assignments, so a leaked assignment must fail here instead of there.
 	if ts.scopedAdminID != "" {
@@ -299,7 +338,7 @@ func (ts *RoleAuthzTestSuite) TearDownSuite() {
 	// be deleted.
 	for _, id := range []string{
 		ts.scopedAdminRole, ts.harmlessRoleID, ts.privilegedRoleID,
-		ts.inheritedRoleID, ts.privilegedGroupRoleID,
+		ts.inheritedRoleID, ts.privilegedGroupRoleID, ts.roleManagerRoleID,
 	} {
 		if id != "" {
 			if err := testutils.DeleteRole(id); err != nil {
@@ -307,9 +346,11 @@ func (ts *RoleAuthzTestSuite) TearDownSuite() {
 			}
 		}
 	}
-	if ts.scopedRSID != "" {
-		if err := testutils.DeleteResourceServer(ts.scopedRSID); err != nil {
-			ts.T().Logf("teardown: delete scoped resource server: %v", err)
+	for _, id := range []string{ts.scopedRSID, ts.roleManagerRSID} {
+		if id != "" {
+			if err := testutils.DeleteResourceServer(id); err != nil {
+				ts.T().Logf("teardown: delete resource server %s: %v", id, err)
+			}
 		}
 	}
 	for _, id := range []string{ts.inheritedGroupID, ts.privilegedGroupID} {
@@ -319,7 +360,7 @@ func (ts *RoleAuthzTestSuite) TearDownSuite() {
 			}
 		}
 	}
-	for _, id := range []string{ts.scopedAdminID, ts.assigneeUserID} {
+	for _, id := range []string{ts.scopedAdminID, ts.assigneeUserID, ts.roleManagerID} {
 		if id != "" {
 			if err := testutils.DeleteUser(id); err != nil {
 				ts.T().Logf("teardown: delete user %s: %v", id, err)
@@ -345,6 +386,12 @@ func (ts *RoleAuthzTestSuite) TearDownSuite() {
 // doScoped issues a request as the scoped administrator.
 func (ts *RoleAuthzTestSuite) doScoped(method, path string, body []byte) *http.Response {
 	ts.T().Helper()
+	return ts.doAs(ts.scopedClient, method, path, body)
+}
+
+// doAs issues a request with the given client.
+func (ts *RoleAuthzTestSuite) doAs(client *http.Client, method, path string, body []byte) *http.Response {
+	ts.T().Helper()
 
 	var bodyReader io.Reader
 	if body != nil {
@@ -357,7 +404,7 @@ func (ts *RoleAuthzTestSuite) doScoped(method, path string, body []byte) *http.R
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	resp, err := ts.scopedClient.Do(req)
+	resp, err := client.Do(req)
 	ts.Require().NoError(err)
 	return resp
 }
@@ -512,7 +559,7 @@ func (ts *RoleAuthzTestSuite) TestScopedAdministratorCannotCreateRoleConferringU
 		Name: "authz-role-escalating",
 		OUID: ts.authzOUID,
 		Permissions: []ResourcePermissions{
-			{ResourceServerID: ts.scopedRSID, Permissions: []string{"system:user"}},
+			{ResourceServerID: ts.scopedRSID, Permissions: []string{"org:user"}},
 		},
 		Assignments: []Assignment{{ID: ts.scopedAdminID, Type: AssigneeTypeUser}},
 	})
@@ -530,7 +577,7 @@ func (ts *RoleAuthzTestSuite) TestScopedAdministratorCannotUpdateRoleToConferUnh
 		Name: "authz-role-harmless",
 		OUID: ts.authzOUID,
 		Permissions: []ResourcePermissions{
-			{ResourceServerID: ts.scopedRSID, Permissions: []string{"system:user"}},
+			{ResourceServerID: ts.scopedRSID, Permissions: []string{"org:user"}},
 		},
 	})
 
@@ -555,7 +602,7 @@ func (ts *RoleAuthzTestSuite) TestScopedAdministratorCannotDeleteRole() {
 }
 
 // TestScopedAdministratorCannotAddAssignmentToPrivilegedRole is the escalation the grant guard
-// exists to stop: assigning a principal to a role conferring system:user, which the caller does not
+// exists to stop: assigning a principal to a role conferring org:user, which the caller does not
 // hold. The refusal currently comes from the middleware, so the guard itself never runs.
 func (ts *RoleAuthzTestSuite) TestScopedAdministratorCannotAddAssignmentToPrivilegedRole() {
 	resp := ts.doScoped(http.MethodPost,
@@ -592,13 +639,13 @@ func (ts *RoleAuthzTestSuite) TestScopedAdministratorCannotAddAssignmentToHarmle
 // ---------------------------------------------------------------------------
 //
 // These are the only requests in this suite that clear the middleware, since /groups/** is gated on
-// system:group rather than the root permission. They therefore reach sysauthz and are the sole
+// org:group rather than the root permission. They therefore reach sysauthz and are the sole
 // coverage of what a role confers being weighed against what the caller holds.
 
 // TestScopedAdministratorCannotAddMemberToPrivilegedGroup covers the escalation left open by the
 // role API being closed: the scoped administrator cannot mint or reassign roles, but it can manage
 // group membership, and a group's roles confer their permissions on every member. Joining anyone to
-// a group whose role confers system:user would hand out a permission the caller never held, so the
+// a group whose role confers org:user would hand out a permission the caller never held, so the
 // grant guard refuses, this time with SAZ-4030 rather than AUTH-4030.
 func (ts *RoleAuthzTestSuite) TestScopedAdministratorCannotAddMemberToPrivilegedGroup() {
 	resp := ts.doScoped(http.MethodPost,
@@ -630,7 +677,7 @@ func (ts *RoleAuthzTestSuite) TestScopedAdministratorCannotRemoveMemberFromPrivi
 
 // TestScopedAdministratorCanAddMemberToInheritedGroup is the positive half of the guard, and the
 // only test here that reaches a role's permissions being resolved for the caller rather than for the
-// target. The inherited group's role confers system:ou, which the scoped administrator holds nowhere
+// target. The inherited group's role confers org:ou, which the scoped administrator holds nowhere
 // directly, so the grant is permitted only if the caller's own group membership counts towards the
 // comparison. Requiring the caller's declarative role assignment to resolve as well, this fails as a
 // 500 if either store is skipped and as a 403 if group nesting is not walked for the caller.
@@ -653,6 +700,33 @@ func (ts *RoleAuthzTestSuite) TestScopedAdministratorCanAddMemberToInheritedGrou
 	ts.Require().NoError(err)
 	ts.Equalf(http.StatusOK, removeResp.StatusCode,
 		"removal is held to the same requirement and must also be allowed here, body: %s", removeBody)
+}
+
+// TestRoleManagerCannotUpdatePrivilegedRole passes the middleware with org, so the refusal comes from
+// the grant guard: the role confers org:user on a resource server the role manager holds nothing on.
+func (ts *RoleAuthzTestSuite) TestRoleManagerCannotUpdatePrivilegedRole() {
+	payload := ts.mustMarshal(UpdateRoleRequest{
+		Name:        "authz-role-privileged",
+		Description: "Role conferring org:user",
+		OUID:        ts.authzOUID,
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: ts.scopedRSID, Permissions: []string{"org:user"}},
+		},
+	})
+
+	resp := ts.doAs(ts.roleManagerClient, http.MethodPut, rolesBasePath+"/"+ts.privilegedRoleID, payload)
+	defer resp.Body.Close()
+
+	ts.requireRefusedWithCode(resp, errCodeGrantNotPermitted)
+}
+
+func (ts *RoleAuthzTestSuite) TestRoleManagerCannotDeletePrivilegedRole() {
+	resp := ts.doAs(ts.roleManagerClient, http.MethodDelete, rolesBasePath+"/"+ts.privilegedRoleID, nil)
+	defer resp.Body.Close()
+
+	ts.requireRefusedWithCode(resp, errCodeGrantNotPermitted)
+	ts.Equal(http.StatusOK, ts.rootRoleStatus(ts.privilegedRoleID),
+		"the privileged role must survive the refused delete")
 }
 
 // ---------------------------------------------------------------------------

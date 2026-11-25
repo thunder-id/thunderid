@@ -10,17 +10,28 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
+	"github.com/thunder-id/thunderid/internal/system/projectscope"
+	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
+// maxProjectIDLength is the length of the PROJECT_ID column. A longer project ID names no project.
+const maxProjectIDLength = 36
+
 // PresentationDefinitionServiceInterface manages OpenID4VP presentation
 // definitions in the configdb store, which the verifier engine reads on demand.
 type PresentationDefinitionServiceInterface interface {
+	// GetResourceDependencies reports the presentation definitions an organization unit owns, which block its deletion.
+	GetResourceDependencies(
+		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 	CreatePresentationDefinition(ctx context.Context, dto *PresentationDefinitionDTO) (
 		*PresentationDefinitionDTO, *tidcommon.ServiceError)
 	GetPresentationDefinition(ctx context.Context, id string) (*PresentationDefinitionDTO, *tidcommon.ServiceError)
@@ -29,6 +40,16 @@ type PresentationDefinitionServiceInterface interface {
 	) (*PresentationDefinitionDTO, *tidcommon.ServiceError)
 	ListPresentationDefinitions(ctx context.Context) ([]PresentationDefinitionDTO, *tidcommon.ServiceError)
 	ListPresentationDefinitionSummaries(ctx context.Context) ([]PresentationDefinitionList, *tidcommon.ServiceError)
+	ListPresentationDefinitionSummariesByOUID(
+		ctx context.Context, ouID string,
+	) ([]PresentationDefinitionList, *tidcommon.ServiceError)
+	// ListPresentationDefinitionSummariesByProject returns summaries of the presentation definitions of a project.
+	// A project that does not exist has none.
+	ListPresentationDefinitionSummariesByProject(
+		ctx context.Context, projectID string,
+	) ([]PresentationDefinitionList, *tidcommon.ServiceError)
+	// ProjectHasPresentationDefinitions reports whether a presentation definition belongs to the project.
+	ProjectHasPresentationDefinitions(ctx context.Context, projectID string) (bool, *tidcommon.ServiceError)
 	UpdatePresentationDefinition(ctx context.Context, id string, dto *PresentationDefinitionDTO) (
 		*PresentationDefinitionDTO, *tidcommon.ServiceError)
 	DeletePresentationDefinition(ctx context.Context, id string) *tidcommon.ServiceError
@@ -46,26 +67,54 @@ type presentationDefinitionDeclarativeService interface {
 type definitionService struct {
 	store     definitionStoreInterface
 	ouService ou.OrganizationUnitServiceInterface
-	logger    *log.Logger
-	uuid      func() (string, error)
+	authzSvc  sysauthz.SystemAuthorizationServiceInterface
+	// projectValidator is nil on a deployment that serves no projects.
+	projectValidator projectOUValidator
+	// projectRequired is set on a deployment that serves projects, where every definition belongs to one.
+	projectRequired bool
+	logger          *log.Logger
+	uuid            func() (string, error)
+	// managed says which presentation definitions a control plane deployed, which stay read only here. Nil
+	// where nothing is deployed from one.
+	managed managedresource.StoreInterface
 }
 
-// newPresentationDefinitionService builds a presentation-definition service over the given store.
+// projectOUValidator checks that a resource scoped to a project is in an organization unit the project holds.
+type projectOUValidator interface {
+	ValidateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError
+}
+
+// newPresentationDefinitionService builds a presentation-definition service over the given store. A nil
+// projectValidator serves no projects, and a project ID is kept unchecked; projectRequired refuses a
+// definition created without a project.
 func newPresentationDefinitionService(
 	store definitionStoreInterface, ouService ou.OrganizationUnitServiceInterface,
+	authzSvc sysauthz.SystemAuthorizationServiceInterface, projectValidator projectOUValidator,
+	projectRequired bool,
 ) *definitionService {
 	return &definitionService{
-		store:     store,
-		ouService: ouService,
-		logger:    log.GetLogger().With(log.String(log.LoggerKeyComponentName, "OpenID4VPDefinitionService")),
-		uuid:      utils.GenerateUUIDv7,
+		store:            store,
+		ouService:        ouService,
+		authzSvc:         authzSvc,
+		projectValidator: projectValidator,
+		projectRequired:  projectRequired,
+		logger:           log.GetLogger().With(log.String(log.LoggerKeyComponentName, "OpenID4VPDefinitionService")),
+		uuid:             utils.GenerateUUIDv7,
 	}
 }
 
-// ResolvePresentationDefinitionOUHandle resolves a declarative OU handle to its ID.
+// ResolvePresentationDefinitionOUHandle resolves a declarative OU handle to its ID. A declarative definition
+// needs a project where one is required, and one in a project without an organization unit is placed in the
+// system organization unit.
 func (s *definitionService) ResolvePresentationDefinitionOUHandle(
 	ctx context.Context, dto *PresentationDefinitionDTO,
 ) *tidcommon.ServiceError {
+	if strings.TrimSpace(dto.ProjectID) == "" && s.projectRequired {
+		return &ErrorDefinitionProjectRequired
+	}
+	if dto.ProjectID != "" && dto.OUID == "" && strings.TrimSpace(dto.OUHandle) == "" {
+		return s.placeInSystemOU(ctx, dto)
+	}
 	if dto.OUID != "" {
 		return s.resolveOU(ctx, dto)
 	}
@@ -145,7 +194,10 @@ func (s *definitionService) CreatePresentationDefinition(
 	if svcErr := rejectExpiredCertificates(dto.TrustedAuthorities); svcErr != nil {
 		return nil, svcErr
 	}
-	if svcErr := s.resolveOU(ctx, dto); svcErr != nil {
+	if svcErr := s.resolvePlacement(ctx, dto); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := s.checkAccess(ctx, security.ActionCreateVC, dto.OUID); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -164,6 +216,15 @@ func (s *definitionService) CreatePresentationDefinition(
 		id, genErr = s.uuid()
 		if genErr != nil {
 			s.logger.Error(ctx, "Failed to generate definition ID", log.Error(genErr))
+			return nil, &tidcommon.InternalServerError
+		}
+	} else {
+		_, err = s.store.GetPresentationDefinitionByID(ctx, id)
+		if err == nil {
+			return nil, &ErrorDefinitionIDConflict
+		}
+		if !errors.Is(err, ErrNotFound) {
+			s.logger.Error(ctx, "Failed to check existing definition ID", log.Error(err))
 			return nil, &tidcommon.InternalServerError
 		}
 	}
@@ -191,6 +252,9 @@ func (s *definitionService) GetPresentationDefinition(
 		s.logger.Error(ctx, "Failed to get presentation definition", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+	if svcErr := s.checkAccess(ctx, security.ActionReadVC, dto.OUID); svcErr != nil {
+		return nil, svcErr
+	}
 	s.populateOUHandle(ctx, dto)
 	return dto, nil
 }
@@ -207,6 +271,9 @@ func (s *definitionService) GetPresentationDefinitionByHandle(
 		s.logger.Error(ctx, "Failed to get presentation definition by handle", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+	if svcErr := s.checkAccess(ctx, security.ActionReadVC, dto.OUID); svcErr != nil {
+		return nil, svcErr
+	}
 	return dto, nil
 }
 
@@ -222,6 +289,11 @@ func (s *definitionService) ListPresentationDefinitions(
 		s.logger.Error(ctx, "Failed to list presentation definitions", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+	ouIDs, all, svcErr := sysauthz.ResolveListOUs(ctx, s.authzSvc, s.logger, security.ActionListVCs, "")
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	defs = sysauthz.FilterByListOUs(defs, ouIDs, all, func(d PresentationDefinitionDTO) string { return d.OUID })
 	ptrs := make([]*PresentationDefinitionDTO, len(defs))
 	for i := range defs {
 		ptrs[i] = &defs[i]
@@ -234,7 +306,20 @@ func (s *definitionService) ListPresentationDefinitions(
 func (s *definitionService) ListPresentationDefinitionSummaries(
 	ctx context.Context,
 ) ([]PresentationDefinitionList, *tidcommon.ServiceError) {
-	summaries, err := s.store.ListPresentationDefinitionSummaries(ctx)
+	ouIDs, all, svcErr := sysauthz.ResolveListOUs(ctx, s.authzSvc, s.logger, security.ActionListVCs, "")
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if !all && len(ouIDs) == 0 {
+		return []PresentationDefinitionList{}, nil
+	}
+	var summaries []PresentationDefinitionList
+	var err error
+	if len(ouIDs) == 1 {
+		summaries, err = s.store.ListPresentationDefinitionSummariesByOUID(ctx, ouIDs[0])
+	} else {
+		summaries, err = s.store.ListPresentationDefinitionSummaries(ctx)
+	}
 	if err != nil {
 		if errors.Is(err, ErrResultLimitExceededInCompositeMode) {
 			return nil, &ErrorDefinitionResultLimitExceeded
@@ -242,8 +327,71 @@ func (s *definitionService) ListPresentationDefinitionSummaries(
 		s.logger.Error(ctx, "Failed to list presentation definition summaries", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+	summaries = sysauthz.FilterByListOUs(summaries, ouIDs, all,
+		func(d PresentationDefinitionList) string { return d.OUID })
 	s.populateSummaryOUHandles(ctx, summaries)
 	return summaries, nil
+}
+
+// ListPresentationDefinitionSummariesByOUID returns summaries of the presentation definitions an organization
+// unit owns, with resolved OU handles.
+func (s *definitionService) ListPresentationDefinitionSummariesByOUID(
+	ctx context.Context, ouID string,
+) ([]PresentationDefinitionList, *tidcommon.ServiceError) {
+	if ouID == "" {
+		return nil, &ErrorDefinitionInvalidRequest
+	}
+	summaries, err := s.store.ListPresentationDefinitionSummariesByOUID(ctx, ouID)
+	if err != nil {
+		if errors.Is(err, ErrResultLimitExceededInCompositeMode) {
+			return nil, &ErrorDefinitionResultLimitExceeded
+		}
+		s.logger.Error(ctx, "Failed to list presentation definition summaries in organization unit",
+			log.String("ouID", ouID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	ouIDs, all, svcErr := sysauthz.ResolveListOUs(ctx, s.authzSvc, s.logger, security.ActionListVCs, ouID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	summaries = sysauthz.FilterByListOUs(summaries, ouIDs, all,
+		func(d PresentationDefinitionList) string { return d.OUID })
+	s.populateSummaryOUHandles(ctx, summaries)
+	return summaries, nil
+}
+
+// ListPresentationDefinitionSummariesByProject returns summaries of the presentation definitions of a project,
+// with resolved OU handles. An empty project ID names no project, so it lists none rather than every definition.
+func (s *definitionService) ListPresentationDefinitionSummariesByProject(
+	ctx context.Context, projectID string,
+) ([]PresentationDefinitionList, *tidcommon.ServiceError) {
+	if projectID == "" {
+		return []PresentationDefinitionList{}, nil
+	}
+	summaries, err := s.store.ListPresentationDefinitionSummariesByProject(ctx, projectID)
+	if err != nil {
+		if errors.Is(err, ErrResultLimitExceededInCompositeMode) {
+			return nil, &ErrorDefinitionResultLimitExceeded
+		}
+		s.logger.Error(ctx, "Failed to list presentation definition summaries in project",
+			log.String("projectID", projectID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	s.populateSummaryOUHandles(ctx, summaries)
+	return summaries, nil
+}
+
+// ProjectHasPresentationDefinitions reports whether a presentation definition belongs to the project.
+func (s *definitionService) ProjectHasPresentationDefinitions(
+	ctx context.Context, projectID string,
+) (bool, *tidcommon.ServiceError) {
+	count, err := s.store.CountPresentationDefinitionsByProject(ctx, projectID)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to check the presentation definitions of a project",
+			log.String("projectID", projectID), log.Error(err))
+		return false, &tidcommon.InternalServerError
+	}
+	return count > 0, nil
 }
 
 // populateSummaryOUHandles resolves each summary's owning OU handle for display.
@@ -294,6 +442,12 @@ func (s *definitionService) UpdatePresentationDefinition(
 		s.logger.Error(ctx, "Failed to load presentation definition", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+	if svcErr := s.checkAccess(ctx, security.ActionUpdateVC, existing.OUID); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := s.refuseManaged(ctx, id); svcErr != nil {
+		return nil, svcErr
+	}
 
 	if svcErr := carryStoredCertificates(dto.TrustedAuthorities, existing.TrustedAuthorities); svcErr != nil {
 		return nil, svcErr
@@ -301,8 +455,22 @@ func (s *definitionService) UpdatePresentationDefinition(
 	if svcErr := validateDefinition(dto); svcErr != nil {
 		return nil, svcErr
 	}
+	// An update that names no project keeps the definition's project, and one in a project that names no
+	// organization unit keeps its organization unit.
+	if dto.ProjectID == "" {
+		dto.ProjectID = existing.ProjectID
+	}
+	if dto.ProjectID != "" && strings.TrimSpace(dto.OUID) == "" {
+		dto.OUID = existing.OUID
+	}
 	if svcErr := s.resolveOU(ctx, dto); svcErr != nil {
 		return nil, svcErr
+	}
+	// The project is checked again only when the definition moves to another project or organization unit.
+	if dto.ProjectID != "" && (dto.ProjectID != existing.ProjectID || dto.OUID != existing.OUID) {
+		if svcErr := s.validateProjectOU(ctx, dto.ProjectID, dto.OUID); svcErr != nil {
+			return nil, svcErr
+		}
 	}
 
 	if existing.Handle != dto.Handle {
@@ -317,6 +485,13 @@ func (s *definitionService) UpdatePresentationDefinition(
 	}
 
 	dto.ID = id
+	// Moving the presentation definition places it in another organization unit, which the caller must be
+	// allowed to act for too.
+	if dto.OUID != existing.OUID {
+		if svcErr := s.checkAccess(ctx, security.ActionUpdateVC, dto.OUID); svcErr != nil {
+			return nil, svcErr
+		}
+	}
 	if err := s.store.UpdatePresentationDefinition(ctx, *dto); err != nil {
 		if errors.Is(err, ErrDefinitionIsImmutable) {
 			return nil, &ErrorDefinitionImmutable
@@ -332,12 +507,19 @@ func (s *definitionService) DeletePresentationDefinition(ctx context.Context, id
 	if strings.TrimSpace(id) == "" {
 		return &ErrorDefinitionInvalidRequest
 	}
-	if _, err := s.store.GetPresentationDefinitionByID(ctx, id); err != nil {
+	existing, err := s.store.GetPresentationDefinitionByID(ctx, id)
+	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			return nil // idempotent
 		}
 		s.logger.Error(ctx, "Failed to load presentation definition", log.Error(err))
 		return &tidcommon.InternalServerError
+	}
+	if svcErr := s.checkAccess(ctx, security.ActionDeleteVC, existing.OUID); svcErr != nil {
+		return svcErr
+	}
+	if svcErr := s.refuseManaged(ctx, id); svcErr != nil {
+		return svcErr
 	}
 	if err := s.store.DeletePresentationDefinition(ctx, id); err != nil {
 		if errors.Is(err, ErrDefinitionIsImmutable) {
@@ -359,6 +541,74 @@ func (s *definitionService) IsPresentationDefinitionDeclarative(
 		return false, &tidcommon.InternalServerError
 	}
 	return isDeclarative, nil
+}
+
+// resolvePlacement sets the organization unit and checks the project of a new presentation definition. A
+// deployment that requires a project refuses a definition without one. A definition in a project may leave the
+// organization unit out to be placed in the system organization unit, and one it names has to belong to the
+// project.
+func (s *definitionService) resolvePlacement(
+	ctx context.Context, dto *PresentationDefinitionDTO,
+) *tidcommon.ServiceError {
+	if dto.ProjectID == "" {
+		if s.projectRequired {
+			return &ErrorDefinitionProjectRequired
+		}
+		return s.resolveOU(ctx, dto)
+	}
+	if strings.TrimSpace(dto.OUID) == "" {
+		if svcErr := s.placeInSystemOU(ctx, dto); svcErr != nil {
+			return svcErr
+		}
+	} else if svcErr := s.resolveOU(ctx, dto); svcErr != nil {
+		return svcErr
+	}
+	return s.validateProjectOU(ctx, dto.ProjectID, dto.OUID)
+}
+
+// placeInSystemOU places a presentation definition in the system organization unit. Without an OU service,
+// as in tests, the organization unit is left as given.
+func (s *definitionService) placeInSystemOU(
+	ctx context.Context, dto *PresentationDefinitionDTO,
+) *tidcommon.ServiceError {
+	if s.ouService == nil {
+		return nil
+	}
+	systemOUID, svcErr := s.ouService.GetSystemOUID(ctx)
+	if svcErr != nil {
+		s.logger.Error(ctx, "Failed to get the system organization unit", log.String("code", svcErr.Code))
+		return &tidcommon.InternalServerError
+	}
+	dto.OUID = systemOUID
+	return nil
+}
+
+// validateProjectOU checks that a presentation definition's organization unit belongs to its project. It returns
+// ErrorDefinitionInvalidProject when no such project exists, and ErrorDefinitionOUNotInProject when the
+// organization unit is outside the project.
+//
+// A deployment that serves no projects, such as a Data Plane, cannot check the project. It keeps the project ID
+// as given so that imported configuration retains it, but refuses one longer than the column holds.
+func (s *definitionService) validateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError {
+	if utf8.RuneCountInString(projectID) > maxProjectIDLength {
+		return &ErrorDefinitionInvalidProject
+	}
+	if s.projectValidator == nil {
+		return nil
+	}
+	svcErr := s.projectValidator.ValidateProjectOU(ctx, projectID, ouID)
+	switch {
+	case svcErr == nil:
+		return nil
+	case svcErr.Code == projectscope.ProjectNotFoundErrorCode:
+		return &ErrorDefinitionInvalidProject
+	case svcErr.Code == projectscope.OUNotInProjectErrorCode:
+		return &ErrorDefinitionOUNotInProject
+	default:
+		s.logger.Error(ctx, "Failed to check the project of a presentation definition",
+			log.String("projectID", projectID), log.String("code", svcErr.Code))
+		return &tidcommon.InternalServerError
+	}
 }
 
 // validateDefinition enforces the required fields of a presentation definition.
@@ -477,4 +727,65 @@ func carryStoredCertificates(requested, stored []TrustedAuthority) *tidcommon.Se
 		requested[i].Certificate = certificate
 	}
 	return nil
+}
+
+// checkAccess checks the caller may perform the action on a presentation definition of the organization unit.
+func (s *definitionService) checkAccess(ctx context.Context, action security.Action,
+	ouID string) *tidcommon.ServiceError {
+	allowed, svcErr := s.authzSvc.IsActionAllowed(ctx, action,
+		&sysauthz.ActionContext{ResourceType: security.ResourceTypeVerifiableCredential, OUID: ouID})
+	if svcErr != nil {
+		s.logger.Error(ctx, "Failed to check authorization for action",
+			log.String("action", string(action)), log.Any("error", svcErr))
+		return &tidcommon.InternalServerError
+	}
+	if !allowed {
+		return &tidcommon.ErrorUnauthorized
+	}
+	return nil
+}
+
+// refuseManaged refuses a change to a presentation definition a control plane deployed, unless the change is the
+// managed import's: only a deploy from the control plane changes or removes it.
+func (s *definitionService) refuseManaged(ctx context.Context, id string) *tidcommon.ServiceError {
+	managed, err := managedresource.IsReadOnly(ctx, s.managed, id, managedresource.TypePresentationDefinition)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to read whether a control plane deployed the presentation definition",
+			log.String("id", id), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if managed {
+		return &ErrorManagedDefinition
+	}
+	return nil
+}
+
+// setManagedStore gives the service the record of what a control plane deployed.
+func setManagedStore(service any, managed managedresource.StoreInterface) {
+	if svc, ok := service.(*definitionService); ok {
+		svc.managed = managed
+	}
+}
+
+// GetResourceDependencies implements resourcedependency.Provider. It reports the presentation definitions an
+// organization unit owns, which block its deletion. Other resource types have no dependencies here.
+func (s *definitionService) GetResourceDependencies(
+	ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error) {
+	if resourceType != resourcedependency.ResourceTypeOU {
+		return []resourcedependency.ResourceDependency{}, nil
+	}
+	summaries, err := s.store.ListPresentationDefinitionSummariesByOUID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	deps := make([]resourcedependency.ResourceDependency, 0, len(summaries))
+	for _, c := range summaries {
+		deps = append(deps, resourcedependency.ResourceDependency{
+			ResourceType:     resourcedependency.ResourceTypeVPDefinition,
+			ID:               c.ID,
+			DisplayName:      c.Handle,
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		})
+	}
+	return deps, nil
 }

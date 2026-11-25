@@ -13,7 +13,7 @@ I have an iOS application (Swift, SwiftUI) and I want to integrate {{productName
 
 ## Configuration
 - **Application ID**: {{applicationId}}
-- **Base URL**: https://localhost:8090 (or your {{productName}} instance URL)
+- **Base URL**: {{baseUrl}}
 - **SDK**: ThunderIDSwiftUI (Swift Package Manager) — package URL `https://github.com/thunder-id/ios-sdks`, no CocoaPods support yet
 
 ## IMPORTANT Configuration Rules

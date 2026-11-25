@@ -44,7 +44,14 @@ func (h *notificationTemplateHandler) HandleTemplateListRequest(w http.ResponseW
 		return
 	}
 
-	list, svcErr := h.service.ListTemplates(ctx, channel, limit, offset)
+	// With a project, the list is of the project's templates. Without one, it is of every template.
+	var list *TemplateListResponse
+	if query := r.URL.Query(); query.Has(projectQueryParam) {
+		list, svcErr = h.service.ListTemplatesByProject(ctx, channel,
+			sysutils.SanitizeString(query.Get(projectQueryParam)), limit, offset)
+	} else {
+		list, svcErr = h.service.ListTemplates(ctx, channel, limit, offset)
+	}
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return
@@ -90,6 +97,7 @@ func (h *notificationTemplateHandler) HandleTemplatePostRequest(w http.ResponseW
 		handleError(ctx, w, &ErrorInvalidTemplateData)
 		return
 	}
+	request.ProjectID = sysutils.SanitizeString(request.ProjectID)
 
 	created, svcErr := h.service.CreateTemplate(ctx, channel, *request)
 	if svcErr != nil {
@@ -129,6 +137,7 @@ func (h *notificationTemplateHandler) HandleTemplatePutRequest(w http.ResponseWr
 		handleError(ctx, w, &ErrorInvalidTemplateData)
 		return
 	}
+	request.ProjectID = sysutils.SanitizeString(request.ProjectID)
 
 	updated, svcErr := h.service.UpdateTemplate(ctx, channel, id, *request)
 	if svcErr != nil {
@@ -165,8 +174,10 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.S
 			statusCode = http.StatusNotFound
 		case ErrorTemplateInUse.Code, ErrorTemplateHandleConflict.Code:
 			statusCode = http.StatusConflict
-		case ErrorTemplateReadOnly.Code, ErrorDeclarativeModeCreateNotAllowed.Code:
+		case ErrorTemplateReadOnly.Code, ErrorManagedTemplate.Code, ErrorDeclarativeModeCreateNotAllowed.Code:
 			// The store is declarative/read-only, so the write is refused rather than a bad request.
+			statusCode = http.StatusForbidden
+		case tidcommon.ErrorUnauthorized.Code:
 			statusCode = http.StatusForbidden
 		default:
 			statusCode = http.StatusBadRequest

@@ -5,6 +5,7 @@
 package mcp
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/modelcontextprotocol/go-sdk/auth"
@@ -12,6 +13,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/oauthex"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	mcpauth "github.com/thunder-id/thunderid/internal/system/mcp/auth"
@@ -24,22 +26,25 @@ import (
 // HTTP routes (which may depend on services, such as token revocation, that aren't ready this
 // early in startup).
 func NewServer() *mcpsdk.Server {
-	return newServer()
+	return newServer(config.GetServerRuntime().Config.Server.ProductName)
 }
 
-// Initialize mounts mcpServer's routes on mux, securing them with the given guard. resourceMeta, if
-// non-nil, is published at OAuthProtectedResourceMetadataPath for MCP client discovery; callers
-// that pass a guard with no discoverable authorization server (e.g. one that accepts every
-// request) should pass nil.
+// Initialize mounts mcpServer's routes on mux, securing them with an Origin check and the given
+// guard. resourceMeta, if non-nil, is published at OAuthProtectedResourceMetadataPath for MCP client
+// discovery; callers that pass a guard with no discoverable authorization server (e.g. one that
+// accepts every request) should pass nil.
 func Initialize(
 	mux *http.ServeMux,
 	mcpServer *mcpsdk.Server,
 	guard func(http.Handler) http.Handler,
 	resourceMeta *oauthex.ProtectedResourceMetadata,
 ) {
+	// Under MCP 2026-07-28 a request's HTTP response stream is its whole lifecycle, so a client
+	// closing that stream cancels the request. PropagateRequestCancellation cancels the handler's
+	// context when the HTTP request ends; requests on older protocol versions are unaffected.
 	httpHandler := mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server {
 		return mcpServer
-	}, &mcpsdk.StreamableHTTPOptions{Stateless: true})
+	}, &mcpsdk.StreamableHTTPOptions{Stateless: true, PropagateRequestCancellation: true})
 
 	securedHandler := guard(withToolWriteDeadline(httpHandler))
 
@@ -49,9 +54,11 @@ func Initialize(
 		mux.Handle(OAuthProtectedResourceMetadataPath, auth.ProtectedResourceMetadataHandler(resourceMeta))
 	}
 
-	// Register MCP routes
-	mux.Handle(MCPEndpointPath, securedHandler)
-	mux.Handle(MCPEndpointPath+"/", securedHandler)
+	// Register MCP routes. The Origin check runs before the guard, so a request from an untrusted
+	// origin is refused whether or not it carries a valid token.
+	mcpHandler := requireAllowedOrigin(serverOrigin(), securedHandler)
+	mux.Handle(MCPEndpointPath, mcpHandler)
+	mux.Handle(MCPEndpointPath+"/", mcpHandler)
 }
 
 // withToolWriteDeadline gives an MCP request the time an import or a gateway apply is allowed, in place
@@ -108,7 +115,6 @@ func DefaultGuard(jwtService jwt.JWTServiceInterface, revocationEnforcer securit
 	tokenVerifier := mcpauth.NewTokenVerifier(bearerAuthenticator)
 	sdkGuard := auth.RequireBearerToken(tokenVerifier, &auth.RequireBearerTokenOptions{
 		ResourceMetadataURL: resourceMetadataURL,
-		Scopes:              []string{rootPerm},
 	})
 
 	// The go-sdk's TokenVerifier can only return a *auth.TokenInfo — it has no way to attach
@@ -117,6 +123,10 @@ func DefaultGuard(jwtService jwt.JWTServiceInterface, revocationEnforcer securit
 	// TokenInfo.Extra to get it out; this wraps the SDK's guard to pull it back out and attach it
 	// via security.WithSecurityContext, so MCP tool handlers see the same SecurityContext a REST
 	// handler would for an equivalent token.
+	// The challenge names no scope: any system permission admits the caller, so there is no single
+	// one to ask for.
+	insufficientScopeChallenge := fmt.Sprintf("%s error=%q, resource_metadata=%q",
+		serverconst.TokenTypeBearer, errorInsufficientScope, resourceMetadataURL)
 	guard := func(next http.Handler) http.Handler {
 		return sdkGuard(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if ti := auth.TokenInfoFromContext(r.Context()); ti != nil {
@@ -124,14 +134,29 @@ func DefaultGuard(jwtService jwt.JWTServiceInterface, revocationEnforcer securit
 					r = r.WithContext(security.WithSecurityContext(r.Context(), secCtx))
 				}
 			}
+			// Each tool call is checked against the permission it is mapped to; the endpoint itself
+			// only needs a caller that holds some system permission.
+			if !security.HasAnySystemPermission(security.GetPermissions(r.Context())) {
+				w.Header().Set(serverconst.WWWAuthenticateHeaderName, insufficientScopeChallenge)
+				http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+				return
+			}
 			next.ServeHTTP(w, r)
 		}))
 	}
 
+	// Advertise every root the endpoint admits. A client requests these scopes, and a caller who holds
+	// none of them gets the narrower permissions they hold under each instead, so leaving out the
+	// organization root on a data plane would issue an organization administrator a token with nothing
+	// in it, which the guard above refuses.
+	scopesSupported := []string{rootPerm}
+	if org := security.GetSystemPermissions().Org; org != "" {
+		scopesSupported = append(scopesSupported, org)
+	}
 	metadata := &oauthex.ProtectedResourceMetadata{
 		Resource:             mcpResourceIdentifier,
 		AuthorizationServers: []string{authServer},
-		ScopesSupported:      []string{rootPerm},
+		ScopesSupported:      scopesSupported,
 	}
 
 	return guard, metadata

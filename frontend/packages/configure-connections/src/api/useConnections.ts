@@ -9,6 +9,10 @@ import type {ConnectionInstanceCategory, ConnectionListResponse} from '../models
 
 export interface UseConnectionsParams {
   category?: ConnectionInstanceCategory;
+  /**
+   * Filter expression, for example `ouId eq "<id>"`, which lists what that organization unit owns and was shared.
+   */
+  filter?: string;
   limit?: number;
   offset?: number;
 }
@@ -27,16 +31,19 @@ export default function useConnections(
 ): UseQueryResult<ConnectionListResponse> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
-  const {category, limit, offset} = params ?? {};
+  const {category, filter, limit, offset} = params ?? {};
 
   return useQuery<ConnectionListResponse>({
-    queryKey: [ConnectionQueryKeys.CONNECTIONS, {category, limit, offset}],
+    queryKey: [ConnectionQueryKeys.CONNECTIONS, {category, filter, limit, offset}],
     enabled: options?.enabled ?? true,
     queryFn: async (): Promise<ConnectionListResponse> => {
       const serverUrl: string = getServerUrl();
       const searchParams: URLSearchParams = new URLSearchParams();
       if (category) {
         searchParams.set('category', category);
+      }
+      if (filter) {
+        searchParams.set('filter', filter);
       }
       if (limit !== undefined) {
         searchParams.set('limit', String(limit));

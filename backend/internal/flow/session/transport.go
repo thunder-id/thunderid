@@ -8,7 +8,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
+	"strings"
 	"time"
+
+	sysContext "github.com/thunder-id/thunderid/internal/system/context"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // cookieNamePrefix prefixes every per-flow SSO cookie name.
@@ -150,4 +154,17 @@ func (c *cookieTransport) Clear(x *Exchange, flowID string) {
 		Secure:   c.secure,
 		SameSite: http.SameSiteLaxMode,
 	})
+}
+
+// ClientInfoFrom returns the client metadata to record on a session from the request metadata that the
+// RequestMetadataMiddleware put on the context, or the zero value when there is none. The IP is never
+// read from RemoteAddr, so a request that missed the middleware records no IP rather than a proxy's.
+// Invalid UTF-8 is dropped from the User-Agent, since a client can send any bytes and only valid text is
+// recorded, and the result is cut to its first 512 characters.
+func ClientInfoFrom(ctx context.Context) ClientInfo {
+	md := sysContext.GetRequestMetadata(ctx)
+	return ClientInfo{
+		IP:        md.ClientIP,
+		UserAgent: sysutils.TruncateRunes(strings.ToValidUTF8(md.UserAgent, ""), maxUserAgentLength),
+	}
 }

@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/suite"
+
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 )
 
 var testScopes = []string{"license"}
@@ -143,7 +145,7 @@ func (s *RevocationUtilsTestSuite) TestScopeCriteria_CoversEveryAudienceAndScope
 	criteria := ScopeCriteria("user-1",
 		[]string{"https://api.dmv.ca.gov", "https://api.dmv.oh.gov"}, []string{"license", "registration"})
 
-	s.Len(criteria, 8)
+	s.Len(criteria, 4*(2+len(serverconst.ValidPermissionDelimiters)))
 	for _, audience := range []string{"https://api.dmv.ca.gov", "https://api.dmv.oh.gov"} {
 		for _, scope := range []string{"license", "registration"} {
 			s.Contains(criteria, Criterion{
@@ -163,4 +165,21 @@ func (s *RevocationUtilsTestSuite) TestScopeCriteria_NoSubjectYieldsOnlyScopeCri
 func (s *RevocationUtilsTestSuite) TestScopeCriteria_NoAudienceOrNoScopeYieldsNone() {
 	s.Empty(ScopeCriteria("user-1", nil, []string{"license"}))
 	s.Empty(ScopeCriteria("user-1", []string{"https://api.dmv.ca.gov"}, nil))
+}
+
+func (s *RevocationUtilsTestSuite) TestScopeCriteria_IncludesFrozenSubtreeKeysForEveryDelimiter() {
+	const subject, audience = "user-1", "https://api.example.com"
+	for _, separator := range serverconst.ValidPermissionDelimiters {
+		delimiter := string(separator)
+		child := "reports" + delimiter + "view"
+		criteria := ScopeCriteria(subject, []string{audience}, []string{child})
+		s.Contains(criteria, Criterion{Type: CriterionTypeEntityScope,
+			Value: EntityScopeCriterionValue(subject, audience, child)})
+		s.Contains(criteria, Criterion{Type: CriterionTypeScope,
+			Value: ScopeCriterionValue(audience, child)})
+		for _, root := range []string{"reports", child} {
+			s.Contains(criteria, Criterion{Type: CriterionTypeEntityScopeSubtree,
+				Value: EntityScopeSubtreeCriterionValue(subject, audience, root, delimiter)})
+		}
+	}
 }

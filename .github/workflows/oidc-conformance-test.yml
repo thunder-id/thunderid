@@ -31,6 +31,9 @@ on:
           - basic
           - config
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true

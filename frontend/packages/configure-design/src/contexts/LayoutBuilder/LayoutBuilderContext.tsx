@@ -31,6 +31,11 @@ export interface LayoutBuilderContextType {
   handle: string | null;
 
   /**
+   * The project the layout belongs to
+   */
+  projectId: string | null;
+
+  /**
    * The original layout configuration from the API
    */
   originalLayout: LayoutConfig | null;

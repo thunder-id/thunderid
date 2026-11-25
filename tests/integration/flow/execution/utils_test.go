@@ -4,13 +4,14 @@
 package execution
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 
 	"github.com/stretchr/testify/suite"
 
-	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
@@ -67,27 +68,48 @@ func createRole(s *suite.Suite, created *[]string, ouID, resourceServerID, name 
 	return roleID
 }
 
-// permissionSet encodes permissions on one resource server as the role permission flow input.
-func permissionSet(s *suite.Suite, resourceServerID string, permissions ...string) string {
+// updateRolePermissions replaces what a role made by createRole grants on the resource server through
+// `PUT /roles/{id}`, keeping its name and organization unit.
+func updateRolePermissions(roleID, ouID, resourceServerID, name string, permissions ...string) error {
+	role := testutils.Role{
+		Name:        name,
+		Description: "Role created for flow execution testing",
+		OUID:        ouID,
+	}
+	if len(permissions) > 0 {
+		role.Permissions = []testutils.ResourcePermissions{
+			{ResourceServerID: resourceServerID, Permissions: permissions},
+		}
+	}
+	return testutils.UpdateRole(roleID, role)
+}
+
+// removeAssignmentThroughAPI removes the assignment through the management API, in the organization unit
+// named or the role's owner when none is, and returns the response status and the error code it carried.
+func removeAssignmentThroughAPI(s *suite.Suite, roleID, ouID string, assignee testutils.Assignment) (int, string) {
 	s.T().Helper()
 
-	encoded, err := json.Marshal([]map[string]interface{}{
-		{"resourceServerId": resourceServerID, "permissions": permissions},
-	})
+	request := map[string]interface{}{"assignments": []testutils.Assignment{assignee}}
+	if ouID != "" {
+		request["ouId"] = ouID
+	}
+	body, err := json.Marshal(request)
 	s.Require().NoError(err)
-	return string(encoded)
-}
+	req, err := http.NewRequest(http.MethodPost, testutils.TestServerURL+"/roles/"+roleID+"/assignments/remove",
+		bytes.NewReader(body))
+	s.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := testutils.GetHTTPClient().Do(req)
+	s.Require().NoError(err, "Failed to remove the assignment")
+	defer resp.Body.Close()
 
-func executeAsAdmin(s *suite.Suite, flowID string, inputs map[string]string) *common.FlowStep {
-	s.T().Helper()
-
-	result, err := common.ExecuteAdministrationFlow(flowID, inputs, true)
-	s.Require().NoError(err, "Failed to execute administration flow %s", flowID)
-	s.Require().Equal(http.StatusOK, result.StatusCode, "Flow error response: %+v", result.Error)
-	return result.Step
-}
-
-func requireCompleted(s *suite.Suite, step *common.FlowStep) {
-	s.T().Helper()
-	s.Require().Equal("COMPLETE", step.FlowStatus, "Flow response: %+v", step)
+	respBody, err := io.ReadAll(resp.Body)
+	s.Require().NoError(err)
+	var apiErr struct {
+		Code string `json:"code"`
+	}
+	if len(respBody) > 0 {
+		_ = json.Unmarshal(respBody, &apiErr)
+	}
+	return resp.StatusCode, apiErr.Code
 }

@@ -70,15 +70,15 @@ func (suite *ValidationTestSuite) TestCreateResourceServerMissingName() {
 	suite.Contains(err.Error(), "400")
 }
 
-func (suite *ValidationTestSuite) TestCreateResourceServerMissingOrgUnit() {
-	req := CreateResourceServerRequest{
-		Name: "missing-ou-server",
-		OUID: "",
-	}
+// A resource server that names no organization unit is placed in the system organization unit.
+func (suite *ValidationTestSuite) TestCreateResourceServerWithoutOrgUnit() {
+	id, err := createResourceServer(CreateResourceServerRequest{Name: "no-ou-server"})
+	suite.Require().NoError(err)
+	defer func() { _ = deleteResourceServer(id) }()
 
-	_, err := createResourceServer(req)
-	suite.Error(err, "Should fail with missing organization unit")
-	suite.Contains(err.Error(), "400")
+	rs, err := getResourceServer(id)
+	suite.Require().NoError(err)
+	suite.Equal(systemOUID, rs.OUID)
 }
 
 func (suite *ValidationTestSuite) TestCreateResourceServerMissingIdentifier() {
@@ -565,9 +565,9 @@ func (suite *ValidationTestSuite) TestStructuredValidationErrorsOnMissingRequire
 		url         string
 		body        map[string]interface{}
 	}{
-		{"update resource server without organization unit", http.MethodPut,
+		{"update resource server without name", http.MethodPut,
 			resourceServerURL("/%s", suite.resourceServerID),
-			map[string]interface{}{"name": "No Organization Unit"}},
+			map[string]interface{}{"description": "No name"}},
 		{"update action at resource server without name", http.MethodPut,
 			resourceServerURL("/%s/actions/%s", suite.resourceServerID, serverActionID),
 			map[string]interface{}{"description": "No name"}},
@@ -750,6 +750,53 @@ func (suite *ValidationTestSuite) TestUpdateResourceServerIdentifierConflict() {
 	})
 	suite.Error(err, "Should fail when the identifier is already taken")
 	suite.Contains(err.Error(), "409")
+}
+
+func (suite *ValidationTestSuite) TestUpdateResourceServerEquivalentIdentifierConflict() {
+	firstID, err := createResourceServer(CreateResourceServerRequest{
+		Name:       "Equivalent Identifier Conflict Server 1",
+		Identifier: "https://equivalent-conflict.example.com",
+		OUID:       suite.ouID,
+	})
+	suite.Require().NoError(err)
+	defer deleteResourceServer(firstID)
+
+	secondID, err := createResourceServer(CreateResourceServerRequest{
+		Name:       "Equivalent Identifier Conflict Server 2",
+		Identifier: "https://equivalent-conflict.example.com/second",
+		OUID:       suite.ouID,
+	})
+	suite.Require().NoError(err)
+	defer deleteResourceServer(secondID)
+
+	err = updateResourceServer(secondID, UpdateResourceServerRequest{
+		Name:       "Equivalent Identifier Conflict Server 2",
+		Identifier: "https://Equivalent-Conflict.example.com/",
+		OUID:       suite.ouID,
+	})
+	suite.Require().Error(err, "Should fail when an equivalent identifier is already taken")
+	suite.Contains(err.Error(), "409")
+}
+
+func (suite *ValidationTestSuite) TestUpdateResourceServerToEquivalentOfOwnIdentifier() {
+	rsID, err := createResourceServer(CreateResourceServerRequest{
+		Name:       "Own Equivalent Identifier Server",
+		Identifier: "https://own-equivalent.example.com",
+		OUID:       suite.ouID,
+	})
+	suite.Require().NoError(err)
+	defer deleteResourceServer(rsID)
+
+	err = updateResourceServer(rsID, UpdateResourceServerRequest{
+		Name:       "Own Equivalent Identifier Server",
+		Identifier: "https://OWN-EQUIVALENT.example.com/",
+		OUID:       suite.ouID,
+	})
+	suite.Require().NoError(err)
+
+	rs, err := getResourceServer(rsID)
+	suite.Require().NoError(err)
+	suite.Equal("https://OWN-EQUIVALENT.example.com/", rs.Identifier)
 }
 
 // roleResponse is the role payload, limited to the fields needed to assert permission cleanup.

@@ -4,6 +4,7 @@
 import type {Node} from '@xyflow/react';
 import type {Base} from './base';
 import type {Element} from './elements';
+import type {FlowNodeCondition} from './responses';
 
 export interface StepPosition {
   x: number;
@@ -57,6 +58,10 @@ export interface StepData {
    * (e.g. a user-set `displayName`, executor options).
    */
   properties?: Record<string, unknown>;
+  /**
+   * Node-level condition kept from the flow definition; the builder does not edit it.
+   */
+  condition?: FlowNodeCondition;
   [key: string]: unknown;
 }
 
@@ -111,20 +116,17 @@ export const ExecutionTypes = {
   SSOCheck: 'SSOCheckExecutor',
   Session: 'SessionExecutor',
   SessionSignOut: 'SessionSignOutExecutor',
-  PreDelete: 'PreDeleteExecutor',
   PreSuspend: 'PreSuspendExecutor',
   ApplicationActionValidator: 'ApplicationActionValidator',
-  ApplicationDelete: 'ApplicationDeleteExecutor',
-  ClientSecret: 'ClientSecretExecutor',
   CriteriaRevocation: 'CriteriaRevocationExecutor',
   AccessChangeValidator: 'AccessChangeValidator',
   RoleExecutor: 'RoleExecutor',
-  GroupExecutor: 'GroupExecutor',
-  ActionDeletion: 'ActionDeletionExecutor',
   IdentityGovernance: 'IdentityGovernanceExecutor',
+  AttributeVerification: 'AttributeVerificationExecutor',
   AuthAssert: 'AuthAssertExecutor',
   Authorization: 'AuthorizationExecutor',
   AccountLinking: 'AccountLinkingExecutor',
+  SharingExecutor: 'SharingExecutor',
 } as const;
 
 export const ExecutionStepViewTypes = {

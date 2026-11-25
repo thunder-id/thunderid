@@ -169,6 +169,19 @@ func (suite *HandlerTestSuite) TestHandleUpdateServerConfig_InvalidValue() {
 	assert.Equal(suite.T(), ErrorInvalidConfigValue.Code, suite.decodeErrorCode(w.Body.Bytes()))
 }
 
+func (suite *HandlerTestSuite) TestHandleUpdateServerConfig_Unauthorized() {
+	suite.mockService.EXPECT().SetConfig(mock.Anything, ConfigNameCORS, mock.Anything).
+		Return(&common.ErrorUnauthorized)
+
+	req := httptest.NewRequest(http.MethodPut, "/server-config/cors", strings.NewReader(`["*"]`))
+	req.SetPathValue("name", string(ConfigNameCORS))
+	w := httptest.NewRecorder()
+	suite.handler.HandleUpdateServerConfig(w, req)
+
+	assert.Equal(suite.T(), http.StatusForbidden, w.Code)
+	assert.Equal(suite.T(), common.ErrorUnauthorized.Code, suite.decodeErrorCode(w.Body.Bytes()))
+}
+
 func (suite *HandlerTestSuite) TestHandleUpdateServerConfig_GetAfterSetError() {
 	suite.mockService.EXPECT().SetConfig(mock.Anything, ConfigNameCORS, mock.Anything).Return(nil)
 	suite.mockService.EXPECT().GetConfig(mock.Anything, ConfigNameCORS).

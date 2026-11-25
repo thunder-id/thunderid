@@ -586,6 +586,28 @@ func (ts *ActorTokenTestSuite) TestActorToken_NestedDelegationChain() {
 	ts.Equal(ts.actorUserID, nestedAct["sub"], "nested act.act.sub should identify the original actor")
 }
 
+// TestActorToken_IntrospectionReturnsDelegationChain verifies that introspecting a token carrying a
+// nested delegation chain returns the act claim exactly as the token holds it, so a resource server
+// that relies on introspection sees every actor without decoding the token itself.
+func (ts *ActorTokenTestSuite) TestActorToken_IntrospectionReturnsDelegationChain() {
+	subjectToken := ts.obtainAccessTokenAs(
+		actorTokenIssuerClientID, actorTokenIssuerClientSecret, actorTokenSubjectUsername, actorTokenSubjectPassword)
+	actorToken := ts.obtainAccessTokenAs(
+		actorTokenIssuerClientID, actorTokenIssuerClientSecret, actorTokenActorUsername, actorTokenActorPassword)
+
+	firstExchangedToken := ts.exchangeWithActor(subjectToken, actorToken)
+	secondExchangedToken := ts.exchangeWithActor(subjectToken, firstExchangedToken)
+	tokenAct := ts.actClaim(secondExchangedToken)
+	ts.Require().Contains(tokenAct, "act", "The token should carry a nested delegation chain")
+
+	result, err := testutils.IntrospectTokenResult(
+		secondExchangedToken, actorTokenExchangeClientID, actorTokenExchangeSecret, false)
+	ts.Require().NoError(err)
+	ts.True(result.Active)
+	ts.Equal(ts.subjectUserID, result.Sub)
+	ts.Equal(tokenAct, result.Act, "Introspection should return the token's act claim with its nesting intact")
+}
+
 // TestActorToken_ExtendsSubjectDelegationChain verifies that a subject_token which already records an
 // actor keeps that actor nested beneath the new actor_token's subject (RFC 8693 Section 4.1).
 func (ts *ActorTokenTestSuite) TestActorToken_ExtendsSubjectDelegationChain() {

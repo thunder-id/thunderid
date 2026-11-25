@@ -16,7 +16,7 @@ How a sign-in and a sync work:
 
 1. An operator opens the Control Plane console at `https://localhost:8095/console`.
 2. The console has no login of its own. It redirects to auth-dp for an OIDC sign-in (PKCE, client `CP_CONSOLE`).
-3. auth-dp returns a token for the Control Plane's own URL (the `resource` the console asks for). auth-dp's System resource server is registered under that URL at package time, and the Control Plane accepts the token because it shares auth-dp's signing keys and claims auth-dp's issuer.
+3. auth-dp returns a token for the Control Plane's own URL (the `resource` the console asks for). auth-dp holds the Control Plane resource server, which is registered under that URL and declares the `system` permissions the Control Plane enforces, and the Control Plane accepts the token because it shares auth-dp's signing keys and claims auth-dp's issuer.
 4. A write on the Control Plane (a user, a password change, an application) is synced to the Data Plane. The credential value is first written to dp's secret and variable stores, then a configuration version is captured and imported through dp's management API, authenticated with the gateway's API key.
 5. An operator opens the Data Plane Admin Console at `https://localhost:8090/console` and signs in on dp's own Gate (client `ADMIN_CONSOLE`).
 
@@ -52,7 +52,7 @@ The result is `target/dist/thunderid-<version>-<os>-<arch>.zip`.
 - strips the default `CONSOLE` application from every plane's bootstrap, since none of them use it
 - removes auth-dp's console UI
 - ships `console-cp` (the console that runs every operation as a direct API call) as the Control Plane's console, and points it at auth-dp as its trusted issuer, with client `CP_CONSOLE`
-- registers auth-dp's System resource server under the Control Plane's URL, because the console asks auth-dp for a token for that URL
+- adds the Control Plane resource server ([backend/cmd/cpserver/idp-bootstrap](../backend/cmd/cpserver/idp-bootstrap)) to auth-dp, because the console asks auth-dp for a token for the Control Plane's URL, and grants its `system` permission to auth-dp's admin group
 - points the managed dp's admin console at client `ADMIN_CONSOLE`
 - turns the default admin into the Service Desk Admin on dp and cp, with its own group and role under separate IDs, and leaves auth-dp's default `admin` as it is
 - sets auth-dp to port 8091
@@ -63,7 +63,7 @@ The result is `target/dist/thunderid-<version>-<os>-<arch>.zip`.
 
 | Directory | Layered onto | Contents |
 |---|---|---|
-| [bootstrap/auth-dp](bootstrap/auth-dp) | auth-dp | CORS allowlist for the CP console origin; the `CP_CONSOLE` application |
+| [bootstrap/auth-dp](bootstrap/auth-dp) | auth-dp | CORS allowlist for the CP console origin; the `CP_CONSOLE` application; the role that grants the admin group `system` on the Control Plane resource server |
 | [bootstrap/dp-cp](bootstrap/dp-cp) | dp and cp | The `ADMIN_CONSOLE` application, same fixed ID on both so the Control Plane's copy replaces dp's on sync. |
 | [bootstrap/cp](bootstrap/cp) | cp | Registers dp as a gateway (`00-` prefix so it exists before other resources are written) |
 
@@ -91,7 +91,7 @@ The two sets of scripts do the same work; [bootstrap.ps1](bootstrap.ps1) is the 
 `setup.sh` runs once, in order:
 
 1. Prompts for the two accounts' usernames and passwords (a generated password is offered for each): `admin` (default username `admin`) and Service Desk Admin (default `servicedeskadmin`). Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` for the first, and `SERVICE_DESK_USERNAME` and `SERVICE_DESK_PASSWORD` for the second, to skip the prompts, for example in CI. With nothing supplied and no terminal, passwords are generated and printed at the end.
-2. Sets up auth-dp, shares its certificate and signing keys with dp and cp, generates the management key the Control Plane uses to reach dp (dp trusts its SHA-256 digest, written into dp's `deployment.yaml`), then sets up dp and cp.
+2. Sets up auth-dp, shares its certificate and signing keys with dp and cp, generates the management key the Control Plane uses to reach dp (dp trusts its SHA-256 digest, written into dp's `deployment.yaml`), then sets up dp and cp. A key already in `QUICKSTART_GATEWAY_KEY` is used instead of a generated one, which is how the E2E pipeline gets the key it imports deployment-wide resources with.
 3. Starts dp briefly to seed the values it has to hold before the first sync: the Admin Console's client ID and redirect URIs, the System resource server's identifier, and the Service Desk Admin's password secret. The Control Plane's bootstrap runs before dp is up, so it cannot hand these over itself.
 
 `start.sh` then starts all three and prints the URLs. It does not repeat the setup, so settings changed since (for example the onboarding flow) survive a restart. Running `setup.sh` again resets them.

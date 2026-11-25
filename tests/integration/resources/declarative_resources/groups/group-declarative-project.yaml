@@ -1,0 +1,6 @@
+resource_type: group
+id: decl-group-project
+name: Declarative Project Group
+description: A declarative test group that belongs to a project
+ouId: 01900000-0000-7000-8000-000000000001
+projectId: 019a0000-0000-7000-8000-0000000d0009

@@ -19,19 +19,21 @@ type revokedCache struct {
 	subjects map[string]revokedEntry
 	appKeys  map[string]revokedEntry
 	// entityScopes and scopes are keyed by criterion digest.
-	entityScopes map[string]revokedEntry
-	scopes       map[string]revokedEntry
+	entityScopes        map[string]revokedEntry
+	entityScopeSubtrees map[string]revokedEntry
+	scopes              map[string]revokedEntry
 }
 
 // newRevokedCache creates an empty cache. It holds nothing until the first snapshot is loaded.
 func newRevokedCache() *revokedCache {
 	return &revokedCache{
-		tokens:       make(map[string]time.Time),
-		families:     make(map[string]time.Time),
-		subjects:     make(map[string]revokedEntry),
-		appKeys:      make(map[string]revokedEntry),
-		entityScopes: make(map[string]revokedEntry),
-		scopes:       make(map[string]revokedEntry),
+		tokens:              make(map[string]time.Time),
+		families:            make(map[string]time.Time),
+		subjects:            make(map[string]revokedEntry),
+		appKeys:             make(map[string]revokedEntry),
+		entityScopes:        make(map[string]revokedEntry),
+		entityScopeSubtrees: make(map[string]revokedEntry),
+		scopes:              make(map[string]revokedEntry),
 	}
 }
 
@@ -43,6 +45,7 @@ func (c *revokedCache) replace(snapshot revokedSnapshot) {
 	subjects := indexEntriesByValue(snapshot.Subjects)
 	appKeys := indexEntriesByValue(snapshot.AppKeys)
 	entityScopes := indexEntriesByValue(snapshot.EntityScopes)
+	entityScopeSubtrees := indexEntriesByValue(snapshot.EntityScopeSubtrees)
 	scopes := indexEntriesByValue(snapshot.Scopes)
 	c.mu.Lock()
 	c.tokens = tokens
@@ -50,6 +53,7 @@ func (c *revokedCache) replace(snapshot revokedSnapshot) {
 	c.subjects = subjects
 	c.appKeys = appKeys
 	c.entityScopes = entityScopes
+	c.entityScopeSubtrees = entityScopeSubtrees
 	c.scopes = scopes
 	c.mu.Unlock()
 }
@@ -126,4 +130,12 @@ func indexByValue(entries []revokedEntry) map[string]time.Time {
 		m[e.Value] = e.ExpiryTime
 	}
 	return m
+}
+
+// isEntityScopeSubtreeRevoked applies the recorded subtree rule's original cutoff.
+func (c *revokedCache) isEntityScopeSubtreeRevoked(digest string, establishedAt time.Time) bool {
+	c.mu.RLock()
+	entry, ok := c.entityScopeSubtrees[digest]
+	c.mu.RUnlock()
+	return matchesEntry(entry, ok, establishedAt)
 }

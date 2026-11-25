@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {I18nTextInput} from '@thunderid/components';
+import {useMoveRows} from '@thunderid/configure-user-types';
 import {isContactAttributeType, resolveAttributeRegex} from '@thunderid/utils';
 import {
   Box,
@@ -25,7 +26,7 @@ import {
   DialogContentText,
   DialogActions,
 } from '@wso2/oxygen-ui';
-import {Trash2, Plus, Info} from '@wso2/oxygen-ui-icons-react';
+import {ArrowDown, ArrowUp, Trash2, Plus, Info} from '@wso2/oxygen-ui-icons-react';
 import {useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {SchemaPropertyInput, PropertyType} from '../../../models/property-definition';
@@ -35,6 +36,12 @@ export interface EditSchemaSettingsProps {
   properties: SchemaPropertyInput[];
   onPropertiesChange: (properties: SchemaPropertyInput[]) => void;
   agentTypeHandle: string;
+  disabled?: boolean;
+  /**
+   * Whether the schema belongs to an agent type that already exists, whose agents may hold values
+   * for it. The create wizard leaves it off.
+   */
+  isEditMode?: boolean;
 }
 
 /**
@@ -45,9 +52,12 @@ export default function EditSchemaSettings({
   properties,
   onPropertiesChange,
   agentTypeHandle,
+  disabled = false,
+  isEditMode = false,
 }: EditSchemaSettingsProps): JSX.Element {
   const {t} = useTranslation();
   const [enumInput, setEnumInput] = useState<Record<string, string>>({});
+  const {rowRefs, moveRow: handleMoveProperty} = useMoveRows(properties, onPropertiesChange);
   const [credentialRemoveDialogOpen, setCredentialRemoveDialogOpen] = useState(false);
   const [pendingCredentialRemoveId, setPendingCredentialRemoveId] = useState<string | null>(null);
 
@@ -126,9 +136,12 @@ export default function EditSchemaSettings({
 
   return (
     <Box>
-      {properties.map((property) => (
+      {properties.map((property, index) => (
         <Paper
           key={property.id}
+          ref={(el: HTMLDivElement | null) => {
+            rowRefs.current[property.id] = el;
+          }}
           variant="outlined"
           sx={{
             position: 'relative',
@@ -140,37 +153,68 @@ export default function EditSchemaSettings({
             '&:hover .property-delete-btn': {opacity: 1},
           }}
         >
-          {/* Remove button - visible on hover */}
-          {properties.length > 1 && (
-            <Tooltip title={t('agentTypes:removeProperty', 'Remove property')}>
-              <IconButton
-                className="property-delete-btn"
-                size="small"
-                color="error"
-                onClick={() => handleRemoveProperty(property.id)}
-                sx={{position: 'absolute', top: 8, right: 8, opacity: 0, transition: 'opacity 0.2s'}}
-              >
-                <Trash2 size={16} />
-              </IconButton>
-            </Tooltip>
+          {/* Move buttons, and the remove button, visible on hover and on keyboard focus */}
+          {!disabled && properties.length > 1 && (
+            <Stack direction="row" sx={{position: 'absolute', top: 8, right: 8}}>
+              <Tooltip title={t('agentTypes:moveUp', 'Move up')}>
+                <span>
+                  <IconButton
+                    size="small"
+                    aria-label={t('agentTypes:moveUp', 'Move up')}
+                    data-move="up"
+                    disabled={index === 0}
+                    onClick={() => handleMoveProperty(index, -1)}
+                  >
+                    <ArrowUp size={16} />
+                  </IconButton>
+                </span>
+              </Tooltip>
+              <Tooltip title={t('agentTypes:moveDown', 'Move down')}>
+                <span>
+                  <IconButton
+                    size="small"
+                    aria-label={t('agentTypes:moveDown', 'Move down')}
+                    data-move="down"
+                    disabled={index === properties.length - 1}
+                    onClick={() => handleMoveProperty(index, 1)}
+                  >
+                    <ArrowDown size={16} />
+                  </IconButton>
+                </span>
+              </Tooltip>
+              <Tooltip title={t('agentTypes:removeProperty', 'Remove property')}>
+                <IconButton
+                  className="property-delete-btn"
+                  size="small"
+                  color="error"
+                  aria-label={t('agentTypes:removeProperty', 'Remove property')}
+                  onClick={() => handleRemoveProperty(property.id)}
+                  sx={{opacity: 0, transition: 'opacity 0.2s', '&:focus-visible': {opacity: 1}}}
+                >
+                  <Trash2 size={16} />
+                </IconButton>
+              </Tooltip>
+            </Stack>
           )}
 
           <Stack spacing={2}>
             <Box sx={{display: 'grid', gridTemplateColumns: {xs: '1fr', md: '1fr 1fr'}, gap: 2}}>
-              <FormControl fullWidth>
-                <FormLabel>{t('agentTypes:propertyName')}</FormLabel>
-                <TextField
-                  value={property.name}
-                  onChange={(e) => handlePropertyChange(property.id, 'name', e.target.value)}
-                  placeholder={t('agentTypes:propertyNamePlaceholder', 'e.g., email, age, address')}
-                  size="small"
-                />
-              </FormControl>
+              <TextField
+                labelPlacement="top"
+                label={t('agentTypes:propertyName')}
+                fullWidth
+                value={property.name}
+                disabled={disabled}
+                onChange={(e) => handlePropertyChange(property.id, 'name', e.target.value)}
+                placeholder={t('agentTypes:propertyNamePlaceholder', 'e.g., email, age, address')}
+                size="small"
+              />
 
               <FormControl fullWidth>
                 <FormLabel>{t('agentTypes:propertyType', 'Type')}</FormLabel>
                 <Select
                   value={property.type}
+                  disabled={disabled}
                   onChange={(e) => handlePropertyChange(property.id, 'type', e.target.value as PropertyType)}
                   size="small"
                 >
@@ -189,6 +233,7 @@ export default function EditSchemaSettings({
               value={property.displayName}
               onChange={(newValue: string) => handlePropertyChange(property.id, 'displayName', newValue)}
               placeholder={t('agentTypes:displayNamePlaceholder', 'e.g., First Name')}
+              disabled={disabled}
               onTranslationCreated={invalidateI18nCache}
               labels={{
                 triggerTooltip: t('agentTypes:displayNameI18n.tooltip', 'Configure translation'),
@@ -219,7 +264,7 @@ export default function EditSchemaSettings({
             />
 
             {/* Checkbox options with info tooltips */}
-            <Box sx={{display: 'flex', gap: 3}}>
+            <Box sx={{display: 'flex', flexWrap: 'wrap', columnGap: 3}}>
               <Tooltip
                 title={t('agentTypes:tooltips.required', 'This field must be provided when creating a user')}
                 placement="top"
@@ -229,6 +274,7 @@ export default function EditSchemaSettings({
                   control={
                     <Checkbox
                       checked={property.required}
+                      disabled={disabled}
                       onChange={(e) => handlePropertyChange(property.id, 'required', e.target.checked)}
                     />
                   }
@@ -240,6 +286,32 @@ export default function EditSchemaSettings({
                   }
                 />
               </Tooltip>
+              {!property.required && (
+                <Tooltip
+                  title={t(
+                    'agentTypes:tooltips.promptOnCreate',
+                    'Prompt for this optional field when an agent is created: added by an admin or onboarded through a flow',
+                  )}
+                  placement="top"
+                  arrow
+                >
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={!property.hiddenOnCreate}
+                        disabled={disabled}
+                        onChange={(e) => handlePropertyChange(property.id, 'hiddenOnCreate', !e.target.checked)}
+                      />
+                    }
+                    label={
+                      <Stack direction="row" alignItems="center" spacing={0.5} sx={{whiteSpace: 'nowrap'}}>
+                        <span>{t('agentTypes:promptOnCreate', 'Ask when created')}</span>
+                        <Info size={14} color="inherit" />
+                      </Stack>
+                    }
+                  />
+                </Tooltip>
+              )}
               {(property.type === 'string' ||
                 isContactAttributeType(property.type) ||
                 property.type === 'number' ||
@@ -253,7 +325,7 @@ export default function EditSchemaSettings({
                     control={
                       <Checkbox
                         checked={property.unique}
-                        disabled={property.credential}
+                        disabled={disabled || property.credential}
                         onChange={(e) => handlePropertyChange(property.id, 'unique', e.target.checked)}
                       />
                     }
@@ -276,6 +348,7 @@ export default function EditSchemaSettings({
                     control={
                       <Checkbox
                         checked={property.credential}
+                        disabled={disabled}
                         onChange={({target: {checked}}) => {
                           if (!checked) {
                             setPendingCredentialRemoveId(property.id);
@@ -313,34 +386,35 @@ export default function EditSchemaSettings({
 
             {/* String: regex pattern */}
             {(property.type === 'string' || isContactAttributeType(property.type)) && (
-              <FormControl fullWidth>
-                <FormLabel>
-                  {isContactAttributeType(property.type)
+              <TextField
+                labelPlacement="top"
+                label={
+                  isContactAttributeType(property.type)
                     ? t('agentTypes:contactRegexPattern', 'Regular expression pattern')
-                    : t('agentTypes:regexPattern', 'Regular expression pattern (optional)')}
-                </FormLabel>
-                <TextField
-                  value={property.regex}
-                  required={isContactAttributeType(property.type)}
-                  error={isContactAttributeType(property.type) && !property.regex.trim()}
-                  helperText={
-                    isContactAttributeType(property.type) && !property.regex.trim()
-                      ? property.type === 'email'
-                        ? t(
-                            'agentTypes:validationErrors.emailRegexRequired',
-                            'Enter a regular expression for email attributes.',
-                          )
-                        : t(
-                            'agentTypes:validationErrors.mobileRegexRequired',
-                            'Enter a regular expression for mobile attributes.',
-                          )
-                      : undefined
-                  }
-                  onChange={(e) => handlePropertyChange(property.id, 'regex', e.target.value)}
-                  placeholder={t('agentTypes:regexPlaceholder', 'e.g., ^[a-zA-Z0-9]+$')}
-                  size="small"
-                />
-              </FormControl>
+                    : t('agentTypes:regexPattern', 'Regular expression pattern (optional)')
+                }
+                fullWidth
+                value={property.regex}
+                disabled={disabled}
+                required={isContactAttributeType(property.type)}
+                error={isContactAttributeType(property.type) && !property.regex.trim()}
+                helperText={
+                  isContactAttributeType(property.type) && !property.regex.trim()
+                    ? property.type === 'email'
+                      ? t(
+                          'agentTypes:validationErrors.emailRegexRequired',
+                          'Enter a regular expression for email attributes.',
+                        )
+                      : t(
+                          'agentTypes:validationErrors.mobileRegexRequired',
+                          'Enter a regular expression for mobile attributes.',
+                        )
+                    : undefined
+                }
+                onChange={(e) => handlePropertyChange(property.id, 'regex', e.target.value)}
+                placeholder={t('agentTypes:regexPlaceholder', 'e.g., ^[a-zA-Z0-9]+$')}
+                size="small"
+              />
             )}
 
             {/* Enum: value input + chips */}
@@ -350,6 +424,7 @@ export default function EditSchemaSettings({
                 <Box sx={{display: 'flex', gap: 1, mb: 1}}>
                   <TextField
                     value={enumInput[property.id] ?? ''}
+                    disabled={disabled}
                     onChange={(e) => setEnumInput({...enumInput, [property.id]: e.target.value})}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
@@ -361,7 +436,12 @@ export default function EditSchemaSettings({
                     size="small"
                     fullWidth
                   />
-                  <Button variant="outlined" size="small" onClick={() => handleAddEnumValue(property.id)}>
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    disabled={disabled}
+                    onClick={() => handleAddEnumValue(property.id)}
+                  >
                     {t('common:actions.add', 'Add')}
                   </Button>
                 </Box>
@@ -371,7 +451,7 @@ export default function EditSchemaSettings({
                       <Chip
                         key={val}
                         label={val}
-                        onDelete={() => handleRemoveEnumValue(property.id, val)}
+                        onDelete={disabled ? undefined : () => handleRemoveEnumValue(property.id, val)}
                         size="small"
                       />
                     ))}
@@ -384,22 +464,24 @@ export default function EditSchemaSettings({
       ))}
 
       {/* Add Property Button */}
-      <Button
-        variant="text"
-        color="primary"
-        startIcon={<Plus size={16} />}
-        onClick={handleAddProperty}
-        fullWidth
-        sx={{
-          py: 1.5,
-          mb: 2,
-          border: '1px dashed',
-          borderColor: 'divider',
-          '&:hover': {border: '1px dashed', borderColor: 'primary.main'},
-        }}
-      >
-        {t('agentTypes:addProperty', 'Add property')}
-      </Button>
+      {!disabled && (
+        <Button
+          variant="text"
+          color="primary"
+          startIcon={<Plus size={16} />}
+          onClick={handleAddProperty}
+          fullWidth
+          sx={{
+            py: 1.5,
+            mb: 2,
+            border: '1px dashed',
+            borderColor: 'divider',
+            '&:hover': {border: '1px dashed', borderColor: 'primary.main'},
+          }}
+        >
+          {t('agentTypes:addProperty', 'Add property')}
+        </Button>
+      )}
 
       {/* Credential Removal Confirmation Dialog */}
       <Dialog
@@ -412,10 +494,15 @@ export default function EditSchemaSettings({
         <DialogTitle>{t('agentTypes:removeCredentialDialog.title', 'Remove credential flag')}</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            {t(
-              'agentTypes:removeCredentialDialog.description',
-              'Removing the credential flag will cause this field to no longer be hashed or protected. Existing hashed values may become inaccessible. Are you sure you want to proceed?',
-            )}
+            {isEditMode
+              ? t(
+                  'agentTypes:removeCredentialDialog.description',
+                  'Removing the credential flag will cause this field to no longer be hashed or protected. Existing hashed values may become inaccessible. Are you sure you want to proceed?',
+                )
+              : t(
+                  'agentTypes:removeCredentialDialog.descriptionNew',
+                  'Removing the credential flag will cause this field to no longer be hashed or protected. Are you sure you want to proceed?',
+                )}
           </DialogContentText>
         </DialogContent>
         <DialogActions>

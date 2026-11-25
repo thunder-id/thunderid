@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type {OrganizationUnit} from '@thunderid/configure-organization-units';
-import {Box, IconButton, Stack, ToggleButton, ToggleButtonGroup, Tooltip, Typography} from '@wso2/oxygen-ui';
+import {Box, IconButton, Tooltip, Typography} from '@wso2/oxygen-ui';
 import {Trash2} from '@wso2/oxygen-ui-icons-react';
-import type {JSX} from 'react';
+import type {JSX, ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
+import ReachToggleGroup from './ReachToggleGroup';
 import type {ChildUnitReach} from '../models/organization-access';
 
 export interface GrantedOrganizationUnit {
@@ -27,6 +28,10 @@ export interface GrantedOrganizationUnitListProps {
    */
   fixedReachLabel?: string;
   onReachChange?: (ouId: string, reach: ChildUnitReach) => void;
+  /**
+   * Content shown under a unit's row, across its full width.
+   */
+  renderUnitExtra?: (unit: GrantedOrganizationUnit) => ReactNode;
   onRemove: (ouId: string) => void;
 }
 
@@ -41,6 +46,7 @@ export default function GrantedOrganizationUnitList({
   emptyLabel,
   fixedReachLabel = undefined,
   onReachChange = undefined,
+  renderUnitExtra = undefined,
   onRemove,
 }: GrantedOrganizationUnitListProps): JSX.Element {
   const {t} = useTranslation();
@@ -63,6 +69,7 @@ export default function GrantedOrganizationUnitList({
       {units.map((unit, index) => {
         const ou = unitsById.get(unit.ouId);
         const name = ou?.name ?? unit.ouId;
+        const extra = renderUnitExtra?.(unit);
 
         return (
           <Box
@@ -70,9 +77,9 @@ export default function GrantedOrganizationUnitList({
             key={unit.ouId}
             sx={{
               // A fixed grid keeps every row's reach toggle and revoke action in the same column, whatever
-              // the length of the unit's name or of the hint under its reach.
+              // the length of the unit's name.
               display: 'grid',
-              gridTemplateColumns: {xs: 'minmax(0, 1fr) 40px', sm: 'minmax(0, 1fr) 300px 40px'},
+              gridTemplateColumns: {xs: 'minmax(0, 1fr) 40px', sm: 'minmax(0, 1fr) 360px 40px'},
               gridTemplateAreas: {xs: '"name action" "reach reach"', sm: '"name reach action"'},
               alignItems: 'center',
               columnGap: 2,
@@ -93,32 +100,14 @@ export default function GrantedOrganizationUnitList({
               </Typography>
             </Box>
             {unit.reach && (
-              <Stack spacing={0.5} sx={{gridArea: 'reach', alignItems: 'flex-start'}}>
-                <ToggleButtonGroup
-                  exclusive
-                  size="small"
+              <Box sx={{gridArea: 'reach'}}>
+                <ReachToggleGroup
+                  name={name}
                   value={unit.reach}
                   disabled={readOnly}
-                  // Read-only keeps the chosen reach marked, so the saved reach still reads at a glance.
-                  sx={{'& .MuiToggleButton-root.Mui-disabled.Mui-selected': {color: 'primary.main'}}}
-                  aria-label={t('resourceSharing:reach.label', 'Reach for {{name}}', {name})}
-                  onChange={(_event, reach: ChildUnitReach | null) => {
-                    if (reach) onReachChange?.(unit.ouId, reach);
-                  }}
-                >
-                  <ToggleButton value="unit" sx={{textTransform: 'none'}}>
-                    {t('resourceSharing:reach.unit', 'This unit only')}
-                  </ToggleButton>
-                  <ToggleButton value="subtree" sx={{textTransform: 'none'}}>
-                    {t('resourceSharing:reach.subtree', 'And below')}
-                  </ToggleButton>
-                </ToggleButtonGroup>
-                <Typography variant="caption" color="text.secondary">
-                  {unit.reach === 'unit'
-                    ? t('resourceSharing:reach.unitHint', "Units below it don't get access.")
-                    : t('resourceSharing:reach.subtreeHint', 'Includes every unit below it, now and later.')}
-                </Typography>
-              </Stack>
+                  onChange={(reach) => onReachChange?.(unit.ouId, reach)}
+                />
+              </Box>
             )}
             {!readOnly && (
               <Tooltip title={t('resourceSharing:revoke', 'Revoke access for {{name}}', {name})}>
@@ -132,6 +121,7 @@ export default function GrantedOrganizationUnitList({
                 </IconButton>
               </Tooltip>
             )}
+            {extra && <Box sx={{gridColumn: '1 / -1'}}>{extra}</Box>}
           </Box>
         );
       })}

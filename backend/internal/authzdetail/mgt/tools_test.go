@@ -10,9 +10,11 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/mcp/tool"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -47,7 +49,7 @@ func (s *TypeToolsTestSuite) TestListTypes() {
 	s.service.EXPECT().ListAllAuthorizationDetailTypes(mock.Anything).
 		Return([]providers.AuthorizationDetailType{toolsTestType()}, nil)
 
-	_, out, err := s.tools.listTypes(context.Background(), &mcp.CallToolRequest{}, nil)
+	_, out, err := s.tools.listTypes(context.Background(), &mcp.CallToolRequest{}, listTypesInput{})
 
 	s.Require().NoError(err)
 	s.Equal(1, out.TotalResults)
@@ -55,11 +57,29 @@ func (s *TypeToolsTestSuite) TestListTypes() {
 		out.Types)
 }
 
+// With a project, the tool lists only that project's types.
+func (s *TypeToolsTestSuite) TestListTypesOfAProject() {
+	inProject := toolsTestType()
+	inProject.ProjectID = testProjectID
+	other := toolsTestType()
+	other.ID, other.Type, other.ProjectID = "type-2", "payment", testOtherProjectID
+	s.service.EXPECT().ListAllAuthorizationDetailTypes(mock.Anything).
+		Return([]providers.AuthorizationDetailType{inProject, other}, nil)
+
+	_, out, err := s.tools.listTypes(context.Background(), &mcp.CallToolRequest{},
+		listTypesInput{ProjectID: testProjectID})
+
+	s.Require().NoError(err)
+	s.Equal(1, out.TotalResults)
+	s.Equal("type-1", out.Types[0].ID)
+	s.Equal(testProjectID, out.Types[0].ProjectID)
+}
+
 func (s *TypeToolsTestSuite) TestListTypesFails() {
 	s.service.EXPECT().ListAllAuthorizationDetailTypes(mock.Anything).
 		Return(nil, &tidcommon.InternalServerError)
 
-	_, _, err := s.tools.listTypes(context.Background(), &mcp.CallToolRequest{}, nil)
+	_, _, err := s.tools.listTypes(context.Background(), &mcp.CallToolRequest{}, listTypesInput{})
 
 	s.Error(err)
 }
@@ -134,24 +154,25 @@ func (s *TypeToolsTestSuite) TestUpdateTypeRefused() {
 func (s *TypeToolsTestSuite) TestToolsOverMCP() {
 	ctx := context.Background()
 	server := mcp.NewServer(&mcp.Implementation{Name: "test"}, nil)
-	registerMCPTools(server, s.service)
-	serverTransport, clientTransport := mcp.NewInMemoryTransports()
-	serverSession, err := server.Connect(ctx, serverTransport, nil)
-	s.Require().NoError(err)
-	defer func() { _ = serverSession.Close() }()
-	session, err := mcp.NewClient(&mcp.Implementation{Name: "client"}, nil).Connect(ctx, clientTransport, nil)
-	s.Require().NoError(err)
-	defer func() { _ = session.Close() }()
+	registerMCPTools(server, s.service, true)
+	session := connectMCP(s.T(), server)
 
-	listed, err := session.ListTools(ctx, nil)
-	s.Require().NoError(err)
-	names := make([]string, 0, len(listed.Tools))
-	for _, t := range listed.Tools {
-		names = append(names, t.Name)
-	}
+	names := toolNames(s.T(), session)
 	s.ElementsMatch([]string{"list_authorization_detail_types",
 		"get_authorization_detail_type_by_id", "create_authorization_detail_type",
 		"update_authorization_detail_type"}, names)
+
+	// Every tool is mapped to an authorization detail type permission, so none falls back to root.
+	security.ForEachPermissionPlaneForTest(func(plane string) {
+		s.Run(plane, func() {
+			p := security.GetSystemPermissions()
+			for _, name := range names {
+				s.Contains([]string{p.AuthzDetailView, p.AuthzDetailCreate, p.AuthzDetailUpdate, p.AuthzDetailDelete},
+					security.ResolveMCPToolPermission(name),
+					"tool %q must require an authorization detail type permission", name)
+			}
+		})
+	})
 
 	created := toolsTestType()
 	var received json.RawMessage
@@ -220,4 +241,47 @@ func (s *TypeToolsTestSuite) TestToolsOverMCP() {
 		Arguments: arguments})
 	s.Require().NoError(err)
 	s.False(result.IsError, "a fetched definition can be created again: %v", result.Content)
+}
+
+// Without token writes, as on a data plane, only the read tools are registered, and they still work.
+func (s *TypeToolsTestSuite) TestOnlyReadToolsWithoutTokenWrites() {
+	server := mcp.NewServer(&mcp.Implementation{Name: "test"}, nil)
+	registerMCPTools(server, s.service, false)
+	session := connectMCP(s.T(), server)
+
+	s.ElementsMatch([]string{"list_authorization_detail_types", "get_authorization_detail_type_by_id"},
+		toolNames(s.T(), session))
+
+	got := toolsTestType()
+	s.service.EXPECT().GetAuthorizationDetailType(mock.Anything, "type-1").Return(&got, nil)
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "get_authorization_detail_type_by_id", Arguments: map[string]any{"id": "type-1"}})
+	s.Require().NoError(err)
+	s.False(result.IsError, "%v", result.Content)
+}
+
+// connectMCP connects a client to server over in-memory transports, closed when the test ends.
+func connectMCP(t *testing.T, server *mcp.Server) *mcp.ClientSession {
+	t.Helper()
+	ctx := context.Background()
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	serverSession, err := server.Connect(ctx, serverTransport, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = serverSession.Close() })
+	session, err := mcp.NewClient(&mcp.Implementation{Name: "client"}, nil).Connect(ctx, clientTransport, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = session.Close() })
+	return session
+}
+
+// toolNames returns the names of the tools the session lists.
+func toolNames(t *testing.T, session *mcp.ClientSession) []string {
+	t.Helper()
+	listed, err := session.ListTools(context.Background(), nil)
+	require.NoError(t, err)
+	names := make([]string, 0, len(listed.Tools))
+	for _, listedTool := range listed.Tools {
+		names = append(names, listedTool.Name)
+	}
+	return names
 }

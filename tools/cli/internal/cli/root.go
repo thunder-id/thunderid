@@ -18,6 +18,7 @@ import (
 	huhspinner "charm.land/huh/v2/spinner"
 
 	"github.com/thunder-id/thunderid/tools/cli/internal/commands/upgrade"
+	"github.com/thunder-id/thunderid/tools/cli/internal/plane"
 	"github.com/thunder-id/thunderid/tools/cli/internal/product"
 	"github.com/thunder-id/thunderid/tools/cli/internal/services/config"
 	"github.com/thunder-id/thunderid/tools/cli/internal/services/health"
@@ -127,6 +128,17 @@ func Run(verbose, forceSetup bool) {
 	// A pinned version is judged on its own install state rather than on which version happens to
 	// be active: asking for a version that is already installed should start it, not fetch it again.
 	selected := activeVersion == runVersion || pinnedVersion != ""
+	// An install holds one plane. Asking for another must not start the one on disk under the
+	// name of the one asked for, and replacing it would drop its data, so the choice is left to
+	// the operator.
+	if requested := release.SelectedPlane(); requested != plane.Auto && selected && installOnDisk {
+		if installed := setup.PlaneOf(path); installed != requested {
+			ui.Fatal(fmt.Sprintf("%s v%s is installed as the %s at %s, not the %s.\n"+
+				"Run without --plane to start it, or remove that directory to install the %s instead.",
+				product.Name, runVersion, installed.Label(), path, requested.Label(), requested.Label()))
+			os.Exit(1)
+		}
+	}
 	alreadyInstalled := selected && config.IsSetupComplete(runVersion) && installOnDisk
 	isFirstRun := !config.IsOnboardingDone(runVersion)
 
@@ -191,12 +203,15 @@ func Run(verbose, forceSetup bool) {
 		}
 	}
 
-	// resolvePort has already settled any conflict on this port, so anything still
+	// resolvePort has already settled any conflict on these ports, so anything still
 	// listening was not approved for termination: report it instead of killing it.
-	if !setup.WaitForPortFree(port, 10*time.Second) {
-		ui.PrintCredentialsFallback(creds)
-		ui.Fatal(fmt.Sprintf("Port %d is still in use. Stop the process using it, then run again.", port))
-		os.Exit(1)
+	ports := setup.InstallPorts(path, port)
+	for _, p := range ports {
+		if !setup.WaitForPortFree(p, 10*time.Second) {
+			ui.PrintCredentialsFallback(creds)
+			ui.Fatal(fmt.Sprintf("Port %d is still in use. Stop the process using it, then run again.", p))
+			os.Exit(1)
+		}
 	}
 
 	fmt.Print(ui.Dim("\n  Starting " + product.Name + " in the background..."))
@@ -213,15 +228,19 @@ func Run(verbose, forceSetup bool) {
 	// Launching the script only means the launcher started. Wait for the server to
 	// answer before claiming success, so a rejected bind is reported as the failure it
 	// is instead of a started product the REPL then finds missing.
-	if err := waitForStartup(path, port, verbose); err != nil {
+	if err := waitForStartup(path, ports, verbose); err != nil {
 		fmt.Println()
-		stopStartedInstance(proc, port)
+		stopStartedInstance(proc, ports)
 		ui.PrintCredentialsFallback(creds)
 		ui.FatalDetail("Failed to start " + product.Name + ": " + err.Error())
 		os.Exit(1)
 	}
 	fmt.Printf("\r\033[2K  %s %s started on port %d  %s\n",
 		ui.Green("✓"), product.Name, port, ui.Dim("logs: "+setup.LogDir(path)))
+	if dpPort := setup.DataPlanePort(path); dpPort > 0 {
+		fmt.Printf("  %s Control Plane console: https://localhost:%d/console\n", ui.Green("✓"), port)
+		fmt.Printf("  %s Data Plane Admin Console: https://localhost:%d/console\n", ui.Green("✓"), dpPort)
+	}
 
 	replLoop(runVersion, path, proc, verbose, isFirstRun, newVersion, nodeWarning, port, creds)
 }
@@ -298,7 +317,10 @@ func replLoop(
 func resolvePort(installPath string, setupWillRun bool) int {
 	port := setup.ServerPort(installPath)
 	if setupWillRun {
-		port = health.DefaultPort
+		port = setup.DefaultPort(installPath)
+	}
+	if setup.HasFixedPorts(installPath) {
+		return resolveFixedPorts(setup.InstallPorts(installPath, port), port)
 	}
 	if !setup.IsPortInUse(port) {
 		return port
@@ -330,6 +352,27 @@ func resolvePort(installPath string, setupWillRun bool) int {
 		os.Exit(0)
 		return 0
 	}
+}
+
+// resolveFixedPorts settles conflicts on the ports of an install that cannot move: the only
+// answers are freeing every taken port or aborting. port is the one the install is known by.
+func resolveFixedPorts(ports []int, port int) int {
+	holders := setup.PortHolders(ports...)
+	if len(holders) == 0 {
+		return port
+	}
+	if !ui.Interactive() {
+		ui.Warn("Ports the quickstart needs are in use, so the processes holding them are being stopped.\n" +
+			holderSummary(holders))
+	} else if choice, _ := ui.PromptPortConflict(holders[0].Port, 0, holders); choice != ui.KillAndUsePort {
+		os.Exit(0)
+	}
+	for _, p := range ports {
+		if setup.IsPortInUse(p) {
+			freePortOrExit(p)
+		}
+	}
+	return port
 }
 
 // freePortOrExit stops whatever holds port and gives up when it cannot: starting
@@ -368,7 +411,7 @@ var fatalStartupPatterns = []string{
 // the launcher and the server it spawned do not outlive the CLI and hold the port. The
 // port check before the launch proved nothing else held it, so a listener on it now is
 // this run's own.
-func stopStartedInstance(proc *exec.Cmd, port int) {
+func stopStartedInstance(proc *exec.Cmd, ports []int) {
 	if proc != nil && proc.Process != nil {
 		if runtime.GOOS == "windows" {
 			proc.Process.Kill() //nolint:errcheck
@@ -376,16 +419,18 @@ func stopStartedInstance(proc *exec.Cmd, port int) {
 			proc.Process.Signal(syscall.SIGTERM) //nolint:errcheck
 		}
 	}
-	if setup.IsPortInUse(port) {
-		_ = setup.FreePort(port, 5*time.Second)
+	for _, port := range ports {
+		if setup.IsPortInUse(port) {
+			_ = setup.FreePort(port, 5*time.Second)
+		}
 	}
 }
 
 // waitForStartup waits for the server to answer, showing a spinner in non-verbose mode
 // so a slow boot does not look like a hang. Verbose runs keep the raw log output.
-func waitForStartup(installPath string, port int, verbose bool) error {
+func waitForStartup(installPath string, ports []int, verbose bool) error {
 	if verbose {
-		return awaitReady(installPath, port, startupTimeout)
+		return awaitReady(installPath, ports, startupTimeout)
 	}
 	fmt.Println()
 	var readyErr error
@@ -393,7 +438,7 @@ func waitForStartup(installPath string, port int, verbose bool) error {
 		WithTheme(ui.SpinnerTheme()).
 		Title("Waiting for " + product.Name + " to become ready...").
 		Action(func() {
-			readyErr = awaitReady(installPath, port, startupTimeout)
+			readyErr = awaitReady(installPath, ports, startupTimeout)
 		}).
 		Run(); err != nil {
 		return fmt.Errorf("interrupted while waiting for %s: %w", product.Name, err)
@@ -401,13 +446,15 @@ func waitForStartup(installPath string, port int, verbose bool) error {
 	return readyErr
 }
 
-// awaitReady blocks until the server answers on port, and otherwise returns the real
-// reason it did not: the server's own log line when it names one, or a timeout that
-// still carries the tail of that log.
-func awaitReady(installPath string, port int, timeout time.Duration) error {
+// awaitReady blocks until every server of the install answers on its port, and otherwise
+// returns the real reason one did not: the server's own log line when it names one, or a
+// timeout that still carries the tail of that log.
+func awaitReady(installPath string, ports []int, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
+	var port int
 	for {
-		if health.IsReady(port) {
+		port = firstNotReady(ports)
+		if port == 0 {
 			return nil
 		}
 		if line := fatalStartupLine(installPath); line != "" {
@@ -424,6 +471,16 @@ func awaitReady(installPath string, port int, timeout time.Duration) error {
 	}
 	return withLogTail(installPath,
 		fmt.Errorf("%s did not start listening on port %d within %s", product.Name, port, timeout))
+}
+
+// firstNotReady returns the first of ports with no server answering on it, or 0 when all answer.
+func firstNotReady(ports []int) int {
+	for _, port := range ports {
+		if !health.IsReady(port) {
+			return port
+		}
+	}
+	return 0
 }
 
 // fatalStartupLine returns the log line that shows the server gave up, or "".
@@ -574,8 +631,12 @@ func runSetupPhase(version, installPath string, verbose bool, port int) *setup.A
 	}
 	fmt.Printf("  %s Setup complete\n", ui.Green("✓"))
 	// Prefer the interactively collected credentials; fall back to whatever setup.sh
-	// generated and printed (non-interactive path).
+	// generated and printed (non-interactive path). The quickstart's second account is
+	// only ever settled by setup, so it is carried over either way.
 	if promptCreds != nil {
+		if setupCreds != nil {
+			promptCreds.ServiceDesk = setupCreds.ServiceDesk
+		}
 		return promptCreds
 	}
 	return setupCreds

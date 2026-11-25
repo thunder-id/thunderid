@@ -4,8 +4,10 @@
 package gateway
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"slices"
@@ -63,7 +65,16 @@ func (ts *GatewayVersionsTestSuite) TestTheAppliedConfigurationShowsTheVersionAs
 	var live testutils.OrganizationUnit
 	ts.Require().Equal(http.StatusOK, ts.call(http.MethodGet, "/organization-units/"+ouID, nil, &live))
 	live.Name = "Changed Since"
-	ts.Require().Equal(http.StatusOK, ts.call(http.MethodPut, "/organization-units/"+ouID, live, nil))
+	changed, err := json.Marshal(live)
+	ts.Require().NoError(err)
+	var changedDocument map[string]any
+	ts.Require().NoError(json.Unmarshal(changed, &changedDocument))
+	changedDocument["resource_type"] = "organization_unit"
+	content, err := json.Marshal(changedDocument)
+	ts.Require().NoError(err)
+	ts.managedImport(testutils.ImportRequest{
+		Content: string(content), Options: testutils.ImportOptions{Upsert: true},
+	})
 
 	applied := ts.appliedConfiguration(ts.gatewayID)
 	ts.Equal(ts.gatewayID, applied.GatewayID)
@@ -120,8 +131,20 @@ func (ts *GatewayVersionsTestSuite) TestAppliedApplicationsAndAgentsShowAsTheirR
 	})
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteApplication(m2mID) }()
+	// An agent is placed within its agent type's organization unit tree, so it is of a type of the unit.
+	agentTypeID, err := testutils.CreateNewAgentType(testutils.UserType{
+		Handle: "viewed-agents-" + suffix, DisplayName: "Viewed Agents", OUID: ouID,
+		Schema: map[string]interface{}{
+			"name":          map[string]interface{}{"type": "string", "required": true},
+			"modelProvider": map[string]interface{}{"type": "string"},
+			"model":         map[string]interface{}{"type": "string"},
+		},
+	})
+	ts.Require().NoError(err)
+	// What an apply deployed here, which is this server, is removed only by the managed import.
+	defer ts.removeManaged("agent_type", agentTypeID)
 	agentID, err := testutils.CreateAgent(testutils.Agent{
-		Type: "default", OUID: ouID, Description: "Viewed agent",
+		Type: "viewed-agents-" + suffix, OUID: ouID, Description: "Viewed agent",
 		Attributes: map[string]any{"name": "viewed-agent-" + suffix, "modelProvider": "anthropic", "model": "viewed-model"},
 		InboundAuthConfig: []testutils.AgentInboundAuthConfig{{
 			Type: "oauth2",
@@ -134,7 +157,7 @@ func (ts *GatewayVersionsTestSuite) TestAppliedApplicationsAndAgentsShowAsTheirR
 		}},
 	})
 	ts.Require().NoError(err)
-	defer func() { _ = testutils.DeleteAgent(agentID) }()
+	defer ts.removeManaged("agent", agentID)
 
 	// The agent is read as it was captured: an import defaults its ID token's response type, which
 	// its own create leaves unset, so the read after the apply has a field the version does not.
@@ -202,32 +225,41 @@ func (ts *GatewayVersionsTestSuite) TestTheAppliedDirectoryShowsAsItsReads() {
 		},
 	})
 	ts.Require().NoError(err)
-	defer func() { _ = testutils.DeleteUserType(userTypeID) }()
+	// What the apply deployed here, which is this server, is removed only by the managed import, whether or
+	// not the test got as far as the apply.
+	defer ts.removeManaged("user_type", userTypeID)
+	// An agent type of this test's own: the default one, once deployed here, reads as read only and so is left
+	// out of the next capture, which a control plane, that never holds what it deploys, does not do.
+	agentTypeID, err := testutils.CreateNewAgentType(testutils.UserType{
+		Handle: "viewed-agent-type-" + suffix, DisplayName: "Viewed Agent Type", OUID: ouID,
+		Schema: map[string]interface{}{"name": map[string]interface{}{"type": "string"}},
+	})
+	ts.Require().NoError(err)
+	defer ts.removeManaged("agent_type", agentTypeID)
 	userID, err := testutils.CreateUser(testutils.User{
 		OUID: ouID, Type: "viewed_type_" + suffix,
 		Attributes: []byte(fmt.Sprintf(`{"username":"viewed-%s","nickname":"Viewed"}`, suffix)),
 	})
 	ts.Require().NoError(err)
-	defer func() { _ = testutils.DeleteUser(userID) }()
+	defer ts.removeManaged("user", userID)
 	groupID, err := testutils.CreateGroup(testutils.Group{
 		Name: "viewed-group-" + suffix, Description: "Viewed group", OUID: ouID,
 		Members: []testutils.Member{{Id: userID, Type: "user"}},
 	})
 	ts.Require().NoError(err)
-	defer func() { _ = testutils.DeleteGroup(groupID) }()
+	defer ts.removeManaged("group", groupID)
 	roleID, err := testutils.CreateRole(testutils.Role{
 		Name: "viewed-role-" + suffix, Description: "Viewed role", OUID: ouID,
 		Assignments: []testutils.Assignment{{ID: userID, Type: "user"}, {ID: groupID, Type: "group"}},
 	})
 	ts.Require().NoError(err)
-	defer func() { _ = testutils.DeleteRole(roleID) }()
+	defer ts.removeManaged("role", roleID)
 
 	applied := ts.captureAndApply("directory")
 
 	userType := ts.shown(applied, "user_type", userTypeID)
 	ts.Equal(ts.read("/user-types/"+userTypeID), userType.Resource)
 	ts.Empty(userType.Parts)
-	agentTypeID := ts.defaultAgentTypeID()
 	ts.Equal(ts.read("/agent-types/"+agentTypeID), ts.shown(applied, "agent_type", agentTypeID).Resource)
 	user := ts.shown(applied, "user", userID)
 	userRead := ts.read("/users/" + userID)
@@ -397,14 +429,13 @@ func (ts *GatewayVersionsTestSuite) TestAppliedConnectionsShowWithTheirSecretsMa
 // An authorization details type shows as its read returns it, with its processor credential masked.
 func (ts *GatewayVersionsTestSuite) TestAnAppliedAuthorizationDetailTypeShowsWithItsCredentialMasked() {
 	const secret = "viewed-processor-secret"
-	typeID := ts.create("/authorization-detail-types", map[string]any{
+	typeID := ts.importResource("authorization_detail_type", map[string]any{
 		"type": "https://viewed.example.com/" + uniqueSuffix(), "name": "Viewed",
 		"schema": map[string]any{"type": "object",
 			"properties": map[string]any{"amount": map[string]any{"type": "number"}}},
 		"processor": map[string]any{"endpoint": "https://processor.example.com/rar",
 			"authentication": map[string]any{"type": "bearer", "properties": map[string]any{"token": secret}}},
 	})
-	ts.T().Cleanup(func() { ts.call(http.MethodDelete, "/authorization-detail-types/"+typeID, nil, nil) })
 
 	applied := ts.captureAndApply("authorization details type")
 	ts.NotContains(ts.rawBody(http.MethodGet, "/gateways/"+ts.gatewayID+"/applied-configuration"), secret,
@@ -422,22 +453,20 @@ func (ts *GatewayVersionsTestSuite) TestAppliedFlowsDesignTranslationsAndServerC
 	flowID, err := testutils.CreateIsolatedAuthFlow("viewed-flow-" + suffix)
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteFlow(flowID) }()
-	themeID := ts.create("/design/themes", map[string]any{
+	themeID := ts.importResource("theme", map[string]any{
 		"handle": "viewed-theme-" + suffix, "displayName": "Viewed Theme", "description": "Viewed",
 		"theme": map[string]any{"direction": "ltr"},
 	})
-	defer ts.call(http.MethodDelete, "/design/themes/"+themeID, nil, nil)
-	layoutID := ts.create("/design/layouts", map[string]any{
+	layoutID := ts.importResource("layout", map[string]any{
 		"handle": "viewed-layout-" + suffix, "displayName": "Viewed Layout", "description": "Viewed",
 		"layout": map[string]any{"type": "centered"},
 	})
-	defer ts.call(http.MethodDelete, "/design/layouts/"+layoutID, nil, nil)
 	const language, namespace = "de-AT", "integration-version-view"
 	translations := "/i18n/languages/" + language + "/translations"
-	ts.Require().Equal(http.StatusOK, ts.call(http.MethodPost, translations, map[string]any{
+	ts.importResource("translation", map[string]any{
+		"language":     language,
 		"translations": map[string]map[string]string{namespace: {"greeting": "Servus", "farewell": "Pfiat di"}},
-	}, nil))
-	defer ts.call(http.MethodDelete, translations, nil, nil)
+	})
 
 	applied := ts.captureAndApply("flows, design, translations and server configuration")
 
@@ -466,6 +495,11 @@ func (ts *GatewayVersionsTestSuite) TestAppliedFlowsDesignTranslationsAndServerC
 	ts.Require().Equal(http.StatusOK, ts.call(http.MethodGet, "/server-config", nil, &sections))
 	ts.Require().NotEmpty(sections)
 	for _, section := range sections {
+		// The gateway section sets how the control plane itself deploys, so it is not exported or
+		// applied.
+		if section == "gateway" {
+			continue
+		}
 		shown := ts.shown(applied, "server_config", section)
 		ts.Equal(ts.read("/server-config/" + section)["merged"], shown.Resource["merged"], section)
 		ts.Equal(shown.Resource["merged"], shown.Resource["writable"], "an import writes a section to its writable layer")
@@ -558,7 +592,22 @@ func (ts *GatewayVersionsTestSuite) shown(applied appliedConfiguration, resource
 			ts.FailNow(fmt.Sprintf("%s %s was skipped: %s %s", resourceType, id, skipped.Code, skipped.Reason))
 		}
 	}
-	ts.FailNow(fmt.Sprintf("%s %s is not in the applied configuration", resourceType, id))
+	var held []string
+	for _, resource := range applied.Resources {
+		held = append(held, resource.ResourceType+"/"+resource.ID)
+	}
+	var master struct {
+		Entries []map[string]any `json:"entries"`
+	}
+	ts.call(http.MethodGet, "/gateways/"+ts.gatewayID+"/master", nil, &master)
+	var entries []string
+	for _, entry := range master.Entries {
+		if entry["resourceType"] == resourceType {
+			entries = append(entries, fmt.Sprintf("%v", entry))
+		}
+	}
+	ts.FailNow(fmt.Sprintf("%s %s is not in the applied configuration, which holds %v and skipped %v; the master has %v",
+		resourceType, id, held, applied.Skipped, entries))
 	return appliedResource{}
 }
 
@@ -588,7 +637,76 @@ func (ts *GatewayVersionsTestSuite) read(path string) document {
 	var body document
 	status := ts.call(http.MethodGet, path, nil, &body)
 	ts.Require().Equal(http.StatusOK, status, "GET %s", path)
+	// The gateway here is this server, so what an apply deployed is read only on it, which the applied
+	// configuration, as the apply sent it, does not show: it shows the resource as it was before.
+	if _, ok := body["isReadOnly"]; ok {
+		body["isReadOnly"] = false
+	}
+	// Whether the reading organization unit owns the resource belongs to the read, not to the resource, so a
+	// version does not hold it.
+	delete(body, "isOwnedByOU")
 	return body
+}
+
+// managedImport deploys through the managed import with the management API key, as a control plane does,
+// and requires every result of it to have succeeded. What an apply deployed to this server, which is the
+// gateway here, is read only on it: only the managed import changes or removes it.
+func (ts *GatewayVersionsTestSuite) managedImport(request testutils.ImportRequest) {
+	ts.T().Helper()
+	request.Options.Target = "runtime"
+	encoded, err := json.Marshal(request)
+	ts.Require().NoError(err)
+	req, err := http.NewRequest(http.MethodPost, testServerURL+"/import/managed", bytes.NewReader(encoded))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := testutils.GetManagementAPIKeyHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer func() { _ = resp.Body.Close() }()
+	payload, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, string(payload))
+	var response testutils.ImportResponse
+	ts.Require().NoError(json.Unmarshal(payload, &response), string(payload))
+	for _, result := range response.Results {
+		ts.Require().Equal("success", result.Status, string(payload))
+	}
+}
+
+// tryRemoveManaged removes a resource an apply deployed here through the managed import, and leaves it if
+// that is refused.
+func (ts *GatewayVersionsTestSuite) tryRemoveManaged(resourceType, id string) {
+	ts.T().Helper()
+	encoded, err := json.Marshal(testutils.ImportRequest{
+		Options:   testutils.ImportOptions{Target: "runtime"},
+		Deletions: []testutils.ResourceDeletion{{ResourceType: resourceType, ID: id}},
+	})
+	if err != nil {
+		return
+	}
+	req, err := http.NewRequest(http.MethodPost, testServerURL+"/import/managed", bytes.NewReader(encoded))
+	if err != nil {
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if resp, err := testutils.GetManagementAPIKeyHTTPClient().Do(req); err == nil {
+		_ = resp.Body.Close()
+	}
+}
+
+// removeManagedUnits removes organization units an apply deployed here, which the API no longer deletes.
+func (ts *GatewayVersionsTestSuite) removeManagedUnits(ids ...string) {
+	ts.T().Helper()
+	ts.removeManaged("organization_unit", ids...)
+}
+
+// removeManaged removes resources of one type an apply deployed here, which the API no longer deletes.
+func (ts *GatewayVersionsTestSuite) removeManaged(resourceType string, ids ...string) {
+	ts.T().Helper()
+	var deletions []testutils.ResourceDeletion
+	for _, id := range ids {
+		deletions = append(deletions, testutils.ResourceDeletion{ResourceType: resourceType, ID: id})
+	}
+	ts.managedImport(testutils.ImportRequest{Deletions: deletions})
 }
 
 // create posts a resource, requires it created and returns its id.
@@ -601,24 +719,27 @@ func (ts *GatewayVersionsTestSuite) create(path string, body any) string {
 	return created.ID
 }
 
+// importResource imports a resource a data plane takes only from an import with the management API key,
+// requires it imported and returns its id. It is removed the same way when the test ends.
+func (ts *GatewayVersionsTestSuite) importResource(resourceType string, document map[string]any) string {
+	ts.T().Helper()
+	id, err := testutils.ImportResource(resourceType, document, true)
+	ts.Require().NoError(err, "import %s", resourceType)
+	if resourceType == "translation" {
+		id = document["language"].(string)
+	}
+	ts.T().Cleanup(func() { _ = testutils.DeleteImportedResource(resourceType, id) })
+	return id
+}
+
 // createUnit creates an organization unit the test's resources live in, removed when the test ends.
 func (ts *GatewayVersionsTestSuite) createUnit(handle string) string {
 	ts.T().Helper()
 	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{Handle: handle, Name: handle})
 	ts.Require().NoError(err)
-	ts.T().Cleanup(func() { _ = testutils.DeleteOrganizationUnit(ouID) })
+	// Best effort, as the cleanup of every test is: what other tests left in the unit keeps it from going.
+	ts.T().Cleanup(func() { ts.tryRemoveManaged("organization_unit", ouID) })
 	return ouID
-}
-
-func (ts *GatewayVersionsTestSuite) defaultAgentTypeID() string {
-	ts.T().Helper()
-	for _, agentType := range ts.list(ts.read("/agent-types?limit=100")["types"]) {
-		if agentType["handle"] == "default" {
-			return agentType["id"].(string)
-		}
-	}
-	ts.FailNow("the default agent type is not there")
-	return ""
 }
 
 func (ts *GatewayVersionsTestSuite) list(value any) []document {

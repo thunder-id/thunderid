@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import {screen, fireEvent, waitFor, renderWithProviders, renderHook} from '@thunderid/test-utils';
 import {useTranslation} from 'react-i18next';
 import {describe, it, expect, vi, beforeEach, beforeAll} from 'vitest';
@@ -12,7 +13,7 @@ const mockUseGetThemes = vi.fn();
 const mockUseGetLayouts = vi.fn();
 vi.mock('@thunderid/design', () => ({
   useGetThemes: (): unknown => mockUseGetThemes(),
-  useGetLayouts: (): unknown => mockUseGetLayouts(),
+  useGetLayouts: (params?: unknown): unknown => mockUseGetLayouts(params),
 }));
 
 describe('AppearanceSection', () => {
@@ -345,5 +346,17 @@ describe('AppearanceSection', () => {
         expect(mockOnFieldChange).toHaveBeenCalledWith('layoutId', 'split-layout');
       });
     });
+  });
+
+  it("lists the selected project's layouts", () => {
+    mockUseGetThemes.mockReturnValue({data: {themes: []}, isLoading: false});
+
+    renderWithProviders(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <AppearanceSection organizationUnit={mockOrganizationUnit} editedOU={{}} onFieldChange={mockOnFieldChange} />
+      </ProjectScopeProvider>,
+    );
+
+    expect(mockUseGetLayouts).toHaveBeenCalledWith({projectId: 'project-1'});
   });
 });

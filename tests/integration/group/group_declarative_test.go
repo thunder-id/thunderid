@@ -18,9 +18,6 @@ import (
 // group store runs in composite mode (the product default). Declarative groups live in the
 // file-based store alongside runtime groups in the database: reads merge both stores, while every
 // write against a declarative group must be rejected as immutable. The fixture IDs live in model.go.
-const (
-	declGroupClientID = "CONSOLE"
-)
 
 var declGroupRedirectURI = testutils.TestServerURL + "/console"
 
@@ -226,6 +223,42 @@ func (suite *GroupDeclarativeAPITestSuite) TestDeleteDeclarativeGroupIsRejected(
 	suite.Equal(http.StatusOK, getResp.StatusCode)
 }
 
+// TestRemoveDeclaredMemberIsRejected verifies a member a YAML-declared group lists cannot be removed, and
+// that the refusal leaves the member in place. Without it the removal would revoke what the member holds
+// and still leave the member in the group.
+func (suite *GroupDeclarativeAPITestSuite) TestRemoveDeclaredMemberIsRejected() {
+	payload, err := json.Marshal(MembersRequest{Members: []Member{{Id: declGroupMemberID, Type: MemberTypeUser}}})
+	suite.Require().NoError(err)
+
+	resp := suite.doDeclarative(http.MethodPost, "/groups/"+declNestedGroupID+"/members/remove", payload)
+	defer resp.Body.Close()
+
+	suite.Require().Equal(http.StatusBadRequest, resp.StatusCode)
+	var errorResp ErrorResponse
+	suite.Require().NoError(json.NewDecoder(resp.Body).Decode(&errorResp))
+	suite.Equal("GRP-1015", errorResp.Code)
+
+	membersResp := suite.doDeclarative(http.MethodGet, "/groups/"+declNestedGroupID+"/members", nil)
+	defer membersResp.Body.Close()
+	suite.Require().Equal(http.StatusOK, membersResp.StatusCode)
+	var members MemberListResponse
+	suite.Require().NoError(json.NewDecoder(membersResp.Body).Decode(&members))
+	suite.Require().Len(members.Members, 1, "the declared member must remain")
+	suite.Equal(declGroupMemberID, members.Members[0].Id)
+}
+
+// TestRemoveUndeclaredMemberFromDeclarativeGroupIsAccepted verifies that only declared members are
+// refused: naming a principal the declaration does not list is accepted and changes nothing.
+func (suite *GroupDeclarativeAPITestSuite) TestRemoveUndeclaredMemberFromDeclarativeGroupIsAccepted() {
+	payload, err := json.Marshal(MembersRequest{Members: []Member{{Id: declGroupID, Type: MemberTypeGroup}}})
+	suite.Require().NoError(err)
+
+	resp := suite.doDeclarative(http.MethodPost, "/groups/"+declNestedGroupID+"/members/remove", payload)
+	defer resp.Body.Close()
+
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+}
+
 // TestGetDeclarativeGroupsByPath verifies declarative groups are listed under their OU handle path.
 func (suite *GroupDeclarativeAPITestSuite) TestGetDeclarativeGroupsByPath() {
 	resp := suite.doDeclarative(http.MethodGet, "/groups/tree/"+declGroupOUHandle+"?limit=100", nil)
@@ -287,10 +320,10 @@ func (suite *GroupDeclarativeAPITestSuite) TestCreateGroupConflictingWithDeclara
 func (suite *GroupDeclarativeAPITestSuite) TestDeclarativeUserInheritsPermissionThroughNestedGroups() {
 	const (
 		rsIdentifier = "https://declarative-group-test.example.com/inherit"
-		grantedScope = "system:group:view"
+		grantedScope = "org:group:view"
 	)
 
-	rsID, err := testutils.CreateSystemScopedResourceServer(
+	rsID, err := testutils.CreateOrgScopedResourceServer(
 		declGroupOUID, "Declarative Inheritance RS", rsIdentifier, "group")
 	suite.Require().NoError(err)
 	defer func() {
@@ -316,16 +349,16 @@ func (suite *GroupDeclarativeAPITestSuite) TestDeclarativeUserInheritsPermission
 		}
 	}()
 
-	tokenResp, err := testutils.ObtainAccessTokenWithPassword(
-		declGroupClientID,
-		declGroupRedirectURI,
-		grantedScope,
-		declGroupMemberID,
-		declGroupMemberPassword,
-		true,
-		"",
-		rsIdentifier,
-	)
+	// The user lives in the declarative OU, and a sign-in is bounded to its application's OU, so it signs in
+	// through an application there rather than the Console.
+	var signIn testutils.OUSignInApps
+	defer func() {
+		if deleteErr := signIn.DeleteAll(); deleteErr != nil {
+			suite.T().Logf("Failed to clean up the sign-in application: %v", deleteErr)
+		}
+	}()
+	tokenResp, err := signIn.ObtainAccessToken(declGroupOUID, grantedScope, declGroupMemberID,
+		declGroupMemberPassword, rsIdentifier)
 	suite.Require().NoError(err, "the declarative user should be able to authenticate")
 	suite.Require().NotEmpty(tokenResp.AccessToken)
 

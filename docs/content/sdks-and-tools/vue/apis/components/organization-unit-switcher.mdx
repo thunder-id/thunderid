@@ -1,0 +1,158 @@
+---
+displayed_sidebar: null
+title: <OrganizationUnitSwitcher />
+docType: reference
+description: Dropdown that lists the organization units a signed-in user can access and switches the session to the one they pick, in Vue apps.
+---
+
+# `<OrganizationUnitSwitcher />`
+
+The `OrganizationUnitSwitcher` component shows the organization unit the session is in, in a field that opens a menu of the units the signed-in user can access. It reads the units from `GET /users/me/ous`, or from `endpoints.usersMeOrganizationUnits` on `<ThunderIDProvider />` when set. Picking a unit calls [`switchOrganizationUnit`](../../composables/use-thunderid#switch-organization-units) with the default options, so `redirect` is `true`. The switch signs in again bounded to that unit. A failed switch keeps the session as it was and shows a translated message under the field. For the scenario this component serves, see [Switch Organizations](../../../../../use-cases/b2b/journeys/switch-organizations).
+
+The component loads the list when it mounts, and loads the first page again when `scope` or `limit` changes.
+
+## Usage
+
+### Basic Usage
+
+```vue title="src/Header.vue" showLineNumbers
+<script setup>
+import { OrganizationUnitSwitcher, SignedIn } from '@thunderid/vue'
+</script>
+
+<template>
+  <header>
+    <SignedIn>
+      <OrganizationUnitSwitcher scope="siblings" />
+    </SignedIn>
+  </header>
+</template>
+```
+
+### Handling the Pick Yourself
+
+Listen to `select` (or pass `onSelect`) to take over a pick. The component calls it with the unit instead of switching, so your application decides what happens:
+
+```vue title="src/OrganizationPicker.vue" showLineNumbers
+<script setup>
+import { useRouter } from 'vue-router'
+import { OrganizationUnitSwitcher } from '@thunderid/vue'
+
+const router = useRouter()
+</script>
+
+<template>
+  <OrganizationUnitSwitcher @select="(unit) => router.push(`/orgs/${unit.handle}`)" />
+</template>
+```
+
+### Custom Rendering
+
+Use the default scoped slot to replace the built-in UI. It receives the [slot props](#slot-props), and the component keeps the loading, paging, and switching:
+
+```vue title="src/OrganizationSelect.vue" showLineNumbers
+<script setup>
+import { OrganizationUnitSwitcher } from '@thunderid/vue'
+</script>
+
+<template>
+  <OrganizationUnitSwitcher>
+    <template #default="{ organizationUnits, current, onSwitch, switchingId, error }">
+      <select
+        :value="current ?? ''"
+        :disabled="switchingId !== null"
+        @change="onSwitch(organizationUnits.find((unit) => unit.id === $event.target.value))"
+      >
+        <option v-for="unit in organizationUnits" :key="unit.id" :value="unit.id">
+          {{ unit.name }}
+        </option>
+      </select>
+      <p v-if="error" role="alert">{{ error }}</p>
+    </template>
+  </OrganizationUnitSwitcher>
+</template>
+```
+
+## Built-in UI
+
+The built-in UI is a field that shows a small label, **Organization** by default, above the name of the current unit. Clicking the field opens a menu that lists each unit by name and handle, with a check mark on the current unit. The arrow keys open the menu and move through it, Home and End jump to the first and last unit, and Escape closes it. When the listing has more units than `limit`, the menu shows **Previous** and **Next** buttons. While a switch runs, the field shows a spinner and cannot be opened. Picking the current unit does nothing.
+
+The text comes from these translation keys, which `preferences.i18n` can override:
+
+| Key | Default (`en-US`) |
+| :--- | :--- |
+| `organization_unit.switcher.label` | `Organization` |
+| `organization_unit.switcher.placeholder` | `Select an organization` |
+| `organization_unit.switcher.switching` | `Switching to {name}…` |
+| `organization_unit.switcher.loading` | `Loading organization units…` |
+| `organization_unit.switcher.empty` | `No organization units are available.` |
+| `organization_unit.switcher.previous` | `Previous` |
+| `organization_unit.switcher.next` | `Next` |
+| `organization_unit.switcher.error.load` | `The organization units could not be loaded.` |
+| `organization_unit.switcher.error.switch` | `Could not switch to {name}. Please try again.` |
+| `organization_unit.switcher.error.unauthorized` | `This application cannot be used from {name}.` |
+| `organization_unit.switcher.error.interaction_required` | `Sign in again to switch to {name}.` |
+
+A failed switch shows the `unauthorized` message for `UnauthorizedClient`, the `interaction_required` message for `InteractionRequired`, and the `switch` message for any other code.
+
+## Props
+
+| Prop | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `scope` | `AccessibleOrganizationUnitScope` | ❌ | `'siblings'` lists the accessible units that share the parent of the current unit. Omit it to list every accessible unit. |
+| `limit` | `number` | ❌ | The page size. Defaults to `10`. |
+| `onSelect` | `(unit: AccessibleOrganizationUnit) => void` | ❌ | Takes over a pick: called with the unit instead of switching. Also available as `@select`. |
+| `title` | `string` | ❌ | Overrides the small label above the current unit. Pass an empty string to omit it. |
+| `className` | `string` | ❌ | Extra CSS class added to the root element. |
+| `preferences` | `Preferences` | ❌ | Component-level preferences, for example `i18n.bundles` overrides. |
+
+## Events
+
+| Event | Description |
+| :--- | :--- |
+| `switch` | Emitted with the unit after `switchOrganizationUnit` resolves. |
+
+## Slot Props
+
+The default scoped slot receives `OrganizationUnitSwitcherRenderProps`:
+
+| Prop | Type | Description |
+| :--- | :--- | :--- |
+| `organizationUnits` | `AccessibleOrganizationUnit[]` | The units of the current page, each with `id`, `handle`, `name`, and an optional `logoUrl`. |
+| `current` | `string \| null` | The ID of the unit the session is in, or `null` when it is not known. |
+| `currentName` | `string \| null` | The name of the current unit, from the page or the session, or `null` when it is not known. |
+| `onSwitch` | `(unit: AccessibleOrganizationUnit) => void` | Switches to the unit, or hands it to `onSelect`. Does nothing for the current unit or while a switch runs. |
+| `switchingId` | `string \| null` | The ID of the unit a switch is in progress to, or `null`. |
+| `isLoading` | `boolean` | Whether the units are loading. |
+| `error` | `string \| null` | A translated message for the last failure, or `null`. |
+| `limit` | `number` | The page size. |
+| `offset` | `number` | The zero-based offset of the page. |
+| `totalResults` | `number` | The number of units the listing matches. |
+| `onPageChange` | `(offset: number) => void` | Loads the page that starts at `offset`. |
+
+## `<BaseOrganizationUnitSwitcher />`
+
+`BaseOrganizationUnitSwitcher` is the presentational picker that `OrganizationUnitSwitcher` renders. It holds no data of its own, so pass it the units and handle `switch` and `page-change`. It takes every slot prop above as an optional prop, plus `className`, `preferences`, and `title`, and has the same default scoped slot. `limit` defaults to `10`, and `totalResults` to `0`.
+
+```vue title="src/StaticSwitcher.vue" showLineNumbers
+<script setup>
+import { BaseOrganizationUnitSwitcher } from '@thunderid/vue'
+
+defineProps({ units: { type: Array, required: true }, currentId: { type: String, default: null } })
+const emit = defineEmits(['pick'])
+</script>
+
+<template>
+  <BaseOrganizationUnitSwitcher
+    :organization-units="units"
+    :current="currentId"
+    :total-results="units.length"
+    @switch="(unit) => emit('pick', unit.id)"
+  />
+</template>
+```
+
+## Related
+
+- [`useThunderID()`](../../composables/use-thunderid#switch-organization-units) documents `switchOrganizationUnit`, its paths, and its error codes.
+- [Switch Organizations](../../../../../use-cases/b2b/journeys/switch-organizations) explains organization switching end to end.

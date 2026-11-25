@@ -51,6 +51,23 @@ func (s *FlowConfigHandlerTestSuite) TestDecode_ValidJSON() {
 	s.Equal(int64(900), cfg.AuthFlow.ExpirySeconds)
 }
 
+// A configuration written before the secret regeneration flow was removed still loads: the entry that
+// named it is ignored and the rest of the section stands.
+func (s *FlowConfigHandlerTestSuite) TestDecode_IgnoresRemovedSecretRegenerationFlow() {
+	raw := json.RawMessage(`{"secretRegenerationFlow":{"defaultHandle":"default-secret-regeneration-flow"},` +
+		`"agentOnboardingFlow":{"defaultHandle":"default-agent-onboarding-flow"}}`)
+
+	result, err := s.handler.Decode(raw)
+	s.Require().NoError(err)
+
+	cfg, ok := result.(flowconfig.FlowSectionConfig)
+	s.Require().True(ok)
+	s.Equal(flowconfig.FlowSectionConfig{
+		AgentOnboardingFlow: flowconfig.FlowTypeConfig{DefaultHandle: "default-agent-onboarding-flow"},
+	}, cfg)
+	s.Require().NoError(s.handler.Validate(context.Background(), cfg, nil, nil))
+}
+
 func (s *FlowConfigHandlerTestSuite) TestDecode_InvalidJSON() {
 	_, err := s.handler.Decode(json.RawMessage(`{invalid`))
 	s.Error(err)
@@ -80,6 +97,24 @@ func (s *FlowConfigHandlerTestSuite) TestValidate_ValidConfig() {
 	s.NoError(err)
 }
 
+func (s *FlowConfigHandlerTestSuite) TestValidate_DefaultReturnURL() {
+	for _, value := range []string{"https://app.example.com", "https://app.example.com:8443/home"} {
+		cfg := flowconfig.FlowSectionConfig{DefaultReturnURL: value}
+		s.NoError(s.handler.Validate(context.Background(), cfg, nil, nil), value)
+	}
+}
+
+func (s *FlowConfigHandlerTestSuite) TestValidate_DefaultReturnURLNotAbsolute() {
+	for _, value := range []string{
+		"/signin", "app.example.com", "https://", "https://:443", "javascript://example.com/%0aalert(1)",
+		"data://example.com/text", "https://user:secret@app.example.com",
+		"https://app.example.com:65536",
+	} {
+		cfg := flowconfig.FlowSectionConfig{DefaultReturnURL: value}
+		s.Error(s.handler.Validate(context.Background(), cfg, nil, nil), value)
+	}
+}
+
 func (s *FlowConfigHandlerTestSuite) TestValidate_HandleValidatorCalled() {
 	called := false
 	s.handler.SetHandleValidator(func(_ context.Context, handle string, _ providers.FlowType) bool {
@@ -105,6 +140,39 @@ func (s *FlowConfigHandlerTestSuite) TestValidate_HandleValidatorRejectsUnknown(
 	}
 	err := s.handler.Validate(context.Background(), cfg, nil, nil)
 	s.Error(err)
+}
+
+// The attribute verification and credential reset entries name administrator-initiated flows, so their
+// handles are checked against that type, not ADMINISTRATION.
+func (s *FlowConfigHandlerTestSuite) TestValidate_AdminInitiatedEntriesAreAdminInitiated() {
+	for _, test := range []struct {
+		key    string
+		handle string
+		cfg    flowconfig.FlowSectionConfig
+	}{
+		{"adminAttributeVerificationFlow", "default-admin-attribute-verification-flow",
+			flowconfig.FlowSectionConfig{AdminAttributeVerificationFlow: flowconfig.FlowTypeConfig{
+				DefaultHandle: "default-admin-attribute-verification-flow"}}},
+		{"adminUserCredentialResetFlow", "default-admin-user-credential-reset-flow",
+			flowconfig.FlowSectionConfig{AdminUserCredentialResetFlow: flowconfig.FlowTypeConfig{
+				DefaultHandle: "default-admin-user-credential-reset-flow"}}},
+	} {
+		s.Run(test.key, func() {
+			var gotHandle string
+			var gotType providers.FlowType
+			s.handler.SetHandleValidator(func(_ context.Context, handle string, flowType providers.FlowType) bool {
+				gotHandle, gotType = handle, flowType
+				return flowType == providers.FlowTypeAdminInitiated
+			})
+
+			s.Require().NoError(s.handler.Validate(context.Background(), test.cfg, nil, nil))
+			s.Equal(test.handle, gotHandle)
+			s.Equal(providers.FlowTypeAdminInitiated, gotType)
+
+			s.handler.SetHandleValidator(func(_ context.Context, _ string, _ providers.FlowType) bool { return false })
+			s.ErrorContains(s.handler.Validate(context.Background(), test.cfg, nil, nil), test.key+".defaultHandle")
+		})
+	}
 }
 
 func (s *FlowConfigHandlerTestSuite) TestValidate_NoValidatorSkipsHandleCheck() {
@@ -141,6 +209,17 @@ func (s *FlowConfigHandlerTestSuite) TestMerge_ReadOnlyFallsBackWhenWritableZero
 	s.Equal(int64(1800), result.AuthFlow.ExpirySeconds)
 }
 
+func (s *FlowConfigHandlerTestSuite) TestMerge_DefaultReturnURL() {
+	ro := flowconfig.FlowSectionConfig{DefaultReturnURL: "https://ro.example.com"}
+
+	result := s.handler.Merge(ro, flowconfig.FlowSectionConfig{}).(flowconfig.FlowSectionConfig)
+	s.Equal("https://ro.example.com", result.DefaultReturnURL)
+
+	wr := flowconfig.FlowSectionConfig{DefaultReturnURL: "https://wr.example.com"}
+	result = s.handler.Merge(ro, wr).(flowconfig.FlowSectionConfig)
+	s.Equal("https://wr.example.com", result.DefaultReturnURL)
+}
+
 func (s *FlowConfigHandlerTestSuite) TestMerge_NilInputsReturnZero() {
 	result := s.handler.Merge(nil, nil).(flowconfig.FlowSectionConfig)
 	s.Equal(flowconfig.FlowSectionConfig{}, result)
@@ -165,70 +244,10 @@ func (s *FlowConfigHandlerTestSuite) TestMergeFlowTypeConfig_WritableExpiryWins(
 }
 
 // ---------------------------------------------------------------------------
-// User deletion flow
+// Administration flows
 // ---------------------------------------------------------------------------
 
-// An unset handle is valid: it is how a deployment opts out of flow-based deletion and keeps the
-// native endpoint.
-func (s *FlowConfigHandlerTestSuite) TestValidate_UserDeletionHandleOptional() {
-	s.NoError(s.handler.Validate(context.Background(), flowconfig.FlowSectionConfig{}, nil, nil))
-}
-
-// The handle must name an administration flow, not merely exist.
-func (s *FlowConfigHandlerTestSuite) TestValidate_UserDeletionHandleCheckedAgainstAdministration() {
-	var gotType providers.FlowType
-	s.handler.SetHandleValidator(func(_ context.Context, _ string, flowType providers.FlowType) bool {
-		gotType = flowType
-		return true
-	})
-	cfg := flowconfig.FlowSectionConfig{
-		UserDeletionFlow: flowconfig.FlowTypeConfig{DefaultHandle: "default-user-deletion-flow"},
-	}
-
-	s.Require().NoError(s.handler.Validate(context.Background(), cfg, nil, nil))
-	s.Equal(providers.FlowTypeAdministration, gotType)
-}
-
-func (s *FlowConfigHandlerTestSuite) TestValidate_UserDeletionHandleRejectedWhenNotAdministration() {
-	s.handler.SetHandleValidator(func(_ context.Context, _ string, _ providers.FlowType) bool {
-		return false
-	})
-	cfg := flowconfig.FlowSectionConfig{
-		UserDeletionFlow: flowconfig.FlowTypeConfig{DefaultHandle: "not-an-admin-flow"},
-	}
-
-	err := s.handler.Validate(context.Background(), cfg, nil, nil)
-
-	s.Require().Error(err)
-	s.Contains(err.Error(), "userDeletionFlow.defaultHandle")
-}
-
-// An operator can repoint deletion at their own administration flow through the writable layer.
-func (s *FlowConfigHandlerTestSuite) TestMerge_WritableUserDeletionHandleWins() {
-	ro := flowconfig.FlowSectionConfig{
-		UserDeletionFlow: flowconfig.FlowTypeConfig{DefaultHandle: "default-user-deletion-flow"},
-	}
-	wr := flowconfig.FlowSectionConfig{
-		UserDeletionFlow: flowconfig.FlowTypeConfig{DefaultHandle: "acme-offboarding"},
-	}
-
-	merged, ok := s.handler.Merge(ro, wr).(flowconfig.FlowSectionConfig)
-
-	s.Require().True(ok)
-	s.Equal("acme-offboarding", merged.UserDeletionFlow.DefaultHandle)
-}
-
-func (s *FlowConfigHandlerTestSuite) TestMerge_EmptyWritableKeepsDeclarativeUserDeletionHandle() {
-	ro := flowconfig.FlowSectionConfig{
-		UserDeletionFlow: flowconfig.FlowTypeConfig{DefaultHandle: "default-user-deletion-flow"},
-	}
-
-	merged, _ := s.handler.Merge(ro, flowconfig.FlowSectionConfig{}).(flowconfig.FlowSectionConfig)
-
-	s.Equal("default-user-deletion-flow", merged.UserDeletionFlow.DefaultHandle)
-}
-
-// Agent onboarding is an administration flow like deletion, so its handle is checked against the
+// Agent onboarding is an administration flow, so its handle is checked against the
 // same flow type rather than against a registration or onboarding flow.
 func (s *FlowConfigHandlerTestSuite) TestValidate_AgentOnboardingHandleCheckedAgainstAdministration() {
 	var gotType providers.FlowType
@@ -311,23 +330,16 @@ func everyAdministrationFlow(prefix string) flowconfig.FlowSectionConfig {
 		return flowconfig.FlowTypeConfig{DefaultHandle: prefix + "-" + name}
 	}
 	return flowconfig.FlowSectionConfig{
-		UserDeletionFlow:           handle("user-deletion"),
-		ApplicationDeletionFlow:    handle("application-deletion"),
-		SecretRegenerationFlow:     handle("secret-regeneration"),
-		RoleAssignmentRemovalFlow:  handle("role-assignment-removal"),
-		RoleDeletionFlow:           handle("role-deletion"),
-		RolePermissionRemovalFlow:  handle("role-permission-removal"),
-		GroupDeletionFlow:          handle("group-deletion"),
-		GroupMembershipRemovalFlow: handle("group-membership-removal"),
-		ActionDeletionFlow:         handle("action-deletion"),
-		UserUnlockFlow:             handle("user-unlock"),
-		UserSuspendFlow:            handle("user-suspend"),
-		UserUnsuspendFlow:          handle("user-unsuspend"),
-		AgentUnlockFlow:            handle("agent-unlock"),
-		AgentSuspendFlow:           handle("agent-suspend"),
-		AgentUnsuspendFlow:         handle("agent-unsuspend"),
-		ApplicationSuspendFlow:     handle("application-suspend"),
-		ApplicationUnsuspendFlow:   handle("application-unsuspend"),
+		AdminAttributeVerificationFlow: handle("admin-attribute-verification"),
+		AdminUserCredentialResetFlow:   handle("admin-user-credential-reset"),
+		UserUnlockFlow:                 handle("user-unlock"),
+		UserSuspendFlow:                handle("user-suspend"),
+		UserUnsuspendFlow:              handle("user-unsuspend"),
+		AgentUnlockFlow:                handle("agent-unlock"),
+		AgentSuspendFlow:               handle("agent-suspend"),
+		AgentUnsuspendFlow:             handle("agent-unsuspend"),
+		ApplicationSuspendFlow:         handle("application-suspend"),
+		ApplicationUnsuspendFlow:       handle("application-unsuspend"),
 	}
 }
 
@@ -364,4 +376,45 @@ func (s *FlowConfigHandlerTestSuite) TestValidate_PassesRequestContextToHandleVa
 
 	s.Require().NoError(s.handler.Validate(ctx, cfg, nil, nil))
 	s.Equal("org-deployment", got.Value(ctxKey{}))
+}
+
+// Self and administrator-initiated flows configure expiry only; each start names its flow.
+func (s *FlowConfigHandlerTestSuite) TestHandleNamedFlowConfiguration() {
+	for _, test := range []struct {
+		key    string
+		handle string
+		with   func(flowconfig.FlowTypeConfig) flowconfig.FlowSectionConfig
+		get    func(flowconfig.FlowSectionConfig) flowconfig.FlowTypeConfig
+	}{
+		{"selfFlow", "default-self-attribute-verification-flow",
+			func(tc flowconfig.FlowTypeConfig) flowconfig.FlowSectionConfig {
+				return flowconfig.FlowSectionConfig{SelfFlow: tc}
+			},
+			func(cfg flowconfig.FlowSectionConfig) flowconfig.FlowTypeConfig { return cfg.SelfFlow }},
+		{"adminInitiatedFlow", "default-admin-attribute-verification-flow",
+			func(tc flowconfig.FlowTypeConfig) flowconfig.FlowSectionConfig {
+				return flowconfig.FlowSectionConfig{AdminInitiatedFlow: tc}
+			},
+			func(cfg flowconfig.FlowSectionConfig) flowconfig.FlowTypeConfig { return cfg.AdminInitiatedFlow }},
+	} {
+		s.Run(test.key, func() {
+			decoded, err := s.handler.Decode(json.RawMessage(`{"` + test.key + `":{"expirySeconds":600}}`))
+			s.Require().NoError(err)
+			cfg := decoded.(flowconfig.FlowSectionConfig)
+			s.Equal(int64(600), test.get(cfg).ExpirySeconds)
+			s.NoError(s.handler.Validate(context.Background(), cfg, nil, nil))
+
+			merged := s.handler.Merge(cfg, test.with(flowconfig.FlowTypeConfig{ExpirySeconds: 1200}))
+			s.Equal(int64(1200), test.get(merged.(flowconfig.FlowSectionConfig)).ExpirySeconds)
+			merged = s.handler.Merge(cfg, flowconfig.FlowSectionConfig{})
+			s.Equal(int64(600), test.get(merged.(flowconfig.FlowSectionConfig)).ExpirySeconds)
+
+			s.ErrorContains(s.handler.Validate(context.Background(),
+				test.with(flowconfig.FlowTypeConfig{ExpirySeconds: -1}), nil, nil),
+				test.key+".expirySeconds must be >= 0")
+			s.ErrorContains(s.handler.Validate(context.Background(),
+				test.with(flowconfig.FlowTypeConfig{DefaultHandle: test.handle}), nil, nil),
+				test.key+".defaultHandle is not supported")
+		})
+	}
 }

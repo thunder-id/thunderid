@@ -11,6 +11,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
@@ -134,7 +135,7 @@ func (suite *AgentTypeResolverTestSuite) TestSubmittedHandleResolves() {
 func (suite *AgentTypeResolverTestSuite) TestAllowedAgentTypesNarrowsTheChoice() {
 	ctx := agentTypeNodeContext()
 	ctx.NodeProperties = map[string]interface{}{
-		propertyKeyAllowedAgentTypes: []interface{}{"default"},
+		common.NodePropertyAllowedAgentTypes: []interface{}{"default"},
 	}
 	suite.listReturns(
 		entitytype.EntityTypeListItem{Handle: "default", OUID: "ou-agents"},
@@ -166,6 +167,28 @@ func (suite *AgentTypeResolverTestSuite) TestErrorsNameTheAgentCategory() {
 		"the message renders as agent types, not user types")
 }
 
+// A registration flow resolves the way an administrator's flow does: from the catalog, narrowed by the
+// node property, with the type's organization unit as the target.
+func (suite *AgentTypeResolverTestSuite) TestRegistrationFlowResolvesFromTheNodeProperty() {
+	ctx := agentTypeNodeContext()
+	ctx.FlowType = providers.FlowTypeRegistration
+	ctx.NodeProperties = map[string]interface{}{
+		common.NodePropertyAllowedAgentTypes: []interface{}{"default"},
+	}
+	suite.listReturns(
+		entitytype.EntityTypeListItem{Handle: "default", OUID: "ou-agents"},
+		entitytype.EntityTypeListItem{Handle: "worker", OUID: "ou-other"},
+	)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal("default", resp.RuntimeData[categoryTypeKey])
+	suite.Equal(string(entitytype.TypeCategoryAgent), resp.RuntimeData[categoryNameKey])
+	suite.Equal("ou-agents", resp.RuntimeData[defaultOUIDKey])
+}
+
 // The supported flow types are declared, so the validator rejects a node placed elsewhere.
 func (suite *AgentTypeResolverTestSuite) TestSupportedFlowTypes() {
 	mockFactory := coremock.NewFlowFactoryInterfaceMock(suite.T())
@@ -181,38 +204,10 @@ func (suite *AgentTypeResolverTestSuite) TestSupportedFlowTypes() {
 	newAgentTypeResolver(mockFactory, suite.mockEntityTypeService, suite.mockOUService)
 
 	suite.Require().NotNil(meta)
-	suite.Equal([]providers.FlowType{providers.FlowTypeAdministration, providers.FlowTypeAuthentication},
-		meta.SupportedFlowTypes)
+	suite.Equal([]providers.FlowType{providers.FlowTypeAdministration, providers.FlowTypeAuthentication,
+		providers.FlowTypeRegistration}, meta.SupportedFlowTypes)
 	suite.Require().Len(meta.SupportedProperties, 1)
-	suite.Equal(propertyKeyAllowedAgentTypes, meta.SupportedProperties[0].Property)
-}
-
-// An agent is created by an administrator, so a registration flow is refused rather than served.
-// The validator keeps the node out of one at design time; this covers the runtime backstop.
-func (suite *AgentTypeResolverTestSuite) TestRegistrationFlowIsRefused() {
-	ctx := agentTypeNodeContext()
-	ctx.FlowType = providers.FlowTypeRegistration
-
-	resp, err := suite.executor.Execute(ctx)
-
-	suite.NoError(err)
-	suite.Equal(providers.ExecFailure, resp.Status)
-	suite.Require().NotNil(resp.Error)
-	suite.Equal(ErrSelfRegNotSupportedForAgents.Code, resp.Error.Code)
-	suite.Empty(resp.RuntimeData[categoryTypeKey], "a refused flow resolves no type")
-	suite.Empty(resp.RuntimeData[categoryNameKey])
-}
-
-// The refusal must not reach the type catalog, so a misplaced node cannot probe what exists.
-func (suite *AgentTypeResolverTestSuite) TestRegistrationFlowDoesNotListTypes() {
-	ctx := agentTypeNodeContext()
-	ctx.FlowType = providers.FlowTypeRegistration
-
-	_, err := suite.executor.Execute(ctx)
-
-	suite.NoError(err)
-	suite.mockEntityTypeService.AssertNotCalled(suite.T(), "GetEntityTypeList",
-		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	suite.Equal(common.NodePropertyAllowedAgentTypes, meta.SupportedProperties[0].Property)
 }
 
 // Any other flow type is a no-op rather than a failure, matching the user type resolver.
@@ -269,4 +264,22 @@ func (suite *AgentTypeResolverTestSuite) TestAuthenticationAllowedWhenAgentTypes
 	suite.Empty(resp.RuntimeData[categoryNameKey])
 	suite.mockEntityTypeService.AssertNotCalled(suite.T(), "GetEntityTypeList",
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// An administrator may hold no agent type permission, so the types to choose from are read with the
+// server's authority.
+func (suite *AgentTypeResolverTestSuite) TestTypesAreReadWithServerAuthority() {
+	suite.mockEntityTypeService.On("GetEntityTypeList", mock.MatchedBy(security.IsRuntimeContext),
+		entitytype.TypeCategoryAgent, entityTypeCandidateLimit, 0, false).
+		Return(&entitytype.EntityTypeListResponse{
+			Types: []entitytype.EntityTypeListItem{{Handle: "default", OUID: "ou-agents"}},
+		}, nil).Once()
+	ctx := agentTypeNodeContext()
+	ctx.Context = adminContext()
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.mockEntityTypeService.AssertExpectations(suite.T())
 }

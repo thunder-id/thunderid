@@ -98,6 +98,8 @@ The `response_mode` parameter is optional. For `response_type=code`, <ProductNam
 
 Access tokens with permission scopes are bound to one resource server. Send `resource=https://api.example.com/...` on the authorization or token request when the client knows the target API, or configure `defaultResourceServer` for permission-bearing requests that omit `resource`. OIDC-only or scopeless requests without `resource` use the application's `token.accessToken.defaultAudience`, falling back to `client_id`.
 
+To ask for fine-grained authorization, such as one payment with its amount and creditor, add an `authorization_details` parameter to the authorization request. The application's sign-in flow must ask the user for consent, and the token response and access token carry the details the user approved. See [Rich Authorization Requests](../rich-authorization-requests).
+
 ## Related Guides
 
 - [PKCE](../pkce): required for public clients on this flow
@@ -105,3 +107,4 @@ Access tokens with permission scopes are bound to one resource server. Send `res
 - [Refresh Token](../refresh-token): keep the session alive without re-authenticating
 - [OpenID Connect](../openid-connect): add `openid` to the scope to receive an ID Token
 - [Issuer Identification](../issuer-identification): validate the `iss` parameter on the callback
+- [Rich Authorization Requests](../rich-authorization-requests): request fine-grained `authorization_details` and receive them in the access token

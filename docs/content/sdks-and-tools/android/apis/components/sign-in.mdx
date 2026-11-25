@@ -33,6 +33,7 @@ fun AuthView(applicationId: String) {
 | `modifier` | `Modifier` | ❌ | Compose modifier applied to the form container. |
 | `onComplete` | `(() -> Unit)?` | ❌ | Called when authentication completes successfully. |
 | `onError` | `((String) -> Unit)?` | ❌ | Called with an error message when a flow step fails. |
+| `organizationUnitId` | `String?` | ❌ | Bounds the sign-in to this organization unit. The SDK sends it as `ouId` on the request that starts the flow. When the flow completes, its session replaces the previous one. See [Switch Organizations](../../../../../use-cases/b2b/journeys/switch-organizations). |
 
 ## Handling Completion
 

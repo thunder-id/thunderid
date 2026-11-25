@@ -78,6 +78,18 @@ describe('useConnections', () => {
     );
   });
 
+  it('appends the filter, so a list can be limited to what an organization unit owns and was shared', async () => {
+    const {result} = renderHook(() => useConnections({category: 'identity-provider', filter: 'ouId eq "ou-1"'}));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(mockHttpRequest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: 'https://localhost:8090/connections?category=identity-provider&filter=ouId+eq+%22ou-1%22',
+        method: 'GET',
+      }),
+    );
+  });
+
   it('does not fetch when disabled', async () => {
     renderHook(() => useConnections(undefined, {enabled: false}));
 

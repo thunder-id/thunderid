@@ -24,11 +24,13 @@ const MANAGERS: EcosystemPackageManager[] = ['npm', 'go', 'pip', 'gradle', 'mave
 
 const TONES: EcosystemTone[] = ['success', 'danger', 'warning', 'accent', 'primary', 'purple', 'neutral'];
 
-const SECTION_TYPES = ['steps', 'table', 'commands', 'linkGrid', 'guides', 'quickstart', 'api', 'support'];
+const SECTION_TYPES = ['steps', 'table', 'diagram', 'commands', 'linkGrid', 'guides', 'quickstart', 'api', 'support'];
 
 const META_ICONS = ['package', 'licence', 'clock', 'download', 'people'];
 
 const GUIDE_ICONS = ['shield', 'terminal', 'server', 'pen', 'building', 'exchange', 'key', 'book'];
+
+const DIAGRAMS = ['backend-for-frontend'];
 
 const API_SOURCES = ['typedoc', 'symbolgraph', 'manual'];
 
@@ -349,6 +351,11 @@ function validateSection(p: Problems, section: unknown, path: string): void {
       if (!Array.isArray(section.items) || section.items.some((i) => typeof i !== 'string')) {
         p.add(`${path}.items`, 'must be an array of guide ids');
       }
+      return;
+    }
+
+    case 'diagram': {
+      requireEnum(p, section, `${path}.`, 'diagram', DIAGRAMS);
       return;
     }
 

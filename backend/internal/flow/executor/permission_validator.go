@@ -15,7 +15,7 @@ import (
 )
 
 func getDefaultRequiredScope() string {
-	return security.GetSystemRootPermission()
+	return security.GetSystemPermissions().AdministrationFlow
 }
 
 // permissionValidator validates that the request has the required permission/scope to access the next node.
@@ -75,7 +75,7 @@ func (e *permissionValidator) Execute(ctx *providers.NodeContext) (*providers.Ex
 	// Check if any of the required permissions are satisfied, using hierarchical
 	// scope matching (e.g. a "system" permission satisfies a "system:user" requirement).
 	if !slices.ContainsFunc(requiredScopes, func(reqScope string) bool {
-		return security.HasSufficientPermission(userPermissions, reqScope)
+		return security.HasSufficientSystemPermission(userPermissions, reqScope)
 	}) {
 		logger.Debug(ctx.Context, "Request lacks required scope",
 			log.Any("requiredScopes", requiredScopes))

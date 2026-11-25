@@ -62,6 +62,7 @@ func (ts *ControlPlaneTestSuite) TestAChangeIsCapturedAsTheCurrentVersion() {
 
 	first, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
 		Handle: unique("current-first"), Name: "Current first", Parent: &ts.ouID,
+		ProjectID: defaultProjectID,
 	})
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteOrganizationUnit(first) }()
@@ -70,6 +71,7 @@ func (ts *ControlPlaneTestSuite) TestAChangeIsCapturedAsTheCurrentVersion() {
 
 	second, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
 		Handle: unique("current-second"), Name: "Current second", Parent: &ts.ouID,
+		ProjectID: defaultProjectID,
 	})
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteOrganizationUnit(second) }()
@@ -93,6 +95,7 @@ func (ts *ControlPlaneTestSuite) TestTheCurrentVersionNamesWhoseChangeItCaptured
 
 	named, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
 		Handle: unique("actor-named"), Name: "Actor named", Parent: &ts.ouID,
+		ProjectID: defaultProjectID,
 	})
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteOrganizationUnit(named) }()
@@ -118,7 +121,7 @@ func (ts *ControlPlaneTestSuite) TestAUserTheIssuerDoesNotKnowIsLeftOut() {
 	var unit testutils.OrganizationUnit
 	status, raw := ts.send(testutils.GetHTTPClientWithToken(stranger), http.MethodPost, "/organization-units",
 		"application/json", []byte(`{"handle":"`+unique("actor-stranger")+`","name":"Actor stranger","parent":"`+
-			ts.ouID+`"}`))
+			ts.ouID+`","projectId":"`+defaultProjectID+`"}`))
 	ts.Require().Equal(http.StatusCreated, status, string(raw))
 	ts.Require().NoError(json.Unmarshal(raw, &unit))
 	defer func() { _ = testutils.DeleteOrganizationUnit(unit.ID) }()

@@ -130,7 +130,7 @@ func (e *userExporter) GetResourceByID(
 		attributesMap = make(map[string]interface{})
 	}
 
-	credentials, svcErr := e.exportableCredentials(ctx, user.ID, username)
+	credentials, svcErr := e.exportableCredentials(ctx, user.ID)
 	if svcErr != nil {
 		return nil, "", svcErr
 	}
@@ -150,6 +150,7 @@ func (e *userExporter) GetResourceByID(
 		ID:              user.ID,
 		Type:            user.Type,
 		OUID:            user.OUID,
+		ProjectID:       user.ProjectID,
 		Attributes:      attributesMap,
 		Credentials:     credentials,
 		SharingPolicies: policies,
@@ -159,7 +160,7 @@ func (e *userExporter) GetResourceByID(
 }
 
 // exportableCredentials describes the credentials an exported user carries: a placeholder for each
-// credential the user's type declares and the user has set, named after the username.
+// credential the user's type declares and the user has set, named after the user ID.
 //
 // The importing server fills each placeholder from its own secret provider or environment before
 // hashing it, which leaves the imported user able to sign in with it. A credential the user has not
@@ -168,13 +169,8 @@ func (e *userExporter) GetResourceByID(
 // declares are considered, which leaves out device-bound ones such as a passkey: those mean nothing
 // on another deployment.
 func (e *userExporter) exportableCredentials(
-	ctx context.Context, userID, username string,
+	ctx context.Context, userID string,
 ) (map[string]interface{}, *tidcommon.ServiceError) {
-	if username == "" {
-		// The placeholder is named after the username, so there is nothing to name it after.
-		return map[string]interface{}{}, nil
-	}
-
 	held, err := e.entityService.GetHeldCredentialTypes(ctx, userID)
 	if err != nil {
 		if svcErr := mapEntityError(err); svcErr != nil {
@@ -184,36 +180,31 @@ func (e *userExporter) exportableCredentials(
 			log.MaskedString(log.LoggerKeyUserID, userID), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
-	return declarativeresource.CredentialPlaceholders(resourceTypeUser, username, held, e.references), nil
+	return declarativeresource.CredentialPlaceholders(resourceTypeUser, userID, held, e.references), nil
 }
 
-// ValidateResource validates a user resource.
-func (e *userExporter) ValidateResource(ctx context.Context,
-	resource interface{}, id string, logger *log.Logger,
+// GetResourceID returns the ID of an exported user.
+func (e *userExporter) GetResourceID(resource interface{}) string {
+	if user, ok := resource.(*userDeclarativeResource); ok {
+		return user.ID
+	}
+	return ""
+}
+
+// ValidateResource validates a user resource and returns the name its file is given: the username,
+// or the user ID for a user whose type has no username.
+func (e *userExporter) ValidateResource(_ context.Context,
+	resource interface{}, id string, _ *log.Logger,
 ) (string, *declarativeresource.ExportError) {
 	user, ok := resource.(*userDeclarativeResource)
 	if !ok {
 		return "", declarativeresource.CreateTypeError(resourceTypeUser, id)
 	}
 
-	// Extract username for validation
-	var username string
-	if un, ok := user.Attributes["username"].(string); ok {
-		username = un
+	if username, _ := user.Attributes["username"].(string); username != "" {
+		return username, nil
 	}
-
-	if username == "" {
-		logger.Warn(ctx, "USER_VALIDATION_ERROR: Missing username",
-			log.MaskedString(log.LoggerKeyUserID, id))
-		return "", &declarativeresource.ExportError{
-			ResourceType: resourceTypeUser,
-			ResourceID:   id,
-			Code:         "USER_VALIDATION_ERROR",
-			Error:        fmt.Sprintf("User '%s' validation failed: missing username", id),
-		}
-	}
-
-	return username, nil
+	return id, nil
 }
 
 // ViewResource shows an exported user as a read of it returns it. A read never returns a user's
@@ -222,11 +213,14 @@ func (e *userExporter) ViewResource(_ context.Context, document *yaml.Node) (int
 	return declarativeresource.DecodeView(document, func(exported *userDeclarativeResource) (
 		interface{}, error) {
 		attributes, err := json.Marshal(exported.Attributes)
+		// A declarative user is never verified, so the view shows none, as its read does.
 		return &providers.User{
-			ID:         exported.ID,
-			OUID:       exported.OUID,
-			Type:       exported.Type,
-			Attributes: attributes,
+			ID:                 exported.ID,
+			OUID:               exported.OUID,
+			ProjectID:          exported.ProjectID,
+			Type:               exported.Type,
+			Attributes:         attributes,
+			VerifiedAttributes: map[string]providers.VerifiedAttribute{},
 		}, err
 	})
 }
@@ -351,11 +345,6 @@ func makeUserValidator() func(e *providers.Entity, svc entity.EntityServiceInter
 			return fmt.Errorf("failed to parse user attributes: %w", err)
 		}
 
-		un, ok := attrs["username"].(string)
-		if !ok || un == "" {
-			return fmt.Errorf("username is required in user attributes")
-		}
-
 		// Check for duplicates in the store (covers both DB and already-loaded file resources)
 		_, err := svc.GetEntityProfile(context.Background(), e.ID)
 		if err == nil {
@@ -376,6 +365,7 @@ type userDeclarativeResource struct {
 	Type            string                  `yaml:"type"`
 	OUID            string                  `yaml:"ouId,omitempty"`
 	OUHandle        string                  `yaml:"ouHandle,omitempty"`
+	ProjectID       string                  `yaml:"projectId,omitempty"`
 	Attributes      map[string]interface{}  `yaml:"attributes"`
 	Credentials     map[string]interface{}  `yaml:"credentials,omitempty"` // Flexible format for YAML
 	SharingPolicies []sharing.PolicyRequest `yaml:"sharingPolicies,omitempty"`
@@ -400,6 +390,7 @@ func parseToUser(data []byte) (providers.User, Credentials, error) {
 		Type:       userRes.Type,
 		OUID:       userRes.OUID,
 		OUHandle:   userRes.OUHandle,
+		ProjectID:  userRes.ProjectID,
 		Attributes: json.RawMessage(attributesJSON),
 	}
 

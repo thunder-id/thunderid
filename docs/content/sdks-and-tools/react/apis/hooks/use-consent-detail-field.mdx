@@ -1,0 +1,122 @@
+---
+displayed_sidebar: null
+title: useConsentDetailField()
+docType: reference
+description: Headless state and handlers for one authorization detail field on a React consent step, for drawing it in a custom UI.
+---
+
+# `useConsentDetailField()`
+
+The `useConsentDetailField` hook gives the state and handlers of one field of an [RFC 9396 authorization detail](../../../../../guides/protocols/oauth-oidc/rich-authorization-requests) on the consent step, for drawing the field in a custom UI. [`<ConsentDetailField />`](../../components/consent-detail-field) is built on it and applies the same bounds and validation.
+
+For a number or date field, the hook keeps the text the user typed. It writes the text to the consent decision only while the value stays within the field's bound. Otherwise it clears the field's change and marks the field invalid, which blocks approval through [`isApprovalBlocked`](../../components/consent#render-props). For a list field, it exposes the items and toggles them as the field's rule allows.
+
+## Usage
+
+```tsx title="src/DetailField.tsx" showLineNumbers
+import { type ConsentDetailFieldProps, useConsentDetailField } from '@thunderid/react'
+import { type ReactElement } from 'react'
+
+export default function DetailField({
+  purposeId,
+  detailId,
+  row,
+  formValues,
+  onInputChange,
+}: ConsentDetailFieldProps): ReactElement {
+  const field = useConsentDetailField({ purposeId, detailId, row, formValues, onInputChange })
+
+  if (field.kind === 'removeItems' || field.kind === 'addItems') {
+    return (
+      <fieldset>
+        <legend>{field.label}</legend>
+        {field.items.map((item) => (
+          <button
+            key={String(item.value)}
+            type="button"
+            aria-pressed={item.selected}
+            disabled={!item.toggleable}
+            onClick={() => field.handleToggle(item.value)}
+          >
+            {String(item.value)}
+          </button>
+        ))}
+        {field.isTypedItemAllowed && (
+          <input
+            aria-label={`Add to ${field.label}`}
+            value={field.text}
+            onChange={(event) => field.handleChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                field.handleAdd(event.currentTarget.value)
+              }
+            }}
+          />
+        )}
+      </fieldset>
+    )
+  }
+
+  if (field.kind !== 'number' && field.kind !== 'date') {
+    return <p>{`${field.label}: ${JSON.stringify(row.value)}`}</p>
+  }
+
+  return (
+    <div>
+      <label htmlFor={field.inputId}>{field.label}</label>
+      <input
+        id={field.inputId}
+        type={field.kind}
+        step={field.kind === 'number' ? 'any' : undefined}
+        value={field.text}
+        max={field.max}
+        min={field.min}
+        onChange={(event) => field.handleChange(event.target.value)}
+        onBlur={field.handleBlur}
+      />
+      {field.error && <p role="alert">{field.error.message}</p>}
+    </div>
+  )
+}
+```
+
+Render it for each of a detail's `rows` from the render props of [`<ConsentAuthorizationDetail />`](../../components/consent-authorization-detail#render-props).
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `purposeId` | `string` | ✅ | The `purposeId` of the authorization details purpose. |
+| `detailId` | `string` | ✅ | The `name` of the detail's element. |
+| `row` | `ConsentDetailRow` | ✅ | The field. See [`ConsentDetailRow`](../../components/consent-detail-field#consentdetailrow). |
+| `formValues` | `Record<string, string>` | ✅ | The consent form values. |
+| `onInputChange` | `(name: string, value: string) => void` | ✅ | Called with a form key and its new value. |
+| `t` | `UseTranslation['t']` | ❌ | Translation function for the error message. The SDK's default bundle is used without one. |
+
+## Return Value
+
+`UseConsentDetailFieldResult`:
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `kind` | `'number' \| 'date' \| 'removeItems' \| 'addItems' \| undefined` | How the user may change the field. `undefined` for a read-only field. |
+| `label` | `string` | The field's label, or its path when it has none. |
+| `inputId` | `string` | An identifier for the field's input element. |
+| `text` | `string` | The text to show in a `number` or `date` input: what the user typed, the value they chose, or the value shown. For an `addItems` list that takes typed items, the item being typed. |
+| `max` | `string \| undefined` | Upper bound of a field that may decrease: the value shown. |
+| `min` | `string \| undefined` | Lower bound of a field that may increase: the value shown. |
+| `isValid` | `boolean` | Whether the text may be submitted. Always `true` for a list or a read-only field. |
+| `error` | `ConsentDetailFieldError \| undefined` | Why the text cannot be submitted, with the translated `message`, its translation `key`, and `params`. |
+| `handleChange` | `(text: string) => void` | Call with the text the user entered. |
+| `handleBlur` | `() => void` | Call when the input loses focus. An empty input returns to the value shown. |
+| `items` | `ConsentDetailListItem[]` | The items of a list field, each with `value`, `selected`, `toggleable`, and `origin` (`'shown'`, `'added'`, or `'offered'`). Empty for any other field. |
+| `handleToggle` | `(item: string \| number \| boolean) => void` | Toggles an item of a list field, within what its rule allows. |
+| `isSelected` | `(item: string \| number \| boolean) => boolean` | Whether an item is part of the value that would be granted. |
+| `isToggleable` | `(item: string \| number \| boolean) => boolean` | Whether the user may toggle an item. |
+| `isTypedItemAllowed` | `boolean` | Whether an `addItems` list takes typed items, which holds when its type lists no allowed values. |
+| `handleAdd` | `(text: string) => boolean` | Adds a typed item to such a list. Returns whether it was added. |
+| `isPlainList` | `boolean` | Whether the value is a list of plain values. |
+| `listDisplay` | `ConsentDetailListDisplay` | How many items of a long list to show, and whether the list can collapse. |
+| `isListExpanded` | `boolean` | Whether the user expanded a long list. |
+| `handleListToggle` | `(expanded: boolean) => void` | Expands or collapses a long list. |

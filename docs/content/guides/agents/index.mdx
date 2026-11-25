@@ -6,15 +6,44 @@ persona: iam
 description: Agents in {{ProductName}} are first-class machine identities. Onboard an agent, give it a schema and credentials, scope its access, and issue tokens for how it acts.
 ---
 
+import {Bot, KeyRound, ShieldCheck, UserCheck} from '@wso2/oxygen-ui-icons-react';
+import {AgentDocCards, AgentDocCard} from '@site/src/components/AgentDocCards';
+
 # Agents
 
 An agent in <ProductName /> is a machine identity for autonomous software, such as an AI assistant, a background worker, or a scheduled job. It is a first-class identity, separate from any user, with its own identifier, owner, credentials, attributes, and lifecycle. Because an agent carries its own identity, every action it takes is attributable to it, and its access is granted, restricted, audited, and revoked independently of any user.
 
 ## What <ProductName /> provides for an agent
 
-- An identity record with an owner and a configurable attribute schema. See [Create and Manage Agents](manage-agents) and [Agent Schema](agent-schema).
-- Credentials the agent authenticates with, a client secret or a private key JWT. See [Agent Authentication](authentication).
-- Scoped access through roles and groups, so an agent reaches only what its work needs. See [Groups and roles](manage-agents#groups-and-roles).
-- Tokens for how the agent acts: on its own with an [agent token](authentication/agent-own-token), [on behalf of a user](authentication/on-behalf-of-user), or [delegated to another agent](authentication/agent-to-agent).
+<AgentDocCards>
+<AgentDocCard title="Create its identity" icon={<Bot size={22} />}>
+
+Define the attributes to collect and the onboarding steps administrators follow. Create an agent with its own owner and identity record.
+
+[Create and Manage Agents](manage-agents) · [Agent Schema](agent-schema)
+
+</AgentDocCard>
+<AgentDocCard title="Configure its credentials" icon={<KeyRound size={22} />}>
+
+Use a client secret or private key JWT so the agent can prove its identity when requesting tokens.
+
+[Agent Authentication](authentication)
+
+</AgentDocCard>
+<AgentDocCard title="Limit its access" icon={<ShieldCheck size={22} />}>
+
+Assign roles and groups so the agent reaches only the resources its work needs.
+
+[Groups and roles](manage-agents#groups-and-roles)
+
+</AgentDocCard>
+<AgentDocCard title="Request the right token" icon={<UserCheck size={22} />}>
+
+Request a token for the agent's own work, for acting on behalf of a user, or for delegating a task to another agent.
+
+[Agent Token](authentication/agent-own-token) · [On behalf of users](authentication/on-behalf-of-user) · [Agent-to-agent delegation](authentication/agent-to-agent)
+
+</AgentDocCard>
+</AgentDocCards>
 
 For the concepts behind agent identity, the subject, actor, and resource model, and why an agent needs its own identity class, see the [AI Agents use cases](../../use-cases/ai-agents/overview). To connect a framework quickly, see [Getting Started](../../getting-started/connect-your-agent/langchain).

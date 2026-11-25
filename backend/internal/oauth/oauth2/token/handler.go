@@ -13,6 +13,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	sysconst "github.com/thunder-id/thunderid/internal/system/constants"
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -27,16 +28,19 @@ type TokenHandlerInterface interface {
 type tokenHandler struct {
 	tokenService     TokenServiceInterface
 	observabilitySvc providers.ObservabilityProvider
+	bus              eventbus.EventBusInterface
 }
 
 // newTokenHandler creates a new instance of tokenHandler.
 func newTokenHandler(
 	tokenService TokenServiceInterface,
 	observabilitySvc providers.ObservabilityProvider,
+	bus eventbus.EventBusInterface,
 ) TokenHandlerInterface {
 	return &tokenHandler{
 		tokenService:     tokenService,
 		observabilitySvc: observabilitySvc,
+		bus:              bus,
 	}
 }
 
@@ -51,6 +55,7 @@ func (th *tokenHandler) HandleTokenRequest(w http.ResponseWriter, r *http.Reques
 	if err := r.ParseForm(); err != nil {
 		publishTokenIssuanceFailedEvent(th.observabilitySvc, r.Context(), nil, "", "", "",
 			http.StatusBadRequest, err.Error(), startTime)
+		th.publishRefusal(r, constants.ErrorInvalidRequest)
 		utils.WriteJSONError(r.Context(), w, constants.ErrorInvalidRequest,
 			"Failed to parse request body", http.StatusBadRequest, nil)
 		return
@@ -61,6 +66,7 @@ func (th *tokenHandler) HandleTokenRequest(w http.ResponseWriter, r *http.Reques
 	if len(dpopHeaders) > 1 {
 		publishTokenIssuanceFailedEvent(th.observabilitySvc, r.Context(), nil, "", "", "",
 			http.StatusBadRequest, "Multiple DPoP headers", startTime)
+		th.publishRefusal(r, constants.ErrorInvalidDPoPProof)
 		utils.WriteJSONError(r.Context(), w, constants.ErrorInvalidDPoPProof,
 			"Multiple DPoP headers", http.StatusBadRequest, nil)
 		return
@@ -107,11 +113,15 @@ func (th *tokenHandler) HandleTokenRequest(w http.ResponseWriter, r *http.Reques
 		AuthorizationDetails: r.FormValue(constants.RequestParamAuthorizationDetails),
 	}
 
-	// Only client_credentials acts for an organization unit.
+	// Only client_credentials, the authorization code and token exchange act for an organization unit; the
+	// authorization code grant narrows itself to a code issued for the unit, and token exchange to a device secret.
 	if syscontext.GetAccessingOUID(ctx) != "" &&
-		tokenRequest.GrantType != string(providers.GrantTypeClientCredentials) {
+		tokenRequest.GrantType != string(providers.GrantTypeClientCredentials) &&
+		tokenRequest.GrantType != string(providers.GrantTypeAuthorizationCode) &&
+		tokenRequest.GrantType != string(providers.GrantTypeTokenExchange) {
 		logger.Debug(ctx, "Grant type is not available on the organization-unit-scoped endpoint",
 			log.String("grant_type", tokenRequest.GrantType))
+		th.publishRefusal(r, constants.ErrorInvalidRequest)
 		utils.WriteJSONError(r.Context(), w, constants.ErrorInvalidRequest,
 			constants.OUScopedGrantRefusal, http.StatusBadRequest, nil)
 		return
@@ -141,11 +151,22 @@ func (th *tokenHandler) HandleTokenRequest(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	logger.Debug(ctx, "Token response sending", log.String("client_id", clientInfo.ClientID))
+	logger.Debug(ctx, "Token response sending", log.String("clientID", clientInfo.ClientID))
 
 	// Must include the following headers when sensitive data is returned.
 	w.Header().Set(sysconst.CacheControlHeaderName, sysconst.CacheControlNoStore)
 	w.Header().Set(sysconst.PragmaHeaderName, sysconst.PragmaNoCache)
 
 	utils.WriteSuccessResponse(r.Context(), w, http.StatusOK, tokenResponse)
+}
+
+// publishRefusal publishes the audit event of a token request the handler refuses before the token
+// service sees it.
+func (th *tokenHandler) publishRefusal(r *http.Request, errorCode string) {
+	var oauthApp *providers.OAuthClient
+	if clientInfo := clientauth.GetOAuthClient(r.Context()); clientInfo != nil {
+		oauthApp = clientInfo.OAuthApp
+	}
+	publishTokenIssue(r.Context(), th.bus, oauthApp, r.FormValue(constants.RequestParamGrantType), nil,
+		&model.ErrorResponse{Error: errorCode})
 }

@@ -9,14 +9,12 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
-// Project is a group of identity configuration backed by exactly one root organization unit. Its
-// handle, display name and description are the root organization unit's handle, name and description.
+// Project is a group of identity configuration. Every project includes the system organization unit.
 type Project struct {
 	ID          string    `json:"id"`
 	Handle      string    `json:"handle"`
 	DisplayName string    `json:"displayName"`
 	Description string    `json:"description,omitempty"`
-	RootOUID    string    `json:"rootOuId"`
 	CreatedAt   time.Time `json:"createdAt"`
 }
 
@@ -36,12 +34,4 @@ type ProjectListResponse struct {
 	Count        int          `json:"count"`
 	Projects     []Project    `json:"projects"`
 	Links        []utils.Link `json:"links"`
-}
-
-// projectRecord is what the store keeps for a project: its ID and the root organization unit that
-// backs it. Everything else about a project is read from that organization unit.
-type projectRecord struct {
-	ID        string
-	RootOUID  string
-	CreatedAt time.Time
 }

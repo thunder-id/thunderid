@@ -9,6 +9,10 @@ const ResourceSharingQueryKeys = {
    * Base key for one resource's sharing policies, followed by the resource's path
    */
   SHARING_POLICIES: 'sharing-policies',
+  /**
+   * Base key for the roles an issuer can mandate in one unit, followed by the unit and the issuer
+   */
+  MANDATABLE_ROLES: 'mandatable-roles',
 } as const;
 
 export default ResourceSharingQueryKeys;

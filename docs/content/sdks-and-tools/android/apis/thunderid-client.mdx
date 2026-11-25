@@ -124,7 +124,7 @@ fun buildSignInUrl(options: SignInOptions? = null): String
 
 | Parameter | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
-| `options` | `SignInOptions?` | ❌ | Optional sign-in hints: `prompt`, `loginHint`, `fidp`. |
+| `options` | `SignInOptions?` | ❌ | Optional sign-in hints: `prompt`, `loginHint`, `fidp`. `organizationUnitId` bounds the sign-in to that organization unit: the URL goes to `{baseUrl}/ou/{organizationUnitId}/oauth2/authorize`, and `handleRedirectCallback` redeems the code at that organization unit's token endpoint. |
 
 **Returns:** The authorization URL string with PKCE `code_challenge` and `code_challenge_method=S256` parameters.
 
@@ -246,6 +246,145 @@ Updates the user profile via `/scim2/Me` (or `/scim2/Users/<userId>` if `userId`
 suspend fun updateUserProfile(payload: Map<String, Any>, userId: String? = null): User
 ```
 
+## Organization Units
+
+These methods list the organization units the signed-in user can access and switch the session between them. To learn how a switch reuses the single sign-on (SSO) session and what changes in the new tokens, see [Switch Organizations](../../../../use-cases/b2b/journeys/switch-organizations). To show the list and the switch as a dropdown, use the [`OrganizationUnitSwitcher`](../components/organization-unit-switcher) composable.
+
+### `getAccessibleOrganizationUnits(options)`
+
+Lists the organization units the signed-in user can access: the one the user lives in and every one the user is shared into. It calls `GET /users/me/ous` with the user's access token.
+
+```kotlin
+suspend fun getAccessibleOrganizationUnits(
+    options: AccessibleOrganizationUnitsOptions = AccessibleOrganizationUnitsOptions()
+): AccessibleOrganizationUnits
+```
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `options` | `AccessibleOrganizationUnitsOptions` | ❌ | Narrows and pages the list. |
+
+`AccessibleOrganizationUnitsOptions` parameters:
+
+| Parameter | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `scope` | `OrganizationUnitScope?` | `null` | `OrganizationUnitScope.SIBLINGS` lists the accessible organization units that share the parent of the current organization unit, without the parent itself. `null` lists every accessible organization unit. |
+| `limit` | `Int?` | `null` | Page size. `null` uses the server's default. |
+| `offset` | `Int?` | `null` | The 0-based index of the page's first organization unit. |
+
+**Returns:** `AccessibleOrganizationUnits`:
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `current` | `String?` | ID of the organization unit the list is relative to: the one the access token was issued for, or the user's own when the token names none. It is returned for every scope and page, so `organizationUnits` might not contain it. |
+| `organizationUnits` | `List<AccessibleOrganizationUnit>` | The page of organization units. Each has an `id`, and a nullable `handle` and `name`. |
+| `totalResults` | `Int` | Number of accessible organization units across all pages. |
+| `startIndex` | `Int` | The start index the server reports for this page. |
+| `count` | `Int` | Number of organization units on this page. |
+
+Example: list the organization units that share the current one's parent:
+
+```kotlin
+import dev.thunderid.android.api.account.AccessibleOrganizationUnitsOptions
+import dev.thunderid.android.api.account.OrganizationUnitScope
+
+val page = client.getAccessibleOrganizationUnits(
+    AccessibleOrganizationUnitsOptions(scope = OrganizationUnitScope.SIBLINGS, limit = 20)
+)
+page.organizationUnits.forEach { unit ->
+    println("${unit.name ?: unit.handle ?: unit.id} (${unit.id})")
+}
+```
+
+### `getCurrentOrganizationUnit()`
+
+Returns the organization unit the session was issued for, read from its `ouId`, `ouHandle`, and `ouName` claims.
+
+```kotlin
+suspend fun getCurrentOrganizationUnit(): CurrentOrganizationUnit?
+```
+
+**Returns:** A `CurrentOrganizationUnit` with `id`, `handle`, and `name`, or `null` when no user is signed in or the session names no organization unit. The SDK reads the claims from the ID token, then from the access token. When sign-in runs on a backend, it reads them from the session the backend reports.
+
+:::note
+Use the result for display only, never for an authorization decision. The server decides every request from the access token.
+:::
+
+### `switchOrganizationUnit(ouId, options)`
+
+Signs in again, bounded to the organization unit `ouId`. The server reuses the SSO session when the user can sign in to that organization unit, so the user normally enters no credentials.
+
+```kotlin
+suspend fun switchOrganizationUnit(
+    ouId: String,
+    options: SwitchOrganizationUnitOptions = SwitchOrganizationUnitOptions()
+): OrganizationUnitSwitchResult
+```
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `ouId` | `String` | ✅ | ID of the organization unit to switch to, such as an `id` from `getAccessibleOrganizationUnits`. |
+| `options` | `SwitchOrganizationUnitOptions` | ❌ | How the switch runs. |
+
+`SwitchOrganizationUnitOptions` parameters:
+
+| Parameter | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `browser` | `(suspend (url: String) -> String)?` | `null` | Opens a sign-in URL and returns the URL the browser came back to. `customTabBrowser(context)` returns one that opens a Custom Tab. The host Activity forwards the redirect to `FederatedAuthSession.onRedirect`, as for [federated sign-in](../components/sign-in#setting-up-federated-sign-in). |
+| `applicationId` | `String?` | `null` | The application whose `AUTHENTICATION` flow an app-native switch runs. `null` uses `applicationId` from the configuration. |
+| `signInOptions` | `SignInOptions` | `SignInOptions()` | Extra authorization request parameters for a browser switch, such as `prompt`. The SDK replaces its `organizationUnitId` with `ouId`. |
+
+The switch takes the first path that applies:
+
+1. **Backend.** When sign-in runs on a backend (`endpoints.backend` is set), the SDK sends `POST {ouSwitch}?ouId=<id>` with `{"ouId": "<id>"}` as a JSON body, then reads the session again. No browser opens. `ouSwitch` is a path under `baseUrl` or an HTTPS URL, and defaults to `/api/auth/switch`. A refusal with `interaction_required`, `login_required`, `consent_required`, or `account_selection_required`, or a `401`, means the user has to sign in. If you pass `browser`, the SDK then opens the backend's sign-in for the organization unit through it. No other path runs in backend mode.
+2. **Device secret.** When the session holds a device secret, issued to a sign-in that requested the `device_sso` scope, and the configuration sets `clientId`, the SDK exchanges the secret at `{baseUrl}/ou/{ouId}/oauth2/token`. No browser opens. The SDK deletes a secret that the server refuses with `invalid_request` or `invalid_grant`. Any refusal other than an unavailable organization unit moves on to the next path.
+3. **Browser.** When you pass `browser`, the SDK opens a redirect sign-in bounded to the organization unit and redeems the code at `{baseUrl}/ou/{ouId}/oauth2/token`.
+4. **App-native flow.** Otherwise, the SDK starts the application's `AUTHENTICATION` flow with `ouId`. It presents the SSO session handles kept from earlier flow steps, so the server can reuse the SSO session without a browser cookie. It returns `SignInRequired` when the flow needs the user.
+
+On success, the SDK replaces the whole token set, so the refresh token is bound to the new organization unit. It keeps the device secret and the SSO session handles, and reads the user again. When you call this method directly in a Compose app, call `ThunderIDState.refresh()` afterward so composables read the new user. `OrganizationUnitSwitcher` does this for you.
+
+If the switch fails, the previous session stays as it was. In backend mode, a `401` or a `login_required` refusal means the backend holds no session to switch, so the SDK also signs the user out locally.
+
+**Returns:** `OrganizationUnitSwitchResult`, one of:
+
+| Result | Description |
+| :--- | :--- |
+| `OrganizationUnitSwitchResult.Switched(user)` | The client holds the new organization unit's session. `user` is the user read again. |
+| `OrganizationUnitSwitchResult.SignInRequired(response)` | The app-native flow needs the user, for example for credentials the SSO session could not supply. Drive `response` with `signIn(payload, request)`, passing its `flowId`, like any app-native flow. The previous session stays until the flow completes. |
+
+**Throws:** `IAMException`. The codes specific to a switch:
+
+| Code | When |
+| :--- | :--- |
+| `ORGANIZATION_UNIT_UNAVAILABLE` | The organization unit does not exist, or the application cannot be used from it. The server does not tell the two apart. |
+| `INVALID_INPUT` | `ouId` is blank. |
+| `INVALID_CONFIGURATION` | No path applies: no backend, no usable device secret, no `browser`, and no `applicationId`. When a device secret exchange failed first, that failure is thrown instead. |
+| `AUTHENTICATION_FAILED` | The backend, the bounded browser sign-in, or the app-native flow refused the switch for another reason. |
+
+Example: switch, with a Custom Tab as the fallback when neither a backend nor a device secret can switch:
+
+```kotlin
+import dev.thunderid.android.IAMException
+import dev.thunderid.android.ThunderIDErrorCode
+import dev.thunderid.android.api.auth.OrganizationUnitSwitchResult
+import dev.thunderid.android.api.auth.SwitchOrganizationUnitOptions
+import dev.thunderid.android.api.auth.customTabBrowser
+
+try {
+    val result = client.switchOrganizationUnit(
+        ouId = organizationUnitId,
+        options = SwitchOrganizationUnitOptions(browser = customTabBrowser(context))
+    )
+    if (result is OrganizationUnitSwitchResult.Switched) {
+        println("Switched to ${client.getCurrentOrganizationUnit()?.name}")
+    }
+} catch (e: IAMException) {
+    if (e.code == ThunderIDErrorCode.ORGANIZATION_UNIT_UNAVAILABLE) {
+        println("This organization unit is not available to this application.")
+    }
+}
+```
+
 ## Error Handling
 
 All suspending methods throw `IAMException` on failure. Catch it to handle errors:
@@ -276,6 +415,7 @@ try {
 | `MFA_FAILED` | Multi-factor authentication failed |
 | `INVALID_GRANT` | The authorization code or token is invalid |
 | `CONSENT_REQUIRED` | User consent is required |
+| `ORGANIZATION_UNIT_UNAVAILABLE` | The organization unit does not exist, or the application cannot be used from it |
 | `USER_ALREADY_EXISTS` | Registration failed because the user already exists |
 | `INVALID_INPUT` | Input validation failed |
 | `INVITATION_CODE_INVALID` | The invitation code is not valid |

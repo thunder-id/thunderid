@@ -116,7 +116,8 @@ func (suite *ServerConfigAPITestSuite) TestPutReplacesWritableLeavingDeclarative
 }
 
 func (suite *ServerConfigAPITestSuite) TestPutInvalidValueReturns400AndDoesNotPersist() {
-	status, body := suite.putRaw(suite.adminClient, corsBody(`["*"]`))
+	status, body, err := testutils.PutWritableServerConfigWithStatus("cors", []byte(corsBody(`["*"]`)))
+	suite.Require().NoError(err)
 	suite.Equal(http.StatusBadRequest, status)
 	suite.Equal("SCF-1003", suite.errorCode(body))
 
@@ -135,6 +136,16 @@ func (suite *ServerConfigAPITestSuite) TestPutMalformedBodyReturns400() {
 
 // --- Auth gate ---
 
+// TestPutWithTokenIsForbidden checks that a data plane takes server configuration only from an import
+// with the management API key, whatever the token's scopes.
+func (suite *ServerConfigAPITestSuite) TestPutWithTokenIsForbidden() {
+	status, body := suite.putRaw(suite.adminClient, corsBody(fmt.Sprintf(`[%q]`, sampleOrigin)))
+
+	suite.Equal(http.StatusForbidden, status)
+	suite.Equal("SSE-4030", suite.errorCode(body))
+	suite.Empty(suite.getLayers(corsConfigURL).Writable.AllowedOrigins, "a refused write must not persist")
+}
+
 func (suite *ServerConfigAPITestSuite) TestUnauthenticatedRequestsAreRejected() {
 	getStatus, getBody := suite.getJSON(suite.plainClient, corsConfigURL)
 	suite.Equal(http.StatusUnauthorized, getStatus)
@@ -146,10 +157,10 @@ func (suite *ServerConfigAPITestSuite) TestUnauthenticatedRequestsAreRejected() 
 
 // --- helpers ---
 
-// putCORS sets the cors writable layer to the given allowed-origins array and requires a 200 response.
+// putCORS sets the cors writable layer to the given allowed-origins array through an import with the
+// management API key, the only way a data plane takes it.
 func (suite *ServerConfigAPITestSuite) putCORS(allowedOrigins string) {
-	status, _ := suite.putRaw(suite.adminClient, corsBody(allowedOrigins))
-	suite.Require().Equal(http.StatusOK, status)
+	suite.Require().NoError(testutils.PutWritableServerConfig("cors", []byte(corsBody(allowedOrigins))))
 }
 
 // corsBody wraps an allowed-origins array literal in the object-shaped section value the API expects.
@@ -157,7 +168,8 @@ func corsBody(allowedOrigins string) string {
 	return `{"allowedOrigins":` + allowedOrigins + `}`
 }
 
-// putRaw sends a PUT /server-config/cors with the given body and returns the status and response body.
+// putRaw sends a PUT /server-config/cors with the given body and returns the status and response body. A
+// body the handler refuses never reaches authorization, so it is answered as on any server.
 func (suite *ServerConfigAPITestSuite) putRaw(client *http.Client, body string) (int, []byte) {
 	req, err := http.NewRequest(http.MethodPut, corsConfigURL, strings.NewReader(body))
 	suite.Require().NoError(err)

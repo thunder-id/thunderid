@@ -27,6 +27,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/tests/mocks/attributeverificationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/commonmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/magiclinkmock"
 	"github.com/thunder-id/thunderid/tests/mocks/authn/openid4vpmock"
@@ -38,12 +39,13 @@ import (
 
 type DefaultAuthnProviderTestSuite struct {
 	suite.Suite
-	mockService    *entitymock.EntityServiceInterfaceMock
-	mockPasskey    *passkeymock.PasskeyServiceInterfaceMock
-	mockFederated  *commonmock.FederatedAuthenticatorMock
-	mockOTP        *otpmock.OTPAuthnServiceInterfaceMock
-	mockGovernance *identitygovernancemock.IdentityGovernanceServiceInterfaceMock
-	provider       providers.AuthnProviderInterface
+	mockService      *entitymock.EntityServiceInterfaceMock
+	mockPasskey      *passkeymock.PasskeyServiceInterfaceMock
+	mockFederated    *commonmock.FederatedAuthenticatorMock
+	mockOTP          *otpmock.OTPAuthnServiceInterfaceMock
+	mockGovernance   *identitygovernancemock.IdentityGovernanceServiceInterfaceMock
+	mockVerification *attributeverificationmock.AttributeVerificationServiceInterfaceMock
+	provider         providers.AuthnProviderInterface
 }
 
 func (suite *DefaultAuthnProviderTestSuite) SetupTest() {
@@ -52,7 +54,10 @@ func (suite *DefaultAuthnProviderTestSuite) SetupTest() {
 	suite.mockFederated = commonmock.NewFederatedAuthenticatorMock(suite.T())
 	suite.mockOTP = otpmock.NewOTPAuthnServiceInterfaceMock(suite.T())
 	suite.mockGovernance = identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(suite.T())
-	suite.provider = Initialize(suite.mockService, nil, nil, nil, nil, nil, suite.admitAll())
+	suite.mockVerification = attributeverificationmock.NewAttributeVerificationServiceInterfaceMock(suite.T())
+	suite.mockVerification.On("GetVerifiedAttributes", mock.Anything, mock.Anything).
+		Return(map[string]providers.VerifiedAttribute{}).Maybe()
+	suite.provider = Initialize(suite.mockService, nil, nil, nil, nil, nil, suite.admitAll(), suite.mockVerification)
 }
 
 func TestDefaultAuthnProviderTestSuite(t *testing.T) {
@@ -382,6 +387,10 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Provisioning_Succes
 	suite.Equal("provisioned-user-123", result.EntityReference.EntityID)
 	suite.NotNil(result.AuthenticatedClaims)
 	suite.Equal("provisioned-user-123", result.AuthenticatedClaims[authnprovidercm.UserAttributeUserID])
+	suite.Nil(result.FederatedIdentity)
+	suite.Nil(result.Attributes)
+	suite.Equal(map[string]interface{}{authnprovidercm.UserAttributeUserID: "provisioned-user-123"},
+		result.AttributeToken)
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Provisioning_InvalidPayload() {
@@ -425,7 +434,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Provisioning_GetEnt
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_IdentifyEntity_ServerError() {
 	mockOTP := otpmock.NewOTPAuthnServiceInterfaceMock(suite.T())
-	provider := Initialize(suite.mockService, nil, mockOTP, nil, nil, nil, suite.admitAll())
+	provider := Initialize(suite.mockService, nil, mockOTP, nil, nil, nil, suite.admitAll(), suite.mockVerification)
 
 	credentials := map[string]interface{}{
 		"otp": map[string]interface{}{
@@ -453,7 +462,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_IdentifyEntity_Serv
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_IdentifyEntity_Success_ThenGetEntity() {
 	mockOTP := otpmock.NewOTPAuthnServiceInterfaceMock(suite.T())
-	provider := Initialize(suite.mockService, nil, mockOTP, nil, nil, nil, suite.admitAll())
+	provider := Initialize(suite.mockService, nil, mockOTP, nil, nil, nil, suite.admitAll(), suite.mockVerification)
 
 	credentials := map[string]interface{}{
 		"otp": map[string]interface{}{
@@ -492,7 +501,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_IdentifyEntity_Succ
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_IdentifyEntity_GetEntityFails() {
 	mockOTP := otpmock.NewOTPAuthnServiceInterfaceMock(suite.T())
-	provider := Initialize(suite.mockService, nil, mockOTP, nil, nil, nil, suite.admitAll())
+	provider := Initialize(suite.mockService, nil, mockOTP, nil, nil, nil, suite.admitAll(), suite.mockVerification)
 
 	credentials := map[string]interface{}{
 		"otp": map[string]interface{}{
@@ -724,6 +733,78 @@ func (suite *DefaultAuthnProviderTestSuite) TestGetAttributes_Success_Filtered()
 	suite.NotContains(result.Attributes, "age")
 }
 
+func (suite *DefaultAuthnProviderTestSuite) TestGetAttributes_MarksVerifiedContacts() {
+	svc := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	verification := attributeverificationmock.NewAttributeVerificationServiceInterfaceMock(suite.T())
+	provider := Initialize(svc, nil, nil, nil, nil, nil, suite.admitAll(), verification)
+	entityObj := &providers.Entity{
+		ID:               "user123",
+		Category:         providers.EntityCategoryUser,
+		Type:             "customer",
+		Attributes:       json.RawMessage(`{"email":"test@example.com","mobile":"+94771234567"}`),
+		SystemAttributes: json.RawMessage(`{"attributeVerification":{}}`),
+	}
+	svc.On("GetEntityProfile", mock.Anything, "user123").Return(entityObj, nil).Once()
+	verification.On("GetVerifiedAttributes", mock.Anything, *entityObj).
+		Return(map[string]providers.VerifiedAttribute{"email": {VerifiedAt: "2026-10-27T00:00:00Z"}}).Once()
+
+	result, err := provider.GetAttributes(context.Background(), map[string]interface{}{"userID": "user123"},
+		nil, nil)
+
+	suite.Nil(err)
+	suite.True(result.Attributes["email"].AssuranceMetadataResponse.IsVerified)
+	suite.False(result.Attributes["mobile"].AssuranceMetadataResponse.IsVerified)
+}
+
+func (suite *DefaultAuthnProviderTestSuite) TestGetAttributes_Consented_MarksVerifiedContacts() {
+	svc := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	verification := attributeverificationmock.NewAttributeVerificationServiceInterfaceMock(suite.T())
+	provider := Initialize(svc, nil, nil, nil, nil, nil, suite.admitAll(), verification)
+	entityObj := &providers.Entity{
+		ID:         "user123",
+		Category:   providers.EntityCategoryUser,
+		Type:       "customer",
+		Attributes: json.RawMessage(`{"email":"test@example.com","mobile":"+94771234567"}`),
+	}
+	svc.On("GetEntityProfile", mock.Anything, "user123").Return(entityObj, nil).Once()
+	verification.On("GetVerifiedAttributes", mock.Anything, *entityObj).
+		Return(map[string]providers.VerifiedAttribute{"email": {VerifiedAt: "2026-10-27T00:00:00Z"}}).Once()
+
+	result, err := provider.GetAttributes(context.Background(), map[string]interface{}{"userID": "user123"},
+		&providers.RequestedAttributes{Attributes: map[string]*providers.AttributeMetadataRequest{"email": nil}}, nil)
+
+	suite.Nil(err)
+	suite.True(result.Attributes["email"].AssuranceMetadataResponse.IsVerified)
+	suite.NotContains(result.Attributes, "mobile")
+}
+
+func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_MarksVerifiedContacts() {
+	svc := entitymock.NewEntityServiceInterfaceMock(suite.T())
+	verification := attributeverificationmock.NewAttributeVerificationServiceInterfaceMock(suite.T())
+	provider := Initialize(svc, nil, nil, nil, nil, nil, suite.admitAll(), verification)
+	identifiers := map[string]interface{}{"username": "testuser"}
+	credentials := map[string]interface{}{"password": "password123"}
+	entityObj := &providers.Entity{
+		ID:         "user123",
+		Category:   providers.EntityCategoryUser,
+		Type:       "customer",
+		State:      providers.EntityStateActive,
+		Attributes: json.RawMessage(`{"email":"test@example.com","mobile":"+94771234567"}`),
+	}
+	svc.On("AuthenticateEntity", mock.Anything, identifiers, credentials).
+		Return(&entity.AuthenticateResult{EntityID: "user123", EntityCategory: providers.EntityCategoryUser,
+			EntityType: "customer"}, "", nil).Once()
+	svc.On("GetEntityProfile", mock.Anything, "user123").Return(entityObj, nil).Once()
+	verification.On("GetVerifiedAttributes", mock.Anything, *entityObj).
+		Return(map[string]providers.VerifiedAttribute{"mobile": {VerifiedAt: "2026-10-27T00:00:00Z"}}).Once()
+
+	result, err := provider.Authenticate(context.Background(), identifiers, credentials, nil)
+
+	suite.Nil(err)
+	suite.False(result.Attributes.Attributes["email"].AssuranceMetadataResponse.IsVerified)
+	suite.True(result.Attributes.Attributes["mobile"].AssuranceMetadataResponse.IsVerified)
+}
+
 func (suite *DefaultAuthnProviderTestSuite) TestGetAttributes_EmptyAttributes() {
 	token := map[string]interface{}{"userID": "user123"}
 	entityObj := &providers.Entity{
@@ -828,7 +909,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestGetAttributes_InvalidTokenFormat
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_OTP_IncorrectOTP() {
 	mockOTP := otpmock.NewOTPAuthnServiceInterfaceMock(suite.T())
-	provider := Initialize(suite.mockService, nil, mockOTP, nil, nil, nil, suite.admitAll())
+	provider := Initialize(suite.mockService, nil, mockOTP, nil, nil, nil, suite.admitAll(), suite.mockVerification)
 
 	credentials := map[string]interface{}{
 		"otp": map[string]interface{}{
@@ -849,7 +930,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_OTP_IncorrectOTP() 
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_OTP_InvalidPayload() {
 	mockOTP := otpmock.NewOTPAuthnServiceInterfaceMock(suite.T())
-	provider := Initialize(suite.mockService, nil, mockOTP, nil, nil, nil, suite.admitAll())
+	provider := Initialize(suite.mockService, nil, mockOTP, nil, nil, nil, suite.admitAll(), suite.mockVerification)
 
 	credentials := map[string]interface{}{
 		"otp": "not-a-map",
@@ -864,7 +945,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_OTP_InvalidPayload(
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_OTP_MissingSessionToken() {
 	mockOTP := otpmock.NewOTPAuthnServiceInterfaceMock(suite.T())
-	provider := Initialize(suite.mockService, nil, mockOTP, nil, nil, nil, suite.admitAll())
+	provider := Initialize(suite.mockService, nil, mockOTP, nil, nil, nil, suite.admitAll(), suite.mockVerification)
 
 	credentials := map[string]interface{}{
 		"otp": map[string]interface{}{
@@ -881,7 +962,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_OTP_MissingSessionT
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_OTP_MissingOTPValue() {
 	mockOTP := otpmock.NewOTPAuthnServiceInterfaceMock(suite.T())
-	provider := Initialize(suite.mockService, nil, mockOTP, nil, nil, nil, suite.admitAll())
+	provider := Initialize(suite.mockService, nil, mockOTP, nil, nil, nil, suite.admitAll(), suite.mockVerification)
 
 	credentials := map[string]interface{}{
 		"otp": map[string]interface{}{
@@ -898,7 +979,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_OTP_MissingOTPValue
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_OTP_ClientError_NonIncorrectOTP() {
 	mockOTP := otpmock.NewOTPAuthnServiceInterfaceMock(suite.T())
-	provider := Initialize(suite.mockService, nil, mockOTP, nil, nil, nil, suite.admitAll())
+	provider := Initialize(suite.mockService, nil, mockOTP, nil, nil, nil, suite.admitAll(), suite.mockVerification)
 
 	credentials := map[string]interface{}{
 		"otp": map[string]interface{}{
@@ -924,7 +1005,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_OTP_ClientError_Non
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_OTP_ServerError() {
 	mockOTP := otpmock.NewOTPAuthnServiceInterfaceMock(suite.T())
-	provider := Initialize(suite.mockService, nil, mockOTP, nil, nil, nil, suite.admitAll())
+	provider := Initialize(suite.mockService, nil, mockOTP, nil, nil, nil, suite.admitAll(), suite.mockVerification)
 
 	credentials := map[string]interface{}{
 		"otp": map[string]interface{}{
@@ -952,7 +1033,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_OTP_ServerError() {
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_MagicLink_AuthenticationFailed() {
 	mockML := magiclinkmock.NewMagicLinkAuthnServiceInterfaceMock(suite.T())
-	provider := Initialize(suite.mockService, nil, nil, mockML, nil, nil, suite.admitAll())
+	provider := Initialize(suite.mockService, nil, nil, mockML, nil, nil, suite.admitAll(), suite.mockVerification)
 
 	credentials := map[string]interface{}{
 		"magiclink": map[string]interface{}{
@@ -977,7 +1058,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_MagicLink_Authentic
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_MagicLink_ServerError() {
 	mockML := magiclinkmock.NewMagicLinkAuthnServiceInterfaceMock(suite.T())
-	provider := Initialize(suite.mockService, nil, nil, mockML, nil, nil, suite.admitAll())
+	provider := Initialize(suite.mockService, nil, nil, mockML, nil, nil, suite.admitAll(), suite.mockVerification)
 
 	credentials := map[string]interface{}{
 		"magiclink": map[string]interface{}{
@@ -1002,7 +1083,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_MagicLink_ServerErr
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_MagicLink_InvalidPayload() {
 	mockML := magiclinkmock.NewMagicLinkAuthnServiceInterfaceMock(suite.T())
-	provider := Initialize(suite.mockService, nil, nil, mockML, nil, nil, suite.admitAll())
+	provider := Initialize(suite.mockService, nil, nil, mockML, nil, nil, suite.admitAll(), suite.mockVerification)
 
 	credentials := map[string]interface{}{
 		"magiclink": "not-a-map",
@@ -1017,7 +1098,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_MagicLink_InvalidPa
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_MagicLink_MissingToken() {
 	mockML := magiclinkmock.NewMagicLinkAuthnServiceInterfaceMock(suite.T())
-	provider := Initialize(suite.mockService, nil, nil, mockML, nil, nil, suite.admitAll())
+	provider := Initialize(suite.mockService, nil, nil, mockML, nil, nil, suite.admitAll(), suite.mockVerification)
 
 	credentials := map[string]interface{}{
 		"magiclink": map[string]interface{}{},
@@ -1047,7 +1128,8 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_TokenizedAuth_Entit
 				"otp":          "123456",
 			},
 		}
-		return Initialize(suite.mockService, nil, mockOTP, nil, nil, nil, suite.admitAll()), creds, token
+		return Initialize(suite.mockService, nil, mockOTP, nil, nil, nil, suite.admitAll(), suite.mockVerification),
+			creds, token
 	}
 
 	setupMagicLink := func() (providers.AuthnProviderInterface, map[string]interface{}, map[string]interface{}) {
@@ -1064,7 +1146,8 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_TokenizedAuth_Entit
 				"subjectAttribute": "",
 			},
 		}
-		return Initialize(suite.mockService, nil, nil, mockML, nil, nil, suite.admitAll()), creds, token
+		return Initialize(suite.mockService, nil, nil, mockML, nil, nil, suite.admitAll(), suite.mockVerification),
+			creds, token
 	}
 
 	tests := []struct {
@@ -1116,7 +1199,8 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_TokenizedAuth_Ident
 				"otp":          "123456",
 			},
 		}
-		return Initialize(suite.mockService, nil, mockOTP, nil, nil, nil, suite.admitAll()), creds, token
+		return Initialize(suite.mockService, nil, mockOTP, nil, nil, nil, suite.admitAll(), suite.mockVerification),
+			creds, token
 	}
 
 	setupMagicLink := func() (providers.AuthnProviderInterface, map[string]interface{}, map[string]interface{}) {
@@ -1133,7 +1217,8 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_TokenizedAuth_Ident
 				"subjectAttribute": "email",
 			},
 		}
-		return Initialize(suite.mockService, nil, nil, mockML, nil, nil, suite.admitAll()), creds, token
+		return Initialize(suite.mockService, nil, nil, mockML, nil, nil, suite.admitAll(), suite.mockVerification),
+			creds, token
 	}
 
 	tests := []struct {
@@ -1167,7 +1252,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_TokenizedAuth_Ident
 // --- Passkey authentication tests ---
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Passkey_InvalidPayload() {
-	provider := Initialize(suite.mockService, nil, nil, nil, nil, nil, suite.admitAll())
+	provider := Initialize(suite.mockService, nil, nil, nil, nil, nil, suite.admitAll(), suite.mockVerification)
 
 	credentials := map[string]interface{}{
 		"passkey": "not-a-passkey-struct",
@@ -1181,7 +1266,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Passkey_InvalidPayl
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Passkey_NilPayload() {
-	provider := Initialize(suite.mockService, nil, nil, nil, nil, nil, suite.admitAll())
+	provider := Initialize(suite.mockService, nil, nil, nil, nil, nil, suite.admitAll(), suite.mockVerification)
 
 	credentials := map[string]interface{}{
 		"passkey": (*passkey.PasskeyAuthenticationFinishRequest)(nil),
@@ -1211,7 +1296,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_OpenID4VP_InvalidPa
 // --- Federated authentication tests ---
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_InvalidPayload() {
-	provider := Initialize(suite.mockService, nil, nil, nil, nil, nil, suite.admitAll())
+	provider := Initialize(suite.mockService, nil, nil, nil, nil, nil, suite.admitAll(), suite.mockVerification)
 
 	credentials := map[string]interface{}{
 		"federated": "not-a-struct",
@@ -1225,7 +1310,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_InvalidPa
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_NilPayload() {
-	provider := Initialize(suite.mockService, nil, nil, nil, nil, nil, suite.admitAll())
+	provider := Initialize(suite.mockService, nil, nil, nil, nil, nil, suite.admitAll(), suite.mockVerification)
 
 	credentials := map[string]interface{}{
 		"federated": (*authncommon.FederatedAuthCredential)(nil),
@@ -1239,7 +1324,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_NilPayloa
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_MissingIDPID() {
-	provider := Initialize(suite.mockService, nil, nil, nil, nil, nil, suite.admitAll())
+	provider := Initialize(suite.mockService, nil, nil, nil, nil, nil, suite.admitAll(), suite.mockVerification)
 
 	credentials := map[string]interface{}{
 		"federated": &authncommon.FederatedAuthCredential{
@@ -1256,7 +1341,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_MissingID
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_MissingCode() {
-	provider := Initialize(suite.mockService, nil, nil, nil, nil, nil, suite.admitAll())
+	provider := Initialize(suite.mockService, nil, nil, nil, nil, nil, suite.admitAll(), suite.mockVerification)
 
 	credentials := map[string]interface{}{
 		"federated": &authncommon.FederatedAuthCredential{
@@ -1274,7 +1359,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_MissingCo
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_UnsupportedIDPType() {
 	provider := Initialize(suite.mockService, nil, nil, nil, nil,
-		map[providers.IDPType]authncommon.FederatedAuthenticator{}, suite.admitAll())
+		map[providers.IDPType]authncommon.FederatedAuthenticator{}, suite.admitAll(), suite.mockVerification)
 
 	credentials := map[string]interface{}{
 		"federated": &authncommon.FederatedAuthCredential{
@@ -1300,7 +1385,8 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Passkey_Success() {
 			Token:               passkeyToken,
 			AuthenticatedClaims: map[string]interface{}{"userID": "pk-user-1"},
 		}, nil).Once()
-	provider := Initialize(suite.mockService, suite.mockPasskey, nil, nil, nil, nil, suite.admitAll())
+	provider := Initialize(suite.mockService, suite.mockPasskey, nil, nil, nil, nil, suite.admitAll(),
+		suite.mockVerification)
 
 	credentials := map[string]interface{}{
 		"passkey": &passkey.PasskeyAuthenticationFinishRequest{
@@ -1335,7 +1421,8 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Passkey_AuthFailed(
 			Error:            tidcommon.I18nMessage{DefaultValue: "Passkey auth failed"},
 			ErrorDescription: tidcommon.I18nMessage{DefaultValue: "Invalid passkey credential"},
 		}).Once()
-	provider := Initialize(suite.mockService, suite.mockPasskey, nil, nil, nil, nil, suite.admitAll())
+	provider := Initialize(suite.mockService, suite.mockPasskey, nil, nil, nil, nil, suite.admitAll(),
+		suite.mockVerification)
 
 	credentials := map[string]interface{}{
 		"passkey": &passkey.PasskeyAuthenticationFinishRequest{
@@ -1363,7 +1450,8 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_Success()
 	federatedAuths := map[providers.IDPType]authncommon.FederatedAuthenticator{
 		providers.IDPType("google"): suite.mockFederated,
 	}
-	provider := Initialize(suite.mockService, nil, nil, nil, nil, federatedAuths, suite.admitAll())
+	provider := Initialize(suite.mockService, nil, nil, nil, nil, federatedAuths, suite.admitAll(),
+		suite.mockVerification)
 
 	credentials := map[string]interface{}{
 		"federated": &authncommon.FederatedAuthCredential{
@@ -1406,7 +1494,8 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_ClientErr
 	federatedAuths := map[providers.IDPType]authncommon.FederatedAuthenticator{
 		providers.IDPType("google"): suite.mockFederated,
 	}
-	provider := Initialize(suite.mockService, nil, nil, nil, nil, federatedAuths, suite.admitAll())
+	provider := Initialize(suite.mockService, nil, nil, nil, nil, federatedAuths, suite.admitAll(),
+		suite.mockVerification)
 
 	credentials := map[string]interface{}{
 		"federated": &authncommon.FederatedAuthCredential{
@@ -1435,7 +1524,8 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_ServerErr
 	federatedAuths := map[providers.IDPType]authncommon.FederatedAuthenticator{
 		providers.IDPType("google"): suite.mockFederated,
 	}
-	provider := Initialize(suite.mockService, nil, nil, nil, nil, federatedAuths, suite.admitAll())
+	provider := Initialize(suite.mockService, nil, nil, nil, nil, federatedAuths, suite.admitAll(),
+		suite.mockVerification)
 
 	credentials := map[string]interface{}{
 		"federated": &authncommon.FederatedAuthCredential{
@@ -1453,7 +1543,8 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Federated_ServerErr
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestInitiateAuthentication_Passkey() {
-	provider := Initialize(suite.mockService, suite.mockPasskey, nil, nil, nil, nil, suite.admitAll())
+	provider := Initialize(suite.mockService, suite.mockPasskey, nil, nil, nil, nil, suite.admitAll(),
+		suite.mockVerification)
 	req := &passkey.PasskeyAuthenticationStartRequest{UserID: "user123", RelyingPartyID: "example.com"}
 	startData := &passkey.PasskeyAuthenticationStartData{SessionToken: "sess-1"}
 	suite.mockPasskey.On("StartAuthentication", mock.Anything, req).Return(startData, nil).Once()
@@ -1473,7 +1564,8 @@ func (suite *DefaultAuthnProviderTestSuite) TestInitiateAuthentication_Unsupport
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestInitiateAuthentication_InvalidPayload() {
-	provider := Initialize(suite.mockService, suite.mockPasskey, nil, nil, nil, nil, suite.admitAll())
+	provider := Initialize(suite.mockService, suite.mockPasskey, nil, nil, nil, nil, suite.admitAll(),
+		suite.mockVerification)
 
 	result, err := provider.InitiateAuthentication(context.Background(), passkey.CredentialType, "bad", nil)
 
@@ -1483,7 +1575,8 @@ func (suite *DefaultAuthnProviderTestSuite) TestInitiateAuthentication_InvalidPa
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestInitiateEnrollment_Passkey() {
-	provider := Initialize(suite.mockService, suite.mockPasskey, nil, nil, nil, nil, suite.admitAll())
+	provider := Initialize(suite.mockService, suite.mockPasskey, nil, nil, nil, nil, suite.admitAll(),
+		suite.mockVerification)
 	req := &passkey.PasskeyRegistrationStartRequest{UserID: "user123", RelyingPartyID: "example.com"}
 	startData := &passkey.PasskeyRegistrationStartData{SessionToken: "sess-1"}
 	suite.mockPasskey.On("StartRegistration", mock.Anything, req).Return(startData, nil).Once()
@@ -1495,7 +1588,8 @@ func (suite *DefaultAuthnProviderTestSuite) TestInitiateEnrollment_Passkey() {
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestInitiateEnrollment_InvalidPayload() {
-	provider := Initialize(suite.mockService, suite.mockPasskey, nil, nil, nil, nil, suite.admitAll())
+	provider := Initialize(suite.mockService, suite.mockPasskey, nil, nil, nil, nil, suite.admitAll(),
+		suite.mockVerification)
 
 	result, err := provider.InitiateEnrollment(context.Background(), passkey.CredentialType, 42, nil)
 
@@ -1505,7 +1599,8 @@ func (suite *DefaultAuthnProviderTestSuite) TestInitiateEnrollment_InvalidPayloa
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestEnroll_PasskeyKeepsAStatedSuspension() {
-	provider := Initialize(suite.mockService, suite.mockPasskey, nil, nil, nil, nil, suite.admitAll())
+	provider := Initialize(suite.mockService, suite.mockPasskey, nil, nil, nil, nil, suite.admitAll(),
+		suite.mockVerification)
 	startReq := &passkey.PasskeyRegistrationStartRequest{UserID: "user123", RelyingPartyID: "example.com"}
 	finishReq := &passkey.PasskeyRegistrationFinishRequest{CredentialID: "cred-1"}
 
@@ -1528,7 +1623,8 @@ func (suite *DefaultAuthnProviderTestSuite) TestEnroll_PasskeyKeepsAStatedSuspen
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestEnroll_Passkey_Success() {
-	provider := Initialize(suite.mockService, suite.mockPasskey, nil, nil, nil, nil, suite.admitAll())
+	provider := Initialize(suite.mockService, suite.mockPasskey, nil, nil, nil, nil, suite.admitAll(),
+		suite.mockVerification)
 	req := &passkey.PasskeyRegistrationFinishRequest{CredentialID: "cred-1"}
 	credentials := map[string]interface{}{"passkey": req}
 	suite.mockPasskey.On("FinishRegistration", mock.Anything, req).
@@ -1562,7 +1658,8 @@ func (suite *DefaultAuthnProviderTestSuite) TestEnroll_NilCredentials() {
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestEnroll_Passkey_InvalidPayload() {
-	provider := Initialize(suite.mockService, suite.mockPasskey, nil, nil, nil, nil, suite.admitAll())
+	provider := Initialize(suite.mockService, suite.mockPasskey, nil, nil, nil, nil, suite.admitAll(),
+		suite.mockVerification)
 	credentials := map[string]interface{}{"passkey": "not-a-request-struct"}
 
 	result, err := provider.Enroll(context.Background(), nil, credentials, nil)
@@ -1764,7 +1861,7 @@ func (suite *DefaultAuthnProviderTestSuite) federatedAuthResult(
 		Return(&authncommon.AuthnResult{Token: token}, nil)
 	provider := Initialize(suite.mockService, nil, nil, nil, nil,
 		map[providers.IDPType]authncommon.FederatedAuthenticator{providers.IDPTypeOAuth: suite.mockFederated},
-		suite.admitAll())
+		suite.admitAll(), suite.mockVerification)
 
 	credentials := map[string]interface{}{
 		authnprovidercm.CredentialTypeFederated: &authncommon.FederatedAuthCredential{
@@ -1786,6 +1883,21 @@ func (suite *DefaultAuthnProviderTestSuite) TestFederatedToken_ResolvesThroughRe
 	suite.Require().NotNil(result.EntityReference)
 	suite.Equal("user123", result.EntityReference.EntityID)
 	suite.mockService.AssertNotCalled(suite.T(), "IdentifyEntity", mock.Anything, mock.Anything)
+}
+
+// A federated sign-in reports the identity it verified, and an attribute token rather than loaded
+// attributes, so the attributes load after the authn provider manager syncs the account.
+func (suite *DefaultAuthnProviderTestSuite) TestFederatedSignIn_ReportsIdentityAndAttributeToken() {
+	suite.mockService.On("ResolveLinkedAccounts", mock.Anything, "idp-a", "sub-1").Return([]string{"user123"}, nil)
+	suite.mockService.On("GetEntityProfile", mock.Anything, "user123").
+		Return(&providers.Entity{ID: "user123", Category: providers.EntityCategoryUser, Type: "customer"}, nil)
+
+	result, svcErr := suite.federatedAuthResult(federatedToken(nil))
+	suite.Require().Nil(svcErr)
+	suite.Equal(&providers.FederatedIdentity{IdpID: "idp-a", Sub: "sub-1"}, result.FederatedIdentity)
+	suite.Nil(result.Attributes)
+	suite.Equal(map[string]interface{}{authnprovidercm.UserAttributeUserID: "user123"}, result.AttributeToken)
+	suite.mockService.AssertNotCalled(suite.T(), "UpdateAttributes", mock.Anything, mock.Anything, mock.Anything)
 }
 
 // A recorded link is the only thing that authenticates a federated sign-in here. With none, the
@@ -1942,7 +2054,8 @@ func (suite *DefaultAuthnProviderTestSuite) admitAll() *identitygovernancemock.I
 
 // governedProvider builds the provider over the suite's entity, OTP and governance mocks.
 func (suite *DefaultAuthnProviderTestSuite) governedProvider() providers.AuthnProviderInterface {
-	return Initialize(suite.mockService, nil, suite.mockOTP, nil, nil, nil, suite.mockGovernance)
+	return Initialize(suite.mockService, nil, suite.mockOTP, nil, nil, nil, suite.mockGovernance,
+		suite.mockVerification)
 }
 
 // authenticate runs an attempt for alice through the governed provider.
@@ -2138,7 +2251,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_AdmittedFailureKeep
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_RecoveryFlow_WrongPasswordMeetsItsLock() {
-	recoveryFlow := authnprovidercm.WithRecoveryFlow(context.Background())
+	recoveryFlow := authnprovidercm.WithRecoveryProof(context.Background())
 	suite.expectProvenMismatch(map[string]interface{}{"password": "wrong"})
 	suite.mockGovernance.On("RecordFailure", mock.MatchedBy(security.IsRuntimeContext), "u1",
 		providers.AccessPlaneRecovery, providers.AuthenticationMethodCredential).
@@ -2165,7 +2278,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_UnreadableAuthority
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_RecoveryFlow_CodeIsAdmittedAtTheRecoveryPlane() {
 	admitted := providers.AccessDecision{Admitted: true}
-	recoveryFlow := authnprovidercm.WithRecoveryFlow(context.Background())
+	recoveryFlow := authnprovidercm.WithRecoveryProof(context.Background())
 	suite.expectCodeVerified("u1")
 	suite.mockGovernance.On("EvaluateAccess", mock.MatchedBy(security.IsRuntimeContext), "u1",
 		providers.AccessPlaneRecovery, providers.AuthenticationMethodOTP).
@@ -2176,7 +2289,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_RecoveryFlow_CodeIs
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_RecoveryFlow_CodeOfASuspendedAccountIsRefused() {
-	recoveryFlow := authnprovidercm.WithRecoveryFlow(context.Background())
+	recoveryFlow := authnprovidercm.WithRecoveryProof(context.Background())
 	suite.expectCodeVerified("held-1")
 	suite.mockGovernance.On("EvaluateAccess", mock.Anything, "held-1",
 		providers.AccessPlaneRecovery, providers.AuthenticationMethodOTP).
@@ -2189,7 +2302,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_RecoveryFlow_CodeOf
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_RecoveryFlow_WrongCodeIsSubmittedAtTheRecoveryPlane() {
 	admitted := providers.AccessDecision{Admitted: true}
-	recoveryFlow := authnprovidercm.WithRecoveryFlow(context.Background())
+	recoveryFlow := authnprovidercm.WithRecoveryProof(context.Background())
 	suite.mockOTP.On("Authenticate", mock.Anything, "session-1", "000000").
 		Return(nil, &otp.VerificationFailure{
 			RecipientAttr: authnprovidercm.UserAttributeUserID, Recipient: "u1",
@@ -2203,7 +2316,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_RecoveryFlow_WrongC
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_RecoveryFlow_PasswordMeetsItsLock() {
-	recoveryFlow := authnprovidercm.WithRecoveryFlow(context.Background())
+	recoveryFlow := authnprovidercm.WithRecoveryProof(context.Background())
 	credentials := map[string]interface{}{"password": "correct"}
 	suite.expectVerified("held-1", credentials)
 	suite.mockGovernance.On("EvaluateAccess", mock.MatchedBy(security.IsRuntimeContext), "held-1",
@@ -2218,13 +2331,40 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_RecoveryFlow_Passwo
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_RecoveryFlow_WrongPasswordIsSubmittedAtTheRecoveryPlane() {
 	admitted := providers.AccessDecision{Admitted: true}
-	recoveryFlow := authnprovidercm.WithRecoveryFlow(context.Background())
+	recoveryFlow := authnprovidercm.WithRecoveryProof(context.Background())
 	credentials := map[string]interface{}{"password": "wrong"}
 	suite.expectProvenMismatch(credentials)
 	suite.mockGovernance.On("RecordFailure", mock.Anything, "u1",
 		providers.AccessPlaneRecovery, providers.AuthenticationMethodCredential).Return(admitted, nil).Once()
 
 	suite.Require().NotNil(suite.authenticate(recoveryFlow, credentials))
+}
+
+func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_ContactProof_CodeIsCheckedAsAContactProof() {
+	admitted := providers.AccessDecision{Admitted: true}
+	verification := authnprovidercm.WithContactProof(authnprovidercm.WithRecoveryProof(context.Background()))
+	suite.expectCodeVerified("u1")
+	suite.mockGovernance.On("EvaluateAccess", mock.MatchedBy(security.IsRuntimeContext), "u1",
+		providers.AccessPlaneVerification, providers.AuthenticationMethodOTP).
+		Return(admitted, nil).Once()
+
+	suite.Nil(suite.authenticate(verification, otpCredentials("123456")))
+	suite.assertNothingChecked()
+}
+
+func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_ContactProof_WrongCodeIsNotASignInFailure() {
+	admitted := providers.AccessDecision{Admitted: true}
+	verification := authnprovidercm.WithContactProof(context.Background())
+	suite.mockOTP.On("Authenticate", mock.Anything, "session-1", "000000").
+		Return(nil, &otp.VerificationFailure{
+			RecipientAttr: authnprovidercm.UserAttributeUserID, Recipient: "u1",
+		}, &otp.ErrorIncorrectOTP).Once()
+	suite.mockGovernance.On("RecordFailure", mock.Anything, "u1",
+		providers.AccessPlaneVerification, providers.AuthenticationMethodOTP).Return(admitted, nil).Once()
+
+	svcErr := suite.authenticate(verification, otpCredentials("000000"))
+	suite.Require().NotNil(svcErr)
+	suite.Equal(authnprovidercm.ErrorCodeAuthenticationFailed, svcErr.Code)
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_UnreadableAuthorityRefuses() {
@@ -2317,7 +2457,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_ChecksTheDispatched
 			mockVP := openid4vpmock.NewOpenID4VPServiceInterfaceMock(suite.T())
 			provider := Initialize(suite.mockService, suite.mockPasskey, nil, mockML, mockVP,
 				map[providers.IDPType]authncommon.FederatedAuthenticator{providers.IDPTypeOAuth: suite.mockFederated},
-				suite.mockGovernance)
+				suite.mockGovernance, suite.mockVerification)
 			tc.expect(mockML, mockVP)
 			suite.mockService.On("GetEntityProfile", mock.Anything, "u1").
 				Return(&providers.Entity{ID: "u1", Attributes: json.RawMessage(`{}`)}, nil).Once()
@@ -2569,7 +2709,8 @@ func (suite *DefaultAuthnProviderTestSuite) TestEnroll_IsNeitherCountedNorChecke
 	suite.mockService.On("GetEntityProfile", mock.Anything, "enrolled-1").
 		Return(&providers.Entity{ID: "enrolled-1", Category: providers.EntityCategoryUser,
 			Attributes: json.RawMessage(`{}`)}, nil).Once()
-	provider := Initialize(suite.mockService, suite.mockPasskey, nil, nil, nil, nil, suite.mockGovernance)
+	provider := Initialize(suite.mockService, suite.mockPasskey, nil, nil, nil, nil, suite.mockGovernance,
+		suite.mockVerification)
 	credentials := map[string]interface{}{
 		authnprovidercm.CredentialTypePasskey: &passkey.PasskeyRegistrationFinishRequest{CredentialID: "cred-1"},
 	}

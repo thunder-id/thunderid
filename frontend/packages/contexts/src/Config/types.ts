@@ -155,6 +155,22 @@ export interface DesignConfig {
 }
 
 /**
+ * One item of the Gate sign-in slogan panel.
+ *
+ * @public
+ */
+export interface SloganItemConfig {
+  /** Heading of the item. */
+  title: string;
+
+  /** Optional supporting text under the title. */
+  description?: string;
+
+  /** Optional icon image path, relative to the Gate base path. */
+  icon?: string;
+}
+
+/**
  * Branding configuration interface that defines product name and other branding-related settings.
  *
  * @public
@@ -176,6 +192,16 @@ export interface BrandConfig {
    * Design configuration for theming and UI customization.
    */
   design?: DesignConfig;
+
+  /**
+   * Overrides the content shown beside the Gate sign-in card when no application design applies.
+   * A string is a single title. An object is a single item. An array is a list of items.
+   * When omitted or empty, the built-in ThunderID items are shown.
+   * @example "Sign in to Acme"
+   * @example { title: "Fast", description: "Sign in quickly.", icon: "assets/images/fast.svg" }
+   * @example [{ title: "Fast", description: "Sign in quickly.", icon: "assets/images/fast.svg" }]
+   */
+  slogan?: string | SloganItemConfig | SloganItemConfig[];
 }
 
 /**
@@ -196,6 +222,13 @@ export interface DocumentationConfig {
    * @example "https://thunderid.dev/data/releases.json"
    */
   releasesUrl?: string;
+
+  /**
+   * URL of the ecosystem releases feed, which lists the released SDKs and sample apps with their
+   * downloadable archives. Used to offer a sample app to download.
+   * @example "https://thunderid.dev/data/ecosystem-releases.json"
+   */
+  ecosystemReleasesUrl?: string;
 
   /**
    * Flat map of feature/section id to documentation link. A value starting with `http` is
@@ -279,6 +312,44 @@ export interface DirectApiConfig {
 }
 
 /**
+ * Deploy configuration interface that defines where the console places the pages of the gateways a
+ * version is deployed and promoted through.
+ *
+ * @public
+ */
+export interface DeployConfig {
+  /**
+   * The path of a gateway's own page, before the gateway's id, such as `environments`. Defaults to
+   * `deploy/gateways`. Within a project, the page is under the project's.
+   */
+  gateway_path?: string;
+  /**
+   * Where a project's gateways and the pipeline between them are edited, such as a hosting platform's own
+   * page for them, with `{project}` standing for the project's handle. When set, a project's pipeline
+   * links to it.
+   */
+  edit_pipeline_url?: string;
+  /**
+   * Where the organization's gateways are managed, such as a hosting platform's own page for them. When
+   * set, the organization's overview links to it.
+   */
+  manage_environments_url?: string;
+}
+
+/**
+ * Administrators configuration for a Control Plane console.
+ *
+ * @public
+ */
+export interface AdministratorsConfig {
+  /**
+   * The roles an administrator is given when added. An administrator is a user added outside any
+   * project. Empty or unset, an administrator is given none.
+   */
+  role_ids?: string[];
+}
+
+/**
  * Runtime overrides for the ThunderID SDK provider (ThunderIDProvider props).
  *
  * Accepts any valid ThunderIDProvider prop. Values are deep-merged on top of
@@ -321,7 +392,7 @@ export interface ProductConfig {
   /**
    * Optional gate-client configuration for the login gate app's location. When omitted,
    * the OAuth redirect/callback URL shown in connection wizards falls back to
-   * `${getServerUrl()}/gate/callback`.
+   * `${useRuntimeUrl()}/gate/callback`.
    */
   gate_client?: GateClientConfig;
 
@@ -339,6 +410,12 @@ export interface ProductConfig {
 
   /** Optional SDK provider overrides. Values here take precedence over computed defaults. */
   sdk?: SdkConfig;
+
+  /** Optional deploy configuration, such as where a gateway's own page is. */
+  deploy?: DeployConfig;
+
+  /** Optional administrators configuration, such as the roles a new administrator is given. */
+  administrators?: AdministratorsConfig;
 }
 
 /**

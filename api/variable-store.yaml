@@ -127,6 +127,34 @@ paths:
           $ref: '#/components/responses/Conflict'
         "500":
           $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags: [Variables]
+      summary: Delete many variables
+      description: |
+        Deletes every variable named in `names`, 1 to 100 of them, in one call, and answers with
+        those that were deleted. A name with nothing stored is not an error and is simply absent from
+        the answer. Each variable deleted is recorded in the audit log as a delete of it alone is.
+        Configuration still referring to a deleted name will fail to resolve it.
+      parameters:
+        - $ref: '#/components/parameters/deleteNamesQueryParam'
+        - $ref: '#/components/parameters/unchangedForQueryParam'
+      responses:
+        "200":
+          description: The variables deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteResponse'
+              example:
+                deleted: ["DB_HOST"]
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
 
   /variables/{name}:
     parameters:
@@ -299,6 +327,33 @@ paths:
           $ref: '#/components/responses/Conflict'
         "500":
           $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags: [Secrets]
+      summary: Delete many secrets
+      description: |
+        Deletes every secret named in `names`, 1 to 100 of them, in one call, and answers with those
+        that were deleted. A name with nothing held is not an error and is simply absent from the
+        answer. Each secret deleted is recorded in the audit log as a delete of it alone is.
+      parameters:
+        - $ref: '#/components/parameters/deleteNamesQueryParam'
+        - $ref: '#/components/parameters/unchangedForQueryParam'
+      responses:
+        "200":
+          description: The secrets deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteResponse'
+              example:
+                deleted: ["DB_PASSWORD"]
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
 
   /secrets/{name}:
     parameters:
@@ -453,6 +508,49 @@ components:
       style: form
       explode: false
       example: ["DB_HOST", "DB_PORT"]
+
+    deleteNamesQueryParam:
+      in: query
+      name: names
+      required: true
+      description: |
+        The names to delete, comma separated, 1 to 100 of them. Given once; no query parameter other
+        than this and `unchangedFor` is accepted, and a query that cannot be decoded is refused
+        with VAR-1014 rather than read in part.
+      schema:
+        type: array
+        items:
+          $ref: '#/components/schemas/EntryName'
+        minItems: 1
+        maxItems: 100
+      style: form
+      explode: false
+    unchangedForQueryParam:
+      in: query
+      name: unchangedFor
+      required: false
+      description: |
+        Deletes only the named values last set more than this many seconds ago, a whole number from 1
+        to 3153600000. The age is measured on this server's clock, in the same statement that
+        deletes, so a value last set less than `unchangedFor` seconds before that statement runs, by
+        that clock, is never deleted, whatever the caller's clock says. A value with no time recorded
+        is kept too. What is kept is absent from the answer.
+
+        A caller that lists values and then deletes the ones it chose, and wants to keep any of them
+        set again since it listed, can pass an age that also covers the time since it started
+        listing, rounded up to the second, plus one second for the whole seconds the store keeps.
+        This narrows the window but does not close it: the age is measured when the statement runs,
+        so a value set again just after the listing can still be deleted if the delete request
+        itself is delayed by more than about the age the caller added for its own grace.
+
+        Given at most once; anything else, such as 0, a negative number, a fraction or a value past
+        the range, is refused with VAR-1015. Any other query parameter is refused with VAR-1013.
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+        maximum: 3153600000
+      example: 3600
 
     filterQueryParam:
       in: query
@@ -706,6 +804,16 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Link'
+
+    DeleteResponse:
+      type: object
+      required: [deleted]
+      properties:
+        deleted:
+          type: array
+          description: The names that were deleted. A name that held nothing is absent.
+          items:
+            $ref: '#/components/schemas/EntryName'
 
     Link:
       type: object

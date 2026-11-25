@@ -31,10 +31,10 @@ describe('EditOrganizationAccessSettings', () => {
     });
   });
 
-  it('passes a declared application on as read-only', () => {
-    const application = {id: 'app-1', name: 'Storefront', ouId: 'acme', isReadOnly: true} as Application;
+  it('passes read-only on', () => {
+    const application = {id: 'app-1', name: 'Storefront', ouId: 'acme'} as Application;
 
-    render(<EditOrganizationAccessSettings application={application} access={access} />);
+    render(<EditOrganizationAccessSettings application={application} readOnly access={access} />);
 
     expect(vi.mocked(OrganizationAccessSettings).mock.calls.at(-1)?.[0]).toEqual(
       expect.objectContaining({readOnly: true}),

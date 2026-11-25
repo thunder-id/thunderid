@@ -16,8 +16,12 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	sharedrevocation "github.com/thunder-id/thunderid/internal/revocation"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/revocationmock"
+	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
 )
 
 const (
@@ -26,6 +30,7 @@ const (
 	testGrantAttributeCacheID = "cache-1"
 	testGrantAudience         = "https://api.example.com"
 	testGrantCompletedACR     = "urn:acr:pwd"
+	testGrantSubjectID        = "user-entity-id"
 )
 
 // denyListLookup answers like the criteria deny list: boundary rows match artifacts established by their cutoff.
@@ -209,4 +214,147 @@ func (s *GrantHandlerUtilsTestSuite) TestGrantRevocationError() {
 
 	unavailable := grantRevocationError(errors.New("db down"))
 	s.Equal(constants.ErrorServerError, unavailable.Error)
+}
+
+func (s *GrantHandlerUtilsTestSuite) TestGrantPermits() {
+	oidc := map[string]struct{}{"openid": {}, "profile": {}, "reservations:history": {}}
+
+	tests := []struct {
+		name      string
+		requested string
+		granted   []string
+		delimiter string
+		want      bool
+	}{
+		{
+			name:      "a grant of the resource carries what sits beneath it",
+			requested: "reservations:view", granted: []string{"reservations"}, delimiter: ":", want: true,
+		},
+		{
+			name:      "and carries it at any depth",
+			requested: "reservations:online:view", granted: []string{"reservations"}, delimiter: ":", want: true,
+		},
+		{
+			name:      "an exactly granted scope is permitted",
+			requested: "reservations:view", granted: []string{"reservations:view"}, delimiter: ":", want: true,
+		},
+		{
+			// Narrowing never works upwards: the resource carries every other descendant too.
+			name:      "a grant of a descendant does not carry the resource it sits under",
+			requested: "reservations", granted: []string{"reservations:view"}, delimiter: ":", want: false,
+		},
+		{
+			name:      "a sibling is not carried",
+			requested: "reservations:create", granted: []string{"reservations:view"}, delimiter: ":", want: false,
+		},
+		{
+			name:      "a shared prefix that is not an ancestor is not carried",
+			requested: "reservationsarchive", granted: []string{"reservations"}, delimiter: ":", want: false,
+		},
+		{
+			// An OIDC scope is not a permission on any resource server, so it stands for itself only.
+			name:      "an OIDC scope in the grant never acts as an ancestor",
+			requested: "profile:secret", granted: []string{"profile"}, delimiter: ":", want: false,
+		},
+		{
+			name:      "an OIDC scope is still permitted exactly",
+			requested: "openid", granted: []string{"openid", "reservations"}, delimiter: ":", want: true,
+		},
+		{
+			name:      "a requested custom OIDC scope cannot inherit a permission grant",
+			requested: "reservations:history", granted: []string{"reservations"}, delimiter: ":", want: false,
+		},
+		{
+			name:      "a requested custom OIDC scope is permitted when explicitly granted",
+			requested: "reservations:history", granted: []string{"reservations:history"}, delimiter: ":", want: true,
+		},
+
+		{
+			name:      "a non-colon delimiter is honored",
+			requested: "reservations/view", granted: []string{"reservations"}, delimiter: "/", want: true,
+		},
+		{
+			// An unbound grant has no resource server and therefore no delimiter.
+			name:      "no delimiter reduces the test to equality",
+			requested: "reservations:view", granted: []string{"reservations"}, delimiter: "", want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			s.Equal(tt.want, grantPermits(tt.requested, tt.granted, oidc, tt.delimiter))
+		})
+	}
+}
+
+func (s *GrantHandlerUtilsTestSuite) TestCompactPermissionScopes() {
+	for _, tc := range []struct {
+		name               string
+		scopes, oidc, want []string
+		delimiter          string
+		hierarchy          bool
+	}{
+		{"root and child", []string{"reservations:create", "reservations"}, nil,
+			[]string{"reservations"}, ":", true},
+		{"exact unchanged", []string{"reservations", "reservations:create"}, nil,
+			[]string{"reservations", "reservations:create"}, ":", false},
+		{"child only", []string{"reservations:create"}, nil, []string{"reservations:create"}, ":", true},
+		{"siblings", []string{"reservations:create", "reservations:view"}, nil,
+			[]string{"reservations:create", "reservations:view"}, ":", true},
+		{"custom OIDC child", []string{"reservations", "reservations:profile"}, []string{"reservations:profile"},
+			[]string{"reservations", "reservations:profile"}, ":", true},
+		{"OIDC cannot cover permission", []string{"profile", "profile:edit"}, []string{"profile"},
+			[]string{"profile", "profile:edit"}, ":", true},
+		{"machine permission", []string{"profile", "profile:edit"}, nil, []string{"profile"}, ":", true},
+		{"custom delimiter", []string{"reservations/create", "reservations", "reservation"}, nil,
+			[]string{"reservations", "reservation"}, "/", true},
+	} {
+		s.Run(tc.name, func() {
+			original := slices.Clone(tc.scopes)
+			server := &providers.ResourceServer{HierarchicalPermissions: tc.hierarchy, Delimiter: tc.delimiter}
+			s.Equal(tc.want, compactPermissionScopes(tc.scopes, tc.oidc, server))
+			s.Equal(original, tc.scopes)
+		})
+	}
+}
+
+func (s *GrantHandlerUtilsTestSuite) TestBuildDeviceSecret() {
+	sessions := []model.SessionData{
+		{FlowIdentifier: "77e0937879f72858", SessionHandle: "handle-abc"},
+		{FlowIdentifier: "f51bdb0f22d906bb", SessionHandle: "handle-def"},
+	}
+	oauthApp := &providers.OAuthClient{ClientID: testGrantClientID}
+	cases := []struct {
+		name      string
+		validity  time.Duration
+		sessions  []model.SessionData
+		built     *model.TokenDTO
+		buildErr  error
+		wantToken string
+	}{
+		{"carries the grant's sessions for its subject", time.Hour, sessions,
+			&model.TokenDTO{Token: "device-secret"}, nil, "device-secret"},
+		{"a part second counts as a whole one", time.Hour - 500*time.Millisecond, sessions,
+			&model.TokenDTO{Token: "device-secret"}, nil, "device-secret"},
+		{"none when the grant kept no session", time.Hour, nil, nil, nil, ""},
+		{"none without a session lifetime", 0, sessions, nil, nil, ""},
+		{"a build failure is not fatal", time.Hour, sessions, nil, errors.New("signing failed"), ""},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			tokenBuilder := tokenservicemock.NewTokenBuilderInterfaceMock(s.T())
+			if tc.built != nil || tc.buildErr != nil {
+				tokenBuilder.EXPECT().BuildDeviceSecret(mock.Anything,
+					mock.MatchedBy(func(c *tokenservice.DeviceSecretBuildContext) bool {
+						return c.OAuthApp == oauthApp && c.SubjectID == testGrantSubjectID &&
+							slices.Equal(c.SessionData, sessions) && c.ValidityPeriod == 3600
+					})).Return(tc.built, tc.buildErr)
+			}
+
+			got := buildDeviceSecret(context.Background(), tokenBuilder, tc.validity, oauthApp, testGrantSubjectID,
+				tc.sessions, log.GetLogger())
+
+			s.Equal(tc.wantToken, got.Token)
+		})
+	}
 }

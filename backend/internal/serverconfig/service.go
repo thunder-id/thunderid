@@ -6,12 +6,18 @@ package serverconfig
 import (
 	"context"
 	"encoding/json"
+	"math/rand/v2"
 	"sync"
+	"time"
 
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -26,16 +32,39 @@ type ServerConfigService interface {
 	GetWritableConfig(ctx context.Context, name string) (any, *common.ServiceError)
 	GetMergedConfig(ctx context.Context, name string) (any, *common.ServiceError)
 	SetConfig(ctx context.Context, name ConfigName, value json.RawMessage) *common.ServiceError
+	// UpdateConfig changes a section's writable layer from what it holds now, through updater, and
+	// writes it only while no other write changed it since it was read, on any node, trying again a few
+	// times when one did. Two updates that change different parts of a section both survive.
+	UpdateConfig(ctx context.Context, name ConfigName, updater ConfigUpdater) *common.ServiceError
 }
+
+// ConfigUpdater works out a section's next writable layer from the one it holds, decoded as its handler
+// decodes it. An error refuses the update as an invalid value.
+type ConfigUpdater interface {
+	Update(current any) (any, error)
+}
+
+// maxConfigUpdateAttempts bounds how many times an update reads the section again after another write
+// changed it, and configUpdateBackoff is how long it waits first, longer each time, so two nodes
+// updating at once do not keep meeting.
+const (
+	maxConfigUpdateAttempts = 10
+	configUpdateBackoff     = 5 * time.Millisecond
+)
 
 // serverConfigService is the default implementation of ServerConfigService.
 type serverConfigService struct {
-	store    serverConfigStoreInterface
-	handlers map[ConfigName]ServerConfigHandlerInterface
+	authzService sysauthz.SystemAuthorizationServiceInterface
+	store        serverConfigStoreInterface
+	handlers     map[ConfigName]ServerConfigHandlerInterface
 	// observability receives a SERVER_CONFIG_UPDATED event per write. Optional.
 	observability providers.ObservabilityProvider
+	bus           eventbus.EventBusInterface
 	logger        *log.Logger
 	configMu      sync.Mutex
+	// managed says which sections a control plane deployed, which a write through SetConfig leaves as they
+	// are. Nil where nothing is deployed from one.
+	managed managedresource.StoreInterface
 }
 
 // newServerConfigService creates a new instance of serverConfigService. Handlers are injected at
@@ -43,11 +72,14 @@ type serverConfigService struct {
 // implementation depending on the configured store mode.
 func newServerConfigService(store serverConfigStoreInterface,
 	handlers map[ConfigName]ServerConfigHandlerInterface,
-	observability providers.ObservabilityProvider) ServerConfigService {
+	observability providers.ObservabilityProvider, bus eventbus.EventBusInterface,
+	authzService sysauthz.SystemAuthorizationServiceInterface) ServerConfigService {
 	return &serverConfigService{
+		authzService:  authzService,
 		store:         store,
 		handlers:      handlers,
 		observability: observability,
+		bus:           bus,
 		logger:        log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
 	}
 }
@@ -140,6 +172,36 @@ func (s *serverConfigService) getConfigLayer(ctx context.Context, name string,
 // SetConfig decodes and validates an incoming value against the current layers and persists the raw
 // bytes to the writable layer. A bad incoming value is a client error; the stored bytes are kept as-is.
 func (s *serverConfigService) SetConfig(ctx context.Context,
+	name ConfigName, value json.RawMessage) *common.ServiceError {
+	svcErr := s.checkWriteAccess(ctx, name)
+	if svcErr == nil {
+		svcErr = s.refuseManaged(ctx, name)
+	}
+	if svcErr == nil {
+		svcErr = s.setConfig(ctx, name, value)
+	}
+	s.publishServerConfigEvent(ctx, name, svcErr)
+	return svcErr
+}
+
+// refuseManaged refuses a write to a section a control plane deployed, unless the write is the managed
+// import's. Only SetConfig is refused: a section a control plane deployed still takes the updates the
+// server makes itself, such as another resource's origins, through UpdateConfig.
+func (s *serverConfigService) refuseManaged(ctx context.Context, name ConfigName) *common.ServiceError {
+	managed, err := managedresource.IsReadOnly(ctx, s.managed, string(name), managedresource.TypeServerConfig)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to read whether a control plane deployed the configuration section",
+			log.String("name", string(name)), log.Error(err))
+		return &common.InternalServerError
+	}
+	if managed {
+		return &ErrorManagedConfig
+	}
+	return nil
+}
+
+// setConfig writes a section without publishing its audit event.
+func (s *serverConfigService) setConfig(ctx context.Context,
 	name ConfigName, value json.RawMessage) (svcErr *common.ServiceError) {
 	handler, svcErr := s.handlerFor(ctx, name)
 	if svcErr != nil {
@@ -177,6 +239,90 @@ func (s *serverConfigService) SetConfig(ctx context.Context,
 		return &common.InternalServerError
 	}
 	return nil
+}
+
+// UpdateConfig changes a section's writable layer from the one it holds, with a conditional write that
+// loses to any write made since the read, and reads and tries again when it does.
+func (s *serverConfigService) UpdateConfig(ctx context.Context, name ConfigName,
+	updater ConfigUpdater) *common.ServiceError {
+	svcErr := s.updateConfig(ctx, name, updater)
+	s.publishServerConfigEvent(ctx, name, svcErr)
+	return svcErr
+}
+
+// updateConfig changes a section from the one it holds without publishing its audit event.
+func (s *serverConfigService) updateConfig(ctx context.Context, name ConfigName,
+	updater ConfigUpdater) (svcErr *common.ServiceError) {
+	handler, svcErr := s.handlerFor(ctx, name)
+	if svcErr != nil {
+		return svcErr
+	}
+	defer func() { s.publishConfigWrite(ctx, name, svcErr) }()
+
+	s.configMu.Lock()
+	defer s.configMu.Unlock()
+	for attempt := 0; attempt < maxConfigUpdateAttempts; attempt++ {
+		rawLayers, err := s.store.GetServerConfig(ctx, name)
+		if err != nil {
+			s.logger.Error(ctx, "Failed to get current server config", log.Error(err))
+			return &common.InternalServerError
+		}
+		readOnly, writable, svcErr := s.decodeLayers(ctx, name, handler, rawLayers)
+		if svcErr != nil {
+			return svcErr
+		}
+		next, err := updater.Update(writable)
+		if err != nil {
+			s.logger.Debug(ctx, "Config update refused", log.String("name", string(name)), log.Error(err))
+			return &ErrorInvalidConfigValue
+		}
+		value, err := json.Marshal(next)
+		if err != nil {
+			return &common.InternalServerError
+		}
+		incoming, err := handler.Decode(value)
+		if err != nil {
+			return &ErrorInvalidConfigValue
+		}
+		if err := handler.Validate(ctx, incoming, readOnly, writable); err != nil {
+			s.logger.Debug(ctx, "Config value validation failed", log.String("name", string(name)), log.Error(err))
+			return &ErrorInvalidConfigValue
+		}
+		written, err := s.store.ReplaceServerConfigIf(ctx, ServerConfig{Name: name, Value: value}, rawLayers.Writable)
+		if err != nil {
+			s.logger.Error(ctx, "Failed to write server config", log.Error(err))
+			return &common.InternalServerError
+		}
+		if written {
+			return nil
+		}
+		s.logger.Debug(ctx, "Server config changed while it was updated; reading it again",
+			log.String("name", string(name)), log.Int("attempt", attempt+1))
+		// #nosec G404 -- spreads retries apart; nothing depends on it being unpredictable.
+		jitter := time.Duration(rand.Int64N(int64(configUpdateBackoff)))
+		// The wait ends with the request, so a caller that gave up releases the section's lock at once.
+		wait := time.NewTimer(time.Duration(attempt+1)*configUpdateBackoff + jitter)
+		select {
+		case <-ctx.Done():
+			wait.Stop()
+			return &ErrorConfigWriteConflict
+		case <-wait.C:
+		}
+	}
+	return &ErrorConfigWriteConflict
+}
+
+// publishServerConfigEvent publishes the audit event of an attempt to change the section name, after the
+// change was stored or refused. The target is the section, never its value, since a section may hold
+// secrets.
+func (s *serverConfigService) publishServerConfigEvent(ctx context.Context, name ConfigName,
+	svcErr *common.ServiceError) {
+	// A failed attempt keeps the name the caller asked for, even one that is not a section, as forensic
+	// evidence of what was probed; the payload caps it and the sink escapes it.
+	target := audit.Ref{Type: audit.TargetTypeServerConfig, ID: string(name)}
+	eventbus.TryPublish(ctx, s.bus,
+		eventbus.NewEvent(ctx, audit.EventServerConfigUpdate).With(
+			audit.ChangePayload(ctx, target, audit.ActionUpdate, svcErr)))
 }
 
 // publishConfigWrite records who wrote which section and the outcome. It never records the value,
@@ -253,4 +399,18 @@ func (s *serverConfigService) handlerFor(ctx context.Context,
 		return nil, &common.InternalServerError
 	}
 	return handler, nil
+}
+
+// checkWriteAccess refuses a caller who may not write a configuration section through the server
+// configuration API or import.
+func (s *serverConfigService) checkWriteAccess(ctx context.Context, name ConfigName) *common.ServiceError {
+	allowed, svcErr := s.authzService.IsActionAllowed(ctx, security.ActionUpdateServerConfig,
+		&sysauthz.ActionContext{ResourceType: security.ResourceTypeServerConfig, ResourceID: string(name)})
+	if svcErr != nil {
+		return &common.InternalServerError
+	}
+	if !allowed {
+		return &common.ErrorUnauthorized
+	}
+	return nil
 }

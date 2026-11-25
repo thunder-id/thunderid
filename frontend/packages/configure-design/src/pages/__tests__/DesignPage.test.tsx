@@ -1,15 +1,17 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {fireEvent, render, screen, waitFor} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import DesignPage from '../DesignPage';
 
-const {mockNavigate, mockShowToast, mockRefetchThemes, mockRefetchLayouts} = vi.hoisted(() => ({
+const {mockNavigate, mockShowToast, mockRefetchThemes, mockRefetchLayouts, mockUseGetLayouts} = vi.hoisted(() => ({
   mockNavigate: vi.fn(),
   mockShowToast: vi.fn(),
   mockRefetchThemes: vi.fn(),
   mockRefetchLayouts: vi.fn(),
+  mockUseGetLayouts: vi.fn(),
 }));
 
 vi.mock('react-router', async () => {
@@ -39,22 +41,34 @@ let layoutsError: Error | null = null;
 let layoutsList: {id: string; handle: string; displayName: string; layout: unknown}[] = [];
 let themesList: MockTheme[] = [];
 let themesLoadingState = false;
+let themesParams: unknown;
 
 vi.mock('@thunderid/design', () => ({
-  useGetThemes: () => ({
-    data: {themes: themesList},
-    isLoading: themesLoadingState,
-    error: themesError,
-    refetch: mockRefetchThemes,
-  }),
-  useGetLayouts: () => ({
-    data: {layouts: layoutsList},
-    error: layoutsError,
-    refetch: mockRefetchLayouts,
-  }),
+  useGetThemes: (params: unknown) => {
+    themesParams = params;
+    return {
+      data: {themes: themesList},
+      isLoading: themesLoadingState,
+      error: themesError,
+      refetch: mockRefetchThemes,
+    };
+  },
+  useGetLayouts: (params?: {projectId?: string}) => {
+    mockUseGetLayouts(params);
+    return {
+      data: {layouts: layoutsList},
+      error: layoutsError,
+      refetch: mockRefetchLayouts,
+    };
+  },
   useDeleteTheme: () => ({mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false}),
   useGetThemeUsages: () => ({data: undefined, isLoading: false}),
 }));
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  isLoading: false,
+};
 
 describe('DesignPage', () => {
   beforeEach(() => {
@@ -70,6 +84,25 @@ describe('DesignPage', () => {
     render(<DesignPage />);
     expect(screen.getByText('Themes')).toBeInTheDocument();
     expect(screen.getByText('Layouts')).toBeInTheDocument();
+  });
+
+  it("lists the selected project's layouts", () => {
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <DesignPage />
+      </ProjectScopeProvider>,
+    );
+
+    expect(screen.getByText('Layouts')).toBeInTheDocument();
+    expect(screen.getByText('Centered')).toBeInTheDocument();
+    expect(mockUseGetLayouts).toHaveBeenCalledWith({projectId: 'project-1'});
+  });
+
+  it('lists every layout without a selected project', () => {
+    render(<DesignPage />);
+
+    expect(screen.getByText('Centered')).toBeInTheDocument();
+    expect(mockUseGetLayouts).toHaveBeenCalledWith({projectId: undefined});
   });
 
   it('sets the document title', async () => {
@@ -150,6 +183,19 @@ describe('DesignPage', () => {
     await waitFor(() => {
       expect(mockNavigate).toHaveBeenCalledWith('/design/themes/create');
     });
+  });
+
+  it('hides Add theme and theme delete actions when the admin may only view designs', () => {
+    themesList = [{id: 'theme-1', displayName: 'Midnight'}];
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <DesignPage />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.getByText('Midnight')).toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'Add theme'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'Delete'})).not.toBeInTheDocument();
   });
 
   it('renders skeleton placeholders while themes are loading', () => {
@@ -242,5 +288,21 @@ describe('DesignPage', () => {
     fireEvent.click(screen.getAllByRole('button', {name: /Refresh/i})[0]);
 
     expect(mockRefetchLayouts).toHaveBeenCalledTimes(1);
+  });
+
+  it('lists the themes of the selected project', () => {
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <DesignPage />
+      </ProjectScopeProvider>,
+    );
+
+    expect(themesParams).toEqual({projectId: 'project-1'});
+  });
+
+  it('lists every theme outside a project', () => {
+    render(<DesignPage />);
+
+    expect(themesParams).toEqual({projectId: undefined});
   });
 });

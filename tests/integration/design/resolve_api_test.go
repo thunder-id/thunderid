@@ -333,72 +333,42 @@ func (suite *ResolveAPITestSuite) TestResolveDesign_IsPublic() {
 
 // --- fixtures ---
 
-// createResolveTheme creates a theme with a handle unique to this suite and returns its ID.
+// createResolveTheme creates a theme with a handle unique to this suite through an import with the
+// management API key, the only way a data plane takes one, and returns its ID.
 func (suite *ResolveAPITestSuite) createResolveTheme(handle string) string {
-	payload, err := json.Marshal(CreateThemeRequest{
+	id, err := testutils.ImportResource("theme", CreateThemeRequest{
 		Handle:      handle,
 		DisplayName: "Resolve Test Theme " + handle,
 		Theme:       testTheme,
-	})
-	suite.Require().NoError(err)
-
-	id := suite.createDesignResource(themeBasePath, payload)
-	suite.Require().NotEmpty(id)
+	}, false)
+	suite.Require().NoError(err, "create theme failed")
 	return id
 }
 
-// createResolveLayout creates a layout with a handle unique to this suite and returns its ID.
+// createResolveLayout creates a layout with a handle unique to this suite through an import with the
+// management API key and returns its ID.
 func (suite *ResolveAPITestSuite) createResolveLayout(handle string) string {
-	payload, err := json.Marshal(CreateLayoutRequest{
+	id, err := testutils.ImportResource("layout", CreateLayoutRequest{
 		Handle:      handle,
 		DisplayName: "Resolve Test Layout " + handle,
 		Layout:      testLayout,
-	})
-	suite.Require().NoError(err)
-
-	id := suite.createDesignResource(layoutBasePath, payload)
-	suite.Require().NotEmpty(id)
+	}, false)
+	suite.Require().NoError(err, "create layout failed")
 	return id
 }
 
-// createDesignResource POSTs a theme or layout payload and returns the created resource ID.
-func (suite *ResolveAPITestSuite) createDesignResource(basePath string, payload []byte) string {
-	req, err := http.NewRequest("POST", testServerURL+basePath, bytes.NewReader(payload))
-	suite.Require().NoError(err)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := suite.client.Do(req)
-	suite.Require().NoError(err)
-	defer resp.Body.Close()
-
-	bodyBytes, err := io.ReadAll(resp.Body)
-	suite.Require().NoError(err)
-	suite.Require().Equal(http.StatusCreated, resp.StatusCode, "create failed: %s", bodyBytes)
-
-	var created struct {
-		ID string `json:"id"`
-	}
-	suite.Require().NoError(json.Unmarshal(bodyBytes, &created))
-	return created.ID
-}
-
-// deleteDesignResource removes a theme or layout, tolerating an already-deleted resource.
+// deleteDesignResource removes a theme or layout through an import deletion, which tolerates an
+// already-deleted resource.
 func (suite *ResolveAPITestSuite) deleteDesignResource(basePath, id string) {
 	if id == "" {
 		return
 	}
 
-	req, err := http.NewRequest("DELETE", testServerURL+basePath+"/"+id, nil)
-	suite.Require().NoError(err)
-
-	resp, err := suite.client.Do(req)
-	suite.Require().NoError(err)
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusNotFound {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		suite.Failf("delete failed", "status %d: %s", resp.StatusCode, bodyBytes)
+	resourceType := "theme"
+	if basePath == layoutBasePath {
+		resourceType = "layout"
 	}
+	suite.Require().NoError(testutils.DeleteImportedResource(resourceType, id), "delete failed")
 }
 
 // createResolveApplication creates an application optionally bound to a theme and layout. ouId and

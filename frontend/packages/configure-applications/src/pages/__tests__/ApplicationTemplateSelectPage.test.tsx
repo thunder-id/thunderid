@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import {fireEvent, render, screen} from '@thunderid/test-utils';
 import type {ReactNode} from 'react';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
@@ -14,7 +15,6 @@ import ApplicationTemplateSelectPage from '../ApplicationTemplateSelectPage';
 
 const mockNavigate = vi.fn(() => Promise.resolve());
 const mockLoggerError = vi.fn();
-let mockPathname = '/applications/types';
 let mockSearchParams = new URLSearchParams();
 
 vi.mock('@thunderid/logger/react', async (importOriginal) => ({
@@ -27,9 +27,9 @@ vi.mock('react-router', async () => {
   return {
     ...actual,
     useNavigate: () => mockNavigate,
-    useLocation: () => ({pathname: mockPathname}),
     useSearchParams: () => [mockSearchParams, vi.fn()],
     Link: ({to, children = null}: {to: string; children?: ReactNode}) => <a href={to}>{children}</a>,
+    Navigate: ({to}: {to: string}) => <div data-testid="navigate" data-to={to} />,
   };
 });
 
@@ -92,8 +92,31 @@ const renderPage = (overrides: Partial<ApplicationCreateContextType> = {}) =>
 describe('ApplicationTemplateSelectPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockPathname = '/applications/types';
     mockSearchParams = new URLSearchParams();
+  });
+
+  it('returns to the list outside a project when applications are created in projects only', () => {
+    render(
+      <ApplicationCreateContext.Provider value={buildContext()}>
+        <ApplicationTemplateSelectPage createInProjectsOnly />
+      </ApplicationCreateContext.Provider>,
+    );
+
+    expect(screen.getByTestId('navigate')).toHaveAttribute('data-to', '/applications');
+    expect(screen.queryByRole('heading', {name: 'Choose a type'})).not.toBeInTheDocument();
+  });
+
+  it('shows the templates inside a project when applications are created in projects only', () => {
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <ApplicationCreateContext.Provider value={buildContext()}>
+          <ApplicationTemplateSelectPage createInProjectsOnly />
+        </ApplicationCreateContext.Provider>
+      </ProjectScopeProvider>,
+    );
+
+    expect(screen.queryByTestId('navigate')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', {name: 'Choose a type'})).toBeInTheDocument();
   });
 
   it('renders the heading and all templates', () => {
@@ -167,28 +190,7 @@ describe('ApplicationTemplateSelectPage', () => {
     });
   });
 
-  it('navigates back to the Get Started page when in the welcome flow', () => {
-    mockPathname = '/welcome/get-started/applications/types';
-    renderPage();
-
-    expect(screen.getByRole('link')).toHaveAttribute('href', '/welcome/get-started');
-  });
-
-  it('launches the wizard under the welcome flow prefix when in the welcome flow', async () => {
-    const user = userEvent.setup();
-    mockPathname = '/welcome/get-started/applications/types';
-
-    renderPage();
-
-    await user.click(screen.getByTestId(`template-card-${TechnologyApplicationTemplate.REACT}`));
-
-    expect(mockNavigate).toHaveBeenCalledWith(
-      `/welcome/get-started/applications/create?type=${TechnologyApplicationTemplate.REACT}`,
-      {replace: false},
-    );
-  });
-
-  it('navigates back to the applications list outside the welcome flow', () => {
+  it('navigates back to the applications list', () => {
     renderPage();
 
     expect(screen.getByRole('link')).toHaveAttribute('href', '/applications');

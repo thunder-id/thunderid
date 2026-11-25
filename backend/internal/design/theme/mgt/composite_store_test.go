@@ -444,3 +444,38 @@ func (suite *CompositeThemeStoreTestSuite) TestIsThemeHandleConflict_DBStoreErro
 	suite.Equal(testErr, err)
 	suite.False(conflict)
 }
+
+// The themes of a project come from both stores, the file store's first.
+func (suite *CompositeThemeStoreTestSuite) TestThemesByProject() {
+	suite.mockDBStore.On("GetThemeListCountByProject", testCtx(), "project-1").Return(1, nil)
+	suite.mockFileStore.On("GetThemeListCountByProject", testCtx(), "project-1").Return(1, nil)
+	suite.mockDBStore.On("GetThemeListByProject", testCtx(), "project-1", 1, 0).
+		Return([]Theme{{ID: "db-theme"}}, nil)
+	suite.mockFileStore.On("GetThemeListByProject", testCtx(), "project-1", 1, 0).
+		Return([]Theme{{ID: "file-theme"}}, nil)
+
+	count, err := suite.store.GetThemeListCountByProject(testCtx(), "project-1")
+	suite.NoError(err)
+	suite.Equal(2, count)
+
+	themes, err := suite.store.GetThemeListByProject(testCtx(), "project-1", 10, 0)
+	suite.NoError(err)
+	suite.Require().Len(themes, 2)
+	suite.Equal("file-theme", themes[0].ID)
+	suite.True(themes[0].IsReadOnly)
+	suite.Equal("db-theme", themes[1].ID)
+	suite.False(themes[1].IsReadOnly)
+}
+
+func (suite *CompositeThemeStoreTestSuite) TestThemesByProject_Errors() {
+	suite.mockDBStore.On("GetThemeListCountByProject", testCtx(), "too-many").Return(1001, nil)
+	suite.mockFileStore.On("GetThemeListCountByProject", testCtx(), "too-many").Return(0, nil)
+	_, err := suite.store.GetThemeListByProject(testCtx(), "too-many", 10, 0)
+	suite.Equal(errResultLimitExceededInCompositeMode, err)
+
+	suite.mockDBStore.On("GetThemeListCountByProject", testCtx(), "broken").Return(0, errors.New("db error"))
+	_, err = suite.store.GetThemeListByProject(testCtx(), "broken", 10, 0)
+	suite.Error(err)
+	_, err = suite.store.GetThemeListCountByProject(testCtx(), "broken")
+	suite.Error(err)
+}

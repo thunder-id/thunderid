@@ -4,6 +4,8 @@
 package application
 
 import (
+	"errors"
+
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
@@ -631,20 +633,6 @@ var (
 				"Remove or reassign them first",
 		},
 	}
-	// ErrorUnsupportedCredentialAction is the error returned when a credential action the service does
-	// not implement is requested.
-	ErrorUnsupportedCredentialAction = tidcommon.ServiceError{
-		Type: tidcommon.ClientErrorType,
-		Code: "APP-1049",
-		Error: tidcommon.I18nMessage{
-			Key:          "error.applicationservice.unsupported_credential_action",
-			DefaultValue: "Unsupported credential action",
-		},
-		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.applicationservice.unsupported_credential_action_description",
-			DefaultValue: "The requested action is not supported for this application's credential",
-		},
-	}
 	// ErrorInvalidCIMDClient is the error returned when a client registered from a Client ID Metadata
 	// Document breaks a document rule. The description names the rule.
 	ErrorInvalidCIMDClient = tidcommon.ServiceError{
@@ -861,7 +849,7 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.applicationservice.ou_not_in_project_description",
-			DefaultValue: "The organization unit must be the project's root organization unit or one below it",
+			DefaultValue: "The organization unit must belong to the project",
 		},
 	}
 	// ErrorDeviceGrantFlowRequired is returned when Device Code is enabled without an assigned flow.
@@ -890,4 +878,76 @@ var (
 			DefaultValue: "The Device Grant flow must call this application's configured Authentication flow",
 		},
 	}
+	// ErrorProjectRequired is returned when an application is created without a project.
+	ErrorProjectRequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1067",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.project_required",
+			DefaultValue: "Project required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.project_required_description",
+			DefaultValue: "Set projectId to the project the application belongs to",
+		},
+	}
+	// ErrorAnyAgentTypeNotAlone is the error returned when * is combined with other entries in
+	// allowedAgentTypes.
+	ErrorAnyAgentTypeNotAlone = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1068",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.any_agent_type_not_alone",
+			DefaultValue: "Invalid allowed agent types",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.any_agent_type_not_alone_description",
+			DefaultValue: "* must be the only entry in allowedAgentTypes",
+		},
+	}
+	// ErrorManagedApplication is the error returned when attempting to change an application a control
+	// plane deployed. Only a deploy from the control plane changes or removes it.
+	ErrorManagedApplication = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1069",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.managed_application",
+			DefaultValue: "Cannot modify an application deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.managed_application_description",
+			DefaultValue: "The application was deployed by the control plane and can only be changed there",
+		},
+	}
+	// ErrorSharedApplicationReadOnly is the error returned when an organization unit an application is shared
+	// into tries to change or delete the application.
+	ErrorSharedApplicationReadOnly = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "APP-1070",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.shared_application_read_only",
+			DefaultValue: "Shared application is read only",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.applicationservice.shared_application_read_only_description",
+			DefaultValue: "Only the organization unit that owns the application can change or delete it",
+		},
+	}
 )
+
+// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+var errNilEventBus = errors.New("the application service needs an event bus")
+
+// errApplicationNotFoundNoop is returned by deleteApplication once it has removed what was left of an
+// application that does not exist. DeleteApplication turns it into a success, so it never reaches a caller.
+var errApplicationNotFoundNoop = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: ErrorApplicationNotFound.Code,
+}
+
+// errSharingPolicyNotFoundNoop is returned by deleteSharingPolicy when the application holds no policy
+// under the requested id. DeleteSharingPolicy turns it into a success, so it never reaches a caller.
+var errSharingPolicyNotFoundNoop = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: ErrorSharingPolicyNotFound.Code,
+}

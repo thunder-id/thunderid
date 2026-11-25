@@ -1,9 +1,9 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {AUTHENTICATION_METHOD_FIELD_NAMES, encodeKeyValuePairs} from '@thunderid/components';
 import {describe, expect, it} from 'vitest';
 import {CONNECTION_FORM_FIELDS, type ConnectionFieldDef} from '../../config/connectionFormFields';
-import {AUTHENTICATION_METHOD_FIELD_NAMES} from '../../models/authentication-methods';
 import type {ConnectionResponse, OutboundAuthMethod} from '../../models/connection';
 import {
   AUTH_ADDITIONAL_PROPERTIES_FIELD,
@@ -16,10 +16,10 @@ import {
   outboundAuthenticationFromFormValues,
   HTTPS_REQUIRED_WITH_AUTHENTICATION_ERROR,
   responseToFormValues,
+  smtpServerChanged,
   urlOriginChanged,
   validateConnectionForm,
 } from '../connectionFormMapping';
-import {encodeKeyValuePairs} from '../keyValuePairs';
 
 const GOOGLE_FIELDS = CONNECTION_FORM_FIELDS.google;
 const OIDC_FIELDS = CONNECTION_FORM_FIELDS.oidc;
@@ -208,42 +208,6 @@ describe('responseToFormValues', () => {
     } as ConnectionResponse;
 
     expect(responseToFormValues(response, fields, REDIRECT)['authMode']).toBe('bearer');
-  });
-});
-
-describe('outboundAuthenticationFromFormValues', () => {
-  it('maps Bearer authentication', () => {
-    expect(outboundAuthenticationFromFormValues({authenticationScheme: 'BEARER', bearerToken: ' token '})).toEqual({
-      type: 'bearer',
-      properties: {token: 'token'},
-    });
-  });
-
-  it('maps Basic authentication', () => {
-    expect(
-      outboundAuthenticationFromFormValues({
-        authenticationScheme: 'BASIC',
-        basicUsername: ' user ',
-        basicPassword: ' password ',
-      }),
-    ).toEqual({type: 'basic', properties: {username: 'user', password: 'password'}});
-  });
-
-  it('maps API-key headers as structured values', () => {
-    expect(
-      outboundAuthenticationFromFormValues({
-        authenticationScheme: 'API_KEY',
-        httpHeaders: 'X-API-Key: secret, X-Tenant: acme',
-      }),
-    ).toEqual({
-      type: 'api_key',
-      properties: {'X-API-Key': 'secret', 'X-Tenant': 'acme'},
-    });
-  });
-
-  it('maps missing or NONE authentication to no authentication', () => {
-    expect(outboundAuthenticationFromFormValues({})).toEqual({type: 'none'});
-    expect(outboundAuthenticationFromFormValues({authenticationScheme: 'NONE'})).toEqual({type: 'none'});
   });
 });
 
@@ -1144,5 +1108,20 @@ describe('urlOriginChanged', () => {
 
   it('treats a URL that cannot be parsed as changed', () => {
     expect(urlOriginChanged('https://risk.example.com', 'risk.example.com')).toBe(true);
+  });
+});
+
+describe('smtpServerChanged', () => {
+  const stored = {host: 'smtp.example.com', port: '587', fromAddress: 'noreply@example.com'};
+
+  it('ignores changes to other fields and surrounding whitespace', () => {
+    expect(smtpServerChanged(stored, {...stored, host: ' smtp.example.com ', fromAddress: 'ops@example.com'})).toBe(
+      false,
+    );
+  });
+
+  it('detects a change of host or port', () => {
+    expect(smtpServerChanged(stored, {...stored, host: 'smtp.example.net'})).toBe(true);
+    expect(smtpServerChanged(stored, {...stored, port: '465'})).toBe(true);
   });
 });

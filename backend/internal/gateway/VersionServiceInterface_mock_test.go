@@ -193,9 +193,68 @@ func (_c *VersionServiceInterfaceMock_Capture_Call) RunAndReturn(run func(ctx co
 	return _c
 }
 
+// DeleteProjectAutoSync provides a mock function for the type VersionServiceInterfaceMock
+func (_mock *VersionServiceInterfaceMock) DeleteProjectAutoSync(ctx context.Context, projectID string) *common.ServiceError {
+	ret := _mock.Called(ctx, projectID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteProjectAutoSync")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, projectID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// VersionServiceInterfaceMock_DeleteProjectAutoSync_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteProjectAutoSync'
+type VersionServiceInterfaceMock_DeleteProjectAutoSync_Call struct {
+	*mock.Call
+}
+
+// DeleteProjectAutoSync is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+func (_e *VersionServiceInterfaceMock_Expecter) DeleteProjectAutoSync(ctx any, projectID any) *VersionServiceInterfaceMock_DeleteProjectAutoSync_Call {
+	return &VersionServiceInterfaceMock_DeleteProjectAutoSync_Call{Call: _e.mock.On("DeleteProjectAutoSync", ctx, projectID)}
+}
+
+func (_c *VersionServiceInterfaceMock_DeleteProjectAutoSync_Call) Run(run func(ctx context.Context, projectID string)) *VersionServiceInterfaceMock_DeleteProjectAutoSync_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *VersionServiceInterfaceMock_DeleteProjectAutoSync_Call) Return(serviceError *common.ServiceError) *VersionServiceInterfaceMock_DeleteProjectAutoSync_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *VersionServiceInterfaceMock_DeleteProjectAutoSync_Call) RunAndReturn(run func(ctx context.Context, projectID string) *common.ServiceError) *VersionServiceInterfaceMock_DeleteProjectAutoSync_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Diff provides a mock function for the type VersionServiceInterfaceMock
-func (_mock *VersionServiceInterfaceMock) Diff(ctx context.Context, gatewayID string, ref string) (*Diff, *common.ServiceError) {
-	ret := _mock.Called(ctx, gatewayID, ref)
+func (_mock *VersionServiceInterfaceMock) Diff(ctx context.Context, gatewayID string, ref string, projectID string) (*Diff, *common.ServiceError) {
+	ret := _mock.Called(ctx, gatewayID, ref, projectID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Diff")
@@ -203,18 +262,18 @@ func (_mock *VersionServiceInterfaceMock) Diff(ctx context.Context, gatewayID st
 
 	var r0 *Diff
 	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (*Diff, *common.ServiceError)); ok {
-		return returnFunc(ctx, gatewayID, ref)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) (*Diff, *common.ServiceError)); ok {
+		return returnFunc(ctx, gatewayID, ref, projectID)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *Diff); ok {
-		r0 = returnFunc(ctx, gatewayID, ref)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) *Diff); ok {
+		r0 = returnFunc(ctx, gatewayID, ref, projectID)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*Diff)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common.ServiceError); ok {
-		r1 = returnFunc(ctx, gatewayID, ref)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, gatewayID, ref, projectID)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*common.ServiceError)
@@ -232,11 +291,12 @@ type VersionServiceInterfaceMock_Diff_Call struct {
 //   - ctx context.Context
 //   - gatewayID string
 //   - ref string
-func (_e *VersionServiceInterfaceMock_Expecter) Diff(ctx any, gatewayID any, ref any) *VersionServiceInterfaceMock_Diff_Call {
-	return &VersionServiceInterfaceMock_Diff_Call{Call: _e.mock.On("Diff", ctx, gatewayID, ref)}
+//   - projectID string
+func (_e *VersionServiceInterfaceMock_Expecter) Diff(ctx any, gatewayID any, ref any, projectID any) *VersionServiceInterfaceMock_Diff_Call {
+	return &VersionServiceInterfaceMock_Diff_Call{Call: _e.mock.On("Diff", ctx, gatewayID, ref, projectID)}
 }
 
-func (_c *VersionServiceInterfaceMock_Diff_Call) Run(run func(ctx context.Context, gatewayID string, ref string)) *VersionServiceInterfaceMock_Diff_Call {
+func (_c *VersionServiceInterfaceMock_Diff_Call) Run(run func(ctx context.Context, gatewayID string, ref string, projectID string)) *VersionServiceInterfaceMock_Diff_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -250,10 +310,15 @@ func (_c *VersionServiceInterfaceMock_Diff_Call) Run(run func(ctx context.Contex
 		if args[2] != nil {
 			arg2 = args[2].(string)
 		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
 		)
 	})
 	return _c
@@ -264,7 +329,7 @@ func (_c *VersionServiceInterfaceMock_Diff_Call) Return(diff *Diff, serviceError
 	return _c
 }
 
-func (_c *VersionServiceInterfaceMock_Diff_Call) RunAndReturn(run func(ctx context.Context, gatewayID string, ref string) (*Diff, *common.ServiceError)) *VersionServiceInterfaceMock_Diff_Call {
+func (_c *VersionServiceInterfaceMock_Diff_Call) RunAndReturn(run func(ctx context.Context, gatewayID string, ref string, projectID string) (*Diff, *common.ServiceError)) *VersionServiceInterfaceMock_Diff_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -735,6 +800,94 @@ func (_c *VersionServiceInterfaceMock_ListVersions_Call) RunAndReturn(run func(c
 	return _c
 }
 
+// ProjectStatus provides a mock function for the type VersionServiceInterfaceMock
+func (_mock *VersionServiceInterfaceMock) ProjectStatus(ctx context.Context, gatewayID string, projectID string, sourceGatewayID string, ref string) (*ProjectStatus, *common.ServiceError) {
+	ret := _mock.Called(ctx, gatewayID, projectID, sourceGatewayID, ref)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ProjectStatus")
+	}
+
+	var r0 *ProjectStatus
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string) (*ProjectStatus, *common.ServiceError)); ok {
+		return returnFunc(ctx, gatewayID, projectID, sourceGatewayID, ref)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string, string) *ProjectStatus); ok {
+		r0 = returnFunc(ctx, gatewayID, projectID, sourceGatewayID, ref)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ProjectStatus)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, gatewayID, projectID, sourceGatewayID, ref)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// VersionServiceInterfaceMock_ProjectStatus_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ProjectStatus'
+type VersionServiceInterfaceMock_ProjectStatus_Call struct {
+	*mock.Call
+}
+
+// ProjectStatus is a helper method to define mock.On call
+//   - ctx context.Context
+//   - gatewayID string
+//   - projectID string
+//   - sourceGatewayID string
+//   - ref string
+func (_e *VersionServiceInterfaceMock_Expecter) ProjectStatus(ctx any, gatewayID any, projectID any, sourceGatewayID any, ref any) *VersionServiceInterfaceMock_ProjectStatus_Call {
+	return &VersionServiceInterfaceMock_ProjectStatus_Call{Call: _e.mock.On("ProjectStatus", ctx, gatewayID, projectID, sourceGatewayID, ref)}
+}
+
+func (_c *VersionServiceInterfaceMock_ProjectStatus_Call) Run(run func(ctx context.Context, gatewayID string, projectID string, sourceGatewayID string, ref string)) *VersionServiceInterfaceMock_ProjectStatus_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		var arg4 string
+		if args[4] != nil {
+			arg4 = args[4].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+		)
+	})
+	return _c
+}
+
+func (_c *VersionServiceInterfaceMock_ProjectStatus_Call) Return(projectStatus *ProjectStatus, serviceError *common.ServiceError) *VersionServiceInterfaceMock_ProjectStatus_Call {
+	_c.Call.Return(projectStatus, serviceError)
+	return _c
+}
+
+func (_c *VersionServiceInterfaceMock_ProjectStatus_Call) RunAndReturn(run func(ctx context.Context, gatewayID string, projectID string, sourceGatewayID string, ref string) (*ProjectStatus, *common.ServiceError)) *VersionServiceInterfaceMock_ProjectStatus_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Promote provides a mock function for the type VersionServiceInterfaceMock
 func (_mock *VersionServiceInterfaceMock) Promote(ctx context.Context, req PromoteRequest) (*ApplyResult, *common.ServiceError) {
 	ret := _mock.Called(ctx, req)
@@ -877,6 +1030,82 @@ func (_c *VersionServiceInterfaceMock_Revert_Call) Return(applyResult *ApplyResu
 }
 
 func (_c *VersionServiceInterfaceMock_Revert_Call) RunAndReturn(run func(ctx context.Context, gatewayID string, req RevertRequest) (*ApplyResult, *common.ServiceError)) *VersionServiceInterfaceMock_Revert_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SetProjectAutoSync provides a mock function for the type VersionServiceInterfaceMock
+func (_mock *VersionServiceInterfaceMock) SetProjectAutoSync(ctx context.Context, projectID string, req ProjectAutoSyncRequest) (*ProjectSyncSetting, *common.ServiceError) {
+	ret := _mock.Called(ctx, projectID, req)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SetProjectAutoSync")
+	}
+
+	var r0 *ProjectSyncSetting
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, ProjectAutoSyncRequest) (*ProjectSyncSetting, *common.ServiceError)); ok {
+		return returnFunc(ctx, projectID, req)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, ProjectAutoSyncRequest) *ProjectSyncSetting); ok {
+		r0 = returnFunc(ctx, projectID, req)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*ProjectSyncSetting)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, ProjectAutoSyncRequest) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, projectID, req)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// VersionServiceInterfaceMock_SetProjectAutoSync_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SetProjectAutoSync'
+type VersionServiceInterfaceMock_SetProjectAutoSync_Call struct {
+	*mock.Call
+}
+
+// SetProjectAutoSync is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+//   - req ProjectAutoSyncRequest
+func (_e *VersionServiceInterfaceMock_Expecter) SetProjectAutoSync(ctx any, projectID any, req any) *VersionServiceInterfaceMock_SetProjectAutoSync_Call {
+	return &VersionServiceInterfaceMock_SetProjectAutoSync_Call{Call: _e.mock.On("SetProjectAutoSync", ctx, projectID, req)}
+}
+
+func (_c *VersionServiceInterfaceMock_SetProjectAutoSync_Call) Run(run func(ctx context.Context, projectID string, req ProjectAutoSyncRequest)) *VersionServiceInterfaceMock_SetProjectAutoSync_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 ProjectAutoSyncRequest
+		if args[2] != nil {
+			arg2 = args[2].(ProjectAutoSyncRequest)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *VersionServiceInterfaceMock_SetProjectAutoSync_Call) Return(projectSyncSetting *ProjectSyncSetting, serviceError *common.ServiceError) *VersionServiceInterfaceMock_SetProjectAutoSync_Call {
+	_c.Call.Return(projectSyncSetting, serviceError)
+	return _c
+}
+
+func (_c *VersionServiceInterfaceMock_SetProjectAutoSync_Call) RunAndReturn(run func(ctx context.Context, projectID string, req ProjectAutoSyncRequest) (*ProjectSyncSetting, *common.ServiceError)) *VersionServiceInterfaceMock_SetProjectAutoSync_Call {
 	_c.Call.Return(run)
 	return _c
 }

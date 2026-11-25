@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/runtimestore/inmemory"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/runtimestoreprovidermock"
@@ -75,6 +76,18 @@ func (s *CIBAStoreTestSuite) TestAdd_AlreadyExpired_ReturnsError() {
 
 	err := s.store.Add(s.ctx, req)
 	s.Error(err)
+}
+
+func (s *CIBAStoreTestSuite) TestAdd_TTLKeepsExpiredRequest() {
+	retention := int64(oauth2const.CIBAExpiredRecordRetentionSeconds)
+	req := s.sampleRequest()
+	req.ExpiryTime = time.Now().Add(2 * time.Minute)
+
+	rt := runtimestoreprovidermock.NewRuntimeStoreProviderMock(s.T())
+	rt.EXPECT().Put(mock.Anything, providers.NamespaceCIBA, req.AuthReqID, mock.Anything,
+		mock.MatchedBy(func(ttl int64) bool { return ttl > 120 && ttl <= 120+retention })).Return(nil)
+
+	s.NoError(newCIBAStore(rt).Add(s.ctx, req))
 }
 
 func (s *CIBAStoreTestSuite) TestGetByID_Missing_ReturnsNotFound() {

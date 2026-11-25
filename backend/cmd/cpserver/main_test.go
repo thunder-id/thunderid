@@ -10,6 +10,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"flag"
@@ -21,6 +22,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,7 +35,12 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/constants"
 	sysContext "github.com/thunder-id/thunderid/internal/system/context"
+	"github.com/thunder-id/thunderid/internal/system/cryptolib"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/revocationcache"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 )
 
@@ -694,4 +701,144 @@ func TestAccessLogExcludePaths(t *testing.T) {
 	// and silently disable all access logging.
 	assert.Equal(t, []string{"/console/", "/health/"},
 		accessLogExcludePaths([]string{"", "/health/", "/"}))
+}
+
+// testAuditAPIKey is the management API key the audit test presents.
+const testAuditAPIKey = "pat-0123456789abcdef"
+
+// auditLines sends standard output to a pipe until the returned function is called, which returns the
+// audit lines written to it.
+func auditLines(t *testing.T) func() []string {
+	t.Helper()
+	reader, writer, err := os.Pipe()
+	require.NoError(t, err)
+	original := os.Stdout
+	os.Stdout = writer
+	t.Cleanup(func() { os.Stdout = original })
+	return func() []string {
+		os.Stdout = original
+		require.NoError(t, writer.Close())
+		written, err := io.ReadAll(reader)
+		require.NoError(t, err)
+		var lines []string
+		for _, line := range strings.Split(string(written), "\n") {
+			if strings.HasPrefix(line, `{"log_type":"AUDIT",`) {
+				lines = append(lines, line)
+			}
+		}
+		return lines
+	}
+}
+
+// Each change a service publishes while serving a request, through the whole request chain, writes one
+// audit line with the actor the security layer verified, the trace ID of the response, and the peer
+// address and user agent when the peer is public. With audit off it writes none.
+func TestCreateHTTPServer_AuditsTheEventAServicePublishes(t *testing.T) {
+	published := []struct{ event, targetType string }{
+		{audit.EventUserCreate, audit.TargetTypeUser},
+		{audit.EventApplicationCreate, audit.TargetTypeApplication},
+	}
+	cases := []struct {
+		name       string
+		enabled    bool
+		remoteAddr string
+		wantClient map[string]string
+	}{
+		{
+			name: "a public peer keeps its address and user agent", enabled: true, remoteAddr: "8.8.8.8:52814",
+			wantClient: map[string]string{"address": "8.8.8.8", "user_agent": "audit-test/1.0"},
+		},
+		{name: "a private peer has no client", enabled: true, remoteAddr: "10.0.0.5:52814"},
+		{name: "a loopback peer has no client", enabled: true, remoteAddr: "127.0.0.1:52814"},
+		{name: "audit off", enabled: false, remoteAddr: "8.8.8.8:52814"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			enabled := tc.enabled
+			cfg := &config.Config{
+				Server: engineconfig.ServerConfig{
+					Hostname: "localhost",
+					HTTPOnly: true,
+					SecurityConfig: engineconfig.SecurityConfig{
+						ManagementAPIKeyHash: cryptolib.HashToken(testAuditAPIKey),
+					},
+				},
+				Audit: config.AuditConfig{Enabled: &enabled},
+			}
+			config.ResetServerRuntime()
+			require.NoError(t, config.InitializeServerRuntime("", cfg))
+			t.Cleanup(config.ResetServerRuntime)
+			security.InitControlPlanePermissions("")
+			enforcer, _, err := revocationcache.Initialize(revocationcache.Config{})
+			require.NoError(t, err)
+
+			read := auditLines(t)
+			bus, stopper := initAuditBus(context.Background(), log.GetLogger(), cfg)
+			mux := http.NewServeMux()
+			mux.HandleFunc("POST /import/managed", func(w http.ResponseWriter, r *http.Request) {
+				ctx := r.Context()
+				for _, p := range published {
+					target := audit.Ref{Type: p.targetType, ID: "id-1"}
+					payload := audit.NewPayload(ctx, target, audit.ActionCreate, audit.OutcomeSucceeded)
+					eventbus.TryPublish(ctx, bus, eventbus.NewEvent(ctx, p.event).With(payload.WithSubject(target)))
+				}
+				w.WriteHeader(http.StatusOK)
+			})
+			server := createHTTPServer(context.Background(), log.GetLogger(), cfg, mux, nil, enforcer)
+
+			request := httptest.NewRequest(http.MethodPost, "/import/managed", nil)
+			request.RemoteAddr = tc.remoteAddr
+			request.Header.Set("User-Agent", "audit-test/1.0")
+			request.Header.Set(constants.APIKeyHeaderName, testAuditAPIKey)
+			response := httptest.NewRecorder()
+			server.Handler.ServeHTTP(response, request)
+			stopper.Stop()
+
+			require.Equal(t, http.StatusOK, response.Code)
+			lines := read()
+			if !enabled {
+				assert.Empty(t, lines)
+				return
+			}
+			require.Len(t, lines, len(published))
+			for i, p := range published {
+				var line struct {
+					Event   string            `json:"event"`
+					TraceID string            `json:"trace_id"`
+					Actor   map[string]string `json:"actor"`
+					Target  map[string]string `json:"target"`
+					Client  map[string]string `json:"client"`
+				}
+				require.NoError(t, json.Unmarshal([]byte(lines[i]), &line))
+				assert.Equal(t, p.event, line.Event)
+				assert.Equal(t, p.targetType, line.Target["type"])
+				assert.Equal(t, response.Header().Get(constants.CorrelationIDHeaderName), line.TraceID)
+				assert.Equal(t, map[string]string{"type": "system", "id": "management-api-key"}, line.Actor)
+				assert.Equal(t, tc.wantClient, line.Client)
+				if tc.wantClient == nil {
+					assert.NotContains(t, lines[i], `"client"`, "a line without a client has no client key")
+				}
+			}
+		})
+	}
+}
+
+// The Control Plane enforces the system root and its children, and has no org tree.
+func TestInitSystemPermissions_UsesTheControlPlaneSet(t *testing.T) {
+	t.Cleanup(func() { security.InitControlPlanePermissions("") })
+	for prefix, root := range map[string]string{"": "system", "mgmt": "mgmt:system"} {
+		t.Run("prefix="+prefix, func(t *testing.T) {
+			security.InitDataPlanePermissions("")
+			cfg := &config.Config{}
+			cfg.Server.SecurityConfig.SystemPermissionPrefix = prefix
+
+			initSystemPermissions(cfg)
+
+			p := security.GetSystemPermissions()
+			assert.Equal(t, root, p.Root)
+			assert.Empty(t, p.Org)
+			assert.Equal(t, root+":user:view", p.UserView)
+			assert.Equal(t, root, p.AdministrationFlow)
+		})
+	}
 }

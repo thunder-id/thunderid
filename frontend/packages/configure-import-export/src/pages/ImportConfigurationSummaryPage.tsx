@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {DocumentTitle} from '@thunderid/components';
+import {BotCogIcon, DocumentTitle} from '@thunderid/components';
 import {useToast, useConfig} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage} from '@thunderid/utils';
@@ -29,6 +29,7 @@ import {
   LayoutGrid,
   Layout as LayoutIcon,
   Layers,
+  ListChecks,
   Palette,
   Server,
   Settings,
@@ -363,7 +364,7 @@ const RESOURCE_VIEWS: ResourceView[] = [
   {
     type: 'agent_type',
     id: 'agent-types',
-    icon: Bot,
+    icon: BotCogIcon,
     getLabel: (t) => t('configureExport.labels.agentTypes'),
     getKey: (item, idx) => item.handle ?? item.name ?? `agent-type-${idx}`,
     getName: (item, t, idx) =>
@@ -415,6 +416,21 @@ const RESOURCE_VIEWS: ResourceView[] = [
     ),
   },
   {
+    type: 'authorization_detail_type',
+    id: 'authorization-detail-types',
+    icon: ListChecks,
+    getLabel: (t) => t('configureExport.labels.authorizationDetailTypes', 'Intents'),
+    getKey: (item, idx) => item.id ?? item.type ?? `authorization-detail-type-${idx}`,
+    getName: (item, t) =>
+      item.name ?? item.type ?? t('configureExport.fallback.unnamedAuthorizationDetailType', 'Unnamed intent'),
+    renderDetails: (item) => (
+      <>
+        {item.description && detailLine(item.description)}
+        {item.type && detailLine(item.type, true)}
+      </>
+    ),
+  },
+  {
     type: 'role',
     id: 'roles',
     icon: ShieldCheck,
@@ -452,7 +468,6 @@ export default function ImportConfigurationSummaryPage(): JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
   const routes = useImportExportRoutes();
-  const isWelcomeFlow = location.pathname.startsWith(routes.welcome.root());
   const logger = useLogger('ImportConfigurationSummaryPage');
   const {showToast} = useToast();
   const {config} = useConfig();
@@ -784,22 +799,10 @@ export default function ImportConfigurationSummaryPage(): JSX.Element {
           </IconButton>
           <AppBreadcrumbs
             items={[
-              ...(isWelcomeFlow
-                ? [
-                    {
-                      key: 'welcome',
-                      label: t('common:welcome.header'),
-                      onClick: () => void navigate(routes.welcome.root()),
-                    },
-                  ]
-                : []),
               {
                 key: 'import-configuration',
                 label: t('upload.breadcrumb.openProject'),
-                onClick: () =>
-                  void navigate(
-                    isWelcomeFlow ? routes.welcome.importConfigurationUpload() : routes.importConfiguration.upload(),
-                  ),
+                onClick: () => void navigate(routes.importConfiguration.upload()),
               },
               {key: 'summary', label: t('summary.breadcrumb')},
             ]}

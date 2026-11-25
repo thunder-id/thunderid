@@ -39,6 +39,22 @@ sections:
       description: '`ThunderIDNodeClient` is an abstract base class that extends `ThunderIDJavaScriptClient` with Node.js-specific
         configuration. Use this class as the foundation when building a new framework-specific authentication client
         for a Node.js runtime. Examples include adapters for other Node.js server frameworks.'
+      rowsLabel: Organization Unit Methods
+      rows:
+      - name: 'getAccessibleOrganizationUnits(config)'
+        type: Promise<AccessibleOrganizationUnitList>
+        description: 'An exported function rather than a method. Lists the organization units the signed-in user can
+          access, from `GET /users/me/ous`. Pass the access token from `getAccessToken(userId)` in `headers`.'
+      - name: 'getCurrentOrganizationUnit(userId?)'
+        type: Promise<CurrentOrganizationUnit | null>
+        description: The organization unit the session was issued for, from its `ouId`, `ouHandle`, and `ouName` claims,
+          or `null` when it names none. The claims are not verified, so use the result for display only.
+      - name: 'switchOrganizationUnit(organizationUnitId, options)'
+        type: Promise<undefined>
+        description: 'Builds the unit''s authorization URL, `{baseUrl}/ou/{ouId}/oauth2/authorize`, and hands it to
+          `options.authURLCallback` to redirect the user to. Complete it with `signIn(authURLCallback, userId, code, state)`
+          on the callback, which redeems the code at `/ou/{ouId}/oauth2/token` and replaces the tokens of the session
+          `options.userId`. Until then, and when the callback carries an error, the previous session stays as it was.'
       example: |-
         import { ThunderIDNodeClient, ThunderIDNodeConfig } from '@thunderid/node'
 

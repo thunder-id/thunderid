@@ -1,0 +1,158 @@
+---
+title: Flow Variables
+docType: reference
+displayed_sidebar: javascriptSdkSidebar
+description: Functions and types for reading a flow's variables, working out what an organization unit may change, and validating the values it sets.
+---
+
+# Flow Variables
+
+A flow can declare variables that a delegated admin overrides for their organization unit, for example a support email address or a login method toggle. These helpers read the declared variables, work out what a unit may do with each one, list the choices of a select variable, and validate a value before it is saved. The React [`<FlowVariablesForm />`](../../../react/apis/components/flow-variables-form) is built on them, and you can use them with any UI.
+
+To load and save the values, use `getFlow`, `getFlowVariables`, `updateFlowVariables`, and `getFlowOverlayRules` from the [management API](../management#flows-and-connections).
+
+## `FlowVariableDefinition`
+
+A variable a flow declares on its `VARIABLES` node.
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `identifier` | `string` | Name of the variable, which a `{{var(name)}}` placeholder uses. |
+| `type` | `FlowVariableType` | The input the variable is edited with. See [Variable types](#variable-types). |
+| `label` | `string` | Display name. |
+| `description` | `string` | Help text. |
+| `defaultValue` | `FlowVariableValue` | The value the variable has until another is set. |
+| `options` | `FlowVariableValue[]` | For a `SELECT`: the values it can take. |
+| `category` | `string` | For a `CONNECTION_SELECT`: the kind of connection it takes. The server accepts only `IDENTITY_PROVIDER`. |
+| `connectionTypes` | `string[]` | For a `CONNECTION_SELECT`: limits it to these vendors. The server accepts `google`, `github`, `oidc`, and `oauth`. |
+| `min` | `number` | For a `NUMBER_INPUT`: the lowest value. |
+| `max` | `number` | For a `NUMBER_INPUT`: the highest value. |
+| `validation` | `FlowVariableValidationRule[]` | Rules a text value has to meet. |
+
+`FlowVariableValue` is `string | number | boolean`. A value is never `null`. `FlowVariableValues` is the set of values an organization unit has set, keyed by identifier. A variable the unit has not set is absent.
+
+### Variable types
+
+| `FlowVariableType` | Value type |
+|--------------------|------------|
+| `TEXT_INPUT` | `string` |
+| `EMAIL_INPUT` | `string` |
+| `PHONE_INPUT` | `string` |
+| `NUMBER_INPUT` | `number` |
+| `DATE_INPUT` | `string` in `YYYY-MM-DD` format |
+| `BOOLEAN_INPUT` | `boolean` |
+| `SELECT` | One of `options` |
+| `CONNECTION_SELECT` | The identifier of a connection |
+
+### `FlowVariableValidationRule`
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `type` | `'regex' \| 'minLength' \| 'maxLength'` | The kind of rule. |
+| `value` | `string \| number` | The pattern for `regex`, or the length for `minLength` and `maxLength`. |
+| `message` | `string` | The message shown when the rule fails. An i18n key or a literal string. |
+
+## `getFlowVariableDefinitions(flow)`
+
+Reads the variables a flow declares. A flow shared with an organization unit lists them in `variables`. A flow the unit owns declares them on its `VARIABLES` node.
+
+```ts
+import { getFlow, getFlowVariableDefinitions } from '@thunderid/javascript'
+
+const flow = await getFlow({ baseUrl, fetcher, flowId, ouId })
+const definitions = getFlowVariableDefinitions(flow)
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `flow` | `Pick<ManagedFlowDefinition, 'nodes' \| 'variables'> \| undefined` | The flow, as `getFlow` returns it. |
+
+**Returns:** `FlowVariableDefinition[]`. Empty when the flow declares none.
+
+## `resolveFlowVariableRule(definition, overlay?)`
+
+Works out what an organization unit a flow was shared with may do with a variable. The owning unit does not use these helpers: the server rejects an override saved for it with HTTP 400, so it changes defaults in the flow's `VARIABLES` node.
+
+- For a flow shared with the unit, a variable that no sharing policy names cannot be edited and keeps the owner's default.
+- Without an `overlay`, such as in a preview, every variable is editable.
+
+```ts
+import { getFlowOverlayRules, resolveFlowVariableRule } from '@thunderid/javascript'
+
+const overlay = await getFlowOverlayRules({ baseUrl, fetcher, flowId, ouId })
+const { editable, defaultValue, allowedValues } = resolveFlowVariableRule(definition, overlay)
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `definition` | `FlowVariableDefinition` | The variable. |
+| `overlay` | `ResolvedOverlay` | What the unit may do with the flow, as `getFlowOverlayRules` returns it. |
+
+**Returns:** `ResolvedFlowVariableRule`
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `editable` | `boolean` | Whether the unit may set its own value. |
+| `defaultValue` | `FlowVariableValue \| undefined` | The value the variable has until the unit sets its own, or the value it is pinned to when it cannot set one. |
+| `allowedValues` | `string[]` | The values the unit may choose from. Absent means anything the variable accepts. |
+| `excludedValues` | `string[]` | Values taken out of what the unit may choose. |
+
+## `getFlowVariableOptions(definition, connections?, restriction?)`
+
+Lists what a select variable can take. A `SELECT` takes the values it declares. A `CONNECTION_SELECT` takes the connections that match its `category` and `connectionTypes`. Any other type returns an empty array.
+
+```ts
+import { getConnections, getFlowVariableOptions } from '@thunderid/javascript'
+
+const { connections } = await getConnections({ baseUrl, fetcher, ouId, limit: 100 })
+const options = getFlowVariableOptions(definition, connections, { excludedValues: ['legacy'] })
+// [{label: 'Google', value: 'a1b2c3'}]
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `definition` | `FlowVariableDefinition` | The variable. |
+| `connections` | `Pick<ConnectionInstance, 'categories' \| 'id' \| 'name' \| 'type'>[]` | The connections available to the organization unit. Defaults to none. |
+| `restriction` | `FlowVariableOptionRestriction` | The values a sharing policy lets the unit choose from (`allowedValues`), or takes away (`excludedValues`). |
+
+**Returns:** `FlowVariableOption[]`. Each option has a `label` and the `value` to store. For a connection, the `label` is the connection name and the `value` is its identifier. For a `SELECT`, both are the option converted to a string, so convert the value back to the declared type, such as a boolean or a number, before you validate or save it.
+
+## `validateFlowVariableValue(definition, value)`
+
+Checks a value against the variable's type, options, and rules, so a form can report a problem before the server does. The server validates again on save.
+
+```ts
+import { validateFlowVariableValue } from '@thunderid/javascript'
+
+const error = validateFlowVariableValue({ identifier: 'email', type: 'EMAIL_INPUT' }, 'nope')
+// {code: 'invalid'}
+```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `definition` | `FlowVariableDefinition` | The variable the value is for. |
+| `value` | `FlowVariableValue \| undefined` | The value to check. |
+
+**Returns:** `FlowVariableValidationError | undefined`. `undefined` means the value is valid. A `BOOLEAN_INPUT` is valid when it is a boolean or not set. Every other type requires a value.
+
+| `code` | Meaning |
+|--------|---------|
+| `required` | The value is empty. |
+| `invalid` | The value is not valid for the type, such as text that is not an email address or a number that is not numeric. |
+| `min` | A number is below `min`. |
+| `max` | A number is above `max`. |
+| `not_option` | A `SELECT` value is not one of its `options`. |
+| `min_length` | Text is shorter than a `minLength` rule allows. |
+| `max_length` | Text is longer than a `maxLength` rule allows. |
+| `pattern` | Text does not match a `regex` rule. |
+
+For the three text rules, the error also carries the rule's `message` when it has one. The text rules are checked for `TEXT_INPUT` only, so a value can pass here and still be rejected by the server, which validates again on save. A `regex` rule that the runtime cannot compile is skipped, and the server judges it.
+
+## Cache Keys
+
+`FlowVariableQueryKeys` and `FlowQueryKeys` name flow resources for caching. The React hooks use them to refetch after a mutation. Reuse them as keys in your own data fetching cache.
+
+| Constant | Keys |
+|----------|------|
+| `FlowVariableQueryKeys` | `DEFINITIONS` (`'flow-variable-definitions'`), `VALUES` (`'flow-variable-values'`) |
+| `FlowQueryKeys` | `FLOWS` (`'flows'`) |

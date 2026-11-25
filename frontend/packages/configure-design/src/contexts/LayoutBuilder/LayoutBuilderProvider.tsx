@@ -60,6 +60,7 @@ export default function LayoutBuilderProvider({children}: LayoutBuilderProviderP
 
   const handle = layoutData?.handle ?? null;
   const displayName = layoutData?.displayName ?? null;
+  const projectId = layoutData?.projectId ?? null;
 
   // Initialize draft when layout data loads (update during render to avoid effect-driven cascades)
   const [prevLayoutData, setPrevLayoutData] = useState(layoutData);
@@ -152,6 +153,7 @@ export default function LayoutBuilderProvider({children}: LayoutBuilderProviderP
     () => ({
       layoutId,
       handle,
+      projectId,
       originalLayout: layoutData?.layout as LayoutConfig | null,
       displayName,
       draftLayout,
@@ -175,6 +177,7 @@ export default function LayoutBuilderProvider({children}: LayoutBuilderProviderP
     [
       layoutId,
       handle,
+      projectId,
       layoutData?.layout,
       displayName,
       draftLayout,

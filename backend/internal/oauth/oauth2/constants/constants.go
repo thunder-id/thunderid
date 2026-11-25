@@ -107,6 +107,7 @@ const (
 	SessionDataKeyConsent string = "sessionDataKeyConsent"
 	ShowInsecureWarning   string = "showInsecureWarning"
 	AppID                 string = "applicationId"
+	Ref                   string = "ref"
 	ExecutionID           string = "executionId"
 )
 
@@ -258,7 +259,7 @@ var StandardOIDCScopes = map[string]model.OIDCScope{
 
 // Standard JWT claim names.
 const (
-	ClaimSub      string = "sub"
+	ClaimSub      string = systemconst.SubClaimName
 	ClaimIss      string = "iss"
 	ClaimAud      string = "aud"
 	ClaimAzp      string = "azp"
@@ -273,7 +274,7 @@ const (
 	ClaimACR      string = "acr"
 	ClaimAMR      string = "amr"
 	ClaimScope    string = "scope"
-	ClaimAct      string = "act"
+	ClaimAct      string = systemconst.ActClaimName
 	ClaimCnf      string = "cnf"
 )
 
@@ -312,6 +313,8 @@ const (
 	ClaimAccessTokenSubject     string = "access_token_sub"
 	// ClaimAccessTokenAudience carries the audience of a refresh token's access tokens.
 	ClaimAccessTokenAudience string = "access_token_aud"
+	// ClaimAccessTokenOUID carries the organization unit a refresh token's access tokens are issued in.
+	ClaimAccessTokenOUID string = "access_token_ou_id"
 
 	// ClaimAuthorizationDetails carries the granted RFC 9396 authorization details on an access token.
 	ClaimAuthorizationDetails string = "authorization_details"
@@ -322,13 +325,13 @@ const (
 	// ClaimRefreshAuthorizationDetailVersions carries the granted type versions on a refresh token.
 	ClaimRefreshAuthorizationDetailVersions string = "access_token_authorization_detail_versions"
 
-	// ClaimIDP identifies the source identity provider (by issuer) that authenticated the subject of a
-	// jwt-bearer-grant (ID-JAG) access token, so downstream consumers can distinguish a federated
-	// principal from a local one.
+	// ClaimIDP identifies the source identity provider (by issuer) that authenticated the subject of an
+	// access token issued for an external subject (jwt-bearer/ID-JAG, or token exchange of such a
+	// subject), so downstream consumers can distinguish a federated principal from a local one.
 	ClaimIDP string = "idp"
 	// ClaimSubType identifies the identity class of the token subject, so a resource server can apply
 	// policy that differs by class. Emitted on client_credentials tokens.
-	ClaimSubType string = "sub_type"
+	ClaimSubType string = systemconst.SubTypeClaimName
 	// ClaimTokenFamilyID identifies the token family (one authorization grant) a token belongs to.
 	// A single tfid is minted per grant during the login flow and rides every access and refresh
 	// token of that grant, unchanged across refresh rotation, so revocation can target a whole
@@ -374,14 +377,6 @@ const (
 	SubjectTypePublic string = "public"
 )
 
-// Token-exchange token family modes (oauth.token_exchange.token_family).
-const (
-	// TokenExchangeTokenFamilyNone issues an exchanged token with no token family id (independent).
-	TokenExchangeTokenFamilyNone string = "none"
-	// TokenExchangeTokenFamilyInherit copies the subject token's token family id onto the exchanged token.
-	TokenExchangeTokenFamilyInherit string = "inherit"
-)
-
 // User attribute constants.
 const (
 	// UserAttributeGroups is the constant for user's groups attribute.
@@ -395,8 +390,8 @@ const (
 // Standard OIDC scope names.
 const (
 	ScopeOpenID = "openid"
-	// ScopeDeviceSSO asks for the device secret, the SSO session the code was issued from, in the code
-	// exchange response (OpenID Connect Native SSO for Mobile Apps).
+	// ScopeDeviceSSO asks for the device secret, the SSO session the grant was issued from, in the code
+	// exchange or device code token response (OpenID Connect Native SSO for Mobile Apps).
 	ScopeDeviceSSO = "device_sso"
 )
 
@@ -418,6 +413,9 @@ const (
 	CIBADefaultIntervalSeconds = 5
 	// CIBAMaxExpiresInSeconds is the maximum lifetime in seconds a client may request via requested_expiry.
 	CIBAMaxExpiresInSeconds = 600
+	// CIBAExpiredRecordRetentionSeconds keeps an expired request available long enough for the
+	// token endpoint to return expired_token instead of treating the auth_req_id as unknown.
+	CIBAExpiredRecordRetentionSeconds = 60
 	// DeviceAuthorizationDefaultExpiresInSeconds is the default lifetime for a device request.
 	DeviceAuthorizationDefaultExpiresInSeconds = 600
 	// DeviceAuthorizationDefaultIntervalSeconds is the minimum interval between token polls.
@@ -446,11 +444,16 @@ func GetStandardClaims() []string {
 	}
 }
 
-// Refusals an organization-unit-scoped token request can receive. OUAccessRefusal is deliberately
+// Refusals an organization-unit-scoped request can receive. OUAccessRefusal is deliberately
 // the same answer whether the unit does not exist or the client has no standing in it.
 const (
 	OUAccessRefusal = "Client is not authorized for the requested organization unit"
 
 	OUScopedGrantRefusal = "The grant type is not supported on the organization unit scoped " +
 		"token endpoint"
+
+	OUSignInRefusal  = "The subject cannot sign in to the requested organization unit"
+	AppSignInRefusal = "The subject cannot sign in to this application"
+
+	OUCodeRefusal = "The authorization code was not issued for the requested organization unit"
 )

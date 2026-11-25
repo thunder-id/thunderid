@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import enUS from '@thunderid/i18n/locales/en-US';
-import type {AccessStatusReport} from '@thunderid/types';
+import type {AccessStatusReport, SuspensionAppliedBy} from '@thunderid/types';
 import {describe, expect, it} from 'vitest';
 import describeAccessStatus from '../describeAccessStatus';
 import type {LifecycleCategory} from '../lifecycleAction';
@@ -57,6 +57,24 @@ describe('describeAccessStatus', () => {
 
     expect(description?.hint).toBe(hint);
     expect(keys).toContain(`common:accountStatus.suspended.hint.${category}`);
+  });
+
+  it.each<[SuspensionAppliedBy[], string]>([
+    [
+      ['owner'],
+      'The agent is suspended and cannot authenticate. Its owner suspended it, and only the owner can lift that suspension.',
+    ],
+    [
+      ['cascade'],
+      "The agent is suspended and cannot authenticate. Its owner's account is suspended, and the agent stays suspended until that account is unsuspended.",
+    ],
+    [
+      ['organization', 'owner'],
+      'The agent is suspended and cannot authenticate until an administrator unsuspends it. Its owner suspended it, and only the owner can lift that suspension.',
+    ],
+    [['organization'], 'The agent is suspended and cannot authenticate until an administrator unsuspends it.'],
+  ])('says who has to lift an agent suspension held by %j', (appliedBy, hint) => {
+    expect(describe_({details: {appliedBy}, value: 'SUSPENDED'}, 'agent').description?.hint).toBe(hint);
   });
 
   it("prefixes the operator's note and omits it when none was recorded", () => {

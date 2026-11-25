@@ -3,7 +3,9 @@
 
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 import userEvent from '@testing-library/user-event';
-import {fireEvent, render, screen, waitFor} from '@thunderid/test-utils';
+import {DeployStatusProvider} from '@thunderid/components';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
+import {fireEvent, render, screen, waitFor, within} from '@thunderid/test-utils';
 import type {ComponentProps, ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import AgentConstants from '../../constants/agent-constants';
@@ -15,7 +17,7 @@ const {
   mockUseGetAgent,
   mockUseUpdateAgent,
   mockMutateAsync,
-  mockUseGetAgentTypes,
+  mockUseGetAllAgentTypes,
   mockUseGetAgentType,
   mockUseLocation,
   stagingCallbackIdentities,
@@ -30,7 +32,7 @@ const {
   mockUseGetAgent: vi.fn(),
   mockUseUpdateAgent: vi.fn(),
   mockMutateAsync: vi.fn(),
-  mockUseGetAgentTypes: vi.fn(),
+  mockUseGetAllAgentTypes: vi.fn(),
   mockUseGetAgentType: vi.fn(),
   mockUseLocation: vi.fn(
     (): {
@@ -41,7 +43,7 @@ const {
 
 vi.mock('@thunderid/configure-agent-types', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-agent-types')>()),
-  useGetAgentTypes: () => mockUseGetAgentTypes(),
+  useGetAllAgentTypes: () => mockUseGetAllAgentTypes(),
   useGetAgentType: () => mockUseGetAgentType(),
 }));
 
@@ -136,7 +138,33 @@ vi.mock('../../api/useUpdateAgent', () => ({
 
 // Mock heavy child components — focus on page wiring.
 vi.mock('../../components/edit-agent/overview/AgentOverview', () => ({
-  default: () => <div data-testid="agent-overview" />,
+  default: ({
+    onGoToAdvanced = undefined,
+    onGoToAccess = undefined,
+    onGoToFlows = undefined,
+  }: {
+    onGoToAdvanced?: () => void;
+    onGoToAccess?: () => void;
+    onGoToFlows?: () => void;
+  }) => (
+    <div data-testid="agent-overview">
+      {onGoToAdvanced && (
+        <button type="button" onClick={onGoToAdvanced}>
+          Go to advanced
+        </button>
+      )}
+      {onGoToAccess && (
+        <button type="button" onClick={onGoToAccess}>
+          Go to access
+        </button>
+      )}
+      {onGoToFlows && (
+        <button type="button" onClick={onGoToFlows}>
+          Go to flows
+        </button>
+      )}
+    </div>
+  ),
 }));
 
 vi.mock('../../components/edit-agent/attributes/EditAgentAttributes', () => ({
@@ -183,7 +211,12 @@ vi.mock('../../components/edit-agent/advanced-settings/EditAdvancedSettings', as
   return {
     default: (props: ComponentProps<typeof RealEditAdvancedSettings>) => {
       if (advancedSettings.real) return <RealEditAdvancedSettings {...props} />;
-      const {onDeleteSuccess, onBackchannelLogoutUriValidationChange, onIdentityAssertionsValidationChange} = props;
+      const {
+        onDeleteSuccess,
+        onBackchannelLogoutUriValidationChange,
+        onIdentityAssertionsValidationChange,
+        onFieldChange,
+      } = props;
       return (
         <div data-testid="edit-advanced">
           <button type="button" onClick={() => onDeleteSuccess?.()}>
@@ -194,6 +227,15 @@ vi.mock('../../components/edit-agent/advanced-settings/EditAdvancedSettings', as
           </button>
           <button type="button" onClick={() => onIdentityAssertionsValidationChange?.(true)}>
             Type an invalid ID-JAG validity period
+          </button>
+          <button type="button" onClick={() => onFieldChange('owner', {id: 'jane', idType: 'email', isLocal: false})}>
+            Enter an invalid external owner
+          </button>
+          <button
+            type="button"
+            onClick={() => onFieldChange('owner', {id: 'jane@example.com', idType: 'email', isLocal: false})}
+          >
+            Enter a valid external owner
           </button>
         </div>
       );
@@ -250,6 +292,11 @@ const fetchWithStubbedServerMetadata = (input: RequestInfo | URL, init?: Request
   );
 };
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  isLoading: false,
+};
+
 describe('AgentEditPage', () => {
   const baseAgent = {
     id: 'agent-1',
@@ -293,8 +340,8 @@ describe('AgentEditPage', () => {
     }));
     mockMutateAsync.mockResolvedValue(undefined);
     mockRefetch.mockResolvedValue({});
-    mockUseGetAgentTypes.mockReturnValue({
-      data: {types: [{id: 'default-type', handle: 'default', displayName: 'Default'}]},
+    mockUseGetAllAgentTypes.mockReturnValue({
+      data: [{id: 'default-type', handle: 'default', displayName: 'Default'}],
       isLoading: false,
       error: null,
     });
@@ -302,6 +349,69 @@ describe('AgentEditPage', () => {
       data: {id: 'default-type', handle: 'default', displayName: 'Default', schema: {}},
       isLoading: false,
       error: null,
+    });
+  });
+
+  describe('Project scope', () => {
+    it("goes to the selected project's agents when the agent belongs to another project", async () => {
+      mockUseGetAgent.mockReturnValue({
+        data: {...baseAgent, projectId: 'project-b'},
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+
+      render(
+        <ProjectScopeProvider project={{id: 'project-a'}}>
+          <AgentEditPage />
+        </ProjectScopeProvider>,
+      );
+
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith('/agents', {replace: true});
+      });
+      expect(screen.queryByText('Test Agent')).not.toBeInTheDocument();
+    });
+
+    it('shows the agent when it belongs to the selected project', () => {
+      mockUseGetAgent.mockReturnValue({
+        data: {...baseAgent, projectId: 'project-a'},
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+
+      render(
+        <ProjectScopeProvider project={{id: 'project-a'}}>
+          <AgentEditPage />
+        </ProjectScopeProvider>,
+      );
+
+      expect(mockNavigate).not.toHaveBeenCalledWith('/agents', {replace: true});
+    });
+  });
+
+  describe('Personal agents', () => {
+    it('labels a personal agent Personal', () => {
+      mockUseGetAgent.mockReturnValue({
+        data: {...baseAgent, kind: 'personal-assistant', owner: {id: 'user-1'}},
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+
+      render(<AgentEditPage />);
+
+      expect(screen.getByText('Personal')).toBeInTheDocument();
+    });
+
+    it('does not label an ordinary agent', () => {
+      render(<AgentEditPage />);
+
+      expect(screen.queryByText('Personal')).not.toBeInTheDocument();
     });
   });
 
@@ -369,6 +479,94 @@ describe('AgentEditPage', () => {
       expect(screen.getByRole('tab', {name: /Advanced/i})).toBeInTheDocument();
     });
 
+    it('opens the tab a link names, such as the Advanced tab for the owner', () => {
+      mockUseLocation.mockReturnValue({state: null, search: '?tab=advanced'});
+
+      render(<AgentEditPage />);
+
+      expect(screen.getByRole('tab', {name: /Advanced/i})).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('keeps Save off while the external owner ID is not valid, and says why', async () => {
+      mockUseLocation.mockReturnValue({state: null, search: '?tab=advanced'});
+      const user = userEvent.setup();
+      render(<AgentEditPage />);
+
+      await user.click(screen.getByText('Enter an invalid external owner'));
+      expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+      expect(screen.getByText(/enter a valid ID for the external owner/)).toBeInTheDocument();
+
+      await user.click(screen.getByText('Enter a valid external owner'));
+      expect(screen.getByRole('button', {name: 'Save'})).toBeEnabled();
+    });
+
+    it('opens the tab the Overview leads to', async () => {
+      mockUseLocation.mockReturnValue({state: null, search: ''});
+      const user = userEvent.setup();
+      render(<AgentEditPage />);
+
+      await user.click(screen.getByRole('button', {name: 'Go to access'}));
+      expect(screen.getByRole('tab', {name: /Access/i})).toHaveAttribute('aria-selected', 'true');
+
+      await user.click(screen.getByRole('tab', {name: 'Overview'}));
+      await user.click(screen.getByRole('button', {name: 'Go to flows'}));
+      expect(screen.getByRole('tab', {name: /Flows/i})).toHaveAttribute('aria-selected', 'true');
+
+      await user.click(screen.getByRole('tab', {name: 'Overview'}));
+      await user.click(screen.getByRole('button', {name: 'Go to advanced'}));
+      expect(screen.getByRole('tab', {name: /Advanced/i})).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('gives the Overview no way to a Flows tab the agent does not have', () => {
+      mockUseLocation.mockReturnValue({state: null, search: ''});
+      mockUseGetAgent.mockReturnValue({
+        data: {...baseAgent, inboundAuthConfig: []},
+        isLoading: false,
+        error: null,
+        refetch: vi.fn(),
+      });
+      render(<AgentEditPage />);
+
+      expect(screen.queryByRole('tab', {name: /Flows/i})).not.toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Go to access'})).toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Go to flows'})).not.toBeInTheDocument();
+    });
+
+    it('leaves the tab a link names once another is chosen', async () => {
+      mockUseLocation.mockReturnValue({state: null, search: '?tab=advanced'});
+
+      render(<AgentEditPage />);
+      await userEvent.click(screen.getByRole('tab', {name: 'Overview'}));
+
+      expect(screen.getByRole('tab', {name: 'Overview'})).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByRole('tab', {name: /Advanced/i})).toHaveAttribute('aria-selected', 'false');
+    });
+
+    it('opens the first tab when a link names a tab the agent does not have', () => {
+      mockUseLocation.mockReturnValue({state: null, search: '?tab=nothing'});
+
+      render(<AgentEditPage />);
+
+      expect(screen.getByRole('tab', {name: 'Overview'})).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('says where the agent is along the deploy path, such as a refusal and its reason', () => {
+      render(
+        <DeployStatusProvider
+          value={{
+            statusOf: (type: string) =>
+              type === 'agent' ? {state: 'refused', target: 'Dev', reason: 'AGT-1039: Owner not found'} : undefined,
+            openDeploy: vi.fn(),
+          }}
+        >
+          <AgentEditPage />
+        </DeployStatusProvider>,
+      );
+
+      expect(screen.getByTestId('resource-deploy-status')).toHaveTextContent('Refused by Dev');
+      expect(screen.getByTestId('resource-deploy-status')).toHaveTextContent('AGT-1039: Owner not found');
+    });
+
     it('does not render icons on any tab', () => {
       render(<AgentEditPage />);
 
@@ -418,6 +616,57 @@ describe('AgentEditPage', () => {
       // Access and Advanced still render — groups/roles and owner/danger-zone apply regardless of OAuth.
       expect(screen.getByRole('tab', {name: /Access/i})).toBeInTheDocument();
       expect(screen.getByRole('tab', {name: /Advanced/i})).toBeInTheDocument();
+    });
+
+    describe('without OAuth but with a credential in the agent type', () => {
+      const withCredentialSchema = (): void => {
+        mockUseGetAgentType.mockReturnValue({
+          data: {
+            id: 'default-type',
+            handle: 'default',
+            displayName: 'Default',
+            schema: {password: {type: 'string', credential: true}},
+          },
+          isLoading: false,
+          error: null,
+        });
+      };
+      const agentWithoutOAuth = (extra: Record<string, unknown> = {}): void => {
+        mockUseGetAgent.mockReturnValue({
+          data: {...baseAgent, inboundAuthConfig: [], ...extra},
+          isLoading: false,
+          error: null,
+          isError: false,
+          refetch: mockRefetch,
+        });
+      };
+
+      it('offers the Credentials tab so the credential can be reset', () => {
+        withCredentialSchema();
+        agentWithoutOAuth();
+
+        render(<AgentEditPage />);
+
+        expect(screen.getByRole('tab', {name: /Credentials/i})).toBeInTheDocument();
+        expect(screen.queryByRole('tab', {name: 'Flows'})).not.toBeInTheDocument();
+      });
+
+      it('shows no Credentials tab for a personal agent, which only its owner resets', () => {
+        withCredentialSchema();
+        agentWithoutOAuth({kind: 'personal-assistant'});
+
+        render(<AgentEditPage />);
+
+        expect(screen.queryByRole('tab', {name: /Credentials/i})).not.toBeInTheDocument();
+      });
+
+      it('shows no Credentials tab when the agent type declares no credential', () => {
+        agentWithoutOAuth();
+
+        render(<AgentEditPage />);
+
+        expect(screen.queryByRole('tab', {name: /Credentials/i})).not.toBeInTheDocument();
+      });
     });
   });
 
@@ -782,6 +1031,66 @@ describe('AgentEditPage', () => {
       fireEvent.blur(input);
     };
 
+    // Without the type schema a save could keep attribute values the schema no longer allows, so Save stays
+    // off. Viewing an agent doesn't need permission to read agent types, so the rest of the page stays.
+    it('keeps Save off and offers a retry when the agent types fail to load', async () => {
+      const user = userEvent.setup();
+      const refetchAgentTypes = vi.fn();
+      mockUseGetAllAgentTypes.mockReturnValue({
+        data: undefined,
+        isLoading: false,
+        error: new Error('Boom'),
+        refetch: refetchAgentTypes,
+      });
+      render(<AgentEditPage />);
+
+      expect(screen.getByText("The agent's type could not be loaded, so changes can't be saved.")).toBeInTheDocument();
+      expect(screen.getByRole('tab', {name: 'Overview'})).toBeInTheDocument();
+
+      await editDescription(user, 'Test description', 'Changed description');
+      expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+
+      await user.click(screen.getByRole('button', {name: 'Refresh'}));
+      expect(refetchAgentTypes).toHaveBeenCalledTimes(1);
+      expect(mockRefetch).not.toHaveBeenCalled();
+    });
+
+    it('keeps Save off and offers a retry when the agent type schema fails to load', async () => {
+      const user = userEvent.setup();
+      const refetchAgentType = vi.fn();
+      mockUseGetAgentType.mockReturnValue({
+        data: undefined,
+        isLoading: false,
+        error: new Error('Boom'),
+        refetch: refetchAgentType,
+      });
+      render(<AgentEditPage />);
+
+      await editDescription(user, 'Test description', 'Changed description');
+      expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+
+      await user.click(screen.getByRole('button', {name: 'Refresh'}));
+      expect(refetchAgentType).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps Save on when only a refetch of agent types already read fails', async () => {
+      const user = userEvent.setup();
+      mockUseGetAllAgentTypes.mockReturnValue({
+        data: [{id: 'default-type', handle: 'default', displayName: 'Default'}],
+        isLoading: false,
+        error: new Error('Boom'),
+        refetch: vi.fn(),
+      });
+      render(<AgentEditPage />);
+
+      await editDescription(user, 'Test description', 'Changed description');
+
+      expect(screen.getByRole('button', {name: 'Save'})).toBeEnabled();
+      expect(
+        screen.queryByText("The agent's type could not be loaded, so changes can't be saved."),
+      ).not.toBeInTheDocument();
+    });
+
     it('hides the bar when a field is manually retyped back to its original value', async () => {
       const user = userEvent.setup();
       render(<AgentEditPage />);
@@ -821,6 +1130,23 @@ describe('AgentEditPage', () => {
         expect(mockNavigate).toHaveBeenCalledWith('/agents');
       });
     });
+
+    it('offers no delete for an agent shared into the organization unit', async () => {
+      advancedSettings.real = true;
+      mockUseGetAgent.mockReturnValue({
+        data: {...baseAgent, isOwnedByOU: false},
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+      const user = userEvent.setup();
+      render(<AgentEditPage />);
+
+      await user.click(screen.getByRole('tab', {name: /Advanced/i}));
+
+      expect(screen.queryByRole('button', {name: 'Delete agent'})).not.toBeInTheDocument();
+    });
   });
 
   describe('Attribute edits', () => {
@@ -849,6 +1175,20 @@ describe('AgentEditPage', () => {
           }),
         );
       });
+    });
+
+    it('disables the page-level Save button when the admin may not update agents', async () => {
+      const user = userEvent.setup();
+      render(
+        <CapabilitiesProvider capabilities={viewOnly}>
+          <AgentEditPage />
+        </CapabilitiesProvider>,
+      );
+
+      await user.click(screen.getByRole('tab', {name: 'Attributes'}));
+      await user.click(screen.getByText('Edit an attribute'));
+
+      expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
     });
 
     it('keeps the unsaved-changes bar and edited state when saving fails', async () => {
@@ -1294,6 +1634,68 @@ describe('AgentEditPage', () => {
         await user.click(screen.getByText('Stage a future lifespan end'));
 
         expect(screen.getByRole('button', {name: 'Save'})).not.toBeDisabled();
+      });
+    });
+
+    describe('consent validity', () => {
+      const renderDelegatedAgent = (loginConsent?: {validityPeriod?: number}): void => {
+        mockUseGetAgent.mockReturnValue({
+          data: {
+            ...baseAgent,
+            allowedUserTypes: ['person'],
+            loginConsent,
+            inboundAuthConfig: [
+              {
+                type: 'oauth2' as const,
+                config: {
+                  grantTypes: ['authorization_code'],
+                  responseTypes: ['code'],
+                  redirectUris: ['https://agent.example.com/cb'],
+                  pkceRequired: true,
+                  clientId: 'client-id-xyz',
+                },
+              },
+            ],
+          },
+          isLoading: false,
+          error: null,
+          isError: false,
+          refetch: mockRefetch,
+        });
+        render(<AgentEditPage />);
+      };
+
+      it('should save a period chosen from No expiry as seconds', async () => {
+        advancedSettings.real = true;
+        const user = userEvent.setup();
+        renderDelegatedAgent({validityPeriod: 0});
+        await user.click(screen.getByRole('tab', {name: /Advanced/i}));
+
+        await user.click(within(screen.getByTestId('login-consent-validity-period-unit')).getByRole('combobox'));
+        await user.click(screen.getByRole('option', {name: 'Hours'}));
+        await user.click(screen.getByRole('button', {name: 'Save'}));
+
+        await waitFor(() => {
+          expect(mockMutateAsync).toHaveBeenCalledTimes(1);
+        });
+        const {data} = mockMutateAsync.mock.calls[0][0] as {data: {loginConsent?: unknown}};
+        expect(data.loginConsent).toEqual({validityPeriod: 3600});
+      });
+
+      it('should save the typed number in the chosen unit as seconds', async () => {
+        advancedSettings.real = true;
+        const user = userEvent.setup();
+        renderDelegatedAgent({validityPeriod: 3600});
+        await user.click(screen.getByRole('tab', {name: /Advanced/i}));
+
+        fireEvent.change(screen.getByRole('spinbutton', {name: 'Consent validity period'}), {target: {value: '2'}});
+        await user.click(screen.getByRole('button', {name: 'Save'}));
+
+        await waitFor(() => {
+          expect(mockMutateAsync).toHaveBeenCalledTimes(1);
+        });
+        const {data} = mockMutateAsync.mock.calls[0][0] as {data: {loginConsent?: unknown}};
+        expect(data.loginConsent).toEqual({validityPeriod: 7200});
       });
     });
 

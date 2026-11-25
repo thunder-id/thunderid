@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {KeyValuePairsField, MaskedSecretField} from '@thunderid/components';
 import {useConfig} from '@thunderid/contexts';
 import {I18N_KEY_PATTERN, isI18nTemplatePattern} from '@thunderid/utils';
 import {
@@ -17,8 +18,6 @@ import {
 } from '@wso2/oxygen-ui';
 import {type JSX, type ReactNode, useCallback, useMemo} from 'react';
 import {useTranslation} from 'react-i18next';
-import KeyValuePairsField from './KeyValuePairsField';
-import MaskedSecretField from './MaskedSecretField';
 import type {OutboundAuthField, OutboundAuthMethod} from '../models/connection';
 import {
   AUTH_ADDITIONAL_PROPERTIES_FIELD,
@@ -152,15 +151,15 @@ export default function AuthenticationSection({
     }
 
     return (
-      <FormControl fullWidth required={Boolean(field.required)}>
-        <FormLabel htmlFor={`connection-field-${name}`}>{label}</FormLabel>
-        <TextField
-          id={`connection-field-${name}`}
-          value={value}
-          onChange={(e) => onFieldChange(name, e.target.value)}
-          fullWidth
-        />
-      </FormControl>
+      <TextField
+        labelPlacement="top"
+        label={label}
+        required={Boolean(field.required)}
+        id={`connection-field-${name}`}
+        value={value}
+        onChange={(e) => onFieldChange(name, e.target.value)}
+        fullWidth
+      />
     );
   };
 

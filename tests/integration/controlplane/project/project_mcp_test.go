@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
@@ -22,8 +23,8 @@ type mcpToolResult struct {
 	} `json:"result"`
 }
 
-// The project tools run the project service end to end: a project created through MCP gets its root
-// organization unit, is listed and read back, and an update renames it.
+// The project tools run the project service end to end: a project created through MCP is listed and
+// read back, and an update renames it.
 func (ts *ProjectAPITestSuite) TestProjectMCPTools() {
 	created, raw := ts.callMCPTool("create_project", map[string]any{
 		"handle": ts.handle("mcp"), "displayName": "MCP Project", "description": "Created through MCP",
@@ -33,7 +34,7 @@ func (ts *ProjectAPITestSuite) TestProjectMCPTools() {
 	ts.Require().NotEmpty(id)
 	ts.projects = append(ts.projects, id)
 	ts.Equal(ts.handle("mcp"), created.Result.StructuredContent["handle"])
-	ts.NotEmpty(created.Result.StructuredContent["rootOuId"])
+	ts.NotContains(created.Result.StructuredContent, "rootOuId")
 
 	got, raw := ts.callMCPTool("get_project_by_id", map[string]any{"id": id})
 	ts.Require().Falsef(got.Result.IsError, "get failed: %s", raw)
@@ -81,7 +82,7 @@ func (ts *ProjectAPITestSuite) callMCPTool(name string, args map[string]any) (mc
 	req.Header.Set("Mcp-Method", "tools/call")
 	req.Header.Set("Mcp-Name", name)
 
-	resp, err := testutils.GetHTTPClient().Do(req)
+	resp, err := mcpClient().Do(req)
 	ts.Require().NoError(err)
 	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(resp.Body)
@@ -97,4 +98,13 @@ func (ts *ProjectAPITestSuite) callMCPTool(name string, args map[string]any) (mc
 	var result mcpToolResult
 	ts.Require().NoErrorf(json.Unmarshal([]byte(message), &result), "%s returned: %s", name, string(body))
 	return result, string(body)
+}
+
+// mcpClient sends the token the trusted issuer signed for the MCP server, which accepts only tokens
+// issued for its own resource identifier; without one it sends the administrator's management token.
+func mcpClient() *http.Client {
+	if token := os.Getenv(testutils.MCPScopedTokenEnv); token != "" {
+		return testutils.GetHTTPClientWithToken(token)
+	}
+	return testutils.GetHTTPClient()
 }

@@ -114,6 +114,9 @@ fun ContentView() {
 | `signOut(options)` | Revoke the refresh token and clear the session |
 | `exchangeToken(config)` | Perform an OAuth 2.0 token exchange (STS) |
 | `decodeJwtToken(token)` | Decode a JWT string into a `Map<String, Any?>` |
+| `getAccessibleOrganizationUnits(options)` | List the organization units the signed-in user can access |
+| `getCurrentOrganizationUnit()` | Read the session's organization unit from its claims |
+| `switchOrganizationUnit(ouId, options)` | Switch the session to another organization unit |
 
 ### `dev.thunderid:compose`: Components
 
@@ -137,6 +140,8 @@ fun ContentView() {
 | `BaseSignUp(onComplete, onError, content)` | Builder variant for custom registration UI |
 | `UserProfile(modifier, onSaved, onError)` | Editable profile form; loads from `/scim2/Me` and saves via `updateUserProfile` |
 | `BaseUserProfile(onSaved, onError, content)` | Builder variant with full control over the form layout |
+| `OrganizationUnitSwitcher(modifier, scope, limit, switchOptions, onSelect, onSwitched, onSignInRequired, content)` | Dropdown that lists the user's organization units and switches the session to the one picked |
+| `BaseOrganizationUnitSwitcher(organizationUnits, current, onSwitch, ..., content)` | Unstyled dropdown drawn from the data you pass, with no SDK state |
 
 #### Guards
 

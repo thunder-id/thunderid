@@ -27,6 +27,8 @@ export interface GroupBasic {
   ouId: string;
   /** Handle of the organization unit, populated when include=display is used */
   ouHandle?: string;
+  /** ID of the project this group belongs to; absent when it belongs to the organization */
+  projectId?: string;
   /** Whether this group is read-only (declarative/immutable) */
   isReadOnly?: boolean;
 }

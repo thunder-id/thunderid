@@ -10,14 +10,27 @@ import (
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
 
-// Initialize initializes the theme management service and registers its routes.
+// Initialize initializes the theme management service and registers its routes. bus is required: the
+// service publishes the audit event of every theme it creates, updates or deletes on it.
+//
+// projectChecker is nil on a deployment that serves no projects, where a project ID is kept unchecked.
 func Initialize(
 	mux *http.ServeMux,
 	mcpServer *mcp.Server,
+	bus eventbus.EventBusInterface,
+	projectChecker projectChecker,
+	authzService sysauthz.SystemAuthorizationServiceInterface,
 ) (ThemeMgtServiceInterface, declarativeresource.ResourceExporter, error) {
+	if bus == nil {
+		return nil, nil, errNilEventBus
+	}
+
 	// Step 1: Initialize store based on configuration
 	themeMgtStore, err := initializeStore()
 	if err != nil {
@@ -25,7 +38,8 @@ func Initialize(
 	}
 
 	// Step 2: Create service with store
-	themeMgtService := newThemeMgtService(themeMgtStore)
+	themeMgtService := newThemeMgtService(themeMgtStore, bus, projectChecker, authzService)
+	setManagedStore(themeMgtService, managedresource.GetStore())
 	themeMgtHandler := newThemeMgtHandler(themeMgtService)
 	registerRoutes(mux, themeMgtHandler)
 

@@ -7,6 +7,7 @@ import {
   useGetOrganizationUnit,
   useHasMultipleOUs,
 } from '@thunderid/configure-organization-units';
+import {useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage} from '@thunderid/utils';
 import {Box, Button, CircularProgress, Alert} from '@wso2/oxygen-ui';
@@ -19,18 +20,25 @@ import useCreateGroup from '../api/useCreateGroup';
 import ConfigureName from '../components/create-group/ConfigureName';
 import GroupConstraints from '../constants/group-constraints';
 import useGroupCreate from '../contexts/GroupCreate/useGroupCreate';
+import useGroupRoutes from '../hooks/useGroupRoutes';
 import {GroupCreateFlowStep} from '../models/group-create-flow';
 import type {CreateGroupRequest} from '../models/requests';
 
 export default function CreateGroupPage(): JSX.Element {
   const navigate = useNavigate();
+  const routes = useGroupRoutes();
   const {t} = useTranslation('groups');
   const logger = useLogger('CreateGroupPage');
   const createGroup = useCreateGroup();
 
   const {currentStep, setCurrentStep, name, setName, ouId, setOuId, error, setError} = useGroupCreate();
 
-  const {hasMultipleOUs, isLoading: isOuLoading, ouList} = useHasMultipleOUs();
+  const {projectId} = useProjectScope();
+  // Inside a project the group goes to the system organization unit or one of the project's own,
+  // picked on the organization unit step. The step is offered only when the project has
+  // organization units; without any, the API places the group in the system organization unit.
+  const isInProject = Boolean(projectId);
+  const {hasMultipleOUs, isLoading: isOuLoading, ouList} = useHasMultipleOUs(projectId);
 
   // The organization unit is the wizard's first step whenever there's a choice to make. Single-OU
   // deployments never need it, so once that's known, skip straight past it.
@@ -41,7 +49,7 @@ export default function CreateGroupPage(): JSX.Element {
   }, [isOuLoading, hasMultipleOUs, currentStep, setCurrentStep]);
 
   // The organization unit whose name is shown in the Details step's summary chip.
-  const resolvedOuId = hasMultipleOUs ? ouId : ouList[0]?.id;
+  const resolvedOuId = isInProject ? (hasMultipleOUs && ouId) || undefined : hasMultipleOUs ? ouId : ouList[0]?.id;
   const {data: resolvedOrganizationUnit, isLoading: isResolvedOuLoading} = useGetOrganizationUnit(
     resolvedOuId,
     Boolean(resolvedOuId),
@@ -68,7 +76,7 @@ export default function CreateGroupPage(): JSX.Element {
     return map;
   }, [t, hasMultipleOUs]);
 
-  const listUrl = '/groups';
+  const listUrl = routes.groups.list();
 
   const handleClose = (): void => {
     if (createGroup.isPending) return;
@@ -110,14 +118,15 @@ export default function CreateGroupPage(): JSX.Element {
     }
 
     // If only one OU, use it directly
-    if (!resolvedOuId) {
+    if (!isInProject && !resolvedOuId) {
       setError(t('create.form.organizationUnit.required', 'Organization unit is required'));
       return;
     }
 
     const requestData: CreateGroupRequest = {
       name: trimmedName,
-      ouId: resolvedOuId,
+      ...(isInProject ? {projectId} : {}),
+      ...(resolvedOuId ? {ouId: resolvedOuId} : {}),
     };
 
     try {
@@ -204,6 +213,7 @@ export default function CreateGroupPage(): JSX.Element {
             "Choose the organization unit that will own this group. You can't change this once created.",
           )}
           value={ouId}
+          projectId={projectId}
           onChange={setOuId}
           onBack={handleClose}
           onContinue={handleNextStep}

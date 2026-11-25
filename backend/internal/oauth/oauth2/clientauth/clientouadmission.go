@@ -36,13 +36,13 @@ func ClientOUAdmissionMiddleware(actorProvider providers.ActorProvider) func(htt
 			if svcErr != nil {
 				log.GetLogger().Error(ctx, "Failed to resolve client access for an organization unit",
 					log.MaskedString("clientID", clientInfo.ClientID),
-					log.String("ouId", accessingOUID), log.Any("error", svcErr))
+					log.String("ouID", accessingOUID), log.Any("error", svcErr))
 				writeAuthError(ctx, w, errOUAccessUnresolved)
 				return
 			}
 			if !accessible {
 				log.GetLogger().Debug(ctx, "Client is not authorized for the requested organization unit",
-					log.MaskedString("clientID", clientInfo.ClientID), log.String("ouId", accessingOUID))
+					log.MaskedString("clientID", clientInfo.ClientID), log.String("ouID", accessingOUID))
 				writeAuthError(ctx, w, errClientNotAuthorizedForOU)
 				return
 			}

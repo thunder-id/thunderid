@@ -386,7 +386,7 @@ func (suite *FlowVariablesSharingTestSuite) TestTheFlowReadsNeedNoOrganizationUn
 	status, body := suite.send(http.MethodGet, flowsEndpoint+"/"+flowID, nil)
 	suite.Require().Equal(http.StatusOK, status, string(body))
 	flow := suite.decode(body)
-	suite.NotContains(flow, "isOwnedByOU", "the whole definition, as it is read without an organization unit")
+	suite.Equal(true, flow["isOwnedByOU"], "the whole definition, read in the unit that owns it")
 	suite.Len(flow["nodes"], 7)
 
 	status, body = suite.send(http.MethodGet, flowsEndpoint+"?limit=100", nil)

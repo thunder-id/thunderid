@@ -10,7 +10,7 @@ import {useUrlSelection} from '@site/src/utils/useUrlSelection';
 // every <DelegationContent> block. It lives in the URL query string (?method=...)
 // so the choice is shareable and stays in sync across blocks; a fresh visit
 // starts on "signin" (the agent signs the user in).
-type DelegationMethod = 'signin' | 'approval' | 'exchange';
+type DelegationMethod = 'signin' | 'approval' | 'device-code' | 'exchange';
 
 const DEFAULT_METHOD: DelegationMethod = 'signin';
 
@@ -30,6 +30,13 @@ const METHODS: {value: DelegationMethod; label: string; description: string; Ico
     Icon: Smartphone,
   },
   {
+    value: 'device-code',
+    label: 'Authorize a device',
+    description:
+      'The agent client cannot open a browser: the user approves in a browser on another device, using the Device Code grant.',
+    Icon: Smartphone,
+  },
+  {
     value: 'exchange',
     label: 'Trade a user token',
     description:
@@ -42,7 +49,7 @@ const METHOD_VALUES = METHODS.map(m => m.value) as readonly DelegationMethod[];
 
 /**
  * One method's content. Every block stays in the DOM and inactive ones are
- * hidden, so both paths remain searchable rather than existing only after a click.
+ * hidden, so every path remains searchable rather than existing only after a click.
  */
 export function DelegationContent({
   value,
@@ -62,7 +69,7 @@ export function DelegationMethodSelector(): React.ReactElement {
     <Box
       role="radiogroup"
       aria-label="How the agent obtains the user's token"
-      sx={{display: 'grid', gap: 1.5, gridTemplateColumns: {xs: '1fr', sm: 'repeat(3, 1fr)'}, my: 2}}
+      sx={{display: 'grid', gap: 1.5, gridTemplateColumns: {xs: '1fr', sm: 'repeat(2, 1fr)'}, my: 2}}
     >
       {METHODS.map(({value, label, description, Icon}) => {
         const isActive = active === value;

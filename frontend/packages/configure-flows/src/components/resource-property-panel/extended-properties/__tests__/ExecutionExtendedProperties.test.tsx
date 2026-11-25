@@ -5,6 +5,8 @@ import {render, screen, fireEvent} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {IdentityProviderTypes} from '@thunderid/configure-connections';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
+import FlowTypeContext from '../../../../context/FlowTypeContext';
+import {FlowType} from '../../../../models/flows';
 import type {Resource} from '../../../../models/resources';
 import {ExecutionTypes, type StepData} from '../../../../models/steps';
 import ExecutionExtendedProperties from '../ExecutionExtendedProperties';
@@ -88,6 +90,32 @@ vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
   useConnectionInstances: () => ({data: [], isLoading: false, isSuccess: true, error: null, refetch: vi.fn()}),
 }));
 
+// Backs the Identify User login hint attribute suggestions.
+vi.mock('@thunderid/configure-user-types', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/configure-user-types')>()),
+  useGetUserTypeAttributes: () => ({attributes: [], isLoading: false, error: null, refetch: vi.fn()}),
+}));
+
+// Mock useGetAllGroups + useGetAllRoles, which back the Provisioning group and role pickers.
+vi.mock('../../../../api/useGetAllGroups', () => ({
+  default: () => ({
+    data: [{id: 'admin-group', name: 'Admins', ouId: 'ou-1'}],
+    error: null,
+    isLoading: false,
+    isSuccess: true,
+    refetch: vi.fn(),
+  }),
+}));
+vi.mock('../../../../api/useGetAllRoles', () => ({
+  default: () => ({
+    data: [{id: 'editor-role', name: 'Editors', ouId: 'ou-1'}],
+    error: null,
+    isLoading: false,
+    isSuccess: true,
+    refetch: vi.fn(),
+  }),
+}));
+
 // Mock useGetNotificationTemplates, which backs the Email/SMS template pickers.
 interface TemplatesState {
   data: unknown[] | undefined;
@@ -118,6 +146,13 @@ const emailTemplates = [
   {id: 'id-4', handle: 'magic-link', displayName: 'Magic link', self: ''},
 ];
 const smsTemplates = [{id: 'sms-1', handle: 'otp', displayName: 'OTP Verification', self: ''}];
+
+// Mock the flow's nodes
+const mockNodes = vi.fn<() => unknown[]>(() => []);
+vi.mock('@xyflow/react', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@xyflow/react')>()),
+  useStore: (selector: (state: {nodes: unknown[]}) => unknown) => selector({nodes: mockNodes()}),
+}));
 
 describe('ExecutionExtendedProperties', () => {
   const mockOnChange = vi.fn();
@@ -1290,8 +1325,6 @@ describe('ExecutionExtendedProperties', () => {
           maxPerPrompt: 5,
           assignGroup: '',
           assignRole: '',
-          seedGroupsFromMapping: false,
-          seedRolesFromMapping: false,
         },
       },
     } as unknown as Resource;
@@ -1309,8 +1342,6 @@ describe('ExecutionExtendedProperties', () => {
       expect(screen.getByLabelText('flows:core.executions.provisioning.maxPerPrompt.label')).toBeInTheDocument();
       expect(screen.getByLabelText('flows:core.executions.provisioning.assignGroup.label')).toBeInTheDocument();
       expect(screen.getByLabelText('flows:core.executions.provisioning.assignRole.label')).toBeInTheDocument();
-      expect(screen.getByText('flows:core.executions.provisioning.seedGroupsFromMapping.label')).toBeInTheDocument();
-      expect(screen.getByText('flows:core.executions.provisioning.seedRolesFromMapping.label')).toBeInTheDocument();
     });
 
     it('should call onChange without debounce when allowCrossOUProvisioning checkbox is toggled', () => {
@@ -1391,44 +1422,54 @@ describe('ExecutionExtendedProperties', () => {
       expect(screen.getByLabelText('flows:core.executions.provisioning.maxPerPrompt.label')).toHaveValue(0);
     });
 
-    it('should commit assignGroup on blur', () => {
-      render(<ExecutionExtendedProperties resource={provisioningResource} onChange={mockOnChange} />);
+    describe('federated override warning', () => {
+      const warning = 'flows:core.executions.provisioning.federatedOverrideWarning';
+      const federatedNode = {id: 'oidc', data: {action: {executor: {name: ExecutionTypes.OIDCAuthExecutor}}}};
+      const withGroup = {
+        ...provisioningResource,
+        data: {...provisioningStepData, properties: {...provisioningStepData.properties, assignGroup: 'g1'}},
+      } as unknown as Resource;
 
-      const assignGroupInput = screen.getByLabelText('flows:core.executions.provisioning.assignGroup.label');
-      fireEvent.change(assignGroupInput, {target: {value: 'admin-group'}});
-      fireEvent.blur(assignGroupInput);
+      it('shows when the flow has a federated executor and a group or role is assigned', () => {
+        mockNodes.mockReturnValue([federatedNode]);
+        render(<ExecutionExtendedProperties resource={withGroup} onChange={mockOnChange} />);
+        expect(screen.getByText(warning)).toBeInTheDocument();
+      });
 
-      expect(mockOnChange).toHaveBeenCalledWith('data.properties.assignGroup', 'admin-group', provisioningResource);
+      it('shows when only a role is assigned', () => {
+        const withRole = {
+          ...provisioningResource,
+          data: {...provisioningStepData, properties: {...provisioningStepData.properties, assignRole: 'r1'}},
+        } as unknown as Resource;
+        mockNodes.mockReturnValue([federatedNode]);
+        render(<ExecutionExtendedProperties resource={withRole} onChange={mockOnChange} />);
+        expect(screen.getByText(warning)).toBeInTheDocument();
+      });
+
+      it('is hidden when nothing is assigned', () => {
+        mockNodes.mockReturnValue([federatedNode]);
+        render(<ExecutionExtendedProperties resource={provisioningResource} onChange={mockOnChange} />);
+        expect(screen.queryByText(warning)).not.toBeInTheDocument();
+      });
+
+      it('is hidden when the flow has no federated executor', () => {
+        mockNodes.mockReturnValue([]);
+        render(<ExecutionExtendedProperties resource={withGroup} onChange={mockOnChange} />);
+        expect(screen.queryByText(warning)).not.toBeInTheDocument();
+      });
     });
 
-    it('should commit assignRole on blur', () => {
+    it.each([
+      {kind: 'group', property: 'assignGroup', name: 'Admins', id: 'admin-group'},
+      {kind: 'role', property: 'assignRole', name: 'Editors', id: 'editor-role'},
+    ])('should commit the ID of the $kind picked for $property', async ({property, name, id}) => {
+      const user = userEvent.setup();
       render(<ExecutionExtendedProperties resource={provisioningResource} onChange={mockOnChange} />);
 
-      const assignRoleInput = screen.getByLabelText('flows:core.executions.provisioning.assignRole.label');
-      fireEvent.change(assignRoleInput, {target: {value: 'editor-role'}});
-      fireEvent.blur(assignRoleInput);
+      await user.click(screen.getByLabelText(`flows:core.executions.provisioning.${property}.label`));
+      await user.click(screen.getByRole('option', {name}));
 
-      expect(mockOnChange).toHaveBeenCalledWith('data.properties.assignRole', 'editor-role', provisioningResource);
-    });
-
-    it('should call onChange without debounce when seedGroupsFromMapping checkbox is toggled', () => {
-      render(<ExecutionExtendedProperties resource={provisioningResource} onChange={mockOnChange} />);
-
-      const checkboxes = screen.getAllByRole('checkbox');
-      const seedGroupsFromMappingCheckbox = checkboxes[4];
-      fireEvent.click(seedGroupsFromMappingCheckbox);
-
-      expect(mockOnChange).toHaveBeenCalledWith('data.properties.seedGroupsFromMapping', true, provisioningResource);
-    });
-
-    it('should call onChange without debounce when seedRolesFromMapping checkbox is toggled', () => {
-      render(<ExecutionExtendedProperties resource={provisioningResource} onChange={mockOnChange} />);
-
-      const checkboxes = screen.getAllByRole('checkbox');
-      const seedRolesFromMappingCheckbox = checkboxes[5];
-      fireEvent.click(seedRolesFromMappingCheckbox);
-
-      expect(mockOnChange).toHaveBeenCalledWith('data.properties.seedRolesFromMapping', true, provisioningResource);
+      expect(mockOnChange).toHaveBeenCalledWith(`data.properties.${property}`, id, provisioningResource);
     });
   });
 
@@ -1508,6 +1549,32 @@ describe('ExecutionExtendedProperties', () => {
       render(<ExecutionExtendedProperties resource={resourceWithOuId} onChange={mockOnChange} />);
 
       expect(screen.getByLabelText('flows:core.executions.ouExecutor.parentOuId.label')).toHaveValue('existing-ou');
+    });
+
+    it('should toggle generateOuHandle', () => {
+      render(<ExecutionExtendedProperties resource={ouResource} onChange={mockOnChange} />);
+
+      const checkbox = screen.getByRole('checkbox', {name: 'flows:core.executions.ouExecutor.generateOuHandle.label'});
+      expect(checkbox).not.toBeChecked();
+      fireEvent.click(checkbox);
+
+      expect(mockOnChange).toHaveBeenCalledWith('data.properties.generateOuHandle', true, ouResource);
+    });
+
+    it('should show generateOuHandle as checked when enabled', () => {
+      const resourceWithGeneration = {
+        ...ouResource,
+        data: {
+          ...(ouResource as unknown as {data: object}).data,
+          properties: {generateOuHandle: true},
+        },
+      } as unknown as Resource;
+
+      render(<ExecutionExtendedProperties resource={resourceWithGeneration} onChange={mockOnChange} />);
+
+      expect(
+        screen.getByRole('checkbox', {name: 'flows:core.executions.ouExecutor.generateOuHandle.label'}),
+      ).toBeChecked();
     });
   });
 
@@ -1783,7 +1850,11 @@ describe('ExecutionExtendedProperties', () => {
     } as unknown as Resource;
 
     it('should render NoConfigProperties message', () => {
-      render(<ExecutionExtendedProperties resource={credentialSetterResource} onChange={mockOnChange} />);
+      render(
+        <FlowTypeContext.Provider value={FlowType.ADMINISTRATION}>
+          <ExecutionExtendedProperties resource={credentialSetterResource} onChange={mockOnChange} />
+        </FlowTypeContext.Provider>,
+      );
 
       expect(screen.getByText('flows:core.executions.noConfig.description')).toBeInTheDocument();
     });
@@ -1951,15 +2022,37 @@ describe('ExecutionExtendedProperties', () => {
 
     it.each([
       [ExecutionTypes.AccessChangeValidator, 'role_deletion', 'accessChangeValidator'],
-      [ExecutionTypes.RoleExecutor, 'role_deletion', 'roleExecutor'],
-      [ExecutionTypes.GroupExecutor, 'group_membership_removal', 'groupExecutor'],
+      [ExecutionTypes.RoleExecutor, 'role_permission_removal', 'roleExecutor'],
       [ExecutionTypes.CriteriaRevocation, 'advance_cutoff', 'criteriaRevocation'],
       [ExecutionTypes.IdentityGovernance, 'unlock', 'identityGovernance'],
+      [ExecutionTypes.SharingExecutor, 'validate', 'sharing'],
     ])('should route %s to its mode selector and hide the inputs editor', (name, mode, namespace) => {
       render(<ExecutionExtendedProperties resource={makeResource(name, mode)} onChange={mockOnChange} />);
 
       expect(screen.getByText(`flows:core.executions.${namespace}.description`)).toBeInTheDocument();
       expect(screen.getByText(`flows:core.executions.${namespace}.mode.label`)).toBeInTheDocument();
+      expect(screen.queryByText('flows:core.executions.inputs.title')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Verification executors', () => {
+    const verificationResource = (mode: string): Resource =>
+      ({
+        id: 'verification-1',
+        data: {action: {executor: {name: ExecutionTypes.AttributeVerification, mode}}},
+      }) as unknown as Resource;
+
+    it('should render the inputs editor for prepare, so the attribute can be set as a constant input', () => {
+      render(<ExecutionExtendedProperties resource={verificationResource('prepare')} onChange={mockOnChange} />);
+
+      expect(screen.getByText('flows:core.executions.noConfig.description')).toBeInTheDocument();
+      expect(screen.getByText('flows:core.executions.inputs.title')).toBeInTheDocument();
+    });
+
+    it('should render NoConfigProperties without the inputs editor for record', () => {
+      render(<ExecutionExtendedProperties resource={verificationResource('record')} onChange={mockOnChange} />);
+
+      expect(screen.getByText('flows:core.executions.noConfig.description')).toBeInTheDocument();
       expect(screen.queryByText('flows:core.executions.inputs.title')).not.toBeInTheDocument();
     });
   });

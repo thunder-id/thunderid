@@ -8,6 +8,7 @@ import {
   ResourceAvatar,
   UnsavedChangesBar,
 } from '@thunderid/components';
+import {useProjectScope, useRecordAccess} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage, isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
@@ -27,7 +28,7 @@ import {ArrowLeft, Edit} from '@wso2/oxygen-ui-icons-react';
 import {useState, useCallback, useMemo} from 'react';
 import type {ReactNode, SyntheticEvent, JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import {useNavigate, useParams, useLocation, Link} from 'react-router';
+import {Navigate, useNavigate, useParams, useLocation, Link} from 'react-router';
 import useGetOrganizationUnit from '../api/useGetOrganizationUnit';
 import useUpdateOrganizationUnit from '../api/useUpdateOrganizationUnit';
 import EditChildOrganizationUnitSettings from '../components/edit-organization-unit/child-organization-unit-settings/EditChildOrganizationUnitSettings';
@@ -108,6 +109,7 @@ export default function OrganizationUnitEditPage({
   const {data: organizationUnit, isLoading, error: fetchError, refetch} = useGetOrganizationUnit(id);
   const updateOrganizationUnit = useUpdateOrganizationUnit();
   const {resetTreeState} = useOrganizationUnit();
+  const {projectId} = useProjectScope();
 
   const [tabState, setTabState] = useState<{organizationUnitId: string | undefined; value: number}>({
     organizationUnitId: id,
@@ -234,6 +236,7 @@ export default function OrganizationUnitEditPage({
   };
 
   const resourceTypeTitle = t('navigation:pages.organizationUnits', 'Organization units');
+  const {readOnly: isReadOnly, canDelete} = useRecordAccess('ou', organizationUnit);
 
   if (isLoading) {
     return (
@@ -294,6 +297,12 @@ export default function OrganizationUnitEditPage({
     );
   }
 
+  // Another project's organization unit is not shown in the selected one: a deep link, a stale tab or a switch
+  // of project goes to the selected project's organization units instead.
+  if (projectId && organizationUnit.projectId !== projectId) {
+    return <Navigate to={listUrl} replace />;
+  }
+
   return (
     <PageContent>
       <DocumentTitle title={organizationUnit.name} />
@@ -312,7 +321,7 @@ export default function OrganizationUnitEditPage({
             size={55}
             variant="rounded"
             supportedShapes={['rounded']}
-            editable={!organizationUnit.isReadOnly}
+            editable={!isReadOnly}
             value={editedOU.logoUrl ?? organizationUnit.logoUrl ?? undefined}
             fallback={OrganizationUnitTreeConstants.DEFAULT_AVATAR}
             editAriaLabel={t('organizationUnits:edit.page.logoUpdate.label', 'Update logo')}
@@ -354,9 +363,10 @@ export default function OrganizationUnitEditPage({
             ) : (
               <>
                 <Typography variant="h3">{editedOU.name ?? organizationUnit.name}</Typography>
-                {!organizationUnit.isReadOnly && (
+                {!isReadOnly && (
                   <IconButton
                     size="small"
+                    aria-label={t('organizationUnits:edit.page.editName', 'Edit organization unit name')}
                     onClick={() => {
                       setTempName(editedOU.name ?? organizationUnit.name);
                       setIsEditingName(true);
@@ -412,9 +422,10 @@ export default function OrganizationUnitEditPage({
                   {(editedOU.description !== undefined ? editedOU.description : organizationUnit.description) ??
                     t('organizationUnits:edit.page.description.empty')}
                 </Typography>
-                {!organizationUnit.isReadOnly && (
+                {!isReadOnly && (
                   <IconButton
                     size="small"
+                    aria-label={t('organizationUnits:edit.page.editDescription', 'Edit description')}
                     onClick={() => {
                       setTempDescription(
                         (editedOU.description !== undefined ? editedOU.description : organizationUnit.description) ??
@@ -477,12 +488,14 @@ export default function OrganizationUnitEditPage({
           aria-controls={renderDefaultFlowsSettings ? 'ou-tabpanel-5' : 'ou-tabpanel-4'}
           sx={{textTransform: 'none'}}
         />
-        <Tab
-          label={t('organizationUnits:edit.page.tabs.advanced')}
-          id={renderDefaultFlowsSettings ? 'ou-tab-6' : 'ou-tab-5'}
-          aria-controls={renderDefaultFlowsSettings ? 'ou-tabpanel-6' : 'ou-tabpanel-5'}
-          sx={{textTransform: 'none'}}
-        />
+        {canDelete && (
+          <Tab
+            label={t('organizationUnits:edit.page.tabs.advanced')}
+            id={renderDefaultFlowsSettings ? 'ou-tab-6' : 'ou-tab-5'}
+            aria-controls={renderDefaultFlowsSettings ? 'ou-tabpanel-6' : 'ou-tabpanel-5'}
+            sx={{textTransform: 'none'}}
+          />
+        )}
       </Tabs>
 
       {/* Tab Panels */}
@@ -524,9 +537,11 @@ export default function OrganizationUnitEditPage({
         </TabPanel>
 
         {/* Advanced Tab */}
-        <TabPanel value={activeTab} index={renderDefaultFlowsSettings ? 6 : 5}>
-          {!organizationUnit.isReadOnly && <DangerZoneSection onDeleteClick={() => setDeleteDialogOpen(true)} />}
-        </TabPanel>
+        {canDelete && (
+          <TabPanel value={activeTab} index={renderDefaultFlowsSettings ? 6 : 5}>
+            <DangerZoneSection onDeleteClick={() => setDeleteDialogOpen(true)} />
+          </TabPanel>
+        )}
       </>
 
       {/* Delete Dialog */}
@@ -545,7 +560,7 @@ export default function OrganizationUnitEditPage({
           saveLabel={t('organizationUnits:edit.actions.save.label')}
           savingLabel={t('organizationUnits:edit.actions.saving.label')}
           isSaving={updateOrganizationUnit.isPending}
-          saveDisabled={organizationUnit.isReadOnly === true}
+          saveDisabled={isReadOnly}
           error={
             updateOrganizationUnit.error
               ? getErrorMessage(

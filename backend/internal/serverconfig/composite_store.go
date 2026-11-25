@@ -3,7 +3,10 @@
 
 package serverconfig
 
-import "context"
+import (
+	"context"
+	"encoding/json"
+)
 
 // compositeServerConfigStore combines the file-based (read-only) and database (writable) stores.
 // Reads take the readOnly layer from the file store and the writable layer from the db store; writes
@@ -36,4 +39,9 @@ func (c *compositeServerConfigStore) GetServerConfig(ctx context.Context,
 
 func (c *compositeServerConfigStore) UpsertServerConfig(ctx context.Context, cfg ServerConfig) error {
 	return c.dbStore.UpsertServerConfig(ctx, cfg)
+}
+
+func (c *compositeServerConfigStore) ReplaceServerConfigIf(ctx context.Context, cfg ServerConfig,
+	expected json.RawMessage) (bool, error) {
+	return c.dbStore.ReplaceServerConfigIf(ctx, cfg, expected)
 }

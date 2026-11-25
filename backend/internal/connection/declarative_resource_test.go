@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
@@ -27,10 +28,12 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/system/secretresolver"
+	"github.com/thunder-id/thunderid/internal/system/varname"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/connection/authzenpdpmock"
 	"github.com/thunder-id/thunderid/tests/mocks/connection/httpconnectionmock"
+	"github.com/thunder-id/thunderid/tests/mocks/eventbusmock"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
 	"github.com/thunder-id/thunderid/tests/mocks/notification/notificationmock"
 
@@ -337,6 +340,41 @@ tokenExchangeEnabled: true
 	s.Equal("https://accounts.google.com", values[idp.PropIssuer])
 	s.Equal("https://www.googleapis.com/oauth2/v3/certs", values[idp.PropJwksEndpoint])
 	s.Equal("true", values[idp.PropTokenExchangeEnabled])
+}
+
+func (s *DeclarativeResourceTestSuite) TestTrustedIssuerIDJagEnabledRoundTripsThroughExport() {
+	dto := providers.IDPDTO{
+		ID: "trusted-1", Name: "IDJAG", Type: providers.IDPTypeOIDC, OUID: "ou-1",
+		Properties: []cmodels.Property{
+			mustProperty(s.T(), idp.PropIssuer, "https://issuer.example.com", false),
+			mustProperty(s.T(), idp.PropJwksEndpoint, "https://issuer.example.com/oauth2/jwks", false),
+			mustProperty(s.T(), idp.PropTokenExchangeEnabled, "false", false),
+			mustProperty(s.T(), idp.PropIDJagEnabled, "true", false),
+		},
+	}
+	model, err := connectionModelFromIDPDTO(dto)
+	s.Require().NoError(err)
+	s.Require().NotNil(model.IDJagEnabled)
+	s.True(*model.IDJagEnabled)
+
+	doc, err := yaml.Marshal(model)
+	s.Require().NoError(err)
+	s.Contains(string(doc), "idJagEnabled: true")
+
+	var node yaml.Node
+	s.Require().NoError(yaml.Unmarshal(doc, &node))
+	resource, err := ParseConnectionFromNode(node.Content[0])
+	s.Require().NoError(err)
+	idpDTO, ok := resource.(*providers.IDPDTO)
+	s.Require().True(ok)
+	s.Require().NoError(idp.ValidateIDP(idpDTO))
+
+	values, err := propertyValues(idpDTO.Properties)
+	s.Require().NoError(err)
+	s.Equal("true", values[idp.PropIDJagEnabled])
+	s.Equal("false", values[idp.PropTokenExchangeEnabled])
+	s.Equal("https://issuer.example.com", values[idp.PropIssuer])
+	s.Equal("https://issuer.example.com/oauth2/jwks", values[idp.PropJwksEndpoint])
 }
 
 func (s *DeclarativeResourceTestSuite) TestParseConnectionFromNodeSMSVendor() {
@@ -1233,9 +1271,31 @@ func (s *DeclarativeResourceTestSuite) TestValidateConnectionDTOOwner() {
 		dto := newIDP("", "acme")
 		s.mockIDP.On("ResolveIdentityProviderOU", mock.Anything, dto).
 			Run(func(mock.Arguments) { dto.OUID = resolvedOUID }).Return((*tidcommon.ServiceError)(nil)).Once()
+		s.mockIDP.On("ValidateAuthorizationRuleMappingTargets", mock.Anything, dto).
+			Return((*tidcommon.ServiceError)(nil)).Once()
 		s.mockIDP.On("ApplySchemaAwareDefaults", mock.Anything, dto).Return().Once()
 		s.NoError(validateConnectionDTOWrapper(dto, s.mockIDP, nil, nil, nil))
 		s.Equal(resolvedOUID, dto.OUID)
+	})
+	s.Run("an identity provider fails when its rules name a target its owner cannot grant", func() {
+		dto := newIDP(resolvedOUID, "")
+		s.mockIDP.On("ResolveIdentityProviderOU", mock.Anything, dto).Return((*tidcommon.ServiceError)(nil)).Once()
+		s.mockIDP.On("ValidateAuthorizationRuleMappingTargets", mock.Anything, dto).Return(
+			tidcommon.CustomServiceError(idp.ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
+				Key: "error.idpservice.authorization_rule_mapping_group_not_in_ou_description",
+				DefaultValue: "authorization rule mapping names a group outside the identity provider's " +
+					"organization unit: '{{param(groupId)}}'",
+				Params: map[string]string{"groupId": "group-9"},
+			})).Once()
+		err := validateConnectionDTOWrapper(dto, s.mockIDP, nil, nil, nil)
+		s.ErrorContains(err, `connection resource "idp-1" has an invalid authorization mapping`)
+		s.ErrorContains(err, "'group-9'")
+	})
+	s.Run("an identity provider with no owner fails on the owner, before its rules are checked", func() {
+		dto := newIDP("", "")
+		s.mockIDP.On("ResolveIdentityProviderOU", mock.Anything, dto).Return((*tidcommon.ServiceError)(nil)).Once()
+		err := validateConnectionDTOWrapper(dto, s.mockIDP, nil, nil, nil)
+		s.ErrorContains(err, `connection resource "idp-1" needs an organization unit`)
 	})
 	s.Run("an identity provider fails when its owner cannot be resolved", func() {
 		dto := newIDP("", "missing")
@@ -1334,12 +1394,20 @@ func (s *DeclarativeResourceTestSuite) apiKeyConnectionExporter(vendor string,
 	return newConnectionExporter(s.mockIDP, s.mockNotif, pdpService, httpService)
 }
 
-// exportConnection exports c-1 through the template-style export, as the export API does.
-func exportConnection(exporter *connectionExporter) (*export.ExportResponse, *tidcommon.ServiceError) {
-	return export.Initialize(http.NewServeMux(), []declarativeresource.ResourceExporter{exporter},
-		export.TemplatePlaceholders).ExportResources(context.Background(), &export.ExportRequest{
+// exportConnection exports c-1 through the template-style export, as the export API writes it.
+func exportConnection(t *testing.T, exporter *connectionExporter) (*export.ExportResponse,
+	*tidcommon.ServiceError) {
+	exportService, err := export.Initialize(http.NewServeMux(), []declarativeresource.ResourceExporter{exporter},
+		export.TemplatePlaceholders, eventbusmock.NewEventBusInterfaceMock(t))
+	require.NoError(t, err)
+	return exportService.ReadResources(context.Background(), &export.ExportRequest{
 		Connections: []string{"c-1"}, Options: &export.ExportOptions{Format: "yaml"},
 	})
+}
+
+// riskEngineVar is the variable an export names a header of the connection c-1.
+func riskEngineVar(header string) string {
+	return varname.DeriveVariableName("connection", "c-1", header)
 }
 
 func (s *DeclarativeResourceTestSuite) TestAPIKeyHeadersTheExportCannotNameAreRefused() {
@@ -1352,7 +1420,7 @@ func (s *DeclarativeResourceTestSuite) TestAPIKeyHeadersTheExportCannotNameAreRe
 		"headers deriving one parameter": {
 			map[string]string{"X-Region_Key": "first-s3cret", "X_Region-Key": "second-s3cret"},
 			"the API-key headers 'X-Region_Key' and 'X_Region-Key' map to the same parameter " +
-				"CONNECTION_RISK_ENGINE_X_REGION_KEY"},
+				riskEngineVar("X-Region-Key")},
 	}
 	for _, vendor := range []string{httpVendorName, smsGatewayVendorName, authZENPDPVendorName} {
 		for name, tc := range cases {
@@ -1370,7 +1438,7 @@ func (s *DeclarativeResourceTestSuite) TestAPIKeyHeadersTheExportCannotNameAreRe
 				for _, value := range tc.headers {
 					s.NotContains(exportErr.Error, value)
 				}
-				result, svcErr := exportConnection(exporter)
+				result, svcErr := exportConnection(s.T(), exporter)
 				s.Require().NotNil(svcErr, "the connection was exported")
 				s.Nil(result)
 			})
@@ -1383,19 +1451,19 @@ func (s *DeclarativeResourceTestSuite) TestAPIKeyHeadersExportAsParameters() {
 		s.Run(vendor, func() {
 			s.SetupTest()
 
-			result, svcErr := exportConnection(s.apiKeyConnectionExporter(vendor,
+			result, svcErr := exportConnection(s.T(), s.apiKeyConnectionExporter(vendor,
 				map[string]string{"X-Tenant-Key": "tenant-s3cret", "X-Region-Key": "region-s3cret"}))
 
 			s.Require().Nil(svcErr)
 			s.Require().Len(result.Files, 1)
 			content := result.Files[0].Content
-			s.Contains(content, "X-Tenant-Key: {{.CONNECTION_RISK_ENGINE_X_TENANT_KEY}}")
-			s.Contains(content, "X-Region-Key: {{.CONNECTION_RISK_ENGINE_X_REGION_KEY}}")
+			s.Contains(content, "X-Tenant-Key: {{."+riskEngineVar("X-Tenant-Key")+"}}")
+			s.Contains(content, "X-Region-Key: {{."+riskEngineVar("X-Region-Key")+"}}")
 			s.NotContains(content, "tenant-s3cret")
 			s.NotContains(content, "region-s3cret")
 			s.Require().NotNil(result.EnvFile)
-			s.Contains(result.EnvFile.Content, "CONNECTION_RISK_ENGINE_X_TENANT_KEY=tenant-s3cret")
-			s.Contains(result.EnvFile.Content, "CONNECTION_RISK_ENGINE_X_REGION_KEY=region-s3cret")
+			s.Contains(result.EnvFile.Content, riskEngineVar("X-Tenant-Key")+"=tenant-s3cret")
+			s.Contains(result.EnvFile.Content, riskEngineVar("X-Region-Key")+"=region-s3cret")
 		})
 	}
 }

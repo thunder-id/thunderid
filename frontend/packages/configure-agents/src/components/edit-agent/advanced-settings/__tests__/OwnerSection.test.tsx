@@ -24,7 +24,7 @@ describe('OwnerSection', () => {
     ouId: 'ou-1',
     type: 'default',
     display: 'Test Agent',
-    owner: 'user-1',
+    owner: {id: 'user-1', idType: 'uuid', isLocal: true},
   };
 
   beforeEach(() => {
@@ -55,7 +55,13 @@ describe('OwnerSection', () => {
   });
 
   it('prefers the edited owner over the saved one', () => {
-    render(<OwnerSection agent={mockAgent} editedAgent={{owner: 'user-2'}} onFieldChange={mockOnFieldChange} />);
+    render(
+      <OwnerSection
+        agent={mockAgent}
+        editedAgent={{owner: {id: 'user-2', idType: 'uuid', isLocal: true}}}
+        onFieldChange={mockOnFieldChange}
+      />,
+    );
 
     expect(screen.getByText('Bob')).toBeInTheDocument();
   });
@@ -70,16 +76,114 @@ describe('OwnerSection', () => {
     await user.click(within(listbox).getByText('Bob'));
 
     await waitFor(() => {
-      expect(mockOnFieldChange).toHaveBeenCalledWith('owner', 'user-2');
+      expect(mockOnFieldChange).toHaveBeenCalledWith('owner', {
+        id: 'user-2',
+        idType: 'uuid',
+        isLocal: true,
+      });
     });
   });
 
   it('disables the picker for read-only agents', () => {
+    render(<OwnerSection agent={mockAgent} editedAgent={{}} onFieldChange={mockOnFieldChange} readOnly />);
+
+    expect(screen.getByRole('combobox')).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('locks the owner of a personal agent and says why', () => {
     render(
-      <OwnerSection agent={{...mockAgent, isReadOnly: true}} editedAgent={{}} onFieldChange={mockOnFieldChange} />,
+      <OwnerSection
+        agent={{...mockAgent, kind: 'personal-assistant'}}
+        editedAgent={{}}
+        onFieldChange={mockOnFieldChange}
+      />,
     );
 
     expect(screen.getByRole('combobox')).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('radio', {name: 'Internal'})).toBeDisabled();
+    expect(screen.getByRole('radio', {name: 'External'})).toBeDisabled();
+    expect(
+      screen.getByText('The user this personal agent acts for. It keeps the owner it was registered for.'),
+    ).toBeInTheDocument();
+  });
+
+  it('opens an external owner on External with its type and ID, ready to change', () => {
+    render(
+      <OwnerSection
+        agent={{...mockAgent, owner: {id: 'alice@example.com', idType: 'email', isLocal: false}}}
+        editedAgent={{}}
+        onFieldChange={mockOnFieldChange}
+      />,
+    );
+
+    expect(screen.getByRole('radio', {name: 'External'})).toBeChecked();
+    expect(screen.getByRole('textbox')).toHaveValue('alice@example.com');
+    expect(screen.getByRole('textbox')).toBeEnabled();
+    expect(screen.getByRole('combobox')).toHaveTextContent('Email');
+    expect(mockOnFieldChange).not.toHaveBeenCalled();
+  });
+
+  it('sets an external owner from the type and ID entered', async () => {
+    const user = userEvent.setup();
+    render(<OwnerSection agent={mockAgent} editedAgent={{}} onFieldChange={mockOnFieldChange} />);
+
+    await user.click(screen.getByRole('radio', {name: 'External'}));
+    await user.type(screen.getByRole('textbox'), 'jane@example.com');
+
+    expect(mockOnFieldChange).toHaveBeenLastCalledWith('owner', {
+      id: 'jane@example.com',
+      idType: 'email',
+      isLocal: false,
+    });
+  });
+
+  it('sets a mobile number owner and says when the number is not in international format', async () => {
+    const user = userEvent.setup();
+    render(<OwnerSection agent={mockAgent} editedAgent={{}} onFieldChange={mockOnFieldChange} />);
+
+    await user.click(screen.getByRole('radio', {name: 'External'}));
+    await user.click(screen.getByRole('combobox'));
+    await user.click(within(await screen.findByRole('listbox')).getByText('Mobile number'));
+    await user.type(screen.getByRole('textbox'), '0771234567');
+
+    expect(screen.getByText(/international format/)).toBeInTheDocument();
+    expect(mockOnFieldChange).toHaveBeenLastCalledWith('owner', {id: '0771234567', idType: 'mobile', isLocal: false});
+  });
+
+  it('goes back to the saved owner when Internal is chosen again', async () => {
+    const user = userEvent.setup();
+    render(<OwnerSection agent={mockAgent} editedAgent={{}} onFieldChange={mockOnFieldChange} />);
+
+    await user.click(screen.getByRole('radio', {name: 'External'}));
+    await user.click(screen.getByRole('radio', {name: 'Internal'}));
+
+    expect(mockOnFieldChange).toHaveBeenLastCalledWith('owner', undefined);
+    expect(screen.getByText('Alice')).toBeInTheDocument();
+  });
+
+  it('replaces an external owner with a user of this deployment', async () => {
+    const user = userEvent.setup();
+    render(
+      <OwnerSection
+        agent={{...mockAgent, owner: {id: 'alice@example.com', idType: 'email', isLocal: false}}}
+        editedAgent={{}}
+        onFieldChange={mockOnFieldChange}
+      />,
+    );
+
+    await user.click(screen.getByRole('radio', {name: 'Internal'}));
+    expect(screen.getByText('No owner assigned')).toBeInTheDocument();
+    await user.click(screen.getByRole('combobox'));
+    await user.click(within(await screen.findByRole('listbox')).getByText('Bob'));
+
+    expect(mockOnFieldChange).toHaveBeenLastCalledWith('owner', {id: 'user-2', idType: 'uuid', isLocal: true});
+  });
+
+  it('does not let the owner kind change on a read-only agent', () => {
+    render(<OwnerSection agent={mockAgent} editedAgent={{}} onFieldChange={mockOnFieldChange} readOnly />);
+
+    expect(screen.getByRole('radio', {name: 'Internal'})).toBeDisabled();
+    expect(screen.getByRole('radio', {name: 'External'})).toBeDisabled();
   });
 
   it('falls back to the username attribute when no display name is set', () => {

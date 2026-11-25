@@ -71,15 +71,32 @@ curl -kL -X POST https://localhost:8090/resource-servers \
 | Field | Required | Description |
 |-------|----------|-------------|
 | `name` | Yes | Display name for the resource server. Must be unique. |
-| `identifier` | Yes | Unique identifier for the resource server. When set to an absolute URI (for example, `https://api.example.com/booking`), the resource server is used in RFC 8707 resource indicator flows and the identifier becomes the access token audience claim value. For an MCP resource server, the identifier must be an `http` or `https` URL with no fragment, such as `https://mcp.example.com/mcp`. |
+| `identifier` | Yes | Unique identifier for the resource server. When set to an absolute URI (for example, `https://api.example.com/booking`), the resource server is used in RFC 8707 resource indicator flows and the identifier becomes the access token audience claim value. For URLs with a host, uniqueness follows RFC 3986 URI equivalence: `https://API.example.com` and `https://api.example.com/` both conflict with `https://api.example.com`, while paths stay case-sensitive, so `https://api.example.com/Booking` and `https://api.example.com/booking/` are distinct from `https://api.example.com/booking`. Other identifiers must match exactly to conflict. For an MCP resource server, the identifier must be an `http` or `https` URL with no fragment, such as `https://mcp.example.com/mcp`. |
 | `type` | No | `API`, `MCP`, or `CUSTOM`. Defaults to `CUSTOM`. Immutable after creation. |
-| `ouId` | Yes | Organization unit ID. |
-| `delimiter` | No | Character that separates hierarchy levels in permission strings. Defaults to `:`. Immutable after creation. Allowed characters: `a-z A-Z 0-9 . _ : - /`. |
+| `ouId` | No | Organization unit ID. When left out, the resource server is placed in the system organization unit. |
+| `projectId` | No | ID of the project the resource server belongs to. See [Scope Resource Servers to a Project](#scope-resource-servers-to-a-project). |
+| `delimiter` | No | Character that separates hierarchy levels in permission strings. Defaults to `:`. Immutable after creation. Allowed values: `.`, `_`, `:`, `-`, `/`. |
+| `hierarchicalPermissions` | No | Whether a grant also authorizes descendant permissions. Defaults to `false`. Immutable after creation. |
 | `description` | No | Description of the resource server. |
 
 :::note
-The `delimiter` field cannot be changed after creation. Plan this value before creating the resource server.
+The delimiter and permission-matching mode cannot be changed after creation. Choose both before creating the resource server.
 :::
+
+### Granting a Permission and What Is Beneath It
+
+By default, permission matching is exact. Holding `reservations` does not authorize `reservations:create`; the role must grant that child explicitly.
+
+In **Configure permission settings**, select **Use hierarchy-aware matching** to make a grant of `reservations` also authorize `reservations:create` and any permission added beneath it later. Holding every child does not grant the parent.
+
+On a hierarchical server:
+
+- **Scope requests** evaluated by built-in RBAC return the held descendants declared on that server when the subject does not hold the requested parent. Built-in System permissions are also recognized from their code definitions.
+- **Consent** shows one switch per granted branch, with the permissions beneath it listed read-only. Approving a branch approves everything beneath it. If the display tree cannot be loaded, the prompt shows the authorized permissions without the expanded tree.
+- **Tokens** omit a child scope when its parent is also returned. A request for `reservations reservations:create` returns `reservations`, so APIs that consume the token must apply the same hierarchy and delimiter.
+- **Revocation** of a parent through a revocation flow invalidates existing tokens for its whole branch. Obtain a new token to use any child permissions the role keeps. Action-deletion flows revoke tokens explicitly carrying the deleted scope; parent-only tokens remain active. Your API or gateway must enforce whether deleted operations remain available.
+
+An external AuthZEN policy service determines authorization decisions. When hierarchy-aware matching is enabled, consent and token processing still use the configured hierarchy. Your policy service and API must follow the same parent-grant semantics.
 
 ## Define Permissions
 
@@ -173,6 +190,8 @@ curl -kL https://localhost:8090/resource-servers?limit=10&offset=0 \
   -H 'Authorization: Bearer <access-token>'
 ```
 
+To list the resource servers an organization unit owns, add `filter=ouId eq "<ou-id>"`. It is the only supported filter expression. Any other filter fails the request with `RES-1027`.
+
 ## Get Resource Server Details
 
 ```bash
@@ -196,6 +215,19 @@ curl -kL -X PUT https://localhost:8090/resource-servers/<resource-server-id> \
     "ouId": "<organization-unit-id>"
   }'
 ```
+
+## Scope Resource Servers to a Project
+
+On the control plane, a resource server can belong to a project. A resource server without a `projectId` belongs to no project and stays available to every project.
+
+- **Create or update**: set `projectId` in the request body of `POST /resource-servers` or `PUT /resource-servers/{id}`. On create, a resource server in a project without `ouId` is placed in the system organization unit. An update without `ouId` keeps the resource server's organization unit. With `ouId`, it must be the system organization unit or an organization unit of the project. Any other organization unit fails the request with `RES-1026`, and a project that does not exist fails it with `RES-1025`.
+- **Update without `projectId` or `ouId`**: the resource server keeps its current project and organization unit. A different `projectId` moves the resource server to that project.
+- **List**: `GET /resource-servers?projectId=<project-id>` returns the resource servers of the project. To list only the ones an organization unit in the project owns, add `filter=ouId eq "<ou-id>"`. A project that does not exist returns an empty list.
+- **Delete the project**: a project that still has resource servers, runtime or declared, cannot be deleted. `DELETE /projects/{id}` fails with `PRJ-1013` until its resource servers are deleted or moved to another project. The API cannot delete or move a resource server defined in a declarative resource file, so remove it from the file or set a different `projectId` there, and reload the configuration.
+
+A project groups resource servers for management only. At runtime, a resource server is found by its `identifier` whatever project it belongs to, so the `identifier` stays unique across all projects.
+
+A server without projects, such as the all-in-one server, keeps the `projectId` it receives without checking it, so configuration imported from a control plane keeps its project.
 
 ## Delete a Resource Server
 

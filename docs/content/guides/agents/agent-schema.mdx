@@ -8,14 +8,16 @@ description: The agent schema in {{ProductName}} defines the attributes every ag
 
 # Agent Schema
 
-The agent schema defines the set of attributes every agent carries. There is one built-in schema, shared by all agents: it belongs to the single agent type, `default`, and <ProductName /> does not accept other agent types, so there is no per-agent-class schema. Each agent holds its own values for the attributes the schema defines. Attributes describe and classify an agent, for example which model it runs or what function it serves, and any attribute can be added to the agent's tokens for a downstream service to read.
+The agent schema defines the set of attributes an agent carries. Each schema belongs to an agent type, and every agent is of one agent type. <ProductName /> ships one agent type, `default`, in the `default` organization unit. You can create more agent types, one per organization unit, to give a class of agents its own schema. Each agent holds its own values for the attributes its type's schema defines. Attributes describe and classify an agent, for example which model provider it runs on, and any attribute that is not a credential can be added to the agent's tokens for a downstream service to read.
 
-The agent type has the handle `default` and the display name `Default`. The handle is the identifier that agents and applications use to refer to the agent type. It cannot be changed. The display name is free text and can be changed at any time.
+An agent type has a handle and a display name. The built-in agent type has the handle `default` and the display name `Default`. The handle is the identifier that agents and applications use to refer to the agent type. It is unique among agent types and cannot be changed. The display name is free text and can be changed at any time, unless the agent type is read-only because a resource file defines it.
+
+An organization unit can have only one agent type. Creating an agent type in an organization unit that already has one, or moving an agent type into such an organization unit, fails with error `USRS-1021`. When an agent is created, or an update changes its organization unit or type, the agent's organization unit must be its agent type's organization unit or one of its descendants, otherwise the request fails with error `AGT-1053`. In those requests, an agent type that does not exist fails with error `AGT-1054`, and so does an agent type outside the agent's organization unit that the caller cannot read. Moving an agent type to another organization unit does not move its agents or check them again. The server checks agents that a resource file defines again when it starts, and the start fails if one is outside its agent type's organization unit. An agent type can be deleted only when no agent is of that type and no application, agent, or flow lists it in its allowed agent types; otherwise the deletion fails with error `USRS-1022`. Delete those agents or change their `type`, and remove the agent type from those lists, first.
 
 ## Why an agent has a schema
 
 - **Consistent metadata.** Every agent is described by the same fields, so agents are classified and governed the same way across the organization.
-- **Token claims.** Selected attributes are added to the agent's access token, so a resource can act on them, for example route by `modelProvider` or restrict by `function`.
+- **Token claims.** Selected attributes are added to the agent's access token, so a resource can act on them, for example route by `modelProvider`.
 - **Secrets.** An attribute marked as a credential is stored hashed and never returned, so an agent can carry a sensitive value without exposing it.
 
 ## Attributes an agent can have
@@ -27,7 +29,11 @@ Each attribute in the schema has:
 - **required**: whether every agent must set a value;
 - **unique**: whether the value must be unique across agents;
 - **credential**: whether the value is stored hashed and hidden (string or number only);
-- for a string, an optional **regex pattern**; for email or mobile, a **regex pattern** prefilled by the Console; for an enum, the list of **allowed values**.
+- for a string, an optional **regex pattern**; for email or mobile, a **regex pattern** prefilled by the Console; for an enum, the list of **allowed values**;
+- a **display order** (`display.order`): its position, lowest first, on the Console's **Add agent** form and the agent's **Attributes** tab, and among the fields a flow's **Provisioning** step asks for. Use the up and down arrows in the agent type's **Schema** tab to change it;
+- **Ask when created** (`display.onCreate.hidden`, default `false`): whether an optional attribute is asked for when an agent is created, on the **Add agent** form and by a flow's **Provisioning** step. Clearing it sets `hidden` to `true`. Required attributes are always asked for.
+
+Fields that a flow's prompt lists itself keep the order the flow gives them and are always shown. In the default flow and the Own Identity flow, **Agent Details** asks for the attributes Provisioning requests, so it follows the display order and **Ask when created**. The other supplied flows list their fields on **Agent Details** themselves. The display order and **Ask when created** apply to top-level attributes only. They work as they do for user types; see [Attribute Order and Account Creation](../../users/user-type-reference#attribute-order-and-account-creation).
 
 Email and mobile attributes hold string values and support the **required** and **unique** flags. They cannot be credentials or define enum values. The Console requires a regex pattern for these types.
 
@@ -35,19 +41,78 @@ If an API request omits the pattern, the backend validates email addresses again
 
 ## The default schema
 
-The built-in schema defines three optional attributes:
+The built-in schema defines a required name and two optional attributes:
 
-| Attribute | Type | Values |
-|---|---|---|
-| `modelProvider` | enum | `openai`, `anthropic`, `gemini`, `mistral`, `custom` |
-| `model` | string | free text, for example the model name |
-| `function` | enum | `task-automation`, `rag-retrieval`, `code-gen`, `data-analysis`, `orchestrator`, `sub-agent`, `assistant`, `custom` |
+| Attribute | Type | Required | Values |
+|---|---|---|---|
+| `name` | string | Yes | A unique name for the agent |
+| `modelProvider` | enum | No | `openai`, `anthropic`, `gemini`, `mistral`, `custom` |
+| `password` | string, credential | No | A secret the agent holds. It is stored hashed and never returned |
 
-None are required, so an agent can set any, all, or none of them. Set the values per agent on the **Attributes** tab. See [Attribute values](../manage-agents#attribute-values).
+Set every value except `password` in **Agent Details** during onboarding or on the agent's **Attributes** tab. API requests and declarative agent resources store the name in `attributes.name`. The schema controls its validation, just as it does for other attributes.
+
+The optional `password` is not shown in either place. Send it in `attributes` when you create an agent through the API. An update of the agent that names a credential fails with `AGT-1068`, so change it with a credential update instead:
+
+- `POST /agents/{id}/update-credentials` sets the new value under `credentials`. It fails with `AGT-1069` for a personal agent.
+- `POST /users/me/agents/{id}/update-credentials` lets the owner of a personal agent set the new value under `attributes`.
+
+Replacing a password the agent already holds revokes its tokens and ends its sessions, as for a user.
+
+With the default schema, a missing name fails schema validation (`AGT-1015`), and a duplicate name causes an attribute conflict (`AGT-1014`). These errors apply to schema attributes, not to a separate agent-name field.
+
+### Display attribute
+
+The agent type's `systemAttributes.display` setting selects the schema attribute used as the agent's label in the Console. The default type selects `name`. This setting stores an attribute path, not the agent's name itself:
+
+```yaml
+systemAttributes:
+  display: name
+schema:
+  name:
+    type: string
+    displayName: Name
+    required: true
+    unique: true
+```
+
+Set `systemAttributes.display` to another schema attribute to use that attribute as the label. Changing this setting does not rename attributes or change the schema's required and unique rules for `name`.
+
+Agent get and list requests return the resolved `display` and `ouHandle` fields when called with `include=display`. If no display attribute is configured or its value is missing or empty, the label falls back to the agent ID. `display` is a read-only label, not a field to send when creating or updating an agent. The [import summary](../../declarative-configurations/import-resources#agent-resources) also resolves labels from the agent type's display setting.
+
+### Collect attributes during onboarding
+
+The schema defines the data an agent must have. The onboarding flow defines when and how an administrator supplies it. The Provisioning executor requests missing required attributes and can also request optional attributes with `includeOptional: true`. Enum attributes are offered as selections using the schema's allowed values.
+
+When adding an attribute, add a field to the flow's attribute form or connect Provisioning's incomplete output to a dynamic input prompt. If a flow contains a manually configured selection, update its choices when changing the schema's enum values. Flows do not follow a schema change on their own, so when you remove or rename an attribute, update the flows that name it. See [Configure agent onboarding](../manage-agents#configure-agent-onboarding).
 
 ## Change the schema
 
-- **Console:** click **Schema** on the **Agents** list. Add or edit attributes, set each one's type, display name, required, unique, and credential flags, a regex pattern (string, email, or mobile) or allowed values (enum), then save from the unsaved-changes bar.
-- **API:** manage the schema through the agent-type endpoints. An update must send a `displayName`. The `handle` is optional. If sent, it must be `default`, otherwise the update fails with error `USRS-1014`. See the [Agent Types section of the API Reference](../../../apis#tag/agent-types).
+- **Console:** go to **Agent types** and open the agent type. On the **Schema** tab, add or edit attributes, set each one's type, display name, required, unique, and credential flags, a regex pattern (string, email, or mobile) or allowed values (enum), then save from the unsaved-changes bar.
+- **API:** manage the schema through the agent-type endpoints. An update must send a `displayName`. The `handle` is optional. If sent, it must be the agent type's current handle, otherwise the update fails with error `USRS-1017`. See the [Agent Types section of the API Reference](../../../apis#tag/agent-types).
 
-Because the schema is shared by all agents, a change to it applies to every agent at once.
+Because a schema is shared by every agent of its type, a change to it applies to all of those agents at once.
+
+A value an agent holds for an attribute its type does not declare stays stored until the agent is next updated, and the update drops it. To keep recording an attribute, add it to the schema before updating the agent.
+
+## Create an agent type
+
+An organization unit can have one agent type. To create one in the Console:
+
+1. Go to **Agent types** and click **Create agent type**.
+2. If there is more than one organization unit, choose the one that owns the agent type and click **Continue**.
+3. Enter a name. The Console suggests a handle from the name, which you can edit. The handle must not belong to another agent type, and you cannot change it after the agent type is created. Click **Continue**.
+4. Add the attributes, choose the **Display attribute** that names agents of this type in listings, and click **Create agent type**.
+
+If the organization unit already has an agent type, the Console names that agent type and offers to open it. Choose another organization unit, or edit the existing agent type unless it is read-only.
+
+## Delete an agent type
+
+1. Go to **Agent types** and open the agent type.
+2. On the **Advanced** tab, click **Delete**, then confirm.
+
+You can also click the delete icon on the agent type's row in the list. The delete is refused while agents are of the type, or while applications, agents, or flows list it in their allowed agent types. Delete or change those agents and remove the agent type from those lists first. The **Agent type** column on the **Agents** list shows which agents are of the type. A read-only agent type cannot be edited or deleted.
+
+## Related Guides
+
+- [Create and Manage Agents](../manage-agents)
+- [User Type Reference](../../users/user-type-reference)

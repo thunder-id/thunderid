@@ -23,12 +23,12 @@ export interface AdministrationProviderProps extends PropsWithChildren {
  *
  * @example
  * A console whose deployment holds configuration only, so nothing has sessions to clean up,
- * except for users, whose deletion still runs through the flow:
+ * except for client secrets, whose regeneration still runs through the flow:
  * ```tsx
  * <AdministrationProvider
  *   administration={{
  *     mode: AdministrationModes.NATIVE,
- *     features: {users: {operations: {delete: AdministrationModes.FLOW}}},
+ *     features: {applications: {operations: {regenerateSecret: AdministrationModes.FLOW}}},
  *   }}
  * >
  *   <Routes />

@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"strings"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/constants"
 	syshttp "github.com/thunder-id/thunderid/internal/system/http"
+	"github.com/thunder-id/thunderid/internal/system/log"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -29,18 +31,40 @@ type gatewayImportRequest struct {
 	DryRun    bool                   `json:"dryRun,omitempty"`
 	Options   gatewayImportOptions   `json:"options"`
 	Deletions []gatewayDeletion      `json:"deletions,omitempty"`
+	// SharingRemovals names the sharing policies the content no longer carries for the resources it sends again. A
+	// gateway removes only what it is told to, never a policy for being left out of a document.
+	SharingRemovals []gatewaySharingRemoval `json:"sharingRemovals,omitempty"`
 }
 
 type gatewayImportOptions struct {
 	Upsert          bool   `json:"upsert"`
 	ContinueOnError bool   `json:"continueOnError"`
 	Target          string `json:"target"`
+	// ForceSharingEdits has the gateway apply a change to a sharing policy that its own API refuses, such as a
+	// different reach, by rewriting the policy, since the version is the source of truth for it.
+	ForceSharingEdits bool `json:"forceSharingEdits"`
 }
 
-// gatewayDeletion asks the gateway to remove one resource by id.
+// gatewayDeletion asks the gateway to remove one resource by id, or, for a member removal, to take
+// the members it names off the role or group with that id.
 type gatewayDeletion struct {
-	ResourceType string `json:"resourceType"`
-	ID           string `json:"id"`
+	ResourceType string          `json:"resourceType"`
+	ID           string          `json:"id"`
+	Members      []gatewayMember `json:"members,omitempty"`
+}
+
+// gatewayMember is an assignee of a role or a member of a group, as a role or group document names it.
+type gatewayMember struct {
+	ID   string `json:"id" yaml:"id"`
+	Type string `json:"type" yaml:"type"`
+	OUID string `json:"ouId,omitempty" yaml:"ouId,omitempty"`
+}
+
+// gatewaySharingRemoval asks the gateway to remove one sharing policy of a resource it is also sent.
+type gatewaySharingRemoval struct {
+	ResourceType   string `json:"resourceType"`
+	ID             string `json:"id"`
+	InitiatingOUID string `json:"initiatingOuId,omitempty"`
 }
 
 // errGatewayRefused is a gateway answering an import with something other than success.
@@ -54,8 +78,11 @@ var errImportNotWritten = errors.New("the gateway wrote nothing of the import")
 
 // gatewayClientInterface calls a gateway's own APIs.
 type gatewayClientInterface interface {
-	// Import posts to the gateway's /import presenting its key, and returns the answer as it came.
-	Import(ctx context.Context, gw *Gateway, key string, req gatewayImportRequest) (json.RawMessage, error)
+	// Import posts to the gateway's managed import presenting its key, and returns the answer as it came.
+	// A gateway without a managed import is sent the plain import instead, which the second result
+	// reports: what it writes is not read only on that gateway.
+	Import(ctx context.Context, gw *Gateway, key string, req gatewayImportRequest) (
+		answer json.RawMessage, plain bool, err error)
 	// HeldValues reports which of the named variables and secrets the gateway's store holds a value
 	// for, and when each was last set.
 	HeldValues(ctx context.Context, gw *Gateway, key string, variables, secrets []string) (*HeldValues, error)
@@ -97,6 +124,31 @@ func (h *HeldValues) snapshot(variables, secrets []string) string {
 	return string(recorded)
 }
 
+// snapshotKeeping records as snapshot does, except that each value named in keep is recorded at the
+// time the previous snapshot recorded for it, or left out when it recorded none.
+func (h *HeldValues) snapshotKeeping(variables, secrets []string, keep *MissingValues, previous string) string {
+	if len(keep.Variables) == 0 && len(keep.Secrets) == 0 {
+		return h.snapshot(variables, secrets)
+	}
+	var recorded heldTimes
+	if previous != "" {
+		_ = json.Unmarshal([]byte(previous), &recorded)
+	}
+	held := &HeldValues{Variables: map[string]time.Time{}, Secrets: map[string]time.Time{}}
+	carry := func(into, from, then map[string]time.Time, kept []string) {
+		maps.Copy(into, from)
+		for _, name := range kept {
+			delete(into, name)
+			if was, ok := then[name]; ok {
+				into[name] = was
+			}
+		}
+	}
+	carry(held.Variables, h.Variables, recorded.Variables, keep.Variables)
+	carry(held.Secrets, h.Secrets, recorded.Secrets, keep.Secrets)
+	return held.snapshot(variables, secrets)
+}
+
 // changedFrom returns the names among those asked for whose value the store says was set at another
 // time than the snapshot recorded. Only the store's own times are compared, never with another
 // clock; a value the snapshot did not record, or whose time the store does not say, is not reported.
@@ -132,45 +184,70 @@ func newGatewayClient() *gatewayClient {
 }
 
 func (c *gatewayClient) Import(ctx context.Context, gw *Gateway, key string,
-	req gatewayImportRequest) (json.RawMessage, error) {
+	req gatewayImportRequest) (json.RawMessage, bool, error) {
 	body, err := json.Marshal(req)
 	if err != nil {
-		return nil, fmt.Errorf("%w: failed to encode the import: %w", errImportNotWritten, err)
+		return nil, false, fmt.Errorf("%w: failed to encode the import: %w", errImportNotWritten, err)
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, gw.BaseURL+"/import", bytes.NewReader(body))
+	answer, status, err := c.post(ctx, gw, key, "/import/managed", body)
 	if err != nil {
-		return nil, fmt.Errorf("%w: failed to build the import request: %w", errImportNotWritten, err)
+		return answer, false, err
+	}
+	plain := false
+	if status == http.StatusNotFound {
+		plain = true
+		// A gateway that predates the managed import has no such route and answers before it reads
+		// the request. The plain import takes the same body, so the deploy goes there: what it
+		// writes stays editable on that gateway until the gateway is upgraded.
+		log.GetLogger().Warn(ctx, "The gateway has no managed import; deploying through the plain import, "+
+			"so what is deployed stays editable on the gateway until it is upgraded",
+			log.String("gatewayID", gw.ID))
+		answer, status, err = c.post(ctx, gw, key, "/import", body)
+		if err != nil {
+			return answer, plain, err
+		}
+	}
+	if status >= http.StatusBadRequest && status < http.StatusInternalServerError {
+		return answer, plain, fmt.Errorf("%w: %w: status %d", errGatewayRefused, errImportNotWritten, status)
+	}
+	if status != http.StatusOK {
+		return answer, plain, fmt.Errorf("%w: status %d", errGatewayRefused, status)
+	}
+	return answer, plain, nil
+}
+
+// post sends an import body to a path of the gateway and returns its answer and status. The error is
+// set only when the call did not complete.
+func (c *gatewayClient) post(ctx context.Context, gw *Gateway, key, path string,
+	body []byte) ([]byte, int, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, gw.BaseURL+path, bytes.NewReader(body))
+	if err != nil {
+		return nil, 0, fmt.Errorf("%w: failed to build the import request: %w", errImportNotWritten, err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	// The key is presented in its own header, which is what the gateway's management API key
-	// authenticator reads, and is trusted for the import API alone.
+	// authenticator reads.
 	httpReq.Header.Set(constants.APIKeyHeaderName, key)
 
 	client, err := httpClientFor(gw, importTimeout)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", errImportNotWritten, err)
+		return nil, 0, fmt.Errorf("%w: %w", errImportNotWritten, err)
 	}
 	defer releaseConnections(client)
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		if neverConnected(err) {
-			return nil, fmt.Errorf("%w: failed to reach the gateway: %w", errImportNotWritten, err)
+			return nil, 0, fmt.Errorf("%w: failed to reach the gateway: %w", errImportNotWritten, err)
 		}
-		return nil, fmt.Errorf("failed to reach the gateway: %w", err)
+		return nil, 0, fmt.Errorf("failed to reach the gateway: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	answer, err := io.ReadAll(io.LimitReader(resp.Body, maxImportAnswer))
 	if err != nil {
-		return nil, fmt.Errorf("failed to read the gateway's answer: %w", err)
+		return nil, 0, fmt.Errorf("failed to read the gateway's answer: %w", err)
 	}
-	if resp.StatusCode >= http.StatusBadRequest && resp.StatusCode < http.StatusInternalServerError {
-		return answer, fmt.Errorf("%w: %w: status %d", errGatewayRefused, errImportNotWritten, resp.StatusCode)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return answer, fmt.Errorf("%w: status %d", errGatewayRefused, resp.StatusCode)
-	}
-	return answer, nil
+	return answer, resp.StatusCode, nil
 }
 
 // unreachable is the error a failed call to a gateway is reported as: a host that resolves to an

@@ -13,14 +13,14 @@
 import { test as base } from "./console-auth.fixture";
 import { ConsoleSigninPage } from "../../pages/authentication";
 import { UsersPage } from "../../pages/user-management";
-import { AgentsPage, AgentDetailsPage } from "../../pages/agents";
+import { AgentOnboardingPage, AgentDetailsPage } from "../../pages/agents";
 
 const baseUrl = process.env.BASE_URL || "";
 
 type POMFixtures = {
   signinPage: ConsoleSigninPage;
   usersPage: UsersPage;
-  agentsPage: AgentsPage;
+  agentOnboardingPage: AgentOnboardingPage;
   agentDetailsPage: AgentDetailsPage;
 };
 
@@ -35,9 +35,9 @@ export const test = base.extend<POMFixtures>({
     await use(new UsersPage(authenticatedPage, baseUrl));
   },
 
-  // Agents page requires auth, uses authenticatedPage fixture
-  agentsPage: async ({ authenticatedPage }, use) => {
-    await use(new AgentsPage(authenticatedPage, baseUrl));
+  // Agent onboarding page requires auth, uses authenticatedPage fixture
+  agentOnboardingPage: async ({ authenticatedPage }, use) => {
+    await use(new AgentOnboardingPage(authenticatedPage, baseUrl));
   },
 
   // Agent details page requires auth, uses authenticatedPage fixture
@@ -49,4 +49,4 @@ export const test = base.extend<POMFixtures>({
 export { expect } from "@playwright/test";
 export { ConsoleSigninPage } from "../../pages/authentication";
 export { UsersPage, type UserFormData } from "../../pages/user-management";
-export { AgentsPage, AgentDetailsPage } from "../../pages/agents";
+export { AgentOnboardingPage, AgentDetailsPage } from "../../pages/agents";

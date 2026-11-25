@@ -12,12 +12,19 @@ $CP_PORT = 8095
 
 # New-GatewayKey generates the management key the managed Data Plane trusts and the Control Plane's
 # gateway resource (quickstart/bootstrap/cp/00-quickstart-gateway.yaml) registers it with, so no key
-# is committed to the repository. It sets $QUICKSTART_GATEWAY_KEY and its SHA-256 hex digest
-# $QUICKSTART_GATEWAY_KEY_HASH, and exports the key for the bootstrap template.
+# is committed to the repository. A key already in $env:QUICKSTART_GATEWAY_KEY is kept, which is how
+# a test pipeline learns the key it later imports deployment-wide resources with. It sets
+# $QUICKSTART_GATEWAY_KEY and its SHA-256 hex digest $QUICKSTART_GATEWAY_KEY_HASH, and exports the
+# key for the bootstrap template.
 function New-GatewayKey {
-    $bytes = New-Object 'System.Byte[]' 32
-    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-    $script:QUICKSTART_GATEWAY_KEY = -join ($bytes | ForEach-Object { $_.ToString('x2') })
+    if ($env:QUICKSTART_GATEWAY_KEY) {
+        $script:QUICKSTART_GATEWAY_KEY = $env:QUICKSTART_GATEWAY_KEY
+    }
+    else {
+        $bytes = New-Object 'System.Byte[]' 32
+        [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+        $script:QUICKSTART_GATEWAY_KEY = -join ($bytes | ForEach-Object { $_.ToString('x2') })
+    }
     $digest = [System.Security.Cryptography.SHA256]::Create().ComputeHash(
         [System.Text.Encoding]::UTF8.GetBytes($script:QUICKSTART_GATEWAY_KEY))
     $script:QUICKSTART_GATEWAY_KEY_HASH = -join ($digest | ForEach-Object { $_.ToString('x2') })
@@ -39,35 +46,6 @@ function Set-GatewayKeyTrust {
     if (-not ([System.IO.File]::ReadAllText($path)).Contains("management_api_key_hash: `"$script:QUICKSTART_GATEWAY_KEY_HASH`"")) {
         throw "Could not set the Data Plane's management key in dp/deployment.yaml."
     }
-}
-
-# Get-UserPasswordSecretName returns the name a user's password is held under in a gateway's
-# secret store, which the Control Plane's export derives from the username the same way:
-# USER_<USERNAME>_PASSWORD, with a word boundary wherever the case changes (ServiceDesk becomes
-# SERVICE_DESK) and every character that is not a letter or digit as an underscore. See
-# DeriveVariableName in backend/internal/system/varname.
-function Get-UserPasswordSecretName {
-    param([string]$Username)
-
-    $out = ""
-    $n = $Username.Length
-    for ($i = 0; $i -lt $n; $i++) {
-        $c = $Username[$i]
-        if ($i -gt 0 -and $c -cmatch '[A-Z]') {
-            $p = $Username[$i - 1]
-            if ($p -cmatch '[a-z]') {
-                $out += "_"
-            }
-            elseif ($p -ne '_' -and ($i + 1) -lt $n -and $Username[$i + 1] -cmatch '[a-z]') {
-                $out += "_"
-            }
-        }
-        $out += $c
-    }
-    $name = "USER_$($out.ToUpper())_PASSWORD"
-    $name = $name -replace '[^A-Za-z0-9]', '_'
-    $name = $name -replace '__+', '_'
-    return $name.Trim('_')
 }
 
 # Set-ConsoleUrls exports the console redirect URIs the bootstrap resources are templated with:
@@ -136,11 +114,11 @@ function Set-DpValues {
         catch { Start-Sleep -Milliseconds 500 }
     }
     if (-not $ready) { throw "The Data Plane did not become ready, so its bootstrap values were not seeded." }
-    Invoke-DpPut -Path "/variables/APPLICATION_ADMIN_CONSOLE_CLIENT_ID" -Value "ADMIN_CONSOLE"
-    Invoke-DpPut -Path "/variables/APPLICATION_ADMIN_CONSOLE_REDIRECT_URIS" `
+    Invoke-DpPut -Path "/variables/APPLICATION__019000000000700080000000000000F1__CLIENT_ID" -Value "ADMIN_CONSOLE"
+    Invoke-DpPut -Path "/variables/APPLICATION__019000000000700080000000000000F1__REDIRECT_URIS" `
         -Value (ConvertTo-Json -Compress -InputObject @($env:ADMIN_CONSOLE_URL))
-    Invoke-DpPut -Path "/variables/RESOURCE_SERVER_SYSTEM_IDENTIFIER" -Value "https://localhost:$DP_PORT/mcp"
-    Invoke-DpPut -Path "/secrets/$(Get-UserPasswordSecretName $env:SERVICE_DESK_USERNAME)" `
+    Invoke-DpPut -Path "/variables/RESOURCE_SERVER__01900000000070008000000000000020__IDENTIFIER" -Value "https://localhost:$DP_PORT/mcp"
+    Invoke-DpPut -Path "/secrets/USER__019000000000700080000000000000F3__PASSWORD" `
         -Value $env:SERVICE_DESK_PASSWORD
 }
 

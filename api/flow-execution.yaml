@@ -33,19 +33,33 @@ paths:
         their Flow Secret in the `Flow-Secret` header (see the `FlowSecret` security scheme) when
         initiating a new flow; the header is ignored for other application types.
 
-        A flow is initiated either by `applicationId` and `flowType`, or, for administration flows
-        only, by `flowId`. Initiating by `flowId` requires an access token carrying the `system`
-        scope, and the referenced flow must be of type `ADMINISTRATION`; any other flow type is
+        A flow is initiated by `applicationId` and `flowType`, by `flowType` and `handle` for a
+        `SELF` or `ADMIN_INITIATED` flow, or, for administration and invitation flows only, by `flowId`. An
+        `ADMINISTRATION`, `USER_ONBOARDING` or `INVITATION` flow requires an access token carrying at
+        least one `system` permission. An `ADMINISTRATION` or `USER_ONBOARDING` flow runs as the caller
+        who started it. Only that caller may continue it with a token; another caller is refused with
+        `403` and the code `FES-1030`. An `ADMINISTRATION` flow cannot be continued without the token,
+        while a `USER_ONBOARDING` flow continued without one, by the invitee, runs with the permissions
+        its initiator still holds. An `INVITATION` flow runs each step with the request's own token, or
+        with the server's authority for the invitee's steps. An `INVITATION` flow also
+        requires the token to be issued for an organization unit, which the flow then acts for, and
+        that organization unit to own the flow or have it shared with it. Any other flow type is
         rejected with `403`. A `DEVICE_GRANT` request starts the Device Grant flow assigned to the
         specified application. Supplying the step's inputs on the initiating request runs the flow
         through to its terminal state in a single call; omitting them returns the required inputs and
         an `executionId` to continue with.
+
+        An `ADMIN_INITIATED` flow is started by an administrator for the user its `subject` input
+        names, with an access token carrying a `system` permission, and runs as that administrator,
+        so it acts only on a user the administrator may update. The user continues from the link the flow sends, with the `executionId` and the
+        invite token the link carries, and no access token; those steps run with the permissions the
+        administrator still holds.
       tags:
         - Flow Execution
       security:
         - {}
         - FlowSecret: []
-        - OAuth2: [system]
+        - OAuth2: []
       parameters:
         - in: header
           name: Attestation-Token
@@ -63,6 +77,8 @@ paths:
             schema:
               oneOf:
                 - $ref: '#/components/schemas/InitialFlowRequest'
+                - $ref: '#/components/schemas/SelfFlowRequest'
+                - $ref: '#/components/schemas/AdminInitiatedFlowRequest'
                 - $ref: '#/components/schemas/AdministrativeFlowRequest'
                 - $ref: '#/components/schemas/SubSequentFlowRequest'
             examples:
@@ -71,6 +87,12 @@ paths:
                 value:
                   applicationId: "550e8400-e29b-41d4-a716-446655440000"
                   flowType: "AUTHENTICATION"
+              initialRequestForOrganizationUnit:
+                summary: Initial sign-in request bounded to an organization unit
+                value:
+                  applicationId: "550e8400-e29b-41d4-a716-446655440000"
+                  flowType: "AUTHENTICATION"
+                  ouId: "8a1f6c2e-3b4d-4e5f-9a6b-7c8d9e0f1a2b"
               initialRequestBackendApp:
                 summary: Initial request from a backend/server-side application (requires the Flow-Secret header)
                 value:
@@ -88,6 +110,41 @@ paths:
                   flowType: "DEVICE_GRANT"
                   inputs: {}
                   verbose: true
+              selfFlowRequest:
+                summary: Self flow started with the signed-in user's bearer token
+                value:
+                  flowType: "SELF"
+                  handle: "default-self-attribute-verification-flow"
+                  verbose: true
+                  inputs: {
+                    "attribute": "email"
+                  }
+              adminInitiatedFlowRequest:
+                summary: Administrator-initiated flow started with an administrator's bearer token
+                value:
+                  flowType: "ADMIN_INITIATED"
+                  handle: "default-admin-attribute-verification-flow"
+                  verbose: true
+                  inputs: {
+                    "subject": "019fd0e4-de6c-7ea5-9541-7982f40beeb9"
+                  }
+              adminInitiatedCredentialResetRequest:
+                summary: Administrator-initiated credential reset of the user's password
+                value:
+                  flowType: "ADMIN_INITIATED"
+                  handle: "default-admin-user-credential-reset-flow"
+                  verbose: true
+                  inputs: {
+                    "subject": "019fd0e4-de6c-7ea5-9541-7982f40beeb9",
+                    "credential": "password"
+                  }
+              adminInitiatedFlowLinkRequest:
+                summary: The user continues an administrator-initiated flow from the emailed link
+                value:
+                  executionId: "2c6d4c45-3de9-4a70-ae6b-ba1d034af6bc"
+                  inputs: {
+                    "inviteToken": "019fd0f1-2a3b-7c4d-8e5f-6a7b8c9d0e1f"
+                  }
               administrativeFlowSingleCall:
                 summary: Administration flow run to completion in one call (inputs supplied up front)
                 value:
@@ -124,6 +181,8 @@ paths:
           description: |
             Flow step executed successfully.
             Flow-level failures are returned with HTTP 200 and `flowStatus: ERROR` in the response body.
+            A sign-in is refused this way at its assertion step when it has not decided the organization unit
+            it signs in to (`FET-1124`), or decided one the user cannot sign in to (`FET-1122`).
           content:
             application/json:
               schema:
@@ -143,8 +202,8 @@ paths:
                   value:
                     executionId: "2c6d4c45-3de9-4a70-ae6b-ba1d034af6bc"
                     flowStatus: "INCOMPLETE"
-                    stepId: "3071b6c6-0119-465c-b00b-3a0e6f88a730"
                     challengeToken: "a3f2e1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2"
+                    expiresIn: 3540
                     type: "VIEW"
                     data:
                       inputs:
@@ -175,8 +234,8 @@ paths:
                   value:
                     executionId: "2c6d4c45-3de9-4a70-ae6b-ba1d034af6bc"
                     flowStatus: "INCOMPLETE"
-                    stepId: "3071b6c6-0119-465c-b00b-3a0e6f88a730"
                     challengeToken: "b4f3e2c1d0e9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3"
+                    expiresIn: 3540
                     type: "VIEW"
                     data:
                       inputs:
@@ -212,7 +271,7 @@ paths:
                   value:
                     executionId: "2c6d4c45-3de9-4a70-ae6b-ba1d034af6bc"
                     flowStatus: "INCOMPLETE"
-                    stepId: "3071b6c6-0119-465c-b00b-3a0e6f88a730"
+                    expiresIn: 3540
                     type: "VIEW"
                     data:
                       meta:
@@ -249,16 +308,35 @@ paths:
                         defaultValue: "The credentials provided are invalid"
         
         "400":
-          description: 'Bad Request: The request body is malformed or contains invalid data'
+          description: >
+            Bad Request: The request body is malformed or contains invalid data. An `ouId` sent on a
+            request that does not start an `AUTHENTICATION` flow is refused with `FES-1026`, and an
+            `ouId` the application is not accessible from, or that does not exist, with `FES-1028`.
+            A flow that runs with the system's authority and calls an `ADMINISTRATION`,
+            `USER_ONBOARDING` or `INVITATION` flow is refused with `FES-1031`. A `USER_ONBOARDING` flow
+            started before the server recorded who started it cannot be continued and is refused with
+            `FES-1032`; start it again.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+              examples:
+                flowHandleNotFound:
+                  value:
+                    code: FES-1025
+                    message:
+                      key: error.flowexecservice.flow_handle_not_found
+                      defaultValue: Flow not found
+                    description:
+                      key: error.flowexecservice.flow_handle_not_found_description
+                      defaultValue: No flow matches the specified handle and flow type
         "401":
           description: >
             Unauthorized: The application must present a valid credential to initiate a new flow —
             a Flow Secret for backend applications, or a platform attestation token for mobile
-            applications — and the presented credential was missing or invalid.
+            applications — and the presented credential was missing or invalid, or the flow runs for a
+            signed-in user and the user's access token was missing or invalid, or an `ADMIN_INITIATED`
+            flow was started without a valid access token.
           content:
             application/json:
               schema:
@@ -266,7 +344,13 @@ paths:
         "403":
           description: >
             Forbidden: Direct flow initiation is not permitted for this application or its OAuth
-            configuration, or the application is suspended.
+            configuration, the application is suspended, the caller holds no `system` permission, or
+            for a step sent without a token the caller who started the flow no longer holds one
+            (`FES-1019`), the flow was started by another caller (`FES-1030`), or the flow started by
+            `flowId` is not permitted for the caller or its token: an `INVITATION` flow started with a
+            token issued for no organization unit (`FES-1027`), or for one the flow is not shared with
+            (`FES-1029`), or an `ADMIN_INITIATED` flow started by `handle` is neither owned by nor
+            shared with the token's organization unit (`FES-1029`).
           content:
             application/json:
               schema:
@@ -293,8 +377,9 @@ components:
     OAuth2:
       type: oauth2
       description: >-
-        Access token used to authenticate the administrator initiating an administration flow by
-        `flowId`. The token must carry the `system` scope.
+        Access token. An administration, user onboarding, invitation or `ADMIN_INITIATED` flow requires
+        a token carrying at least one `system` permission; a `SELF` flow requires the signed-in user's
+        token.
       flows:
         authorizationCode:
           authorizationUrl: https://localhost:8090/oauth2/authorize
@@ -332,20 +417,110 @@ components:
           example: false
         sessionData:
           $ref: '#/components/schemas/FlowRequestSessionData'
+        ouId:
+          type: string
+          description: >-
+            Identifier of the organization unit to sign in to. Accepted only with `flowType`
+            `AUTHENTICATION`; the sign-in is then bounded to this organization unit. Refused with
+            `FES-1026` on any other request, including one that continues a flow by `executionId` or
+            starts one by `flowId`. An organization unit the application is not accessible from, or
+            that does not exist, is refused with `FES-1028`.
+          example: "8a1f6c2e-3b4d-4e5f-9a6b-7c8d9e0f1a2b"
+
+    SelfFlowRequest:
+      type: object
+      description: >-
+        Initiates a `SELF` flow by its handle. The caller must present the signed-in user's access
+        token.
+      required:
+        - flowType
+        - handle
+      properties:
+        flowType:
+          type: string
+          enum: [SELF]
+        handle:
+          type: string
+          description: Handle of the `SELF` flow to execute
+          example: "default-self-attribute-verification-flow"
+        inputs:
+          type: object
+          description: Input data for the flow
+          additionalProperties:
+            type: string
+          example: {attribute: "email"}
+        action:
+          type: string
+          description: Reference of the action to execute in the flow
+        verbose:
+          type: boolean
+          description: When true, the response includes full UI metadata (meta/components) for prompt nodes
+          example: false
+
+    AdminInitiatedFlowRequest:
+      type: object
+      description: >-
+        Initiates an administrator-initiated flow by its required handle, without an application ID.
+        The request must carry an administrator's access token with a `system` permission, as a
+        bearer token. The flow acts on the user the `subject` input names, never on the
+        administrator, and only when the administrator may update that user. The user finishes it
+        from the link it sends without a token; those steps run with the permissions the
+        administrator still holds.
+      required:
+        - flowType
+        - handle
+      properties:
+        flowType:
+          type: string
+          enum: [ADMIN_INITIATED]
+        handle:
+          type: string
+          description: >-
+            Required handle of the `ADMIN_INITIATED` flow to execute. The server ships
+            `default-admin-attribute-verification-flow`, which emails the user a link to verify
+            their email address, and `default-admin-user-credential-reset-flow`, which emails the user a
+            link to set a new password or PIN and invalidates the current one once the email is sent.
+          example: "default-admin-attribute-verification-flow"
+        inputs:
+          type: object
+          description: >-
+            Input data for the flow. The start binds the flow to the user whose ID the `subject` input
+            names; later requests cannot change it. The shipped verification flow verifies the email
+            attribute the `attribute` input names, `email` when it is absent. The shipped credential
+            reset flow resets the credential the `credential` input names, such as `password` or `pin`,
+            which the user's type must declare. The link goes to the address stored on the user's
+            profile: an address in the start, or in a later request that continues it, is not used. A reset
+            whose email is not sent ends with the email step's own error, such as `FET-1037` when the
+            user has no email address, and the credential still works. `FET-1139` means the same in a
+            flow whose email step may complete without sending. A reset that ends with `FET-1140` sent a
+            link that no longer works, and the credential may already be removed, so start the reset
+            again. Other flows may read further inputs.
+          additionalProperties:
+            type: string
+          example: {subject: "019fd0e4-de6c-7ea5-9541-7982f40beeb9"}
+        action:
+          type: string
+          description: Reference of the action to execute in the flow
+        verbose:
+          type: boolean
+          description: When true, the response includes full UI metadata (meta/components) for prompt nodes
+          example: false
 
     AdministrativeFlowRequest:
       type: object
       description: >-
-        Initiates an administration flow by its identifier. Only flows of type `ADMINISTRATION` may
-        be started this way, and the caller must present an access token carrying the `system` scope.
+        Initiates an administration or invitation flow by its identifier. Only flows of type
+        `ADMINISTRATION` or `INVITATION` may be started this way, and the caller must present an
+        access token carrying at least one `system` permission. An `INVITATION` flow also requires the token to
+        be issued for an organization unit that owns the flow or was shared it.
       required:
         - flowId
       properties:
         flowId:
           type: string
           description: >-
-            Identifier of the administration flow to execute. The flow must be of type
-            `ADMINISTRATION`; any other flow type is rejected.
+            Identifier of the flow to execute. The flow must be of type `ADMINISTRATION` or
+            `INVITATION`; any other flow type is rejected.
           example: "019fd0b5-e8fe-7852-9b5a-1e2757ed85b8"
         inputs:
           type: object
@@ -389,9 +564,12 @@ components:
         inputs:
           type: object
           description: >-
-            Input data provided for the flow step execution. A value sent for an input that an
-            executor node holds constant is ignored without an error, unless another executor node
-            lists the same input without constant.
+            Input data provided for the flow step execution. Only the inputs the paused step asks for
+            are taken, and others are ignored without an error. A request that continues after a
+            redirection step can also carry the external party's callback parameters.
+            `requested_permissions` and `resource_server_identifier` are only taken from the request
+            that starts the flow. A value sent for an input that an executor node holds constant is
+            ignored without an error, unless another executor node lists the same input without constant.
           additionalProperties:
             type: string
           example: {
@@ -410,7 +588,6 @@ components:
       required:
         - executionId
         - flowStatus
-        - stepId
         - type
       properties:
         executionId:
@@ -423,14 +600,18 @@ components:
           enum:
             - INCOMPLETE
           example: "INCOMPLETE"
-        stepId:
-          type: string
-          description: Identifier of the current flow step
-          example: "3071b6c6-0119-465c-b00b-3a0e6f88a730"
         challengeToken:
           type: string
           description: Per-step challenge token to be included in the next request
           example: "a3f2e1b0c9d8e7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2"
+        expiresIn:
+          type: integer
+          format: int64
+          description: |
+            How many seconds the flow execution stays valid. The expiry is set when the execution starts and
+            doesn't move with each step. A request carrying the `executionId` after it is refused with
+            `FES-1004`.
+          example: 3540
         type:
           type: string
           description: Type of flow step response
@@ -449,7 +630,6 @@ components:
       required:
         - executionId
         - flowStatus
-        - assertion
       properties:
         executionId:
           type: string
@@ -463,8 +643,16 @@ components:
           example: "COMPLETE"
         assertion:
           type: string
-          description: Authentication assertion. This will be the JWT authentication token
+          description: >-
+            Authentication assertion, the JWT authentication token. Omitted when the flow issues none,
+            such as a sign-out flow.
           example: "<jwt_token>"
+        data:
+          allOf:
+            - $ref: '#/components/schemas/Data'
+          description: >-
+            Data the completed flow returns, such as an invite link in `additionalData`. Omitted when
+            the flow returns none.
         sessionData:
           $ref: '#/components/schemas/FlowResponseSessionData'
         clearedSessions:
@@ -522,10 +710,10 @@ components:
     FlowResponseSessionData:
       type: array
       description: >-
-        The SSO sessions this step started, in the same shape as the request's `sessionData`, plus
-        `expiresIn`. Returned only on the response of the step that started them. A caller that holds
-        its sessions itself keeps them with any others it holds and sends them all back in later
-        requests' `sessionData`. The session cookie is set as well.
+        The SSO sessions this step started or reused, in the same shape as the request's `sessionData`,
+        plus `expiresIn`. Returned on the response of the step that started or reused them. A caller that
+        holds its sessions itself keeps them with any others it holds and sends them all back in later
+        requests' `sessionData`. The session cookie is set as well when the step started the session.
       items:
         $ref: '#/components/schemas/FlowIssuedSessionData'
 
@@ -559,8 +747,8 @@ components:
 
     FlowIssuedSessionData:
       description: >-
-        An SSO session a step started, with how long its handle stays usable. The session can still end
-        earlier, through its idle timeout or a sign-out.
+        An SSO session a step started or reused, with how long its handle stays usable. The session can
+        still end earlier, through its idle timeout or a sign-out.
       allOf:
         - $ref: '#/components/schemas/FlowSessionData'
         - type: object
@@ -572,7 +760,8 @@ components:
               format: int64
               description: >-
                 Seconds until the session reaches its absolute timeout, after which the handle no longer
-                resumes it. The per-flow session cookie carries the same lifetime as its Max-Age.
+                resumes it. For a reused session this is the time it has left. The per-flow session cookie
+                expires at the same time.
               example: 28800
 
     Data:

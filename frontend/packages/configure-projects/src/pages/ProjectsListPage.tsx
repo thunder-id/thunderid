@@ -1,0 +1,109 @@
+// Copyright 2026 The ThunderID Authors
+// SPDX-License-Identifier: Apache-2.0
+
+import {DocumentTitle, PageLoadingAnimation, QueryErrorNotice} from '@thunderid/components';
+import {useCapabilitiesContext} from '@thunderid/contexts';
+import {Box, Button, PageContent, PageTitle, SearchBar, Stack, Typography} from '@wso2/oxygen-ui';
+import {Plus} from '@wso2/oxygen-ui-icons-react';
+import {useMemo, useState, type ReactNode} from 'react';
+import {useTranslation} from 'react-i18next';
+import {useNavigate} from 'react-router';
+import ProjectCard from '../components/ProjectCard';
+import ProjectDeleteDialog from '../components/ProjectDeleteDialog';
+import useProjectRoutes from '../hooks/useProjectRoutes';
+import useProjectSelection from '../hooks/useProjectSelection';
+import type {Project} from '../models/project';
+
+/**
+ * Every project in the deployment, shown once the project selection is cleared. Opening a project
+ * selects it and opens its overview.
+ */
+export default function ProjectsListPage(): ReactNode {
+  const {t} = useTranslation();
+  const navigate = useNavigate();
+  const routes = useProjectRoutes();
+  const {can} = useCapabilitiesContext();
+  const {projects, isLoading, error, refetch, selectProject} = useProjectSelection();
+  const [search, setSearch] = useState('');
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+
+  const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) {
+      return projects;
+    }
+
+    return projects.filter((project) =>
+      [project.displayName, project.handle, project.description ?? ''].some((value) =>
+        value.toLowerCase().includes(query),
+      ),
+    );
+  }, [projects, search]);
+
+  const handleOpen = (project: Project): void => {
+    selectProject(project.handle);
+  };
+
+  const title = t('projects:listing.title', 'All projects');
+
+  const renderBody = (): ReactNode => {
+    if (isLoading) {
+      return <PageLoadingAnimation />;
+    }
+
+    if (error) {
+      return <QueryErrorNotice error={error} t={t} variant="inline" onRetry={refetch} />;
+    }
+
+    if (filtered.length === 0) {
+      return (
+        <Typography variant="body2" color="text.secondary" sx={{py: 6, textAlign: 'center'}}>
+          {projects.length === 0
+            ? t('projects:listing.empty', 'There are no projects yet.')
+            : t('projects:listing.noMatches', 'No matching projects')}
+        </Typography>
+      );
+    }
+
+    return (
+      <Box sx={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(280px, 100%), 1fr))', gap: 2}}>
+        {filtered.map((project) => (
+          <ProjectCard key={project.id} project={project} onOpen={handleOpen} onDelete={setProjectToDelete} />
+        ))}
+      </Box>
+    );
+  };
+
+  return (
+    <PageContent>
+      <DocumentTitle title={title} />
+      <PageTitle>
+        <PageTitle.Header>{title}</PageTitle.Header>
+        <PageTitle.SubHeader>{t('projects:listing.subtitle', 'Choose a project to work in.')}</PageTitle.SubHeader>
+        <PageTitle.Actions>
+          {can('project', 'create') && (
+            <Button
+              variant="contained"
+              startIcon={<Plus size={18} />}
+              onClick={() => void navigate(routes.projects.create())}
+            >
+              {t('projects:listing.add', 'Add project')}
+            </Button>
+          )}
+        </PageTitle.Actions>
+      </PageTitle>
+      <Stack spacing={3}>
+        <SearchBar
+          fullWidth
+          size="small"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder={t('projects:listing.search', 'Search projects')}
+          slotProps={{htmlInput: {'aria-label': t('projects:listing.search', 'Search projects')}}}
+        />
+        {renderBody()}
+      </Stack>
+      <ProjectDeleteDialog project={projectToDelete} onClose={() => setProjectToDelete(null)} />
+    </PageContent>
+  );
+}

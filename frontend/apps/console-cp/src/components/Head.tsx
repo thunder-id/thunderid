@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {Helmet} from '@thunderid/components';
+import {DocumentTitle, Helmet} from '@thunderid/components';
 import {useConfig} from '@thunderid/contexts';
 
 /**
@@ -18,8 +18,8 @@ function resolveFaviconHref(path: string): string {
 }
 
 /**
- * Manages document head metadata, specifically the favicon, with support for
- * separate light and dark variants.
+ * Manages document head metadata: the default document title, which pages override with
+ * their own `DocumentTitle`, and the favicon, with support for separate light and dark variants.
  *
  * Both variants are registered with a `prefers-color-scheme` media query so the
  * browser picks the matching favicon based on the operating system / browser
@@ -31,9 +31,12 @@ export default function Head() {
   const {favicon} = config.brand;
 
   return (
-    <Helmet>
-      <link rel="icon" href={resolveFaviconHref(favicon.light)} media="(prefers-color-scheme: light)" />
-      <link rel="icon" href={resolveFaviconHref(favicon.dark)} media="(prefers-color-scheme: dark)" />
-    </Helmet>
+    <>
+      <DocumentTitle />
+      <Helmet>
+        <link rel="icon" href={resolveFaviconHref(favicon.light)} media="(prefers-color-scheme: light)" />
+        <link rel="icon" href={resolveFaviconHref(favicon.dark)} media="(prefers-color-scheme: dark)" />
+      </Helmet>
+    </>
   );
 }

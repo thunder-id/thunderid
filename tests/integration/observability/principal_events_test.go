@@ -257,7 +257,7 @@ func (ts *PrincipalEventsTestSuite) TearDownSuite() {
 
 // TestAuthorizationCode_FlowEventsCarryTheActingApplication verifies that every event of a login
 // flow names the application the flow runs for by resource ID, OAuth client_id and principal type,
-// and that they all share the execution id as both trace and correlation id.
+// and that they all share the execution id as their correlation id.
 func (ts *PrincipalEventsTestSuite) TestAuthorizationCode_FlowEventsCarryTheActingApplication() {
 	ts.Require().NoError(ts.reader.Reset())
 
@@ -270,8 +270,7 @@ func (ts *PrincipalEventsTestSuite) TestAuthorizationCode_FlowEventsCarryTheActi
 	ts.Require().NoError(err, "No FLOW_STARTED event for execution %s", executionID)
 
 	for _, evt := range []testutils.ObservabilityEvent{flowStarted, flowCompleted} {
-		ts.Equal(executionID, evt.TraceID,
-			"%s must be traced on the execution id so the whole flow shares one trace", evt.Type)
+		ts.NotEmpty(evt.TraceID, "%s must carry the request trace id", evt.Type)
 		ts.Equal(executionID, evt.Str(keyCorrelationID),
 			"%s must correlate on the execution id", evt.Type)
 		ts.Equal(ts.webAppID, evt.Str(keyAppID), "%s must name the application's resource ID", evt.Type)

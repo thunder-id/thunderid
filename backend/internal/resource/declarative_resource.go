@@ -96,15 +96,17 @@ func (e *resourceServerExporter) GetResourceByID(ctx context.Context, id string)
 
 	// Build providers.ResourceServer with nested structure
 	rs := &providers.ResourceServer{
-		ID:                  server.ID,
-		Name:                server.Name,
-		Description:         server.Description,
-		Identifier:          server.Identifier,
-		Type:                server.Type,
-		OUID:                server.OUID,
-		Delimiter:           server.Delimiter,
-		AuthorizationEngine: server.AuthorizationEngine,
-		Resources:           []providers.Resource{},
+		ID:                      server.ID,
+		Name:                    server.Name,
+		Description:             server.Description,
+		Identifier:              server.Identifier,
+		Type:                    server.Type,
+		OUID:                    server.OUID,
+		ProjectID:               server.ProjectID,
+		Delimiter:               server.Delimiter,
+		HierarchicalPermissions: server.HierarchicalPermissions,
+		AuthorizationEngine:     server.AuthorizationEngine,
+		Resources:               []providers.Resource{},
 	}
 
 	rs.Actions, err = e.getAllActions(ctx, id, nil)
@@ -163,6 +165,14 @@ func (e *resourceServerExporter) ValidateResource(ctx context.Context,
 	}
 
 	return server.Name, nil
+}
+
+// GetResourceID returns the ID of an exported resource server.
+func (e *resourceServerExporter) GetResourceID(resource interface{}) string {
+	if server, ok := resource.(*providers.ResourceServer); ok {
+		return server.ID
+	}
+	return ""
 }
 
 // GetResourceRules returns the parameterization rules for resource servers.
@@ -727,6 +737,16 @@ func validateResourceServerWrapper(
 		return fmt.Errorf("failed to check for duplicate resource server in declarative store: %w", err)
 	}
 
+	// Check for an equivalent identifier in the file store
+	identifierExists, err := fileStore.CheckResourceServerIdentifierExists(context.Background(), rs.Identifier)
+	if err != nil {
+		return fmt.Errorf("failed to check for duplicate resource server identifier in declarative store: %w", err)
+	}
+	if identifierExists {
+		return fmt.Errorf("duplicate resource server identifier '%s': "+
+			"an equivalent identifier already exists in declarative resources", rs.Identifier)
+	}
+
 	// COMPOSITE MODE: Check for duplicate ID in the database store
 	if dbStore != nil {
 		_, err := dbStore.GetResourceServer(context.Background(), rs.ID)
@@ -737,6 +757,15 @@ func validateResourceServerWrapper(
 		// Propagate any error other than not-found
 		if !errors.Is(err, errResourceServerNotFound) {
 			return fmt.Errorf("failed to check for duplicate resource server in database store: %w", err)
+		}
+
+		identifierExists, err := dbStore.CheckResourceServerIdentifierExists(context.Background(), rs.Identifier)
+		if err != nil {
+			return fmt.Errorf("failed to check for duplicate resource server identifier in database store: %w", err)
+		}
+		if identifierExists {
+			return fmt.Errorf("duplicate resource server identifier '%s': "+
+				"an equivalent identifier already exists in the database store", rs.Identifier)
 		}
 	}
 

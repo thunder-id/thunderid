@@ -52,6 +52,10 @@ export interface ModeSelectorPropertiesProps extends CommonResourcePropertiesPro
    * Translated caption shown under the selector.
    */
   hint?: string;
+  /**
+   * Mode the executor runs when the node carries none, shown as selected in that case.
+   */
+  defaultMode?: string;
 }
 
 /**
@@ -70,25 +74,26 @@ function ModeSelectorProperties({
   label,
   placeholder,
   hint = undefined,
+  defaultMode = '',
 }: ModeSelectorPropertiesProps): ReactNode {
   const {t} = useTranslation();
 
   const currentMode = useMemo(() => {
     const stepData = resource?.data as StepData | undefined;
-    return (stepData?.action?.executor as {mode?: string})?.mode ?? '';
-  }, [resource]);
+    return (stepData?.action?.executor as {mode?: string})?.mode ?? defaultMode;
+  }, [resource, defaultMode]);
 
   const handleModeChange = (selectedMode: string): void => {
     const modeConfig = modes.find((mode) => mode.value === selectedMode);
+    const executor: Record<string, unknown> = {...((resource?.data as StepData)?.action?.executor ?? {})};
+    delete executor['mode'];
 
     const updatedData = {
       ...((resource?.data as StepData) ?? {}),
       action: {
         ...((resource?.data as StepData)?.action ?? {}),
-        executor: {
-          ...((resource?.data as StepData)?.action?.executor ?? {}),
-          mode: selectedMode,
-        },
+        // The default mode is what a node without one runs, so choosing it leaves the node without one.
+        executor: defaultMode && selectedMode === defaultMode ? executor : {...executor, mode: selectedMode},
       },
       display: {
         ...((resource?.data as StepData)?.['display'] ?? {}),

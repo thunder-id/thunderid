@@ -1,0 +1,433 @@
+---
+title: Rich Authorization Requests
+docType: reference
+sidebar_position: 6
+description: RFC 9396 Rich Authorization Requests in {{ProductName}}, to request, consent to, narrow, and issue fine-grained authorization_details in access tokens.
+---
+
+# Rich Authorization Requests
+
+**Rich Authorization Requests** ([RFC 9396](https://datatracker.ietf.org/doc/html/rfc9396)) let a client describe exactly what it wants to do, as structured JSON, instead of a fixed scope string. The client sends an `authorization_details` parameter: a JSON array of objects, each naming a `type` and carrying the fields of one authorization. One object can describe a payment of 120.50 EUR to a named creditor. <ProductName /> validates each object against a registered type and lets the type's processor approve or enrich it. It then asks the user to consent, and issues the approved details in the access token.
+
+In <ProductName />, the authorization details types a client can request are called **Intents** in the Console. See [Intents](../../../intents) to register them.
+
+## Scopes or Authorization Details
+
+| Use | When |
+|---|---|
+| Scopes | The permission is coarse and reusable, such as `payments:read`, and the same string means the same thing on every request |
+| Authorization details | The permission is one transaction or carries values, such as an amount, a creditor, or a list of accounts, that the user must see and approve, that a processor checks, or that the client may later narrow |
+
+A request can carry both. RFC 9396 recommends that one API use only one of the two forms.
+
+## How It Works
+
+The authorization code flow with authorization details runs in this order:
+
+1. The client sends `authorization_details` on `/oauth2/authorize`, or pushes it to `/oauth2/par`.
+2. <ProductName /> validates every object against its registered type and refuses an invalid request with `invalid_authorization_details`.
+3. The request binds to one resource server: the `resource` parameter, or the default resource server when `resource` is omitted.
+4. After the user signs in, the sign-in flow's **Check Intents** node sends each detail to its type's processor, when the type declares one. The processor approves the detail, refuses it, or fills in fields the type leaves to it.
+5. The **User Consent** node shows the details to the user, who approves or denies each one and may lower or remove values where the type's policy allows.
+6. The client redeems the code and receives the approved details in the token response and in the access token's `authorization_details` claim. It can ask for a narrower subset of the grant at the token endpoint.
+
+The same parameter is accepted on the backchannel authentication endpoint (CIBA), and on the token endpoint for the `client_credentials` grant, where the processors decide without a user.
+
+<details>
+<summary>How <ProductName /> Implements It</summary>
+
+| Aspect | Behavior |
+|---|---|
+| Accepted on | `/oauth2/authorize`, `/oauth2/par`, `/oauth2/bc-authorize`, and `/oauth2/token` for the `authorization_code`, `client_credentials`, `refresh_token`, and `urn:openid:params:grant-type:ciba` grants. Other grants refuse it with `invalid_authorization_details`. `/oauth2/device-authorize` ignores it |
+| Format | A non-empty JSON array of at most 50 objects. Each object needs a string `type` naming a registered type. A member name repeated in one object is refused |
+| Validation | Each object must conform to its type's schema. A member the schema does not declare is refused, including the RFC 9396 common fields (`locations`, `actions`, `datatypes`, `identifier`, `privileges`) when the type does not declare them. A field the type marks as supplied by the processor must not be sent on a new request. A narrowing request at the token endpoint may repeat it only with its granted value |
+| Resource binding | Details carry no resource server of their own. The token's `aud` is the `resource` parameter, or the configured default resource server when `resource` is omitted. With neither, the request fails with `invalid_target` |
+| Sign-in flow | The flow must run **User Consent**, and **Check Intents** before it when a requested type declares a processor. The default flows have no consent step |
+| User decision | The user approves or denies each detail. A denied detail is left out of the token; the token is still issued |
+| Processor refusal | A refused detail is dropped and the others continue. The request fails only when every detail is refused |
+| Token response | `authorization_details` lists the details the access token carries |
+| Access token | The same array in the `authorization_details` claim |
+| Introspection | The introspection response includes `authorization_details` for a token that carries them |
+| Member order | Not preserved. <ProductName /> returns each detail's members in its own order, so compare details by value |
+| Discovery | `authorization_details_types_supported` and `authorization_details_types_endpoint` in both discovery documents |
+
+</details>
+
+## Prerequisites
+
+- An authorization details type registered for each `type` the client sends. See [Intents](../../../intents).
+- A resource server for the token audience, or a configured default resource server. See [Resource Indicators](../resource-indicators).
+- For the authorization code and CIBA grants, a sign-in flow on the application that runs **Check Intents** and **User Consent** after authentication. Without a consent step, the sign-in ends with `access_denied` and `Authorization details were not approved`. See the Check Intents and User Consent executors in [Advanced Configurations](../../../flows/advanced-configurations), and [Consent](../../../consent).
+
+The examples on this page use two types:
+
+- `payment_initiation`: a one-off payment with `instructedAmount.amount` that the client and the user may decrease, a processor that fills in `debtorAccount.iban`, and `reuse` set to `false`. It is not the `payment_initiation` intent built in [Manage Intents](../../../intents), whose processor supplies the whole `debtorAccount`.
+- `account_information`: read access to a list of accounts, whose `accounts` and `actions` lists the client and the user may shorten, with no processor and `reuse` set to `true`.
+
+## Request Authorization Details
+
+Build the array the client needs:
+
+```json
+[
+  {
+    "type": "payment_initiation",
+    "instructedAmount": { "currency": "EUR", "amount": 120.50 },
+    "creditorName": "Acme Supplies Ltd"
+  },
+  {
+    "type": "account_information",
+    "accounts": ["DE12500105170648489890", "DE02100100109307118603"],
+    "actions": ["read_balances", "read_transactions"]
+  }
+]
+```
+
+URL-encode it as the `authorization_details` parameter of the authorization request:
+
+```http
+GET /oauth2/authorize
+  ?response_type=code
+  &client_id=$CLIENT_ID
+  &redirect_uri=https://app.example.com/callback
+  &scope=openid
+  &resource=https://api.example.com/payments
+  &authorization_details=<URL-encoded JSON array>
+  &state=xyz
+```
+
+To keep the details out of the browser URL, push them with [PAR](../par) instead:
+
+```bash
+curl -X POST https://{{productSlug}}.example.com/oauth2/par \
+  -u "$CLIENT_ID:$CLIENT_SECRET" \
+  -d "response_type=code" \
+  -d "client_id=$CLIENT_ID" \
+  -d "redirect_uri=https://app.example.com/callback" \
+  -d "scope=openid" \
+  -d "resource=https://api.example.com/payments" \
+  -d "state=xyz" \
+  --data-urlencode 'authorization_details=[{"type":"payment_initiation","instructedAmount":{"currency":"EUR","amount":120.50},"creditorName":"Acme Supplies Ltd"}]'
+```
+
+```json
+{
+  "request_uri": "urn:ietf:params:oauth:request_uri:iI9WnnUmcsm5IO...",
+  "expires_in": 60
+}
+```
+
+<ProductName /> validates the details when they are pushed, and again when the `request_uri` is used, since a type can change in between.
+
+## Redeem the Code
+
+After the user approves the details, exchange the code as usual. The response includes a `refresh_token` when the application's grant types include `refresh_token`:
+
+```bash
+curl -X POST https://{{productSlug}}.example.com/oauth2/token \
+  -u "$CLIENT_ID:$CLIENT_SECRET" \
+  -d "grant_type=authorization_code" \
+  -d "code=$CODE" \
+  -d "redirect_uri=https://app.example.com/callback" \
+  -d "resource=https://api.example.com/payments"
+```
+
+The response lists the granted details, including the field the processor filled in:
+
+```json
+{
+  "access_token": "eyJhbGciOiJSUzI1NiIs...",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "refresh_token": "eyJhbGciOiJSUzI1NiIs...",
+  "scope": "openid",
+  "id_token": "eyJhbGciOiJSUzI1NiIs...",
+  "authorization_details": [
+    {
+      "creditorName": "Acme Supplies Ltd",
+      "debtorAccount": { "iban": "DE12500105170648489890" },
+      "instructedAmount": { "currency": "EUR", "amount": 120.5 },
+      "type": "payment_initiation"
+    },
+    {
+      "accounts": ["DE12500105170648489890", "DE02100100109307118603"],
+      "actions": ["read_balances", "read_transactions"],
+      "type": "account_information"
+    }
+  ]
+}
+```
+
+The access token carries the same array in its `authorization_details` claim, with the resource server as its audience. Other claims are omitted:
+
+```json
+{
+  "aud": "https://api.example.com/payments",
+  "authorization_details": [
+    {
+      "creditorName": "Acme Supplies Ltd",
+      "debtorAccount": { "iban": "DE12500105170648489890" },
+      "instructedAmount": { "currency": "EUR", "amount": 120.5 },
+      "type": "payment_initiation"
+    },
+    {
+      "accounts": ["DE12500105170648489890", "DE02100100109307118603"],
+      "actions": ["read_balances", "read_transactions"],
+      "type": "account_information"
+    }
+  ],
+  "client_id": "$CLIENT_ID",
+  "grant_type": "authorization_code",
+  "iss": "https://{{productSlug}}.example.com",
+  "scope": "openid",
+  "sub": "<user-id>"
+}
+```
+
+A detail the user changed on the consent screen is issued with the user's value. A detail the user denied is left out, and when the user denies every detail the token response has no `authorization_details` member. Check the response before acting on a detail.
+
+## Narrow the Grant at the Token Endpoint
+
+On the `authorization_code`, `refresh_token`, and CIBA grants, `authorization_details` on the token request asks for part of the grant ([RFC 9396 §6](https://datatracker.ietf.org/doc/html/rfc9396#section-6)). Each entry is a whole detail that must be an allowed change of a distinct granted detail of its type, and the access token carries only the entries sent. A type's policy decides which fields may change and in which direction; fields without one cannot change. An entry may leave out fields the processor filled in, which keep their granted values.
+
+```bash
+curl -X POST https://{{productSlug}}.example.com/oauth2/token \
+  -u "$CLIENT_ID:$CLIENT_SECRET" \
+  -d "grant_type=authorization_code" \
+  -d "code=$CODE" \
+  -d "redirect_uri=https://app.example.com/callback" \
+  -d "resource=https://api.example.com/payments" \
+  --data-urlencode 'authorization_details=[{"type":"payment_initiation","instructedAmount":{"currency":"EUR","amount":100},"creditorName":"Acme Supplies Ltd"}]'
+```
+
+```json
+{
+  "access_token": "eyJhbGciOiJSUzI1NiIs...",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "refresh_token": "eyJhbGciOiJSUzI1NiIs...",
+  "scope": "openid",
+  "id_token": "eyJhbGciOiJSUzI1NiIs...",
+  "authorization_details": [
+    {
+      "creditorName": "Acme Supplies Ltd",
+      "debtorAccount": { "iban": "DE12500105170648489890" },
+      "instructedAmount": { "currency": "EUR", "amount": 100 },
+      "type": "payment_initiation"
+    }
+  ]
+}
+```
+
+A request that goes beyond the grant is refused:
+
+```json
+{
+  "error": "invalid_authorization_details",
+  "error_description": "authorization_details entry 0 exceeds the grant: field instructedAmount.amount exceeds the granted value"
+}
+```
+
+The [type metadata endpoint](#discover-supported-types) lists the changes a client may make to each type.
+
+## Client Credentials
+
+On the `client_credentials` grant, `authorization_details` is a new request, not a change to an earlier grant. The client is the subject and no user consents, so every requested type must declare a processor, and the token carries only the details the processors approve.
+
+```bash
+curl -X POST https://{{productSlug}}.example.com/oauth2/token \
+  -u "$CLIENT_ID:$CLIENT_SECRET" \
+  -d "grant_type=client_credentials" \
+  -d "resource=https://api.example.com/payments" \
+  --data-urlencode 'authorization_details=[{"type":"payment_initiation","instructedAmount":{"currency":"EUR","amount":120.50},"creditorName":"Acme Supplies Ltd"}]'
+```
+
+```json
+{
+  "access_token": "eyJhbGciOiJSUzI1NiIs...",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "authorization_details": [
+    {
+      "creditorName": "Acme Supplies Ltd",
+      "debtorAccount": { "iban": "DE12500105170648489890" },
+      "instructedAmount": { "currency": "EUR", "amount": 120.5 },
+      "type": "payment_initiation"
+    }
+  ]
+}
+```
+
+| Case | Result |
+|---|---|
+| A type without a processor | `invalid_authorization_details`: `authorization details of type account_information cannot be requested without a user` |
+| The processor refuses some details | The refused details are left out and the token carries the rest |
+| The processor refuses every detail | `invalid_authorization_details`, with the processor's reason: `Refused by the resource owner's domain system: The amount exceeds your daily payment limit` |
+| The processor cannot be reached | HTTP 500 with `server_error` |
+
+No refresh token is issued for this grant.
+
+## Backchannel Authentication (CIBA)
+
+Send `authorization_details` on the [CIBA](../backchannel-authentication) request. <ProductName /> validates the details before it notifies the user, and the user's sign-in flow processes them and asks the user to approve them, as on the authorization code path. A CIBA request always shows the consent prompt, even when an earlier approval would cover the details.
+
+```bash
+curl -X POST https://{{productSlug}}.example.com/oauth2/bc-authorize \
+  -u "$CLIENT_ID:$CLIENT_SECRET" \
+  -d "scope=openid" \
+  -d "login_hint=alice" \
+  -d "resource=https://api.example.com/payments" \
+  -d "binding_message=Approve payment 4821" \
+  --data-urlencode 'authorization_details=[{"type":"payment_initiation","instructedAmount":{"currency":"EUR","amount":120.50},"creditorName":"Acme Supplies Ltd"}]'
+```
+
+When the user approves, the token response to the poll carries the approved details, and the polling request may narrow them as described above. When the processors refuse every detail during the user's sign-in, the poll returns `access_denied` with `The user denied the authentication request`. The processor's reason is not returned on CIBA. When the flow has no consent step, the poll returns `access_denied` with `Authorization details were not approved`.
+
+## Refresh Tokens
+
+A refresh token keeps only the details whose type has `reuse` set to `true`. A one-off detail, such as a payment, is granted for the access token issued with the code and is not renewed.
+
+| Detail | On refresh |
+|---|---|
+| Type with `reuse: true`, unchanged since the grant | Issued again |
+| Type with `reuse: false` | Left out |
+| Type updated in a way that moves its version, deleted, or deleted and registered again | Left out, so the user approves it again |
+
+With the two example types, a refresh after the code exchange returns only `account_information`:
+
+```bash
+curl -X POST https://{{productSlug}}.example.com/oauth2/token \
+  -u "$CLIENT_ID:$CLIENT_SECRET" \
+  -d "grant_type=refresh_token" \
+  -d "refresh_token=$REFRESH_TOKEN"
+```
+
+```json
+{
+  "access_token": "eyJhbGciOiJSUzI1NiIs...",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "refresh_token": "eyJhbGciOiJSUzI1NiIs...",
+  "scope": "openid",
+  "id_token": "eyJhbGciOiJSUzI1NiIs...",
+  "authorization_details": [
+    {
+      "accounts": ["DE12500105170648489890", "DE02100100109307118603"],
+      "actions": ["read_balances", "read_transactions"],
+      "type": "account_information"
+    }
+  ]
+}
+```
+
+A refresh request can narrow the details for that one access token, for example to `[{"type":"account_information","accounts":["DE12500105170648489890"],"actions":["read_balances"]}]`. The new refresh token still holds the whole renewable grant, so a later refresh without `authorization_details` returns both accounts and both actions again. Asking on refresh for a detail the refresh token does not hold, such as the payment, fails with `invalid_authorization_details` and `authorization_details entry 0 does not match a granted detail`.
+
+## Silent Authentication
+
+A `prompt=none` request with authorization details succeeds only when the user has a live SSO session and needs no consent prompt, because an earlier approval covers every requested detail. Only a type with `reuse` set to `true` lets an earlier approval cover a later request, and only when the request asks for no more than was approved. The User Consent executor in [Advanced Configurations](../../../flows/advanced-configurations) lists the full conditions.
+
+In every other case the client receives `login_required` with `User authentication is required`. A one-off type such as `payment_initiation` always needs the prompt, so a silent request for it always returns `login_required`. A request for more accounts than the user approved also returns `login_required`.
+
+## Token Introspection
+
+The [introspection](../token-introspection) response for a token that carries authorization details includes them. Other members are omitted:
+
+```json
+{
+  "active": true,
+  "client_id": "payments-service",
+  "token_type": "Bearer",
+  "sub": "<client-entity-id>",
+  "sub_type": "application",
+  "aud": "https://api.example.com/payments",
+  "iss": "https://{{productSlug}}.example.com",
+  "authorization_details": [
+    {
+      "creditorName": "Acme Supplies Ltd",
+      "debtorAccount": { "iban": "DE12500105170648489890" },
+      "instructedAmount": { "currency": "EUR", "amount": 120.5 },
+      "type": "payment_initiation"
+    }
+  ]
+}
+```
+
+## Discover Supported Types
+
+Both [discovery documents](../server-metadata) list the registered types and the type metadata endpoint:
+
+```json
+{
+  "authorization_details_types_supported": ["account_information", "payment_initiation"],
+  "authorization_details_types_endpoint": "https://{{productSlug}}.example.com/oauth2/authorization-details-types"
+}
+```
+
+`authorization_details_types_supported` is omitted when no types are registered. `authorization_details_types_endpoint` is a <ProductName /> metadata parameter, not part of RFC 9396.
+
+The type metadata endpoint is public and read-only. `GET /oauth2/authorization-details-types` lists every type as `{"types": [...]}`, and `GET /oauth2/authorization-details-types/{type}` returns one, with the type value URL-encoded. Each entry shows the fields a client may send and the changes it may make to a granted detail at the token endpoint. Processor, consent, and reuse settings are never returned, and fields the processor supplies are left out.
+
+```bash
+curl https://{{productSlug}}.example.com/oauth2/authorization-details-types/payment_initiation
+```
+
+```json
+{
+  "type": "payment_initiation",
+  "name": "Payment initiation",
+  "description": "Initiate a single payment from the user's account",
+  "version": 1,
+  "schema": {
+    "type": "object",
+    "required": ["instructedAmount", "creditorName"],
+    "properties": {
+      "instructedAmount": {
+        "type": "object",
+        "required": ["currency", "amount"],
+        "properties": {
+          "currency": { "type": "string", "enum": ["EUR", "USD"] },
+          "amount": { "type": "number", "minimum": 0, "title": "Amount" }
+        }
+      },
+      "creditorName": { "type": "string", "maxLength": 140, "title": "Pay to" },
+      "debtorAccount": { "type": "object", "properties": {} }
+    }
+  },
+  "modifications": [
+    { "field": "instructedAmount.amount", "modification": "decrease" }
+  ]
+}
+```
+
+Responses carry an `ETag`, and a request with a matching `If-None-Match` header returns `304`. An unknown type returns `404` with the code `RAR-1029`.
+
+To stop serving the endpoint and drop `authorization_details_types_endpoint` from discovery, set `oauth.authorization_details.type_metadata_enabled` to `false` in `deployment.yaml`. `authorization_details_types_supported` is still advertised. See [Configuration](../../../../deployment/configuration#oauth-configuration).
+
+```yaml
+oauth:
+  authorization_details:
+    type_metadata_enabled: false
+```
+
+## Errors
+
+| Error | Where | Cause |
+|---|---|---|
+| `invalid_authorization_details` | Authorization redirect, PAR, CIBA, token endpoint | The parameter is not a JSON array (`authorization_details must be a JSON array`), names an unregistered type (`authorization_details entry 0 names the unknown type wire_transfer`), does not conform to its type, sends a field the processor supplies on a new request, or carries more than 50 entries |
+| `invalid_authorization_details` | Token endpoint | A requested detail matches no granted detail, goes beyond the grant, changes a field that cannot change, or was requested when nothing was granted (`no authorization details were granted`). Also returned for a grant that does not accept the parameter (`authorization_details is not supported for this grant type`) |
+| `invalid_target` | Authorization redirect, PAR, CIBA, token endpoint | No `resource` and no default resource server (`No resource parameter supplied and no default resource server is configured`) |
+| `access_denied` | Authorization redirect, CIBA poll | The sign-in flow did not ask for consent (`Authorization details were not approved`) |
+| `access_denied` | Authorization redirect | A requested type declares a processor, but the sign-in flow has no **Check Intents** step (`The sign-in flow does not run the checks the requested authorization details need`) |
+| `access_denied` | Authorization redirect | The processors refused every detail during sign-in. The description carries the processor's reason, such as `The requested authorization details were refused: The amount exceeds your daily payment limit` |
+| `access_denied` | CIBA poll | The processors refused every detail during sign-in (`The user denied the authentication request`) |
+| `server_error` | Token endpoint (`client_credentials`) | A processor could not be reached |
+| `login_required` | Authorization redirect | `prompt=none` with details that need the consent prompt, or with no live session |
+
+## Related Guides
+
+- [Intents](../../../intents), register the authorization details types clients request
+- [Consent](../../../consent), the consent step that approves the details
+- [Advanced Configurations](../../../flows/advanced-configurations), the Check Intents and User Consent executors
+- [Resource Indicators](../resource-indicators), the resource server the token binds to
+- [Pushed Authorization Requests](../par), keep large details out of the browser URL
+- [Authorization](../../../../key-concepts/authorization), how authorization details fit with scopes and resource servers

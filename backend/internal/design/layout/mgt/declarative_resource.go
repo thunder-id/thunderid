@@ -120,6 +120,7 @@ func (e *layoutExporter) ViewResource(_ context.Context, document *yaml.Node) (i
 			Handle:      exported.Handle,
 			DisplayName: exported.DisplayName,
 			Description: exported.Description,
+			ProjectID:   exported.ProjectID,
 			Layout:      layoutJSON,
 			CreatedAt:   exported.CreatedAt,
 			UpdatedAt:   exported.UpdatedAt,
@@ -143,7 +144,8 @@ func (e *layoutExporter) GetResourceRules() *declarativeresource.ResourceRules {
 
 // loadDeclarativeResources loads declarative layout resources from files.
 // The dbStore parameter is optional (can be nil) and is used for duplicate checking in composite mode.
-func loadDeclarativeResources(fileStore layoutMgtStoreInterface, dbStore layoutMgtStoreInterface) error {
+func loadDeclarativeResources(
+	fileStore layoutMgtStoreInterface, dbStore layoutMgtStoreInterface, requireProject bool) error {
 	// Type assert to access Storer interface for resource loading
 	fileBasedStore, ok := fileStore.(*layoutFileBasedStore)
 	if !ok {
@@ -155,7 +157,7 @@ func loadDeclarativeResources(fileStore layoutMgtStoreInterface, dbStore layoutM
 		DirectoryName: "layouts",
 		Parser:        parseToLayoutWrapper,
 		Validator: func(data interface{}) error {
-			return validateLayoutWrapper(data, dbStore)
+			return validateLayoutWrapper(data, dbStore, requireProject)
 		},
 		IDExtractor: func(data interface{}) string {
 			if layout, ok := data.(*Layout); ok {
@@ -218,6 +220,7 @@ func parseToLayout(data []byte) (*Layout, error) {
 		ID:          layoutRequest.ID,
 		DisplayName: layoutRequest.DisplayName,
 		Description: layoutRequest.Description,
+		ProjectID:   layoutRequest.ProjectID,
 		Layout:      layoutJSON,
 		CreatedAt:   "",
 		UpdatedAt:   "",
@@ -228,7 +231,7 @@ func parseToLayout(data []byte) (*Layout, error) {
 
 // validateLayoutWrapper wraps validateLayoutForDeclarativeResource to match ResourceConfig.Validator signature.
 // It also checks for duplicates across database stores in composite mode.
-func validateLayoutWrapper(dto interface{}, dbStore layoutMgtStoreInterface) error {
+func validateLayoutWrapper(dto interface{}, dbStore layoutMgtStoreInterface, requireProject bool) error {
 	// Declarative resources are validated as they are loaded, outside any request, so there
 	// is no context to carry a deployment id and the configured identifier applies.
 	ctx := context.Background()
@@ -240,6 +243,11 @@ func validateLayoutWrapper(dto interface{}, dbStore layoutMgtStoreInterface) err
 	// Basic validation
 	if err := validateLayoutForDeclarativeResource(layout); err != nil {
 		return err
+	}
+	// Where projects are served, a layout file names its project. It is not checked here: declarative
+	// layouts load before the projects do.
+	if requireProject && layout.ProjectID == "" {
+		return fmt.Errorf("layout '%s' must name its projectId", layout.ID)
 	}
 
 	// In composite mode, check for duplicates in database store

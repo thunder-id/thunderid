@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {SettingsCard} from '@thunderid/components';
-import {FormControl, FormLabel, TextField} from '@wso2/oxygen-ui';
+import {TextField} from '@wso2/oxygen-ui';
 import {useTranslation} from 'react-i18next';
 
 /**
@@ -52,24 +52,21 @@ export default function AudienceSection({
         "The default aud for access tokens that don't target a resource server (OIDC only or scopeless).",
       )}
     >
-      <FormControl fullWidth size="small">
-        <FormLabel htmlFor="access_token_default_audience">
-          {t('applications:edit.advanced.audience.label', 'Default audience (aud)')}
-        </FormLabel>
-        <TextField
-          id="access_token_default_audience"
-          size="small"
-          fullWidth
-          value={audience}
-          disabled={disabled}
-          onChange={(e) => onAudienceChange(e.target.value.trim())}
-          inputProps={{maxLength: 2048}}
-          placeholder={t('applications:edit.advanced.audience.placeholder', 'e.g. https://api.example.com')}
-          helperText={t('applications:edit.advanced.audience.hint', 'Leave empty to use the {{entity}} client ID.', {
-            entity: entityLabel,
-          })}
-        />
-      </FormControl>
+      <TextField
+        labelPlacement="top"
+        label={t('applications:edit.advanced.audience.label', 'Default audience (aud)')}
+        id="access_token_default_audience"
+        size="small"
+        fullWidth
+        value={audience}
+        disabled={disabled}
+        onChange={(e) => onAudienceChange(e.target.value.trim())}
+        inputProps={{maxLength: 2048}}
+        placeholder={t('applications:edit.advanced.audience.placeholder', 'e.g. https://api.example.com')}
+        helperText={t('applications:edit.advanced.audience.hint', 'Leave empty to use the {{entity}} client ID.', {
+          entity: entityLabel,
+        })}
+      />
     </SettingsCard>
   );
 }

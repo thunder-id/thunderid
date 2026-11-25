@@ -143,6 +143,10 @@ describe('steps models', () => {
       expect(ExecutionTypes.AttributeUniquenessValidator).toBe('AttributeUniquenessValidator');
     });
 
+    it('should have SharingExecutor type', () => {
+      expect(ExecutionTypes.SharingExecutor).toBe('SharingExecutor');
+    });
+
     it('should have PermissionValidator type', () => {
       expect(ExecutionTypes.PermissionValidator).toBe('PermissionValidator');
     });
@@ -187,10 +191,6 @@ describe('steps models', () => {
       expect(ExecutionTypes.Authorization).toBe('AuthorizationExecutor');
     });
 
-    it('should have PreDelete type', () => {
-      expect(ExecutionTypes.PreDelete).toBe('PreDeleteExecutor');
-    });
-
     it('should have OwnerResolver type', () => {
       expect(ExecutionTypes.OwnerResolver).toBe('OwnerResolver');
     });
@@ -202,8 +202,6 @@ describe('steps models', () => {
     it('should have the administration flow types', () => {
       expect(ExecutionTypes.AccessChangeValidator).toBe('AccessChangeValidator');
       expect(ExecutionTypes.RoleExecutor).toBe('RoleExecutor');
-      expect(ExecutionTypes.GroupExecutor).toBe('GroupExecutor');
-      expect(ExecutionTypes.ActionDeletion).toBe('ActionDeletionExecutor');
       expect(ExecutionTypes.CriteriaRevocation).toBe('CriteriaRevocationExecutor');
     });
 
@@ -219,8 +217,12 @@ describe('steps models', () => {
       expect(ExecutionTypes.ExtensionExecutor).toBe('ExtensionExecutor');
     });
 
-    it('should have exactly 41 execution types', () => {
-      expect(Object.keys(ExecutionTypes)).toHaveLength(41);
+    it('should have AttributeVerification type', () => {
+      expect(ExecutionTypes.AttributeVerification).toBe('AttributeVerificationExecutor');
+    });
+
+    it('should have exactly 38 execution types', () => {
+      expect(Object.keys(ExecutionTypes)).toHaveLength(38);
     });
   });
 

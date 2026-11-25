@@ -28,8 +28,7 @@ const (
 	errCodeRecoveryDisabled     = "FES-1009"
 	errCodeAdminAuthRequired    = "FES-1017"
 	errCodeFlowIDNotPermitted   = "FES-1018"
-	// errCodeAdminPermissionNeeded (FES-1019) is not asserted yet: it needs a signed-in user whose
-	// permissions omit the system scope. See TestExecuteByFlowID_ClientCredentialsTokenRejected.
+	errCodeAdminPermission      = "FES-1019"
 
 	errorTestClientID     = "flow_execution_error_test_client"
 	errorTestClientSecret = "flow_execution_error_test_secret" //nolint:gosec // test credential
@@ -241,17 +240,12 @@ func (ts *FlowExecutionErrorTestSuite) nonAdminToken() string {
 
 // A machine-to-machine client credentials token must not reach the administration entry point.
 // /flow/execute is a public path, so this check is the only thing standing between any client
-// holding a token and administration flow execution.
-//
-// The rejection is "authentication required" rather than "permission required": a client
-// credentials token establishes no user subject, so the caller check refuses it before permissions
-// are ever consulted. Reaching the permission branch (FES-1019) needs a user token whose
-// permissions omit the system scope, which requires a signed-in non-administrator user and is not
-// covered here.
+// holding a token and administration flow execution. The token reaches the service as its caller,
+// and is refused for holding no system permission.
 func (ts *FlowExecutionErrorTestSuite) TestExecuteByFlowID_ClientCredentialsTokenRejected() {
 	ts.assertFlowError(map[string]interface{}{
 		"flowId": ts.flowID,
-	}, ts.nonAdminToken(), http.StatusUnauthorized, errCodeAdminAuthRequired)
+	}, ts.nonAdminToken(), http.StatusForbidden, errCodeAdminPermission)
 }
 
 func (ts *FlowExecutionErrorTestSuite) TestInitiate_UnknownFlowTypeRejected() {

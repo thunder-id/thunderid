@@ -3,24 +3,18 @@
 
 import {cn} from '@thunderid/utils';
 import {Box} from '@wso2/oxygen-ui';
-import * as OxygenIcons from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
-import type React from 'react';
+import useOxygenIcons from '../../../hooks/useOxygenIcons';
 import type {FlowComponent} from '../../../models/flow';
+import OxygenIcon from '../../OxygenIcon';
 
 interface IconAdapterProps {
   component: FlowComponent;
 }
 
 export default function IconAdapter({component}: IconAdapterProps): JSX.Element | null {
-  const iconName = component.name ?? 'ArrowLeftRight';
-  const icons = OxygenIcons as unknown as Record<
-    string,
-    React.ComponentType<{fontSize?: number | string; sx?: Record<string, unknown>}>
-  >;
-  if (!Object.keys(icons).includes(iconName)) return null;
-  const IconComponent = icons[iconName];
-  if (!IconComponent) return null;
+  const icon = useOxygenIcons()?.get(component.name ?? 'ArrowLeftRight');
+  if (!icon) return null;
 
   return (
     <Box
@@ -28,7 +22,7 @@ export default function IconAdapter({component}: IconAdapterProps): JSX.Element 
       className={[cn('Flow--icon'), component.classes].filter(Boolean).join(' ')}
       sx={{display: 'flex', alignItems: 'center'}}
     >
-      <IconComponent fontSize={component.size ?? 24} sx={{color: component.color ?? 'currentColor'}} />
+      <OxygenIcon icon={icon} size={component.size ?? 24} color={component.color ?? 'currentColor'} />
     </Box>
   );
 }

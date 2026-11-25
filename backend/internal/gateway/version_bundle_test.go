@@ -83,15 +83,99 @@ func TestLineDiffReportsAReplacedLine(t *testing.T) {
 	assert.Nil(t, lineDiff("same", "same"))
 }
 
-// Only a removed resource with an id can be named to the gateway for deletion.
-func TestDeletionsNeedAnID(t *testing.T) {
-	deletions := deletionsOf([]Change{
-		{ResourceType: "organization_unit", ID: "ou-1", Change: ChangeDeleted},
-		{ResourceType: "translation", Name: "en-US", Change: ChangeDeleted},
-		{ResourceType: "organization_unit", ID: "ou-2", Change: ChangeAdded},
-	})
+// A user's diff masks its attribute values, keeping the username, the attribute names and which of
+// them changed. A changed value still shows as removed and added, though both sides are masked, and
+// whatever is nested under an attribute is masked whole, a nested username included.
+func TestDiffBundlesMasksUserAttributeValues(t *testing.T) {
+	user := func(nationalID string) string {
+		return "resource_type: user\nid: user-1\ntype: person\nattributes:\n  username: alice\n" +
+			"  national_id: " + nationalID + "\n  email: \"alice@example.com\"\n  address:\n    city: Colombo\n" +
+			"  github:\n    username: alice-gh\n  phones:\n    - \"+94 77 123 4567\"\n  notes: |\n    Ship to:\n" +
+			"  manager: var:ALICE_MANAGER\ncredentials:\n  password: secret:USER_ALICE_PASSWORD"
+	}
+	held := parseBundle(user("TEST-ID-0001"))
+	applied := parseBundle(user("TEST-ID-0002"))
 
-	assert.Equal(t, []gatewayDeletion{{ResourceType: "organization_unit", ID: "ou-1"}}, deletions)
+	changes := diffBundles(held, applied)
+
+	require.Len(t, changes, 1)
+	assert.Equal(t, ChangeUpdated, changes[0].Change)
+	assert.Equal(t, []LineOp{
+		{Kind: " ", Text: "resource_type: user"},
+		{Kind: " ", Text: "id: user-1"},
+		{Kind: " ", Text: "type: person"},
+		{Kind: " ", Text: "attributes:"},
+		{Kind: " ", Text: "  username: alice"},
+		{Kind: "-", Text: "  national_id: ********"},
+		{Kind: "+", Text: "  national_id: ********"},
+		{Kind: " ", Text: "  email: ********"},
+		{Kind: " ", Text: "  address:"},
+		{Kind: " ", Text: "    ********"},
+		{Kind: " ", Text: "  github:"},
+		{Kind: " ", Text: "    ********"},
+		{Kind: " ", Text: "  phones:"},
+		{Kind: " ", Text: "    ********"},
+		{Kind: " ", Text: "  notes: ********"},
+		{Kind: " ", Text: "    ********"},
+		{Kind: " ", Text: "  manager: ********"},
+		{Kind: " ", Text: "credentials:"},
+		{Kind: " ", Text: "  password: secret:USER_ALICE_PASSWORD"},
+	}, changes[0].Lines)
+
+	removed := diffBundles(held, nil)
+	require.Len(t, removed, 1)
+	assert.Contains(t, removed[0].Lines, LineOp{Kind: "-", Text: "  national_id: ********"})
+	for _, op := range removed[0].Lines {
+		assert.NotContains(t, op.Text, "TEST-ID-0001", "a removed user's attribute value was shown")
+	}
+}
+
+// Only a user's diff masks its values: another resource's attributes are shown as they are.
+func TestDiffBundlesShowsOtherResourcesUnmasked(t *testing.T) {
+	document := "resource_type: application\nid: app-1\nname: Orders\nattributes:\n  owner: alice"
+
+	changes := diffBundles(nil, parseBundle(document))
+
+	require.Len(t, changes, 1)
+	assert.Contains(t, changes[0].Lines, LineOp{Kind: "+", Text: "  owner: alice"})
+}
+
+// An apply sends the documents of the changes chosen and names the removals chosen; only a removed
+// resource with an id can be named to the gateway, and an unchanged resource is never sent.
+func TestChosenSendsOnlyTheChangesChosen(t *testing.T) {
+	target := &Version{Resources: joinBundle([]string{unit("ou-2"), unit("ou-3"), unit("ou-4")})}
+	changes := []Change{
+		{Key: "organization_unit/ou-1", ResourceType: "organization_unit", ID: "ou-1", Change: ChangeDeleted},
+		{Key: "translation/en-US", ResourceType: "translation", Name: "en-US", Change: ChangeDeleted},
+		{Key: "organization_unit/ou-2", ResourceType: "organization_unit", ID: "ou-2", Change: ChangeAdded},
+		{Key: "organization_unit/ou-3", ResourceType: "organization_unit", ID: "ou-3", Change: ChangeUpdated},
+		{Key: "organization_unit/ou-4", ResourceType: "organization_unit", ID: "ou-4", Change: ChangeUnchanged},
+	}
+
+	all, svcErr := chosen(&Diff{Changes: append([]Change{}, changes...)}, target, nil, true)
+	assert.Nil(t, svcErr)
+	assert.Equal(t, []gatewayDeletion{{ResourceType: "organization_unit", ID: "ou-1"}}, all.deletions)
+	assert.Equal(t, joinBundle([]string{unit("ou-2"), unit("ou-3")}), all.content)
+
+	diff := &Diff{Changes: append([]Change{}, changes...)}
+	some, svcErr := chosen(diff, target, &[]string{"organization_unit/ou-3", "organization_unit/ou-1",
+		"organization_unit/ou-4"}, true)
+	assert.Nil(t, svcErr)
+	assert.Equal(t, []gatewayDeletion{{ResourceType: "organization_unit", ID: "ou-1"}}, some.deletions)
+	assert.Equal(t, unit("ou-3"), some.content)
+	selected := make([]bool, 0, len(diff.Changes))
+	for _, change := range diff.Changes {
+		selected = append(selected, change.Selected)
+	}
+	assert.Equal(t, []bool{true, false, false, true, false}, selected)
+
+	none, svcErr := chosen(&Diff{Changes: append([]Change{}, changes...)}, target, &[]string{}, true)
+	assert.Nil(t, svcErr)
+	assert.Empty(t, none.content)
+	assert.Empty(t, none.deletions)
+
+	_, svcErr = chosen(&Diff{Changes: changes}, target, &[]string{"organization_unit/ou-9"}, true)
+	assert.Equal(t, &ErrorInvalidSelection, svcErr, "a key the diff does not report was accepted")
 }
 
 func TestParseEnvFileReadsKeyValueLines(t *testing.T) {

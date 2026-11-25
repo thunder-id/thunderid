@@ -22,11 +22,14 @@ export {default as GatewayDetailPage} from './pages/GatewayDetailPage';
 export type {GatewayRoutePaths} from './hooks/useGatewayRoutes';
 export {defaultGatewayRoutePaths, default as useGatewayRoutes} from './hooks/useGatewayRoutes';
 
-export type {DeployRoutePaths} from './hooks/useDeployRoutes';
-export {default as useDeployRoutes, defaultDeployRoutePaths} from './hooks/useDeployRoutes';
+export type {DeployRoutePaths, GatewaySection} from './hooks/useDeployRoutes';
+export {default as useDeployRoutes, defaultDeployRoutePaths, gatewaySectionOf} from './hooks/useDeployRoutes';
 export {default as DeployPage} from './pages/DeployPage';
 export {default as GatewayExplorerPage} from './pages/GatewayExplorerPage';
 export {default as GatewayValuesPage} from './pages/GatewayValuesPage';
+export {default as GatewayPage} from './pages/GatewayPage';
+export type {GatewayPageProps} from './pages/GatewayPage';
+export {gatewayColor} from './constants/gateway-colors';
 export {default as FullScreenHeader} from './components/FullScreenHeader';
 export {default as DeployCard} from './components/DeployCard';
 export {default as DEPLOY_CARD_HEIGHT} from './constants/layout';
@@ -45,6 +48,12 @@ export {default as ChangeLines} from './components/ChangeLines';
 export {default as MissingValuesFields} from './components/MissingValuesFields';
 export {default as ValuesTable} from './components/ValuesTable';
 export {default as GatewayStage} from './components/GatewayStage';
+export {default as GatewaysOverview} from './components/GatewaysOverview';
+export type {GatewaysOverviewProps} from './components/GatewaysOverview';
+export {default as AutoApplySwitch} from './components/AutoApplySwitch';
+export {default as PipelineSteps} from './components/PipelineSteps';
+export type {PipelineStepsProps} from './components/PipelineSteps';
+export {default as RuntimeEnvironmentsProvider} from './components/RuntimeEnvironmentsProvider';
 export {default as ActorName} from './components/ActorName';
 export {default as useActorName} from './hooks/useActorName';
 
@@ -52,9 +61,24 @@ export type {DeploySource, StoredValueInput} from './api/source';
 export {DeploySourceProvider, default as useDeploySource} from './api/source';
 export {default as useGatewaySource} from './api/gatewaySource';
 export {default as useGateways} from './api/useGateways';
+export {usePipeline, useProjects, useAutoApply, useSetAutoApply} from './api/usePipeline';
+export {default as useProjectScope} from './contexts/ProjectScope';
+export {
+  default as useProjectStatus,
+  useProjectChanges,
+  useProjectStatuses,
+  useProjectsPending,
+} from './api/useProjectStatus';
+export type {ProjectStatus, ProjectVersionShare} from './models/projectStatus';
+export {default as useDeployPanels} from './hooks/useDeployPanels';
+export type {DeployPanels} from './hooks/useDeployPanels';
+export {default as useResourceDeploy} from './hooks/useResourceDeploy';
+export type {ResourceDeploy} from './hooks/useResourceDeploy';
+export {default as runnersOf} from './utils/runners';
 export {default as useAppliedVersions} from './api/useAppliedVersions';
-export {default as useHeldBack} from './api/useHeldBack';
-export {default as useChangedValues, changedCount} from './api/useChangedValues';
+export {useMaster, useMasterHistory, useResourceHistory, useRefused} from './api/useMaster';
+export {withNeeded} from './utils/needs';
+export {default as useChangedValues, changedCount, useTargetsWithChangedValues} from './api/useChangedValues';
 export {useVersions, useVersion} from './api/useVersions';
 export {
   useAppliedVersion,
@@ -64,7 +88,14 @@ export {
   useRevert,
   useRunningReferences,
 } from './api/useGatewayVersions';
-export {useStoredValues, useSetStoredValue, useDeleteStoredValue} from './api/useStoredValues';
+export {
+  useStoredValuesPage,
+  useStoredValueCount,
+  useStoredValuesNamed,
+  useSetStoredValue,
+  useDeleteStoredValue,
+  usePendingValueWrites,
+} from './api/useStoredValues';
 export {default as DeployQueryKeys} from './constants/query-keys';
 export {shortHash, versionLabel} from './utils/format';
 export {default as formatTimestamp} from './utils/formatTimestamp';
@@ -73,4 +104,6 @@ export {fromListText, parseListValue, toListText} from './utils/listValue';
 export type {MissingField} from './utils/missingValues';
 
 export * from './models/deploy';
+export * from './models/pipeline';
+export * from './models/project';
 export * from './explorer/model';

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {renderHook, act} from '@testing-library/react';
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import {useContext} from 'react';
 import type {ReactNode} from 'react';
 import {describe, it, expect} from 'vitest';
@@ -94,5 +95,32 @@ describe('OrganizationUnitProvider', () => {
     expect(result.current.loadedItems).toEqual(new Set());
     // expandedItems should be preserved
     expect(result.current.expandedItems).toEqual(['ou-1']);
+  });
+
+  it('starts the tree again when the selected project changes', () => {
+    let projectId = 'project-1';
+    const {result, rerender} = renderHook(() => useOrganizationUnitContext(), {
+      wrapper: ({children}: {children: ReactNode}) => (
+        <ProjectScopeProvider project={{id: projectId}}>
+          <OrganizationUnitProvider>{children}</OrganizationUnitProvider>
+        </ProjectScopeProvider>
+      ),
+    });
+
+    act(() => {
+      result.current.setTreeItems([{id: 'ou-1', label: 'Test', handle: 'test'}]);
+      result.current.setExpandedItems(['ou-1']);
+      result.current.setLoadedItems(new Set(['ou-1']));
+    });
+
+    rerender();
+    expect(result.current.treeItems).toHaveLength(1);
+
+    projectId = 'project-2';
+    rerender();
+
+    expect(result.current.treeItems).toEqual([]);
+    expect(result.current.expandedItems).toEqual([]);
+    expect(result.current.loadedItems).toEqual(new Set());
   });
 });

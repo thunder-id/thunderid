@@ -3,7 +3,11 @@
 
 package deviceauth
 
-import "time"
+import (
+	"time"
+
+	oauth2model "github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
+)
 
 // DeviceRequestState represents the lifecycle state of a device authorization request.
 type DeviceRequestState string
@@ -27,25 +31,41 @@ const (
 
 // DeviceAuthRequest represents a persisted device authorization request.
 type DeviceAuthRequest struct {
-	RequestID                  string
-	ApplicationID              string
-	DeviceCodeHash             string
-	UserCode                   string `json:"-"`
-	ClientID                   string
-	UserID                     string
-	StandardScopes             string
-	RequestedPermissions       string
-	RequiredOptionalAttributes string
-	AuthorizedScopes           string
-	Resources                  []string
-	State                      DeviceRequestState
-	AttributeCacheID           string
-	CompletedACR               string
-	AuthTime                   time.Time
-	SessionID                  string
-	LastPolledAt               time.Time
-	PollInterval               int64
-	ExpiryTime                 time.Time
+	RequestID                     string
+	ApplicationID                 string
+	DeviceCodeHash                string
+	UserCode                      string `json:"-"`
+	ClientID                      string
+	UserID                        string
+	SubjectID                     string
+	StandardScopes                string
+	RequestedPermissions          string
+	RequiredOptionalAttributes    string
+	UserAttributesCacheTTLSeconds int64
+	AuthorizedScopes              string
+	Resources                     []string
+	State                         DeviceRequestState
+	AttributeCacheID              string
+	CompletedACR                  string
+	AuthTime                      time.Time
+	SessionID                     string
+	SessionData                   []oauth2model.SessionData
+	LastPolledAt                  time.Time
+	PollInterval                  int64
+	ExpiryTime                    time.Time
+}
+
+// DeviceApproval is what an approving flow assertion records on its Device Grant request. SubjectID is the
+// user's entity ID and SessionData the SSO sessions the device secret carries.
+type DeviceApproval struct {
+	UserID           string
+	SubjectID        string
+	AuthorizedScopes string
+	AttributeCacheID string
+	CompletedACR     string
+	SessionID        string
+	AuthTime         time.Time
+	SessionData      []oauth2model.SessionData
 }
 
 // DeviceAuthorizationRequest contains parameters from a device authorization request.
@@ -78,6 +98,7 @@ func (e *DeviceAuthError) Error() string {
 // assertionClaims represents the claims extracted from a Device Grant flow assertion.
 type assertionClaims struct {
 	userID                string
+	subjectID             string
 	attributeCacheID      string
 	completedACR          string
 	sessionID             string

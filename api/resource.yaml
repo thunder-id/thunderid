@@ -5,7 +5,7 @@ info:
   description: |
     Resource servers in ThunderID define the permission namespace for a protected API or service; resources and actions nested within them form the permission strings used in role assignments.
     Resources can be nested hierarchically, and permissions are derived from the handle-based path structure.
-    Resource Server identifier is required and must be unique within the system. An MCP resource server's identifier must be an http or https URL with no fragment.
+    Resource Server identifier is required and must be unique within the system. Identifiers that are URLs with a host are compared for uniqueness after RFC 3986 normalization: scheme and host are case-insensitive, and an http or https URL that ends at the host is the same as one ending in "/". Ports, paths, queries, and all other identifiers are compared exactly. An MCP resource server's identifier must be an http or https URL with no fragment.
     Resource, and Action handles are unique under it's parent and are immutable after creation and used directly for permission derivation.
     Resource parent hierarchy is immutable after creation.
   license:
@@ -42,6 +42,8 @@ paths:
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
+        - $ref: '#/components/parameters/resourceServerProjectIdQueryParam'
+        - $ref: '#/components/parameters/resourceServerFilterQueryParam'
       responses:
         "200":
           description: List of resource servers
@@ -98,6 +100,16 @@ paths:
                     description:
                       key: "error.resourceservice.invalid_offset_parameter_description"
                       defaultValue: "The offset parameter must be a non-negative integer"
+                invalid-filter:
+                  summary: Invalid filter parameter
+                  value:
+                    code: "RES-1027"
+                    message:
+                      key: "error.resourceservice.invalid_filter_parameter"
+                      defaultValue: "Invalid filter parameter"
+                    description:
+                      key: "error.resourceservice.invalid_filter_parameter_description"
+                      defaultValue: "The filter must be a single ouId eq expression with a quoted organization unit ID"
                 result-limit-exceeded:
                   summary: Result limit exceeded in composite mode
                   value:
@@ -201,6 +213,8 @@ paths:
                     description:
                       key: "error.resourceservice.invalid_mcp_identifier_description"
                       defaultValue: "Use an http or https URL with no fragment, such as https://mcp.example.com/mcp"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "409":
           description: Conflict
           content:
@@ -285,6 +299,8 @@ paths:
                 description:
                   key: "error.resourceservice.missing_id_description"
                   defaultValue: "Resource server ID is required"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Resource server not found
           content:
@@ -417,6 +433,8 @@ paths:
                     description:
                       key: "error.resourceservice.invalid_mcp_identifier_description"
                       defaultValue: "Use an http or https URL with no fragment, such as https://mcp.example.com/mcp"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Resource server not found
           content:
@@ -525,6 +543,8 @@ paths:
                     description:
                       key: "error.resourceservice.cannot_modify_declarative_resource_server_description"
                       defaultValue: "Resource server is defined in declarative configuration and cannot be modified"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "500":
           description: Internal server error
           content:
@@ -654,6 +674,8 @@ paths:
                     description:
                       key: "error.resourceservice.result_limit_exceeded_in_composite_mode_description"
                       defaultValue: "The total number of records exceeds the maximum limit in composite mode"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Resource server not found
           content:
@@ -772,6 +794,8 @@ paths:
                     description:
                       key: "error.resourceservice.parent_resource_not_found_description"
                       defaultValue: "The specified parent resource does not exist"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Resource server not found
           content:
@@ -863,6 +887,8 @@ paths:
                 description:
                   key: "error.resourceservice.missing_id_description"
                   defaultValue: "Resource ID is required"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Resource or resource server not found
           content:
@@ -985,6 +1011,8 @@ paths:
                     description:
                       key: "error.resourceservice.cannot_modify_declarative_resource_description"
                       defaultValue: "Resource is defined in declarative configuration and cannot be modified"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Resource or resource server not found
           content:
@@ -1087,6 +1115,8 @@ paths:
                     description:
                       key: "error.resourceservice.cannot_modify_declarative_resource_description"
                       defaultValue: "Resource is defined in declarative configuration and cannot be modified"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "500":
           description: Internal server error
           content:
@@ -1226,6 +1256,8 @@ paths:
                     description:
                       key: "error.resourceservice.invalid_request_format_description"
                       defaultValue: "The request body is malformed or contains invalid data"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Resource server not found
           content:
@@ -1328,6 +1360,8 @@ paths:
                     description:
                       key: "error.resourceservice.delimiter_conflict_in_handle_description"
                       defaultValue: "Handle cannot contain the delimiter character"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Resource server not found
           content:
@@ -1418,6 +1452,8 @@ paths:
                 description:
                   key: "error.resourceservice.missing_id_description"
                   defaultValue: "Action ID is required"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Action or resource server not found
           content:
@@ -1538,6 +1574,8 @@ paths:
                     description:
                       key: "error.resourceservice.cannot_modify_declarative_action_description"
                       defaultValue: "Action is defined in declarative configuration and cannot be modified"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Action or resource server not found
           content:
@@ -1630,6 +1668,8 @@ paths:
                     description:
                       key: "error.resourceservice.cannot_modify_declarative_action_description"
                       defaultValue: "Action is defined in declarative configuration and cannot be modified"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "500":
           description: Internal server error
           content:
@@ -1770,6 +1810,8 @@ paths:
                     description:
                       key: "error.resourceservice.invalid_request_format_description"
                       defaultValue: "The request body is malformed or contains invalid data"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Resource or resource server not found
           content:
@@ -1882,6 +1924,8 @@ paths:
                     description:
                       key: "error.resourceservice.delimiter_conflict_in_handle_description"
                       defaultValue: "Handle must contain only valid characters (a-z A-Z 0-9 . _ : - /) and cannot contain the delimiter character"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Resource or resource server not found
           content:
@@ -1992,6 +2036,8 @@ paths:
                 description:
                   key: "error.resourceservice.missing_id_description"
                   defaultValue: "Action ID is required"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Action, resource, or resource server not found
           content:
@@ -2129,6 +2175,8 @@ paths:
                     description:
                       key: "error.resourceservice.cannot_modify_declarative_action_description"
                       defaultValue: "Action is defined in declarative configuration and cannot be modified"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Action, resource, or resource server not found
           content:
@@ -2238,6 +2286,8 @@ paths:
                     description:
                       key: "error.resourceservice.cannot_modify_declarative_action_description"
                       defaultValue: "Action is defined in declarative configuration and cannot be modified"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "500":
           description: Internal server error
           content:
@@ -2287,7 +2337,49 @@ components:
         type: integer
         minimum: 0
         default: 0
+    resourceServerProjectIdQueryParam:
+      in: query
+      name: projectId
+      required: false
+      description: |
+        Lists the resource servers of the project. With an `ouId` filter, lists only the project's
+        resource servers that organization unit owns. A project that does not exist has no resource
+        servers.
+      schema:
+        type: string
+      example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+    resourceServerFilterQueryParam:
+      in: query
+      name: filter
+      required: false
+      description: |
+        Filters resource servers by organization unit with `ouId eq "<id>"`, the only supported
+        expression. Lists the resource servers the organization unit owns, within the project when
+        `projectId` is also given.
+      schema:
+        type: string
+      examples:
+        organization-unit:
+          summary: Resource servers an organization unit owns
+          value: 'ouId eq "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"'
 
+  responses:
+    Forbidden:
+      description: |
+        The caller may not perform the operation in the organization unit of the resource, or for an update
+        that moves the resource, in the organization unit it moves to
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "SSE-4030"
+            message:
+              key: "error.unauthorized"
+              defaultValue: "Unauthorized"
+            description:
+              key: "error.unauthorized_description"
+              defaultValue: "The caller is not authorized to perform this operation"
   schemas:
     ResourceServer:
       type: object
@@ -2315,9 +2407,15 @@ components:
           type: string
           format: uuid
           description: ID of the organization unit this resource server belongs to
+        projectId:
+          type: string
+          description: ID of the project this resource server belongs to. Absent when it belongs to no project.
         delimiter:
           type: string
           description: Character used to separate permission hierarchy levels (immutable after creation)
+        hierarchicalPermissions:
+          type: boolean
+          description: Whether a granted permission on this resource server also authorizes the permissions beneath it (immutable after creation)
         authorizationEngine:
           $ref: '#/components/schemas/AuthorizationEngineConfig'
         isReadOnly:
@@ -2326,7 +2424,7 @@ components:
 
     CreateResourceServerRequest:
       type: object
-      required: [name, ouId, identifier]
+      required: [name, identifier]
       properties:
         name:
           type: string
@@ -2344,14 +2442,26 @@ components:
         ouId:
           type: string
           format: uuid
-          description: ID of the organization unit this resource server belongs to
+          description: |
+            ID of the organization unit this resource server belongs to. When left out, the resource
+            server is placed in the system organization unit.
+        projectId:
+          type: string
+          description: |
+            ID of the project this resource server belongs to. A resource server in a project without
+            `ouId` is placed in the system organization unit. Any organization unit other than the system
+            one or one of the project's is refused. Without `projectId`, the resource server belongs to no
+            project.
         delimiter:
           type: string
           description: Optional delimiter character for permission hierarchy (defaults to ":", immutable after creation)
+        hierarchicalPermissions:
+          type: boolean
+          description: Whether a granted permission covers its declared descendants (defaults to "false", immutable after creation)
 
     UpdateResourceServerRequest:
       type: object
-      required: [name, ouId]
+      required: [name]
       properties:
         name:
           type: string
@@ -2365,7 +2475,15 @@ components:
         ouId:
           type: string
           format: uuid
-          description: ID of the organization unit this resource server belongs to
+          description: |
+            ID of the organization unit this resource server belongs to. When left out, the resource
+            server keeps its current organization unit.
+        projectId:
+          type: string
+          description: |
+            ID of the project this resource server belongs to. A resource server in a project must be in
+            the system organization unit or in an organization unit of the project. Leaving it out keeps the resource server in its current
+            project, and a different project moves it.
         authorizationEngine:
           $ref: '#/components/schemas/AuthorizationEngineConfig'
 

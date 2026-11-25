@@ -5,6 +5,7 @@ package serverconfig
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -115,4 +116,17 @@ func (suite *CacheBackedStoreTestSuite) TestUpsertServerConfig_CacheDeleteError_
 
 func (suite *CacheBackedStoreTestSuite) TestNewCachedBackStore() {
 	assert.NotNil(suite.T(), newCachedBackStore(suite.mockInner, suite.mockCache))
+}
+
+// A conditional write drops the cached layer whether or not it wrote, so a lost write reads the database
+// next.
+func (suite *CacheBackedStoreTestSuite) TestReplaceServerConfigIf_InvalidatesKey() {
+	cfg := ServerConfig{Name: ConfigNameCORS, Value: corsValue}
+	suite.mockInner.EXPECT().ReplaceServerConfigIf(mock.Anything, cfg, json.RawMessage(nil)).Return(false, nil)
+	suite.mockCache.EXPECT().Delete(mock.Anything, corsCacheKey).Return(nil)
+
+	written, err := suite.cached.ReplaceServerConfigIf(suite.ctx, cfg, nil)
+
+	assert.NoError(suite.T(), err)
+	assert.False(suite.T(), written)
 }

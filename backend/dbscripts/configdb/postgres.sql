@@ -18,11 +18,18 @@ CREATE TABLE "ENTITY_TYPES" (
 -- Composite index for deployment + category + OU-based entity type lookups
 CREATE INDEX idx_entity_schemas_deployment_category_ou ON "ENTITY_TYPES" (DEPLOYMENT_ID, CATEGORY, OU_ID);
 
+-- An organization unit has at most one agent type. A partial index rather than a table constraint,
+-- because the rule covers only the agent category; user types are not limited per organization unit.
+CREATE UNIQUE INDEX idx_entity_types_agent_deployment_ou
+    ON "ENTITY_TYPES" (DEPLOYMENT_ID, OU_ID)
+    WHERE CATEGORY = 'agent';
+
 -- Table to store Roles
 CREATE TABLE "ROLE" (
     DEPLOYMENT_ID           VARCHAR(255) NOT NULL,
     ID                  VARCHAR(36) NOT NULL,
     OU_ID               VARCHAR(36) NOT NULL,
+    PROJECT_ID          VARCHAR(36),
     NAME                VARCHAR(50) NOT NULL,
     DESCRIPTION         VARCHAR(255),
     CREATED_AT          TIMESTAMPTZ DEFAULT NOW(),
@@ -33,6 +40,9 @@ CREATE TABLE "ROLE" (
 
 -- Composite index for deployment + OU lookups (supports UNIQUE constraint checks)
 CREATE INDEX idx_role_ou_deployment ON "ROLE" (DEPLOYMENT_ID, OU_ID);
+
+-- Composite index for listing the roles of a project
+CREATE INDEX idx_role_project ON "ROLE" (DEPLOYMENT_ID, PROJECT_ID);
 
 -- Table to store Role permissions
 CREATE TABLE "ROLE_PERMISSION" (
@@ -76,6 +86,7 @@ CREATE TABLE "THEME" (
     ID VARCHAR(36) NOT NULL,
     DISPLAY_NAME VARCHAR(255) NOT NULL,
     HANDLE VARCHAR(255) NOT NULL,
+    PROJECT_ID VARCHAR(36),
     DESCRIPTION VARCHAR(512),
     THEME JSONB NOT NULL,
     CREATED_AT TIMESTAMPTZ DEFAULT NOW(),
@@ -87,6 +98,9 @@ CREATE TABLE "THEME" (
 -- Index for deployment isolation on THEME
 CREATE INDEX idx_theme_deployment_id ON "THEME" (DEPLOYMENT_ID);
 
+-- Composite index for listing the themes of a project
+CREATE INDEX idx_theme_project ON "THEME" (DEPLOYMENT_ID, PROJECT_ID);
+
 -- Unique index for theme handle per deployment
 CREATE UNIQUE INDEX idx_theme_handle_deployment ON "THEME" (HANDLE, DEPLOYMENT_ID);
 
@@ -96,6 +110,7 @@ CREATE TABLE "LAYOUT" (
     ID VARCHAR(36) NOT NULL,
     DISPLAY_NAME VARCHAR(255) NOT NULL,
     HANDLE VARCHAR(255) NOT NULL,
+    PROJECT_ID VARCHAR(36),
     DESCRIPTION VARCHAR(512),
     LAYOUT JSONB NOT NULL,
     CREATED_AT TIMESTAMPTZ DEFAULT NOW(),
@@ -109,6 +124,9 @@ CREATE INDEX idx_layout_deployment_id ON "LAYOUT" (DEPLOYMENT_ID);
 
 -- Unique index for layout handle per deployment
 CREATE UNIQUE INDEX idx_layout_handle_deployment ON "LAYOUT" (HANDLE, DEPLOYMENT_ID);
+
+-- Composite index for listing the layouts of a project
+CREATE INDEX idx_layout_project ON "LAYOUT" (DEPLOYMENT_ID, PROJECT_ID);
 
 -- Table to store inbound client configurations for an entity.
 CREATE TABLE "INBOUND_CLIENT" (
@@ -235,6 +253,7 @@ CREATE TABLE "RESOURCE_SERVER" (
     DEPLOYMENT_ID VARCHAR(255) NOT NULL,
     ID VARCHAR(36) NOT NULL,
     OU_ID VARCHAR(36) NOT NULL,
+    PROJECT_ID VARCHAR(36),
     NAME VARCHAR(100) NOT NULL,
     DESCRIPTION TEXT,
     IDENTIFIER VARCHAR(2048) NOT NULL,
@@ -248,6 +267,9 @@ CREATE TABLE "RESOURCE_SERVER" (
 
 -- Composite index for name-based resource server lookups
 CREATE INDEX idx_resource_server_name_deployment ON "RESOURCE_SERVER" (DEPLOYMENT_ID, NAME);
+
+-- Composite index for listing the resource servers of a project
+CREATE INDEX idx_resource_server_project ON "RESOURCE_SERVER" (DEPLOYMENT_ID, PROJECT_ID);
 
 -- Unique constraint: Resource server identifier must be unique per deployment
 CREATE UNIQUE INDEX uq_resource_server_identifier
@@ -263,6 +285,7 @@ CREATE TABLE "AUTHORIZATION_DETAIL_TYPE" (
     DESCRIPTION TEXT,
     VERSION INTEGER NOT NULL DEFAULT 1,
     SCHEMA_DEFINITION TEXT NOT NULL,
+    PROJECT_ID VARCHAR(36),
     PROPERTIES JSONB,
     CREATED_AT TIMESTAMPTZ DEFAULT NOW(),
     UPDATED_AT TIMESTAMPTZ DEFAULT NOW(),
@@ -272,6 +295,9 @@ CREATE TABLE "AUTHORIZATION_DETAIL_TYPE" (
 -- Unique constraint: an authorization details type value is unique per deployment
 CREATE UNIQUE INDEX uq_authorization_detail_type
     ON "AUTHORIZATION_DETAIL_TYPE"(DEPLOYMENT_ID, TYPE);
+
+-- Composite index for listing the authorization details types of a project
+CREATE INDEX idx_authorization_detail_type_project ON "AUTHORIZATION_DETAIL_TYPE" (DEPLOYMENT_ID, PROJECT_ID);
 
 -- Table to store resources within resource servers.
 CREATE TABLE "RESOURCE" (
@@ -358,6 +384,7 @@ CREATE TABLE "FLOW" (
     FLOW_TYPE VARCHAR(50) NOT NULL,
     ACTIVE_VERSION INTEGER NOT NULL,
     OU_ID VARCHAR(36) NOT NULL,
+    PROJECT_ID VARCHAR(36),
     CREATED_AT TIMESTAMPTZ DEFAULT NOW(),
     UPDATED_AT TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE (HANDLE, FLOW_TYPE, DEPLOYMENT_ID),
@@ -366,6 +393,9 @@ CREATE TABLE "FLOW" (
 
 -- Composite index for flow type + deployment queries
 CREATE INDEX idx_flow_type_deployment ON "FLOW" (DEPLOYMENT_ID, FLOW_TYPE);
+
+-- Composite index for project-based flow listing
+CREATE INDEX idx_flow_project ON "FLOW" (DEPLOYMENT_ID, PROJECT_ID);
 
 -- Table to store flow version history
 CREATE TABLE "FLOW_VERSION" (
@@ -402,6 +432,7 @@ CREATE TABLE "PRESENTATION_DEFINITION" (
     ID VARCHAR(36) NOT NULL,
     HANDLE VARCHAR(255) NOT NULL,
     OU_ID VARCHAR(36) NOT NULL,
+    PROJECT_ID VARCHAR(36),
     NAME VARCHAR(255),
     DESCRIPTION VARCHAR(255),
     VCT VARCHAR(512) NOT NULL,
@@ -417,12 +448,19 @@ CREATE TABLE "PRESENTATION_DEFINITION" (
 -- Each presentation definition handle is unique per deployment.
 CREATE UNIQUE INDEX idx_openid4vp_pd_handle ON "PRESENTATION_DEFINITION" (DEPLOYMENT_ID, HANDLE);
 
+-- Supports listing the presentation definitions an organization unit owns.
+CREATE INDEX idx_openid4vp_pd_ou ON "PRESENTATION_DEFINITION" (DEPLOYMENT_ID, OU_ID);
+
+-- Composite index for listing the presentation definitions of a project
+CREATE INDEX idx_openid4vp_pd_project ON "PRESENTATION_DEFINITION" (DEPLOYMENT_ID, PROJECT_ID);
+
 -- Table to store OpenID4VCI credential configurations.
 CREATE TABLE "CREDENTIAL_CONFIGURATION" (
     DEPLOYMENT_ID VARCHAR(255) NOT NULL,
     ID VARCHAR(36) NOT NULL,
     HANDLE VARCHAR(255) NOT NULL,
     OU_ID VARCHAR(36) NOT NULL,
+    PROJECT_ID VARCHAR(36),
     NAME VARCHAR(255),
     DESCRIPTION VARCHAR(255),
     FORMAT VARCHAR(64) NOT NULL DEFAULT 'dc+sd-jwt',
@@ -437,6 +475,12 @@ CREATE TABLE "CREDENTIAL_CONFIGURATION" (
 
 -- Each credential configuration handle is unique per deployment.
 CREATE UNIQUE INDEX idx_openid4vci_cc_handle ON "CREDENTIAL_CONFIGURATION" (DEPLOYMENT_ID, HANDLE);
+
+-- Supports listing the credential configurations an organization unit owns.
+CREATE INDEX idx_openid4vci_cc_ou ON "CREDENTIAL_CONFIGURATION" (DEPLOYMENT_ID, OU_ID);
+
+-- Composite index for listing the credential configurations of a project
+CREATE INDEX idx_openid4vci_cc_project ON "CREDENTIAL_CONFIGURATION" (DEPLOYMENT_ID, PROJECT_ID);
 
 -- Table to store server-wide configuration
 CREATE TABLE "SERVER_CONFIG" (
@@ -507,7 +551,8 @@ CREATE UNIQUE INDEX idx_gateway_default_deployment
 -- A captured state of this deployment's configuration, named by a hash of what it captured and
 -- ordered per deployment. It is what is applied to a gateway. Its values, when the export carried
 -- any, are held encrypted as one secret. CREATED_BY is the id of the user it was
--- captured for; their name is read from the trusted issuer when shown, never stored.
+-- captured for; their name is read from the trusted issuer when shown, never stored. Two versions can
+-- hold the same configuration: going back to what an older version holds is a new version.
 CREATE TABLE "CONFIGURATION_VERSION" (
     DEPLOYMENT_ID VARCHAR(255) NOT NULL,
     ID VARCHAR(36) PRIMARY KEY,
@@ -520,9 +565,10 @@ CREATE TABLE "CONFIGURATION_VERSION" (
     IS_CURRENT CHAR(1) NOT NULL DEFAULT '0',
     CREATED_AT TIMESTAMPTZ DEFAULT NOW(),
     CREATED_BY VARCHAR(255),
-    UNIQUE (DEPLOYMENT_ID, SEQ),
-    UNIQUE (DEPLOYMENT_ID, HASH)
+    UNIQUE (DEPLOYMENT_ID, SEQ)
 );
+
+CREATE INDEX idx_configuration_version_hash ON "CONFIGURATION_VERSION" (DEPLOYMENT_ID, HASH);
 
 -- The configuration version each gateway holds, and the one it held before, which is what a revert
 -- returns it to, with who applied it. A gateway declared in a file has no GATEWAY row, so there is no foreign key.
@@ -536,6 +582,17 @@ CREATE TABLE "GATEWAY_APPLIED_VERSION" (
     -- When each value the applied version refers to was last set, as the gateway's store said at the
     -- apply, so the next apply reports those set again since by comparing the store's own times.
     HELD_VALUES TEXT,
+    -- Whether the gateway holds the applied version whole. An apply that left changes out, or whose
+    -- import refused some, records the version all the same as partly applied. MASTER_SEQ and
+    -- MASTER_HASH name the master the apply left, RESOURCES_HELD of RESOURCES_TOTAL count the
+    -- version's resources that master holds as the version has them, and PREVIOUS_MASTER_SEQ is the
+    -- master a revert returns the gateway to.
+    COMPLETE BOOLEAN NOT NULL DEFAULT TRUE,
+    MASTER_SEQ INTEGER,
+    MASTER_HASH VARCHAR(64),
+    PREVIOUS_MASTER_SEQ INTEGER,
+    RESOURCES_HELD INTEGER,
+    RESOURCES_TOTAL INTEGER,
     PRIMARY KEY (GATEWAY_ID, DEPLOYMENT_ID)
 );
 
@@ -565,8 +622,8 @@ CREATE TABLE "GATEWAY_EXCLUDED_RESOURCE" (
     RESOURCE_TYPE VARCHAR(255) NOT NULL,
     RESOURCE_ID VARCHAR(255),
     RESOURCE_NAME VARCHAR(255),
-    -- A resource skipped for one apply is owed to the gateway until an apply writes or removes it,
-    -- rather than left alone for good.
+    -- Set by a release that let an apply skip a resource once; such a row was owed to the gateway,
+    -- not a standing choice. Read to tell the two apart, never set any more.
     ONCE BOOLEAN NOT NULL DEFAULT FALSE,
     PRIMARY KEY (DEPLOYMENT_ID, GATEWAY_ID, RESOURCE_KEY)
 );
@@ -575,7 +632,9 @@ CREATE TABLE "GATEWAY_EXCLUDED_RESOURCE" (
 -- accepted it, in RESOURCES, and in MANIFEST one entry per resource saying how it got there and
 -- whether the gateway accepted it. Each apply writes a new row, numbered per gateway, and keeps the
 -- earlier ones as the gateway's history, within the same bound as the versions. HASH names the row
--- by what it holds. A gateway declared in a file has no GATEWAY row, so there is no foreign key.
+-- by what it holds. PROJECT_ID names the project an apply scoped to one was for, and PROJECT_REVERT
+-- marks the row a project's rollback wrote. A gateway declared in a file has no GATEWAY row, so there
+-- is no foreign key.
 CREATE TABLE "GATEWAY_MASTER" (
     DEPLOYMENT_ID VARCHAR(255) NOT NULL,
     ID VARCHAR(36) PRIMARY KEY,
@@ -586,6 +645,8 @@ CREATE TABLE "GATEWAY_MASTER" (
     MANIFEST TEXT NOT NULL,
     CREATED_AT TIMESTAMPTZ DEFAULT NOW(),
     CREATED_BY VARCHAR(255),
+    PROJECT_ID VARCHAR(36),
+    PROJECT_REVERT BOOLEAN NOT NULL DEFAULT FALSE,
     UNIQUE (DEPLOYMENT_ID, GATEWAY_ID, SEQ)
 );
 
@@ -682,6 +743,7 @@ CREATE TABLE "NOTIFICATION_TEMPLATE" (
     CHANNEL       VARCHAR(16)  NOT NULL,
     HANDLE        VARCHAR(255) NOT NULL,
     OU_ID         VARCHAR(36)  NOT NULL,
+    PROJECT_ID    VARCHAR(36),
     DISPLAY_NAME  VARCHAR(255) NOT NULL,
     DESCRIPTION   VARCHAR(512),
     CONTENT       JSONB        NOT NULL,
@@ -690,4 +752,22 @@ CREATE TABLE "NOTIFICATION_TEMPLATE" (
     UPDATED_AT    TIMESTAMPTZ  DEFAULT NOW(),
     PRIMARY KEY (DEPLOYMENT_ID, ID),
     UNIQUE (DEPLOYMENT_ID, CHANNEL, HANDLE)
+);
+
+-- Composite index for listing the notification templates of a project
+CREATE INDEX idx_notification_template_project ON "NOTIFICATION_TEMPLATE" (DEPLOYMENT_ID, PROJECT_ID);
+
+-- What a control plane deployed to this data plane, through the managed import. A resource named
+-- here is read only on the data plane: only a later managed import changes or removes it. PART is
+-- empty for the resource itself; for an entry of a resource that is owned one by one, such as a
+-- group's member or a role's assignment, PART names the collection and PART_KEY the entry. A
+-- resource or entry created on the data plane has no row and stays editable.
+CREATE TABLE "MANAGED_RESOURCE" (
+    DEPLOYMENT_ID VARCHAR(255) NOT NULL,
+    RESOURCE_TYPE VARCHAR(64)  NOT NULL,
+    RESOURCE_ID   VARCHAR(255) NOT NULL,
+    PART          VARCHAR(64)  NOT NULL DEFAULT '',
+    PART_KEY      VARCHAR(512) NOT NULL DEFAULT '',
+    MARKED_AT     TIMESTAMPTZ  DEFAULT NOW(),
+    PRIMARY KEY (DEPLOYMENT_ID, RESOURCE_ID, RESOURCE_TYPE, PART, PART_KEY)
 );

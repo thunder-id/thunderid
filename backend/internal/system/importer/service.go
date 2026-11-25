@@ -8,7 +8,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,14 +29,19 @@ import (
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/idp"
+	"github.com/thunder-id/thunderid/internal/inboundclient"
 	"github.com/thunder-id/thunderid/internal/notification"
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/resource"
+	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/sharing"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/secretresolver"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
 	"github.com/thunder-id/thunderid/internal/vc/presentation"
@@ -152,7 +159,7 @@ type ouAdapter interface {
 // server passes none, skips project documents and imports organization units alone.
 type ProjectAdapter interface {
 	ProjectExists(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
-	ImportProject(ctx context.Context, id, rootOUID, handle, displayName, description string, upsert bool) (
+	ImportProject(ctx context.Context, id, handle, displayName, description string, upsert bool) (
 		bool, *tidcommon.ServiceError)
 }
 
@@ -184,12 +191,21 @@ type roleAdapter interface {
 type roleAssignmentAdapter interface {
 	AddAssigneesToRoles(ctx context.Context, assignments []role.RoleAssignment,
 		roleIDs []string) *tidcommon.ServiceError
+	GetDirectAssignment(ctx context.Context, id, ouID, assigneeID string) (
+		*role.RoleAssignmentWithDisplay, *tidcommon.ServiceError)
+	ValidateRemoveAssignment(ctx context.Context, id, ouID, assigneeID string) (
+		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
+	RemoveAssignments(ctx context.Context, id, ouID string, assignments []role.RoleAssignment) *tidcommon.ServiceError
+	ResolveAssignmentOUs(ctx context.Context, assignments []role.RoleAssignment) (
+		[]role.RoleAssignment, *tidcommon.ServiceError)
 }
 
 // sharingPolicyAdapter applies the sharing policies a document carries for one resource.
 type sharingPolicyAdapter interface {
 	ReplacePoliciesForResource(ctx context.Context, rt sharing.ResourceType, resourceID, owningOUID string,
 		requests []sharing.PolicyRequest) (sharing.PolicyReplay, *sharing.PolicyReplayError)
+	RemovePolicies(ctx context.Context, rt sharing.ResourceType, resourceID string,
+		initiatingOUIDs, stillNamed []string) (sharing.PolicyReplay, *sharing.PolicyReplayError)
 }
 
 type groupAdapter interface {
@@ -198,6 +214,9 @@ type groupAdapter interface {
 	UpdateGroup(ctx context.Context, groupID string, request group.UpdateGroupRequest) (
 		*group.Group, *tidcommon.ServiceError)
 	AddGroupMembers(ctx context.Context, groupID string, members []group.Member) (
+		*group.Group, *tidcommon.ServiceError)
+	GetDirectGroupMember(ctx context.Context, groupID, memberID string) (*group.Member, *tidcommon.ServiceError)
+	RemoveGroupMembers(ctx context.Context, groupID string, members []group.Member) (
 		*group.Group, *tidcommon.ServiceError)
 	DeleteGroup(ctx context.Context, groupID string) *tidcommon.ServiceError
 }
@@ -214,6 +233,12 @@ type resourceServerAdapter interface {
 		*resource.ResourceList, *tidcommon.ServiceError)
 	CreateAction(ctx context.Context, resourceServerID string, resourceID *string, action providers.Action) (
 		*providers.Action, *tidcommon.ServiceError)
+	GetAllResourceList(ctx context.Context, resourceServerID string) ([]providers.Resource, *tidcommon.ServiceError)
+	GetActionList(
+		ctx context.Context, resourceServerID string, resourceID *string, kind providers.ActionKind, limit, offset int,
+	) (*resource.ActionList, *tidcommon.ServiceError)
+	DeleteResource(ctx context.Context, resourceServerID, id string) *tidcommon.ServiceError
+	DeleteAction(ctx context.Context, resourceServerID string, resourceID *string, id string) *tidcommon.ServiceError
 	DeleteResourceServer(ctx context.Context, id string) *tidcommon.ServiceError
 }
 
@@ -260,6 +285,7 @@ type translationAdapter interface {
 	SetTranslationOverrides(ctx context.Context, language string, translations map[string]map[string]string) (
 		*providers.LanguageTranslationsResponse,
 		*tidcommon.ServiceError)
+	ClearTranslationOverrides(ctx context.Context, language string) *tidcommon.ServiceError
 }
 
 type agentAdapter interface {
@@ -347,10 +373,13 @@ type importService struct {
 	notifTemplateService           notificationTemplateAdapter
 	authorizationDetailTypeService authorizationDetailTypeAdapter
 	httpConnectionService          httpConnectionAdapter
+	bus                            eventbus.EventBusInterface
 	// references replaces a var: or sec: reference with the value this deployment holds. Nil leaves
 	// references in place, which is what a control plane wants: it keeps configuration as references
 	// and holds no values.
 	references *secretresolver.Resolver
+	// managed records what a managed import writes as deployed by a control plane. Nil marks nothing.
+	managed managedresource.StoreInterface
 }
 
 func newImportService(
@@ -374,6 +403,7 @@ func newImportService(
 	serverConfigService serverConfigAdapter,
 	gatewayService gatewayAdapter,
 	notifTemplateService notificationTemplateAdapter,
+	bus eventbus.EventBusInterface,
 	authZENPDPServices ...authZENPDPAdapter,
 ) ImportServiceInterface {
 	var authZENPDPService authZENPDPAdapter
@@ -402,18 +432,28 @@ func newImportService(
 		serverConfigService:            serverConfigService,
 		gatewayService:                 gatewayService,
 		notifTemplateService:           notifTemplateService,
+		bus:                            bus,
 	}
 }
 
+// ImportResources imports the resources the request carries and removes the ones it names. Each
+// resource is recorded by the service that writes it; the request itself is recorded once, as failed
+// when any of its items failed, and a dry run, which writes nothing, is recorded too.
 func (s *importService) ImportResources(
 	ctx context.Context, request *ImportRequest,
 ) (*ImportResponse, *tidcommon.ServiceError) {
-	if request == nil || (request.Content == "" && len(request.Deletions) == 0) {
-		return nil, tidcommon.CustomServiceError(ErrorInvalidImportRequest,
-			tidcommon.I18nMessage{Key: "error.import.emptyContent", DefaultValue: "import content cannot be empty"})
-	}
+	response, svcErr := s.importResources(ctx, request)
+	itemFailed := response != nil && response.Summary != nil && response.Summary.Failed > 0
+	dryRun := request != nil && request.DryRun
+	s.publishConfigurationEvent(ctx, audit.EventConfigurationImport, audit.ActionImport, svcErr, itemFailed,
+		map[string]string{audit.DetailDryRun: strconv.FormatBool(dryRun)})
+	return response, svcErr
+}
 
-	options := request.Options
+// importResources imports the resources the request carries without publishing its audit event.
+// withImportDefaults returns the options of a request with what it leaves out filled in: upsert and continue on error
+// are on, and the target is the runtime.
+func withImportDefaults(options *ImportOptions) *ImportOptions {
 	if options == nil {
 		options = &ImportOptions{}
 	}
@@ -428,7 +468,39 @@ func (s *importService) ImportResources(
 	if options.Target == "" {
 		options.Target = importTargetRuntime
 	}
+	return options
+}
 
+// withForcedSharingEdits marks the context when the request asks for sharing edits the API refuses to be applied.
+func withForcedSharingEdits(ctx context.Context, options *ImportOptions) context.Context {
+	if options.ForceSharingEdits {
+		return sharing.WithForcedEdits(ctx)
+	}
+	return ctx
+}
+
+// listRemovedSharing lists on a successful outcome what the replays run for its document removed to match it.
+func listRemovedSharing(outcome *ImportItemOutcome, report *sharing.ReplayReport) {
+	if outcome.Status != statusSuccess {
+		return
+	}
+	for _, removed := range report.Removed() {
+		outcome.RemovedSharing = append(outcome.RemovedSharing, RemovedSharingPolicy{
+			PolicyID: removed.PolicyID, InitiatingOUID: removed.InitiatingOUID, Reshare: removed.Reshare})
+	}
+}
+
+func (s *importService) importResources(
+	ctx context.Context, request *ImportRequest,
+) (*ImportResponse, *tidcommon.ServiceError) {
+	if request == nil || (request.Content == "" && len(request.Deletions) == 0) {
+		return nil, tidcommon.CustomServiceError(ErrorInvalidImportRequest,
+			tidcommon.I18nMessage{Key: "error.import.emptyContent", DefaultValue: "import content cannot be empty"})
+	}
+
+	options := withImportDefaults(request.Options)
+	ctx = withForcedSharingEdits(ctx, options)
+	ctx = withManagedImport(ctx, request)
 	if options.Target == importTargetFile {
 		return nil, tidcommon.CustomServiceError(
 			ErrorInvalidImportRequest,
@@ -455,11 +527,17 @@ func (s *importService) ImportResources(
 		}
 	}
 
+	plan := newRemovalPlan(request.SharingRemovals, docs, request.DryRun)
+
 	results := make([]ImportItemOutcome, 0, len(docs))
 	imported := 0
 	failed := 0
 	flowIDAliases := make(map[string]string)
 	var mandating []userSharingReplay
+	var links []linkedDocument
+	if request.DryRun {
+		ctx = withPlannedUnits(ctx, newPlannedUnits())
+	}
 
 	orderedDocs := orderDocumentsByDependencies(docs)
 
@@ -473,10 +551,14 @@ func (s *importService) ImportResources(
 		}
 
 		pendingBefore := len(mandating)
-		outcome, resolved := s.resolveReferences(ctx, doc)
+		docCtx, replayReport := sharing.WithReplayReport(ctx)
+		outcome, resolved := s.resolveReferences(docCtx, doc)
 		if resolved {
-			outcome = s.importDocument(ctx, doc, options, request.DryRun, flowIDAliases, &mandating)
+			outcome = s.importDocument(docCtx, doc, options, request.DryRun, flowIDAliases, &mandating,
+				plan)
 		}
+		listRemovedSharing(&outcome, replayReport)
+		outcome = s.markManaged(ctx, request, doc.ResourceType, outcome)
 		if outcome.Status == statusSuccess {
 			switch doc.ResourceType {
 			case resourceTypeUser, resourceTypeAgent, resourceTypeApplication:
@@ -488,9 +570,14 @@ func (s *importService) ImportResources(
 			}
 		}
 		results = append(results, outcome)
+		if needsLinking(doc, outcome, request.DryRun) {
+			links = append(links, linkedDocument{doc: doc, resultIndex: len(results) - 1})
+		}
 		for i := pendingBefore; i < len(mandating); i++ {
 			mandating[i].resultIndex = len(results) - 1
 		}
+
+		plannedUnitsOf(ctx).record(doc, outcome)
 
 		if doc.ResourceType == resourceTypeFlow && outcome.Status == statusSuccess && originalFlowID != "" &&
 			outcome.ResourceID != "" && originalFlowID != outcome.ResourceID {
@@ -507,11 +594,23 @@ func (s *importService) ImportResources(
 		}
 	}
 
-	// Users are imported before the roles their sharing policies may mandate, so those policies are replayed now,
-	// for every user imported, whatever failed after it.
+	// Groups and roles are imported before the flows that name them, and so before the applications, users and agents
+	// their members and assignments name. Those are added now.
+	unlinked := s.linkGroupsAndRoles(ctx, links, results)
+	imported -= unlinked
+	failed += unlinked
+
+	// The sharing policies of a user that mandate roles are replayed now, once the roles' members and assignments are
+	// added, for every user imported, whatever failed after it.
 	refused := s.replayMandatingUserSharing(ctx, mandating, results)
 	imported -= refused
 	failed += refused
+
+	// A policy the document dropped is removed once its resource is written, and a refusal turns the resource's
+	// outcome into a failure, so it is counted as one.
+	refusedRemovals := s.removeDroppedSharing(ctx, plan, results, request.DryRun)
+	imported -= refusedRemovals
+	failed += refusedRemovals
 
 	// Deletions run after the upserts so that resources moved or replaced by this same request are in
 	// place before their predecessors are pruned.
@@ -532,7 +631,8 @@ func (s *importService) ImportResources(
 			Failed:         failed,
 			ImportedAt:     time.Now().UTC(),
 		},
-		Results: results,
+		Results:                 results,
+		SharingRemovalsAccepted: len(request.SharingRemovals) > 0,
 	}, nil
 }
 
@@ -586,7 +686,18 @@ func documentName(doc parsedDocument) string {
 	return named.Name
 }
 
+// DeleteResource deletes the declarative resource file the request names.
 func (s *importService) DeleteResource(
+	ctx context.Context, request *DeleteResourceRequest,
+) (*DeleteResourceResponse, *tidcommon.ServiceError) {
+	response, svcErr := s.deleteResource(ctx, request)
+	s.publishConfigurationEvent(ctx, audit.EventConfigurationDelete, audit.ActionDelete, svcErr, false, nil)
+	return response, svcErr
+}
+
+// deleteResource deletes the declarative resource file the request names without publishing its audit
+// event.
+func (s *importService) deleteResource(
 	ctx context.Context, request *DeleteResourceRequest,
 ) (*DeleteResourceResponse, *tidcommon.ServiceError) {
 	if request == nil || request.ResourceType == "" || request.ResourceKey == "" {
@@ -611,9 +722,18 @@ func (s *importService) DeleteResource(
 	}, nil
 }
 
+// publishConfigurationEvent publishes the audit event of a request on the configuration as a whole, after
+// it completed or was refused. The event names no resource: what a request carries is never recorded.
+func (s *importService) publishConfigurationEvent(ctx context.Context, name string, action audit.Action,
+	svcErr *tidcommon.ServiceError, itemFailed bool, details map[string]string) {
+	target := audit.Ref{Type: audit.TargetTypeConfiguration}
+	eventbus.TryPublish(ctx, s.bus, eventbus.NewEvent(ctx, name).With(
+		audit.BatchPayload(ctx, target, action, svcErr, itemFailed).WithDetails(details)))
+}
+
 func (s *importService) importDocument(
 	ctx context.Context, doc parsedDocument, options *ImportOptions, dryRun bool, flowIDAliases map[string]string,
-	mandating *[]userSharingReplay,
+	mandating *[]userSharingReplay, plan *removalPlan,
 ) ImportItemOutcome {
 	switch doc.ResourceType {
 	case resourceTypeApplication:
@@ -621,7 +741,7 @@ func (s *importService) importDocument(
 	case resourceTypeConnection:
 		return s.importConnection(ctx, doc, options, dryRun)
 	case resourceTypeFlow:
-		return s.importFlow(ctx, doc, options, dryRun)
+		return s.importFlow(ctx, doc, options, dryRun, plan)
 	case resourceTypeOrganizationUnit:
 		return s.importOrganizationUnit(ctx, doc, options, dryRun)
 	case resourceTypeProject:
@@ -894,8 +1014,14 @@ func (s *importService) importConnectionIDP(
 	}
 
 	if options.IsUpsertEnabled() && req.ID != "" {
-		updated, svcErr := s.idpService.UpdateIdentityProvider(ctx, req.ID, req)
+		// The upsert looks the identity provider up rather than attempting an update, so a create is not
+		// preceded by an audited failed update.
+		_, svcErr := s.idpService.GetIdentityProvider(ctx, req.ID)
 		if svcErr == nil {
+			var updated *providers.IDPDTO
+			if updated, svcErr = s.idpService.UpdateIdentityProvider(ctx, req.ID, req); svcErr != nil {
+				return serviceErrorOutcome(resourceTypeConnection, req.ID, req.Name, operationUpdate, svcErr)
+			}
 			return ImportItemOutcome{
 				ResourceType: resourceTypeConnection,
 				ResourceID:   updated.ID,
@@ -975,7 +1101,18 @@ func (s *importService) importConnectionSender(
 		return successOutcome(resourceTypeConnection, req.ID, req.Name, operationCreate)
 	}
 
+	// The upsert looks the sender up rather than attempting an update, so a create is not preceded by an
+	// audited failed update.
+	exists := false
 	if options.IsUpsertEnabled() && req.ID != "" {
+		_, svcErr := s.senderService.GetSender(ctx, req.ID)
+		if svcErr != nil && !isNotFoundServiceError(svcErr) {
+			return serviceErrorOutcome(resourceTypeConnection, req.ID, req.Name, operationUpdate, svcErr)
+		}
+		exists = svcErr == nil
+	}
+
+	if exists {
 		updated, svcErr := s.senderService.UpdateSender(ctx, req.ID, *req)
 		if svcErr == nil {
 			return ImportItemOutcome{
@@ -987,17 +1124,7 @@ func (s *importService) importConnectionSender(
 			}
 		}
 
-		if !isNotFoundServiceError(svcErr) {
-			return ImportItemOutcome{
-				ResourceType: resourceTypeConnection,
-				ResourceID:   req.ID,
-				ResourceName: req.Name,
-				Operation:    operationUpdate,
-				Status:       statusFailed,
-				Code:         svcErr.Code,
-				Message:      svcErr.Error.DefaultValue,
-			}
-		}
+		return serviceErrorOutcome(resourceTypeConnection, req.ID, req.Name, operationUpdate, svcErr)
 	}
 
 	created, svcErr := s.senderService.CreateSender(ctx, *req)
@@ -1023,7 +1150,7 @@ func (s *importService) importConnectionSender(
 }
 
 func (s *importService) importFlow(
-	ctx context.Context, doc parsedDocument, options *ImportOptions, dryRun bool,
+	ctx context.Context, doc parsedDocument, options *ImportOptions, dryRun bool, plan *removalPlan,
 ) ImportItemOutcome {
 	policies, values, err := flowmgt.ParseFlowSharing(doc.Node)
 	if err != nil {
@@ -1035,7 +1162,7 @@ func (s *importService) importFlow(
 		return decodeErrorOutcome(resourceTypeFlow, head.ID, head.Name, err)
 	}
 
-	outcome := s.importFlowDefinition(ctx, doc, options, dryRun, policies)
+	outcome := s.importFlowDefinition(ctx, doc, options, dryRun, policies, plan)
 	if dryRun || outcome.Status != statusSuccess {
 		return outcome
 	}
@@ -1125,6 +1252,7 @@ func (s *importService) updateImportedFlow(
 // importFlowDefinition creates or updates the flow a "flow" document describes.
 func (s *importService) importFlowDefinition(
 	ctx context.Context, doc parsedDocument, options *ImportOptions, dryRun bool, policies []sharing.PolicyRequest,
+	plan *removalPlan,
 ) ImportItemOutcome {
 	if s.flowService == nil {
 		return ImportItemOutcome{
@@ -1148,17 +1276,24 @@ func (s *importService) importFlowDefinition(
 	}
 
 	flowDef := &flowmgt.FlowDefinition{
-		ID:       req.ID,
-		Handle:   req.Handle,
-		Name:     req.Name,
-		FlowType: req.FlowType,
-		Nodes:    req.Nodes,
-		OUID:     req.OUID,
-		OUHandle: req.OUHandle,
+		ID:        req.ID,
+		Handle:    req.Handle,
+		Name:      req.Name,
+		FlowType:  req.FlowType,
+		Nodes:     req.Nodes,
+		OUID:      req.OUID,
+		OUHandle:  req.OUHandle,
+		ProjectID: req.ProjectID,
 	}
 
 	if svcErr := s.flowService.ResolveFlowOU(ctx, flowDef); svcErr != nil {
-		return serviceErrorOutcome(resourceTypeFlow, req.ID, req.Name, operationCreate, svcErr)
+		// A dry run takes a unit the same import creates first as there, as the real import finds it.
+		planned, ok := plannedUnitsOf(ctx).resolve(flowDef.OUID, flowDef.OUHandle)
+		if !dryRun || !ok || svcErr.Code != flowmgt.ErrorInvalidFlowOU.Code {
+			return serviceErrorOutcome(resourceTypeFlow, req.ID, req.Name, operationCreate, svcErr)
+		}
+		flowDef.OUID = planned
+		flowDef.OUHandle = ""
 	}
 
 	if dryRun {
@@ -1180,6 +1315,10 @@ func (s *importService) importFlowDefinition(
 
 			existingByHandle, handleErr := s.flowService.GetFlowByHandle(ctx, req.Handle, req.FlowType)
 			if handleErr == nil {
+				if refusal := s.refuseUnmarkedAdoption(ctx, existingByHandle.ID); refusal != nil {
+					return serviceErrorOutcome(resourceTypeFlow, existingByHandle.ID, req.Name,
+						operationUpdate, refusal)
+				}
 				if existingByHandle.OUID != flowDef.OUID {
 					return serviceErrorOutcome(resourceTypeFlow, existingByHandle.ID, req.Name, operationUpdate,
 						&flowmgt.ErrorOUUpdateNotAllowed)
@@ -1196,70 +1335,55 @@ func (s *importService) importFlowDefinition(
 	}
 
 	if options.IsUpsertEnabled() && req.ID != "" {
-		updated, svcErr := s.updateImportedFlow(ctx, req.ID, flowDef, policies)
-		if svcErr == nil {
-			return ImportItemOutcome{
-				ResourceType: resourceTypeFlow,
-				ResourceID:   updated.ID,
-				ResourceName: updated.Name,
-				Operation:    operationUpdate,
-				Status:       statusSuccess,
+		// The flow is looked up, by ID and then by handle as the dry run does, before it is updated or created,
+		// so the flow service never records a failed update or create on the way to the one that is applied.
+		existingID := ""
+		if _, svcErr := s.flowService.GetFlow(ctx, req.ID); svcErr == nil {
+			existingID = req.ID
+		} else if !isNotFoundServiceError(svcErr) {
+			return serviceErrorOutcome(resourceTypeFlow, req.ID, req.Name, operationUpdate, svcErr)
+		} else if existingByHandle, handleErr := s.flowService.GetFlowByHandle(
+			ctx, req.Handle, req.FlowType); handleErr == nil {
+			if refusal := s.refuseUnmarkedAdoption(ctx, existingByHandle.ID); refusal != nil {
+				return serviceErrorOutcome(resourceTypeFlow, existingByHandle.ID, req.Name, operationUpdate, refusal)
 			}
+			existingID = existingByHandle.ID
+		} else if !isNotFoundServiceError(handleErr) {
+			return serviceErrorOutcome(resourceTypeFlow, req.ID, req.Name, operationUpdate, handleErr)
 		}
 
-		if !isNotFoundServiceError(svcErr) {
+		if existingID != "" {
+			// The policies the document dropped go before the flow is written. The write checks the policies the flow
+			// holds against its new definition, and one the document drops may no longer fit it.
+			var removed []RemovedSharingPolicy
+			if initiators := plan.initiators(resourceTypeFlow, req.ID, existingID); len(initiators) > 0 {
+				var failure *sharingRemovalFailure
+				if removed, failure = s.removeSharingOf(ctx, resourceTypeFlow, existingID, initiators,
+					plan.stillNamed(resourceTypeFlow, req.ID, existingID)); failure != nil {
+					return ImportItemOutcome{ResourceType: resourceTypeFlow, ResourceID: existingID,
+						ResourceName: req.Name, Operation: operationUpdate, Status: statusFailed, Code: failure.Code,
+						Message: failure.Message}
+				}
+			}
+			updated, svcErr := s.updateImportedFlow(ctx, existingID, flowDef, policies)
+			if svcErr != nil {
+				failed := serviceErrorOutcome(resourceTypeFlow, existingID, req.Name, operationUpdate, svcErr)
+				failed.RemovedSharing = removed
+				return failed
+			}
 			return ImportItemOutcome{
-				ResourceType: resourceTypeFlow,
-				ResourceID:   req.ID,
-				ResourceName: req.Name,
-				Operation:    operationUpdate,
-				Status:       statusFailed,
-				Code:         svcErr.Code,
-				Message:      svcErr.Error.DefaultValue,
+				ResourceType:   resourceTypeFlow,
+				ResourceID:     updated.ID,
+				ResourceName:   updated.Name,
+				Operation:      operationUpdate,
+				Status:         statusSuccess,
+				RemovedSharing: removed,
 			}
 		}
 	}
 
 	created, svcErr := s.flowService.CreateFlow(ctx, flowDef)
 	if svcErr != nil {
-		if options.IsUpsertEnabled() && req.ID != "" && svcErr.Code == flowmgt.ErrorDuplicateFlowHandle.Code {
-			existingByHandle, handleErr := s.flowService.GetFlowByHandle(ctx, req.Handle, req.FlowType)
-			if handleErr == nil {
-				updated, updateErr := s.updateImportedFlow(ctx, existingByHandle.ID, flowDef, policies)
-				if updateErr != nil {
-					return ImportItemOutcome{
-						ResourceType: resourceTypeFlow,
-						ResourceID:   existingByHandle.ID,
-						ResourceName: req.Name,
-						Operation:    operationUpdate,
-						Status:       statusFailed,
-						Code:         updateErr.Code,
-						Message:      updateErr.Error.DefaultValue,
-					}
-				}
-
-				return ImportItemOutcome{
-					ResourceType: resourceTypeFlow,
-					ResourceID:   updated.ID,
-					ResourceName: updated.Name,
-					Operation:    operationUpdate,
-					Status:       statusSuccess,
-				}
-			}
-
-			if !isNotFoundServiceError(handleErr) {
-				return ImportItemOutcome{
-					ResourceType: resourceTypeFlow,
-					ResourceID:   req.ID,
-					ResourceName: req.Name,
-					Operation:    operationUpdate,
-					Status:       statusFailed,
-					Code:         handleErr.Code,
-					Message:      handleErr.Error.DefaultValue,
-				}
-			}
-		}
-
 		return ImportItemOutcome{
 			ResourceType: resourceTypeFlow,
 			ResourceID:   req.ID,
@@ -1284,21 +1408,25 @@ var resourceDependencyOrder = []string{
 	// A gateway refers to no other resource and nothing refers to it, so its position is free.
 	// First keeps it out of the way of the ordering that does matter.
 	resourceTypeGateway,
+	// Before everything that is placed in a project, organization units included.
+	resourceTypeProject,
+	// After the project an authorization details type belongs to, so a project and its types import together and
+	// a removal takes the types off before the project, which is not deleted while it still has them.
 	resourceTypeAuthorizationDetailType,
 	resourceTypeOrganizationUnit,
-	// After the organization units, so a project links to its root organization unit when the same
-	// import declares it, and before everything that is placed in an organization unit.
-	resourceTypeProject,
 	resourceTypeEntityType,
 	resourceTypeAgentType,
 	resourceTypeConnection,
 	resourceTypeResourceServer,
+	// After the organization unit that holds a template, which is not deleted while it does, and before the flows
+	// that send it, so a flow is removed before the template it names.
+	resourceTypeNotificationTemplate,
 	resourceTypeFlow,
 	resourceTypeTheme,
 	resourceTypeLayout,
 	resourceTypeApplication,
-	resourceTypeAgent,
 	resourceTypeUser,
+	resourceTypeAgent,
 	resourceTypeGroup,
 	resourceTypeRole,
 	resourceTypeTranslation,
@@ -1306,9 +1434,30 @@ var resourceDependencyOrder = []string{
 	resourceTypeCredentialConfiguration,
 }
 
+// importDependencyOrder is the order an import writes resources in: resourceDependencyOrder with groups and roles
+// before the flows that may assign them. A group's members and a role's assignments name resources imported after the
+// flows, so those are added in a later pass, after the agents. A deletion keeps resourceDependencyOrder.
+var importDependencyOrder = groupsAndRolesBeforeFlows(resourceDependencyOrder)
+
+// groupsAndRolesBeforeFlows returns order with the groups and roles moved to just before the flows.
+func groupsAndRolesBeforeFlows(order []string) []string {
+	moved := []string{resourceTypeGroup, resourceTypeRole}
+	result := make([]string, 0, len(order))
+	for _, resourceType := range order {
+		if slices.Contains(moved, resourceType) {
+			continue
+		}
+		if resourceType == resourceTypeFlow {
+			result = append(result, moved...)
+		}
+		result = append(result, resourceType)
+	}
+	return result
+}
+
 func orderDocumentsByDependencies(docs []parsedDocument) []parsedDocument {
-	priority := make(map[string]int, len(resourceDependencyOrder))
-	for i, resourceType := range resourceDependencyOrder {
+	priority := make(map[string]int, len(importDependencyOrder))
+	for i, resourceType := range importDependencyOrder {
 		priority[resourceType] = i
 	}
 
@@ -1374,22 +1523,25 @@ func (s *importService) importApplication(
 
 	appDTO := applicationRequestToDTO(&req)
 	normalizeOAuthConfigForImport(ctx, appDTO)
-	if dryRun {
-		if options.IsUpsertEnabled() && req.ID != "" {
-			_, svcErr := s.applicationService.GetApplication(ctx, req.ID)
-			if svcErr == nil {
-				return successOutcome(resourceTypeApplication, req.ID, req.Name, operationUpdate)
-			}
-
-			if !isNotFoundServiceError(svcErr) {
-				return serviceErrorOutcome(resourceTypeApplication, req.ID, req.Name, operationUpdate, svcErr)
-			}
+	// The upsert looks the application up rather than attempting an update, so a create is not preceded
+	// by an audited failed update.
+	exists := false
+	if options.IsUpsertEnabled() && req.ID != "" {
+		_, svcErr := s.applicationService.GetApplication(ctx, req.ID)
+		if svcErr != nil && !isNotFoundServiceError(svcErr) {
+			return serviceErrorOutcome(resourceTypeApplication, req.ID, req.Name, operationUpdate, svcErr)
 		}
+		exists = svcErr == nil
+	}
 
+	if dryRun {
+		if exists {
+			return successOutcome(resourceTypeApplication, req.ID, req.Name, operationUpdate)
+		}
 		return successOutcome(resourceTypeApplication, req.ID, req.Name, operationCreate)
 	}
 
-	if options.IsUpsertEnabled() && req.ID != "" {
+	if exists {
 		updated, svcErr := s.applicationService.UpdateApplication(ctx, req.ID, appDTO)
 		if svcErr == nil {
 			stored, getErr := s.applicationService.GetApplication(ctx, updated.ID)
@@ -1411,16 +1563,14 @@ func (s *importService) importApplication(
 			}
 		}
 
-		if !isNotFoundServiceError(svcErr) {
-			return ImportItemOutcome{
-				ResourceType: resourceTypeApplication,
-				ResourceID:   req.ID,
-				ResourceName: req.Name,
-				Operation:    operationUpdate,
-				Status:       statusFailed,
-				Code:         svcErr.Code,
-				Message:      svcErr.Error.DefaultValue,
-			}
+		return ImportItemOutcome{
+			ResourceType: resourceTypeApplication,
+			ResourceID:   req.ID,
+			ResourceName: req.Name,
+			Operation:    operationUpdate,
+			Status:       statusFailed,
+			Code:         svcErr.Code,
+			Message:      svcErr.Error.DefaultValue,
 		}
 	}
 
@@ -1498,6 +1648,7 @@ func applicationRequestToDTO(req *appmodel.ApplicationRequestWithID) *appmodel.A
 		ID:          req.ID,
 		OUID:        req.OUID,
 		OUHandle:    req.OUHandle,
+		ProjectID:   req.ProjectID,
 		Name:        req.Name,
 		Description: req.Description,
 		InboundAuthProfile: providers.InboundAuthProfile{
@@ -1519,6 +1670,7 @@ func applicationRequestToDTO(req *appmodel.ApplicationRequestWithID) *appmodel.A
 			LoginConsent:              req.LoginConsent,
 			AllowedUserTypes:          req.AllowedUserTypes,
 			AllowedAgentTypes:         req.AllowedAgentTypes,
+			PasskeyAllowedOrigins:     req.PasskeyAllowedOrigins,
 			Attestation:               req.Attestation,
 		},
 		Type:       req.Type,
@@ -1591,16 +1743,24 @@ func normalizeOAuthConfigForImport(ctx context.Context, appDTO *appmodel.Applica
 		return
 	}
 
-	if oauthConfig.PublicClient &&
-		oauthConfig.TokenEndpointAuthMethod == providers.TokenEndpointAuthMethodNone &&
-		oauthConfig.ClientSecret != "" {
-		log.GetLogger().Debug(ctx,
-			"Dropping client_secret for public client import with token endpoint auth method 'none'",
+	if dropUnusedClientSecret(oauthConfig) {
+		log.GetLogger().Debug(ctx, "Dropping client_secret for client import that does not use a client secret",
 			log.String("appID", appDTO.ID),
 			log.String("name", appDTO.Name),
-			log.String("clientID", oauthConfig.ClientID))
-		oauthConfig.ClientSecret = ""
+			log.String("clientID", oauthConfig.ClientID),
+			log.String("tokenEndpointAuthMethod", string(oauthConfig.TokenEndpointAuthMethod)))
 	}
+}
+
+// dropUnusedClientSecret clears a client_secret given for a client that does not authenticate with one
+// (public, private_key_jwt or none), so an older or hand edited bundle still imports. It reports whether a
+// secret was dropped.
+func dropUnusedClientSecret(oauthConfig *providers.OAuthConfigWithSecret) bool {
+	if oauthConfig == nil || oauthConfig.ClientSecret == "" || inboundclient.UsesClientSecret(oauthConfig) {
+		return false
+	}
+	oauthConfig.ClientSecret = ""
+	return true
 }
 
 func isNotFoundServiceError(svcErr *tidcommon.ServiceError) bool {

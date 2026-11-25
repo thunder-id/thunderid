@@ -112,6 +112,53 @@ Behavior:
 - The `jti` replay check is kept in the process. Sessions and their records live in memory by default; a deployment with more than one instance needs a shared storage adapter.
 - An encrypted logout token is not supported.
 
+## Organization Units
+
+`ThunderIDNodeClient` switches a session to another organization unit through a redirect. For how a switch works across <ProductName /> and the SDKs, see [Switch Organizations](../../../../use-cases/b2b/journeys/switch-organizations.mdx).
+
+### `switchOrganizationUnit(organizationUnitId, options)`
+
+Starts a switch of the session `options.userId` to the organization unit `organizationUnitId`. Builds the unit's authorization URL, `{baseUrl}/ou/{ouId}/oauth2/authorize`, and hands it to `options.authURLCallback` to redirect the user to. When the application's sign-in flow keeps a single sign-on (SSO) session and the user can sign in to that unit, <ProductName /> reuses the session and asks for no credentials.
+
+```ts
+switchOrganizationUnit(
+  organizationUnitId: string,
+  options: SwitchOrganizationUnitOptions & {authURLCallback?: AuthURLCallback; userId?: string},
+): Promise<undefined>
+```
+
+```ts title="routes/switch.mjs" showLineNumbers
+app.get('/switch', async (req, res) => {
+  const sessionId = req.cookies[CookieConfig.SESSION_COOKIE_NAME]
+
+  await client.switchOrganizationUnit(req.query.ouId, {
+    authURLCallback: (url) => res.redirect(url),
+    userId: sessionId,
+  })
+})
+```
+
+Complete the switch on the callback as you complete a sign-in. `signIn(authURLCallback, userId, code, state)` redeems the code at the unit's token endpoint, `/ou/{ouId}/oauth2/token`, and replaces the session's tokens, although the session is still signed in. Until then, and when the callback carries an error, the previous session stays as it was.
+
+**Parameters:**
+
+| Parameter | Type | Description |
+| :--- | :--- | :--- |
+| `organizationUnitId` | `string` | ID of the organization unit to switch to |
+| `options.authURLCallback` | `(url: string) => void` | Required. Receives the unit's authorization URL to redirect the user to |
+| `options.userId` | `string` | Required. Identifier of the session to switch |
+| `options[param]` | `unknown` | Any other key is sent as an authorization request parameter. `redirect` is ignored, because a server always hands the URL to the callback |
+
+**Returns:** `Promise<undefined>`
+
+**Throws:** `ThunderIDAPIError` with code `switchOrganizationUnit-ValidationError-001` when `organizationUnitId` is empty, or `userId` or `authURLCallback` is missing. See [`OrganizationUnitSwitchErrorCodes`](../../../javascript/apis/errors.mdx#organizationunitswitcherrorcodes).
+
+### `getCurrentOrganizationUnit(userId?)`
+
+Inherited from `ThunderIDJavaScriptClient`. Returns the organization unit the session `userId` was issued for, read from the `ouId`, `ouHandle`, and `ouName` claims of its ID token, or `null`. Use it for display only. See [`getCurrentOrganizationUnit(userId?)`](../../../javascript/apis/thunderid-javascript-client.mdx#getcurrentorganizationunituserid).
+
+The Node client has no method that lists the organization units a user can access. Call the exported [`getAccessibleOrganizationUnits()`](../../../javascript/apis/thunderid-javascript-client.mdx#getaccessibleorganizationunitsconfig) function with the access token from `getAccessToken(userId)`.
+
 ## Related
 
 - [`ThunderIDNodeConfig`](../../config/thunderid-node-config): Configuration type for this client

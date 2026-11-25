@@ -14,11 +14,17 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/sharing"
+	"github.com/thunder-id/thunderid/internal/system/varname"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 )
+
+// aliceVar is the variable an export names a credential of the user these tests export: user-1.
+func aliceVar(credential string) string {
+	return varname.DeriveVariableName("user", "user-1", credential)
+}
 
 // credentialExport wires a user exporter over mocks for one user of type "person" named alice.
 type credentialExport struct {
@@ -69,7 +75,8 @@ func TestAUserWithAPasswordExportsIt(t *testing.T) {
 
 	user := c.exportUser(t)
 
-	assert.Equal(t, map[string]interface{}{"password": "{{.USER_ALICE_PASSWORD}}"}, user.Credentials)
+	assert.Equal(t, map[string]interface{}{"password": "{{." + aliceVar("password") + "}}"},
+		user.Credentials)
 }
 
 // A user who never set a password is still exported, with no credentials. Exporting one anyway
@@ -92,19 +99,21 @@ func TestEveryCredentialAUserHoldsIsExported(t *testing.T) {
 	user := c.exportUser(t)
 
 	assert.Equal(t, map[string]interface{}{
-		"password": "{{.USER_ALICE_PASSWORD}}",
-		"pin":      "{{.USER_ALICE_PIN}}",
+		"password": "{{." + aliceVar("password") + "}}",
+		"pin":      "{{." + aliceVar("pin") + "}}",
 	}, user.Credentials)
 }
 
-// Without a username there is nothing to name the variable after, so no credential is exported and
-// the store is not consulted.
-func TestAUserWithoutAUsernameExportsNoCredentials(t *testing.T) {
+// A user whose type has no username still exports its credentials, since each is named after the
+// user ID.
+func TestAUserWithoutAUsernameExportsItsCredentials(t *testing.T) {
 	c := newCredentialExport(t, "")
+	c.userHolds("password")
 
 	user := c.exportUser(t)
 
-	assert.Empty(t, user.Credentials)
+	assert.Equal(t, map[string]interface{}{"password": "{{." + aliceVar("password") + "}}"},
+		user.Credentials)
 }
 
 // A failure to read which credentials the user holds is reported rather than exporting the user as
@@ -141,5 +150,6 @@ func TestAReferenceExportNamesAUsersPasswordAsASecret(t *testing.T) {
 
 	user := c.exportUser(t)
 
-	assert.Equal(t, map[string]interface{}{"password": "sec:USER_ALICE_PASSWORD"}, user.Credentials)
+	assert.Equal(t, map[string]interface{}{"password": "sec:" + aliceVar("password")},
+		user.Credentials)
 }

@@ -14,10 +14,12 @@ export default function mapConnectionToTrustedIssuer(connection: ConnectionRespo
     id: connection.id,
     name: connection.name,
     ouId: connection.ouId,
+    isOwnedByOU: connection.isOwnedByOU,
     issuer: connection.issuer ?? '',
     jwksEndpoint: connection.jwksEndpoint ?? '',
     idJagEnabled: connection.idJagEnabled ?? false,
     tokenExchangeEnabled: connection.tokenExchangeEnabled ?? false,
     trustedTokenAudience: connection.trustedTokenAudience ?? undefined,
+    attributeConfiguration: connection.attributeConfiguration,
   };
 }

@@ -1,0 +1,184 @@
+---
+title: Authorization Details Processor
+docType: reference
+description: The HTTP call {{ProductName}} makes to an intent's processor to approve, refuse, fill in, or change RFC 9396 authorization details.
+---
+
+# Authorization Details Processor
+
+A processor is the resource owner's endpoint that decides on the authorization details of an intent. <ProductName /> posts each requested detail to the processor of its intent before the user is asked to consent, or before a `client_credentials` token is issued. The processor approves or refuses each detail, and may fill in or change the fields that the intent's [field policies](../intents.mdx#field-policies) leave to it.
+
+A processor is configured on the intent, as described in [Attach a Processor](../intents.mdx#attach-a-processor). The OpenAPI description of the call is [`api/extensions/authorization-details-processor.yaml`](https://github.com/thunder-id/thunderid/blob/main/api/extensions/authorization-details-processor.yaml) in the <ProductName /> repository.
+
+## When the Processor Is Called
+
+| Request | When | Subject | Client |
+|---|---|---|---|
+| A request that signs a user in, such as the authorization code grant | In the sign-in flow, at the **Check Intents** step, after the user signs in and before **User Consent** | The signed-in user or agent | The application or agent that sent the request |
+| `client_credentials` token request | At the token endpoint, before the token is issued | The client itself | The same client |
+
+A `client_credentials` request has no user to consent, so every intent it requests must have a processor. Otherwise the token endpoint answers `invalid_authorization_details` with `authorization details of type <type> cannot be requested without a user`.
+
+A sign-in flow calls the processor only when it runs the **Check Intents** executor (`AuthorizationDetailExecutor`). See [Authorization Details Consent](../consent.mdx#authorization-details-consent) for adding it.
+
+## Request
+
+<ProductName /> sends a `POST` request to the configured endpoint with a JSON body and the `Content-Type: application/json` and `Accept: application/json` headers. The details of one request that share an endpoint and a credential go in one call, so one intent's credential is never sent with another intent's details.
+
+```http
+POST /rar/process HTTP/1.1
+Host: payments.example.com
+Content-Type: application/json
+Accept: application/json
+Authorization: Bearer <processor-token>
+
+{
+  "subject": {
+    "type": "user",
+    "id": "01900000-0000-7000-8000-000000000030"
+  },
+  "client": {
+    "type": "application",
+    "id": "bank-app"
+  },
+  "resource": "https://api.bank.example.com",
+  "details": [
+    {
+      "detailId": "01a1ba95-dc4c-7578-bcce-9c82c86cad2f",
+      "type": "payment_initiation",
+      "typeVersion": 2,
+      "detail": {
+        "type": "payment_initiation",
+        "instructedAmount": { "currency": "EUR", "amount": 45 },
+        "creditorName": "Steelworks GmbH"
+      }
+    }
+  ]
+}
+```
+
+| Field | Description |
+|---|---|
+| `subject.type` | `user` or `agent` for a sign-in. For `client_credentials`, `application` or `agent`, matching the access token's `sub_type`. |
+| `subject.id` | The ID of the user, agent, or application in <ProductName />. For `client_credentials`, this is the client's entity ID, not its `client_id`. |
+| `client.type` | `application` or `agent`. |
+| `client.id` | The client's `client_id`. |
+| `resource` | The identifier of the resource server the token is issued for: the request's `resource`, or the default resource server. An intent is not tied to a resource server, so a processor can refuse a detail it does not decide for this one. |
+| `details[].detailId` | The identifier that results refer to. Every call for one authorization request sends the same value, so a processor that reserves something can recognize a repeated call. Each `client_credentials` request gets new values. Clients never see it. |
+| `details[].type` | The intent's type identifier. |
+| `details[].typeVersion` | The intent version the detail was checked against. |
+| `details[].detail` | The detail as the client requested it and <ProductName /> validated it. |
+
+## Response
+
+The processor answers with status `200` and one result for each detail it was sent:
+
+```json
+{
+  "results": [
+    {
+      "detailId": "01a1ba95-dc4c-7578-bcce-9c82c86cad2f",
+      "decision": true,
+      "patch": {
+        "/debtorAccount/iban": "DE12500105170648489890",
+        "/instructedAmount/amount": 40
+      }
+    }
+  ]
+}
+```
+
+| Field | Description |
+|---|---|
+| `results[].detailId` | The `detailId` of the detail this result decides. |
+| `results[].decision` | `true` approves the detail. `false` refuses it. |
+| `results[].patch` | Values to set, keyed by JSON Pointer (RFC 6901) to the field. Applied only to an approved detail. |
+| `results[].context.reason_user` | Why the detail was refused, written for the person asking. |
+| `results[].context.reason_admin` | Why the detail was refused, for administrators. <ProductName /> writes it to the debug log and never shows it. |
+
+### Approve
+
+`decision: true` approves the detail. Without a `patch`, the detail goes on as the client requested it.
+
+### Fill In Fields
+
+A patch sets the fields whose policy has `suppliedBy: processor`. A client cannot send these fields. A required field the processor supplies must be in the patch, because the patched detail must still match the intent's schema. In the example above, `/debtorAccount/iban` fills in a supplied field.
+
+### Change Fields
+
+A patch can change a field whose policy lists `processor` in `modifiableBy`, in the direction its `modification` allows. In the example above, `/instructedAmount/amount` lowers an amount whose policy allows `decrease`. The changed value must stay within the schema's limits and the policy's `minimum` and `maximum`.
+
+The user sees the patched values on the consent card, and a `client_credentials` token carries them.
+
+### Refuse
+
+`decision: false` refuses the detail:
+
+```json
+{
+  "results": [
+    {
+      "detailId": "01a1ba95-dc4c-7578-bcce-9c82c86cad2f",
+      "decision": false,
+      "context": {
+        "reason_user": "The amount exceeds your daily payment limit.",
+        "reason_admin": "Limit rule DL-7 for account 0648489890"
+      }
+    }
+  ]
+}
+```
+
+A refused detail is left out, and the other details of the request go on. The request fails only when every detail is refused. Answer `200` with `decision: false` to say a detail is invalid or not allowed. An error status means the processor could not decide.
+
+When every detail is refused, `reason_user` is cut to 200 characters and shown to the user, or returned to a `client_credentials` client in `error_description`. `error_description` carries only printable ASCII, so other characters are left out there. A reason with control or bidirectional formatting characters is not shown, and a generic message is shown instead.
+
+## Authentication
+
+<ProductName /> authenticates to the processor with the credential configured on the intent:
+
+| Method | What the processor receives |
+|---|---|
+| `none` | No credentials. Accept such calls only from the network <ProductName /> runs in. |
+| `bearer` | `Authorization: Bearer <token>` |
+| `basic` | `Authorization: Basic <base64 of username:password>` |
+| `api_key` | Each configured header with its value, such as `X-Api-Key: <value>`. Header names are sent in canonical form. |
+
+## Endpoint Rules and Limits
+
+- The endpoint is an absolute HTTPS URL with a valid host and port and no user name or password. HTTP is accepted only on a loopback host, such as `localhost` or `127.0.0.1`.
+- Redirects are not followed. A `3xx` answer counts as a failure.
+- The response body is at most 1 MiB.
+- A call times out after `oauth.authorization_details.processor_timeout` seconds, 5 by default. The value is between 1 and 30, and the server does not start with a value outside that range. Set it in `deployment.yaml`:
+
+```yaml
+oauth:
+  authorization_details:
+    processor_timeout: 10
+```
+
+- <ProductName /> does not retry a failed call.
+
+## Failures
+
+A detail is never let through unchecked. The request fails when the processor:
+
+- cannot be reached, or does not answer within the timeout,
+- answers with a status other than `200`, a redirect included,
+- answers with a body that cannot be decoded,
+- leaves a detail without a result or without a `decision`, answers a detail twice, or answers a detail it was not sent, or
+- patches a field its policy does not let it change, or leaves the detail out of line with the schema.
+
+What the client and the user see:
+
+| Situation | `client_credentials` token request | Sign-in flow |
+|---|---|---|
+| Every detail refused | `400` with `invalid_authorization_details` and `Refused by the resource owner's domain system: <reason_user>` | The flow fails with `FET-1127`, which carries the reason. The client receives `access_denied` with `The requested authorization details were refused: <reason_user>`. |
+| Processor unavailable or its answer unusable | `500` with `server_error` | The flow fails with `FET-1128`. The client receives `access_denied` with `The requested authorization details could not be checked. Try again later`. |
+| The flow has no **Check Intents** step, and a requested intent has a processor | Not applicable | **User Consent** fails the flow with `FET-1130`. The client receives `access_denied` with `The sign-in flow does not run the checks the requested authorization details need`. |
+
+## Related Guides
+
+- [Manage Intents](../intents.mdx), register intents and attach a processor.
+- [Consent](../consent.mdx#authorization-details-consent), add **Check Intents** and **User Consent** to a sign-in flow.
+- [Rich Authorization Requests](../protocols/oauth-oidc/rich-authorization-requests.mdx), request authorization details from a client.

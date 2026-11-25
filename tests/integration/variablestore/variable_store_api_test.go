@@ -497,3 +497,165 @@ func (ts *VariableStoreAPITestSuite) TestTooManyNamesIsRefused() {
 	ts.Equal(http.StatusBadRequest, status)
 	ts.Equal("VAR-1007", codeOf(ts.T(), body))
 }
+
+// deleteResponse is what a delete of many names answers with: the names it removed.
+type deleteResponse struct {
+	Deleted []string `json:"deleted"`
+}
+
+// A delete of many names removes those held, answers with them, and leaves the rest alone; a name
+// that held nothing is simply absent from the answer.
+func (ts *VariableStoreAPITestSuite) TestDeletingManyVariablesAtOnce() {
+	ts.createVariable(ts.name("BULK_A"), "a", "")
+	ts.createVariable(ts.name("BULK_B"), "b", "")
+	ts.createVariable(ts.name("BULK_KEEP"), "k", "")
+
+	status, body := ts.send(http.MethodDelete, "/variables?names="+
+		strings.Join([]string{ts.name("BULK_A"), ts.name("BULK_B"), ts.name("BULK_ABSENT")}, ","), "")
+
+	ts.Require().Equal(http.StatusOK, status, body)
+	var answer deleteResponse
+	ts.Require().NoError(json.Unmarshal([]byte(body), &answer))
+	ts.ElementsMatch([]string{ts.name("BULK_A"), ts.name("BULK_B")}, answer.Deleted)
+	ts.getVariable(ts.name("BULK_A"), http.StatusNotFound)
+	ts.getVariable(ts.name("BULK_B"), http.StatusNotFound)
+	ts.getVariable(ts.name("BULK_KEEP"), http.StatusOK)
+}
+
+func (ts *VariableStoreAPITestSuite) TestDeletingManySecretsAtOnce() {
+	ts.createSecret(ts.name("BULK_S1"), "one")
+	ts.createSecret(ts.name("BULK_S2"), "two")
+
+	status, body := ts.send(http.MethodDelete, "/secrets?names="+ts.name("BULK_S1"), "")
+
+	ts.Require().Equal(http.StatusOK, status, body)
+	ts.JSONEq(fmt.Sprintf(`{"deleted":[%q]}`, ts.name("BULK_S1")), body)
+	status, _ = ts.get("/secrets/" + ts.name("BULK_S1"))
+	ts.Equal(http.StatusNotFound, status)
+	status, _ = ts.get("/secrets/" + ts.name("BULK_S2"))
+	ts.Equal(http.StatusOK, status)
+}
+
+// A delete of many names needs names, at most 100 of them, and refuses anything else.
+func (ts *VariableStoreAPITestSuite) TestADeleteOfManyNamesValidatesItsQuery() {
+	names := make([]string, 101)
+	for i := range names {
+		names[i] = fmt.Sprintf("%sNAME_%d", ts.prefix, i)
+	}
+	cases := []struct {
+		query, code string
+	}{
+		{"", "VAR-1012"},
+		{"?names=", "VAR-1012"},
+		{"?names=" + strings.Join(names, ","), "VAR-1007"},
+		{"?names=1-bad", "VAR-1002"},
+		{"?names=" + ts.name("A") + "&limit=1", "VAR-1013"},
+		{"?names=" + ts.name("A") + "&names=%ZZ", "VAR-1014"},
+		{"?names=" + ts.name("A") + "&unchangedFor=0", "VAR-1015"},
+		{"?names=" + ts.name("A") + "&unchangedFor=-1", "VAR-1015"},
+		{"?names=" + ts.name("A") + "&unchangedFor=1.5", "VAR-1015"},
+		{"?names=" + ts.name("A") + "&updatedBefore=2026-01-02T03:04:05Z", "VAR-1013"},
+	}
+	for _, tc := range cases {
+		status, body := ts.send(http.MethodDelete, "/variables"+tc.query, "")
+		ts.Equal(http.StatusBadRequest, status, tc.query)
+		ts.Equal(tc.code, codeOf(ts.T(), body), tc.query)
+	}
+}
+
+// listedNames is the names of a listing, in the order it gave them.
+func listedNames(listed variableList) []string {
+	names := make([]string, 0, len(listed.Variables))
+	for _, v := range listed.Variables {
+		names = append(names, v.Name)
+	}
+	return names
+}
+
+// startsWith is a filter for the names that start with this run's prefix and suffix.
+func (ts *VariableStoreAPITestSuite) startsWith(suffix string) string {
+	return "filter=" + urlEncode(fmt.Sprintf("name sw %q", ts.name(suffix)))
+}
+
+// A listing is in the order of the names' bytes, upper case before lower, and a page carries the
+// total the narrowing matched, past the end too.
+func (ts *VariableStoreAPITestSuite) TestAListingIsInByteOrderAndPaged() {
+	for _, suffix := range []string{"ORD_b", "ORD_A", "ORD_C", "ORD_B"} {
+		ts.createVariable(ts.name(suffix), "v", "")
+	}
+
+	all := ts.listVariables("?" + ts.startsWith("ORD_"))
+	ts.Equal(4, all.TotalResults)
+	ts.Equal([]string{ts.name("ORD_A"), ts.name("ORD_B"), ts.name("ORD_C"), ts.name("ORD_b")}, listedNames(all))
+
+	last := ts.listVariables("?limit=3&offset=2&" + ts.startsWith("ORD_"))
+	ts.Equal(4, last.TotalResults)
+	ts.Equal([]string{ts.name("ORD_C"), ts.name("ORD_b")}, listedNames(last))
+
+	past := ts.listVariables("?limit=3&offset=4&" + ts.startsWith("ORD_"))
+	ts.Equal(4, past.TotalResults)
+	ts.Empty(past.Variables)
+}
+
+// An underscore in a prefix is a character, not a wildcard, and a prefix and an exact name are
+// compared with case.
+func (ts *VariableStoreAPITestSuite) TestAPrefixMatchesLiterallyAndWithCase() {
+	for _, suffix := range []string{"LIT_U_1", "LIT_UX1", "LIT_u_2"} {
+		ts.createVariable(ts.name(suffix), "v", "")
+	}
+
+	underscore := ts.listVariables("?" + ts.startsWith("LIT_U_"))
+	ts.Equal(1, underscore.TotalResults)
+	ts.Equal([]string{ts.name("LIT_U_1")}, listedNames(underscore))
+
+	exact := ts.listVariables("?filter=" + urlEncode(fmt.Sprintf("name eq %q", ts.name("LIT_u_2"))))
+	ts.Equal([]string{ts.name("LIT_u_2")}, listedNames(exact))
+	none := ts.listVariables("?filter=" + urlEncode(fmt.Sprintf("name eq %q", ts.name("LIT_U_2"))))
+	ts.Zero(none.TotalResults)
+}
+
+// names= and a prefix narrow together.
+func (ts *VariableStoreAPITestSuite) TestNamesAndAPrefixNarrowTogether() {
+	for _, suffix := range []string{"NAR_A", "NAR_B", "OTHER_A"} {
+		ts.createVariable(ts.name(suffix), "v", "")
+	}
+
+	listed := ts.listVariables(fmt.Sprintf("?names=%s,%s,%s&%s", ts.name("NAR_A"), ts.name("OTHER_A"),
+		ts.name("NAR_ABSENT"), ts.startsWith("NAR_")))
+
+	ts.Equal(1, listed.TotalResults)
+	ts.Equal([]string{ts.name("NAR_A")}, listedNames(listed))
+}
+
+// With unchangedFor a delete of many names removes only what the data plane finds last set longer ago
+// than that many seconds, by its own clock: a value set since stays, and is absent from the answer.
+func (ts *VariableStoreAPITestSuite) TestADeleteOfManyNamesKeepsWhatWasSetWithinUnchangedFor() {
+	ts.createVariable(ts.name("BOUND_V"), "v", "")
+	ts.createSecret(ts.name("BOUND_S"), "s")
+
+	for _, collection := range []string{"variables", "secrets"} {
+		name := ts.name("BOUND_V")
+		if collection == "secrets" {
+			name = ts.name("BOUND_S")
+		}
+		status, body := ts.send(http.MethodDelete, "/"+collection+"?names="+name+"&unchangedFor=3600", "")
+		ts.Require().Equal(http.StatusOK, status, body)
+		ts.JSONEq(`{"deleted":[]}`, body, "a value set within unchangedFor was removed")
+		status, _ = ts.get("/" + collection + "/" + name)
+		ts.Equal(http.StatusOK, status)
+	}
+
+	// A store that keeps whole seconds needs two to have passed for a value to be more than one old.
+	time.Sleep(2500 * time.Millisecond)
+	for _, collection := range []string{"variables", "secrets"} {
+		name := ts.name("BOUND_V")
+		if collection == "secrets" {
+			name = ts.name("BOUND_S")
+		}
+		status, body := ts.send(http.MethodDelete, "/"+collection+"?names="+name+"&unchangedFor=1", "")
+		ts.Require().Equal(http.StatusOK, status, body)
+		ts.JSONEq(fmt.Sprintf(`{"deleted":[%q]}`, name), body)
+		status, _ = ts.get("/" + collection + "/" + name)
+		ts.Equal(http.StatusNotFound, status)
+	}
+}

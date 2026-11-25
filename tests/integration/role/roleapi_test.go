@@ -90,6 +90,7 @@ var (
 	testAgentID  string
 	sharedRoleID string // Shared role created in SetupSuite for tests that need a pre-existing role
 	entityTypeID string
+	agentTypeID  string
 
 	// Resource servers for permission testing
 	testResourceServer1ID string
@@ -108,6 +109,19 @@ type RoleAPITestSuite struct {
 
 func TestRoleAPITestSuite(t *testing.T) {
 	suite.Run(t, new(RoleAPITestSuite))
+}
+
+// roleTestAgentType is the agent type of the test OU, which the suite's test agent is of.
+const roleTestAgentType = "role-test-agents"
+
+// roleAgentType builds an agent type in the given organization unit whose schema declares the name, which
+// is the agent's display attribute.
+func roleAgentType(handle, ouID string) testutils.UserType {
+	return testutils.UserType{
+		Handle: handle, DisplayName: handle, OUID: ouID,
+		SystemAttributes: &testutils.UserTypeSystemAttributes{Display: "name"},
+		Schema:           map[string]interface{}{"name": map[string]interface{}{"type": "string", "required": true}},
+	}
 }
 
 func (suite *RoleAPITestSuite) SetupSuite() {
@@ -156,9 +170,12 @@ func (suite *RoleAPITestSuite) SetupSuite() {
 	suite.Require().NoError(err, "Failed to create test application")
 	testAppID = appID
 
-	// Create test agent (agent entity), using the bootstrapped `default` agent type
+	// Create test agent (agent entity), of an agent type of the test OU, since an agent is placed within
+	// its agent type's organization unit tree.
+	agentTypeID, err = testutils.CreateNewAgentType(roleAgentType(roleTestAgentType, testOUID))
+	suite.Require().NoError(err, "Failed to create test agent type")
 	agentID, err := testutils.CreateAgent(testutils.Agent{
-		Type:        "default",
+		Type:        roleTestAgentType,
 		Description: "Agent for role assignment testing",
 		OUID:        testOUID,
 		Attributes:  map[string]interface{}{"name": testAgentName},
@@ -232,6 +249,9 @@ func (suite *RoleAPITestSuite) TearDownSuite() {
 	}
 	if testAgentID != "" {
 		_ = testutils.DeleteAgent(testAgentID)
+	}
+	if agentTypeID != "" {
+		_ = testutils.DeleteAgentType(agentTypeID)
 	}
 	if testAppID != "" {
 		_ = testutils.DeleteApplication(testAppID)
@@ -354,19 +374,6 @@ func (suite *RoleAPITestSuite) TestCreateRole_ValidationErrors() {
 			name: "Missing Name",
 			roleRequest: CreateRoleRequest{
 				OUID: testOUID,
-				Permissions: []ResourcePermissions{
-					{
-						ResourceServerID: testResourceServer1ID,
-						Permissions:      []string{testPermission1},
-					},
-				},
-			},
-			expectedErr: "INVALID_INPUT_METADATA",
-		},
-		{
-			name: "Missing OUID",
-			roleRequest: CreateRoleRequest{
-				Name: "Test Role",
 				Permissions: []ResourcePermissions{
 					{
 						ResourceServerID: testResourceServer1ID,
@@ -1783,7 +1790,6 @@ func (suite *RoleAPITestSuite) TestUpdateRole_ValidationErrors() {
 		body UpdateRoleRequest
 	}{
 		{"MissingName", UpdateRoleRequest{OUID: testOUID, Permissions: []ResourcePermissions{}}},
-		{"MissingOUID", UpdateRoleRequest{Name: "Named", Permissions: []ResourcePermissions{}}},
 	} {
 		suite.Run(tc.name, func() {
 			resp := suite.doRoleRequest(http.MethodPut, rolesBasePath+"/"+role.ID, mustMarshal(suite.T(), tc.body))
@@ -3434,8 +3440,12 @@ func (suite *RoleAPITestSuite) TestSharedRole_AssignedToEveryKindOfAssigneeInThe
 	suite.Require().NoError(err)
 	defer func() { suite.NoError(testutils.DeleteGroup(groupID)) }()
 
+	childAgentTypeID, err := testutils.CreateNewAgentType(roleAgentType("shared-role-child-agents", declSharedChildA))
+	suite.Require().NoError(err)
+	defer func() { suite.NoError(testutils.DeleteAgentType(childAgentTypeID)) }()
 	agentID, err := testutils.CreateAgent(testutils.Agent{
-		Type: "default", OUID: declSharedChildA, Attributes: map[string]interface{}{"name": "shared-role-agent"},
+		Type: "shared-role-child-agents", OUID: declSharedChildA,
+		Attributes: map[string]interface{}{"name": "shared-role-agent"},
 	})
 	suite.Require().NoError(err)
 	defer func() { suite.NoError(testutils.DeleteAgent(agentID)) }()
@@ -3552,6 +3562,82 @@ func (suite *RoleAPITestSuite) TestSharedRole_SharedAppsAssignmentsInTheOUAreNot
 	}()
 
 	suite.Contains(suite.clientCredentialsScopes(declSharedChildA, clientID, secret), sharedRolePermission)
+}
+
+// decl-agent-credentials-1 lives in decl-ou-1, and its file shares it into decl-m2m-root.
+const (
+	sharedAgentID             = "decl-agent-credentials-1"
+	sharedAgentClientID       = "decl-agent-cred-client-1"
+	sharedAgentSecret         = "decl-agent-cred-secret-1"
+	sharedAgentOwnerOU        = "decl-ou-1"
+	sharedRoleWritePermission = "test-resource:write"
+)
+
+// Unlike an application's, an agent's client token for an organization unit the agent is shared with counts the
+// roles the agent holds there. Its token from the bare endpoint still counts only its own unit's roles.
+func (suite *RoleAPITestSuite) TestSharedRole_SharedAgentsAssignmentInTheOUIsInItsTokenForTheOU() {
+	suite.NotContains(suite.clientCredentialsScopes(declSharedRootOU, sharedAgentClientID, sharedAgentSecret),
+		sharedRolePermission)
+
+	request := AssignmentsRequest{OUID: declSharedRootOU,
+		Assignments: []Assignment{{ID: sharedAgentID, Type: AssigneeTypeAgent}}}
+	status, code := suite.postAssignments(declSharedRoleID, "add", request)
+	suite.Require().Equal(http.StatusNoContent, status, code)
+	defer func() {
+		status, code := suite.postAssignments(declSharedRoleID, "remove", request)
+		suite.Equal(http.StatusNoContent, status, code)
+	}()
+
+	suite.Contains(suite.clientCredentialsScopes(declSharedRootOU, sharedAgentClientID, sharedAgentSecret),
+		sharedRolePermission)
+	suite.NotContains(suite.clientCredentialsScopes("", sharedAgentClientID, sharedAgentSecret),
+		sharedRolePermission, "the bare endpoint counts the agent's own unit only")
+}
+
+// Each of the agent's tokens counts only the roles of its own unit: write held in the unit owning the agent, read
+// in the unit it is shared with. Both tokens ask for both permissions.
+func (suite *RoleAPITestSuite) TestSharedRole_SharedAgentsTokenCountsOnlyItsUnitsRoles() {
+	ownRole, err := suite.createRole(CreateRoleRequest{
+		Name: "Shared Agent Own Unit Role", OUID: sharedAgentOwnerOU,
+		Permissions: []ResourcePermissions{
+			{ResourceServerID: sharedRoleResourceServerID, Permissions: []string{sharedRoleWritePermission}},
+		},
+		Assignments: []Assignment{{ID: sharedAgentID, Type: AssigneeTypeAgent}},
+	})
+	suite.Require().NoError(err)
+	defer func() { suite.NoError(suite.deleteRole(ownRole.ID)) }()
+	request := AssignmentsRequest{OUID: declSharedRootOU,
+		Assignments: []Assignment{{ID: sharedAgentID, Type: AssigneeTypeAgent}}}
+	status, code := suite.postAssignments(declSharedRoleID, "add", request)
+	suite.Require().Equal(http.StatusNoContent, status, code)
+	defer func() {
+		status, code := suite.postAssignments(declSharedRoleID, "remove", request)
+		suite.Equal(http.StatusNoContent, status, code)
+	}()
+
+	suite.ElementsMatch([]string{sharedRoleWritePermission}, suite.grantedScopes("", sharedAgentClientID,
+		sharedAgentSecret, sharedRoleResourceServer, sharedRolePermission, sharedRoleWritePermission))
+	suite.ElementsMatch([]string{sharedRolePermission}, suite.grantedScopes(declSharedRootOU, sharedAgentClientID,
+		sharedAgentSecret, sharedRoleResourceServer, sharedRolePermission, sharedRoleWritePermission))
+}
+
+// A role the unit gives a group it owns counts for an agent shared into the unit that is a member of the group.
+func (suite *RoleAPITestSuite) TestSharedRole_SharedAgentsGroupRoleInTheOUIsInItsTokenForTheOU() {
+	groupID, err := testutils.CreateGroup(testutils.Group{Name: "Shared Agent Group", OUID: declSharedRootOU,
+		Members: []testutils.Member{{Id: sharedAgentID, Type: "agent"}}})
+	suite.Require().NoError(err)
+	defer func() { suite.NoError(testutils.DeleteGroup(groupID)) }()
+	request := AssignmentsRequest{OUID: declSharedRootOU,
+		Assignments: []Assignment{{ID: groupID, Type: AssigneeTypeGroup}}}
+	status, code := suite.postAssignments(declSharedRoleID, "add", request)
+	suite.Require().Equal(http.StatusNoContent, status, code)
+	defer func() {
+		status, code := suite.postAssignments(declSharedRoleID, "remove", request)
+		suite.Equal(http.StatusNoContent, status, code)
+	}()
+
+	suite.Contains(suite.clientCredentialsScopes(declSharedRootOU, sharedAgentClientID, sharedAgentSecret),
+		sharedRolePermission)
 }
 
 // A declared role assigned through the API to an application in the application's own organization

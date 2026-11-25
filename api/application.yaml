@@ -34,9 +34,10 @@ paths:
       summary: List applications
       description: |
         Retrieve a list of all applications. An `ouId` filter lists the applications the organization
-        unit owns, followed by the applications shared into it. A `projectId` lists the same for the
-        project's root organization unit, or for the organization unit in the `ouId` filter when it
-        belongs to the project.
+        unit owns, followed by the applications shared into it, and none for a unit the caller may not
+        list. A caller whose permission is limited to an organization unit lists that unit the same way
+        without the filter. A `projectId` lists the project's applications, narrowed to the
+        organization unit in the `ouId` filter when one is given.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
@@ -120,6 +121,7 @@ paths:
               $ref: '#/components/schemas/ApplicationRequest'
             example:
               ouId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+              projectId: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
               name: "My Web Application"
               description: "Customer portal application"
               authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
@@ -281,6 +283,16 @@ paths:
                     description:
                       key: "error.applicationservice.invalid_request_format_description"
                       defaultValue: "The request body is malformed or contains invalid data"
+                project-required:
+                  summary: No project was given on a deployment that requires one, such as the Control Plane
+                  value:
+                    code: "APP-1067"
+                    message:
+                      key: "error.applicationservice.project_required"
+                      defaultValue: "Project required"
+                    description:
+                      key: "error.applicationservice.project_required_description"
+                      defaultValue: "Set projectId to the project the application belongs to"
                 invalid-project:
                   summary: The project does not exist
                   value:
@@ -300,7 +312,7 @@ paths:
                       defaultValue: "Organization unit not in project"
                     description:
                       key: "error.applicationservice.ou_not_in_project_description"
-                      defaultValue: "The organization unit must be the project's root organization unit or one below it"
+                      defaultValue: "The organization unit must belong to the project"
                 invalid-redirect-uri:
                   summary: Invalid redirect URI
                   value:
@@ -321,6 +333,8 @@ paths:
                     description:
                       key: "error.applicationservice.invalid_grant_type_description"
                       defaultValue: "One or more provided grant types are invalid"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "500":
           description: Internal server error
           content:
@@ -341,7 +355,12 @@ paths:
       tags:
         - Applications
       summary: Get an application by ID
-      description: Retrieve a specific application using its ID.
+      description: |
+        Retrieve a specific application using its ID. A caller whose permission is limited to an
+        organization unit reads the applications that unit owns, with `isOwnedByOU` true, and the
+        applications shared into it. A shared application is returned read only, with `isOwnedByOU`
+        false, `isReadOnly` true and `ouId` set to the organization unit it is read in. Any other
+        application is refused.
       parameters:
         - in: path
           name: id
@@ -442,6 +461,8 @@ paths:
                 description:
                   key: "error.applicationservice.invalid_application_id_description"
                   defaultValue: "The provided application ID is invalid or empty"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Application not found
           content:
@@ -475,7 +496,9 @@ paths:
       tags:
         - Applications
       summary: Update an application
-      description: Update the details of an existing application.
+      description: |
+        Update the details of an existing application. An organization unit an application is shared
+        into cannot change it.
       parameters:
         - in: path
           name: id
@@ -686,7 +709,7 @@ paths:
                       defaultValue: "Organization unit not in project"
                     description:
                       key: "error.applicationservice.ou_not_in_project_description"
-                      defaultValue: "The organization unit must be the project's root organization unit or one below it"
+                      defaultValue: "The organization unit must belong to the project"
                 invalid-redirect-uri:
                   summary: Invalid redirect URI
                   value:
@@ -707,6 +730,8 @@ paths:
                     description:
                       key: "error.applicationservice.shared_application_cannot_move_description"
                       defaultValue: "The application is shared into other organization units. Delete its sharing policies before moving it to another organization unit"
+        "403":
+          $ref: '#/components/responses/ApplicationWriteForbidden'
         "404":
           description: Application not found
           content:
@@ -743,7 +768,8 @@ paths:
       description: |
         Deletes an application using its ID. Its group memberships and role assignments are
         automatically removed by cascade. The delete is fail-closed and retriable: if dependency
-        cleanup fails, the application is left intact and the operation can be retried.
+        cleanup fails, the application is left intact and the operation can be retried. An
+        organization unit an application is shared into cannot delete it.
       parameters:
         - in: path
           name: id
@@ -770,6 +796,8 @@ paths:
                 description:
                   key: "error.applicationservice.invalid_application_id_description"
                   defaultValue: "The provided application ID is invalid or empty"
+        "403":
+          $ref: '#/components/responses/ApplicationWriteForbidden'
         "500":
           description: Internal server error
           content:
@@ -785,6 +813,114 @@ paths:
                   key: "error.internal_server_error_description"
                   defaultValue: "An unexpected error occurred while processing the request"
 
+  /applications/{id}/client-secret/regenerate:
+    parameters:
+      - $ref: '#/components/parameters/applicationIdPathParam'
+    post:
+      tags:
+        - Applications
+      summary: Regenerate an application's client secret
+      description: |
+        Replaces the client secret of an application that authenticates with one with a newly
+        generated secret, and returns it. The response is the only time the new secret can be read:
+        it is stored hashed and no read returns it.
+
+        The old secret stops working at once. When token revocation is on
+        (`oauth.token_revocation.enabled`, the default), the tokens issued through the application's client
+        ID up to the change are revoked, including tokens issued to users through it, as for an update that
+        replaces the secret: before the new secret is written,
+        and again once it is, so a token issued while it was being written is revoked too. With token
+        revocation off, or on a control plane, which issues no tokens, nothing is revoked. If the
+        revocation before the write fails, the secret is not changed. If the one after the write
+        fails, the new secret is stored and still returned, with `revocationIncomplete: true`: a token
+        issued while it was being written may stay valid until it expires, and regenerating again
+        revokes it. The attempt is recorded as failed in the audit log.
+
+        An application that authenticates without a client secret (a public client, `none` or
+        `private_key_jwt`), one declared in a file, and one a control plane deployed are refused.
+        The caller needs the same permissions as for updating the application.
+      responses:
+        "200":
+          description: Client secret regenerated
+          headers:
+            Cache-Control:
+              description: Always `no-store`, since the body carries a secret.
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientSecretResponse'
+              example:
+                clientSecret: "pD3fXq9sT7wLk2vB8nR4mZ6cY1hJ5gA0"
+        "400":
+          description: The application's client secret cannot be regenerated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                no-client-secret:
+                  summary: The application authenticates without a client secret
+                  value:
+                    code: "APP-1047"
+                    message:
+                      key: "error.applicationservice.application_has_no_client_secret"
+                      defaultValue: "Application has no client secret"
+                    description:
+                      key: "error.applicationservice.application_has_no_client_secret_description"
+                      defaultValue: "A client secret is not applicable to this application: it authenticates without one"
+                declarative-application:
+                  summary: The application is declared in a file
+                  value:
+                    code: "APP-1030"
+                    message:
+                      key: "error.applicationservice.cannot_modify_declarative_resource"
+                      defaultValue: "Cannot modify declarative resource"
+                    description:
+                      key: "error.applicationservice.cannot_modify_declarative_resource_description"
+                      defaultValue: "The application is declarative and cannot be modified or deleted"
+                managed-application:
+                  summary: The application was deployed by a control plane
+                  value:
+                    code: "APP-1069"
+                    message:
+                      key: "error.applicationservice.managed_application"
+                      defaultValue: "Cannot modify an application deployed by the control plane"
+                    description:
+                      key: "error.applicationservice.managed_application_description"
+                      defaultValue: "The application was deployed by the control plane and can only be changed there"
+        "403":
+          $ref: '#/components/responses/ApplicationWriteForbidden'
+        "404":
+          description: Application not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "APP-1001"
+                message:
+                  key: "error.applicationservice.application_not_found"
+                  defaultValue: "Application not found"
+                description:
+                  key: "error.applicationservice.application_not_found_description"
+                  defaultValue: "The requested application could not be found"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
   /applications/{id}/sharing-policies:
     parameters:
       - $ref: '#/components/parameters/applicationIdPathParam'
@@ -881,6 +1017,8 @@ paths:
                   excludedOuIds: ["acme-trial-customers"]
         "400":
           $ref: '#/components/responses/ApplicationSharingPolicyCreateBadRequest'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/ApplicationNotFound'
         "409":
@@ -940,6 +1078,8 @@ paths:
                 links: []
         "400":
           $ref: '#/components/responses/ApplicationSharingPolicyListBadRequest'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/ApplicationNotFound'
         "500":
@@ -970,6 +1110,8 @@ paths:
                 childUnits:
                   mode: all
                   excludedOuIds: ["acme-trial-customers"]
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/ApplicationSharingPolicyNotFound'
         "500":
@@ -1038,6 +1180,8 @@ paths:
                   excludedOuIds: ["acme-trial-customers"]
         "400":
           $ref: '#/components/responses/ApplicationSharingPolicyUpdateBadRequest'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/ApplicationSharingPolicyNotFound'
         "409":
@@ -1062,6 +1206,8 @@ paths:
             Sharing policy deleted, or the application holds no policy under that id.
         "400":
           $ref: '#/components/responses/ApplicationSharingPolicyDeleteBadRequest'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/ApplicationNotFound'
         "500":
@@ -1115,6 +1261,8 @@ paths:
                     rules: {}
         "400":
           $ref: '#/components/responses/ApplicationOverlayRulesBadRequest'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/ApplicationOverlayNotResolvable'
         "500":
@@ -1175,10 +1323,9 @@ components:
       name: projectId
       required: false
       description: |
-        Lists the applications the project's root organization unit owns, followed by the
-        applications shared into it. With an `ouId` filter, lists that organization unit instead
-        when it is the project's root organization unit or one below it. A project that does not
-        exist, or an organization unit outside it, has no applications.
+        Lists the applications of the project. With an `ouId` filter, lists only the project's
+        applications that organization unit owns. A project that does not exist has no
+        applications.
       schema:
         type: string
       example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
@@ -1200,6 +1347,52 @@ components:
       example: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
 
   responses:
+    Forbidden:
+      description: |
+        The caller may not perform the operation in the organization unit of the resource, or for an update
+        that moves the resource, in the organization unit it moves to
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "SSE-4030"
+            message:
+              key: "error.unauthorized"
+              defaultValue: "Unauthorized"
+            description:
+              key: "error.unauthorized_description"
+              defaultValue: "The caller is not authorized to perform this operation"
+    ApplicationWriteForbidden:
+      description: |
+        The caller may not perform the operation in the organization unit of the application, or for an
+        update that moves the application, in the organization unit it moves to. A caller limited to an
+        organization unit the application is shared into is told that the shared application is read only.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            unauthorized:
+              summary: Not permitted in the application's organization unit
+              value:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
+            shared-application-read-only:
+              summary: Application shared into the caller's organization unit
+              value:
+                code: "APP-1070"
+                message:
+                  key: "error.applicationservice.shared_application_read_only"
+                  defaultValue: "Shared application is read only"
+                description:
+                  key: "error.applicationservice.shared_application_read_only_description"
+                  defaultValue: "Only the organization unit that owns the application can change or delete it"
     ApplicationSharingPolicyCreateBadRequest:
       description: |
         The policy is not one the issuing organization unit may write. The code says which kind of
@@ -1498,6 +1691,27 @@ components:
               defaultValue: "An unexpected error occurred while processing the request"
 
   schemas:
+    ClientSecretResponse:
+      type: object
+      description: A newly generated client secret, returned only when it is generated.
+      required:
+        - clientSecret
+      properties:
+        clientSecret:
+          type: string
+          description: The new client secret.
+        revocationIncomplete:
+          type: boolean
+          description: |
+            Present and `true` when the secret is stored but revoking the tokens issued while it was
+            being written failed. Those tokens may stay valid until they expire; regenerate again to
+            revoke them.
+    ApplicationAllowedAgentTypes:
+      type: array
+      items:
+        type: string
+      description: Handles of the agent types allowed to sign in to this application. An agent can authenticate only when its agent type handle is listed here; when the list is empty no agent can sign in. `["*"]` allows an agent of any agent type; `*` cannot be combined with other entries (`APP-1068`).
+      example: ["default"]
     ApplicationRequest:
       type: object
       required: [name, type]
@@ -1505,15 +1719,20 @@ components:
         ouId:
           type: string
           description: |
-            The ID of the organization unit this application belongs to. Required unless
-            `projectId` is given.
+            The ID of the organization unit this application belongs to. On create, when omitted,
+            the application is placed in the system organization unit that the
+            `server.system_ou_id` deployment configuration names. On update, when omitted, the
+            application stays in its organization unit.
           example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
         projectId:
           type: string
           description: |
-            The ID of the project this application belongs to. Without `ouId`, the application is
-            placed in the project's root organization unit. With `ouId`, that organization unit
-            must be the project's root organization unit or one below it.
+            The ID of the project this application belongs to. On a deployment that serves
+            projects, such as the Control Plane, creating an application without one is refused
+            (`APP-1067`). The application's organization
+            unit, the given `ouId` or the default one, must belong to the project. On update, leaving it
+            out keeps the application in its project, and a different project moves it unless the
+            application is shared. An application can't be taken out of a project.
           example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         name:
           type: string
@@ -1617,11 +1836,7 @@ components:
           description: Handles of the user types allowed to sign up through this application.
           example: ["employee", "customer", "partner"]
         allowedAgentTypes:
-          type: array
-          items:
-            type: string
-          description: Handles of the agent types allowed to sign in to this application. An agent can authenticate only when its agent type handle is listed here; when the list is empty no agent can sign in.
-          example: ["default"]
+          $ref: '#/components/schemas/ApplicationAllowedAgentTypes'
         passkeyAllowedOrigins:
           type: array
           items:
@@ -1635,6 +1850,10 @@ components:
               type: integer
               description: The validity period of the login consent in seconds. Default is 0 (no expiration).
               example: 3600
+            alwaysPrompt:
+              type: boolean
+              description: Ask for consent on every authorization, even when an earlier consent covers it. Defaults to false.
+              example: false
         metadata:
           type: object
           additionalProperties: true
@@ -1666,6 +1885,11 @@ components:
           type: string
           description: The ID of the organization unit this application belongs to.
           example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        projectId:
+          type: string
+          readOnly: true
+          description: The ID of the project this application belongs to, if any.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         name:
           type: string
           description: The name of the application.
@@ -1775,11 +1999,7 @@ components:
           description: Handles of the user types allowed to sign up through this application.
           example: ["employee", "customer", "partner"]
         allowedAgentTypes:
-          type: array
-          items:
-            type: string
-          description: Handles of the agent types allowed to sign in to this application. An agent can authenticate only when its agent type handle is listed here; when the list is empty no agent can sign in.
-          example: ["default"]
+          $ref: '#/components/schemas/ApplicationAllowedAgentTypes'
         passkeyAllowedOrigins:
           type: array
           items:
@@ -1793,6 +2013,10 @@ components:
               type: integer
               description: The validity period of the consent in seconds. Default is 0 (no expiration).
               example: 3600
+            alwaysPrompt:
+              type: boolean
+              description: Ask for consent on every authorization, even when an earlier consent covers it. Defaults to false.
+              example: false
         status:
           allOf:
             - $ref: '#/components/schemas/ApplicationAccessStatus'
@@ -1817,6 +2041,11 @@ components:
           type: string
           description: The ID of the organization unit this application belongs to.
           example: "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+        projectId:
+          type: string
+          readOnly: true
+          description: The ID of the project this application belongs to, if any.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         name:
           type: string
           description: The name of the application.
@@ -1916,11 +2145,7 @@ components:
           description: Handles of the user types allowed to sign up through this application.
           example: ["employee", "customer", "partner"]
         allowedAgentTypes:
-          type: array
-          items:
-            type: string
-          description: Handles of the agent types allowed to sign in to this application. An agent can authenticate only when its agent type handle is listed here; when the list is empty no agent can sign in.
-          example: ["default"]
+          $ref: '#/components/schemas/ApplicationAllowedAgentTypes'
         passkeyAllowedOrigins:
           type: array
           items:
@@ -1934,6 +2159,10 @@ components:
               type: integer
               description: The validity period of the consent in seconds. Default is 0 (no expiration).
               example: 3600
+            alwaysPrompt:
+              type: boolean
+              description: Ask for consent on every authorization, even when an earlier consent covers it. Defaults to false.
+              example: false
         metadata:
           type: object
           additionalProperties: true
@@ -1943,6 +2172,20 @@ components:
             team: "platform"
         status:
           $ref: '#/components/schemas/ApplicationAccessStatus'
+        isOwnedByOU:
+          type: boolean
+          readOnly: true
+          description: |
+            Whether the organization unit the application is read in owns it rather than being shared it.
+            False when a caller limited to an organization unit reads an application shared into that unit.
+          example: true
+        isReadOnly:
+          type: boolean
+          readOnly: true
+          description: |
+            True when the application is read in an organization unit it is shared into, which cannot change
+            or delete it. Omitted otherwise.
+          example: false
 
     BasicApplicationResponse:
       type: object
@@ -1952,6 +2195,11 @@ components:
           format: uuid
           description: The unique identifier of the application.
           example: "550e8400-e29b-41d4-a716-446655440000"
+        projectId:
+          type: string
+          readOnly: true
+          description: The ID of the project this application belongs to, if any.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         name:
           type: string
           description: The name of the application.

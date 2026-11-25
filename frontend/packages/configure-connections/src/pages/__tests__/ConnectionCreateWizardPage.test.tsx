@@ -38,12 +38,18 @@ vi.mock('react-router', async (importOriginal) => ({
   ...(await importOriginal<typeof import('react-router')>()),
   useNavigate: () => navigateMock,
 }));
+let mockCanUpdateServerConfig = true;
 vi.mock('@thunderid/contexts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/contexts')>()),
+  useCapabilitiesContext: () => ({
+    can: (resource: string, action = 'view') =>
+      resource !== 'serverconfig' || action !== 'update' || mockCanUpdateServerConfig,
+    isLoading: false,
+  }),
   useConfig: () => ({
-    getGateCallbackUrl: () => 'https://id.acme.io/gate/callback',
     config: {brand: {product_name: 'ThunderID'}},
   }),
+  useGateCallbackUrl: () => 'https://id.acme.io/gate/callback',
   useToast: () => ({showToast: showToastMock}),
 }));
 const HTTP_METHODS = [
@@ -162,6 +168,7 @@ describe('ConnectionCreateWizardPage', () => {
     ouSelection.isLoading = false;
     mutationState.isSuccess = false;
     setDefaultSenderState.isPending = false;
+    mockCanUpdateServerConfig = true;
     emailProviders.isSuccess = true;
     emailProviders.data = [{id: 'sm0'}];
     notificationConfig.isSuccess = true;
@@ -759,6 +766,14 @@ describe('ConnectionCreateWizardPage', () => {
       createSender();
 
       expect(setDefaultSenderMock).not.toHaveBeenCalled();
+    });
+
+    it('leaves the default alone when the admin cannot change the server configuration', () => {
+      mockCanUpdateServerConfig = false;
+      createSender();
+
+      expect(setDefaultSenderMock).not.toHaveBeenCalled();
+      expect(navigateMock).toHaveBeenCalledWith('/connections/email-smtp/new-1');
     });
 
     it('leaves the default alone when the existing senders are not known', () => {

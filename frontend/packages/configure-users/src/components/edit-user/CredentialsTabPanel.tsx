@@ -1,65 +1,62 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {SettingsCard} from '@thunderid/components';
-import {Box, Button, Stack, Typography} from '@wso2/oxygen-ui';
-import {useState, type JSX} from 'react';
+import {CredentialResetSection, type CredentialResetField, type CredentialResetLinkOption} from '@thunderid/components';
+import type {AccessStatus} from '@thunderid/types';
+import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import CredentialResetDialog from './CredentialResetDialog';
-
-export interface CredentialFieldInfo {
-  fieldName: string;
-  label: string;
-}
+import useSendUserCredentialReset from '../../api/useSendUserCredentialReset';
+import useUpdateUserCredentials from '../../api/useUpdateUserCredentials';
+import useCredentialResetLink from '../../hooks/useCredentialResetLink';
+import getUserErrorMessage from '../../utils/getUserErrorMessage';
 
 interface CredentialsTabPanelProps {
   userId: string;
-  credentialFields: CredentialFieldInfo[];
+  credentialFields: CredentialResetField[];
+  /**
+   * Names of the credentials a reset link can reset: the text credentials of the user's type.
+   */
+  resetLinkFieldNames?: string[];
+  /**
+   * The user's effective access status. A suspended or expired user cannot be sent a reset link.
+   */
+  accessStatus?: AccessStatus;
 }
 
-export default function CredentialsTabPanel({userId, credentialFields}: CredentialsTabPanelProps): JSX.Element {
-  const {t} = useTranslation();
+export default function CredentialsTabPanel({
+  userId,
+  credentialFields,
+  resetLinkFieldNames = [],
+  accessStatus = undefined,
+}: CredentialsTabPanelProps): JSX.Element | null {
+  const {t} = useTranslation('users');
+  const updateCredentials = useUpdateUserCredentials();
+  const sendReset = useSendUserCredentialReset();
+  const {handle, heldReason} = useCredentialResetLink(accessStatus);
 
-  const [activeField, setActiveField] = useState<CredentialFieldInfo | null>(null);
+  const getResetLink = (field: CredentialResetField): CredentialResetLinkOption | undefined => {
+    if (!handle || !resetLinkFieldNames.includes(field.fieldName)) {
+      return undefined;
+    }
+
+    return {
+      onSend: () => sendReset.mutateAsync({userId, credential: field.fieldName, label: field.label, handle}),
+      getErrorMessage: (error) =>
+        getUserErrorMessage(error, t, 'credentialResetLink.error', 'Could not send the reset link. Please try again.'),
+      heldReason,
+    };
+  };
 
   return (
-    <>
-      <SettingsCard
-        title={t('users:manageUser.sections.credentials.resetCredentialsTitle', 'Reset credentials')}
-        description={t(
-          'users:manageUser.sections.credentials.resetCredentialsDescription',
-          'Reset user credentials. These actions are irreversible.',
-        )}
-      >
-        <Stack spacing={3}>
-          {credentialFields.map((field, index) => (
-            <Box key={field.fieldName} sx={{mt: index > 0 ? 5 : 0}}>
-              <Typography variant="subtitle2" sx={{mb: 0.5}}>
-                {field.label}
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{mb: 1.5}}>
-                {t(
-                  'users:manageUser.sections.credentials.resetHint',
-                  'Resetting will immediately invalidate the current {{label}}.',
-                  {
-                    label: field.label.toLowerCase(),
-                  },
-                )}
-              </Typography>
-              <Button variant="outlined" color="error" onClick={() => setActiveField(field)}>
-                {t('users:manageUser.sections.credentials.resetButton', 'Reset {{label}}', {label: field.label})}
-              </Button>
-            </Box>
-          ))}
-        </Stack>
-      </SettingsCard>
-
-      <CredentialResetDialog
-        open={activeField !== null}
-        field={activeField}
-        userId={userId}
-        onClose={() => setActiveField(null)}
-      />
-    </>
+    <CredentialResetSection
+      fields={credentialFields}
+      onReset={(field, newValue) =>
+        updateCredentials.mutateAsync({userId, data: {credentials: {[field.fieldName]: newValue}}})
+      }
+      getErrorMessage={(error) =>
+        getUserErrorMessage(error, t, 'updateCredentials.error', 'Failed to update credentials. Please try again.')
+      }
+      getResetLink={getResetLink}
+    />
   );
 }

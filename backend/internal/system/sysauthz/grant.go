@@ -5,6 +5,8 @@ package sysauthz
 
 import (
 	"context"
+	"fmt"
+	"slices"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
@@ -38,6 +40,10 @@ type PermissionResolver interface {
 
 	// ResolveForRole returns the permissions a role confers on its assignees.
 	ResolveForRole(ctx context.Context, roleID string) (security.PermissionSet, error)
+
+	// ResolveDelimiters returns administrative coverage delimiters; missing entries use exact matching.
+	// The resolver avoids an import cycle between sysauthz and the resource service.
+	ResolveDelimiters(ctx context.Context, resourceServerIDs []string) map[string]string
 }
 
 // SetPermissionResolver injects the resolver used by the grant checks. Call once at startup, after
@@ -68,24 +74,97 @@ func (s *systemAuthorizationService) CanGrantPermissions(
 func (s *systemAuthorizationService) CanGrantMembership(
 	ctx context.Context, principalType PrincipalType, containerID string,
 ) *tidcommon.ServiceError {
-	logger := s.logger.WithContext(ctx)
+	return s.requireCovers(ctx, containerID, string(principalType), s.conferredBy(principalType))
+}
 
+// CanControlEntity enforces that the caller may only take control of an entity, such as by changing
+// its credentials or attributes or by deleting it, when it already holds every permission the entity holds.
+func (s *systemAuthorizationService) CanControlEntity(
+	ctx context.Context, entityID string,
+) *tidcommon.ServiceError {
+	// An entity always holds its own permissions, so acting on itself needs no lookup.
+	if sub := security.GetSubject(ctx); sub != "" && sub == entityID {
+		return nil
+	}
+	return s.requireCovers(ctx, entityID, "entity",
+		func(ctx context.Context, id string) (security.PermissionSet, error) {
+			return s.permissionResolver.ResolveForEntity(ctx, id)
+		})
+}
+
+// requireCovers refuses unless the caller holds every permission resolve returns for the target.
+func (s *systemAuthorizationService) requireCovers(ctx context.Context, id, what string,
+	resolve func(context.Context, string) (security.PermissionSet, error),
+) *tidcommon.ServiceError {
 	if decision, decided := s.shortCircuitGrant(ctx); decided {
 		return decision
 	}
 
-	if containerID == "" {
-		logger.Error(ctx, "Membership grant check called without a container ID",
-			log.String("principalType", string(principalType)))
+	logger := s.logger.WithContext(ctx)
+	if id == "" {
+		logger.Error(ctx, "Grant check called without a target ID", log.String("target", what))
 		return &tidcommon.InternalServerError
 	}
 
-	conferred, svcErr := s.resolveConferredPermissions(ctx, principalType, containerID)
-	if svcErr != nil {
-		return svcErr
+	conferred, err := resolve(ctx, id)
+	if err != nil {
+		// A failed lookup is not the same as an empty result, so it must not be treated as one.
+		logger.Error(ctx, "Failed to resolve the permissions of the grant target",
+			log.String("target", what), log.String("targetID", id), log.Error(err))
+		return &tidcommon.InternalServerError
 	}
 
 	return s.requireCoverage(ctx, conferred)
+}
+
+// GrantableMemberships returns the containers whose membership the caller may grant, resolving what each confers
+// and, once, what the caller holds.
+func (s *systemAuthorizationService) GrantableMemberships(
+	ctx context.Context, principalType PrincipalType, containerIDs []string,
+) ([]string, *tidcommon.ServiceError) {
+	if len(containerIDs) == 0 {
+		return nil, nil
+	}
+	if decision, decided := s.shortCircuitGrant(ctx); decided {
+		if decision != nil {
+			return nil, decision
+		}
+		return slices.Clone(containerIDs), nil
+	}
+
+	subject := security.GetSubject(ctx)
+	var actorPermissions security.PermissionSet
+	grantable := make([]string, 0, len(containerIDs))
+	for _, containerID := range containerIDs {
+		conferred, svcErr := s.resolveConferredPermissions(ctx, principalType, containerID)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		if grantsNothing(conferred) {
+			grantable = append(grantable, containerID)
+			continue
+		}
+		if subject == "" {
+			continue
+		}
+		if actorPermissions == nil {
+			resolved, err := s.permissionResolver.ResolveForEntity(ctx, subject)
+			if err != nil {
+				s.logger.Error(ctx, "Failed to resolve caller permissions for grant check",
+					log.MaskedString("subject", subject), log.Error(err))
+				return nil, &tidcommon.InternalServerError
+			}
+			actorPermissions = resolved
+			if actorPermissions == nil {
+				actorPermissions = security.PermissionSet{}
+			}
+		}
+		delimiters := s.permissionResolver.ResolveDelimiters(ctx, grantedResourceServerIDs(conferred))
+		if security.Covers(actorPermissions, conferred, delimiters) {
+			grantable = append(grantable, containerID)
+		}
+	}
+	return grantable, nil
 }
 
 // shortCircuitGrant decides the cases that need no stored lookup. The boolean reports whether a
@@ -119,32 +198,32 @@ func (s *systemAuthorizationService) shortCircuitGrant(
 func (s *systemAuthorizationService) resolveConferredPermissions(
 	ctx context.Context, principalType PrincipalType, containerID string,
 ) (security.PermissionSet, *tidcommon.ServiceError) {
-	logger := s.logger.WithContext(ctx)
-
-	var conferred security.PermissionSet
-	var err error
-
-	switch principalType {
-	case PrincipalTypeGroup:
-		conferred, err = s.permissionResolver.ResolveForGroup(ctx, containerID)
-	case PrincipalTypeRole:
-		conferred, err = s.permissionResolver.ResolveForRole(ctx, containerID)
-	default:
-		logger.Error(ctx, "Membership grant check called with an unknown principal type",
-			log.String("principalType", string(principalType)))
-		return nil, &tidcommon.InternalServerError
-	}
-
+	conferred, err := s.conferredBy(principalType)(ctx, containerID)
 	if err != nil {
 		// A failed lookup is not the same as an empty result, so it must not be treated as one.
-		logger.Error(ctx, "Failed to resolve permissions conferred by container",
+		s.logger.WithContext(ctx).Error(ctx, "Failed to resolve permissions conferred by container",
 			log.String("principalType", string(principalType)),
 			log.String("containerID", containerID),
 			log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
-
 	return conferred, nil
+}
+
+// conferredBy returns the lookup for what membership in a container of the given type confers. The
+// resolver is read when the lookup runs, after shortCircuitGrant has confirmed it is set.
+func (s *systemAuthorizationService) conferredBy(
+	principalType PrincipalType,
+) func(context.Context, string) (security.PermissionSet, error) {
+	return func(ctx context.Context, containerID string) (security.PermissionSet, error) {
+		switch principalType {
+		case PrincipalTypeGroup:
+			return s.permissionResolver.ResolveForGroup(ctx, containerID)
+		case PrincipalTypeRole:
+			return s.permissionResolver.ResolveForRole(ctx, containerID)
+		}
+		return nil, fmt.Errorf("unknown principal type %q", principalType)
+	}
 }
 
 // requireCoverage refuses unless the caller's permissions cover every permission being granted.
@@ -173,7 +252,10 @@ func (s *systemAuthorizationService) requireCoverage(
 		return &tidcommon.InternalServerError
 	}
 
-	if !security.Covers(actorPermissions, granted) {
+	// Covers preserves fixed colon matching for system permissions.
+	delimiters := s.permissionResolver.ResolveDelimiters(ctx, grantedResourceServerIDs(granted))
+
+	if !security.Covers(actorPermissions, granted, delimiters) {
 		logger.Debug(ctx, "Grant refused: exceeds caller permissions",
 			log.MaskedString("subject", subject))
 		return &ErrorGrantNotPermitted
@@ -190,4 +272,17 @@ func grantsNothing(granted security.PermissionSet) bool {
 		}
 	}
 	return true
+}
+
+// grantedResourceServerIDs lists the resource servers a grant names, which are the only ones whose
+// delimiters the coverage check needs.
+func grantedResourceServerIDs(granted security.PermissionSet) []string {
+	ids := make([]string, 0, len(granted))
+	for resourceServerID, permissions := range granted {
+		if resourceServerID == "" || len(permissions) == 0 {
+			continue
+		}
+		ids = append(ids, resourceServerID)
+	}
+	return ids
 }

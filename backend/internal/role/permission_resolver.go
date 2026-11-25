@@ -9,6 +9,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/group"
+	resourcepkg "github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
@@ -20,6 +21,7 @@ type EffectivePermissionResolver struct {
 	roleService   RoleServiceInterface
 	groupService  group.GroupServiceInterface
 	entityService entity.EntityServiceInterface
+	delimiters    *permissionDelimiterResolver
 }
 
 // NewEffectivePermissionResolver builds a resolver over the services it needs.
@@ -27,12 +29,22 @@ func NewEffectivePermissionResolver(
 	roleService RoleServiceInterface,
 	groupService group.GroupServiceInterface,
 	entityService entity.EntityServiceInterface,
+	resourceService resourcepkg.ResourceServiceInterface,
 ) *EffectivePermissionResolver {
 	return &EffectivePermissionResolver{
 		roleService:   roleService,
 		groupService:  groupService,
 		entityService: entityService,
+		delimiters:    newPermissionDelimiterResolver(resourceService),
 	}
+}
+
+// ResolveDelimiters returns administrative coverage delimiters, including legacy colon matching for disabled servers.
+// Missing or unreadable servers are omitted, preserving exact matching.
+func (r *EffectivePermissionResolver) ResolveDelimiters(
+	ctx context.Context, resourceServerIDs []string,
+) map[string]string {
+	return r.delimiters.resolveAll(ctx, resourceServerIDs)
 }
 
 // ResolveForEntity returns every permission an entity holds, directly and through its groups.
@@ -60,6 +72,14 @@ func (r *EffectivePermissionResolver) ResolveForEntity(
 	}
 
 	return permissions, nil
+}
+
+// GetEntityPermissions returns the permissions an entity holds now, directly and through its groups,
+// keyed by resource server ID.
+func (r *EffectivePermissionResolver) GetEntityPermissions(
+	ctx context.Context, entityID string,
+) (map[string][]string, error) {
+	return r.ResolveForEntity(ctx, entityID)
 }
 
 // ResolveForGroup returns every permission that membership in a group confers, including the roles
@@ -98,7 +118,8 @@ func (r *EffectivePermissionResolver) ResolveForRole(
 		return security.PermissionSet{}, nil
 	}
 
-	role, svcErr := r.roleService.GetRoleWithPermissions(ctx, roleID)
+	// What a role confers is resolved for the server's own checks, whichever organization unit holds it.
+	role, svcErr := r.roleService.GetRoleWithPermissions(security.WithRuntimeContext(ctx), roleID)
 	if svcErr != nil {
 		return nil, fmt.Errorf("failed to resolve permissions for role: %s",
 			svcErr.Error.DefaultValue)

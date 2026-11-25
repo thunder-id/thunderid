@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package mgt
@@ -680,6 +680,88 @@ func (suite *FlowMgtAPITestSuite) TestCreateFlow_OUResolverIgnoredPropertiesReje
 	}
 }
 
+// An AgentTypeResolver node reads its allowed agent types as handles, so "*" there would match no agent type.
+// The shipped agent onboarding flow with "*" on that node is refused when it is saved, as an update and as a
+// new flow.
+func (suite *FlowMgtAPITestSuite) TestAgentTypeWildcardOnFlowNodeRejected() {
+	flowID, err := testutils.GetFlowIDByHandle("default-agent-onboarding-flow", "ADMINISTRATION")
+	suite.Require().NoError(err)
+
+	req, err := http.NewRequest(http.MethodGet, testServerURL+flowsEndpoint+"/"+flowID, nil)
+	suite.Require().NoError(err)
+	resp, err := testutils.GetHTTPClient().Do(req)
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+	var stored map[string]interface{}
+	suite.Require().NoError(json.NewDecoder(resp.Body).Decode(&stored))
+
+	nodes, _ := stored["nodes"].([]interface{})
+	found := false
+	for _, n := range nodes {
+		node, _ := n.(map[string]interface{})
+		if executor, _ := node["executor"].(map[string]interface{}); executor["name"] == "AgentTypeResolver" {
+			node["properties"] = map[string]interface{}{"allowedAgentTypes": []string{"*"}}
+			found = true
+		}
+	}
+	suite.Require().True(found, "the shipped agent onboarding flow has an AgentTypeResolver node")
+	flow := map[string]interface{}{
+		"name": stored["name"], "handle": stored["handle"], "flowType": stored["flowType"],
+		"ouId": stored["ouId"], "nodes": nodes,
+	}
+
+	// send expects the save to be refused, and returns the body so a save that went through can be undone.
+	send := func(method, path string, body interface{}) (int, []byte) {
+		payload, err := json.Marshal(body)
+		suite.Require().NoError(err)
+		req, err := http.NewRequest(method, testServerURL+path, bytes.NewReader(payload))
+		suite.Require().NoError(err)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := testutils.GetHTTPClient().Do(req)
+		suite.Require().NoError(err)
+		defer resp.Body.Close()
+		raw, err := io.ReadAll(resp.Body)
+		suite.Require().NoError(err)
+
+		suite.Equal(http.StatusBadRequest, resp.StatusCode, "body: %s", string(raw))
+		var errorResp ErrorResponse
+		suite.Require().NoError(json.Unmarshal(raw, &errorResp))
+		suite.Equal("FLM-1023", errorResp.Code, "body: %s", string(raw))
+		suite.Contains(string(raw), "allowedAgentTypes", "the refusal names the property")
+		return resp.StatusCode, raw
+	}
+
+	suite.Run("update", func() {
+		if status, _ := send(http.MethodPut, flowsEndpoint+"/"+flowID, flow); status == http.StatusOK {
+			// The shipped flow is shared with the execution suites, so a save that went through is undone.
+			original := map[string]interface{}{
+				"name": stored["name"], "handle": stored["handle"], "flowType": stored["flowType"],
+				"ouId": stored["ouId"], "nodes": stored["nodes"],
+			}
+			payload, err := json.Marshal(original)
+			suite.Require().NoError(err)
+			req, err := http.NewRequest(http.MethodPut, testServerURL+flowsEndpoint+"/"+flowID,
+				bytes.NewReader(payload))
+			suite.Require().NoError(err)
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := testutils.GetHTTPClient().Do(req)
+			suite.Require().NoError(err)
+			_ = resp.Body.Close()
+			suite.Equal(http.StatusOK, resp.StatusCode, "restoring the shipped onboarding flow failed")
+		}
+	})
+	suite.Run("create", func() {
+		flow["handle"] = generateUniqueHandle("agent-onboarding-wildcard")
+		if status, raw := send(http.MethodPost, flowsEndpoint, flow); status == http.StatusCreated {
+			var created CompleteFlowDefinition
+			if json.Unmarshal(raw, &created) == nil && created.ID != "" {
+				suite.trackFlow(created.ID)
+			}
+		}
+	})
+}
+
 // In direct children mode the resolver reads a single required ouId or ouHandle input declared on the node.
 func (suite *FlowMgtAPITestSuite) TestCreateFlow_OUResolverInputsRejected() {
 	idInput := InputDefinition{Ref: "ou_id", Type: "TEXT_INPUT", Identifier: "ouId", Required: true}
@@ -909,6 +991,31 @@ func (suite *FlowMgtAPITestSuite) TestUpdateFlow_PromptInputHeldConstantRejected
 	suite.trackFlow(created.ID)
 
 	suite.updateFlowExpectError(created.ID, heldConstantFlow(true), http.StatusBadRequest, "FLM-1024")
+}
+
+// oneTimeUseFlow returns a flow whose prompt asks for the department, marked one time use on the prompt when
+// onPrompt is true and on the executor node otherwise.
+func oneTimeUseFlow(onPrompt bool) FlowDefinition {
+	flowDef := promptFlowWithInput(
+		InputDefinition{Type: "TEXT_INPUT", Identifier: "department", OneTimeUse: onPrompt})
+	flowDef.Nodes[2].Executor.Inputs = []InputDefinition{
+		{Type: "TEXT_INPUT", Identifier: "department", OneTimeUse: !onPrompt},
+	}
+	return flowDef
+}
+
+func (suite *FlowMgtAPITestSuite) TestCreateFlow_PromptInputOneTimeUseRejected() {
+	suite.createFlowExpectError(oneTimeUseFlow(true), http.StatusBadRequest, "FLM-1024")
+
+	created := suite.createFlow(oneTimeUseFlow(false))
+	suite.trackFlow(created.ID)
+}
+
+func (suite *FlowMgtAPITestSuite) TestUpdateFlow_PromptInputOneTimeUseRejected() {
+	created := suite.createFlow(oneTimeUseFlow(false))
+	suite.trackFlow(created.ID)
+
+	suite.updateFlowExpectError(created.ID, oneTimeUseFlow(true), http.StatusBadRequest, "FLM-1024")
 }
 
 func (suite *FlowMgtAPITestSuite) TestFlow_ExecutorInputDefaultsAreKept() {
@@ -1252,7 +1359,201 @@ func (suite *FlowMgtAPITestSuite) TestRestoreFlowVersion_VersionNotFound() {
 func (suite *FlowMgtAPITestSuite) TestRestoreFlowVersion_FlowNotFound() {
 	restoreReq := RestoreVersionRequest{Version: 1}
 
-	suite.restoreFlowVersionExpectError("non-existent-id", restoreReq, http.StatusNotFound, "FLM-1008")
+	suite.restoreFlowVersionExpectError("non-existent-id", restoreReq, http.StatusNotFound, "FLM-1003")
+}
+
+// AttributeVerificationExecutor must prepare and record in the same flow, in any flow type: a flow
+// with one mode and not the other is rejected with the companion error naming the executor and the
+// missing mode, while the shipped self flow, and a copy of it without the executor, save.
+func (suite *FlowMgtAPITestSuite) TestCreateFlow_AttributeVerificationModesArePaired() {
+	flowID, err := testutils.GetFlowIDByHandle("default-self-attribute-verification-flow", "SELF")
+	suite.Require().NoError(err, "the self attribute verification flow must ship")
+	shipped, err := testutils.GetFlow(flowID)
+	suite.Require().NoError(err)
+	shipped.Name = "Shipped Copy"
+	shipped.Handle = generateUniqueHandle("shipped-copy")
+	copyID, err := testutils.CreateFlow(shipped)
+	suite.Require().NoError(err, "precondition: the shipped definition saves")
+	suite.trackFlow(copyID)
+
+	testCases := []struct {
+		name        string
+		flow        testutils.Flow
+		missingMode string
+	}{
+		{
+			name:        "Self flow without the prepare mode",
+			flow:        withoutFlowNodes(suite.T(), shipped, "prepare_verification"),
+			missingMode: "prepare",
+		},
+		{
+			name:        "Self flow without the record mode",
+			flow:        withoutFlowNodes(suite.T(), shipped, "record_verification"),
+			missingMode: "record",
+		},
+		{
+			name:        "Authentication flow with only the prepare mode",
+			flow:        signInWithVerificationModes("prepare"),
+			missingMode: "record",
+		},
+		{
+			name:        "Authentication flow with only the record mode",
+			flow:        signInWithVerificationModes("record"),
+			missingMode: "prepare",
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			tc.flow.Name = "Unpaired " + tc.name
+			tc.flow.Handle = generateUniqueHandle("unpaired")
+
+			status, respBody := suite.postFlow(tc.flow)
+
+			suite.Require().Equal(http.StatusBadRequest, status, "%s", respBody)
+			var errorResp struct {
+				Code        string `json:"code"`
+				Description struct {
+					Key          string            `json:"key"`
+					DefaultValue string            `json:"defaultValue"`
+					Params       map[string]string `json:"params"`
+				} `json:"description"`
+			}
+			suite.Require().NoError(json.Unmarshal(respBody, &errorResp))
+			suite.Equal("FLM-1023", errorResp.Code)
+			suite.Equal("error.flowmgtservice.companion_executor_missing_description",
+				errorResp.Description.Key, "%s", respBody)
+			suite.Equal(map[string]string{"executorName": "AttributeVerificationExecutor",
+				"companionExecutorName": "AttributeVerificationExecutor", "companionExecutorMode": tc.missingMode},
+				errorResp.Description.Params, "the error must name the missing executor and mode: %s", respBody)
+			suite.Contains(errorResp.Description.DefaultValue, "in mode '"+tc.missingMode+"'",
+				"the message must show the missing mode: %s", respBody)
+		})
+	}
+
+	suite.Run("Self flow without the executor", func() {
+		flow := withoutFlowNodes(suite.T(), shipped, "prepare_verification", "record_verification")
+		flow.Name = "Self Flow Without Verification"
+		flow.Handle = generateUniqueHandle("no-verification")
+
+		createdID, err := testutils.CreateFlow(flow)
+
+		suite.Require().NoError(err, "no flow type requires the executor")
+		suite.trackFlow(createdID)
+	})
+}
+
+// postFlow posts a flow definition and returns the status and body.
+func (suite *FlowMgtAPITestSuite) postFlow(flow testutils.Flow) (int, []byte) {
+	body, err := json.Marshal(flow)
+	suite.Require().NoError(err)
+	req, err := http.NewRequest(http.MethodPost, testServerURL+flowsEndpoint, bytes.NewReader(body))
+	suite.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := testutils.GetHTTPClient().Do(req)
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+	respBody, err := io.ReadAll(resp.Body)
+	suite.Require().NoError(err)
+	return resp.StatusCode, respBody
+}
+
+// signInWithVerificationModes is an authentication flow with an AttributeVerificationExecutor node in
+// each mode given.
+func signInWithVerificationModes(modes ...string) testutils.Flow {
+	nodes := []interface{}{map[string]interface{}{"id": "start", "type": "START", "onSuccess": "verification_0"}}
+	for i, mode := range modes {
+		next := fmt.Sprintf("verification_%d", i+1)
+		if i == len(modes)-1 {
+			next = "auth_assert"
+		}
+		nodes = append(nodes, map[string]interface{}{
+			"id":        fmt.Sprintf("verification_%d", i),
+			"type":      "TASK_EXECUTION",
+			"executor":  map[string]interface{}{"name": "AttributeVerificationExecutor", "mode": mode},
+			"onSuccess": next,
+		})
+	}
+	nodes = append(nodes,
+		map[string]interface{}{
+			"id":        "auth_assert",
+			"type":      "TASK_EXECUTION",
+			"executor":  map[string]interface{}{"name": "AuthAssertExecutor"},
+			"onSuccess": "end",
+		},
+		map[string]interface{}{"id": "end", "type": "END"},
+	)
+	return testutils.Flow{FlowType: "AUTHENTICATION", Nodes: nodes}
+}
+
+// withoutFlowNodes returns a copy of the flow with each node removed in turn, as withoutFlowNode does.
+// The flow passed in is left as it was.
+func withoutFlowNodes(t *testing.T, flow testutils.Flow, nodeIDs ...string) testutils.Flow {
+	t.Helper()
+
+	encoded, err := json.Marshal(flow)
+	if err != nil {
+		t.Fatalf("failed to copy the flow: %v", err)
+	}
+	var copied testutils.Flow
+	if err := json.Unmarshal(encoded, &copied); err != nil {
+		t.Fatalf("failed to copy the flow: %v", err)
+	}
+	for _, nodeID := range nodeIDs {
+		copied = withoutFlowNode(t, copied, nodeID)
+	}
+	return copied
+}
+
+// withoutFlowNode returns the flow with one node removed and every reference to it, such as a
+// predecessor's onSuccess or an action's next node, pointed at its successor.
+func withoutFlowNode(t *testing.T, flow testutils.Flow, nodeID string) testutils.Flow {
+	t.Helper()
+
+	nodes, ok := flow.Nodes.([]interface{})
+	if !ok {
+		t.Fatalf("unexpected flow nodes type %T", flow.Nodes)
+	}
+	successor := ""
+	kept := make([]interface{}, 0, len(nodes))
+	for _, item := range nodes {
+		node, ok := item.(map[string]interface{})
+		if !ok {
+			t.Fatalf("unexpected flow node type %T", item)
+		}
+		if node["id"] == nodeID {
+			successor, _ = node["onSuccess"].(string)
+			continue
+		}
+		kept = append(kept, node)
+	}
+	if successor == "" {
+		t.Fatalf("flow has no node %s with a successor", nodeID)
+	}
+	for i, node := range kept {
+		kept[i] = repointFlowReferences(node, nodeID, successor)
+	}
+	flow.Nodes = kept
+	return flow
+}
+
+// repointFlowReferences replaces every string equal to from with to, at any depth.
+func repointFlowReferences(value interface{}, from, to string) interface{} {
+	switch v := value.(type) {
+	case string:
+		if v == from {
+			return to
+		}
+	case map[string]interface{}:
+		for key, item := range v {
+			v[key] = repointFlowReferences(item, from, to)
+		}
+	case []interface{}:
+		for i, item := range v {
+			v[i] = repointFlowReferences(item, from, to)
+		}
+	}
+	return value
 }
 
 // Helper methods for API interactions
@@ -1523,4 +1824,120 @@ func (suite *FlowMgtAPITestSuite) restoreFlowVersionExpectError(
 	err = json.Unmarshal(bodyBytes, &errorResp)
 	suite.NoError(err)
 	suite.Equal(expectedCode, errorResp.Code)
+}
+
+// ouResolverSessionFlow returns an authentication flow with Check SSO Session, then Resolve OU between the sign-in
+// step and Save/Load Session, or after Save/Load Session when resolverAfterSession is set.
+func ouResolverSessionFlow(handle string, resolverAfterSession bool) map[string]interface{} {
+	first, second := "resolve_ou", "session"
+	if resolverAfterSession {
+		first, second = second, first
+	}
+	nodes := map[string]map[string]interface{}{
+		"resolve_ou": {
+			"id":         "resolve_ou",
+			"type":       "TASK_EXECUTION",
+			"executor":   map[string]interface{}{"name": "OUResolverExecutor"},
+			"properties": map[string]interface{}{"resolveFrom": "prompt", "parentOuId": "ou-1"},
+		},
+		"session": {"id": "session", "type": "TASK_EXECUTION", "executor": map[string]interface{}{"name": "SessionExecutor"}},
+	}
+	nodes[first]["onSuccess"] = second
+	nodes[second]["onSuccess"] = "auth_assert"
+	credentialInputs := []map[string]interface{}{
+		{"ref": "input_001", "identifier": "username", "type": "TEXT_INPUT", "required": true},
+		{"ref": "input_002", "identifier": "password", "type": "PASSWORD_INPUT", "required": true},
+	}
+	return map[string]interface{}{
+		"name":     "OU Resolver Placement Flow",
+		"handle":   handle,
+		"flowType": "AUTHENTICATION",
+		"nodes": []map[string]interface{}{
+			{"id": "START", "type": "START", "onSuccess": "sso_check"},
+			{
+				"id":         "sso_check",
+				"type":       "TASK_EXECUTION",
+				"executor":   map[string]interface{}{"name": "SSOCheckExecutor"},
+				"properties": map[string]interface{}{"checkpointRef": "session"},
+				"onSuccess":  "session",
+				"onFailure":  "prompt_credentials",
+			},
+			{
+				"id":   "prompt_credentials",
+				"type": "PROMPT",
+				"prompts": []map[string]interface{}{
+					{
+						"inputs": credentialInputs,
+						"action": map[string]interface{}{"ref": "action_001", "nextNode": "credentials_auth"},
+					},
+				},
+			},
+			{
+				"id":        "credentials_auth",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "CredentialsAuthExecutor", "inputs": credentialInputs},
+				"onSuccess": first,
+			},
+			nodes[first],
+			nodes[second],
+			{
+				"id":        "auth_assert",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "AuthAssertExecutor"},
+				"onSuccess": "END",
+			},
+			{"id": "END", "type": "END"},
+		},
+	}
+}
+
+// sendFlow sends a flow definition to the flow management API and returns the status and body.
+func (suite *FlowMgtAPITestSuite) sendFlow(method, path string, flow map[string]interface{}) (int, []byte) {
+	body, err := json.Marshal(flow)
+	suite.Require().NoError(err)
+	req, err := http.NewRequest(method, testServerURL+path, bytes.NewBuffer(body))
+	suite.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := testutils.GetHTTPClient().Do(req)
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+	raw, err := io.ReadAll(resp.Body)
+	suite.Require().NoError(err)
+	return resp.StatusCode, raw
+}
+
+// requireFlowRefusal checks that a flow definition was refused with the error code.
+func (suite *FlowMgtAPITestSuite) requireFlowRefusal(status int, raw []byte, code string) {
+	suite.Require().Equal(http.StatusBadRequest, status, string(raw))
+	var refusal struct {
+		Code string `json:"code"`
+	}
+	suite.Require().NoError(json.Unmarshal(raw, &refusal))
+	suite.Equal(code, refusal.Code, string(raw))
+}
+
+// TestOUResolverAfterSessionIsRefused verifies that an authentication flow where Resolve OU can run after
+// Save/Load Session is refused on create and on update, while Resolve OU between the sign-in step and
+// Save/Load Session is accepted.
+func (suite *FlowMgtAPITestSuite) TestOUResolverAfterSessionIsRefused() {
+	ouID, err := testutils.DefaultOUID()
+	suite.Require().NoError(err)
+	between := ouResolverSessionFlow(generateUniqueHandle("ou-resolver-between"), false)
+	between["ouId"] = ouID
+	status, raw := suite.sendFlow(http.MethodPost, flowsEndpoint, between)
+	suite.Require().Equal(http.StatusCreated, status, "Resolve OU before Save/Load Session is accepted: %s",
+		string(raw))
+	var created CompleteFlowDefinition
+	suite.Require().NoError(json.Unmarshal(raw, &created))
+	suite.trackFlow(created.ID)
+
+	after := ouResolverSessionFlow(generateUniqueHandle("ou-resolver-after"), true)
+	after["ouId"] = ouID
+	status, raw = suite.sendFlow(http.MethodPost, flowsEndpoint, after)
+	suite.requireFlowRefusal(status, raw, "FLM-1044")
+
+	moved := ouResolverSessionFlow(created.Handle, true)
+	status, raw = suite.sendFlow(http.MethodPut, flowsEndpoint+"/"+created.ID, moved)
+	suite.requireFlowRefusal(status, raw, "FLM-1044")
+	suite.Equal(1, suite.getFlow(created.ID).ActiveVersion, "the refused update leaves the flow as it was")
 }

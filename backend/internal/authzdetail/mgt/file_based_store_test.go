@@ -28,6 +28,25 @@ func (s *FileBasedStoreTestSuite) SetupTest() {
 	s.ctx = context.Background()
 }
 
+// A project's types are counted and paged apart from the rest.
+func (s *FileBasedStoreTestSuite) TestByProject() {
+	inProject := flightType()
+	inProject.ProjectID = testProjectID
+	other := paymentType()
+	other.ProjectID = testOtherProjectID
+	fileStore := newTestFileStore(s.T(), inProject, other)
+
+	count, err := fileStore.CountTypesByProject(s.ctx, testProjectID)
+	s.NoError(err)
+	s.Equal(1, count)
+	page, err := fileStore.ListTypePageByProject(s.ctx, testProjectID, 10, 0)
+	s.Require().NoError(err)
+	s.Equal([]string{inProject.ID}, []string{page[0].ID})
+	page, err = fileStore.ListTypePageByProject(s.ctx, "project-3", 10, 0)
+	s.NoError(err)
+	s.Empty(page)
+}
+
 func (s *FileBasedStoreTestSuite) TestStore() {
 	second := flightType()
 	second.ID, second.Type = "type-3", "a_first"

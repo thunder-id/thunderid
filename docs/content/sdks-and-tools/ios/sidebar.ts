@@ -80,6 +80,21 @@ const sidebar: SidebarsConfig = {
               id: 'sdks-and-tools/ios/apis/components/change-credential',
               label: 'ChangeCredential',
             },
+            {
+              type: 'doc',
+              id: 'sdks-and-tools/ios/apis/components/organization-unit-switcher',
+              label: 'OrganizationUnitSwitcher',
+            },
+            {
+              type: 'doc',
+              id: 'sdks-and-tools/ios/apis/components/flow-variables-form',
+              label: 'FlowVariablesForm',
+            },
+            {
+              type: 'doc',
+              id: 'sdks-and-tools/ios/apis/components/shared-flow-list',
+              label: 'SharedFlowList',
+            },
           ],
         },
       ],

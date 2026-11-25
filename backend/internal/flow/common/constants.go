@@ -69,6 +69,13 @@ const (
 	DataIDPName = "idpName"
 	// DataConsentPrompt is the key used for the consent prompt data in the flow response.
 	DataConsentPrompt = "consentPrompt"
+	// DataPromptConsentValidity is set to "true" when the consent prompt lets the user choose how long their
+	// consent lasts.
+	DataPromptConsentValidity = "promptConsentValidity"
+	// DataMaxConsentValidity is the longest validity period, in seconds, the user can choose on the consent
+	// prompt. It is 0 when the application or agent sets no period, a period of zero or less, or the largest
+	// period, so the consent does not expire.
+	DataMaxConsentValidity = "maxConsentValidity"
 	// DataStepTimeout is the key used for the step expiry timestamp in the flow response.
 	DataStepTimeout = "stepTimeout"
 	// DataClientIDHost is the key used for the client ID host shown with the consent prompt.
@@ -94,6 +101,8 @@ const (
 	DataAgentClientSecret = "clientSecret"
 	// DataRootOUID is the key used to pass the root OU ID to the frontend for the OU tree picker.
 	DataRootOUID = "rootOuId"
+	// DataRoleOptions carries, as JSON, the ID and name of each role a role selection prompt offers.
+	DataRoleOptions = "roleOptions"
 	// DataPromptMessage is the key used to pass a message to be displayed in the prompt node.
 	DataPromptMessage = "message"
 	// DataOpenID4VPClientID is the verifier client_id for the wallet QR / deep link.
@@ -108,11 +117,13 @@ const (
 	// DataOTPNumericOnly reports whether the OTP minted by the OTP executor in generate mode contains
 	// digits only, surfaced so the client restricts input to the characters the user has to type.
 	DataOTPNumericOnly = "otpNumericOnly"
-	// DataClientSecret carries a regenerated client secret back to the caller.
-	DataClientSecret = "clientSecret" // #nosec G101 -- response field name, not a secret
 	// DataLinkingPromptDetails holds the matched account-linking attribute values for the linking
 	// prompt, as a JSON array of {"label","value"} objects.
 	DataLinkingPromptDetails = "linkingPromptDetails"
+	// DataVerificationChannel is the channel an attribute verification challenge is sent on.
+	DataVerificationChannel = "channel"
+	// DataMaskedDestination is the masked contact an attribute verification challenge is sent to.
+	DataMaskedDestination = "maskedDestination"
 )
 
 // Error assertion claims.
@@ -150,6 +161,15 @@ const (
 	// NodePropertyOUDirectChildrenOnly limits the "prompt" strategy to the direct children of the parent OU: the one
 	// named by NodePropertyOUParent or, when the node sets none, the default OU set by UserTypeResolver.
 	NodePropertyOUDirectChildrenOnly = "directChildrenOnly"
+	// NodePropertyRoles names, separated by spaces, the roles a role executor node records in an invitation flow
+	// instead of prompting for them, or assigns in a sign-up flow.
+	NodePropertyRoles = "roles"
+	// NodePropertyAssignGroup names, separated by commas, the IDs of the groups a provisioning node assigns to the
+	// entity it creates.
+	NodePropertyAssignGroup = "assignGroup"
+	// NodePropertyAssignRole names, separated by commas, the IDs of the roles a provisioning node assigns to the
+	// entity it creates.
+	NodePropertyAssignRole = "assignRole"
 	// NodePropertyAuthMethodMapping maps authentication classes to action refs on login_options PROMPT nodes.
 	NodePropertyAuthMethodMapping = "authMethodMapping"
 	// NodePropertySkipInterceptors indicates whether to skip interceptor execution for the current node.
@@ -160,6 +180,9 @@ const (
 	NodePropertyCheckpointRef = "checkpointRef"
 	// NodePropertyConnectionID names the HTTP endpoint connection an extension step calls.
 	NodePropertyConnectionID = "connectionId"
+	// NodePropertyAllowedAgentTypes lists the agent type handles an AgentTypeResolver node narrows its candidates
+	// to. An absent or empty list allows every agent type.
+	NodePropertyAllowedAgentTypes = "allowedAgentTypes"
 	// NodePropertyInputKeys names the user inputs an extension step sends.
 	NodePropertyInputKeys = "inputKeys"
 	// NodePropertyRuntimeDataKeys restricts the runtime data an extension step sends.
@@ -167,7 +190,7 @@ const (
 	// NodePropertyResponseKeys restricts the response fields an extension step stores.
 	NodePropertyResponseKeys = "responseKeys"
 	// NodePropertyMaxAttempts bounds the attempts a step accepts in one flow execution, such as OTP
-	// sends or an extension step's FAILED and INCOMPLETE answers.
+	// sends, wrong codes for one OTP, or an extension step's FAILED and INCOMPLETE answers.
 	NodePropertyMaxAttempts = "maxAttempts"
 )
 
@@ -176,6 +199,17 @@ const (
 	// RuntimeKeyOUID holds the organization unit a flow has been asked to act for, such as the one a user picked on a
 	// prompt.
 	RuntimeKeyOUID = "ouId"
+	// RuntimeKeyOUFixed marks a sign-in whose organization unit was fixed before the flow ran, by the request or by
+	// the application, so that no step of the flow may choose another.
+	RuntimeKeyOUFixed = "ouFixed"
+	// RuntimeKeyInviter holds the subject that started an invitation flow.
+	RuntimeKeyInviter = "inviter"
+	// RuntimeKeyAuthorizedShare holds the "resourceType:targetOuId" share an invitation flow authorized.
+	RuntimeKeyAuthorizedShare = "authorizedShare"
+	// RuntimeKeySelectedRoles holds the space-separated IDs of the roles an invitation flow assigns.
+	RuntimeKeySelectedRoles = "selectedRoles"
+	// RuntimeKeyRolesSelectedBy holds, as JSON, the admin an invitation flow assigns its roles as.
+	RuntimeKeyRolesSelectedBy = "rolesSelectedBy"
 	// RuntimeKeyUserAutoProvisioned indicates whether the user was auto-provisioned
 	RuntimeKeyUserAutoProvisioned = "userAutoProvisioned"
 	// RuntimeKeyUserEligibleForProvisioning indicates whether the user is eligible for auto provisioning
@@ -184,7 +218,8 @@ const (
 	RuntimeKeyUserAmbiguous = "userAmbiguous"
 	// RuntimeKeyRevocationPlan holds the trusted revocation plan an administrative flow's
 	// pre-processing node produces for the executors that follow. It travels on the engine context's
-	// cross-frame store, so it survives a CALL into another flow.
+	// cross-frame store, so it survives a CALL into another flow. Its consumers do not authorize, so its
+	// publisher must.
 	RuntimeKeyRevocationPlan = "revocationPlan"
 	// RuntimeKeyProvenSubject holds the identity whose control was proven in this execution. The
 	// credential setter writes it after a credential write; a node acting on proof reads it here.
@@ -193,11 +228,14 @@ const (
 	RuntimeKeyClientID = "clientId"
 	// RuntimeKeyRequestedPermissions holds the space-separated permission scopes requested by the OAuth client.
 	RuntimeKeyRequestedPermissions = "requested_permissions"
+
 	// RuntimeKeyResourceServerIdentifier holds the identifier of the single resource server the request is
 	// bound to. When set, the authorization executor resolves it and scopes its permission evaluation to
 	// that resource server. Using the identifier (not the internal ID) keeps the executor contract the
 	// same for OAuth requests and direct flow executions.
 	RuntimeKeyResourceServerIdentifier = "resource_server_identifier"
+	// RuntimeKeyResourceServerID holds the trusted internal ID resolved for this request.
+	RuntimeKeyResourceServerID = "resource_server_id"
 	// RuntimeKeyConsentedPermissions holds the space-separated permission scopes the user has consented to
 	// release to the client, as produced by the ConsentExecutor.
 	RuntimeKeyConsentedPermissions = "consented_permissions"
@@ -205,6 +243,7 @@ const (
 	RuntimeKeyRequestedAuthorizationDetails = "requested_authorization_details"
 	// RuntimeKeyConsentedAuthorizationDetails holds the authorization details granted by consent as JSON.
 	RuntimeKeyConsentedAuthorizationDetails = "consented_authorization_details"
+
 	// RuntimeKeyRequiredEssentialAttributes holds the space-separated essential user attributes required for the flow.
 	RuntimeKeyRequiredEssentialAttributes = "required_essential_attributes"
 	// RuntimeKeyRequiredOptionalAttributes holds the space-separated optional user attributes required for the flow.
@@ -217,8 +256,6 @@ const (
 	// RuntimeKeyRedirectURIHost holds the host of the redirect URI of a client registered from a Client ID
 	// Metadata Document, set by the authorization request so that consent shows it.
 	RuntimeKeyRedirectURIHost = "redirect_uri_host"
-	// RuntimeKeyConsentID holds the consent record ID after consent has been recorded.
-	RuntimeKeyConsentID = "consent_id"
 	// RuntimeKeyStepTimeout holds the expiry timestamp for the current flow step.
 	RuntimeKeyStepTimeout = "step_timeout"
 	// RuntimeKeyConsentedAttributes holds a space-separated set of attributes that the user has consented to share.
@@ -264,6 +301,8 @@ const (
 	RuntimeKeyOTPSessionToken = "otpSessionToken"
 	// RuntimeKeyOTPAttemptCount holds the number of OTP generation attempts for the current flow execution.
 	RuntimeKeyOTPAttemptCount = "attemptCount"
+	// RuntimeKeyOTPFailedVerifyCount holds the number of wrong codes entered for the current OTP.
+	RuntimeKeyOTPFailedVerifyCount = "otpFailedVerifyCount"
 	// RuntimeKeyMagicLinkUsedJti is the JWT ID claim value of a magic link token that has already been used.
 	RuntimeKeyMagicLinkUsedJti = "magicLinkUsedJti"
 	// RuntimeKeyOAuthState holds the generated OAuth state parameter for CSRF validation.
@@ -330,9 +369,9 @@ const (
 	RuntimeKeyAuthTime = "ssoAuthTime"
 	// RuntimeKeySSOSessionHandle is the SSO session handle key. It is used both as the RuntimeData key
 	// that carries the run's session handle across nodes (resolved on reuse, minted on a fresh login)
-	// and as the ExecutorResponse EngineData key the Session node uses to hand a freshly minted handle
-	// to the transport layer for the per-flow cookie. Using the generic EngineData channel keeps SSO
-	// concepts out of the reusable engine contract.
+	// and as the ExecutorResponse EngineData key the Session node uses to hand the session's handle
+	// to the transport layer. Using the generic EngineData channel keeps SSO concepts out of the reusable
+	// engine contract.
 	RuntimeKeySSOSessionHandle = "ssoSessionHandle"
 	// RuntimeKeySSOSessionID carries the SSO session's id across nodes so the auth assertion can stamp
 	// it as the OIDC sid claim. It is the session id, not the handle: the handle is a bearer credential
@@ -340,6 +379,10 @@ const (
 	// accepts it. Like RuntimeKeyTokenFamilyID it is excluded from the session snapshot, because a
 	// value replayed from a snapshot could name a session other than the one now in force.
 	RuntimeKeySSOSessionID = "ssoSessionId"
+	// RuntimeKeySSOSessionExpiresAt carries the Unix time (seconds) the SSO session ends, with its handle on
+	// the EngineData channel. It is also kept in RuntimeData for a re-executed join to emit again, and is
+	// excluded from the session snapshot.
+	RuntimeKeySSOSessionExpiresAt = "ssoSessionExpiresAt"
 	// RuntimeKeySSOSessionCleared is the ExecutorResponse EngineData signal the session sign-out node
 	// raises once it has terminated the session, telling the transport layer to clear the per-flow
 	// cookie. Like RuntimeKeySSOSessionHandle it rides the engine-only EngineData channel, keeping SSO
@@ -355,18 +398,45 @@ const (
 	// requested without a valid id_token_hint. A sign-out flow's session sign-out node reads it to
 	// decide whether the End-User must confirm the logout before the session is terminated.
 	RuntimeKeyLogoutPromptRequired = "logoutPromptRequired"
-	// RuntimeKeyMappedRoleIDs holds the space-separated role IDs a federated login's authorization
-	// mapping (rule-based or direct) resolved.
-	RuntimeKeyMappedRoleIDs = "mapped_role_ids"
-	// RuntimeKeyMappedGroupIDs holds the space-separated group IDs a federated login's authorization
-	// mapping (rule-based or direct) resolved.
-	RuntimeKeyMappedGroupIDs = "mapped_group_ids"
 	// RuntimeKeyMappedPermissions holds the JSON-encoded []providers.AuthorizationTarget permission
 	// targets a federated login's authorization mapping (rule-based or direct) resolved.
 	RuntimeKeyMappedPermissions = "mapped_permissions"
+	// RuntimeKeySessionAttributes holds the JSON-encoded attributes a federated login keeps to the
+	// session. They win over the stored values in tokens.
+	RuntimeKeySessionAttributes = "session_attributes"
+	// RuntimeKeySessionGroupIDs holds the space-separated mapped groups, with their ancestors, that a
+	// federated login grants for the session only, because the connection keeps them to the session or
+	// the group store can't hold memberships.
+	RuntimeKeySessionGroupIDs = "session_group_ids"
+	// RuntimeKeySessionDirectGroupIDs holds the groups of RuntimeKeySessionGroupIDs without their
+	// ancestors, which a refresh resolves again.
+	RuntimeKeySessionDirectGroupIDs = "session_direct_group_ids"
+	// RuntimeKeySessionRoleIDs holds the space-separated mapped roles that a federated login grants for
+	// the session only, because the connection keeps them to the session or the role store can't hold
+	// assignments.
+	RuntimeKeySessionRoleIDs = "session_role_ids"
 	// RuntimeKeyExtensionAttemptCount holds the number of FAILED and INCOMPLETE answers an extension
 	// step has had in the current flow execution, scoped to the step by ExtensionAttemptCountKey.
 	RuntimeKeyExtensionAttemptCount = "extensionAttemptCount"
+	// RuntimeKeyAttributeVerificationEvidence holds the attribute verification evidence on shared runtime
+	// data: the pinned contact and whether a challenge issued for it was passed.
+	RuntimeKeyAttributeVerificationEvidence = "attributeVerificationEvidence"
+	// RuntimeKeyRecipientType holds the type of the expected recipient, email or mobile.
+	RuntimeKeyRecipientType = "recipientType"
+	// RuntimeKeyExpectedRecipient holds the recipient an earlier node set for sends of the recipient type.
+	RuntimeKeyExpectedRecipient = "expectedRecipient"
+	// RuntimeKeyDeliveredRecipients holds, on shared runtime data, the JSON list of distinct recipients
+	// sent to since an earlier node cleared it.
+	RuntimeKeyDeliveredRecipients = "deliveredRecipients"
+	// RuntimeKeyResetCredential holds the credential an administrator-initiated reset invalidates and the
+	// user replaces, such as password. The user is asked for one input named after it.
+	RuntimeKeyResetCredential = "resetCredential" //nolint:gosec // a runtime data key, not a credential
+	// RuntimeKeyResetCredentialMarker holds the credential marker the reset's invalidation wrote. A later
+	// change to the user's credentials moves the marker, which voids the reset.
+	RuntimeKeyResetCredentialMarker = "resetCredentialMarker" //nolint:gosec // a runtime data key, not a credential
+	// RuntimeKeyResetCredentialRequested marks that the reset's set step asked the user for the new credential,
+	// in the request that opened the link. The value is read only from a later request.
+	RuntimeKeyResetCredentialRequested = "resetCredentialRequested" //nolint:gosec // a runtime data key
 )
 
 // ExtensionDataKeyPrefix starts every runtime-data key an extension step stores from its service's

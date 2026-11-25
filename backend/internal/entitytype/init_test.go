@@ -109,7 +109,7 @@ func (suite *InitTestSuite) TestInitialize() {
 	assert.NoError(suite.T(), err)
 
 	service, _, _, err := Initialize(
-		suite.mux, nil, testCacheManager(), suite.mockOUService, nil)
+		suite.mux, nil, testCacheManager(), suite.mockOUService, nil, discardingBus{})
 	assert.NoError(suite.T(), err)
 
 	suite.NotNil(service)
@@ -133,7 +133,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_ListEndpoint() {
 	assert.NoError(suite.T(), err)
 
 	_, _, _, err = Initialize(
-		suite.mux, nil, testCacheManager(), suite.mockOUService, nil)
+		suite.mux, nil, testCacheManager(), suite.mockOUService, nil, discardingBus{})
 	assert.NoError(suite.T(), err)
 
 	req := httptest.NewRequest(http.MethodGet, "/user-types", nil)
@@ -161,7 +161,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_CreateEndpoint() {
 	assert.NoError(suite.T(), err)
 
 	_, _, _, err = Initialize(
-		suite.mux, nil, testCacheManager(), suite.mockOUService, nil)
+		suite.mux, nil, testCacheManager(), suite.mockOUService, nil, discardingBus{})
 	assert.NoError(suite.T(), err)
 
 	req := httptest.NewRequest(http.MethodPost, "/user-types", nil)
@@ -197,7 +197,7 @@ func (suite *InitTestSuite) TestInitialize_DBTransactionerError() {
 	assert.NoError(suite.T(), err)
 
 	_, _, _, err = Initialize(
-		suite.mux, nil, testCacheManager(), suite.mockOUService, nil)
+		suite.mux, nil, testCacheManager(), suite.mockOUService, nil, discardingBus{})
 	assert.Error(suite.T(), err)
 	if err != nil {
 		assert.Contains(suite.T(), err.Error(), "failed to get config database client")
@@ -221,7 +221,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_GetByIDEndpoint() {
 	assert.NoError(suite.T(), err)
 
 	_, _, _, err = Initialize(
-		suite.mux, nil, testCacheManager(), suite.mockOUService, nil)
+		suite.mux, nil, testCacheManager(), suite.mockOUService, nil, discardingBus{})
 	assert.NoError(suite.T(), err)
 
 	req := httptest.NewRequest(http.MethodGet, "/user-types/test-id", nil)
@@ -249,7 +249,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_UpdateEndpoint() {
 	assert.NoError(suite.T(), err)
 
 	_, _, _, err = Initialize(
-		suite.mux, nil, testCacheManager(), suite.mockOUService, nil)
+		suite.mux, nil, testCacheManager(), suite.mockOUService, nil, discardingBus{})
 	assert.NoError(suite.T(), err)
 
 	req := httptest.NewRequest(http.MethodPut, "/user-types/test-id", nil)
@@ -277,7 +277,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_DeleteEndpoint() {
 	assert.NoError(suite.T(), err)
 
 	_, _, _, err = Initialize(
-		suite.mux, nil, testCacheManager(), suite.mockOUService, nil)
+		suite.mux, nil, testCacheManager(), suite.mockOUService, nil, discardingBus{})
 	assert.NoError(suite.T(), err)
 
 	req := httptest.NewRequest(http.MethodDelete, "/user-types/test-id", nil)
@@ -305,7 +305,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_CORSPreflight() {
 	assert.NoError(suite.T(), err)
 
 	_, _, _, err = Initialize(
-		suite.mux, nil, testCacheManager(), suite.mockOUService, nil)
+		suite.mux, nil, testCacheManager(), suite.mockOUService, nil, discardingBus{})
 	assert.NoError(suite.T(), err)
 
 	req := httptest.NewRequest(http.MethodOptions, "/user-types", nil)
@@ -333,7 +333,7 @@ func (suite *InitTestSuite) TestRegisterRoutes_CORSPreflightByID() {
 	assert.NoError(suite.T(), err)
 
 	_, _, _, err = Initialize(
-		suite.mux, nil, testCacheManager(), suite.mockOUService, nil)
+		suite.mux, nil, testCacheManager(), suite.mockOUService, nil, discardingBus{})
 	assert.NoError(suite.T(), err)
 
 	req := httptest.NewRequest(http.MethodOptions, "/user-types/test-id", nil)
@@ -544,7 +544,7 @@ func TestInitialize_Standalone(t *testing.T) {
 
 	mux := http.NewServeMux()
 	mockOUService := oumock.NewOrganizationUnitServiceInterfaceMock(t)
-	service, exporter, _, err := Initialize(mux, nil, testCacheManager(), mockOUService, nil)
+	service, exporter, _, err := Initialize(mux, nil, testCacheManager(), mockOUService, nil, discardingBus{})
 
 	assert.NoError(t, err)
 	assert.NotNil(t, service)
@@ -693,7 +693,7 @@ func TestInitialize_MutableMode(t *testing.T) {
 
 	mux := http.NewServeMux()
 	mockOUService := oumock.NewOrganizationUnitServiceInterfaceMock(t)
-	service, exporter, _, err := Initialize(mux, nil, testCacheManager(), mockOUService, nil)
+	service, exporter, _, err := Initialize(mux, nil, testCacheManager(), mockOUService, nil, discardingBus{})
 
 	assert.NoError(t, err)
 	assert.NotNil(t, service)
@@ -734,7 +734,7 @@ func TestInitialize_StoreModes(t *testing.T) {
 			mockOUService.On("GetOrganizationUnit", mock.Anything, mock.Anything).
 				Return(ou.OrganizationUnit{ID: "ou-1"}, nil).
 				Maybe()
-			service, exporter, _, err := Initialize(mux, nil, testCacheManager(), mockOUService, nil)
+			service, exporter, _, err := Initialize(mux, nil, testCacheManager(), mockOUService, nil, discardingBus{})
 
 			assert.NoError(t, err)
 			assert.NotNil(t, service)
@@ -1134,7 +1134,7 @@ func TestInitialize_WithDeclarativeResourcesEnabled_InvalidYAML(t *testing.T) {
 	mux := http.NewServeMux()
 	mockOUService := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	// Initialize should return an error due to invalid YAML
-	_, _, _, err = Initialize(mux, nil, testCacheManager(), mockOUService, nil)
+	_, _, _, err = Initialize(mux, nil, testCacheManager(), mockOUService, nil, discardingBus{})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load entity type resources")
 }
@@ -1193,7 +1193,7 @@ schema: |
 	mux := http.NewServeMux()
 	mockOUService := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	// Initialize should return an error due to validation failure
-	_, _, _, err = Initialize(mux, nil, testCacheManager(), mockOUService, nil)
+	_, _, _, err = Initialize(mux, nil, testCacheManager(), mockOUService, nil, discardingBus{})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load entity type resources")
 }
@@ -1266,7 +1266,7 @@ schema: |
 				DefaultValue: "The organization unit does not exist",
 			},
 		}).Once()
-	_, _, _, err = Initialize(mux, nil, testCacheManager(), mockOUService, nil)
+	_, _, _, err = Initialize(mux, nil, testCacheManager(), mockOUService, nil, discardingBus{})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load entity type resources")
 
@@ -1325,7 +1325,16 @@ schema: |
 	mux := http.NewServeMux()
 	mockOUService := oumock.NewOrganizationUnitServiceInterfaceMock(t)
 	// Initialize should return an error due to invalid JSON
-	_, _, _, err = Initialize(mux, nil, testCacheManager(), mockOUService, nil)
+	_, _, _, err = Initialize(mux, nil, testCacheManager(), mockOUService, nil, discardingBus{})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to load entity type resources")
+}
+
+func (suite *InitTestSuite) TestInitialize_RefusesANilEventBus() {
+	service, userTypeExporter, agentTypeExporter, err := Initialize(suite.mux, nil, nil, nil, nil, nil)
+
+	suite.ErrorIs(err, errNilEventBus)
+	suite.Nil(service)
+	suite.Nil(userTypeExporter)
+	suite.Nil(agentTypeExporter)
 }

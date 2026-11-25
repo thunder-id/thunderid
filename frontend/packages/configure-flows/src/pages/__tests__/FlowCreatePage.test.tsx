@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {render, screen, fireEvent, waitFor, act} from '@testing-library/react';
-import {describe, it, expect, vi, beforeEach} from 'vitest';
+import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import FlowCreatePage from '../FlowCreatePage';
 
 // Mock @thunderid/logger/react
@@ -27,9 +27,12 @@ vi.mock('react-i18next', async (importOriginal) => ({
   }),
 }));
 
+const mockUseProjectScope = vi.fn<() => {projectId?: string}>(() => ({}));
+
 vi.mock('@thunderid/contexts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/contexts')>()),
   useConfig: () => ({config: {brand: {product_name: 'ThunderID'}}}),
+  useProjectScope: () => mockUseProjectScope(),
 }));
 
 // Mock useNavigate
@@ -40,6 +43,7 @@ vi.mock('react-router', async () => {
   return {
     ...actual,
     useNavigate: () => mockNavigate,
+    Navigate: ({to}: {to: string}) => <div data-testid="navigate" data-to={to} />,
   };
 });
 
@@ -57,6 +61,12 @@ vi.mock('../../api/useCreateFlow', () => ({
   default: () => mockCreateFlow,
 }));
 
+// Mock useUpdateFlow, which sets a project flow's parent OU once the flow exists
+const mockUpdateMutateAsync = vi.fn();
+vi.mock('../../api/useUpdateFlow', () => ({
+  default: () => ({mutateAsync: mockUpdateMutateAsync}),
+}));
+
 // Mock the organization unit hook and the OU step so each test controls how many OUs there are
 const ouState: {hasMultipleOUs: boolean; isLoading: boolean; ouList: {id: string}[]} = {
   hasMultipleOUs: false,
@@ -64,25 +74,31 @@ const ouState: {hasMultipleOUs: boolean; isLoading: boolean; ouList: {id: string
   ouList: [{id: 'ou-root'}],
 };
 
+const mockUseHasMultipleOUs = vi.fn<(projectId?: string) => typeof ouState>(() => ouState);
 vi.mock('@thunderid/configure-organization-units', () => ({
-  useHasMultipleOUs: () => ouState,
+  useHasMultipleOUs: (projectId?: string) => mockUseHasMultipleOUs(projectId),
 }));
 
 vi.mock('../../components/create-flow/FlowOrganizationUnitStep', () => ({
   default: ({
     isLoading,
     value,
+    projectId = undefined,
     onChange,
     onBack,
     onContinue,
   }: {
     isLoading: boolean;
     value: string;
+    projectId?: string;
     onChange: (ouId: string) => void;
     onBack: () => void;
     onContinue: () => void;
   }) => (
-    <div data-testid="ou-step" data-loading={String(isLoading)} data-value={value}>
+    <div data-testid="ou-step" data-loading={String(isLoading)} data-value={value} data-project-id={projectId}>
+      <button type="button" data-testid="ou-pick-system" onClick={() => onChange('system-ou')}>
+        pick system
+      </button>
       <button type="button" data-testid="ou-pick-b" onClick={() => onChange('ou-b')}>
         pick b
       </button>
@@ -94,6 +110,27 @@ vi.mock('../../components/create-flow/FlowOrganizationUnitStep', () => ({
       </button>
     </div>
   ),
+}));
+
+// Connection lookups the template placeholders are resolved against
+const connectionQueries = vi.hoisted(
+  (): {
+    identity: {data?: {id: string; type: string}[]; isPending: boolean};
+    sms: {data?: {id: string}[]; isPending: boolean};
+    email: {data?: {id: string}[]; isPending: boolean};
+  } => ({
+    identity: {data: [], isPending: false},
+    sms: {data: [], isPending: false},
+    email: {data: [], isPending: false},
+  }),
+);
+
+// Mocked outright: loading the real package needs the organization unit exports mocked away above.
+vi.mock('@thunderid/configure-connections', () => ({
+  IdentityProviderTypes: {GOOGLE: 'GOOGLE', GITHUB: 'GITHUB', OAUTH: 'OAUTH', OIDC: 'OIDC'},
+  useIdentityProviders: () => connectionQueries.identity,
+  useSMSProviders: () => connectionQueries.sms,
+  useEmailProviders: () => connectionQueries.email,
 }));
 
 // Track callbacks from child components
@@ -134,9 +171,29 @@ describe('FlowCreatePage', () => {
     ouState.hasMultipleOUs = false;
     ouState.isLoading = false;
     ouState.ouList = [{id: 'ou-root'}];
+    connectionQueries.identity = {data: [], isPending: false};
+    connectionQueries.sms = {data: [], isPending: false};
+    connectionQueries.email = {data: [], isPending: false};
   });
 
   describe('Initial Rendering', () => {
+    it('returns to the list outside a project when flows are created in projects only', () => {
+      render(<FlowCreatePage createInProjectsOnly />);
+
+      expect(screen.getByTestId('navigate')).toHaveAttribute('data-to', '/flows');
+      expect(screen.queryByTestId('select-flow-type')).not.toBeInTheDocument();
+    });
+
+    it('opens the wizard inside a project when flows are created in projects only', () => {
+      mockUseProjectScope.mockReturnValue({projectId: 'project-1'});
+
+      render(<FlowCreatePage createInProjectsOnly />);
+
+      expect(screen.queryByTestId('navigate')).not.toBeInTheDocument();
+      expect(screen.getByTestId('select-flow-type')).toBeInTheDocument();
+      mockUseProjectScope.mockReturnValue({});
+    });
+
     it('should render the SelectFlowType step initially', () => {
       render(<FlowCreatePage />);
 
@@ -211,6 +268,48 @@ describe('FlowCreatePage', () => {
       });
     });
     fireEvent.click(screen.getByText('Continue'));
+  };
+
+  // A sign-in template whose Resolve OU step selects below a parent OU the template leaves unset.
+  const parentOuTemplate = {
+    type: 'BASIC_ENTERPRISE_SSO',
+    flowType: 'AUTHENTICATION',
+    config: {
+      nodes: [
+        {
+          id: 'resolve_organization',
+          type: 'TASK_EXECUTION',
+          executor: {name: 'OUResolverExecutor'},
+          properties: {resolveFrom: 'prompt', parentOuId: '', directChildrenOnly: true},
+        },
+      ],
+    },
+  };
+
+  const resolverWithParent = (parentOuId: string): unknown[] => [
+    {
+      id: 'resolve_organization',
+      type: 'TASK_EXECUTION',
+      executor: {name: 'OUResolverExecutor'},
+      properties: {resolveFrom: 'prompt', parentOuId, directChildrenOnly: true},
+    },
+  ];
+
+  // Creates a flow from the template through the wizard.
+  const createFromTemplate = (template: unknown): void => {
+    navigateToTemplateStep();
+    act(() => {
+      (capturedTemplateProps['onTemplateChange'] as (t: unknown) => void)(template);
+    });
+    fireEvent.click(screen.getByText('Continue'));
+    act(() => {
+      (capturedConfigureProps['onChange'] as (v: {name: string; handle: string}) => void)({
+        name: 'Enterprise SSO',
+        handle: 'enterprise-sso',
+      });
+      (capturedConfigureProps['onReadyChange'] as (ready: boolean) => void)(true);
+    });
+    fireEvent.click(screen.getByText('Create'));
   };
 
   const navigateToDeviceGrantConfigureStep = (): void => {
@@ -383,6 +482,125 @@ describe('FlowCreatePage', () => {
         }),
         expect.any(Object),
       );
+    });
+
+    // A template that names values only the deployment has would be refused if saved as it is, so it opens unsaved.
+    it('should open a template that is configured before saving as an unsaved draft', () => {
+      render(<FlowCreatePage />);
+
+      navigateToTemplateStep();
+      act(() => {
+        (capturedTemplateProps['onTemplateChange'] as (t: unknown) => void)({
+          type: 'ORGANIZATION_SIGNUP',
+          flowType: 'AUTHENTICATION',
+          configureBeforeSave: true,
+          config: {nodes: [{id: 'start'}]},
+        });
+      });
+      fireEvent.click(screen.getByText('Continue'));
+      act(() => {
+        (capturedConfigureProps['onChange'] as (v: {name: string; handle: string}) => void)({
+          name: 'Enterprise SSO',
+          handle: 'enterprise-sso',
+        });
+        (capturedConfigureProps['onReadyChange'] as (ready: boolean) => void)(true);
+      });
+
+      fireEvent.click(screen.getByText('Create'));
+
+      expect(mockMutate).not.toHaveBeenCalled();
+      expect(mockNavigate).toHaveBeenCalledWith('/flows/new', {
+        state: {
+          draftFlow: {
+            name: 'Enterprise SSO',
+            handle: 'enterprise-sso',
+            flowType: 'AUTHENTICATION',
+            ouId: 'ou-root',
+            nodes: [{id: 'start'}],
+          },
+        },
+      });
+    });
+
+    it('saves a template with its Resolve OU parent set to the organization unit the flow is created in', () => {
+      render(<FlowCreatePage />);
+
+      createFromTemplate(parentOuTemplate);
+
+      expect(mockMutate).toHaveBeenCalledWith(
+        expect.objectContaining({ouId: 'ou-root', nodes: resolverWithParent('ou-root')}),
+        expect.any(Object),
+      );
+      expect(mockNavigate).not.toHaveBeenCalledWith('/flows/new', expect.anything());
+    });
+
+    it('saves a template with its connection placeholder set to the only matching connection', () => {
+      connectionQueries.identity = {
+        data: [
+          {id: 'google-idp', type: 'GOOGLE'},
+          {id: 'github-idp', type: 'GITHUB'},
+        ],
+        isPending: false,
+      };
+      render(<FlowCreatePage />);
+
+      navigateToTemplateStep();
+      act(() => {
+        (capturedTemplateProps['onTemplateChange'] as (t: unknown) => void)({
+          type: 'GOOGLE',
+          flowType: 'AUTHENTICATION',
+          config: {
+            nodes: [
+              {
+                id: 'google_auth',
+                type: 'TASK_EXECUTION',
+                properties: {idpId: '{{IDP_ID}}', allowAuthenticationWithoutLocalUser: true},
+                executor: {name: 'GoogleOIDCAuthExecutor'},
+              },
+            ],
+          },
+        });
+      });
+      fireEvent.click(screen.getByText('Continue'));
+      act(() => {
+        (capturedConfigureProps['onChange'] as (v: {name: string; handle: string}) => void)({
+          name: 'Google Login',
+          handle: 'google-login',
+        });
+        (capturedConfigureProps['onReadyChange'] as (ready: boolean) => void)(true);
+      });
+
+      fireEvent.click(screen.getByText('Create'));
+
+      expect(mockMutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          nodes: [
+            {
+              id: 'google_auth',
+              type: 'TASK_EXECUTION',
+              properties: {idpId: 'google-idp', allowAuthenticationWithoutLocalUser: true},
+              executor: {name: 'GoogleOIDCAuthExecutor'},
+            },
+          ],
+        }),
+        expect.any(Object),
+      );
+    });
+
+    it('keeps Create disabled until the connections are loaded', () => {
+      connectionQueries.identity = {data: undefined, isPending: true};
+      render(<FlowCreatePage />);
+
+      navigateToConfigureStep();
+      act(() => {
+        (capturedConfigureProps['onChange'] as (v: {name: string; handle: string}) => void)({
+          name: 'My Flow',
+          handle: 'my-flow',
+        });
+        (capturedConfigureProps['onReadyChange'] as (ready: boolean) => void)(true);
+      });
+
+      expect(screen.getByText('Create').closest('button')).toBeDisabled();
     });
 
     it('should navigate to flow builder on successful creation', async () => {
@@ -587,6 +805,188 @@ describe('FlowCreatePage', () => {
 
       expect(mockMutate).not.toHaveBeenCalled();
       expect(screen.getByText('Organization unit is required')).toBeInTheDocument();
+    });
+
+    describe('inside a project', () => {
+      beforeEach(() => {
+        mockUseProjectScope.mockReturnValue({projectId: 'project-1'});
+        ouState.hasMultipleOUs = false;
+        ouState.ouList = [];
+      });
+
+      afterEach(() => {
+        mockUseProjectScope.mockReturnValue({});
+      });
+
+      it('skips the organization unit step when the project has no organization units', () => {
+        render(<FlowCreatePage />);
+
+        expect(mockUseHasMultipleOUs).toHaveBeenCalledWith('project-1');
+        expect(screen.queryByTestId('ou-step')).not.toBeInTheDocument();
+        expect(screen.getByTestId('select-flow-type')).toBeInTheDocument();
+      });
+
+      it('creates the flow in the project, without an organization unit', () => {
+        render(<FlowCreatePage />);
+
+        fillConfigureStep();
+        fireEvent.click(screen.getByText('Create'));
+
+        expect(mockMutate).toHaveBeenCalledWith(
+          expect.objectContaining({name: 'My Flow', projectId: 'project-1'}),
+          expect.any(Object),
+        );
+        expect(mockMutate.mock.calls[0][0]).not.toHaveProperty('ouId');
+      });
+
+      // Without organization units of its own, the API places a project's flow in the system organization unit,
+      // which the console learns from the created flow, so the parent OU is set right after.
+      it('creates the flow with a placeholder parent OU, then sets it to the system organization unit', async () => {
+        mockMutate.mockImplementation(
+          (
+            request: {name: string; handle: string; flowType: string; nodes: unknown[]},
+            options: {onSuccess: (flow: unknown) => void},
+          ) => {
+            options.onSuccess({id: 'flow-9', ouId: 'ou-system', ...request});
+          },
+        );
+        mockUpdateMutateAsync.mockResolvedValue({});
+        render(<FlowCreatePage />);
+
+        createFromTemplate(parentOuTemplate);
+
+        expect(mockMutate).toHaveBeenCalledWith(
+          expect.objectContaining({projectId: 'project-1', nodes: resolverWithParent('{{PARENT_OU_ID}}')}),
+          expect.any(Object),
+        );
+        await waitFor(() => {
+          expect(mockNavigate).toHaveBeenCalledWith('/flows/flow-9');
+        });
+        expect(mockUpdateMutateAsync).toHaveBeenCalledWith({
+          flowId: 'flow-9',
+          flowData: {
+            name: 'Enterprise SSO',
+            handle: 'enterprise-sso',
+            flowType: 'AUTHENTICATION',
+            ouId: 'ou-system',
+            nodes: resolverWithParent('ou-system'),
+          },
+        });
+        expect(mockUpdateMutateAsync.mock.invocationCallOrder[0]).toBeLessThan(
+          mockNavigate.mock.invocationCallOrder.at(-1)!,
+        );
+      });
+
+      // The builder then shows the parent OU as missing and keeps Save disabled until it is set.
+      it('still opens the flow when setting its parent OU fails', async () => {
+        mockMutate.mockImplementation((request: {nodes: unknown[]}, options: {onSuccess: (flow: unknown) => void}) => {
+          options.onSuccess({id: 'flow-9', ouId: 'ou-system', ...request});
+        });
+        mockUpdateMutateAsync.mockRejectedValue(new Error('update failed'));
+        render(<FlowCreatePage />);
+
+        createFromTemplate(parentOuTemplate);
+
+        await waitFor(() => {
+          expect(mockNavigate).toHaveBeenCalledWith('/flows/flow-9');
+        });
+      });
+
+      it('does not update a project flow that has no parent OU to set', async () => {
+        mockMutate.mockImplementation((request: {nodes: unknown[]}, options: {onSuccess: (flow: unknown) => void}) => {
+          options.onSuccess({id: 'flow-9', ouId: 'ou-system', ...request});
+        });
+        render(<FlowCreatePage />);
+
+        fillConfigureStep();
+        fireEvent.click(screen.getByText('Create'));
+
+        await waitFor(() => {
+          expect(mockNavigate).toHaveBeenCalledWith('/flows/flow-9');
+        });
+        expect(mockUpdateMutateAsync).not.toHaveBeenCalled();
+      });
+
+      describe('when the project has organization units', () => {
+        beforeEach(() => {
+          ouState.hasMultipleOUs = true;
+          ouState.ouList = [{id: 'ou-p1'}];
+        });
+
+        it("shows the project's organization unit step", () => {
+          render(<FlowCreatePage />);
+
+          expect(screen.getByTestId('ou-step')).toHaveAttribute('data-project-id', 'project-1');
+        });
+
+        it('creates the flow in the system organization unit the picker selects', () => {
+          render(<FlowCreatePage />);
+
+          fireEvent.click(screen.getByTestId('ou-pick-system'));
+          fireEvent.click(screen.getByTestId('ou-continue'));
+          fillConfigureStep();
+          fireEvent.click(screen.getByText('Create'));
+
+          expect(mockMutate).toHaveBeenCalledWith(
+            expect.objectContaining({name: 'My Flow', projectId: 'project-1', ouId: 'system-ou'}),
+            expect.any(Object),
+          );
+        });
+
+        it("sets a template's Resolve OU parent to the picked organization unit, with no second save", async () => {
+          mockMutate.mockImplementation(
+            (request: {nodes: unknown[]}, options: {onSuccess: (flow: unknown) => void}) => {
+              options.onSuccess({id: 'flow-9', ouId: 'ou-b', ...request});
+            },
+          );
+          render(<FlowCreatePage />);
+
+          fireEvent.click(screen.getByTestId('ou-pick-b'));
+          fireEvent.click(screen.getByTestId('ou-continue'));
+          createFromTemplate(parentOuTemplate);
+
+          expect(mockMutate).toHaveBeenCalledWith(
+            expect.objectContaining({projectId: 'project-1', ouId: 'ou-b', nodes: resolverWithParent('ou-b')}),
+            expect.any(Object),
+          );
+          await waitFor(() => {
+            expect(mockNavigate).toHaveBeenCalledWith('/flows/flow-9');
+          });
+          expect(mockUpdateMutateAsync).not.toHaveBeenCalled();
+        });
+
+        it('creates the flow in the picked project organization unit', () => {
+          render(<FlowCreatePage />);
+
+          fireEvent.click(screen.getByTestId('ou-pick-b'));
+          fireEvent.click(screen.getByTestId('ou-continue'));
+          fillConfigureStep();
+          fireEvent.click(screen.getByText('Create'));
+
+          expect(mockMutate).toHaveBeenCalledWith(
+            expect.objectContaining({name: 'My Flow', projectId: 'project-1', ouId: 'ou-b'}),
+            expect.any(Object),
+          );
+        });
+      });
+
+      it('carries the project into the Device Grant draft', () => {
+        render(<FlowCreatePage />);
+
+        navigateToDeviceGrantConfigureStep();
+        act(() => {
+          (capturedConfigureProps['onChange'] as (v: {name: string; handle: string}) => void)({
+            name: 'Device Flow',
+            handle: 'device-flow',
+          });
+          (capturedConfigureProps['onReadyChange'] as (ready: boolean) => void)(true);
+        });
+        fireEvent.click(screen.getByText('Create'));
+
+        const draftFlow = (mockNavigate.mock.calls.at(-1) as [string, {state: {draftFlow: object}}])[1].state.draftFlow;
+        expect(draftFlow).toMatchObject({projectId: 'project-1'});
+        expect(draftFlow).not.toHaveProperty('ouId');
+      });
     });
   });
 });

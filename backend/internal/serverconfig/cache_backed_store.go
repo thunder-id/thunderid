@@ -5,6 +5,7 @@ package serverconfig
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -50,6 +51,15 @@ func (c *cachedBackStore) UpsertServerConfig(ctx context.Context, cfg ServerConf
 	}
 	c.invalidateServerConfig(ctx, cfg.Name)
 	return nil
+}
+
+// ReplaceServerConfigIf writes through to the database, and drops the cached layer whether or not it
+// wrote: a write that lost read a stale layer, so the next read goes to the database.
+func (c *cachedBackStore) ReplaceServerConfigIf(ctx context.Context, cfg ServerConfig,
+	expected json.RawMessage) (bool, error) {
+	written, err := c.inner.ReplaceServerConfigIf(ctx, cfg, expected)
+	c.invalidateServerConfig(ctx, cfg.Name)
+	return written, err
 }
 
 // --- Cache helpers ---

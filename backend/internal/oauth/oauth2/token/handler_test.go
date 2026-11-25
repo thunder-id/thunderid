@@ -39,7 +39,7 @@ func (suite *TokenHandlerTestSuite) SetupTest() {
 
 // newHandler creates a tokenHandler backed by the suite's service mock.
 func (suite *TokenHandlerTestSuite) newHandler() *tokenHandler {
-	return newTokenHandler(suite.mockTokenService, nil).(*tokenHandler)
+	return newTokenHandler(suite.mockTokenService, nil, discardingBus{}).(*tokenHandler)
 }
 
 // buildRequest constructs a POST /token request with URL-encoded form data.
@@ -63,7 +63,7 @@ func (suite *TokenHandlerTestSuite) withClientContext(
 }
 
 func (suite *TokenHandlerTestSuite) TestnewTokenHandler() {
-	handler := newTokenHandler(suite.mockTokenService, nil)
+	handler := newTokenHandler(suite.mockTokenService, nil, discardingBus{})
 	assert.NotNil(suite.T(), handler)
 	assert.Implements(suite.T(), (*TokenHandlerInterface)(nil), handler)
 }
@@ -140,7 +140,7 @@ func (suite *TokenHandlerTestSuite) TestHandleTokenRequest_ServiceErrors() {
 	for _, tc := range tests {
 		suite.Run(tc.name, func() {
 			mockSvc := NewTokenServiceInterfaceMock(suite.T())
-			handler := newTokenHandler(mockSvc, nil).(*tokenHandler)
+			handler := newTokenHandler(mockSvc, nil, discardingBus{}).(*tokenHandler)
 			mockApp := &providers.OAuthClient{ClientID: "test-client-id"}
 			formData := url.Values{}
 			formData.Set("grant_type", tc.grantType)
@@ -331,8 +331,8 @@ func (suite *TokenHandlerTestSuite) TestHandleTokenRequest_SuccessWithIssuedToke
 }
 
 // OUScopedGrantTestSuite covers which grants the organization-unit-scoped token endpoint serves.
-// Only client_credentials acts for an organization unit; another grant would be admitted against
-// the named unit and then issue a token identical to the bare endpoint's.
+// Only client_credentials and token exchange act for an organization unit; another grant would be
+// admitted against the named unit and then issue a token identical to the bare endpoint's.
 type OUScopedGrantTestSuite struct {
 	suite.Suite
 	service *TokenServiceInterfaceMock
@@ -362,7 +362,7 @@ func (s *OUScopedGrantTestSuite) serve(grantType, accessingOUID string) (*httpte
 	}
 
 	recorder := httptest.NewRecorder()
-	newTokenHandler(s.service, nil).HandleTokenRequest(recorder, req.WithContext(ctx))
+	newTokenHandler(s.service, nil, discardingBus{}).HandleTokenRequest(recorder, req.WithContext(ctx))
 
 	var body map[string]any
 	_ = json.Unmarshal(recorder.Body.Bytes(), &body)
@@ -373,8 +373,9 @@ func (s *OUScopedGrantTestSuite) serve(grantType, accessingOUID string) (*httpte
 // no token is issued and no issuance event claims a scope the token would not carry.
 func (s *OUScopedGrantTestSuite) TestAnotherGrantIsRefusedOnThePrefixedPath() {
 	for _, grantType := range []string{
-		string(providers.GrantTypeAuthorizationCode),
 		string(providers.GrantTypeRefreshToken),
+		string(providers.GrantTypeCIBA),
+		string(providers.GrantTypeJWTBearer),
 	} {
 		recorder, body := s.serve(grantType, "customer-a")
 
@@ -395,6 +396,30 @@ func (s *OUScopedGrantTestSuite) TestClientCredentialsIsServedOnThePrefixedPath(
 	recorder, _ := s.serve(string(providers.GrantTypeClientCredentials), "customer-a")
 
 	s.Equal(http.StatusOK, recorder.Code)
+}
+
+// Token exchange and the authorization code reach the service with the unit on its context; the grants
+// themselves accept only a device secret, and a code issued for the unit, there.
+func (s *OUScopedGrantTestSuite) TestUnitBoundGrantsReachTheServiceWithTheUnit() {
+	for _, grantType := range []string{
+		string(providers.GrantTypeTokenExchange),
+		string(providers.GrantTypeAuthorizationCode),
+	} {
+		s.Run(grantType, func() {
+			s.SetupTest()
+			s.service.EXPECT().
+				ProcessTokenRequest(mock.MatchedBy(func(ctx context.Context) bool {
+					return syscontext.GetAccessingOUID(ctx) == "customer-a"
+				}), mock.Anything, mock.Anything).
+				Return(&model.TokenResponse{
+					AccessToken: "at", TokenType: constants.TokenTypeBearer, ExpiresIn: 3600,
+				}, nil).Once()
+
+			recorder, _ := s.serve(grantType, "customer-a")
+
+			s.Equal(http.StatusOK, recorder.Code)
+		})
+	}
 }
 
 // The bare endpoint is untouched: it names no organization unit and keeps serving every grant.

@@ -88,11 +88,13 @@ func (s *StoreConstantsTestSuite) TestBuildEntityListQueryBySystemAttributes_All
 		"agent", sysQuery, map[string]bool{"name": true}, 10, 20, testDeploymentID)
 	s.NoError(err)
 	s.Equal("ASQ-ENTITY_MGT-33", q.ID)
-	s.Equal(`SELECT ID, OU_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY" WHERE CATEGORY = $1 `+
+	s.Equal(`SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY" `+
+		`WHERE CATEGORY = $1 `+
 		`AND (ATTRIBUTES->>'name' = $2 OR `+fmt.Sprintf(identifierExistsCondition, "name", "$3")+`) `+
 		`AND SYSTEM_ATTRIBUTES->>'agentCategory' = $4 AND SYSTEM_ATTRIBUTES->>'owner' = $5 `+
 		`AND DEPLOYMENT_ID = $6 ORDER BY ID LIMIT $7 OFFSET $8`, q.PostgresQuery)
-	s.Equal(`SELECT ID, OU_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY" WHERE CATEGORY = ? `+
+	s.Equal(`SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY" `+
+		`WHERE CATEGORY = ? `+
 		`AND (json_extract(ATTRIBUTES, '$.name') = ? OR `+fmt.Sprintf(identifierExistsCondition, "name", "?")+`) `+
 		`AND json_extract(SYSTEM_ATTRIBUTES, '$.agentCategory') = ? `+
 		`AND json_extract(SYSTEM_ATTRIBUTES, '$.owner') = ? `+
@@ -120,7 +122,8 @@ func (s *StoreConstantsTestSuite) TestBuildEntityQueryBySystemAttributesAndOUIDs
 		"agent", sysQuery, []string{"ou1"}, nil, 10, 0, testDeploymentID)
 	s.NoError(err)
 	s.Equal("ASQ-ENTITY_MGT-35", q.ID)
-	s.Equal(`SELECT ID, OU_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY" WHERE CATEGORY = $1 `+
+	s.Equal(`SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY" `+
+		`WHERE CATEGORY = $1 `+
 		`AND SYSTEM_ATTRIBUTES->>'owner' = $2 AND OU_ID IN ($3) AND DEPLOYMENT_ID = $4 `+
 		`ORDER BY ID LIMIT $5 OFFSET $6`, q.PostgresQuery)
 	s.Equal([]interface{}{"agent", "u1", "ou1", testDeploymentID, 10, 0}, args)
@@ -395,5 +398,36 @@ func (s *StoreConstantsTestSuite) TestBuildIdentifyQueryHybrid_NonIndexed_UsesCO
 func init() {
 	_ = config.InitializeServerRuntime("", &config.Config{
 		Server: engineconfig.ServerConfig{Identifier: testDeploymentID},
+	})
+}
+
+// A full update without a project keeps the stored one, so a caller that does not know about projects
+// cannot clear it.
+func (s *StoreConstantsTestSuite) TestUpdateEntityKeepsTheStoredProject() {
+	s.Contains(QueryUpdateEntity.Query, "PROJECT_ID = COALESCE($3, PROJECT_ID)")
+}
+
+func (s *StoreConstantsTestSuite) TestBuildProjectQueries() {
+	s.Run("whole project", func() {
+		q, args := buildEntityCountQueryByProject("app", "project-1", nil, "dep")
+		s.Equal("ASQ-ENTITY_MGT-36", q.ID)
+		s.Equal(`SELECT COUNT(*) as total FROM "ENTITY" WHERE CATEGORY = $1 AND PROJECT_ID = $2 `+
+			`AND DEPLOYMENT_ID = $3`, q.PostgresQuery)
+		s.Equal(`SELECT COUNT(*) as total FROM "ENTITY" WHERE CATEGORY = ? AND PROJECT_ID = ? `+
+			`AND DEPLOYMENT_ID = ?`, q.SQLiteQuery)
+		s.Equal([]interface{}{"app", "project-1", "dep"}, args)
+	})
+	s.Run("some organization units", func() {
+		q, args, err := buildEntityListQueryByProject("app", "project-1", []string{"ou-1", "ou-2"}, 10, 5, "dep")
+		s.NoError(err)
+		s.Equal("ASQ-ENTITY_MGT-37", q.ID)
+		s.Equal(`SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY" `+
+			`WHERE CATEGORY = $1 AND PROJECT_ID = $2 AND OU_ID IN ($3, $4) AND DEPLOYMENT_ID = $5 `+
+			`ORDER BY ID LIMIT $6 OFFSET $7`, q.PostgresQuery)
+		s.Equal([]interface{}{"app", "project-1", "ou-1", "ou-2", "dep", 10, 5}, args)
+	})
+	s.Run("no accessible organization unit lists nothing", func() {
+		q, _ := buildEntityCountQueryByProject("app", "project-1", []string{}, "dep")
+		s.Contains(q.PostgresQuery, "AND 1=0")
 	})
 }

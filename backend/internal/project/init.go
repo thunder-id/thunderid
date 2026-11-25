@@ -10,22 +10,28 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/ou"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 )
 
 // Initialize builds the project service over the database store and registers the project
-// management routes and MCP tools. The returned service is also a resource dependency provider, so that a
-// project's root organization unit cannot be deleted outside the project API. The returned exporter
-// exports projects as declarative resources.
+// management routes and MCP tools. The returned exporter exports projects as declarative resources. bus is
+// required: the service publishes the audit event of every project it creates, updates or deletes on it.
 func Initialize(
 	mux *http.ServeMux, mcpServer *mcp.Server, ouService ou.OrganizationUnitServiceInterface,
+	entities projectEntityReader, bus eventbus.EventBusInterface,
 ) (ProjectServiceInterface, declarativeresource.ResourceExporter, error) {
+	if bus == nil {
+		return nil, nil, errNilEventBus
+	}
 	store, transactioner, err := newProjectStore()
 	if err != nil {
 		return nil, nil, err
 	}
 
-	service := newProjectService(store, transactioner, ouService)
+	service := newProjectService(store, transactioner, ouService, entities, bus)
+	service.managed = managedresource.GetStore()
 	registerRoutes(mux, newProjectHandler(service))
 	if mcpServer != nil {
 		registerMCPTools(mcpServer, service)
@@ -47,6 +53,12 @@ func registerRoutes(mux *http.ServeMux, h *projectHandler) {
 		AllowCredentials: true,
 		MaxAge:           600,
 	}
+	checkOpts := middleware.CORSOptions{
+		AllowedMethods:   []string{"GET"},
+		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		AllowCredentials: true,
+		MaxAge:           600,
+	}
 
 	mux.HandleFunc(middleware.WithCORS("POST "+projectsPath,
 		middleware.CorrelationIDMiddleware(http.HandlerFunc(h.HandleProjectPostRequest)).ServeHTTP, collectionOpts))
@@ -59,8 +71,14 @@ func registerRoutes(mux *http.ServeMux, h *projectHandler) {
 	mux.HandleFunc(middleware.WithCORS("DELETE "+projectsPath+"/{id}",
 		middleware.CorrelationIDMiddleware(http.HandlerFunc(h.HandleProjectDeleteRequest)).ServeHTTP, resourceOpts))
 
+	mux.HandleFunc(middleware.WithCORS("GET "+projectsPath+"/{id}/deletion-check",
+		middleware.CorrelationIDMiddleware(http.HandlerFunc(h.HandleProjectDeletionCheckRequest)).ServeHTTP,
+		checkOpts))
+
 	mux.HandleFunc(middleware.WithCORS("OPTIONS "+projectsPath,
 		func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }, collectionOpts))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS "+projectsPath+"/{id}",
 		func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }, resourceOpts))
+	mux.HandleFunc(middleware.WithCORS("OPTIONS "+projectsPath+"/{id}/deletion-check",
+		func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }, checkOpts))
 }

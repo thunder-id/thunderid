@@ -511,18 +511,18 @@ func (ts *CIBATestSuite) TestCIBAFlowFailureDeniesRequest() {
 
 // TestCIBAExpiredRequestRejectsPolling verifies that a request whose requested_expiry has elapsed is
 // rejected by the token endpoint with expired_token (repeatedly, once the request is marked EXPIRED),
-// and that resolveExpiresIn only clamps the upper bound: a below-max value like 1 is honored verbatim,
+// and that resolveExpiresIn only clamps the upper bound: a below-max value like 2 is honored verbatim,
 // while an above-max value like 9999 clamps down to the server maximum.
 func (ts *CIBATestSuite) TestCIBAExpiredRequestRejectsPolling() {
 	form := url.Values{}
 	form.Set("login_hint", cibaTestUsername)
 	form.Set("scope", "openid")
-	form.Set("requested_expiry", "1")
+	form.Set("requested_expiry", "2")
 	status, bcResp := ts.cibaBackchannelAuthorizeForm(form, cibaClientID, cibaClientSecret)
 	ts.Require().Equal(http.StatusOK, status)
-	ts.Require().Equal(int64(1), bcResp.ExpiresIn, "a requested_expiry below the max must be honored")
+	ts.Require().Equal(int64(2), bcResp.ExpiresIn, "a requested_expiry below the max must be honored")
 
-	time.Sleep(2 * time.Second)
+	time.Sleep(3 * time.Second)
 
 	expired := ts.cibaPollToken(bcResp.AuthReqID, "")
 	ts.Require().Equal(http.StatusBadRequest, expired.statusCode)
@@ -828,10 +828,10 @@ func (ts *CIBATestSuite) TestCIBACallbackNegatives() {
 				form := url.Values{}
 				form.Set("login_hint", cibaTestUsername)
 				form.Set("scope", "openid")
-				form.Set("requested_expiry", "1")
+				form.Set("requested_expiry", "2")
 				status, bcResp := ts.cibaBackchannelAuthorizeForm(form, cibaClientID, cibaClientSecret)
 				ts.Require().Equal(http.StatusOK, status)
-				time.Sleep(2 * time.Second)
+				time.Sleep(3 * time.Second)
 				return bcResp.AuthReqID, "some-assertion"
 			},
 			wantErrorCode: "expired_token",

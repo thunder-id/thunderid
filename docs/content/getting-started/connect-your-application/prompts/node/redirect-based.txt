@@ -16,7 +16,7 @@ I have a Node.js application and I want to integrate {{productName}} authenticat
 ## Configuration
 - **Client ID**: {{clientId}}
 - **Client Secret**: `<your-client-secret>`
-- **Base URL**: https://localhost:8090 (or your {{productName}} instance URL)
+- **Base URL**: {{baseUrl}}
 - **App URL**: http://localhost:3000
 - **Callback Route**: /callback
 - **SDK**: @thunderid/node

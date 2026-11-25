@@ -4,7 +4,7 @@
 import type {QueryKey} from '@tanstack/react-query';
 import {act, fireEvent, screen, waitFor, within} from '@testing-library/react';
 import {render} from '@thunderid/test-utils';
-import type {AccessStatus} from '@thunderid/types';
+import type {AccessStatus, SuspensionAppliedBy as AppliedBy} from '@thunderid/types';
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import AccountStatusAction from '../AccountStatusAction';
 import {LifecycleActionIncompleteError, type LifecycleCategory, type LifecycleOperation} from '../lifecycleAction';
@@ -185,6 +185,41 @@ describe('AccountStatusAction', () => {
 
       expect(offered).toHaveLength(1);
       expect(offered[0]).toMatch(/^Unsuspend(?! and unlock)/);
+    });
+
+    it.each<[string, AppliedBy[]]>([
+      ['its owner', ['owner']],
+      ["its owner's suspended account", ['cascade']],
+    ])('offers only Suspend on an agent held suspended by %s alone', (_holder, appliedBy) => {
+      render(
+        <AccountStatusAction
+          category="agent"
+          subject="agent-1"
+          status={{value: 'SUSPENDED', details: {appliedBy}}}
+          listQueryKey={LIST_KEY}
+        />,
+      );
+
+      const offered = openMenu();
+
+      expect(offered).toHaveLength(1);
+      expect(offered[0]).toMatch(/^Suspend/);
+    });
+
+    it('offers Unsuspend when the organization holds the agent suspended with its owner', () => {
+      render(
+        <AccountStatusAction
+          category="agent"
+          subject="agent-1"
+          status={{value: 'SUSPENDED', details: {appliedBy: ['organization', 'owner']}}}
+          listQueryKey={LIST_KEY}
+        />,
+      );
+
+      const offered = openMenu();
+
+      expect(offered).toHaveLength(1);
+      expect(offered[0]).toMatch(/^Unsuspend/);
     });
 
     it('offers only Unsuspend on a suspended application', () => {

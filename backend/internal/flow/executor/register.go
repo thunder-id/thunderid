@@ -32,10 +32,11 @@ import (
 	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/role"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
-	"github.com/thunder-id/thunderid/internal/user"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -174,12 +175,12 @@ func (r *executorRegistry) RegisterExecutor(name string, exec providers.Executor
 		return
 	}
 
-	logger.Debug(ctx, "Registering executor", log.String("executorName", name))
+	logger.Debug(ctx, "Registering executor", log.String(log.LoggerKeyExecutorName, name))
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, ok := r.executors[name]; ok {
-		logger.Warn(ctx, "Executor already registered", log.String("executorName", name))
+		logger.Warn(ctx, "Executor already registered", log.String(log.LoggerKeyExecutorName, name))
 		return
 	}
 	r.executors[name] = exec
@@ -245,16 +246,19 @@ type ExecutorDependencies struct {
 	OpenID4VPVerifierSvc   openid4vp.OpenID4VPServiceInterface
 	SessionService         session.Service
 	ResourceService        providers.ResourceServerProvider
-	UserService            user.UserServiceInterface
 	CriteriaRevoker        revocation.CriteriaRevoker
 	ResourceMgtService     resource.ResourceServiceInterface
 	HTTPConnectionProvider httpconnection.HTTPConnectionProvider
 	ExtensionHTTPClient    httpservice.HTTPClientInterface
 	ObservabilitySvc       providers.ObservabilityProvider
 	IdentityGovernance     providers.IdentityGovernanceProvider
+	AttributeVerification  providers.AttributeVerificationProvider
 	ArtifactLifetime       artifactLifetimeResolver
 	AuthzDetailProvider    providers.AuthorizationDetailProvider
+	SharingService         sharing.SharingServiceInterface
+	PermissionResolver     entityPermissionResolver
 	tokenLeeway            time.Duration
+	gateHostname           string
 	DeviceCodeVerifier     providers.DeviceCodeVerifier
 }
 
@@ -273,7 +277,7 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNamePasskeyAuth: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNamePasskeyAuth, newPasskeyAuthExecutor(
-				deps.FlowFactory, deps.AuthnProvider, newAccessGuard(deps.IdentityGovernance)))
+				deps.FlowFactory, deps.AuthnProvider, newAccessGuard(deps.IdentityGovernance), deps.gateHostname))
 		},
 		ExecutorNameMagicLink: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameMagicLink, newMagicLinkExecutor(
@@ -315,13 +319,13 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		ExecutorNameAuthAssert: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameAuthAssert, newAuthAssertExecutor(deps.FlowFactory, deps.JWTService,
 				deps.OUService, deps.AuthAssertGen, deps.AuthnProvider, deps.EntityProvider,
-				deps.AttributeCacheSvc, deps.RoleService, deps.EntityTypeService,
-				newAccessGuard(deps.IdentityGovernance)))
+				deps.AttributeCacheSvc, deps.RoleService, deps.GroupService, deps.EntityTypeService,
+				deps.ResourceService, newAccessGuard(deps.IdentityGovernance)))
 		},
 		ExecutorNameAuthorization: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameAuthorization, newAuthorizationExecutor(
 				deps.FlowFactory, deps.AuthZService, deps.EntityProvider, deps.AuthnProvider,
-				deps.ResourceService))
+				deps.ResourceService, deps.RoleAssignmentService))
 		},
 		ExecutorNameAuthorizationDetail: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameAuthorizationDetail, newAuthorizationDetailExecutor(
@@ -340,11 +344,13 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNameEmailExecutor: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameEmailExecutor, newEmailExecutor(
-				deps.FlowFactory, deps.NotifSenderSvc, deps.TemplateRenderer, deps.EntityProvider))
+				deps.FlowFactory, deps.NotifSenderSvc, deps.TemplateRenderer, deps.EntityProvider,
+				deps.AuthnProvider))
 		},
 		ExecutorNameCredentialSetter: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameCredentialSetter, newCredentialSetter(
-				deps.FlowFactory, deps.EntityProvider, deps.AuthnProvider, newAccessGuard(deps.IdentityGovernance)))
+				deps.FlowFactory, deps.EntityProvider, deps.UserMgtProvider, deps.AuthnProvider,
+				newAccessGuard(deps.IdentityGovernance), deps.EntityTypeService))
 		},
 		ExecutorNamePermissionValidator: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNamePermissionValidator, newPermissionValidator(deps.FlowFactory))
@@ -359,7 +365,7 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNameConsent: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameConsent, newConsentExecutor(
-				deps.FlowFactory, deps.ConsentEnforcer, deps.AuthnProvider))
+				deps.FlowFactory, deps.ConsentEnforcer, deps.AuthnProvider, deps.EntityTypeService))
 		},
 		ExecutorNameOUResolver: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameOUResolver, newOUResolverExecutor(deps.FlowFactory, deps.OUService))
@@ -370,7 +376,8 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNameSMSExecutor: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameSMSExecutor, newSMSExecutor(
-				deps.FlowFactory, deps.NotifSenderSvc, deps.TemplateRenderer, deps.EntityProvider))
+				deps.FlowFactory, deps.NotifSenderSvc, deps.TemplateRenderer, deps.EntityProvider,
+				deps.AuthnProvider))
 		},
 		ExecutorNameOpenID4VPVerify: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameOpenID4VPVerify, newOpenID4VPVerifier(
@@ -393,9 +400,9 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 				deps.FlowFactory, deps.OTPService, deps.AuthnProvider, deps.EntityProvider,
 				newAccessGuard(deps.IdentityGovernance)))
 		},
-		ExecutorNamePreDelete: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
-			reg.RegisterExecutor(ExecutorNamePreDelete,
-				newPreDeleteExecutor(deps.FlowFactory, deps.UserService))
+		ExecutorNamePreRevocation: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNamePreRevocation,
+				newPreRevocationExecutor(deps.FlowFactory, deps.ArtifactLifetime, deps.EntityProvider))
 		},
 		ExecutorNameCriteriaRevocation: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameCriteriaRevocation,
@@ -408,15 +415,8 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNameRole: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameRole,
-				newRoleExecutor(deps.FlowFactory, deps.RoleService, deps.RoleAssignmentService))
-		},
-		ExecutorNameGroup: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
-			reg.RegisterExecutor(ExecutorNameGroup,
-				newGroupExecutor(deps.FlowFactory, deps.GroupService))
-		},
-		ExecutorNameActionDeletion: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
-			reg.RegisterExecutor(ExecutorNameActionDeletion,
-				newActionDeletionExecutor(deps.FlowFactory, deps.ResourceMgtService))
+				newRoleExecutor(deps.FlowFactory, deps.RoleAssignmentService,
+					deps.PermissionResolver))
 		},
 		ExecutorNameSessionRevocation: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameSessionRevocation,
@@ -430,6 +430,11 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 			reg.RegisterExecutor(ExecutorNameOwnerResolver, newOwnerResolver(
 				deps.FlowFactory, deps.EntityProvider))
 		},
+		ExecutorNameAttributeVerification: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameAttributeVerification, newAttributeVerificationExecutor(
+				deps.FlowFactory, deps.AttributeVerification, deps.AuthnProvider,
+				newAccessGuard(deps.IdentityGovernance)))
+		},
 		ExecutorNameIdentityGovernance: func(reg ExecutorRegistryInterface,
 			deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameIdentityGovernance,
@@ -440,26 +445,17 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 				newPreSuspendExecutor(deps.FlowFactory, deps.IdentityGovernance, deps.tokenLeeway,
 					deps.ArtifactLifetime))
 		},
-		ExecutorNameUserDelete: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
-			reg.RegisterExecutor(ExecutorNameUserDelete,
-				newUserDeleteExecutor(deps.FlowFactory, deps.UserService))
-		},
 		ExecutorNameApplicationActionValidator: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameApplicationActionValidator,
 				newApplicationActionValidator(deps.FlowFactory))
-		},
-		ExecutorNameApplicationDelete: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
-			reg.RegisterExecutor(ExecutorNameApplicationDelete,
-				newApplicationDeleteExecutor(deps.FlowFactory))
-		},
-		ExecutorNameClientSecret: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
-			reg.RegisterExecutor(ExecutorNameClientSecret,
-				newClientSecretExecutor(deps.FlowFactory))
 		},
 		ExecutorNameExtension: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameExtension,
 				newExtensionExecutor(deps.FlowFactory, deps.HTTPConnectionProvider, deps.ExtensionHTTPClient,
 					deps.ObservabilitySvc))
+		},
+		ExecutorNameSharing: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			reg.RegisterExecutor(ExecutorNameSharing, newSharingExecutor(deps.FlowFactory, deps.SharingService))
 		},
 		ExecutorNameAccountLinking: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameAccountLinking,
@@ -551,45 +547,43 @@ func registerBuiltInExecutor(
 type applicationAdminProvider interface {
 	ValidateDeleteApplication(ctx context.Context, appID string) (
 		*appmodel.ApplicationArtifactProfile, *tidcommon.ServiceError)
-	DeleteApplication(ctx context.Context, appID string) *tidcommon.ServiceError
-	ValidateCredentialAction(ctx context.Context, appID string, action appmodel.CredentialAction) (
-		*appmodel.ApplicationArtifactProfile, *tidcommon.ServiceError)
-	ApplyCredentialAction(ctx context.Context, appID string, action appmodel.CredentialAction) (
-		string, *tidcommon.ServiceError)
 }
 
 // roleAdminProvider is the role seam the access change validator and the role executor consume.
 type roleAdminProvider interface {
 	ValidateDeleteRole(ctx context.Context, id string) (*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
-	DeleteRole(ctx context.Context, id string) *tidcommon.ServiceError
 	ValidateUpdateRolePermissions(ctx context.Context, id string, permissions []role.ResourcePermissions) (
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
-	GetRoleWithPermissions(ctx context.Context, id string) (*role.RoleWithPermissions, *tidcommon.ServiceError)
-	UpdateRoleWithPermissions(ctx context.Context, id string, role role.RoleUpdateDetail) (
-		*role.RoleWithPermissions, *tidcommon.ServiceError)
 	ValidateGroupDeletion(ctx context.Context, groupID string) (
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
 	ValidateGroupMembershipRemoval(ctx context.Context, groupID, memberID string) (
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
 }
 
+// entityPermissionResolver resolves the permissions an entity holds now, directly and through its groups.
+type entityPermissionResolver interface {
+	ResolveForEntity(ctx context.Context, entityID string) (security.PermissionSet, error)
+}
+
 // roleAssignmentAdminProvider is the assignment seam the access change validator and role executor consume.
 type roleAssignmentAdminProvider interface {
 	ValidateRemoveAssignment(ctx context.Context, id, ouID, assigneeID string) (
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
-	RemoveAssignments(ctx context.Context, id, ouID string, assignments []role.RoleAssignment) *tidcommon.ServiceError
+	ListAssignableRoles(ctx context.Context, ouID string) ([]role.Role, *tidcommon.ServiceError)
+	AddAssigneesToRoles(ctx context.Context, assignments []role.RoleAssignment,
+		roleIDs []string) *tidcommon.ServiceError
 }
 
-// groupAdminProvider is the group seam the group executor consumes.
-type groupAdminProvider interface {
-	DeleteGroup(ctx context.Context, groupID string) *tidcommon.ServiceError
-	RemoveGroupMembers(ctx context.Context, groupID string, members []group.Member) (
-		*group.Group, *tidcommon.ServiceError)
+// sharingAdminProvider is the sharing seam the sharing executor consumes.
+type sharingAdminProvider interface {
+	ValidateShareIntoChildOU(ctx context.Context, rt sharing.ResourceType,
+		resourceID, owningOUID, targetOUID string) *tidcommon.ServiceError
+	ShareIntoChildOU(ctx context.Context, rt sharing.ResourceType,
+		resourceID, targetOUID string) *tidcommon.ServiceError
 }
 
-// resourceAdminProvider is the resource seam the action deletion validator and executor consume.
+// resourceAdminProvider is the resource seam the action deletion validator consumes.
 type resourceAdminProvider interface {
 	ValidateDeleteAction(ctx context.Context, resourceServerID string, resourceID *string, id string) (
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
-	DeleteAction(ctx context.Context, resourceServerID string, resourceID *string, id string) *tidcommon.ServiceError
 }

@@ -362,7 +362,7 @@ func TestRoleServiceGetAllPermissions(t *testing.T) {
 
 // newRefusingRoleAuthz returns an authz mock that refuses every grant check.
 func newRefusingRoleAuthz(t *testing.T) sysauthz.SystemAuthorizationServiceInterface {
-	mockAuthz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	mockAuthz := allowOUAccess(sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t))
 	mockAuthz.On("CanGrantPermissions", mock.Anything, mock.Anything).
 		Return(&sysauthz.ErrorGrantNotPermitted).Maybe()
 	mockAuthz.On("CanGrantMembership", mock.Anything, mock.Anything, mock.Anything).
@@ -380,6 +380,7 @@ func TestRoleAssignmentGuard(t *testing.T) {
 		store := newRoleStoreInterfaceMock(t)
 		txr := &fakeTransactioner{}
 		svc := &roleAssignmentService{
+			bus:           discardingBus{},
 			roleStore:     store,
 			transactioner: txr,
 			authzService:  newRefusingRoleAuthz(t),
@@ -397,6 +398,7 @@ func TestRoleAssignmentGuard(t *testing.T) {
 		store := newRoleStoreInterfaceMock(t)
 		txr := &fakeTransactioner{}
 		svc := &roleAssignmentService{
+			bus:           discardingBus{},
 			roleStore:     store,
 			transactioner: txr,
 			authzService:  newRefusingRoleAuthz(t),
@@ -415,6 +417,7 @@ func TestRoleAssignmentGuard(t *testing.T) {
 	t.Run("GuardRunsBeforeAssigneeValidation", func(t *testing.T) {
 		entitySvc := entitymock.NewEntityServiceInterfaceMock(t)
 		svc := &roleAssignmentService{
+			bus:           discardingBus{},
 			roleStore:     newRoleStoreInterfaceMock(t),
 			entityService: entitySvc,
 			transactioner: &fakeTransactioner{},
@@ -508,7 +511,7 @@ func TestModifyAssignments_RechecksInsideTransaction(t *testing.T) {
 
 	// First call succeeds (pre-transaction), second refuses (inside the transaction), simulating a
 	// concurrent role update that widened the role in between.
-	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	authz := allowOUAccess(sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t))
 	call := 0
 	authz.On("CanGrantMembership", mock.Anything, sysauthz.PrincipalTypeRole, "role1").
 		Return(func(context.Context, sysauthz.PrincipalType, string) *tidcommon.ServiceError {
@@ -528,6 +531,7 @@ func TestModifyAssignments_RechecksInsideTransaction(t *testing.T) {
 		Return(map[string]*group.Group{"grp1": {ID: "grp1", OUID: "ou1"}}, nil).Once()
 
 	svc := &roleAssignmentService{
+		bus:           discardingBus{},
 		roleStore:     store,
 		groupService:  groupSvc,
 		transactioner: txr,

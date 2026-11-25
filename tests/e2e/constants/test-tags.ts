@@ -48,7 +48,7 @@ export const TestTags = {
   /** Account suspension, lock and account security settings tests */
   ACCOUNT_STATUS: "@account-status",
 
-  /** Wayfinder sample setup / welcome screen related tests */
+  /** Wayfinder sample setup related tests */
   WAYFINDER: "@wayfinder",
 } as const;
 

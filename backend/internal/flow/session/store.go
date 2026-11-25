@@ -5,6 +5,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -34,12 +35,18 @@ func newStore(dbProvider provider.DBProviderInterface, deploymentID string) *sto
 
 // Create persists a new session.
 func (st *store) Create(ctx context.Context, s Session) error {
+	properties, encodeErr := marshalProperties(s.Properties)
+	if encodeErr != nil {
+		return encodeErr
+	}
 	return withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
 		_, err := dbClient.ExecuteContext(ctx, queryCreateSession,
 			s.SessionID, st.deploymentID, s.SubjectID, s.FlowID, s.FlowVersion,
 			s.FlowExecutionID, s.HandleID,
 			s.AuthenticatedAt, s.CreatedAt, s.LastActiveAt,
-			nullableTime(s.IdleExpiresAt), nullableTime(s.AbsoluteExpiresAt), string(s.State), s.Version)
+			nullableTime(s.IdleExpiresAt), nullableTime(s.AbsoluteExpiresAt),
+			properties,
+			string(s.State), s.Version)
 		if err != nil {
 			return fmt.Errorf("failed to create session: %w", err)
 		}
@@ -110,10 +117,14 @@ func (st *store) getSingle(ctx context.Context, query model.DBQuery, key string)
 // Update writes the mutable fields of an existing session under an optimistic-lock guard. It
 // touches only SESSION — never the auth context — so an activity touch stays lean.
 func (st *store) Update(ctx context.Context, s *Session) error {
+	properties, encodeErr := marshalProperties(s.Properties)
+	if encodeErr != nil {
+		return encodeErr
+	}
 	return withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
 		rowsAffected, err := dbClient.ExecuteContext(ctx, queryUpdateSession,
 			s.FlowVersion, s.HandleID,
-			s.LastActiveAt,
+			s.LastActiveAt, properties,
 			nullableTime(s.IdleExpiresAt), nullableTime(s.AbsoluteExpiresAt), string(s.State),
 			s.SessionID, st.deploymentID, s.Version)
 		if err != nil {
@@ -127,15 +138,20 @@ func (st *store) Update(ctx context.Context, s *Session) error {
 	})
 }
 
-// TouchAuthenticatedAt records that the subject authenticated again inside an existing session,
-// sliding the idle deadline along with it. Unlike Update it carries no version guard: the write
-// records an authentication that already happened, so a concurrent liveness slide must not cause it
-// to be dropped.
+// TouchAuthenticatedAt records that the subject authenticated again inside an existing session, and the
+// session's properties with the IP it authenticated from, sliding the idle deadline along with it. Unlike
+// Update it carries no version guard: the write records an authentication that already happened, so a
+// concurrent liveness slide must not cause it to be dropped.
 func (st *store) TouchAuthenticatedAt(ctx context.Context, sessionID string, authenticatedAt,
-	idleExpiresAt time.Time) error {
+	idleExpiresAt time.Time, properties SessionProperties) error {
+	encoded, encodeErr := marshalProperties(properties)
+	if encodeErr != nil {
+		return encodeErr
+	}
 	return withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
 		_, err := dbClient.ExecuteContext(ctx, queryTouchAuthenticatedAt,
-			authenticatedAt, authenticatedAt, nullableTime(idleExpiresAt), sessionID, st.deploymentID)
+			authenticatedAt, authenticatedAt, encoded, nullableTime(idleExpiresAt),
+			sessionID, st.deploymentID)
 		if err != nil {
 			return fmt.Errorf("failed to refresh session authentication time: %w", err)
 		}
@@ -265,7 +281,7 @@ func (st *store) buildSessionContextFromRow(row map[string]interface{}) (*Sessio
 func (st *store) Record(ctx context.Context, p Participant) error {
 	return withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
 		_, err := dbClient.ExecuteContext(ctx, queryUpsertParticipant,
-			p.SessionID, st.deploymentID, p.AppID, p.FirstJoinedAt, p.LastActiveAt, p.TokenFamilyID)
+			p.SessionID, st.deploymentID, p.AppID, p.OUID, p.FirstJoinedAt, p.LastActiveAt, p.TokenFamilyID)
 		if err != nil {
 			return fmt.Errorf("failed to record session participant: %w", err)
 		}
@@ -369,10 +385,10 @@ func (st *store) ListByAppID(ctx context.Context, appID string) ([]Participant, 
 	return result, nil
 }
 
-// DeleteParticipant removes one application's participation in one session.
-func (st *store) DeleteParticipant(ctx context.Context, sessionID, appID string) error {
+// DeleteParticipant removes one application's participation in one session under one organization unit.
+func (st *store) DeleteParticipant(ctx context.Context, sessionID, appID, ouID string) error {
 	return withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
-		_, err := dbClient.ExecuteContext(ctx, queryDeleteParticipant, sessionID, appID, st.deploymentID)
+		_, err := dbClient.ExecuteContext(ctx, queryDeleteParticipant, sessionID, appID, ouID, st.deploymentID)
 		if err != nil {
 			return fmt.Errorf("failed to delete session participant: %w", err)
 		}
@@ -398,9 +414,14 @@ func buildParticipantFromRow(row map[string]interface{}) (Participant, error) {
 	if err != nil {
 		return Participant{}, err
 	}
+	ouID, err := parseString(row["ou_id"], "ou_id")
+	if err != nil {
+		return Participant{}, err
+	}
 	return Participant{
 		SessionID:     sessionID,
 		AppID:         appID,
+		OUID:          ouID,
 		TokenFamilyID: parseNullableString(row["tfid"]),
 		FirstJoinedAt: firstJoinedAt,
 		LastActiveAt:  lastActiveAt,
@@ -424,6 +445,33 @@ func nullableTime(t time.Time) interface{} {
 		return nil
 	}
 	return t
+}
+
+// marshalProperties encodes a session's properties for the PROPERTIES column, or NULL when it has none.
+func marshalProperties(p SessionProperties) (interface{}, error) {
+	if p == (SessionProperties{}) {
+		return nil, nil
+	}
+	data, err := json.Marshal(p)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode session properties: %w", err)
+	}
+	return string(data), nil
+}
+
+// parseProperties decodes the PROPERTIES column. NULL, from a session recorded without properties, and
+// an unreadable value both decode to empty properties: they are only displayed, so they must not block
+// SSO or sign-out.
+func parseProperties(value interface{}) SessionProperties {
+	var p SessionProperties
+	raw := parseNullableString(value)
+	if raw == "" {
+		return p
+	}
+	if err := json.Unmarshal([]byte(raw), &p); err != nil {
+		return SessionProperties{}
+	}
+	return p
 }
 
 // buildSessionFromRow maps a database result row into a Session.
@@ -481,6 +529,7 @@ func buildSessionFromRow(row map[string]interface{}) (*Session, error) {
 		LastActiveAt:      lastActiveAt,
 		IdleExpiresAt:     parseNullableTime(row["idle_expires_at"]),
 		AbsoluteExpiresAt: parseNullableTime(row["absolute_expires_at"]),
+		Properties:        parseProperties(row["properties"]),
 		State:             State(parseNullableString(row["state"])),
 		Version:           version,
 	}, nil

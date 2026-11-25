@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {AllowedOriginTypes, createRow, rowKey, type AllowedOriginDraftRow} from '@thunderid/configure-settings';
+import {useCapabilitiesContext, useConfig} from '@thunderid/contexts';
 import {
   Alert,
   Box,
@@ -22,27 +23,7 @@ import {useTranslation} from 'react-i18next';
 import CorsOriginsEditor from './CorsOriginsEditor';
 import DevServerLogo from './DevServerLogo';
 import useApplicationCreate from '../../contexts/ApplicationCreate/useApplicationCreate';
-
-/** Pure URI-format check, permissive of path/host wildcards (the backend enforces wildcard rules). */
-function isValidUriFormat(uri: string): boolean {
-  try {
-    const schemeEnd = uri.indexOf('://');
-    let uriForValidation = uri;
-    if (schemeEnd !== -1) {
-      const pathStart = uri.indexOf('/', schemeEnd + 3);
-      const hostPart = pathStart !== -1 ? uri.slice(schemeEnd + 3, pathStart) : uri.slice(schemeEnd + 3);
-      if (hostPart.includes('*')) {
-        const sanitizedHost = hostPart.replace(/\*/g, 'wildcard-placeholder');
-        uriForValidation = uri.slice(0, schemeEnd + 3) + sanitizedHost + (pathStart !== -1 ? uri.slice(pathStart) : '');
-      }
-    }
-    // eslint-disable-next-line no-new
-    new URL(uriForValidation);
-    return true;
-  } catch {
-    return false;
-  }
-}
+import isValidRedirectUriFormat from '../../utils/isValidRedirectUriFormat';
 
 interface UriListEditorProps {
   /** Already-translated field label. */
@@ -87,7 +68,7 @@ function UriListEditor({
       });
       return false;
     }
-    if (!isValidUriFormat(uri)) {
+    if (!isValidRedirectUriFormat(uri)) {
       setErrors((prev) => ({
         ...prev,
         [index]: t(
@@ -144,7 +125,7 @@ function UriListEditor({
   const handleAdd = (): void => onUrisChange([...displayUris, '']);
 
   return (
-    <FormControl fullWidth>
+    <FormControl fullWidth required={required}>
       <FormLabel>{title}</FormLabel>
       <Typography variant="caption" color="text.secondary" sx={{display: 'block', mb: 2}}>
         {description}
@@ -247,8 +228,14 @@ function DevServerBanner({
  * templates (authorization_code grant). Mirrors the editing pattern used for the same fields on
  * an already-created application's Access settings.
  */
-export default function ConfigureRedirectUris(): JSX.Element {
+interface ConfigureRedirectUrisProps {
+  /** Whether a redirect URI must be entered here, because no other field on the step supplies one. */
+  redirectUriRequired: boolean;
+}
+
+export default function ConfigureRedirectUris({redirectUriRequired}: ConfigureRedirectUrisProps): JSX.Element {
   const {t} = useTranslation();
+  const {config} = useConfig();
   const {
     redirectUris,
     setRedirectUris,
@@ -260,7 +247,8 @@ export default function ConfigureRedirectUris(): JSX.Element {
   } = useApplicationCreate();
 
   const {devServer, capabilities} = selectedTemplateConfig ?? {};
-  const showCors = Boolean(capabilities?.cors);
+  const {can} = useCapabilitiesContext();
+  const showCors = Boolean(capabilities?.cors) && can('serverconfig', 'update');
 
   // Post-logout redirect URIs default to mirroring the authorized redirect URIs, so admins don't
   // have to maintain two identical lists. Unchecking reveals a separate editor; re-checking
@@ -288,7 +276,11 @@ export default function ConfigureRedirectUris(): JSX.Element {
 
       <UriListEditor
         title={t('applications:edit.general.redirectUris.title', 'Authorized redirect URIs')}
-        description={t('applications:edit.general.redirectUris.description', 'For use with requests from a web server')}
+        description={t(
+          'applications:edit.general.redirectUris.description',
+          'Where {{productName}} sends users back after they sign in. Sign-in requests must use one of these URIs.',
+          {productName: config.brand.product_name},
+        )}
         placeholder={t(
           'applications:onboarding.configure.details.redirectUris.placeholder',
           'https://example.com/callback',
@@ -296,7 +288,7 @@ export default function ConfigureRedirectUris(): JSX.Element {
         addLabel={t('applications:edit.general.redirectUris.addUri', 'Add URI')}
         uris={redirectUris}
         onUrisChange={setRedirectUris}
-        required
+        required={redirectUriRequired}
       />
 
       <Box sx={{display: 'flex', alignItems: 'flex-start', gap: 1}}>

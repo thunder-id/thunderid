@@ -1,8 +1,8 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {DocumentTitle, FullScreenCreationWizardLayout} from '@thunderid/components';
-import {useConfig, useToast} from '@thunderid/contexts';
+import {decodeKeyValuePairs, DocumentTitle, FullScreenCreationWizardLayout} from '@thunderid/components';
+import {useCapabilitiesContext, useGateCallbackUrl, useToast} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {Alert, Box, Button, CircularProgress, Paper, Stack, Typography} from '@wso2/oxygen-ui';
 import {type JSX, useMemo, useState} from 'react';
@@ -45,7 +45,6 @@ import {
   validateConnectionForm,
 } from '../utils/connectionFormMapping';
 import isConflictError from '../utils/isConflictError';
-import {decodeKeyValuePairs} from '../utils/keyValuePairs';
 
 const Step = {TYPE: 'TYPE', PROTOCOL: 'PROTOCOL', NAME: 'NAME', CONFIGURE: 'CONFIGURE'} as const;
 type Step = (typeof Step)[keyof typeof Step];
@@ -59,7 +58,6 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
   const navigate = useNavigate();
   const {showToast} = useToast();
   const routes = useConnectionRoutes();
-  const {getGateCallbackUrl} = useConfig();
 
   const [step, setStep] = useState<Step>(Step.TYPE);
   const [selectedType, setSelectedType] = useState<SelectableConnectionType | null>(null);
@@ -88,6 +86,7 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
   const emailProvidersQuery = useEmailProviders({enabled: isEmailSender});
   const notificationConfigQuery = useGetNotificationConfig({enabled: isEmailSender});
   const setDefaultSender = useSetDefaultEmailSender();
+  const {can} = useCapabilitiesContext();
   // The same query the configure step's form reads, so only the selected method's properties are sent.
   const {data: connectionMeta} = useConnectionMeta(step === Step.CONFIGURE ? activeType : undefined);
   const authenticationMethods: OutboundAuthMethod[] = useMemo(
@@ -96,7 +95,7 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
   );
   const fields = CONNECTION_FORM_FIELDS[activeType];
   const createFields = useMemo(() => fieldsForMode(activeType, 'create'), [activeType]);
-  const redirectUri = getGateCallbackUrl();
+  const redirectUri = useGateCallbackUrl();
 
   // Only federated login providers carry a redirect URI to register with the provider.
   const usesRedirectUri: boolean = fields.some((field) => field.name === 'redirectUri');
@@ -177,9 +176,11 @@ export default function ConnectionCreateWizardPage(): JSX.Element {
       }),
       ouId,
     };
-    // The first email sender becomes the default, unless the deployment configuration fixes it.
+    // The first email sender becomes the default, unless the deployment configuration fixes it or the admin
+    // can't change the server configuration.
     const makeDefault: boolean =
       isEmailSender &&
+      can('serverconfig', 'update') &&
       emailProvidersQuery.isSuccess &&
       emailProvidersQuery.data.length === 0 &&
       notificationConfigQuery.isSuccess &&

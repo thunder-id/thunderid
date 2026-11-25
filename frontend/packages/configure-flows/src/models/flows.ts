@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import type {BaseConfig} from './base';
@@ -52,9 +52,24 @@ export const FlowType = {
   ADMINISTRATION: 'ADMINISTRATION',
 
   /**
+   * Invitation flows let an organization unit admin invite a user into their unit, started by flow ID
+   */
+  INVITATION: 'INVITATION',
+
+  /**
    * Device Grant flows handle browser authorization for input-constrained devices.
    */
   DEVICE_GRANT: 'DEVICE_GRANT',
+
+  /**
+   * Self flows run operations a signed-in user performs on their own account, picked by handle
+   */
+  SELF: 'SELF',
+
+  /**
+   * Administrator-initiated flows run an operation an administrator starts on a user, picked by handle
+   */
+  ADMIN_INITIATED: 'ADMIN_INITIATED',
 } as const;
 
 /**

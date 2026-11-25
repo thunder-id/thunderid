@@ -33,6 +33,10 @@ export interface BasicFlowDefinition {
    */
   ouId: string;
   /**
+   * ID of the project the flow belongs to, when it belongs to one
+   */
+  projectId?: string;
+  /**
    * Timestamp when the flow was initially created
    */
   createdAt: string;
@@ -45,6 +49,10 @@ export interface BasicFlowDefinition {
    * Whether the flow is read-only and cannot be modified or deleted.
    */
   isReadOnly?: boolean;
+  /**
+   * False for a flow shared into the organization unit it is read in, which that unit cannot change.
+   */
+  isOwnedByOU?: boolean;
 }
 
 /**
@@ -203,6 +211,15 @@ export interface FlowExecutor {
 }
 
 /**
+ * Node-level condition: the node runs when `key` resolves to `value`, otherwise the flow moves to `onSkip`.
+ */
+export interface FlowNodeCondition {
+  key: string;
+  value: string;
+  onSkip?: string;
+}
+
+/**
  * Flow node definition matching the API specification.
  */
 export interface FlowNode {
@@ -262,11 +279,7 @@ export interface FlowNode {
   /**
    * Node-level condition for execution
    */
-  condition?: {
-    key: string;
-    value: string;
-    onSkip?: string;
-  };
+  condition?: FlowNodeCondition;
   /**
    * Cross-flow reference for CALL nodes. Carries the ID of the flow to invoke.
    */
@@ -292,9 +305,14 @@ export interface CreateFlowRequest {
    */
   flowType: FlowType;
   /**
-   * ID of the organization unit that owns the flow. It cannot change once the flow is created.
+   * ID of the organization unit that owns the flow. It cannot change once the flow is created. Required unless
+   * `projectId` is given.
    */
-  ouId: string;
+  ouId?: string;
+  /**
+   * Places the flow in the project, in the system organization unit unless `ouId` names one of the project's.
+   */
+  projectId?: string;
   /**
    * List of nodes that define the flow graph
    */
@@ -341,6 +359,10 @@ export interface FlowDefinitionResponse {
    */
   ouId: string;
   /**
+   * ID of the project the flow belongs to, when it belongs to one
+   */
+  projectId?: string;
+  /**
    * Name of the flow
    */
   name: string;
@@ -373,6 +395,10 @@ export interface FlowDefinitionResponse {
    * Whether the flow is read-only and cannot be modified or deleted.
    */
   isReadOnly?: boolean;
+  /**
+   * False for a flow shared into the organization unit it is read in, which that unit cannot change.
+   */
+  isOwnedByOU?: boolean;
 }
 
 /**

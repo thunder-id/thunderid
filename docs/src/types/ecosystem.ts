@@ -212,6 +212,18 @@ export interface EcosystemTableSection extends EcosystemSectionBase {
   rows: {cells: string[]; badge?: {label: string; tone?: EcosystemTone}}[];
 }
 
+/** Named diagram for a `diagram` section. A closed set, so a typo fails the build. */
+export type EcosystemDiagramName = 'backend-for-frontend';
+
+/**
+ * A diagram drawn by a component of its own. Boxes and arrows don't fit the
+ * other section types' data, so the section names the diagram instead.
+ */
+export interface EcosystemDiagramSection extends EcosystemSectionBase {
+  type: 'diagram';
+  diagram: EcosystemDiagramName;
+}
+
 /** Slash-command or CLI reference, grouped by a coloured tag. */
 export interface EcosystemCommandsSection extends EcosystemSectionBase {
   type: 'commands';
@@ -330,6 +342,7 @@ export interface EcosystemSupportSection extends EcosystemSectionBase {
 export type EcosystemSection =
   | EcosystemStepsSection
   | EcosystemTableSection
+  | EcosystemDiagramSection
   | EcosystemCommandsSection
   | EcosystemLinkGridSection
   | EcosystemGuidesSection

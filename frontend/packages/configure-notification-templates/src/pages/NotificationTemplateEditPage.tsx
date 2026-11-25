@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, QueryErrorNotice} from '@thunderid/components';
+import {useProjectScope} from '@thunderid/contexts';
 import {Box, CircularProgress, PageContent} from '@wso2/oxygen-ui';
 import {type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -24,10 +25,17 @@ export default function NotificationTemplateEditPage(): JSX.Element {
   const channel: NotificationChannel = channelParam === 'sms' ? 'sms' : 'email';
 
   const {data: template, isLoading, error, refetch} = useGetNotificationTemplate(channel, id ?? '');
+  const {projectId} = useProjectScope();
 
   // An unknown channel segment is not a real page; send it to the canonical list.
   if (!isNotificationChannel(channelParam)) {
     return <Navigate to={routes.notificationTemplates.list()} replace />;
+  }
+
+  // Another project's template is not shown in the selected one: a deep link, a stale tab or a switch of
+  // project goes to the selected project's templates instead.
+  if (projectId && template && template.projectId !== projectId) {
+    return <Navigate to={routes.notificationTemplates.channel(channel)} replace />;
   }
 
   const title =

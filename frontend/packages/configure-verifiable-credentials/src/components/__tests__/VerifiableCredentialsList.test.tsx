@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen} from '@thunderid/test-utils';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
 import type {VerifiableCredentialSummary} from '../../models/vc';
@@ -61,6 +62,11 @@ vi.mock('../VerifiableCredentialDeleteDialog', () => ({
 
 const {default: useGetVerifiableCredentials} = await import('../../api/useGetVerifiableCredentials');
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  isLoading: false,
+};
+
 describe('VerifiableCredentialsList', () => {
   const configurations: VerifiableCredentialSummary[] = [
     {id: 'vc-1', handle: 'lounge-pass', ouId: 'ou-1', ouHandle: 'default', name: 'Lounge Pass', vct: 'v', format: 'f'},
@@ -73,6 +79,27 @@ describe('VerifiableCredentialsList', () => {
       error: null,
       refetch: vi.fn(),
     } as unknown as ReturnType<typeof useGetVerifiableCredentials>);
+  });
+
+  it("lists only the selected project's credential configurations", () => {
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <VerifiableCredentialsList />
+      </ProjectScopeProvider>,
+    );
+
+    expect(useGetVerifiableCredentials).toHaveBeenCalledWith('project-1');
+  });
+
+  it('hides the edit and delete row actions when the admin may only view', () => {
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <VerifiableCredentialsList />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.queryByRole('button', {name: 'Edit'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'Delete'})).not.toBeInTheDocument();
   });
 
   it('hides the offer action and does not mount the credential offer dialog by default', () => {

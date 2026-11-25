@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {render, screen, waitFor} from '@testing-library/react';
+import type {ReactNode} from 'react';
 import {afterEach, describe, expect, it, vi} from 'vitest';
 import App from '../App';
 
@@ -9,11 +10,20 @@ vi.mock('@thunderid/react-router', () => ({
   ProtectedRoute: ({children}: {children: React.ReactNode}) => <div data-testid="protected-route">{children}</div>,
 }));
 
-vi.mock('@thunderid/configure-translations', () => ({
-  TranslationCreateProvider: ({children}: {children: React.ReactNode}) => children as React.ReactElement,
-  TranslationCreatePage: () => <div data-testid="translation-create-page" />,
-  TranslationsEditPage: () => <div data-testid="translations-edit-page" />,
-  TranslationsListPage: () => <div data-testid="translations-list-page" />,
+vi.mock('@thunderid/configure-translations/contexts/TranslationCreate/TranslationCreateProvider', () => ({
+  default: ({children}: {children: React.ReactNode}) => children as React.ReactElement,
+}));
+
+vi.mock('@thunderid/configure-translations/pages/TranslationCreatePage', () => ({
+  default: () => <div data-testid="translation-create-page" />,
+}));
+
+vi.mock('@thunderid/configure-translations/pages/TranslationsEditPage', () => ({
+  default: () => <div data-testid="translations-edit-page" />,
+}));
+
+vi.mock('@thunderid/configure-translations/pages/TranslationsListPage', () => ({
+  default: () => <div data-testid="translations-list-page" />,
 }));
 
 vi.mock('../lib/monaco-setup', () => ({}));
@@ -21,13 +31,26 @@ vi.mock('../lib/monaco-setup', () => ({}));
 vi.mock('@thunderid/configure-onboarding', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-onboarding')>()),
   HomePage: () => <div data-testid="home-page" />,
-  WelcomePage: () => <div data-testid="welcome-page" />,
-  GetStartedPage: () => <div data-testid="get-started-page" />,
-  CreateProjectPage: () => <div data-testid="create-project-page" />,
-  TryoutSecuringApplicationPage: () => <div data-testid="tryout-securing-application-page" />,
-  TryoutSecuringAIAgentsPage: () => <div data-testid="tryout-ai-agents-page" />,
-  TryoutSecuringMCPPage: () => <div data-testid="tryout-mcp-page" />,
-  WelcomeRedirect: () => null,
+}));
+
+vi.mock('../pages/OrganizationHomePage', () => ({
+  default: () => <div data-testid="organization-home-page" />,
+}));
+
+vi.mock('../pages/ProjectHomePage', () => ({
+  default: () => <div data-testid="project-home-page" />,
+}));
+
+vi.mock('../pages/OrganizationGatewayPage', () => ({
+  default: ({section = 'overview'}: {section?: string}) => <div data-testid={`gateway-page-${section}`} />,
+}));
+
+vi.mock('../pages/OrganizationExplorerPage', () => ({
+  default: () => <div data-testid="gateway-explorer-page" />,
+}));
+
+vi.mock('../pages/AdministratorsListPage', () => ({
+  default: () => <div data-testid="administrators-list-page" />,
 }));
 
 vi.mock('@thunderid/configure-gateways', () => ({
@@ -38,8 +61,37 @@ vi.mock('@thunderid/configure-gateways', () => ({
   GatewayValuesPage: () => <div data-testid="gateway-values-page">Gateway Values Page</div>,
 }));
 
+vi.mock('@thunderid/configure-gateways/components/RuntimeEnvironmentsProvider', () => ({
+  default: ({children}: {children: React.ReactNode}) => children as React.ReactElement,
+}));
+
+vi.mock('@thunderid/configure-gateways/pages/GatewaysListPage', () => ({
+  default: () => <div data-testid="gateways-list-page">Gateways List Page</div>,
+}));
+
+vi.mock('@thunderid/configure-gateways/pages/GatewayDetailPage', () => ({
+  default: () => <div data-testid="gateway-detail-page">Gateway Detail Page</div>,
+}));
+
+vi.mock('@thunderid/configure-gateways/pages/DeployPage', () => ({
+  default: () => <div data-testid="deploy-page">Deploy Page</div>,
+}));
+
+vi.mock('@thunderid/configure-gateways/pages/GatewayExplorerPage', () => ({
+  default: () => <div data-testid="gateway-explorer-page">Gateway Explorer Page</div>,
+}));
+
+vi.mock('@thunderid/configure-gateways/pages/GatewayValuesPage', () => ({
+  default: () => <div data-testid="gateway-values-page">Gateway Values Page</div>,
+}));
+
+let mockCan: (resource: string) => boolean = () => true;
 vi.mock('@thunderid/contexts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/contexts')>()),
+  useCapabilitiesContext: () => ({
+    can: (resource: string) => mockCan(resource),
+    isLoading: false,
+  }),
   AdministrationProvider: ({
     administration,
     children,
@@ -54,105 +106,221 @@ vi.mock('@thunderid/contexts', async (importOriginal) => ({
   ),
 }));
 
-vi.mock('@thunderid/configure-user-types', () => ({
-  UserTypeCreateProvider: ({children}: {children: React.ReactNode}) => children as React.ReactElement,
-  UserTypesListPage: () => <div data-testid="user-types-list-page">User Types List Page</div>,
-  CreateUserTypePage: () => <div data-testid="create-user-type-page">Create User Type Page</div>,
-  ViewUserTypePage: () => <div data-testid="view-user-type-page">View User Type Page</div>,
+vi.mock('@thunderid/configure-agent-types/contexts/AgentTypeCreate/AgentTypeCreateProvider', () => ({
+  default: ({children}: {children: React.ReactNode}) => children as React.ReactElement,
 }));
 
-vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@thunderid/configure-connections')>()),
-  ConnectionsListPage: () => <div data-testid="connections-list-page">Connections List Page</div>,
-  ConnectionDetailPage: () => <div data-testid="connection-detail-page">Connection Detail Page</div>,
-  ConnectionConfigureWizardPage: () => (
-    <div data-testid="connection-configure-wizard-page">Connection Configure Wizard Page</div>
-  ),
-  ConnectionCreateWizardPage: () => (
-    <div data-testid="connection-create-wizard-page">Connection Create Wizard Page</div>
-  ),
-  TrustedIssuerDetailPage: () => <div data-testid="trusted-issuer-detail-page">Trusted Issuer Detail Page</div>,
+vi.mock('@thunderid/configure-agent-types/pages/AgentTypesListPage', () => ({
+  default: () => <div data-testid="agent-types-list-page">Agent Types List Page</div>,
 }));
 
-vi.mock('@thunderid/configure-agents', () => ({
-  AgentEditPage: () => <div data-testid="agent-edit-page">Agent Edit Page</div>,
-  AgentOnboardPage: () => <div data-testid="agent-onboard-page">Agent Onboard Page</div>,
-  AgentsListPage: () => <div data-testid="agents-list-page">Agents List Page</div>,
+vi.mock('@thunderid/configure-agent-types/pages/CreateAgentTypePage', () => ({
+  default: () => <div data-testid="create-agent-type-page">Create Agent Type Page</div>,
 }));
 
-vi.mock('@thunderid/configure-applications', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@thunderid/configure-applications')>()),
-  ApplicationsListPage: () => <div data-testid="applications-list-page">Applications List Page</div>,
-  ApplicationCreatePage: () => <div data-testid="application-create-page">Application Create Page</div>,
-  ApplicationEditPage: () => <div data-testid="application-edit-page">Application Edit Page</div>,
-  ApplicationTemplateSelectPage: () => <div data-testid="application-template-select-page">Template Select Page</div>,
-  ApplicationCreateProvider: ({children}: {children: React.ReactNode}) => children as React.ReactElement,
+vi.mock('@thunderid/configure-agent-types/pages/ViewAgentTypePage', () => ({
+  default: () => <div data-testid="view-agent-type-page">View Agent Type Page</div>,
 }));
 
-vi.mock('@thunderid/configure-design', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@thunderid/configure-design')>()),
-  LayoutBuilderPage: () => <div data-testid="layout-builder-page">Layout Builder Page</div>,
-  LayoutBuilderProvider: ({children}: {children: React.ReactNode}) => children as React.ReactElement,
-  DesignPage: () => <div data-testid="design-page">Design Page</div>,
-  ThemeBuilderPage: () => <div data-testid="theme-builder-page">Theme Builder Page</div>,
-  ThemeCreatePage: () => <div data-testid="theme-create-page">Theme Create Page</div>,
-  ThemeBuilderProvider: ({children}: {children: React.ReactNode}) => children as React.ReactElement,
+vi.mock('@thunderid/configure-user-types/contexts/UserTypeCreate/UserTypeCreateProvider', () => ({
+  default: ({children}: {children: React.ReactNode}) => children as React.ReactElement,
 }));
 
-vi.mock('@thunderid/configure-groups', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@thunderid/configure-groups')>()),
-  GroupsListPage: () => <div data-testid="groups-list-page">Groups List Page</div>,
-  GroupEditPage: () => <div data-testid="group-edit-page">Group Edit Page</div>,
-  CreateGroupPage: () => <div data-testid="create-group-page">Create Group Page</div>,
-  GroupCreateProvider: ({children}: {children: React.ReactNode}) => children as React.ReactElement,
+vi.mock('@thunderid/configure-user-types/pages/UserTypesListPage', () => ({
+  default: () => <div data-testid="user-types-list-page">User Types List Page</div>,
 }));
 
-vi.mock('@thunderid/configure-import-export', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@thunderid/configure-import-export')>()),
-  ExportPage: () => <div data-testid="export-page">Export Page</div>,
-  ImportConfigurationSummaryPage: () => (
-    <div data-testid="import-configuration-summary-page">Import Configuration Summary Page</div>
-  ),
-  ImportConfigurationUploadPage: () => (
-    <div data-testid="import-configuration-upload-page">Import Configuration Upload Page</div>
-  ),
-  ImportConfigurationValidatePage: () => (
-    <div data-testid="import-configuration-validate-page">Import Configuration Validate Page</div>
-  ),
-  ImportExportPage: () => <div data-testid="import-export-page">Import Export Page</div>,
+vi.mock('@thunderid/configure-user-types/pages/CreateUserTypePage', () => ({
+  default: () => <div data-testid="create-user-type-page">Create User Type Page</div>,
 }));
 
-vi.mock('@thunderid/configure-organization-units', async () => {
+vi.mock('@thunderid/configure-user-types/pages/ViewUserTypePage', () => ({
+  default: () => <div data-testid="view-user-type-page">View User Type Page</div>,
+}));
+
+vi.mock('@thunderid/configure-connections/pages/ConnectionsListPage', () => ({
+  default: () => <div data-testid="connections-list-page">Connections List Page</div>,
+}));
+
+vi.mock('@thunderid/configure-connections/pages/ConnectionDetailPage', () => ({
+  default: () => <div data-testid="connection-detail-page">Connection Detail Page</div>,
+}));
+
+vi.mock('@thunderid/configure-connections/pages/ConnectionConfigureWizardPage', () => ({
+  default: () => <div data-testid="connection-configure-wizard-page">Connection Configure Wizard Page</div>,
+}));
+
+vi.mock('@thunderid/configure-connections/pages/ConnectionCreateWizardPage', () => ({
+  default: () => <div data-testid="connection-create-wizard-page">Connection Create Wizard Page</div>,
+}));
+
+vi.mock('@thunderid/configure-connections/pages/TrustedIssuerDetailPage', () => ({
+  default: () => <div data-testid="trusted-issuer-detail-page">Trusted Issuer Detail Page</div>,
+}));
+
+vi.mock('@thunderid/configure-agents/pages/AgentEditPage', () => ({
+  default: () => <div data-testid="agent-edit-page">Agent Edit Page</div>,
+}));
+
+vi.mock('@thunderid/configure-agents/pages/AgentAddRoute', () => ({
+  default: () => <div data-testid="agent-onboard-page">Agent Onboard Page</div>,
+}));
+
+vi.mock('@thunderid/configure-agents/pages/AgentsListPage', () => ({
+  default: () => <div data-testid="agents-list-page">Agents List Page</div>,
+}));
+
+vi.mock('@thunderid/configure-applications/pages/ApplicationsListPage', () => ({
+  default: () => <div data-testid="applications-list-page">Applications List Page</div>,
+}));
+
+vi.mock('@thunderid/configure-applications/pages/ApplicationCreatePage', () => ({
+  default: () => <div data-testid="application-create-page">Application Create Page</div>,
+}));
+
+vi.mock('@thunderid/configure-applications/pages/ApplicationEditPage', () => ({
+  default: () => <div data-testid="application-edit-page">Application Edit Page</div>,
+}));
+
+vi.mock('@thunderid/configure-applications/pages/ApplicationTemplateSelectPage', () => ({
+  default: () => <div data-testid="application-template-select-page">Template Select Page</div>,
+}));
+
+vi.mock('@thunderid/configure-applications/contexts/ApplicationCreate/ApplicationCreateProvider', () => ({
+  default: ({children}: {children: React.ReactNode}) => children as React.ReactElement,
+}));
+
+vi.mock('@thunderid/configure-design/pages/LayoutBuilderPage', () => ({
+  default: () => <div data-testid="layout-builder-page">Layout Builder Page</div>,
+}));
+
+vi.mock('@thunderid/configure-design/contexts/LayoutBuilder/LayoutBuilderProvider', () => ({
+  default: ({children}: {children: React.ReactNode}) => children as React.ReactElement,
+}));
+
+vi.mock('@thunderid/configure-design/pages/DesignPage', () => ({
+  default: () => <div data-testid="design-page">Design Page</div>,
+}));
+
+vi.mock('@thunderid/configure-design/pages/ThemeBuilderPage', () => ({
+  default: () => <div data-testid="theme-builder-page">Theme Builder Page</div>,
+}));
+
+vi.mock('@thunderid/configure-design/pages/ThemeCreatePage', () => ({
+  default: () => <div data-testid="theme-create-page">Theme Create Page</div>,
+}));
+
+vi.mock('@thunderid/configure-design/contexts/ThemeBuilder/ThemeBuilderProvider', () => ({
+  default: ({children}: {children: React.ReactNode}) => children as React.ReactElement,
+}));
+
+vi.mock('@thunderid/configure-groups/pages/GroupsListPage', () => ({
+  default: () => <div data-testid="groups-list-page">Groups List Page</div>,
+}));
+
+vi.mock('@thunderid/configure-groups/pages/GroupEditPage', () => ({
+  default: () => <div data-testid="group-edit-page">Group Edit Page</div>,
+}));
+
+vi.mock('@thunderid/configure-groups/pages/CreateGroupPage', () => ({
+  default: () => <div data-testid="create-group-page">Create Group Page</div>,
+}));
+
+vi.mock('@thunderid/configure-groups/contexts/GroupCreate/GroupCreateProvider', () => ({
+  default: ({children}: {children: React.ReactNode}) => children as React.ReactElement,
+}));
+
+vi.mock('@thunderid/configure-import-export/pages/ImportConfigurationSummaryPage', () => ({
+  default: () => <div data-testid="import-configuration-summary-page">Import Configuration Summary Page</div>,
+}));
+
+vi.mock('@thunderid/configure-import-export/pages/ExportPage', () => ({
+  default: () => <div data-testid="export-page">Export Page</div>,
+}));
+
+vi.mock('@thunderid/configure-import-export/pages/ImportConfigurationUploadPage', () => ({
+  default: () => <div data-testid="import-configuration-upload-page">Import Configuration Upload Page</div>,
+}));
+
+vi.mock('@thunderid/configure-import-export/pages/ImportConfigurationValidatePage', () => ({
+  default: () => <div data-testid="import-configuration-validate-page">Import Configuration Validate Page</div>,
+}));
+
+vi.mock('@thunderid/configure-import-export/pages/ImportExportPage', () => ({
+  default: () => <div data-testid="import-export-page">Import Export Page</div>,
+}));
+
+vi.mock('@thunderid/configure-organization-units/contexts/OrganizationUnitProvider', async () => {
   const {Outlet} = await import('react-router');
-  return {
-    OrganizationUnitProvider: () => <Outlet />,
-    CreateOrganizationUnitPage: () => <div data-testid="create-organization-unit-page">Create OU Page</div>,
-    OrganizationUnitEditPage: ({
-      renderDefaultFlowsSettings,
-    }: {
-      renderDefaultFlowsSettings: (props: Record<string, never>) => React.ReactNode;
-    }) => <div data-testid="organization-unit-edit-page">{renderDefaultFlowsSettings({})}</div>,
-    OrganizationUnitsListPage: () => <div data-testid="organization-units-list-page">Organization Units List</div>,
-  };
+  return {default: () => <Outlet />};
 });
 
-vi.mock('@thunderid/configure-flows', () => ({
-  OrganizationUnitDefaultFlowsSettings: () => <div data-testid="ou-default-flows-settings" />,
-  FlowCreatePage: () => <div data-testid="flow-create-page">Flow Create Page</div>,
-  FlowsListPage: () => <div data-testid="flows-list-page">Flows List Page</div>,
-  FlowBuilderPage: () => <div data-testid="flow-builder-page">Flow Builder Page</div>,
+vi.mock('@thunderid/configure-organization-units/pages/CreateOrganizationUnitPage', () => ({
+  default: () => <div data-testid="create-organization-unit-page">Create OU Page</div>,
 }));
 
-vi.mock('@thunderid/configure-resource-servers', () => ({
-  ResourceServersListPage: () => <div data-testid="resource-servers-list-page">Resource Servers List Page</div>,
-  ResourceServerEditPage: () => <div data-testid="resource-server-edit-page">Resource Server Edit Page</div>,
-  CreateResourceServerPage: () => <div data-testid="create-resource-server-page">Create Resource Server Page</div>,
+vi.mock('@thunderid/configure-organization-units/pages/OrganizationUnitEditPage', () => ({
+  default: ({
+    renderDefaultFlowsSettings,
+  }: {
+    renderDefaultFlowsSettings: (props: Record<string, never>) => React.ReactNode;
+  }) => <div data-testid="organization-unit-edit-page">{renderDefaultFlowsSettings({})}</div>,
+}));
+
+vi.mock('@thunderid/configure-organization-units/pages/OrganizationUnitsListPage', () => ({
+  default: () => <div data-testid="organization-units-list-page">Organization Units List</div>,
+}));
+
+vi.mock('@thunderid/configure-flows/components/OrganizationUnitDefaultFlowsSettings', () => ({
+  default: () => <div data-testid="ou-default-flows-settings" />,
+}));
+
+vi.mock('@thunderid/configure-flows/pages/FlowCreatePage', () => ({
+  default: () => <div data-testid="flow-create-page">Flow Create Page</div>,
+}));
+
+vi.mock('@thunderid/configure-flows/pages/FlowsListPage', () => ({
+  default: () => <div data-testid="flows-list-page">Flows List Page</div>,
+}));
+
+vi.mock('@thunderid/configure-flows/pages/FlowBuilderPage', () => ({
+  default: () => <div data-testid="flow-builder-page">Flow Builder Page</div>,
+}));
+
+vi.mock('@thunderid/configure-resource-servers/pages/ResourceServersListPage', () => ({
+  default: () => <div data-testid="resource-servers-list-page">Resource Servers List Page</div>,
+}));
+
+vi.mock('@thunderid/configure-resource-servers/pages/ResourceServerEditPage', () => ({
+  default: () => <div data-testid="resource-server-edit-page">Resource Server Edit Page</div>,
+}));
+
+vi.mock('@thunderid/configure-resource-servers/pages/CreateResourceServerPage', () => ({
+  default: () => <div data-testid="create-resource-server-page">Create Resource Server Page</div>,
+}));
+
+vi.mock('@thunderid/configure-resource-servers/pages/CreateAuthorizationDetailTypePage', () => ({
+  default: () => <div data-testid="create-authorization-detail-type-page" />,
 }));
 
 vi.mock('../layouts/DashboardLayout', async () => {
   const {Outlet} = await import('react-router');
   return {default: () => <Outlet />};
 });
+
+// What the console's root reads to open the default project: no projects unless a test sets some.
+const projectSelection = vi.hoisted(() => ({
+  projects: [] as {id: string; handle: string; displayName: string}[],
+  selectedProject: undefined as {id: string} | undefined,
+  isLoading: false,
+  selectProject: (): void => undefined,
+}));
+
+vi.mock('@thunderid/configure-projects', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/configure-projects')>()),
+  SelectedProjectScope: ({children}: {children: ReactNode}) => children,
+  useProjectSelection: () => projectSelection,
+}));
 
 vi.mock('../layouts/FullScreenLayout', async () => {
   const {Outlet} = await import('react-router');
@@ -217,6 +385,80 @@ describe('App', () => {
     });
   });
 
+  it('lands on the organization home at the root when there is no default project', async () => {
+    window.history.pushState({}, '', '/');
+    render(<App />);
+    expect(await screen.findByTestId('organization-home-page')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/home');
+  });
+
+  it("lands on the default project's home at the root once it is selected", async () => {
+    projectSelection.projects = [{id: 'p-default', handle: 'default', displayName: 'Default'}];
+    projectSelection.selectedProject = {id: 'p-default'};
+    window.history.pushState({}, '', '/');
+    render(<App />);
+    expect(await screen.findByTestId('project-home-page')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/project/default');
+    projectSelection.projects = [];
+    projectSelection.selectedProject = undefined;
+  });
+
+  it("loads a project's home at /project/:projectHandle", async () => {
+    window.history.pushState({}, '', '/project/shop');
+    render(<App />);
+    expect(await screen.findByTestId('project-home-page')).toBeInTheDocument();
+  });
+
+  it("opens a project's pages under the project's path", async () => {
+    for (const [path, page] of [
+      ['/project/shop/resource-servers', 'resource-servers-list-page'],
+      ['/project/shop/resource-servers/rs-123', 'resource-server-edit-page'],
+      ['/project/shop/resource-servers/create', 'create-resource-server-page'],
+      ['/project/shop/groups/create', 'create-group-page'],
+      ['/project/shop/users', 'administrators-list-page'],
+      ['/project/shop/deploy/gateways/gw-dev/history', 'gateway-page-history'],
+    ]) {
+      window.history.pushState({}, '', path);
+      const {unmount} = render(<App />);
+      expect(await screen.findByTestId(page)).toBeInTheDocument();
+      unmount();
+    }
+  });
+
+  it("guards creating a project's authorization detail type", async () => {
+    window.history.pushState({}, '', '/project/shop/authorization-detail-types/create');
+    const {unmount} = render(<App />);
+    expect(await screen.findByTestId('create-authorization-detail-type-page')).toBeInTheDocument();
+    unmount();
+
+    mockCan = (resource) => resource !== 'authzdetail';
+    try {
+      render(<App />);
+      expect(await screen.findByText(/permission to view this page/)).toBeInTheDocument();
+      expect(screen.queryByTestId('create-authorization-detail-type-page')).not.toBeInTheDocument();
+    } finally {
+      mockCan = () => true;
+    }
+  });
+
+  it("opens each of a gateway's sections at the organization level", async () => {
+    for (const section of ['values', 'endpoints', 'history']) {
+      window.history.pushState({}, '', `/deploy/gateways/gw-dev/${section}`);
+      const {unmount} = render(<App />);
+      expect(await screen.findByTestId(`gateway-page-${section}`)).toBeInTheDocument();
+      unmount();
+    }
+    window.history.pushState({}, '', '/deploy/gateways/gw-dev');
+    render(<App />);
+    expect(await screen.findByTestId('gateway-page-overview')).toBeInTheDocument();
+  });
+
+  it('lists the administrators at /users', async () => {
+    window.history.pushState({}, '', '/users');
+    render(<App />);
+    expect(await screen.findByTestId('administrators-list-page')).toBeInTheDocument();
+  });
+
   it('loads ResourceServersListPage lazily at /resource-servers', async () => {
     window.history.pushState({}, '', '/resource-servers');
     render(<App />);
@@ -262,6 +504,30 @@ describe('App', () => {
     render(<App />);
     await waitFor(() => {
       expect(screen.getByTestId('create-user-type-page')).toBeInTheDocument();
+    });
+  });
+
+  it('should load AgentTypesListPage lazily at /agent-types', async () => {
+    window.history.pushState({}, '', '/agent-types');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('agent-types-list-page')).toBeInTheDocument();
+    });
+  });
+
+  it('should load ViewAgentTypePage lazily at /agent-types/:id', async () => {
+    window.history.pushState({}, '', '/agent-types/at-123');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('view-agent-type-page')).toBeInTheDocument();
+    });
+  });
+
+  it('should load CreateAgentTypePage lazily at /agent-types/create', async () => {
+    window.history.pushState({}, '', '/agent-types/create');
+    render(<App />);
+    await waitFor(() => {
+      expect(screen.getByTestId('create-agent-type-page')).toBeInTheDocument();
     });
   });
 
@@ -442,23 +708,6 @@ describe('App', () => {
     });
   });
 
-  it('loads WelcomePage lazily at /welcome', async () => {
-    window.history.pushState({}, '', '/welcome');
-    render(<App />);
-    await waitFor(() => {
-      expect(screen.getByTestId('welcome-page')).toBeInTheDocument();
-    });
-  });
-
-  it('does not mount the tryouts', async () => {
-    window.history.pushState({}, '', '/welcome/tryout/mcp');
-    render(<App />);
-    await new Promise((resolve) => {
-      setTimeout(resolve, 50);
-    });
-    expect(screen.queryByTestId('tryout-mcp-page')).not.toBeInTheDocument();
-  });
-
   it('runs every administration operation natively', () => {
     render(<App />);
     expect(screen.getByTestId('administration-mode')).toHaveTextContent('native');
@@ -496,12 +745,10 @@ describe('App', () => {
     });
   });
 
-  it('loads GatewayValuesPage lazily at /deploy/gateways/:gatewayId/values', async () => {
+  it("opens a gateway's values on its own page at /deploy/gateways/:gatewayId/values", async () => {
     window.history.pushState({}, '', '/deploy/gateways/gw-1/values');
     render(<App />);
-    await waitFor(() => {
-      expect(screen.getByTestId('gateway-values-page')).toBeInTheDocument();
-    });
+    expect(await screen.findByTestId('gateway-page-values')).toBeInTheDocument();
   });
 
   it('loads AgentOnboardPage lazily at /agents/create', async () => {

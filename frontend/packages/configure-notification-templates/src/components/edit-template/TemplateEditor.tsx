@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {UnsavedChangesBar} from '@thunderid/components';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {Box, Button, IconButton, PageTitle, Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {ArrowLeft, Edit} from '@wso2/oxygen-ui-icons-react';
@@ -43,6 +44,8 @@ export default function TemplateEditor({channel, template}: TemplateEditorProps)
   const navigate = useNavigate();
   const routes = useNotificationTemplateRoutes();
   const update = useUpdateNotificationTemplate();
+  const {can} = useCapabilitiesContext();
+  const canUpdate = can('notificationtemplate', 'update');
   const isEmail = channel === 'email';
 
   // Loaded values, used to seed state and to detect unsaved changes. The editor is keyed by
@@ -173,17 +176,19 @@ export default function TemplateEditor({channel, template}: TemplateEditorProps)
             ) : (
               <>
                 <Typography variant="h3">{displayName}</Typography>
-                <IconButton
-                  size="small"
-                  aria-label={t('common:actions.edit', 'Edit')}
-                  onClick={() => {
-                    setTempName(displayName);
-                    setIsEditingName(true);
-                  }}
-                  sx={{opacity: 0.6, '&:hover': {opacity: 1}}}
-                >
-                  <Edit size={16} />
-                </IconButton>
+                {canUpdate && (
+                  <IconButton
+                    size="small"
+                    aria-label={t('common:actions.edit', 'Edit')}
+                    onClick={() => {
+                      setTempName(displayName);
+                      setIsEditingName(true);
+                    }}
+                    sx={{opacity: 0.6, '&:hover': {opacity: 1}}}
+                  >
+                    <Edit size={16} />
+                  </IconButton>
+                )}
               </>
             )}
           </Stack>
@@ -215,17 +220,19 @@ export default function TemplateEditor({channel, template}: TemplateEditorProps)
                 <Typography variant="body2" color="text.secondary">
                   {description || t('editor.description.empty', 'No description')}
                 </Typography>
-                <IconButton
-                  size="small"
-                  aria-label={t('common:actions.edit', 'Edit')}
-                  onClick={() => {
-                    setTempDescription(description);
-                    setIsEditingDescription(true);
-                  }}
-                  sx={{opacity: 0.6, '&:hover': {opacity: 1}, mt: -0.5}}
-                >
-                  <Edit size={14} />
-                </IconButton>
+                {canUpdate && (
+                  <IconButton
+                    size="small"
+                    aria-label={t('common:actions.edit', 'Edit')}
+                    onClick={() => {
+                      setTempDescription(description);
+                      setIsEditingDescription(true);
+                    }}
+                    sx={{opacity: 0.6, '&:hover': {opacity: 1}, mt: -0.5}}
+                  >
+                    <Edit size={14} />
+                  </IconButton>
+                )}
               </>
             )}
           </Stack>
@@ -243,6 +250,7 @@ export default function TemplateEditor({channel, template}: TemplateEditorProps)
       >
         {/* ── Config pane ─────────────────────────────────────────────── */}
         <TemplateContentEditor
+          readOnly={!canUpdate}
           channel={channel}
           subject={subject}
           body={body}
@@ -267,7 +275,7 @@ export default function TemplateEditor({channel, template}: TemplateEditorProps)
         />
       </Box>
 
-      {hasChanges && (
+      {hasChanges && canUpdate && (
         <UnsavedChangesBar
           message={t('editor.unsavedChanges', 'You have unsaved changes')}
           resetLabel={t('editor.reset', 'Reset')}

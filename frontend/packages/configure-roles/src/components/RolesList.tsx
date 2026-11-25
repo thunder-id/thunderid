@@ -1,11 +1,12 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {QueryErrorNotice} from '@thunderid/components';
+import {EditOrViewAction, QueryErrorNotice} from '@thunderid/components';
+import {isRecordLocked, useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {IconButton, Typography, Tooltip, DataGrid, ListingTable} from '@wso2/oxygen-ui';
-import {Eye, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
+import {Eye, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useCallback, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
@@ -23,14 +24,17 @@ export default function RolesList(): JSX.Element {
   const logger = useLogger('RolesList');
   const dataGridLocaleText = useDataGridLocaleText();
   const routes = useRoleRoutes();
+  const {can} = useCapabilitiesContext();
   const [paginationModel, setPaginationModel] = useState<DataGrid.GridPaginationModel>({pageSize: 10, page: 0});
 
+  const {projectId} = useProjectScope();
   const rolesParams = useMemo(
     () => ({
       limit: paginationModel.pageSize,
       offset: paginationModel.page * paginationModel.pageSize,
+      projectId,
     }),
-    [paginationModel],
+    [paginationModel, projectId],
   );
   const {data, isLoading, error, refetch} = useGetRoles(rolesParams);
 
@@ -98,7 +102,7 @@ export default function RolesList(): JSX.Element {
         hideable: false,
         renderCell: (params: DataGrid.GridRenderCellParams<RoleSummary>): JSX.Element => (
           <ListingTable.RowActions>
-            {params.row.isReadOnly ? (
+            {isRecordLocked(params.row) ? (
               <Tooltip title={t('common:status.readOnly', 'Read only')}>
                 <IconButton
                   aria-label={t('common:status.readOnly', 'Read only')}
@@ -111,38 +115,29 @@ export default function RolesList(): JSX.Element {
               </Tooltip>
             ) : (
               <>
-                <Tooltip title={t('common:actions.edit', 'Edit')}>
-                  <IconButton
-                    aria-label={t('common:actions.edit', 'Edit')}
-                    size="small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleViewClick(params.row.id);
-                    }}
-                  >
-                    <Pencil size={16} />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title={t('common:actions.delete', 'Delete')}>
-                  <IconButton
-                    aria-label={t('common:actions.delete', 'Delete')}
-                    size="small"
-                    color="error"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteClick(params.row.id);
-                    }}
-                  >
-                    <Trash2 size={16} />
-                  </IconButton>
-                </Tooltip>
+                <EditOrViewAction canEdit={can('role', 'update')} onClick={() => handleViewClick(params.row.id)} />
+                {can('role', 'delete') && (
+                  <Tooltip title={t('common:actions.delete', 'Delete')}>
+                    <IconButton
+                      aria-label={t('common:actions.delete', 'Delete')}
+                      size="small"
+                      color="error"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteClick(params.row.id);
+                      }}
+                    >
+                      <Trash2 size={16} />
+                    </IconButton>
+                  </Tooltip>
+                )}
               </>
             )}
           </ListingTable.RowActions>
         ),
       },
     ],
-    [handleDeleteClick, handleViewClick, t],
+    [can, handleDeleteClick, handleViewClick, t],
   );
 
   if (error) {

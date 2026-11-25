@@ -40,8 +40,16 @@ const (
 	// present it, not sub, is the subject the deny list is evaluated against.
 	claimAccessTokenSubject = "access_token_sub"
 
+	// claimActor carries the acting client in a delegated token (RFC 8693 §4.1).
+	claimActor = "act"
+
 	// claimClientID names the OAuth client an access token was issued to.
 	claimClientID = "client_id"
+
+	// claimSourceIDP names the external identity provider whose subject a self-issued access token was
+	// issued for. Its sub is that provider's identifier, not an account of this deployment. It mirrors
+	// the OAuth package's ClaimIDP.
+	claimSourceIDP = "idp"
 )
 
 // jwtAuthenticator handles authentication and authorization using JWT Bearer tokens.
@@ -76,18 +84,26 @@ func (h *jwtAuthenticator) Authenticate(r *http.Request) (*SecurityContext, erro
 	}
 
 	// Unconfigured, a token valid for one REST endpoint is valid for all of them: REST is gated by
-	// scope, not audience.
-	return h.authenticateToken(r.Context(), token, h.expectedAud)
+	// scope, not audience. A trusted-issuer token is checked against that issuer's configured audience.
+	return h.authenticateToken(r.Context(), token, audiences{selfIssued: h.expectedAud})
 }
 
-// authenticateToken verifies token and builds the resulting SecurityContext. expectedAud, if
-// non-empty, is required as the audience of a self-issued token (RFC 8707 resource indicator);
-// empty skips that check, same as VerifyJWT itself treats it. It has no effect on a trusted-issuer
-// token, which is always checked against the issuer's own configured audience. authenticateToken
+// audiences are the audiences a token must carry, by who issued it.
+type audiences struct {
+	// selfIssued, if non-empty, is required as the audience of a self-issued token (RFC 8707 resource
+	// indicator); empty skips that check, same as VerifyJWT itself treats it.
+	selfIssued string
+	// trustedIssuer, if non-empty, is required as the audience of a trusted-issuer token in place of the
+	// issuer's configured audience, for a resource of its own such as the MCP server.
+	trustedIssuer string
+}
+
+// authenticateToken verifies token against aud and builds the resulting SecurityContext. authenticateToken
 // performs no revocation check on its own — the REST gate applies that separately in
 // securityService.Process; BearerAuthenticator.Authenticate applies it here for other callers that
 // need identical behavior in one call.
-func (h *jwtAuthenticator) authenticateToken(ctx context.Context, token, expectedAud string) (*SecurityContext, error) {
+func (h *jwtAuthenticator) authenticateToken(ctx context.Context, token string,
+	aud audiences) (*SecurityContext, error) {
 	if token == "" {
 		return nil, errInvalidToken
 	}
@@ -95,13 +111,21 @@ func (h *jwtAuthenticator) authenticateToken(ctx context.Context, token, expecte
 	// Step 2: Verify the JWT, routing on its issuer. Tokens this server issued
 	// are verified with its own signing key; Additionally when a trusted issuer is
 	// configured, tokens from that issuer are verified against its JWKS.
-	if err := h.verifyToken(ctx, token, expectedAud); err != nil {
+	selfIssued, err := h.verifyToken(ctx, token, aud)
+	if err != nil {
 		return nil, err
 	}
 
 	// Step 3: Decode JWT payload to extract attributes
 	attributes, err := jwt.DecodeJWTPayload(token)
 	if err != nil {
+		return nil, errInvalidToken
+	}
+
+	// A self-issued token for an external identity provider's subject names no account of this
+	// deployment, so it does not authenticate here. A configured trusted issuer is how a federated
+	// identity calls these APIs.
+	if _, external := attributes[claimSourceIDP]; selfIssued && external {
 		return nil, errInvalidToken
 	}
 
@@ -121,6 +145,7 @@ func (h *jwtAuthenticator) authenticateToken(ctx context.Context, token, expecte
 	securityCtx := newSecurityContext(subject, ouID, token, scopes, attributes)
 	securityCtx.revocationID = extractAttribute(attributes, claimJTI)
 	securityCtx.tokenFamilyID = extractAttribute(attributes, claimTokenFamilyID)
+	securityCtx.selfIssued = selfIssued
 	// Subject-dimension revocation is only meaningful for subjects this deployment issued, so a
 	// federated token contributes no revocation subject and is enforced on jti and tfid alone.
 	if issuer, _ := attributes[claimIssuer].(string); issuer == config.GetServerRuntime().Config.JWT.Issuer {
@@ -149,52 +174,60 @@ func (h *jwtAuthenticator) authenticateToken(ctx context.Context, token, expecte
 	return securityCtx, nil
 }
 
-// AuthenticateBearerToken verifies a bearer token exactly as the REST gate's JWT authenticator does
-// — routing on issuer (self-issued, or a configured trusted issuer verified via JWKS) — and returns
-// the resulting SecurityContext. expectedAud is required as a self-issued token's audience (RFC 8707
-// resource indicator); pass "" to skip that check, as the REST gate does. It performs no revocation
-// check; use BearerAuthenticator.Authenticate for the REST gate's full behavior (verification plus
-// revocation) in one call.
+// AuthenticateBearerToken verifies a bearer token, routing on issuer as the REST gate's JWT
+// authenticator does (self-issued, or a configured trusted issuer verified via JWKS), and returns the
+// resulting SecurityContext. expectedAud, if non-empty, is the resource the token must have been
+// issued for (RFC 8707 resource indicator), whichever issuer issued it: a resource with its own
+// identifier, such as the MCP server, accepts only tokens issued for it. Pass "" to leave a self-issued
+// token's audience unchecked and check a trusted-issuer token against that issuer's configured audience;
+// this matches the REST gate only while server.security.rest.audience is unset, since the gate checks a
+// self-issued token against that audience once it is set. It performs no revocation check; use
+// BearerAuthenticator.Authenticate for verification and revocation in one call.
 func AuthenticateBearerToken(
 	ctx context.Context, jwtService jwt.JWTServiceInterface, token, expectedAud string,
 ) (*SecurityContext, error) {
-	return (&jwtAuthenticator{jwtService: jwtService}).authenticateToken(ctx, token, expectedAud)
+	return (&jwtAuthenticator{jwtService: jwtService}).authenticateToken(ctx, token,
+		audiences{selfIssued: expectedAud, trustedIssuer: expectedAud})
 }
 
 // verifyToken verifies the bearer token by routing on its iss claim against
 // an explicit allowlist of accepted issuers. Tokens from the configured
 // trusted issuer (when set) are verified against its JWKS. Tokens whose iss
 // matches this server's own JWT issuer must be access tokens, and are verified
-// with the local signing key and against expectedAud if it is non-empty. Any
-// other iss is rejected. There is no cross-issuer fallback.
-func (h *jwtAuthenticator) verifyToken(ctx context.Context, token, expectedAud string) error {
+// with the local signing key and against aud.selfIssued if it is non-empty. A
+// trusted-issuer token is checked against aud.trustedIssuer when it is non-empty,
+// and the issuer's configured audience otherwise. Any other iss is rejected. There is
+// no cross-issuer fallback. It reports whether the local signing key verified the token.
+func (h *jwtAuthenticator) verifyToken(ctx context.Context, token string, aud audiences) (bool, error) {
 	trustedIssuer := config.GetServerRuntime().Config.Server.SecurityConfig.TrustedIssuer
 	iss := extractIssuer(token)
 	switch {
 	case trustedIssuer.IsConfigured() && iss == trustedIssuer.Issuer:
-		if !h.verifyFederatedToken(ctx, token) {
-			return errInvalidToken
+		if !h.verifyFederatedToken(ctx, token, aud.trustedIssuer) {
+			return false, errInvalidToken
 		}
+		return false, nil
 	case iss == config.GetServerRuntime().Config.JWT.Issuer:
 		if err := requireAccessTokenType(token); err != nil {
-			return err
+			return false, err
 		}
-		if err := h.jwtService.VerifyJWT(ctx, token, expectedAud, ""); err != nil {
-			return errInvalidToken
+		if err := h.jwtService.VerifyJWT(ctx, token, aud.selfIssued, ""); err != nil {
+			return false, errInvalidToken
 		}
+		return true, nil
 	default:
-		return errInvalidToken
+		return false, errInvalidToken
 	}
-	return nil
 }
 
 // verifyFederatedToken checks if the token is from a trusted external issuer and verifies it via JWKS.
 // Per RFC 9068 §2.2 and RFC 8707, this validates:
 //   - iss: matches the configured trusted issuer
-//   - aud: matches this server's own identifier (the resource server)
+//   - aud: matches audience when it is non-empty, the resource the token is presented to, and the
+//     issuer's configured audience, this server's own identifier, otherwise
 //   - signature: verified via the auth server's JWKS endpoint
 //   - required_claims: each configured claim must match the expected value
-func (h *jwtAuthenticator) verifyFederatedToken(ctx context.Context, token string) (verified bool) {
+func (h *jwtAuthenticator) verifyFederatedToken(ctx context.Context, token, audience string) (verified bool) {
 	trustedIssuer := config.GetServerRuntime().Config.Server.SecurityConfig.TrustedIssuer
 	if !trustedIssuer.IsConfigured() {
 		return false
@@ -210,9 +243,12 @@ func (h *jwtAuthenticator) verifyFederatedToken(ctx context.Context, token strin
 		return false
 	}
 
+	if audience == "" {
+		audience = trustedIssuer.Audience
+	}
 	// VerifyJWTWithJWKS validates signature, aud (resource server identity), iss, and time claims.
 	if svcErr := h.jwtService.VerifyJWTWithJWKS(ctx,
-		token, trustedIssuer.JWKSURL, trustedIssuer.Audience, trustedIssuer.Issuer,
+		token, trustedIssuer.JWKSURL, audience, trustedIssuer.Issuer,
 	); svcErr != nil {
 		return false
 	}
@@ -238,9 +274,7 @@ func requireAccessTokenType(token string) error {
 	if err != nil {
 		return errInvalidToken
 	}
-	typ, _ := header["typ"].(string)
-	if !strings.EqualFold(typ, jwt.TokenTypeAccessToken) &&
-		!strings.EqualFold(typ, jwt.TokenTypeAccessTokenWithPrefix) {
+	if typ, _ := header["typ"].(string); !jwt.IsAccessTokenType(typ) {
 		return errInvalidToken
 	}
 	return nil

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {NameSuggestion} from '@thunderid/components';
-import {FormControl, FormLabel, Stack, TextField, Typography} from '@wso2/oxygen-ui';
+import {Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {type ChangeEvent, type JSX, useEffect} from 'react';
 import {useTranslation} from 'react-i18next';
 
@@ -29,9 +29,11 @@ export default function ConfigureThemeName({
         {t('themes.forms.configure_name.title', "Let's collect some details about your theme")}
       </Typography>
 
-      <FormControl fullWidth required>
-        <FormLabel htmlFor="theme-name-input">{t('themes.forms.configure_name.fieldLabel', 'Theme name')}</FormLabel>
+      <Stack>
         <TextField
+          labelPlacement="top"
+          label={t('themes.forms.configure_name.fieldLabel', 'Theme name')}
+          required
           fullWidth
           id="theme-name-input"
           value={themeName}
@@ -40,7 +42,7 @@ export default function ConfigureThemeName({
         />
 
         <NameSuggestion onSelect={onThemeNameChange} />
-      </FormControl>
+      </Stack>
     </Stack>
   );
 }

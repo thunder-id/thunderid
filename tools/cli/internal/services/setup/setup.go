@@ -22,6 +22,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/thunder-id/thunderid/tools/cli/internal/plane"
 	"github.com/thunder-id/thunderid/tools/cli/internal/product"
 	"github.com/thunder-id/thunderid/tools/cli/internal/services/health"
 )
@@ -96,17 +97,40 @@ func findScript(installPath, name string) string {
 	return ""
 }
 
+// scriptExt is the extension of the platform's setup and start scripts.
+func scriptExt() string {
+	if isWindows() {
+		return ".ps1"
+	}
+	return ".sh"
+}
+
 // FindThunderRoot returns the directory containing the setup script.
 func FindThunderRoot(installPath string) (string, error) {
-	scriptName := "setup.sh"
-	if isWindows() {
-		scriptName = "setup.ps1"
-	}
-	script := findScript(installPath, scriptName)
+	script := findScript(installPath, "setup"+scriptExt())
 	if script == "" {
 		return "", fmt.Errorf("setup script not found in %s", installPath)
 	}
 	return filepath.Dir(script), nil
+}
+
+// PlaneOf reports which distribution is installed at installPath, from the files its pack ships:
+// the quickstart carries its own bootstrap helper. Anything else, including every 1.x install, is
+// a Data Plane.
+func PlaneOf(installPath string) plane.Plane {
+	root, err := FindThunderRoot(installPath)
+	if err != nil {
+		return plane.Data
+	}
+	if fileExists(filepath.Join(root, "quickstart-bootstrap"+scriptExt())) {
+		return plane.Quickstart
+	}
+	return plane.Data
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // AdminCredentials holds the admin username and password surfaced by setup, so the
@@ -116,6 +140,9 @@ func FindThunderRoot(installPath string) (string, error) {
 type AdminCredentials struct {
 	Username string
 	Password string
+	// ServiceDesk is the quickstart's second account, which signs into the Data Plane's Admin
+	// Console. Nil when the install has no such account or its password was supplied.
+	ServiceDesk *AdminCredentials
 }
 
 // RunSetup executes the platform setup script non-interactively on the default port.
@@ -139,11 +166,12 @@ func RunSetupOnPort(installPath string, verbose bool, port int) (*AdminCredentia
 		return nil, err
 	}
 
+	setupScript := "setup" + scriptExt()
 	var cmd *exec.Cmd
 	if isWindows() {
-		cmd = exec.Command(powershellExecutable(), "-ExecutionPolicy", "Bypass", "-File", "setup.ps1")
+		cmd = exec.Command(powershellExecutable(), "-ExecutionPolicy", "Bypass", "-File", setupScript)
 	} else {
-		cmd = exec.Command("bash", "setup.sh")
+		cmd = exec.Command("bash", setupScript)
 	}
 	cmd.Dir = root
 	adminUser := os.Getenv("THUNDERID_ADMIN_USERNAME")
@@ -154,11 +182,28 @@ func RunSetupOnPort(installPath string, verbose bool, port int) (*AdminCredentia
 	// provided, so they generate a random password rather than falling back to a
 	// fixed, predictable one.
 	adminPass := os.Getenv("THUNDERID_ADMIN_PASSWORD")
-	cmd.Env = append(os.Environ(),
+	// The quickstart reports its accounts in a block of its own, so the CLI decides both passwords
+	// up front instead of parsing them back out of the output.
+	var quickstartCreds *AdminCredentials
+	quickstart := PlaneOf(installPath) == plane.Quickstart
+	if quickstart {
+		var env []string
+		adminPass, env, quickstartCreds = quickstartAccounts(adminUser, adminPass)
+		cmd.Env = append(os.Environ(), env...)
+	} else {
+		cmd.Env = os.Environ()
+	}
+	cmd.Env = append(cmd.Env,
 		"ADMIN_USERNAME="+adminUser,
 		"ADMIN_PASSWORD="+adminPass,
 	)
 	cmd.Stdin = nil // no stdin → prevents any remaining interactive prompts
+	credentials := func(output string) *AdminCredentials {
+		if quickstart {
+			return quickstartCreds
+		}
+		return parseAdminCredentials(output)
+	}
 
 	if verbose {
 		// Mirror to the terminal live, but also capture so the credentials can be
@@ -169,7 +214,7 @@ func RunSetupOnPort(installPath string, verbose bool, port int) (*AdminCredentia
 		if err := cmd.Run(); err != nil {
 			return nil, err
 		}
-		return parseAdminCredentials(outBuf.String()), nil
+		return credentials(outBuf.String()), nil
 	}
 
 	// Non-verbose: capture stdout+stderr so we can surface them on failure.
@@ -184,7 +229,35 @@ func RunSetupOnPort(installPath string, verbose bool, port int) (*AdminCredentia
 		}
 		return nil, fmt.Errorf("%w\n\nRun with --verbose for full setup output", err)
 	}
-	return parseAdminCredentials(outBuf.String()), nil
+	return credentials(outBuf.String()), nil
+}
+
+// quickstartAccounts settles the quickstart's two accounts before its setup runs: the admin who
+// signs into the Control Plane console, and the Service Desk Admin who signs into the Data Plane's
+// Admin Console. A password left empty is generated here, the way setup.sh would, and returned so
+// it can be shown; a supplied one is not repeated back.
+func quickstartAccounts(adminUser, adminPass string) (string, []string, *AdminCredentials) {
+	var creds AdminCredentials
+	if adminPass == "" {
+		adminPass = GenerateAdminPassword()
+		creds.Username, creds.Password = adminUser, adminPass
+	}
+
+	deskUser := os.Getenv("THUNDERID_SERVICE_DESK_USERNAME")
+	if deskUser == "" {
+		deskUser = "servicedeskadmin"
+	}
+	deskPass := os.Getenv("THUNDERID_SERVICE_DESK_PASSWORD")
+	if deskPass == "" {
+		deskPass = GenerateAdminPassword()
+		creds.ServiceDesk = &AdminCredentials{Username: deskUser, Password: deskPass}
+	}
+
+	env := []string{"SERVICE_DESK_USERNAME=" + deskUser, "SERVICE_DESK_PASSWORD=" + deskPass}
+	if creds.Password == "" && creds.ServiceDesk == nil {
+		return adminPass, env, nil
+	}
+	return adminPass, env, &creds
 }
 
 // GenerateAdminPassword returns a random 12-character password using the same
@@ -272,32 +345,10 @@ func StartBackgroundOnPort(installPath string, verbose bool, port int) (*exec.Cm
 		out, _ = os.OpenFile(os.DevNull, os.O_WRONLY, 0)
 	}
 
-	var cmd *exec.Cmd
-	if isWindows() {
-		startPs1 := filepath.Join(root, "start.ps1")
-		if _, err := os.Stat(startPs1); err == nil {
-			cmd = exec.Command(powershellExecutable(), "-ExecutionPolicy", "Bypass", "-File", "start.ps1")
-		} else {
-			binary := filepath.Join(root, product.Slug+".exe")
-			if _, err := os.Stat(binary); err != nil {
-				return nil, fmt.Errorf("no start.ps1 or %s.exe found in %s", product.Slug, root)
-			}
-			cmd = exec.Command(binary)
-		}
-	} else {
-		startSh := filepath.Join(root, "start.sh")
-		if _, err := os.Stat(startSh); err == nil {
-			cmd = exec.Command("bash", "start.sh")
-		} else {
-			binary := filepath.Join(root, "thunder")
-			if _, err := os.Stat(binary); err != nil {
-				return nil, fmt.Errorf("no start.sh or "+product.Name+" binary found in %s", root)
-			}
-			cmd = exec.Command(binary)
-		}
+	cmd, err := startCommand(root, nil)
+	if err != nil {
+		return nil, err
 	}
-
-	cmd.Dir = root
 	if port > 0 {
 		cmd.Env = append(os.Environ(), fmt.Sprintf("BACKEND_PORT=%d", port))
 	}
@@ -323,40 +374,42 @@ func Start(installPath string, args []string) error {
 		return err
 	}
 
-	var cmd *exec.Cmd
-
-	if isWindows() {
-		startPs1 := filepath.Join(root, "start.ps1")
-		if _, err := os.Stat(startPs1); err == nil {
-			cmd = exec.Command(powershellExecutable(), append([]string{"-ExecutionPolicy", "Bypass", "-File", "start.ps1"}, args...)...)
-			cmd.Dir = root
-		} else {
-			binary := filepath.Join(root, product.Slug+".exe")
-			if _, err := os.Stat(binary); err != nil {
-				return fmt.Errorf("no start.ps1 or %s.exe found in %s", product.Slug, root)
-			}
-			cmd = exec.Command(binary, args...)
-			cmd.Dir = root
-		}
-	} else {
-		startSh := filepath.Join(root, "start.sh")
-		if _, err := os.Stat(startSh); err == nil {
-			cmd = exec.Command("bash", append([]string{"start.sh"}, args...)...)
-			cmd.Dir = root
-		} else {
-			binary := filepath.Join(root, "thunder")
-			if _, err := os.Stat(binary); err != nil {
-				return fmt.Errorf("no start.sh or "+product.Name+" binary found in %s", root)
-			}
-			cmd = exec.Command(binary, args...)
-			cmd.Dir = root
-		}
+	cmd, err := startCommand(root, args)
+	if err != nil {
+		return err
 	}
 
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// startCommand builds the command that starts the plane installed at root: its start script, or
+// the server binary when the pack ships no script.
+func startCommand(root string, args []string) (*exec.Cmd, error) {
+	startScript := "start" + scriptExt()
+	var cmd *exec.Cmd
+	if fileExists(filepath.Join(root, startScript)) {
+		if isWindows() {
+			cmd = exec.Command(powershellExecutable(),
+				append([]string{"-ExecutionPolicy", "Bypass", "-File", startScript}, args...)...)
+		} else {
+			cmd = exec.Command("bash", append([]string{startScript}, args...)...)
+		}
+	} else {
+		name := product.Slug
+		if isWindows() {
+			name += ".exe"
+		}
+		binary := filepath.Join(root, name)
+		if !fileExists(binary) {
+			return nil, fmt.Errorf("no %s or %s found in %s", startScript, filepath.Base(binary), root)
+		}
+		cmd = exec.Command(binary, args...)
+	}
+	cmd.Dir = root
+	return cmd, nil
 }
 
 // WaitForPortFree blocks until no process is accepting connections on the given TCP port,
@@ -401,6 +454,9 @@ func deploymentConfigPath(installPath string) string {
 	candidates := []string{
 		filepath.Join(installPath, "deployment.yaml"),
 		filepath.Join(installPath, "backend", "cmd", "server", "deployment.yaml"),
+		// The quickstart has no configuration of its own at its root. Its Control Plane serves the
+		// console an operator starts from, so its port is the one the install is known by.
+		filepath.Join(installPath, quickstartControlPlaneDir, "deployment.yaml"),
 	}
 	for _, p := range candidates {
 		if _, err := os.Stat(p); err == nil {
@@ -475,6 +531,55 @@ func ReadServerPort(installPath string) int {
 	return port
 }
 
+// quickstartControlPlaneDir, quickstartDataPlaneDir and quickstartAuthDir are where the quickstart
+// pack keeps each of the deployments it runs.
+const (
+	quickstartControlPlaneDir = "cp"
+	quickstartDataPlaneDir    = "dp"
+	quickstartAuthDir         = "auth-dp"
+)
+
+// quickstartPort is the port the quickstart's Control Plane console is served on.
+const quickstartPort = 8095
+
+// DefaultPort returns the port a fresh setup of the install starts from: the Data Plane's default,
+// or, for the quickstart, its Control Plane console's.
+func DefaultPort(installPath string) int {
+	if PlaneOf(installPath) == plane.Quickstart {
+		return quickstartPort
+	}
+	return health.DefaultPort
+}
+
+// HasFixedPorts reports whether the install's ports cannot be moved. The quickstart's scripts
+// carry the ports its three deployments reach each other on, so the CLI cannot change them.
+func HasFixedPorts(installPath string) bool {
+	return PlaneOf(installPath) == plane.Quickstart
+}
+
+// InstallPorts returns every port the install listens on, given the one it is known by: the
+// quickstart runs three servers, every other plane one.
+func InstallPorts(installPath string, port int) []int {
+	if PlaneOf(installPath) != plane.Quickstart {
+		return []int{port}
+	}
+	ports := []int{port}
+	for _, dir := range []string{quickstartDataPlaneDir, quickstartAuthDir} {
+		if p := ReadServerPort(filepath.Join(installPath, dir)); p > 0 && p != port {
+			ports = append(ports, p)
+		}
+	}
+	return ports
+}
+
+// DataPlanePort returns the port of the Data Plane the quickstart manages, or 0 for any other plane.
+func DataPlanePort(installPath string) int {
+	if PlaneOf(installPath) != plane.Quickstart {
+		return 0
+	}
+	return ReadServerPort(filepath.Join(installPath, quickstartDataPlaneDir))
+}
+
 // ServerPort returns the port the install serves on: the configured one, or the
 // default when deployment.yaml does not say. This is the single answer to "which port
 // is this install on" that the start, attach, upgrade and sample paths all need.
@@ -491,6 +596,9 @@ func ServerPort(installPath string) int {
 func EnsureServerPort(installPath string, port int) error {
 	if port <= 0 || ReadServerPort(installPath) == port {
 		return nil
+	}
+	if HasFixedPorts(installPath) {
+		return fmt.Errorf("the quickstart runs on fixed ports and cannot move to port %d", port)
 	}
 	return UpdateServerPort(installPath, port)
 }

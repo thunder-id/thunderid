@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {SettingsCard} from '@thunderid/components';
+import {useProjectScope} from '@thunderid/contexts';
 import {useGetThemes, useGetLayouts} from '@thunderid/design';
 import {Box, Typography, TextField, Autocomplete, CircularProgress, Stack} from '@wso2/oxygen-ui';
 import {useTranslation} from 'react-i18next';
@@ -29,6 +30,10 @@ interface AppearanceSectionProps {
    * Singular noun used to refer to the entity in user-visible copy (default: 'application').
    */
   entityLabel?: string;
+  /**
+   * Whether the application can't be edited here
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -45,10 +50,13 @@ export default function AppearanceSection({
   editedApp,
   onFieldChange,
   entityLabel = 'application',
+  readOnly = false,
 }: AppearanceSectionProps) {
   const {t} = useTranslation();
-  const {data: themesData, isLoading: loadingThemes} = useGetThemes();
-  const {data: layoutsData, isLoading: loadingLayouts} = useGetLayouts();
+  // Inside a project, the application picks from the project's themes and layouts.
+  const {projectId} = useProjectScope();
+  const {data: themesData, isLoading: loadingThemes} = useGetThemes({projectId});
+  const {data: layoutsData, isLoading: loadingLayouts} = useGetLayouts({projectId});
 
   const themeOptions = themesData?.themes ?? [];
   const layoutOptions = layoutsData?.layouts ?? [];
@@ -74,7 +82,7 @@ export default function AppearanceSection({
             value={themeOptions.find((theme) => theme.id === (editedApp.themeId! ?? application.themeId!)) ?? null}
             onChange={(_event, newValue) => onFieldChange('themeId' as keyof Application, newValue?.id ?? '')}
             loading={loadingThemes}
-            disabled={application.isReadOnly}
+            disabled={readOnly}
             renderInput={(params) => (
               <TextField
                 {...params}
@@ -104,7 +112,7 @@ export default function AppearanceSection({
             value={layoutOptions.find((layout) => layout.id === (editedApp.layoutId ?? application.layoutId)) ?? null}
             onChange={(_event, newValue) => onFieldChange('layoutId', newValue?.id ?? '')}
             loading={loadingLayouts}
-            disabled={application.isReadOnly}
+            disabled={readOnly}
             renderInput={(params) => (
               <TextField
                 {...params}

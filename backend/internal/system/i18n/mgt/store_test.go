@@ -9,6 +9,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
@@ -200,7 +201,7 @@ func (suite *I18nStoreTestSuite) TestUpsertTranslationsByLanguage_Success() {
 		Return(&mockResult{}, nil)
 
 	// Expect insert
-	suite.mockTx.On("Exec", queryInsertTranslation, "k1", "en", "ns", "v1", testDeploymentID).
+	suite.mockTx.On("Exec", buildInsertTranslationsQuery(1), "k1", "en", "ns", "v1", testDeploymentID).
 		Return(&mockResult{}, nil)
 
 	suite.mockTx.On("Commit").Return(nil)
@@ -221,7 +222,7 @@ func (suite *I18nStoreTestSuite) TestUpsertTranslationsByLanguage_RollbackOnInse
 	suite.mockTx.On("Exec", queryDeleteTranslationsByLanguage, "en", testDeploymentID).
 		Return(&mockResult{}, nil)
 
-	suite.mockTx.On("Exec", queryInsertTranslation, "k1", "en", "ns", "v1", testDeploymentID).
+	suite.mockTx.On("Exec", buildInsertTranslationsQuery(1), "k1", "en", "ns", "v1", testDeploymentID).
 		Return(nil, errors.New("insert error"))
 
 	suite.mockTx.On("Rollback").Return(nil)
@@ -280,7 +281,7 @@ func (suite *I18nStoreTestSuite) TestUpsertTranslationsByLanguage_CommitError() 
 	suite.mockDBClient.On("BeginTx").Return(suite.mockTx, nil)
 	suite.mockTx.On("Exec", queryDeleteTranslationsByLanguage, "l", testDeploymentID).
 		Return(&mockResult{}, nil)
-	suite.mockTx.On("Exec", queryInsertTranslation, "k", "l", "n", "v", testDeploymentID).
+	suite.mockTx.On("Exec", buildInsertTranslationsQuery(1), "k", "l", "n", "v", testDeploymentID).
 		Return(&mockResult{}, nil)
 	suite.mockTx.On("Commit").Return(errors.New("commit error"))
 
@@ -527,4 +528,16 @@ func (suite *I18nStoreTestSuite) TestGetDistinctLanguages_ScopesByTheRequestDepl
 
 	suite.NoError(err)
 	suite.Len(langs, 1)
+}
+
+func TestBuildInsertTranslationsQuery(t *testing.T) {
+	q := buildInsertTranslationsQuery(2)
+	assert.Equal(t, `INSERT INTO "TRANSLATION" (MESSAGE_KEY, LANGUAGE_CODE, NAMESPACE, VALUE, DEPLOYMENT_ID) `+
+		`VALUES ($1, $2, $3, $4, $5), ($6, $7, $8, $9, $10)`, q.Query)
+
+	args := insertTranslationArgs([]Translation{
+		{Key: "k1", Language: "en", Namespace: "ns", Value: "v1"},
+		{Key: "k2", Language: "en", Namespace: "ns", Value: "v2"},
+	}, "dep")
+	assert.Equal(t, []any{"k1", "en", "ns", "v1", "dep", "k2", "en", "ns", "v2", "dep"}, args)
 }

@@ -13,7 +13,11 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
-const definitionsPath = "/openid4vp/presentation-definitions"
+const (
+	definitionsPath = "/openid4vp/presentation-definitions"
+	// projectIDQueryParam is the list query parameter that names a project.
+	projectIDQueryParam = "projectId"
+)
 
 // definitionHandler serves the management API for presentation definitions.
 type definitionHandler struct {
@@ -40,9 +44,17 @@ func (h *definitionHandler) HandleCreate(w http.ResponseWriter, r *http.Request)
 	sysutils.WriteSuccessResponse(r.Context(), w, http.StatusCreated, toResponse(*created))
 }
 
-// HandleList returns a minimal summary of all presentation definitions.
+// HandleList returns a minimal summary of all presentation definitions, or of a project's when the projectId
+// query parameter names one.
 func (h *definitionHandler) HandleList(w http.ResponseWriter, r *http.Request) {
-	summaries, svcErr := h.service.ListPresentationDefinitionSummaries(r.Context())
+	var summaries []PresentationDefinitionList
+	var svcErr *tidcommon.ServiceError
+	if query := r.URL.Query(); query.Has(projectIDQueryParam) {
+		summaries, svcErr = h.service.ListPresentationDefinitionSummariesByProject(r.Context(),
+			sysutils.SanitizeString(query.Get(projectIDQueryParam)))
+	} else {
+		summaries, svcErr = h.service.ListPresentationDefinitionSummaries(r.Context())
+	}
 	if svcErr != nil {
 		writeDefinitionError(r.Context(), w, svcErr)
 		return
@@ -104,6 +116,7 @@ func requestToDTO(req *presentationDefinitionRequest) *PresentationDefinitionDTO
 	return &PresentationDefinitionDTO{
 		Handle:               sysutils.SanitizeString(req.Handle),
 		OUID:                 sysutils.SanitizeString(req.OUID),
+		ProjectID:            sysutils.SanitizeString(req.ProjectID),
 		Name:                 sysutils.SanitizeString(req.Name),
 		Description:          sysutils.SanitizeString(req.Description),
 		VCT:                  sysutils.SanitizeString(req.VCT),

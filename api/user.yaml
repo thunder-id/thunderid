@@ -36,10 +36,16 @@ paths:
       tags:
         - Users
       summary: List users
+      description: |
+        A caller confined to one organization unit, such as a Data Plane token holding `org` or
+        `org:user:view`, lists what that unit sees when no `ouId` filter is given: the users it owns,
+        then the ones shared into it, each marked with `isOwnedByOU`. A list narrowed by other
+        conditions holds the users the unit owns only.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
         - $ref: '#/components/parameters/userFilterParam'
+        - $ref: '#/components/parameters/userProjectIdQueryParam'
         - $ref: '#/components/parameters/includeQueryParam'
       responses:
         "200":
@@ -56,6 +62,9 @@ paths:
                   - id: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
                     ouId: "456e8400-e29b-41d4-a716-446655440001"
                     type: "customer"
+                    verifiedAttributes:
+                      email:
+                        verifiedAt: "2026-10-14T09:00:00Z"
                     attributes:
                       age: 24
                       email: "jane.doe@example.com"
@@ -70,6 +79,7 @@ paths:
                   - id: "039bda67-a80d-4b7b-ac0f-36db85332089"
                     ouId: "456e8400-e29b-41d4-a716-446655440001"
                     type: "customer"
+                    verifiedAttributes: {}
                     attributes:
                       age: 31
                       email: "john.smith@example.com"
@@ -83,6 +93,7 @@ paths:
                   - id: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
                     ouId: "26eec421-f1bb-4deb-a5d3-9ab6554c2ae6"
                     type: "employee"
+                    verifiedAttributes: {}
                     attributes:
                       username: "alice.wu"
                       firstname: "Alice"
@@ -166,6 +177,7 @@ paths:
                 id: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
                 ouId: "456e8400-e29b-41d4-a716-446655440001"
                 type: "customer"
+                verifiedAttributes: {}
                 attributes:
                   age: 24
                   email: "jane.doe@example.com"
@@ -243,6 +255,26 @@ paths:
                     description:
                       key: "error.userservice.organization_unit_mismatch_description"
                       defaultValue: "The organization unit does not match the user type configuration"
+                invalid-project:
+                  summary: The project does not exist
+                  value:
+                    code: "USR-1042"
+                    message:
+                      key: "error.userservice.invalid_project"
+                      defaultValue: "Invalid project"
+                    description:
+                      key: "error.userservice.invalid_project_description"
+                      defaultValue: "No project exists with the given project ID"
+                ou-not-in-project:
+                  summary: The organization unit is outside the project
+                  value:
+                    code: "USR-1043"
+                    message:
+                      key: "error.userservice.ou_not_in_project"
+                      defaultValue: "Organization unit not in project"
+                    description:
+                      key: "error.userservice.ou_not_in_project_description"
+                      defaultValue: "A user in a project must be in the system organization unit or in an organization unit of the project"
                 invalid-credential:
                   summary: Invalid credential fields
                   value:
@@ -278,6 +310,15 @@ paths:
       tags:
         - Users
       summary: Get a user by id
+      description: |
+        With `ouId`, the user is read as that organization unit sees it: one the unit owns, or one
+        shared into it. A shared user is returned under the unit it is shared into, and
+        `isOwnedByOU` says which of the two it is. The caller needs to be able to read users in that
+        unit, and a user the unit can't see answers `404`.
+
+        Without `ouId`, the user is read in the organization unit that owns it. A caller confined to
+        one organization unit, such as a Data Plane token holding `org` or `org:user:view`, also reads
+        a user shared into its unit, returned as it is with `ouId`. `isOwnedByOU` is always present.
       parameters:
         - in: path
           name: id
@@ -286,6 +327,14 @@ paths:
             type: string
             format: uuid
           example: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+        - in: query
+          name: ouId
+          required: false
+          description: The organization unit to read the user in.
+          schema:
+            type: string
+            format: uuid
+          example: "456e8400-e29b-41d4-a716-446655440001"
         - $ref: '#/components/parameters/includeQueryParam'
       responses:
         "200":
@@ -294,22 +343,48 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/User'
-              example:
-                id: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
-                ouId: "456e8400-e29b-41d4-a716-446655440001"
-                type: "customer"
-                attributes:
-                  age: 24
-                  email: "jane.doe@example.com"
-                  mobile: "+1-650-555-1234"
-                  address:
-                    city: "Mountain View"
-                    zip: "94040"
-                  contactPreferences:
-                    - email
-                    - sms
+              examples:
+                ownedUser:
+                  summary: A user read with ouId in the organization unit that owns it
+                  value:
+                    id: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+                    ouId: "456e8400-e29b-41d4-a716-446655440001"
+                    type: "customer"
+                    verifiedAttributes:
+                      email:
+                        verifiedAt: "2026-10-14T09:00:00Z"
+                    attributes:
+                      age: 24
+                      email: "jane.doe@example.com"
+                      mobile: "+1-650-555-1234"
+                      address:
+                        city: "Mountain View"
+                        zip: "94040"
+                      contactPreferences:
+                        - email
+                        - sms
+                    isOwnedByOU: true
+                sharedIntoOU:
+                  summary: A user read with ouId in an organization unit it is shared into
+                  value:
+                    id: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+                    ouId: "afc77cfd-620b-4cf0-a31c-7377b0ea8902"
+                    type: "customer"
+                    attributes:
+                      age: 24
+                      email: "jane.doe@example.com"
+                      mobile: "+1-650-555-1234"
+                      address:
+                        city: "Mountain View"
+                        zip: "94040"
+                      contactPreferences:
+                        - email
+                        - sms
+                    isOwnedByOU: false
+        "403":
+          description: The caller may not read the user, or with ouId, users in that organization unit
         "404":
-          description: User not found
+          description: User not found, or with ouId, not owned by or shared into that organization unit
         "500":
           description: Internal server error
     put:
@@ -353,6 +428,9 @@ paths:
                 id: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
                 ouId: "456e8400-e29b-41d4-a716-446655440001"
                 type: "customer"
+                verifiedAttributes:
+                  email:
+                    verifiedAt: "2026-10-14T09:00:00Z"
                 attributes:
                   age: 25
                   email: "jane.doe@example.com"
@@ -429,6 +507,26 @@ paths:
                     description:
                       key: "error.userservice.organization_unit_mismatch_description"
                       defaultValue: "The organization unit does not match the user type configuration"
+                invalid-project:
+                  summary: The project does not exist
+                  value:
+                    code: "USR-1042"
+                    message:
+                      key: "error.userservice.invalid_project"
+                      defaultValue: "Invalid project"
+                    description:
+                      key: "error.userservice.invalid_project_description"
+                      defaultValue: "No project exists with the given project ID"
+                ou-not-in-project:
+                  summary: The organization unit is outside the project
+                  value:
+                    code: "USR-1043"
+                    message:
+                      key: "error.userservice.ou_not_in_project"
+                      defaultValue: "Organization unit not in project"
+                    description:
+                      key: "error.userservice.ou_not_in_project_description"
+                      defaultValue: "A user in a project must be in the system organization unit or in an organization unit of the project"
                 invalid-credential:
                   summary: Invalid credential fields
                   value:
@@ -467,7 +565,7 @@ paths:
                       key: "error.userservice.attribute_conflict_description"
                       defaultValue: "A user with the same unique attribute value already exists"
                 shared-user-move:
-                  summary: Moving a user with sharing policies to another organization unit
+                  summary: Moving a user with sharing policies to another organization unit or project
                   value:
                     code: "USR-1038"
                     message:
@@ -475,7 +573,9 @@ paths:
                       defaultValue: "User with sharing policies cannot be moved"
                     description:
                       key: "error.userservice.shared_user_cannot_move_description"
-                      defaultValue: "The user is shared into other organization units. Delete its sharing policies before moving it to another organization unit"
+                      defaultValue: "The user is shared into other organization units. Delete its sharing policies before moving it to another organization unit or project"
+        "403":
+          $ref: '#/components/responses/SharedUserReadOnly'
         "404":
           description: User not found
           content:
@@ -524,6 +624,8 @@ paths:
                     description:
                       key: "error.userservice.cannot_modify_declarative_resource_description"
                       defaultValue: "The user is declarative and cannot be modified or deleted"
+        "403":
+          $ref: '#/components/responses/SharedUserReadOnly'
         "404":
           description: User not found
         "500":
@@ -598,6 +700,8 @@ paths:
                     description:
                       key: "error.userservice.cannot_modify_declarative_resource_description"
                       defaultValue: "The user is declarative and cannot be modified or deleted"
+        "403":
+          $ref: '#/components/responses/SharedUserReadOnly'
         "404":
           description: User not found
           content:
@@ -740,12 +844,13 @@ paths:
       summary: Get user usages
       description: |
         Returns the resources that reference this user, aggregated across all resource types.
-        For example, agents that list this user as their owner. This endpoint is informational
-        only — it drives the pre-delete confirmation dialog in the UI and does not gate deletion
-        on the server.
+        For example, agents that list this user as their owner. It drives the pre-delete
+        confirmation dialog in the UI.
 
         Each usage entry includes a `behaviorOnDelete` field describing what happens to the
         referencing resource if the user is deleted:
+        - `restrict`: the user cannot be deleted while the reference exists. An agent the user
+          owns restricts the deletion, except a personal agent created at runtime.
         - `fallback`: the reference is kept as-is.
         - `cascade`: the resource is permanently deleted along with the user.
 
@@ -777,11 +882,143 @@ paths:
                   - resourceType: agent
                     id: "a1b2c3d4-0000-0000-0000-000000000001"
                     displayName: "Support Agent"
-                    behaviorOnDelete: fallback
+                    behaviorOnDelete: restrict
                   - resourceType: agent
                     id: "a1b2c3d4-0000-0000-0000-000000000002"
-                    displayName: "Billing Agent"
-                    behaviorOnDelete: fallback
+                    displayName: "Calendar Assistant"
+                    behaviorOnDelete: cascade
+        "404":
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "USR-1003"
+                message:
+                  key: "error.userservice.user_not_found"
+                  defaultValue: "User not found"
+                description:
+                  key: "error.userservice.user_not_found_description"
+                  defaultValue: "The user with the specified id does not exist"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "USR-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
+
+  /users/{id}/ous:
+    get:
+      tags:
+        - Users
+      summary: List the organization units a user can access
+      description: |
+        Lists the organization units the user can access: the one the user lives in, first, then
+        every one the user is shared into, directly or through a reshare, ordered by ID. A unit
+        deleted since it was shared is left out. It is the list `GET /users/me/ous` gives the user,
+        without `current` and `scope`, which are relative to the caller's own token.
+
+        Requires the **root system permission**, the one named by
+        `server.security.system_permission_prefix` plus `system` (so `system` by default). A user
+        permission is not enough, wherever it is held.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: "The unique identifier of the user"
+          example: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+        - $ref: '#/components/parameters/limitQueryParam'
+        - $ref: '#/components/parameters/offsetQueryParam'
+      responses:
+        "200":
+          description: Organization units the user can access
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserOrganizationUnitListResponse'
+              example:
+                totalResults: 3
+                startIndex: 1
+                count: 2
+                organizationUnits:
+                  - id: "4f3c2a1b-0d9e-4c8b-9a7f-6e5d4c3b2a10"
+                    handle: "customers"
+                    name: "Customers"
+                  - id: "7b6a5c4d-3e2f-4a1b-8c9d-0e1f2a3b4c5d"
+                    handle: "acme-ou-1"
+                    name: "Acme OU 1"
+                links:
+                  - href: "/users/9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3/ous?offset=2&limit=2"
+                    rel: "next"
+                  - href: "/users/9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3/ous?offset=2&limit=2"
+                    rel: "last"
+        "400":
+          description: Invalid pagination parameter
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                invalid-limit:
+                  summary: A limit outside its bounds
+                  value:
+                    code: "USR-1011"
+                    message:
+                      key: "error.userservice.invalid_limit_parameter"
+                      defaultValue: "Invalid pagination parameter"
+                    description:
+                      key: "error.userservice.invalid_limit_parameter_description"
+                      defaultValue: "The limit parameter must be a positive integer"
+                invalid-offset:
+                  summary: A negative offset
+                  value:
+                    code: "USR-1012"
+                    message:
+                      key: "error.userservice.invalid_offset_parameter"
+                      defaultValue: "Invalid pagination parameter"
+                    description:
+                      key: "error.userservice.invalid_offset_parameter_description"
+                      defaultValue: "The offset parameter must be a non-negative integer"
+        "401":
+          description: Unauthorized - missing or invalid authentication token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AUTH-4010"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "Authentication is required to access this resource"
+        "403":
+          description: The caller's token does not hold the root system permission
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AUTH-4030"
+                message:
+                  key: "error.auth.forbidden"
+                  defaultValue: "Forbidden"
+                description:
+                  key: "error.auth.forbidden_description"
+                  defaultValue: "You do not have sufficient permissions to access this resource"
         "404":
           description: User not found
           content:
@@ -1270,6 +1507,23 @@ paths:
                     description:
                       key: "error.userservice.invalid_filter_parameter_description"
                       defaultValue: "The filter format is invalid"
+        "403":
+          description: |
+            The caller may not read the organization unit the path names. Listing users by path
+            first resolves that organization unit, which needs the `system:ou:view` permission in
+            addition to the permission to read users.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "404":
           description: Organization unit not found
           content:
@@ -1349,6 +1603,7 @@ paths:
                 id: "7a4b1f8e-5c69-4b60-9232-2b0aaf65ef3c"
                 ouId: "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"
                 type: "employee"
+                verifiedAttributes: {}
                 attributes:
                   username: "john.doe"
                   firstname: "John"
@@ -1482,6 +1737,9 @@ paths:
                 id: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
                 ouId: "26eec421-f1bb-4deb-a5d3-9ab6554c2ae6"
                 type: "employee"
+                verifiedAttributes:
+                  email:
+                    verifiedAt: "2026-10-14T09:00:00Z"
                 attributes:
                   username: "alice.wu"
                   firstname: "Alice"
@@ -1558,6 +1816,7 @@ paths:
                 id: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
                 ouId: "26eec421-f1bb-4deb-a5d3-9ab6554c2ae6"
                 type: "employee"
+                verifiedAttributes: {}
                 attributes:
                   username: "alice.wu"
                   firstname: "Alice"
@@ -1874,6 +2133,638 @@ paths:
                   key: "error.internal_server_error_description"
                   defaultValue: "An unexpected error occurred while processing the request"
 
+  /users/me/agents:
+    get:
+      tags:
+        - Self
+      summary: List the agents the caller owns
+      description: |
+        Lists the agents the signed-in user owns in the organization unit the access token names (its `ouId`
+        claim), with the same summary `GET /agents` returns for each agent. A token that names no organization
+        unit lists none. `kind` narrows the list to agents of one kind; without it, every
+        agent the caller owns is listed. Any agent listed can be read; only personal agents can be updated or
+        deleted here. The token must be the user's own: a delegated token is refused.
+      security:
+        - OAuth2: []
+      parameters:
+        - $ref: '#/components/parameters/limitQueryParam'
+        - $ref: '#/components/parameters/offsetQueryParam'
+        - in: query
+          name: kind
+          required: false
+          schema:
+            type: string
+            enum: [personal-assistant]
+          description: Lists only the agents of this kind.
+          example: "personal-assistant"
+      responses:
+        "200":
+          description: The agents the caller owns
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnedAgentListResponse'
+        "400":
+          description: Invalid pagination parameters, or a kind that is not known
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1057"
+                message:
+                  key: "error.agentservice.invalid_kind"
+                  defaultValue: "Invalid kind"
+                description:
+                  key: "error.agentservice.invalid_kind_description"
+                  defaultValue: "The agent kind is not a known kind"
+        "401":
+          description: No user access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1060"
+                message:
+                  key: "error.agentservice.authentication_required"
+                  defaultValue: "Authentication required"
+                description:
+                  key: "error.agentservice.authentication_required_description"
+                  defaultValue: "The request needs a user access token"
+        "403":
+          description: |
+            A delegated token, one issued to a client acting for the user (it carries an `act` claim),
+            such as an agent's own token for its owner.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1061"
+                message:
+                  key: "error.agentservice.delegated_token_not_allowed"
+                  defaultValue: "Delegated token not allowed"
+                description:
+                  key: "error.agentservice.delegated_token_not_allowed_description"
+                  defaultValue: "A token issued to a client acting for the user cannot manage the user's agents"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
+
+  /users/me/agents/{id}:
+    get:
+      tags:
+        - Self
+      summary: Read one of the caller's agents
+      description: |
+        Returns an agent of any kind that the signed-in user owns, as the same object `GET /agents/{id}`
+        returns. An agent that does not exist, belongs to someone else, or is outside the organization unit the
+        access token names is not found. The token must be the user's own: a delegated token is refused.
+      security:
+        - OAuth2: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: "The agent ID"
+        - $ref: '#/components/parameters/includeQueryParam'
+      responses:
+        "200":
+          description: The agent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnedAgentDetails'
+        "401":
+          description: No user access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1060"
+                message:
+                  key: "error.agentservice.authentication_required"
+                  defaultValue: "Authentication required"
+                description:
+                  key: "error.agentservice.authentication_required_description"
+                  defaultValue: "The request needs a user access token"
+        "403":
+          description: |
+            A delegated token, one issued to a client acting for the user (it carries an `act` claim),
+            such as an agent's own token for its owner.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1061"
+                message:
+                  key: "error.agentservice.delegated_token_not_allowed"
+                  defaultValue: "Delegated token not allowed"
+                description:
+                  key: "error.agentservice.delegated_token_not_allowed_description"
+                  defaultValue: "A token issued to a client acting for the user cannot manage the user's agents"
+        "404":
+          description: Not one of the caller's agents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1004"
+                message:
+                  key: "error.agentservice.agent_not_found"
+                  defaultValue: "Agent not found"
+                description:
+                  key: "error.agentservice.agent_not_found_description"
+                  defaultValue: "The agent with the specified id does not exist"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
+
+    put:
+      tags:
+        - Self
+      summary: Update one of the caller's personal agents
+      description: |
+        Replaces the part of a personal agent its owner may change, in the organization unit the access token
+        names: the description, the schema attributes (including the name), the grant types and the redirect
+        URIs. `attributes`, `grantTypes` and
+        `redirectUris` are required; a `description` left out is cleared. Any other field is refused, so no flow
+        setting, owner or OAuth client credential can be changed here. An attribute the agent's type
+        marks as a credential is refused (`AGT-1068`); the owner sets one with
+        `POST /users/me/agents/{id}/update-credentials`. Read the agent first and send these fields back with the
+        changes.
+
+        Grant types must be a subset of `authorization_code`, `urn:openid:params:grant-type:ciba` and
+        `refresh_token`. An empty list removes every grant, so the agent gets no tokens until one is added.
+        With `authorization_code`, the agent uses response type `code` and PKCE, and needs at least one redirect
+        URI; without it, both are removed. A grant the owner removes is refused from then on, including for
+        outstanding refresh tokens.
+      security:
+        - OAuth2: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: "The agent ID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OwnedAgentUpdateRequest'
+            example:
+              description: "Answers questions about my spending"
+              attributes:
+                name: "Spending assistant"
+              grantTypes: ["authorization_code", "refresh_token"]
+              redirectUris: ["https://assistant.example.com/callback"]
+      responses:
+        "200":
+          description: The updated agent, as the same object `PUT /agents/{id}` returns
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OwnedAgentUpdateResponse'
+        "400":
+          description: |
+            A required field missing, a field outside the editable set, a grant type outside the personal set, or a
+            combination the OAuth client rules refuse (for example the authorization code grant without a
+            redirect URI).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1056"
+                message:
+                  key: "error.agentservice.grant_type_not_allowed_for_personal_agent"
+                  defaultValue: "Grant type not allowed"
+                description:
+                  key: "error.agentservice.grant_type_not_allowed_for_personal_agent_description"
+                  defaultValue: "A personal agent can only use the authorization code, CIBA, and refresh token grants"
+        "401":
+          description: No user access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1060"
+                message:
+                  key: "error.agentservice.authentication_required"
+                  defaultValue: "Authentication required"
+                description:
+                  key: "error.agentservice.authentication_required_description"
+                  defaultValue: "The request needs a user access token"
+        "403":
+          description: |
+            A delegated token (one carrying an `act` claim, such as an agent's own token for its owner), or a
+            declarative agent, which cannot be changed at runtime.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                delegated-token:
+                  summary: A delegated token
+                  value:
+                    code: "AGT-1061"
+                    message:
+                      key: "error.agentservice.delegated_token_not_allowed"
+                      defaultValue: "Delegated token not allowed"
+                    description:
+                      key: "error.agentservice.delegated_token_not_allowed_description"
+                      defaultValue: "A token issued to a client acting for the user cannot manage the user's agents"
+                declarative-agent:
+                  summary: A declarative agent
+                  value:
+                    code: "AGT-1027"
+                    message:
+                      key: "error.agentservice.cannot_modify_declarative_resource"
+                      defaultValue: "Cannot modify declarative resource"
+                    description:
+                      key: "error.agentservice.cannot_modify_declarative_resource_description"
+                      defaultValue: "Declaratively managed agents cannot be modified via the API"
+        "404":
+          description: Not one of the caller's personal agents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1004"
+                message:
+                  key: "error.agentservice.agent_not_found"
+                  defaultValue: "Agent not found"
+                description:
+                  key: "error.agentservice.agent_not_found_description"
+                  defaultValue: "The agent with the specified id does not exist"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
+    delete:
+      tags:
+        - Self
+      summary: Delete one of the caller's personal agents
+      description: |
+        Deletes a personal agent the signed-in user owns, in the organization unit the access token names. An
+        agent that does not exist, is not a personal agent, belongs to someone else, or is outside that
+        organization unit is not found. The token must be the user's own: a delegated token is refused.
+
+        When token revocation is on (`oauth.token_revocation.enabled`, the default), the tokens issued
+        to the agent and those issued through its client ID are revoked, and its sessions end.
+      security:
+        - OAuth2: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: "The agent ID"
+      responses:
+        "204":
+          description: The agent was deleted
+        "401":
+          description: No user access token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1060"
+                message:
+                  key: "error.agentservice.authentication_required"
+                  defaultValue: "Authentication required"
+                description:
+                  key: "error.agentservice.authentication_required_description"
+                  defaultValue: "The request needs a user access token"
+        "403":
+          description: |
+            A delegated token (one carrying an `act` claim, such as an agent's own token for its owner), or a
+            declarative agent, which cannot be changed at runtime.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                delegated-token:
+                  summary: A delegated token
+                  value:
+                    code: "AGT-1061"
+                    message:
+                      key: "error.agentservice.delegated_token_not_allowed"
+                      defaultValue: "Delegated token not allowed"
+                    description:
+                      key: "error.agentservice.delegated_token_not_allowed_description"
+                      defaultValue: "A token issued to a client acting for the user cannot manage the user's agents"
+                declarative-agent:
+                  summary: A declarative agent
+                  value:
+                    code: "AGT-1027"
+                    message:
+                      key: "error.agentservice.cannot_modify_declarative_resource"
+                      defaultValue: "Cannot modify declarative resource"
+                    description:
+                      key: "error.agentservice.cannot_modify_declarative_resource_description"
+                      defaultValue: "Declaratively managed agents cannot be modified via the API"
+        "404":
+          description: Not one of the caller's personal agents
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1004"
+                message:
+                  key: "error.agentservice.agent_not_found"
+                  defaultValue: "Agent not found"
+                description:
+                  key: "error.agentservice.agent_not_found_description"
+                  defaultValue: "The agent with the specified id does not exist"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-5000"
+                message:
+                  key: "error.internal_server_error"
+                  defaultValue: "Internal server error"
+                description:
+                  key: "error.internal_server_error_description"
+                  defaultValue: "An unexpected error occurred while processing the request"
+
+  /users/me/agents/suspend:
+    post:
+      tags:
+        - Self
+      summary: Suspend all of the caller's personal agents
+      description: |
+        Suspends every personal agent of the caller, in the organization unit the access token names, that the
+        caller has not already suspended, after revoking the tokens issued to each agent's client. A token that
+        names no organization unit suspends none. An agent the organization suspended is suspended by the caller
+        too: the two suspensions are independent.
+      security:
+        - OAuth2: []
+      responses:
+        "200":
+          description: The caller's agents are suspended
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  suspendedCount:
+                    type: integer
+                    description: |
+                      How many agents this request suspended. Agents already suspended by the caller
+                      are not counted.
+                    example: 2
+        "401":
+          description: No user access token (`AGT-1060`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "403":
+          description: |
+            A delegated token (`AGT-1061`): one carrying an `act` claim, such as an agent's own token for its
+            owner.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /users/me/agents/{id}/suspend:
+    post:
+      tags:
+        - Self
+      summary: Suspend one of the caller's personal agents
+      description: |
+        Revokes the tokens issued to the agent's client, then suspends the agent until the caller lifts the
+        suspension. The agent's credentials and settings are kept. Suspending an agent the caller already
+        suspended changes nothing. The suspension is the caller's own: it is independent of a suspension by the
+        organization, which the caller cannot lift. The agent must be one of the caller's personal agents in the
+        organization unit the access token names; any other is not found.
+      security:
+        - OAuth2: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: "The agent ID"
+      responses:
+        "204":
+          description: The agent is suspended by the caller
+        "401":
+          description: No user access token (`AGT-1060`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "403":
+          description: |
+            A delegated token (`AGT-1061`): one carrying an `act` claim, such as an agent's own token for its
+            owner.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "404":
+          description: Not one of the caller's personal agents (`AGT-1004`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /users/me/agents/{id}/unsuspend:
+    post:
+      tags:
+        - Self
+      summary: Lift the caller's suspension of one of their personal agents
+      description: |
+        Lifts the suspension the caller placed. A suspension by the organization stays in force, and the agent
+        stays suspended until an administrator lifts it. Lifting when the caller has not suspended the agent
+        changes nothing. The agent must be one of the caller's personal agents in the organization unit the access
+        token names; any other is not found.
+      security:
+        - OAuth2: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: "The agent ID"
+      responses:
+        "204":
+          description: The caller's suspension is lifted
+        "401":
+          description: No user access token (`AGT-1060`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "403":
+          description: |
+            A delegated token (`AGT-1061`): one carrying an `act` claim, such as an agent's own token for its
+            owner.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "404":
+          description: Not one of the caller's personal agents (`AGT-1004`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /users/me/agents/{id}/update-credentials:
+    post:
+      tags:
+        - Self
+      summary: Update the credentials of one of the caller's personal agents
+      description: |
+        Sets new values for credentials the agent type's schema declares, such as a password, on a personal agent
+        the signed-in user owns, as `POST /users/me/update-credentials` does for the user's own. Only the
+        credentials present in the request body are updated, and the others keep their value. The values are
+        stored hashed and no read returns them. Replacing a credential the agent already holds revokes the tokens
+        issued with the agent as their subject and ends its sessions, as a user's credential update does, up to the
+        change and again once it is written; setting one the agent does not hold yet revokes nothing. Sending the
+        value the agent already holds still revokes. If the revocation before the write fails, the credential is
+        not changed. If the one after the write fails, the credential is stored but the request returns an error,
+        and setting it again revokes what is left. The client secret is not a credential attribute, and this
+        request cannot change it.
+
+        The caller must own the agent, hold every permission the agent holds, and be in the organization unit the
+        access token names; an agent that is not the caller's personal agent is not found. The token must be the
+        user's own: a delegated token is refused. An agent declared in a file, and one a control plane deployed,
+        are refused. An administrator cannot set a personal agent's credentials, and an update of the agent
+        through `PUT /agents/{id}` or `PUT /users/me/agents/{id}` that names a credential is refused (`AGT-1068`).
+      security:
+        - OAuth2: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: "The agent ID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSelfUserRequest'
+            example:
+              attributes:
+                password: "n3wP@ssword!"
+      responses:
+        "204":
+          description: Credentials updated
+        "400":
+          description: >
+            Bad request. The body has no credentials (`AGT-1001`), names one the agent type does not
+            declare or gives it an empty value (`AGT-1016`), or gives one a value its schema refuses (`AGT-1015`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "401":
+          description: No user access token (`AGT-1060`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "403":
+          description: |
+            A delegated token (`AGT-1061`), such as an agent's own token for its owner; the caller does not hold
+            every permission the agent holds; or the agent is declared in a file (`AGT-1027`) or deployed by a
+            control plane (`AGT-1063`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "404":
+          description: Not one of the caller's personal agents (`AGT-1004`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /users/me/update-credentials:
     post:
       tags:
@@ -1924,6 +2815,20 @@ paths:
                 description:
                   key: "error.unauthorized_description"
                   defaultValue: "Authentication is required to access this resource"
+        "403":
+          description: The caller may not change the user's credentials with a delegated token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "USR-1046"
+                message:
+                  key: "error.userservice.delegated_token_not_allowed"
+                  defaultValue: "Delegated token not allowed"
+                description:
+                  key: "error.userservice.delegated_token_not_allowed_description"
+                  defaultValue: "Credentials cannot be changed with a delegated token"
         "404":
           description: Authenticated user not found
           content:
@@ -2494,6 +3399,15 @@ components:
           - display
       description: |
         Optional parameter to include additional display information in the response. The exact fields included depend on the endpoint. See each endpoint's response schema for details on which fields are enriched.
+    userProjectIdQueryParam:
+      in: query
+      name: projectId
+      required: false
+      description: |
+        Lists the users of the project. A project that does not exist has no users.
+      schema:
+        type: string
+      example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
     userFilterParam:
       in: query
       name: filter
@@ -2507,7 +3421,8 @@ components:
         - `age eq 25` - Users with age = 25
         - `address.city eq "Mountain View"` - Users with address.city = "Mountain View"
         - `ouId eq "456e8400-e29b-41d4-a716-446655440001"` - Users the organization unit owns,
-          followed by the users shared into it.
+          followed by the users shared into it. With `projectId`, only the project's users that
+          organization unit owns, and no other filter.
       schema:
         type: string
       examples:
@@ -2542,6 +3457,23 @@ components:
       example: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
 
   responses:
+    SharedUserReadOnly:
+      description: |
+        The caller may not change the user. A caller confined to an organization unit the user is shared
+        into gets `USR-1045`: only the organization unit that owns the user can change or delete it. Any
+        other caller without access gets the generic forbidden error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "USR-1045"
+            message:
+              key: "error.userservice.shared_user_read_only"
+              defaultValue: "Shared user is read only"
+            description:
+              key: "error.userservice.shared_user_read_only_description"
+              defaultValue: "Only the organization unit that owns the user can change or delete it"
     UserSharingPolicyCreateBadRequest:
       description: |
         The policy is not one the issuing organization unit may write. The code says which kind of
@@ -2965,10 +3897,11 @@ components:
           type: string
           description: |
             What happens to this resource when the target resource is deleted.
+            - `restrict`: the target cannot be deleted while the reference exists.
             - `fallback`: the reference is kept as-is.
-            - `cascade`: the resource is permanently deleted.
-          enum: [fallback, cascade]
-          example: fallback
+            - `cascade`: the resource is permanently deleted with the target.
+          enum: [restrict, fallback, cascade]
+          example: restrict
 
     ResourceUsagesSummary:
       type: object
@@ -2985,7 +3918,8 @@ components:
       type: object
       description: |
         Resources that reference a target resource, aggregated across all resource types.
-        Drives pre-delete confirmation dialogs; informational only.
+        Drives pre-delete confirmation dialogs. A usage whose `behaviorOnDelete` is `restrict` blocks the
+        deletion.
       properties:
         totalResults:
           type: integer
@@ -3019,8 +3953,23 @@ components:
           type: string
           readOnly: true
           description: "Human-readable handle of the organization unit (only included when include=display query parameter is used)."
+        projectId:
+          type: string
+          description: "ID of the project this user belongs to. Absent when the user belongs to the organization."
         type:
           type: string
+        verifiedAttributes:
+          type: object
+          readOnly: true
+          description: Verification timestamps, one for each recorded verification of the user's attributes. Empty when none is verified. Omitted from a listing that returns identifiers only, and when the verification state could not be read. Set by the server and never accepted on a write.
+          additionalProperties:
+            type: object
+            required: [verifiedAt]
+            properties:
+              verifiedAt:
+                type: string
+                format: date-time
+                readOnly: true
         attributes:
           type: object
           additionalProperties: true
@@ -3036,8 +3985,8 @@ components:
           type: boolean
           readOnly: true
           description: |
-            Whether the listed organization unit owns the user rather than being shared it. Present
-            only in user lists.
+            Whether the organization unit the user is listed or read under (its `ouId`) owns the user
+            rather than being shared it. Present in user lists and when a user is read by id.
         status:
           $ref: '#/components/schemas/UserAccessStatus'
         lastLoginAt:
@@ -3104,6 +4053,16 @@ components:
                 One reason covers every entry in `lockedMethods`. A suspension release lock is never
                 reported together with authentication method locks.
               example: "FAILED_ATTEMPTS"
+            appliedBy:
+              type: array
+              readOnly: true
+              items:
+                type: string
+                enum: [organization]
+              description: |
+                Every party holding the user suspended. Always `organization` for a user. Present only
+                when the status is `SUSPENDED`.
+              example: ["organization"]
             since:
               type: string
               format: date-time
@@ -3182,6 +4141,459 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/AccessibleOrganizationUnit'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/Link'
+
+    UserOrganizationUnitListResponse:
+      type: object
+      required: [totalResults, startIndex, count, organizationUnits, links]
+      properties:
+        totalResults:
+          type: integer
+          description: "Number of results that match the listing operation."
+        startIndex:
+          type: integer
+          description: "Index of the first element of the page, which will be equal to offset + 1."
+        count:
+          type: integer
+          description: "Number of elements in the returned page."
+        organizationUnits:
+          type: array
+          items:
+            $ref: '#/components/schemas/AccessibleOrganizationUnit'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/Link'
+
+    OwnedAgentOwner:
+      type: object
+      description: The agent's owner, always the caller, a local user.
+      required: [id]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The caller's user ID.
+          example: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+        idType:
+          type: string
+          enum: [uuid]
+          example: "uuid"
+        isLocal:
+          type: boolean
+          enum: [true]
+          example: true
+
+    OwnedAgentLifespan:
+      type: object
+      readOnly: true
+      description: Where the agent stands in its lifespan, derived from `validUntil` on every read.
+      properties:
+        phase:
+          type: string
+          enum: [UNBOUNDED, ACTIVE, EXPIRED]
+          description: |
+            `UNBOUNDED` when the agent does not expire, `ACTIVE` while `validUntil` is ahead, and
+            `EXPIRED` from `validUntil` onward.
+          example: "ACTIVE"
+
+    OwnedAgentSummary:
+      type: object
+      required: [id]
+      description: |
+        An agent in the caller's list: the same summary `GET /agents` returns for each agent. Never includes a
+        client secret.
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "a1b2c3d4-0000-0000-0000-000000000001"
+        ouId:
+          type: string
+          format: uuid
+        ouHandle:
+          type: string
+          readOnly: true
+        type:
+          type: string
+          example: "default"
+        description:
+          type: string
+          example: "Answers questions about my spending"
+        logoUrl:
+          type: string
+        clientId:
+          type: string
+          example: "pa_7f3e9c2a"
+        owner:
+          $ref: '#/components/schemas/OwnedAgentOwner'
+        projectId:
+          type: string
+          readOnly: true
+          description: The ID of the project this agent belongs to, if any.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+        validUntil:
+          type: string
+          format: date-time
+          readOnly: true
+          description: RFC 3339 instant at which the agent's lifespan ends. Omitted when the agent does not expire.
+          example: "2027-03-31T00:00:00Z"
+        lifespan:
+          $ref: '#/components/schemas/OwnedAgentLifespan'
+        isOwnedByOU:
+          type: boolean
+          readOnly: true
+          description: Always true, since the list holds only the agents in the access token's organization unit.
+        kind:
+          type: string
+          readOnly: true
+          example: "personal-assistant"
+        attributes:
+          type: object
+          additionalProperties: true
+          description: The agent's schema attributes, including its name.
+          example:
+            name: "Spending assistant"
+            software: "assistant-x"
+        isReadOnly:
+          type: boolean
+          readOnly: true
+          description: Whether the agent is declarative, so it cannot be changed or deleted at runtime.
+          example: false
+        status:
+          type: object
+          readOnly: true
+          additionalProperties: true
+          description: The agent's effective access status, as in `GET /agents`.
+        lastLoginAt:
+          type: string
+          format: date-time
+          readOnly: true
+    OwnedAgentDetails:
+      type: object
+      description: |
+        An agent as its owner reads it: the same object `GET /agents/{id}` returns. Never includes a client
+        secret.
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "a1b2c3d4-0000-0000-0000-000000000001"
+        ouId:
+          type: string
+          format: uuid
+        ouHandle:
+          type: string
+          readOnly: true
+          description: Populated only when `include=display` is used.
+        type:
+          type: string
+          example: "default"
+        display:
+          type: string
+          readOnly: true
+          description: The agent's display label. Populated only when `include=display` is used.
+        description:
+          type: string
+          example: "Answers questions about my spending"
+        logoUrl:
+          type: string
+        clientId:
+          type: string
+          example: "pa_7f3e9c2a"
+        owner:
+          $ref: '#/components/schemas/OwnedAgentOwner'
+        projectId:
+          type: string
+          readOnly: true
+          description: The ID of the project this agent belongs to, if any.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+        validUntil:
+          type: string
+          format: date-time
+          readOnly: true
+          description: RFC 3339 instant at which the agent's lifespan ends. Omitted when the agent does not expire.
+          example: "2027-03-31T00:00:00Z"
+        lifespan:
+          $ref: '#/components/schemas/OwnedAgentLifespan'
+        kind:
+          type: string
+          readOnly: true
+          example: "personal-assistant"
+        attributes:
+          type: object
+          additionalProperties: true
+          description: The agent's schema attributes, including its name.
+          example:
+            name: "Spending assistant"
+            software: "assistant-x"
+        authFlowId:
+          type: string
+        registrationFlowId:
+          type: string
+        isRegistrationFlowEnabled:
+          type: boolean
+        themeId:
+          type: string
+          format: uuid
+        layoutId:
+          type: string
+          format: uuid
+        assertion:
+          type: object
+          additionalProperties: true
+          description: The agent's assertion settings, as in `GET /agents/{id}`.
+        loginConsent:
+          type: object
+          additionalProperties: true
+          description: The agent's login consent settings, as in `GET /agents/{id}`.
+        allowedUserTypes:
+          type: array
+          items:
+            type: string
+        allowedAgentTypes:
+          type: array
+          items:
+            type: string
+        inboundAuthConfig:
+          type: array
+          description: The agent's OAuth settings, as in `GET /agents/{id}`, without secrets.
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [oauth2]
+              config:
+                type: object
+                additionalProperties: true
+                properties:
+                  clientId:
+                    type: string
+                  grantTypes:
+                    type: array
+                    items:
+                      type: string
+                    example: ["authorization_code"]
+                  redirectUris:
+                    type: array
+                    items:
+                      type: string
+                    example: ["https://assistant.example.com/callback"]
+                  tokenEndpointAuthMethod:
+                    type: string
+                    example: "private_key_jwt"
+        status:
+          type: object
+          readOnly: true
+          description: The agent's effective access status, as in `GET /agents/{id}`.
+          properties:
+            value:
+              type: string
+              enum: [ACTIVE, LOCKED, SUSPENDED, EXPIRED]
+            details:
+              type: object
+              description: Why the status applies. Absent for `ACTIVE`.
+              properties:
+                reason:
+                  type: string
+                  enum: [FAILED_ATTEMPTS, ADMINISTRATIVE_SUSPENSION, OWNER_SUSPENSION, CASCADED_SUSPENSION,
+                    LIFESPAN_ENDED]
+                  description: |
+                    `ADMINISTRATIVE_SUSPENSION` when the organization holds the agent suspended, otherwise
+                    `OWNER_SUSPENSION` for the owner's own suspension, or `CASCADED_SUSPENSION` while the owner's
+                    account is suspended. `LIFESPAN_ENDED` for an agent whose `validUntil` has passed.
+                appliedBy:
+                  type: array
+                  items:
+                    type: string
+                    enum: [organization, owner, cascade]
+                  description: |
+                    Every party holding the agent suspended: the organization, the owner, or `cascade` while the
+                    owner's account is suspended. Each is independent, and the owner can lift only their own.
+                  example: ["owner"]
+                since:
+                  type: string
+                  format: date-time
+                  description: When the suspension that `reason` describes was placed, or when the lifespan ended.
+                operatorNote:
+                  type: string
+                  description: The note the operator entered when placing the hold, if any.
+                lockedMethods:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      method:
+                        type: string
+                      expiresAt:
+                        type: string
+                        format: date-time
+        lastLoginAt:
+          type: string
+          format: date-time
+          readOnly: true
+    OwnedAgentUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [attributes, grantTypes, redirectUris]
+      description: The whole part of a personal agent its owner may change.
+      properties:
+        description:
+          type: string
+          description: Left out or empty clears the description.
+        attributes:
+          type: object
+          additionalProperties: true
+          description: |
+            The agent's schema attributes, including its name. A credential attribute the agent's type declares
+            is stored hashed and never returned.
+        grantTypes:
+          type: array
+          items:
+            type: string
+          description: |
+            For a personal agent, a subset of `authorization_code`, `urn:openid:params:grant-type:ciba` and
+            `refresh_token`. An empty list removes every grant, so the agent gets no tokens until one is added.
+        redirectUris:
+          type: array
+          items:
+            type: string
+          description: At least one when `grantTypes` holds `authorization_code`.
+    OwnedAgentUpdateResponse:
+      type: object
+      description: |
+        A personal agent after its owner's update: the same object `PUT /agents/{id}` returns. The owner's
+        update never issues a client secret, so none is included.
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "a1b2c3d4-0000-0000-0000-000000000001"
+        ouId:
+          type: string
+          format: uuid
+        ouHandle:
+          type: string
+          readOnly: true
+        type:
+          type: string
+          example: "default"
+        description:
+          type: string
+          example: "Answers questions about my spending"
+        logoUrl:
+          type: string
+        owner:
+          $ref: '#/components/schemas/OwnedAgentOwner'
+        projectId:
+          type: string
+          readOnly: true
+          description: The ID of the project this agent belongs to, if any.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+        validUntil:
+          type: string
+          format: date-time
+          readOnly: true
+          description: RFC 3339 instant at which the agent's lifespan ends. Omitted when the agent does not expire.
+          example: "2027-03-31T00:00:00Z"
+        lifespan:
+          $ref: '#/components/schemas/OwnedAgentLifespan'
+        kind:
+          type: string
+          readOnly: true
+          example: "personal-assistant"
+        attributes:
+          type: object
+          additionalProperties: true
+          description: The agent's schema attributes, including its name.
+          example:
+            name: "Spending assistant"
+            software: "assistant-x"
+        status:
+          type: object
+          readOnly: true
+          additionalProperties: true
+          description: The agent's effective access status after the update, as in `PUT /agents/{id}`.
+        lastLoginAt:
+          type: string
+          format: date-time
+          readOnly: true
+        authFlowId:
+          type: string
+        registrationFlowId:
+          type: string
+        isRegistrationFlowEnabled:
+          type: boolean
+        themeId:
+          type: string
+          format: uuid
+        layoutId:
+          type: string
+          format: uuid
+        assertion:
+          type: object
+          additionalProperties: true
+          description: The agent's assertion settings, as in `PUT /agents/{id}`.
+        loginConsent:
+          type: object
+          additionalProperties: true
+          description: The agent's login consent settings, as in `PUT /agents/{id}`.
+        allowedUserTypes:
+          type: array
+          items:
+            type: string
+        allowedAgentTypes:
+          type: array
+          items:
+            type: string
+        inboundAuthConfig:
+          type: array
+          description: The agent's OAuth settings, as in `PUT /agents/{id}`, without secrets.
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+                enum: [oauth2]
+              config:
+                type: object
+                additionalProperties: true
+                properties:
+                  clientId:
+                    type: string
+                  grantTypes:
+                    type: array
+                    items:
+                      type: string
+                    example: ["authorization_code"]
+                  redirectUris:
+                    type: array
+                    items:
+                      type: string
+                    example: ["https://assistant.example.com/callback"]
+                  tokenEndpointAuthMethod:
+                    type: string
+                    example: "private_key_jwt"
+    OwnedAgentListResponse:
+      type: object
+      properties:
+        totalResults:
+          type: integer
+          example: 1
+        startIndex:
+          type: integer
+          example: 1
+        count:
+          type: integer
+          example: 1
+        agents:
+          type: array
+          items:
+            $ref: '#/components/schemas/OwnedAgentSummary'
         links:
           type: array
           items:
@@ -3282,12 +4694,15 @@ components:
 
     CreateUserRequest:
       type: object
-      required: [ouId, type]
+      required: [type]
       properties:
         ouId:
           type: string
           format: uuid
-          description: "The organization unit ID where the user will be created"
+          description: "The organization unit ID where the user will be created. Required unless projectId is given, which places the user in the system organization unit when ouId is left out."
+        projectId:
+          type: string
+          description: "ID of the project the user belongs to. Leave it out for a user of the organization. A user in a project must be in the system organization unit or in an organization unit of the project."
         type:
           type: string
           description: "The handle of the user type"
@@ -3304,6 +4719,9 @@ components:
           type: string
           format: uuid
           description: "The organization unit ID where the user belongs"
+        projectId:
+          type: string
+          description: "ID of the project the user belongs to. An update that leaves it out keeps the user's project."
         type:
           type: string
           description: "The handle of the user type"
@@ -3334,6 +4752,13 @@ components:
       type: object
       required: [id, handle, displayName, ouId, schema]
       properties:
+        isReadOnly:
+          type: boolean
+          readOnly: true
+          description: |
+            Whether the user type is read only: declared in a resource file, or deployed by a control
+            plane, which only a later deploy from the control plane changes.
+          example: false
         id:
           type: string
           format: uuid
@@ -3395,6 +4820,8 @@ components:
                     type: boolean
                     default: false
                     description: "Whether this attribute must be provided for the user type"
+                  display:
+                    $ref: "#/components/schemas/UserTypeAttributeDisplay"
                   unique:
                     type: boolean
                     default: false
@@ -3424,6 +4851,8 @@ components:
                     type: boolean
                     default: false
                     description: "Whether this attribute must be provided for the user type"
+                  display:
+                    $ref: "#/components/schemas/UserTypeAttributeDisplay"
                 additionalProperties: false
               - type: object
                 description: "Object property definition"
@@ -3437,11 +4866,13 @@ components:
                     type: boolean
                     default: false
                     description: "Whether this attribute must be provided for the user type"
+                  display:
+                    $ref: "#/components/schemas/UserTypeAttributeDisplay"
                   properties:
                     type: object
                     description: "Nested properties of the object"
                     additionalProperties:
-                      $ref: "#/components/schemas/UserType/properties/schema/additionalProperties"
+                      $ref: "#/components/schemas/UserTypeNestedProperty"
                 additionalProperties: false
               - type: object
                 description: "Array property definition"
@@ -3455,6 +4886,8 @@ components:
                     type: boolean
                     default: false
                     description: "Whether this attribute must be provided for the user type"
+                  display:
+                    $ref: "#/components/schemas/UserTypeAttributeDisplay"
                   items:
                     oneOf:
                       - type: object
@@ -3491,7 +4924,7 @@ components:
                           properties:
                             type: object
                             additionalProperties:
-                              $ref: "#/components/schemas/UserType/properties/schema/additionalProperties"
+                              $ref: "#/components/schemas/UserTypeNestedProperty"
                         additionalProperties: false
                 additionalProperties: false
           example:
@@ -3532,6 +4965,140 @@ components:
               items:
                 type: "string"
                 enum: ["vip", "premium", "standard"]
+
+    UserTypeNestedProperty:
+      description: "A property nested in an object or an array of objects. Same as a top-level user type property, without display settings."
+      oneOf:
+        - type: object
+          description: "Leaf property - string, email, mobile, or number"
+          required: [type]
+          properties:
+            type:
+              type: string
+              enum: ["string", "email", "mobile", "number"]
+              description: "Data type of the property"
+            required:
+              type: boolean
+              default: false
+              description: "Whether this attribute must be provided for the user type"
+            unique:
+              type: boolean
+              default: false
+              description: "Whether this property must be unique across all users"
+            credential:
+              type: boolean
+              default: false
+              description: "Whether this property should be treated as a credential attribute. Not supported for email or mobile types."
+            enum:
+              type: array
+              items:
+                type: string
+              description: "List of allowed values for this property. Not supported for email or mobile types."
+            regex:
+              type: string
+              description: "Regular expression pattern for validating the property value"
+          additionalProperties: false
+        - type: object
+          description: "Leaf property - boolean"
+          required: [type]
+          properties:
+            type:
+              type: string
+              enum: ["boolean"]
+              description: "Data type of the property"
+            required:
+              type: boolean
+              default: false
+              description: "Whether this attribute must be provided for the user type"
+          additionalProperties: false
+        - type: object
+          description: "Object property definition"
+          required: [type, properties]
+          properties:
+            type:
+              type: string
+              enum: ["object"]
+              description: "Data type (object)"
+            required:
+              type: boolean
+              default: false
+              description: "Whether this attribute must be provided for the user type"
+            properties:
+              type: object
+              description: "Nested properties of the object"
+              additionalProperties:
+                $ref: "#/components/schemas/UserTypeNestedProperty"
+          additionalProperties: false
+        - type: object
+          description: "Array property definition"
+          required: [type, items]
+          properties:
+            type:
+              type: string
+              enum: ["array"]
+              description: "Data type (array)"
+            required:
+              type: boolean
+              default: false
+              description: "Whether this attribute must be provided for the user type"
+            items:
+              oneOf:
+                - type: object
+                  description: "Array of strings, emails, mobiles, or numbers"
+                  required: [type]
+                  properties:
+                    type:
+                      type: string
+                      enum: ["string", "email", "mobile", "number"]
+                    enum:
+                      type: array
+                      items:
+                        type: string
+                      description: "List of allowed values. Not supported for email or mobile types."
+                    regex:
+                      type: string
+                      description: "Custom validation pattern. Contact types use their default when omitted or empty."
+                  additionalProperties: false
+                - type: object
+                  description: "Array of booleans"
+                  required: [type]
+                  properties:
+                    type:
+                      type: string
+                      enum: ["boolean"]
+                  additionalProperties: false
+                - type: object
+                  description: "Array of objects"
+                  required: [type, properties]
+                  properties:
+                    type:
+                      type: string
+                      enum: ["object"]
+                    properties:
+                      type: object
+                      additionalProperties:
+                        $ref: "#/components/schemas/UserTypeNestedProperty"
+                  additionalProperties: false
+          additionalProperties: false
+
+    UserTypeAttributeDisplay:
+      type: object
+      description: "How a top-level attribute is presented when attributes are listed or collected. Nested properties don't accept it."
+      properties:
+        order:
+          type: integer
+          minimum: 0
+          description: "Position of the attribute when user attributes are listed or collected, lowest first, and by attribute name for the same order. Attributes without one follow the ordered ones."
+        onCreate:
+          type: object
+          description: "Settings for when a user account is created."
+          properties:
+            hidden:
+              type: boolean
+              default: false
+              description: "Whether an optional attribute is left out when a user account is created. A flow asks for optional attributes only when its Provisioning step enables includeOptional, or includeOptionalCredentials for optional credentials, and asks for an attribute the step declares in its own inputs even when it's hidden. Required attributes are always asked for."
+          additionalProperties: false
+      additionalProperties: false
 
     UserTypeListResponse:
       type: object

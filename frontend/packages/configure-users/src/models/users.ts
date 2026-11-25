@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type {User, ApiPaginationLink} from '@thunderid/types';
+import type {AttributeDisplay} from '@thunderid/utils';
 
 /**
  * Error response structure
@@ -33,7 +34,10 @@ export interface UserListResponse {
  * Create user request payload
  */
 export interface CreateUserRequest {
-  ouId: string;
+  /** ID of the organization unit; the system organization unit when omitted with a project */
+  ouId?: string;
+  /** Places the user in the project, in the system organization unit unless ouId names it */
+  projectId?: string;
   type: string;
   groups?: string[];
   attributes?: Record<string, unknown>;
@@ -94,6 +98,8 @@ export interface BasePropertyDefinition {
   type: string;
   required?: boolean;
   displayName?: string;
+  /** How a top-level attribute is ordered and whether it is hidden when an account is created. */
+  display?: AttributeDisplay;
 }
 
 /**
@@ -206,6 +212,25 @@ export interface UserUsage {
 export type UserUsagesSummary = Record<string, number> | null;
 
 /**
+ * An agent a user owns, as the agent list returns it.
+ */
+export interface OwnedAgent {
+  id: string;
+  display?: string;
+  logoUrl?: string;
+  kind?: string;
+}
+
+/**
+ * Response for the agent list filtered by owner.
+ */
+export interface OwnedAgentListResponse {
+  totalResults: number;
+  count: number;
+  agents: OwnedAgent[];
+}
+
+/**
  * Response for the user usages endpoint.
  * totalResults is null when usage data is unavailable; 0 means confirmed empty.
  */
@@ -214,4 +239,32 @@ export interface UserUsagesResponse {
   count: number;
   summary: UserUsagesSummary;
   usages: UserUsage[];
+}
+
+/**
+ * A role a user holds or can be given, as the role lists return it.
+ */
+export interface UserRole {
+  id: string;
+  name: string;
+  description?: string;
+  ouId: string;
+  /** ID of the project the role belongs to; absent when it belongs to no project */
+  projectId?: string;
+  /** True when a user share mandates the user's assignment, so it cannot be removed here */
+  isReadOnly?: boolean;
+  /**
+   * ID of the organization unit the user's assignment is made in, which can differ from the one that owns
+   * the role. Set only on a role the user holds.
+   */
+  assignmentOuId?: string;
+}
+
+/**
+ * A page of roles.
+ */
+export interface UserRoleListResponse {
+  totalResults: number;
+  count: number;
+  roles: UserRole[];
 }

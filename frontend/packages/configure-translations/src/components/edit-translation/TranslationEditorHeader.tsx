@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {getDisplayNameForCode, toFlagEmoji} from '@thunderid/i18n';
 import {Box, Button, PageTitle, Typography} from '@wso2/oxygen-ui';
 import {type JSX} from 'react';
@@ -47,6 +48,7 @@ export default function TranslationEditorHeader({
   onResetToDefault,
 }: TranslationEditorHeaderProps): JSX.Element {
   const {t} = useTranslation('translations');
+  const {can} = useCapabilitiesContext();
 
   return (
     <PageTitle>
@@ -63,7 +65,7 @@ export default function TranslationEditorHeader({
           t('page.title', 'Translations')
         )}
       </PageTitle.Header>
-      {!isFallbackLanguage && (
+      {!isFallbackLanguage && can('i18n', 'update') && (
         <PageTitle.Actions>
           <Button size="small" onClick={onResetToDefault} disabled={!hasNamespace || isSaving}>
             {t('actions.resetToDefault', 'Reset to default')}

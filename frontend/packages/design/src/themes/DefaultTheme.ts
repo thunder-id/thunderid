@@ -319,6 +319,14 @@ export const DefaultThemeConfig = {
         size: 'small',
       },
     },
+    MuiFormLabel: {
+      styleOverrides: {
+        // Required markers stay red in every field state, matching the hand-drawn asterisks.
+        asterisk: ({theme}: {theme: OxygenThemeType}) => ({
+          color: theme.vars.palette.error.main,
+        }),
+      },
+    },
     MuiFormHelperText: {
       styleOverrides: {
         root: {

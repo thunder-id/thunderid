@@ -117,17 +117,21 @@ export default function McpAccessSection({
   const userTypeOptions = userTypesData?.types.map((schema) => schema.handle) ?? [];
   const getLabel = (handle: string): string => getUserTypeLabel(userTypesData?.types ?? [], handle);
 
-  // Agent access is a single on/off choice in the console for now: on means the default agent type
-  // (which is the only one) is the only allowed one, off means no agent type is allowed.
+  // Agent access is a single on/off choice in the console: on allows every agent type, off allows
+  // none. Any non-empty list, such as an older `['default']`, shows as on, and a list that names agent
+  // types is spelled out, since turning the switch back on allows every agent type instead.
   // Held locally because `application` carries saved values only, so the switch would otherwise
   // snap back until the edit is saved; the section is remounted on Save/Reset to reseed it.
-  const [isAgentSignInEnabled, setIsAgentSignInEnabled] = useState<boolean>(
-    () => (application.allowedAgentTypes ?? []).length > 0,
-  );
+  const [allowedAgentTypes, setAllowedAgentTypes] = useState<string[]>(() => application.allowedAgentTypes ?? []);
+  const isAgentSignInEnabled = allowedAgentTypes.length > 0;
+  const restrictedAgentTypes = allowedAgentTypes.includes(ApplicationConstants.ALL_AGENT_TYPES)
+    ? []
+    : allowedAgentTypes;
 
   const handleAgentSignInToggle = (enabled: boolean): void => {
-    setIsAgentSignInEnabled(enabled);
-    onFieldChange('allowedAgentTypes', enabled ? [ApplicationConstants.DEFAULT_AGENT_TYPE_HANDLE] : []);
+    const next = enabled ? [ApplicationConstants.ALL_AGENT_TYPES] : [];
+    setAllowedAgentTypes(next);
+    onFieldChange('allowedAgentTypes', next);
   };
 
   const agentSignInLabel = t('applications:edit.access.agentSignIn.toggle.label', 'Enable agent sign-in');
@@ -312,38 +316,44 @@ export default function McpAccessSection({
           <Typography variant="caption" color="text.secondary" sx={{display: 'block', ml: '52px'}}>
             {t(
               'applications:edit.access.agentSignIn.toggle.hint',
-              'When enabled, agents can sign in to this client using the sign-in flow.',
+              'When enabled, agents of any agent type can sign in to this client using the sign-in flow.',
             )}
           </Typography>
+          {restrictedAgentTypes.length > 0 && (
+            <Typography variant="caption" color="text.secondary" sx={{display: 'block', ml: 6.5}}>
+              {t(
+                'applications:edit.access.agentSignIn.restricted',
+                'Only agents of these agent types can sign in now: {{types}}. Turning agent sign-in off and on again allows every agent type.',
+                {types: restrictedAgentTypes.join(', ')},
+              )}
+            </Typography>
+          )}
         </Box>
 
-        <FormControl fullWidth>
-          <FormLabel htmlFor="mcp-client-uri-input">
-            {t('applications:edit.mcp.connect.clientUri.label', 'Client URI')}
-          </FormLabel>
-          <Controller
-            name="url"
-            control={control}
-            render={({field}) => (
-              <TextField
-                {...field}
-                onChange={(e) => {
-                  field.onChange(e);
-                  onFieldChange('url', e.target.value);
-                }}
-                fullWidth
-                id="mcp-client-uri-input"
-                placeholder="https://example.com"
-                error={!!errors.url}
-                helperText={
-                  errors.url?.message ??
-                  t('applications:edit.mcp.connect.clientUri.hint', 'Public homepage of this client (optional).')
-                }
-                disabled={isReadOnly}
-              />
-            )}
-          />
-        </FormControl>
+        <Controller
+          name="url"
+          control={control}
+          render={({field}) => (
+            <TextField
+              labelPlacement="top"
+              label={t('applications:edit.mcp.connect.clientUri.label', 'Client URI')}
+              {...field}
+              onChange={(e) => {
+                field.onChange(e);
+                onFieldChange('url', e.target.value);
+              }}
+              fullWidth
+              id="mcp-client-uri-input"
+              placeholder="https://example.com"
+              error={!!errors.url}
+              helperText={
+                errors.url?.message ??
+                t('applications:edit.mcp.connect.clientUri.hint', 'Public homepage of this client (optional).')
+              }
+              disabled={isReadOnly}
+            />
+          )}
+        />
 
         <FormControl fullWidth required={isRedirectUriRequired}>
           <FormLabel htmlFor="mcp-redirect-uris-section">

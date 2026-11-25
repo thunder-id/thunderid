@@ -12,6 +12,7 @@ window.__THUNDERID_RUNTIME_CONFIG__ = {
   documentation: {
     baseUrl: 'https://thunderid.dev/docs/v1.0.x',
     releasesUrl: 'https://thunderid.dev/data/releases.json',
+    ecosystemReleasesUrl: 'https://thunderid.dev/data/ecosystem-releases.json',
     links: {
       users: '',
       applications: '',
@@ -78,7 +79,7 @@ window.__THUNDERID_RUNTIME_CONFIG__ = {
     base: '/console',
     client_id: 'CONSOLE',
     resource_identifier: 'https://localhost:8090/mcp',
-    scopes: ['openid', 'profile', 'email', 'ou', 'system'],
+    scopes: ['openid', 'profile', 'email', 'ou', 'system', 'org'],
   },
   // Defaults to the origin this app is served from. Add a `server` block with `public_url`
   // (or `hostname`, `port`, `http_only`) to target a different backend.
@@ -90,8 +91,23 @@ window.__THUNDERID_RUNTIME_CONFIG__ = {
   // },
 
   // Optional: location of the login gate, used to build the OAuth redirect URI shown when
-  // configuring social/OIDC connections. Omit to default to `${served origin}/gate/callback`.
+  // configuring social/OIDC connections. Omit to default to `${runtime URL}/gate/callback`: the
+  // default gateway's URL when the console manages a separate runtime, otherwise the server URL.
   // gate_client: {
   //   public_url: 'https://gate.example.com',   // or hostname/port/scheme
+  // },
+
+  // Optional: where gateways are managed outside the console, such as a hosting platform's own pages.
+  // A project's pipeline links to edit_pipeline_url as "Edit pipeline", with {project} standing for the
+  // project's handle; the organization's overview links to manage_environments_url.
+  // deploy: {
+  //   edit_pipeline_url: 'https://platform.example.com/projects/{project}/pipeline',
+  //   manage_environments_url: 'https://platform.example.com/environments',
+  // },
+
+  // Optional, Control Plane console only: the roles a user added outside any project is given. A packaged
+  // Control Plane sets it to the bootstrap's Administrator role.
+  // administrators: {
+  //   role_ids: ['01900000-0000-7000-8000-000000000050'],
   // },
 };

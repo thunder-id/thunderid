@@ -15,6 +15,7 @@ import (
 	authncommon "github.com/thunder-id/thunderid/internal/authn/common"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/vc/presentation"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -207,7 +208,7 @@ func (s *openid4vpService) Authenticate(_ context.Context, cred *authncommon.Ope
 func (s *openid4vpService) resolveDefinition(
 	ctx context.Context, definitionID string,
 ) (*presentationDefinition, error) {
-	dto, svcErr := s.defStore.GetPresentationDefinitionByHandle(ctx, definitionID)
+	dto, svcErr := s.defStore.GetPresentationDefinitionByHandle(security.WithRuntimeContext(ctx), definitionID)
 	if svcErr != nil {
 		if svcErr.Code == presentation.ErrorDefinitionNotFound.Code {
 			return nil, fmt.Errorf("%w: no presentation definition registered for %q",

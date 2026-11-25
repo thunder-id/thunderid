@@ -393,23 +393,20 @@ export default function AttestationSection({
 
         {platform === 'android' && (
           <>
-            <FormControl fullWidth>
-              <FormLabel htmlFor="attestation-package-name">
-                {t('applications:edit.advanced.attestation.labels.packageName', 'Package name')}
-              </FormLabel>
-              <TextField
-                id="attestation-package-name"
-                fullWidth
-                value={packageName}
-                onChange={(e) => handlePackageNameChange(e.target.value)}
-                placeholder={t('applications:edit.advanced.attestation.placeholder.packageName', 'com.example.myapp')}
-                helperText={t(
-                  'applications:edit.advanced.attestation.hint.packageName',
-                  'The Android application package name that must match the attested app.',
-                )}
-                disabled={disabled}
-              />
-            </FormControl>
+            <TextField
+              labelPlacement="top"
+              label={t('applications:edit.advanced.attestation.labels.packageName', 'Package name')}
+              id="attestation-package-name"
+              fullWidth
+              value={packageName}
+              onChange={(e) => handlePackageNameChange(e.target.value)}
+              placeholder={t('applications:edit.advanced.attestation.placeholder.packageName', 'com.example.myapp')}
+              helperText={t(
+                'applications:edit.advanced.attestation.hint.packageName',
+                'The Android application package name that must match the attested app.',
+              )}
+              disabled={disabled}
+            />
 
             <FormControl fullWidth>
               <FormLabel htmlFor="attestation-digests-section">
@@ -477,84 +474,75 @@ export default function AttestationSection({
               </Stack>
             </FormControl>
 
-            <FormControl fullWidth>
-              <FormLabel htmlFor="attestation-service-account">
-                {t(
-                  'applications:edit.advanced.attestation.labels.serviceAccountCredentials',
-                  'Service account credentials',
-                )}
-              </FormLabel>
-              <TextField
-                id="attestation-service-account"
-                fullWidth
-                multiline
-                rows={4}
-                value={credentials}
-                onChange={(e) => handleCredentialsChange(e.target.value)}
-                placeholder={t(
-                  'applications:edit.advanced.attestation.placeholder.serviceAccountCredentials',
-                  'Paste the Google Cloud service account JSON',
-                )}
-                helperText={t(
-                  'applications:edit.advanced.attestation.hint.serviceAccountCredentials',
-                  'Write-only. Used to call the Play Integrity API. Leave blank to keep the existing credentials.',
-                )}
-                disabled={disabled}
-              />
-            </FormControl>
+            <TextField
+              labelPlacement="top"
+              label={t(
+                'applications:edit.advanced.attestation.labels.serviceAccountCredentials',
+                'Service account credentials',
+              )}
+              id="attestation-service-account"
+              fullWidth
+              multiline
+              rows={4}
+              value={credentials}
+              onChange={(e) => handleCredentialsChange(e.target.value)}
+              placeholder={t(
+                'applications:edit.advanced.attestation.placeholder.serviceAccountCredentials',
+                'Paste the Google Cloud service account JSON',
+              )}
+              helperText={t(
+                'applications:edit.advanced.attestation.hint.serviceAccountCredentials',
+                'Write-only. Used to call the Play Integrity API. Leave blank to keep the existing credentials.',
+              )}
+              disabled={disabled}
+            />
           </>
         )}
 
         {platform === 'apple' && (
           <>
-            <FormControl fullWidth>
-              <FormLabel htmlFor="attestation-team-id">
-                {t('applications:edit.advanced.attestation.labels.teamId', 'Team ID')}
-              </FormLabel>
-              <TextField
-                id="attestation-team-id"
-                fullWidth
-                value={teamId}
-                onChange={(e) => handleTeamIdChange(e.target.value)}
-                placeholder={t('applications:edit.advanced.attestation.placeholder.teamId', 'ABCDE12345')}
-                error={appleIncomplete && teamId.trim() === ''}
-                helperText={
-                  appleIncomplete && teamId.trim() === ''
-                    ? t(
-                        'applications:edit.advanced.attestation.error.appleIncomplete',
-                        'Both team ID and bundle ID are required together.',
-                      )
-                    : t('applications:edit.advanced.attestation.hint.teamId', 'The Apple Developer Team ID.')
-                }
-                disabled={disabled}
-              />
-            </FormControl>
+            <TextField
+              labelPlacement="top"
+              label={t('applications:edit.advanced.attestation.labels.teamId', 'Team ID')}
+              id="attestation-team-id"
+              fullWidth
+              value={teamId}
+              onChange={(e) => handleTeamIdChange(e.target.value)}
+              placeholder={t('applications:edit.advanced.attestation.placeholder.teamId', 'ABCDE12345')}
+              error={appleIncomplete && teamId.trim() === ''}
+              helperText={
+                appleIncomplete && teamId.trim() === ''
+                  ? t(
+                      'applications:edit.advanced.attestation.error.appleIncomplete',
+                      'Both team ID and bundle ID are required together.',
+                    )
+                  : t('applications:edit.advanced.attestation.hint.teamId', 'The Apple Developer Team ID.')
+              }
+              disabled={disabled}
+            />
 
-            <FormControl fullWidth>
-              <FormLabel htmlFor="attestation-bundle-id">
-                {t('applications:edit.advanced.attestation.labels.bundleId', 'Bundle ID')}
-              </FormLabel>
-              <TextField
-                id="attestation-bundle-id"
-                fullWidth
-                value={bundleId}
-                onChange={(e) => handleBundleIdChange(e.target.value)}
-                placeholder={t('applications:edit.advanced.attestation.placeholder.bundleId', 'com.example.myapp')}
-                error={appleIncomplete && bundleId.trim() === ''}
-                helperText={
-                  appleIncomplete && bundleId.trim() === ''
-                    ? t(
-                        'applications:edit.advanced.attestation.error.appleIncomplete',
-                        'Both team ID and bundle ID are required together.',
-                      )
-                    : t(
-                        'applications:edit.advanced.attestation.hint.bundleId',
-                        'The iOS bundle identifier that must match the attested app.',
-                      )
-                }
-                disabled={disabled}
-              />
-            </FormControl>
+            <TextField
+              labelPlacement="top"
+              label={t('applications:edit.advanced.attestation.labels.bundleId', 'Bundle ID')}
+              id="attestation-bundle-id"
+              fullWidth
+              value={bundleId}
+              onChange={(e) => handleBundleIdChange(e.target.value)}
+              placeholder={t('applications:edit.advanced.attestation.placeholder.bundleId', 'com.example.myapp')}
+              error={appleIncomplete && bundleId.trim() === ''}
+              helperText={
+                appleIncomplete && bundleId.trim() === ''
+                  ? t(
+                      'applications:edit.advanced.attestation.error.appleIncomplete',
+                      'Both team ID and bundle ID are required together.',
+                    )
+                  : t(
+                      'applications:edit.advanced.attestation.hint.bundleId',
+                      'The iOS bundle identifier that must match the attested app.',
+                    )
+              }
+              disabled={disabled}
+            />
           </>
         )}
       </Stack>

@@ -12,6 +12,7 @@ import (
 	"text/template"
 
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
+	"github.com/thunder-id/thunderid/internal/system/varname"
 	"github.com/thunder-id/thunderid/tests/mocks/crypto/cryptomock"
 
 	"gopkg.in/yaml.v3"
@@ -39,6 +40,7 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/tests/mocks/applicationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/connection/httpconnectionmock"
+	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/flowmgtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/idp/idpmock"
@@ -102,7 +104,8 @@ func (suite *ExportServiceTestSuite) SetupTest() {
 
 	// Create exporters
 	exporters := []declarativeresource.ResourceExporter{
-		application.NewApplicationExporterForTest(suite.appServiceMock, sharingWithNoPolicies(suite.T())),
+		application.NewApplicationExporterForTest(suite.appServiceMock, entitiesWithNoFlowSecrets(suite.T()),
+			sharingWithNoPolicies(suite.T())),
 		connection.NewConnectionExporterForTest(suite.idpServiceMock, suite.mockNotificationService, nil, nil),
 		entitytype.NewEntityTypeExporterForTest(suite.mockEntityTypeService, entitytype.TypeCategoryUser),
 		flowmgt.NewFlowGraphExporterForTest(suite.mockFlowService, sharingWithNoPolicies(suite.T())),
@@ -111,17 +114,17 @@ func (suite *ExportServiceTestSuite) SetupTest() {
 	// Create parameterizer instance
 	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
 
-	suite.exportService = newExportService(exporters, parameterizer)
+	suite.exportService = newExportService(exporters, parameterizer, discardingBus{})
 }
 
 func (suite *ExportServiceTestSuite) TearDownTest() {
 	config.ResetServerRuntime()
 }
 
-// varNames returns a variable name allocator for tests that call
-// exportResourcesWithExporter directly instead of going through ExportResources.
-func (suite *ExportServiceTestSuite) varNames() *varNameAllocator {
-	return newVarNameAllocator(suite.exportService.(*exportService).parameterizer)
+// variableName is the name an export gives a value of a resource: the one the naming rule derives from
+// the resource's own type and ID.
+func variableName(resourceType, resourceID, field string) string {
+	return varname.DeriveVariableName(resourceType, resourceID, field)
 }
 
 // TestExportServiceTestSuite runs the test suite.
@@ -281,15 +284,18 @@ func (suite *ExportServiceTestSuite) TestExportResources_CompleteOAuthApplicatio
 	assert.Equal(suite.T(), "OAuth_Test_App_oauth-app-id.yaml", file.FileName)
 	assert.Equal(suite.T(), "applications", file.FolderPath)
 	assert.Contains(suite.T(), file.Content, "name: OAuth Test App")
-	assert.Contains(suite.T(), file.Content, "clientId: {{.APPLICATION_O_AUTH_TEST_APP_CLIENT_ID}}")
-	assert.Contains(suite.T(), file.Content, "clientSecret: {{.APPLICATION_O_AUTH_TEST_APP_CLIENT_SECRET}}")
+	clientIDVar := variableName("application", appID, "ClientID")
+	clientSecretVar := variableName("application", appID, "ClientSecret")
+	redirectURIsVar := variableName("application", appID, "redirectUris")
+	assert.Contains(suite.T(), file.Content, "clientId: {{."+clientIDVar+"}}")
+	assert.Contains(suite.T(), file.Content, "clientSecret: {{."+clientSecretVar+"}}")
 	assert.Contains(suite.T(), file.Content, "redirectUris:")
-	assert.Contains(suite.T(), file.Content, "{{- range .APPLICATION_O_AUTH_TEST_APP_REDIRECT_URIS}}")
+	assert.Contains(suite.T(), file.Content, "{{- range ."+redirectURIsVar+"}}")
 	assert.NotNil(suite.T(), result.EnvFile)
 	assert.Equal(suite.T(), ".env", result.EnvFile.FileName)
-	assert.Contains(suite.T(), result.EnvFile.Content, "APPLICATION_O_AUTH_TEST_APP_CLIENT_ID=client123\n")
-	assert.Contains(suite.T(), result.EnvFile.Content, "APPLICATION_O_AUTH_TEST_APP_CLIENT_SECRET=\n")
-	expectedRedirectURIs := "APPLICATION_O_AUTH_TEST_APP_REDIRECT_URIS=[\"http://localhost:3000/callback\"]\n"
+	assert.Contains(suite.T(), result.EnvFile.Content, clientIDVar+"=client123\n")
+	assert.Contains(suite.T(), result.EnvFile.Content, clientSecretVar+"=\n")
+	expectedRedirectURIs := redirectURIsVar + "=[\"http://localhost:3000/callback\"]\n"
 	assert.Contains(suite.T(), result.EnvFile.Content, expectedRedirectURIs)
 
 	assert.Equal(suite.T(), 1, result.Summary.ResourceTypes["application"])
@@ -343,18 +349,19 @@ func (suite *ExportServiceTestSuite) TestExportResources_HyphenatedApplicationNa
 	assert.Len(suite.T(), result.Files, 1)
 
 	file := result.Files[0]
-	assert.Contains(suite.T(), file.Content, "clientId: {{.APPLICATION_WAYFINDER_CONCIERGE_CLIENT_ID}}")
+	clientIDVar := variableName("application", appID, "ClientID")
+	assert.Contains(suite.T(), file.Content, "clientId: {{."+clientIDVar+"}}")
 	assert.NotContains(suite.T(), file.Content, "WAYFINDER-CONCIERGE")
 	assert.NotNil(suite.T(), result.EnvFile)
-	assert.Contains(suite.T(), result.EnvFile.Content, "APPLICATION_WAYFINDER_CONCIERGE_CLIENT_ID=client123\n")
+	assert.Contains(suite.T(), result.EnvFile.Content, clientIDVar+"=client123\n")
 
 	_, parseErr := template.New("export").Parse(file.Content)
 	assert.NoError(suite.T(), parseErr)
 }
 
 // TestExportResources_CollidingNormalizedNames tests that resource names normalizing to the same
-// variable prefix get distinct template variables and .env entries. The third name ends with a
-// separator, which normalizes to the same prefix as the first two.
+// readable part still get distinct template variables and .env entries, because each carries its own
+// ID. The third name ends with a separator, which normalizes like the first two.
 func (suite *ExportServiceTestSuite) TestExportResources_CollidingNormalizedNames() {
 	request := &ExportRequest{
 		Applications: []string{testApp1ID, testApp2ID, testApp3ID},
@@ -391,13 +398,18 @@ func (suite *ExportServiceTestSuite) TestExportResources_CollidingNormalizedName
 	require.NotNil(suite.T(), result)
 	assert.Len(suite.T(), result.Files, 3)
 
-	assert.Contains(suite.T(), result.Files[0].Content, "clientId: {{.APPLICATION_WAYFINDER_CONCIERGE_CLIENT_ID}}")
-	assert.Contains(suite.T(), result.Files[1].Content, "clientId: {{.APPLICATION_WAYFINDER_CONCIERGE_2_CLIENT_ID}}")
-	assert.Contains(suite.T(), result.Files[2].Content, "clientId: {{.APPLICATION_WAYFINDER_CONCIERGE_3_CLIENT_ID}}")
+	first := variableName("application", testApp1ID, "ClientID")
+	second := variableName("application", testApp2ID, "ClientID")
+	third := variableName("application", testApp3ID, "ClientID")
+	assert.Len(suite.T(), map[string]bool{first: true, second: true, third: true}, 3,
+		"three resources must not share a variable")
+	assert.Contains(suite.T(), result.Files[0].Content, "clientId: {{."+first+"}}")
+	assert.Contains(suite.T(), result.Files[1].Content, "clientId: {{."+second+"}}")
+	assert.Contains(suite.T(), result.Files[2].Content, "clientId: {{."+third+"}}")
 	require.NotNil(suite.T(), result.EnvFile)
-	assert.Contains(suite.T(), result.EnvFile.Content, "APPLICATION_WAYFINDER_CONCIERGE_CLIENT_ID=client-one\n")
-	assert.Contains(suite.T(), result.EnvFile.Content, "APPLICATION_WAYFINDER_CONCIERGE_2_CLIENT_ID=client-two\n")
-	assert.Contains(suite.T(), result.EnvFile.Content, "APPLICATION_WAYFINDER_CONCIERGE_3_CLIENT_ID=client-three\n")
+	assert.Contains(suite.T(), result.EnvFile.Content, first+"=client-one\n")
+	assert.Contains(suite.T(), result.EnvFile.Content, second+"=client-two\n")
+	assert.Contains(suite.T(), result.EnvFile.Content, third+"=client-three\n")
 }
 
 // TestExportResources_MultipleApplications tests exporting multiple applications.
@@ -957,7 +969,8 @@ func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_Proper
 
 	// Only the secret field is parameterized, with a context-aware variable name:
 	// IDP_NAME + FIELD_NAME in UPPER_SNAKE_CASE.
-	assert.Contains(suite.T(), yamlContent, "clientSecret: {{.CONNECTION_EXPORT_TEST_IDP_CLIENT_SECRET}}")
+	secretVar := variableName("connection", idpID, "client_secret")
+	assert.Contains(suite.T(), yamlContent, "clientSecret: {{."+secretVar+"}}")
 
 	// Non-secret typed fields are exported as plain values under their camelCase keys.
 	assert.Contains(suite.T(), yamlContent, "clientId: test-client-123")
@@ -968,7 +981,7 @@ func (suite *ExportServiceTestSuite) TestExportResources_IdentityProvider_Proper
 	assert.Contains(suite.T(), yamlContent, "type: google")
 
 	assert.NotNil(suite.T(), result.EnvFile)
-	assert.Contains(suite.T(), result.EnvFile.Content, "CONNECTION_EXPORT_TEST_IDP_CLIENT_SECRET=super-secret")
+	assert.Contains(suite.T(), result.EnvFile.Content, secretVar+"=super-secret")
 }
 
 // TestExportResources_IdentityProvider_PropertyStructure verifies that a connection with
@@ -1254,7 +1267,7 @@ type MockParameterizer struct {
 }
 
 func (m *MockParameterizer) ToParameterizedYAML(_ context.Context, obj interface{},
-	resourceType string, resourceName string,
+	resourceType, resourceID string,
 	rules *declarativeresource.ResourceRules) (string, map[string]string, map[string]bool, error) {
 	if m.shouldFail {
 		return "", nil, nil, fmt.Errorf("%s", m.errorMsg)
@@ -1263,16 +1276,12 @@ func (m *MockParameterizer) ToParameterizedYAML(_ context.Context, obj interface
 	return "id: test\nname: test\n", nil, nil, nil
 }
 
-func (m *MockParameterizer) PlaceholderValues(_ context.Context, _ interface{}, _ string, _ string,
+func (m *MockParameterizer) PlaceholderValues(_ context.Context, _ interface{}, _, _ string,
 	_ *declarativeresource.ResourceRules) (map[string]string, map[string]string, error) {
 	if m.shouldFail {
 		return nil, nil, fmt.Errorf("%s", m.errorMsg)
 	}
 	return map[string]string{}, map[string]string{}, nil
-}
-
-func (m *MockParameterizer) VarPrefix(resourceName string) string {
-	return newParameterizer(templatingRules{}, TemplatePlaceholders).VarPrefix(resourceName)
 }
 
 // TestExportResources_TemplateGenerationError tests the error path in generateTemplateFromStruct.
@@ -1305,13 +1314,14 @@ func (suite *ExportServiceTestSuite) TestExportResources_TemplateGenerationError
 
 	// Create exporters with the test services
 	exporters := []declarativeresource.ResourceExporter{
-		application.NewApplicationExporterForTest(suite.appServiceMock, sharingWithNoPolicies(suite.T())),
+		application.NewApplicationExporterForTest(suite.appServiceMock, entitiesWithNoFlowSecrets(suite.T()),
+			sharingWithNoPolicies(suite.T())),
 		connection.NewConnectionExporterForTest(suite.idpServiceMock, suite.mockNotificationService, nil, nil),
 		entitytype.NewEntityTypeExporterForTest(suite.mockEntityTypeService, entitytype.TypeCategoryUser),
 	}
 
 	// Create a new export service with the mock parameterizer
-	exportServiceWithMock := newExportService(exporters, mockParameterizer)
+	exportServiceWithMock := newExportService(exporters, mockParameterizer, discardingBus{})
 
 	result, err := exportServiceWithMock.ExportResources(context.Background(), request)
 
@@ -2000,7 +2010,7 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_Success() {
 
 	files, variables, errors, _ := suite.exportService.(*exportService).exportResourcesWithExporter(
 		context.Background(),
-		exporter, []string{appID}, options, suite.varNames(), map[string]string{})
+		exporter, []string{appID}, options, map[string]string{})
 
 	assert.Len(suite.T(), files, 1)
 	assert.Len(suite.T(), errors, 0)
@@ -2044,7 +2054,7 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_MultipleRes
 
 	files, variables, errors, _ := suite.exportService.(*exportService).exportResourcesWithExporter(
 		context.Background(),
-		exporter, []string{app1ID, app2ID, app3ID}, options, suite.varNames(), map[string]string{})
+		exporter, []string{app1ID, app2ID, app3ID}, options, map[string]string{})
 
 	assert.Len(suite.T(), files, 3)
 	assert.Len(suite.T(), errors, 0)
@@ -2069,7 +2079,7 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_ResourceNot
 
 	files, variables, errors, _ := suite.exportService.(*exportService).exportResourcesWithExporter(
 		context.Background(),
-		exporter, []string{appID}, options, suite.varNames(), map[string]string{})
+		exporter, []string{appID}, options, map[string]string{})
 
 	assert.Len(suite.T(), files, 0)
 	assert.Len(suite.T(), errors, 1)
@@ -2104,7 +2114,7 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_PartialSucc
 
 	files, variables, errors, _ := suite.exportService.(*exportService).exportResourcesWithExporter(
 		context.Background(),
-		exporter, []string{validAppID, invalidAppID}, options, suite.varNames(), map[string]string{})
+		exporter, []string{validAppID, invalidAppID}, options, map[string]string{})
 
 	assert.Len(suite.T(), files, 1)
 	assert.Len(suite.T(), errors, 1)
@@ -2146,7 +2156,7 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_WildcardSuc
 
 	files, variables, errors, _ := suite.exportService.(*exportService).exportResourcesWithExporter(
 		context.Background(),
-		exporter, []string{"*"}, options, suite.varNames(), map[string]string{})
+		exporter, []string{"*"}, options, map[string]string{})
 
 	assert.Len(suite.T(), files, 2)
 	assert.Len(suite.T(), errors, 0)
@@ -2169,7 +2179,7 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_WildcardFai
 
 	files, variables, errors, _ := suite.exportService.(*exportService).exportResourcesWithExporter(
 		context.Background(),
-		exporter, []string{"*"}, options, suite.varNames(), map[string]string{})
+		exporter, []string{"*"}, options, map[string]string{})
 
 	assert.Len(suite.T(), files, 0)
 	assert.Len(suite.T(), errors, 0) // Returns empty slices on wildcard failure
@@ -2191,7 +2201,7 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_WildcardEmp
 
 	files, variables, errors, _ := suite.exportService.(*exportService).exportResourcesWithExporter(
 		context.Background(),
-		exporter, []string{"*"}, options, suite.varNames(), map[string]string{})
+		exporter, []string{"*"}, options, map[string]string{})
 
 	assert.Len(suite.T(), files, 0)
 	assert.Len(suite.T(), errors, 0)
@@ -2219,7 +2229,7 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_WithGroupBy
 
 	files, variables, errors, _ := suite.exportService.(*exportService).exportResourcesWithExporter(
 		context.Background(),
-		exporter, []string{appID}, options, suite.varNames(), map[string]string{})
+		exporter, []string{appID}, options, map[string]string{})
 
 	assert.Len(suite.T(), files, 1)
 	assert.Len(suite.T(), errors, 0)
@@ -2248,7 +2258,7 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_WithCustomF
 
 	files, variables, errors, _ := suite.exportService.(*exportService).exportResourcesWithExporter(
 		context.Background(),
-		exporter, []string{appID}, options, suite.varNames(), map[string]string{})
+		exporter, []string{appID}, options, map[string]string{})
 
 	assert.Len(suite.T(), files, 1)
 	assert.Len(suite.T(), errors, 0)
@@ -2275,7 +2285,7 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_IdentityPro
 
 	files, variables, errors, _ := suite.exportService.(*exportService).exportResourcesWithExporter(
 		context.Background(),
-		exporter, []string{idpID}, options, suite.varNames(), map[string]string{})
+		exporter, []string{idpID}, options, map[string]string{})
 
 	assert.Len(suite.T(), files, 1)
 	assert.Len(suite.T(), errors, 0)
@@ -2306,7 +2316,7 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_Notificatio
 
 	files, variables, errors, _ := suite.exportService.(*exportService).exportResourcesWithExporter(
 		context.Background(),
-		exporter, []string{senderID}, options, suite.varNames(), map[string]string{})
+		exporter, []string{senderID}, options, map[string]string{})
 
 	assert.Len(suite.T(), files, 1)
 	assert.Len(suite.T(), errors, 0)
@@ -2314,7 +2324,7 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_Notificatio
 	assert.Equal(suite.T(), resourceTypeConnection, files[0].ResourceType)
 	assert.Equal(suite.T(), senderID, files[0].ResourceID)
 	assert.NotEmpty(suite.T(), variables)
-	assert.Equal(suite.T(), "key1", variables["CONNECTION_TEST_SENDER_AUTH_TOKEN"])
+	assert.Equal(suite.T(), "key1", variables[variableName("connection", senderID, "auth_token")])
 }
 
 // TestExportResourcesWithExporter_EntityType tests export with entity type exporter.
@@ -2340,7 +2350,7 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_EntityType(
 
 	files, variables, errors, _ := suite.exportService.(*exportService).exportResourcesWithExporter(
 		context.Background(),
-		exporter, []string{schemaID}, options, suite.varNames(), map[string]string{})
+		exporter, []string{schemaID}, options, map[string]string{})
 
 	assert.Len(suite.T(), files, 1)
 	assert.Len(suite.T(), errors, 0)
@@ -2357,7 +2367,7 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_EmptyResour
 
 	files, variables, errors, _ := suite.exportService.(*exportService).exportResourcesWithExporter(
 		context.Background(),
-		exporter, []string{}, options, suite.varNames(), map[string]string{})
+		exporter, []string{}, options, map[string]string{})
 
 	assert.Len(suite.T(), files, 0)
 	assert.Len(suite.T(), errors, 0)
@@ -2382,7 +2392,7 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_JSONFormatF
 
 	files, variables, errors, _ := suite.exportService.(*exportService).exportResourcesWithExporter(
 		context.Background(),
-		exporter, []string{appID}, options, suite.varNames(), map[string]string{})
+		exporter, []string{appID}, options, map[string]string{})
 
 	assert.Len(suite.T(), files, 1)
 	assert.Len(suite.T(), errors, 0)
@@ -2429,7 +2439,7 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_Flow() {
 
 	files, variables, errors, _ := suite.exportService.(*exportService).exportResourcesWithExporter(
 		context.Background(),
-		exporter, []string{flowID}, options, suite.varNames(), map[string]string{})
+		exporter, []string{flowID}, options, map[string]string{})
 
 	assert.Len(suite.T(), files, 1)
 	assert.Len(suite.T(), errors, 0)
@@ -2525,7 +2535,7 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_FlowWithCom
 
 	files, variables, errors, _ := suite.exportService.(*exportService).exportResourcesWithExporter(
 		context.Background(),
-		exporter, []string{flowID}, options, suite.varNames(), map[string]string{})
+		exporter, []string{flowID}, options, map[string]string{})
 
 	assert.Len(suite.T(), files, 1)
 	assert.Len(suite.T(), errors, 0)
@@ -2572,7 +2582,7 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_MultipleFlo
 
 	files, variables, errors, _ := suite.exportService.(*exportService).exportResourcesWithExporter(
 		context.Background(),
-		exporter, []string{testFlow1ID, testFlow2ID}, options, suite.varNames(), map[string]string{})
+		exporter, []string{testFlow1ID, testFlow2ID}, options, map[string]string{})
 
 	assert.Len(suite.T(), files, 2)
 	assert.Len(suite.T(), errors, 0)
@@ -2595,7 +2605,7 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_FlowNotFoun
 
 	files, variables, errors, _ := suite.exportService.(*exportService).exportResourcesWithExporter(
 		context.Background(),
-		exporter, []string{flowID}, options, suite.varNames(), map[string]string{})
+		exporter, []string{flowID}, options, map[string]string{})
 
 	assert.Len(suite.T(), files, 0)
 	assert.Len(suite.T(), errors, 1)
@@ -2662,7 +2672,7 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_WildcardFlo
 
 	files, variables, errors, _ := suite.exportService.(*exportService).exportResourcesWithExporter(
 		context.Background(),
-		exporter, []string{"*"}, options, suite.varNames(), map[string]string{})
+		exporter, []string{"*"}, options, map[string]string{})
 
 	assert.Len(suite.T(), files, 2)
 	assert.Len(suite.T(), errors, 0)
@@ -2682,7 +2692,7 @@ func (suite *ExportServiceTestSuite) TestExportResourcesWithExporter_WildcardFlo
 
 	files, variables, errors, _ := suite.exportService.(*exportService).exportResourcesWithExporter(
 		context.Background(),
-		exporter, []string{"*"}, options, suite.varNames(), map[string]string{})
+		exporter, []string{"*"}, options, map[string]string{})
 
 	assert.Len(suite.T(), files, 0)
 	assert.Len(suite.T(), errors, 0) // Empty list on error
@@ -2881,6 +2891,16 @@ func sharingWithNoPolicies(t interface {
 	return m
 }
 
+// entitiesWithNoFlowSecrets answers that no application holds a Flow Secret.
+func entitiesWithNoFlowSecrets(t interface {
+	mock.TestingT
+	Cleanup(func())
+}) *entitymock.EntityServiceInterfaceMock {
+	m := entitymock.NewEntityServiceInterfaceMock(t)
+	m.EXPECT().GetCredentialsByType(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	return m
+}
+
 func TestExport_AuthorizationDetailTypeRoundTrips(t *testing.T) {
 	original := &providers.AuthorizationDetailType{
 		ID: "adt-1", Type: "payment_initiation", Name: "Payment initiation",
@@ -2894,7 +2914,7 @@ func TestExport_AuthorizationDetailTypeRoundTrips(t *testing.T) {
 	service.EXPECT().GetAuthorizationDetailType(mock.Anything, "adt-1").Return(original, nil)
 	exportService := newExportService([]declarativeresource.ResourceExporter{
 		authzdetailmgt.NewTypeExporterForTest(service),
-	}, newParameterizer(templatingRules{}, TemplatePlaceholders))
+	}, newParameterizer(templatingRules{}, TemplatePlaceholders), discardingBus{})
 
 	resp, svcErr := exportService.ExportResources(context.Background(),
 		&ExportRequest{AuthorizationDetailTypes: []string{"adt-1"}})
@@ -2943,7 +2963,7 @@ func TestExport_AuthorizationDetailTypeProcessorCredentialIsAVariable(t *testing
 	service.EXPECT().GetAuthorizationDetailType(mock.Anything, "adt-1").Return(original, nil)
 	exportService := newExportService([]declarativeresource.ResourceExporter{
 		authzdetailmgt.NewTypeExporterForTest(service),
-	}, newParameterizer(templatingRules{}, TemplatePlaceholders))
+	}, newParameterizer(templatingRules{}, TemplatePlaceholders), discardingBus{})
 
 	resp, svcErr := exportService.ExportResources(context.Background(),
 		&ExportRequest{AuthorizationDetailTypes: []string{"adt-1"}})
@@ -2977,7 +2997,7 @@ func (suite *ExportServiceTestSuite) TestExportResources_HTTPConnectionPasswordI
 	exportService := newExportService([]declarativeresource.ResourceExporter{
 		connection.NewConnectionExporterForTest(suite.idpServiceMock, suite.mockNotificationService, nil,
 			httpService),
-	}, newParameterizer(templatingRules{}, TemplatePlaceholders))
+	}, newParameterizer(templatingRules{}, TemplatePlaceholders), discardingBus{})
 
 	result, svcErr := exportService.ExportResources(context.Background(), &ExportRequest{
 		Connections: []string{"http-1"}, Options: &ExportOptions{Format: "yaml"},
@@ -2992,12 +3012,14 @@ func (suite *ExportServiceTestSuite) TestExportResources_HTTPConnectionPasswordI
 	assert.Contains(suite.T(), content, "url: https://risk.example.com/evaluate")
 	assert.Contains(suite.T(), content, "timeoutMs: 5000")
 	assert.Contains(suite.T(), content, "username: svc-user")
-	assert.Contains(suite.T(), content, "password: {{.CONNECTION_RISK_ENGINE_PASSWORD}}")
+	passwordVar := variableName("connection", "http-1", "password")
+	assert.Contains(suite.T(), content, "password: {{."+passwordVar+"}}")
 	suite.Require().NotNil(result.EnvFile)
-	assert.Contains(suite.T(), result.EnvFile.Content, "CONNECTION_RISK_ENGINE_PASSWORD=http-s3cret")
+	assert.Contains(suite.T(), result.EnvFile.Content, passwordVar+"=http-s3cret")
 }
 
 func (suite *ExportServiceTestSuite) TestExportResources_HTTPConnectionBearerAndAPIKeyAreParameters() {
+	riskEngineVar := func(field string) string { return variableName("connection", "http-1", field) }
 	cases := map[string]struct {
 		config    outboundauth.Config
 		inYAML    []string
@@ -3007,18 +3029,18 @@ func (suite *ExportServiceTestSuite) TestExportResources_HTTPConnectionBearerAnd
 		"bearer": {
 			config: outboundauth.Config{Type: outboundauth.TypeBearer,
 				Properties: map[string]string{outboundauth.FieldBearerToken: "bearer-s3cret"}},
-			inYAML:    []string{"type: bearer", "token: {{.CONNECTION_RISK_ENGINE_TOKEN}}"},
-			inEnv:     []string{"CONNECTION_RISK_ENGINE_TOKEN=bearer-s3cret"},
+			inYAML:    []string{"type: bearer", "token: {{." + riskEngineVar("token") + "}}"},
+			inEnv:     []string{riskEngineVar("token") + "=bearer-s3cret"},
 			notInYAML: []string{"bearer-s3cret"},
 		},
 		"api_key": {
 			config: outboundauth.Config{Type: outboundauth.TypeAPIKey,
 				Properties: map[string]string{"X-Tenant-Key": "tenant-s3cret", "X-Region-Key": "region-s3cret"}},
 			inYAML: []string{"type: api_key",
-				"X-Tenant-Key: {{.CONNECTION_RISK_ENGINE_X_TENANT_KEY}}",
-				"X-Region-Key: {{.CONNECTION_RISK_ENGINE_X_REGION_KEY}}"},
-			inEnv: []string{"CONNECTION_RISK_ENGINE_X_TENANT_KEY=tenant-s3cret",
-				"CONNECTION_RISK_ENGINE_X_REGION_KEY=region-s3cret"},
+				"X-Tenant-Key: {{." + riskEngineVar("X-Tenant-Key") + "}}",
+				"X-Region-Key: {{." + riskEngineVar("X-Region-Key") + "}}"},
+			inEnv: []string{riskEngineVar("X-Tenant-Key") + "=tenant-s3cret",
+				riskEngineVar("X-Region-Key") + "=region-s3cret"},
 			notInYAML: []string{"tenant-s3cret", "region-s3cret"},
 		},
 	}
@@ -3039,7 +3061,7 @@ func (suite *ExportServiceTestSuite) TestExportResources_HTTPConnectionBearerAnd
 			exportService := newExportService([]declarativeresource.ResourceExporter{
 				connection.NewConnectionExporterForTest(suite.idpServiceMock, suite.mockNotificationService, nil,
 					httpService),
-			}, newParameterizer(templatingRules{}, TemplatePlaceholders))
+			}, newParameterizer(templatingRules{}, TemplatePlaceholders), discardingBus{})
 
 			result, svcErr := exportService.ExportResources(context.Background(), &ExportRequest{
 				Connections: []string{"http-1"}, Options: &ExportOptions{Format: "yaml"},

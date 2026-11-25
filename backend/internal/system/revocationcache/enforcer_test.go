@@ -203,3 +203,47 @@ func (s *EnforcerScopeTestSuite) TestTokenWithoutAudienceCarriesNoScopeDimension
 		Subject: "user-1", Scopes: []string{"openid"},
 	}))
 }
+
+func (s *EnforcerScopeTestSuite) TestSubtreeRulesKeepExactAndTimeBoundaries() {
+	cutoff := time.Now().Add(-time.Minute)
+	tests := []struct {
+		name, scope, audience, subject string
+		after, exact, revoked          bool
+	}{
+		{"child", "reservations:create", "api", "user", false, false, true},
+		{"root", "reservations", "api", "user", false, false, true},
+		{"new token", "reservations:create", "api", "user", true, false, false},
+		{"other audience", "reservations:create", "other", "user", false, false, false},
+		{"other subject", "reservations:create", "api", "other", false, false, false},
+		{"different delimiter", "reservations/create", "api", "user", false, false, false},
+		{"text prefix", "reservations2:create", "api", "user", false, false, false},
+		{"old exact root does not cover child", "reservations:create", "api", "user", false, true, false},
+	}
+	for _, test := range tests {
+		s.Run(test.name, func() {
+			entry := revokedEntry{
+				Value:     revocation.EntityScopeSubtreeCriterionValue("user", "api", "reservations", ":"),
+				RevokedAt: cutoff, ExpiryTime: time.Now().Add(time.Hour), Boundary: true}
+			snapshot := revokedSnapshot{EntityScopeSubtrees: []revokedEntry{entry}}
+			if test.exact {
+				entry.Value = revocation.EntityScopeCriterionValue("user", "api", "reservations")
+				snapshot = revokedSnapshot{EntityScopes: []revokedEntry{entry}}
+			}
+			cache := newRevokedCache()
+			cache.replace(snapshot)
+			established := cutoff.Add(-time.Second)
+			if test.after {
+				established = cutoff.Add(time.Second)
+			}
+			err := newEnforcer(cache).EnsureNotRevoked(context.Background(), security.RevocationIdentity{
+				Subject: test.subject, Audiences: []string{test.audience},
+				Scopes: []string{test.scope}, EstablishedAt: established,
+			})
+			if test.revoked {
+				s.ErrorIs(err, errTokenRevoked)
+			} else {
+				s.NoError(err)
+			}
+		})
+	}
+}

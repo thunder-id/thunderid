@@ -10,6 +10,7 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/deviceauth"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -118,16 +119,16 @@ func (_c *DeviceAuthServiceInterfaceMock_GetByDeviceCode_Call) RunAndReturn(run 
 }
 
 // HandleCallback provides a mock function for the type DeviceAuthServiceInterfaceMock
-func (_mock *DeviceAuthServiceInterfaceMock) HandleCallback(ctx context.Context, requestID string, assertion string) *deviceauth.DeviceAuthError {
-	ret := _mock.Called(ctx, requestID, assertion)
+func (_mock *DeviceAuthServiceInterfaceMock) HandleCallback(ctx context.Context, requestID string, assertion string, sessionData []model.SessionData) *deviceauth.DeviceAuthError {
+	ret := _mock.Called(ctx, requestID, assertion, sessionData)
 
 	if len(ret) == 0 {
 		panic("no return value specified for HandleCallback")
 	}
 
 	var r0 *deviceauth.DeviceAuthError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *deviceauth.DeviceAuthError); ok {
-		r0 = returnFunc(ctx, requestID, assertion)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, []model.SessionData) *deviceauth.DeviceAuthError); ok {
+		r0 = returnFunc(ctx, requestID, assertion, sessionData)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*deviceauth.DeviceAuthError)
@@ -145,11 +146,12 @@ type DeviceAuthServiceInterfaceMock_HandleCallback_Call struct {
 //   - ctx context.Context
 //   - requestID string
 //   - assertion string
-func (_e *DeviceAuthServiceInterfaceMock_Expecter) HandleCallback(ctx any, requestID any, assertion any) *DeviceAuthServiceInterfaceMock_HandleCallback_Call {
-	return &DeviceAuthServiceInterfaceMock_HandleCallback_Call{Call: _e.mock.On("HandleCallback", ctx, requestID, assertion)}
+//   - sessionData []model.SessionData
+func (_e *DeviceAuthServiceInterfaceMock_Expecter) HandleCallback(ctx any, requestID any, assertion any, sessionData any) *DeviceAuthServiceInterfaceMock_HandleCallback_Call {
+	return &DeviceAuthServiceInterfaceMock_HandleCallback_Call{Call: _e.mock.On("HandleCallback", ctx, requestID, assertion, sessionData)}
 }
 
-func (_c *DeviceAuthServiceInterfaceMock_HandleCallback_Call) Run(run func(ctx context.Context, requestID string, assertion string)) *DeviceAuthServiceInterfaceMock_HandleCallback_Call {
+func (_c *DeviceAuthServiceInterfaceMock_HandleCallback_Call) Run(run func(ctx context.Context, requestID string, assertion string, sessionData []model.SessionData)) *DeviceAuthServiceInterfaceMock_HandleCallback_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -163,10 +165,15 @@ func (_c *DeviceAuthServiceInterfaceMock_HandleCallback_Call) Run(run func(ctx c
 		if args[2] != nil {
 			arg2 = args[2].(string)
 		}
+		var arg3 []model.SessionData
+		if args[3] != nil {
+			arg3 = args[3].([]model.SessionData)
+		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
 		)
 	})
 	return _c
@@ -177,7 +184,7 @@ func (_c *DeviceAuthServiceInterfaceMock_HandleCallback_Call) Return(deviceAuthE
 	return _c
 }
 
-func (_c *DeviceAuthServiceInterfaceMock_HandleCallback_Call) RunAndReturn(run func(ctx context.Context, requestID string, assertion string) *deviceauth.DeviceAuthError) *DeviceAuthServiceInterfaceMock_HandleCallback_Call {
+func (_c *DeviceAuthServiceInterfaceMock_HandleCallback_Call) RunAndReturn(run func(ctx context.Context, requestID string, assertion string, sessionData []model.SessionData) *deviceauth.DeviceAuthError) *DeviceAuthServiceInterfaceMock_HandleCallback_Call {
 	_c.Call.Return(run)
 	return _c
 }

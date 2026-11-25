@@ -5,6 +5,7 @@ package executor
 
 import (
 	"cmp"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,11 +18,13 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -76,17 +79,17 @@ func newProvisioningExecutor(
 				providers.FlowTypeRegistration,
 				providers.FlowTypeUserOnboarding,
 				providers.FlowTypeAdministration,
+				providers.FlowTypeInvitation,
 			},
 			SupportedProperties: []providers.ExecutorSupportedProperties{
 				{Property: propertyKeyDelegated},
 				{Property: propertyKeyDynamicInputsIncludeOptional},
 				{Property: propertyKeyDynamicInputsIncludeOptionalCredentials},
 				{Property: propertyKeyMaxDynamicInputsPerPrompt},
-				{Property: propertyKeyAssignGroup},
-				{Property: propertyKeyAssignRole},
-				{Property: propertyKeySeedGroupsFromMapping},
-				{Property: propertyKeySeedRolesFromMapping},
+				{Property: common.NodePropertyAssignGroup},
+				{Property: common.NodePropertyAssignRole},
 				{Property: common.NodePropertyAllowCrossOUProvisioning},
+				{Property: propertyKeyProvisioningOU},
 			},
 		})
 
@@ -131,16 +134,19 @@ func (p *provisioningExecutor) Execute(ctx *providers.NodeContext) (*providers.E
 		return execResp, err
 	}
 
-	// An agent is created by an administrator, so only an administration flow provisions one.
+	// An agent is created by an administrator, or registered by a user as a personal agent that acts
+	// for them. Self-registration never creates an agent that acts with its own authority.
 	if category == entitytype.TypeCategoryAgent && ctx.FlowType != providers.FlowTypeAdministration {
-		if ctx.FlowType == providers.FlowTypeRegistration {
-			logger.Debug(ctx.Context, "Agent provisioning is not available in a registration flow")
+		if ctx.FlowType != providers.FlowTypeRegistration {
+			return execResp, fmt.Errorf("agent provisioning is not supported in a %s flow", ctx.FlowType)
+		}
+		if providers.AgentKind(collectedValue(ctx, kindKey)) != providers.AgentKindPersonalAssistant {
+			logger.Debug(ctx.Context, "Only a personal agent can be provisioned in a registration flow")
 			execResp.Status = providers.ExecFailure
 			execResp.Error = &ErrSelfRegNotSupportedForAgents
 
 			return execResp, nil
 		}
-		return execResp, fmt.Errorf("agent provisioning is not supported in a %s flow", ctx.FlowType)
 	}
 
 	// A resolved user needs no provisioning. Checked before required inputs so the user is not
@@ -175,8 +181,9 @@ func (p *provisioningExecutor) Execute(ctx *providers.NodeContext) (*providers.E
 	// A federated identity resolves users only through its recorded links, and no input can change
 	// which users those are, so registration applies the existing-user rules to the link's holders
 	// before prompting for attributes. With cross-OU provisioning, holders in other OUs do not count,
-	// so registering into an OU where nobody holds the link provisions a new user with it.
-	if isSelfRegistering(ctx) {
+	// so registering into an OU where nobody holds the link provisions a new user with it. An agent is
+	// never linked to a federated identity: one in the flow belongs to the user who signed in.
+	if isSelfRegistering(ctx) && category != entitytype.TypeCategoryAgent {
 		if federated := federatedIdentityFrom(ctx); federated != nil {
 			holderIDs, err := p.registrationLinkHolders(ctx, category, federated, execResp)
 			if err != nil {
@@ -216,6 +223,9 @@ func (p *provisioningExecutor) Execute(ctx *providers.NodeContext) (*providers.E
 		execResp.Error = svcErr
 		return execResp, nil
 	}
+	if category == entitytype.TypeCategoryUser {
+		execResp.RuntimeData[userAttributeUserID] = entityID
+	}
 
 	return p.completeProvisioning(ctx, category, entityID, execResp, logger), nil
 }
@@ -231,7 +241,7 @@ func isSelfRegistering(ctx *providers.NodeContext) bool {
 func (p *provisioningExecutor) registrationLinkHolders(ctx *providers.NodeContext,
 	category entitytype.TypeCategory, federated *core.ExternalIdentity,
 	execResp *providers.ExecutorResponse) ([]string, error) {
-	holders, epErr := p.entityProvider.GetLinkedEntities(federated.IdpID, federated.Sub)
+	holders, epErr := p.entityProvider.GetLinkedEntities(ctx.Context, federated.IdpID, federated.Sub)
 	if epErr != nil {
 		if epErr.Code != entityprovider.ErrorCodeNotImplemented {
 			return nil, errors.New("failed to retrieve the users linked to the federated identity")
@@ -274,17 +284,16 @@ func (p *provisioningExecutor) applyExistingLinkHolderRules(ctx *providers.NodeC
 		execResp.Error = errForEntityCategory(ErrEntityAlreadyExists, category)
 		return nil
 	}
-	// Several users hold the link, so the AuthUser names none of them yet.
-	if ctx.RuntimeData[common.RuntimeKeyEntityState] == entityStateAmbiguous {
-		if svcErr := authenticateEntityByID(ctx, p.authnProvider, holderIDs[0], execResp.AuthUser,
-			execResp); svcErr != nil {
-			if svcErr.Type == tidcommon.ServerErrorType {
-				return fmt.Errorf("failed to bind the existing link holder: %s", svcErr.Code)
-			}
-			execResp.Status = providers.ExecFailure
-			execResp.Error = cmp.Or(statedHold(svcErr), errForEntityCategory(ErrEntityAuthFailed, category))
-			return nil
+	// Signing in the account holding the link picks it when several users hold the link, and runs the
+	// deferred sync of the federated sign-in.
+	if svcErr := authenticateEntityByID(ctx, p.authnProvider, holderIDs[0], execResp.AuthUser,
+		execResp, false); svcErr != nil {
+		if svcErr.Type == tidcommon.ServerErrorType {
+			return fmt.Errorf("failed to bind the existing link holder: %s", svcErr.Code)
 		}
+		execResp.Status = providers.ExecFailure
+		execResp.Error = cmp.Or(statedHold(svcErr), errForEntityCategory(ErrEntityAuthFailed, category))
+		return nil
 	}
 	execResp.Status = providers.ExecComplete
 	return nil
@@ -325,8 +334,11 @@ func (p *provisioningExecutor) prepareProvisioning(ctx *providers.NodeContext,
 	if err != nil {
 		return nil, false, err
 	}
+	// A federated sign-in creates the user even with no attribute to save, as when its connection keeps
+	// the attributes to the session, so its link is kept.
 	if len(identifyingAttrs) == 0 && len(credentialAttrs) == 0 &&
-		!hasRecordValues(ctx, category) {
+		!hasRecordValues(ctx, category) && (category != entitytype.TypeCategoryUser ||
+		federatedIdentityFrom(ctx) == nil) {
 		logger.Debug(ctx.Context, "No entity attributes provided for provisioning")
 		execResp.Status = providers.ExecFailure
 		execResp.Error = errForEntityCategory(ErrProvisioningAttrsMissing, category)
@@ -376,7 +388,10 @@ func (p *provisioningExecutor) resolveExistingEntity(ctx *providers.NodeContext,
 		return true, nil
 	}
 
-	entityID, err := p.IdentifyEntity(ctx.Context, identifyingAttrs, execResp, category)
+	// The existence lookup is deployment-wide: a user outside a sign-in boundary must still be found,
+	// or provisioning would attempt a duplicate create.
+	identifyCtx := security.WithRuntimeContext(context.Background())
+	entityID, err := p.IdentifyEntity(identifyCtx, identifyingAttrs, execResp, category)
 	if err != nil {
 		logger.Error(ctx.Context, "Failed to identify the entity", log.Error(err))
 		execResp.Status = providers.ExecFailure
@@ -463,9 +478,13 @@ func (p *provisioningExecutor) completeProvisioning(ctx *providers.NodeContext,
 		return execResp
 	}
 
-	p.authenticateProvisionedEntity(ctx, category, entityID, execResp)
-	if execResp.Status == providers.ExecFailure {
-		return execResp
+	// An agent is never the flow's signed-in entity: whoever created it, or the user who registered it,
+	// stays signed in.
+	if category != entitytype.TypeCategoryAgent {
+		p.authenticateProvisionedEntity(ctx, category, entityID, execResp)
+		if execResp.Status == providers.ExecFailure {
+			return execResp
+		}
 	}
 
 	execResp.Status = providers.ExecComplete
@@ -482,9 +501,10 @@ func (p *provisioningExecutor) completeProvisioning(ctx *providers.NodeContext,
 // executor response.
 func (p *provisioningExecutor) authenticateProvisionedEntity(ctx *providers.NodeContext,
 	category entitytype.TypeCategory, entityID string, execResp *providers.ExecutorResponse) {
-	if svcErr := authenticateEntityByID(ctx, p.authnProvider, entityID, execResp.AuthUser, execResp); svcErr != nil {
+	if svcErr := authenticateEntityByID(ctx, p.authnProvider, entityID, execResp.AuthUser, execResp,
+		true); svcErr != nil {
 		execResp.Status = providers.ExecFailure
-		execResp.Error = errForEntityCategory(ErrEntityAuthFailed, category)
+		execResp.Error = cmp.Or(statedHold(svcErr), errForEntityCategory(ErrEntityAuthFailed, category))
 	}
 }
 
@@ -557,7 +577,7 @@ func (p *provisioningExecutor) handleExistingEntity(ctx *providers.NodeContext,
 		return false, nil
 	}
 
-	existingEntity, getEntityErr := p.entityProvider.GetEntityProfile(entityID)
+	existingEntity, getEntityErr := p.entityProvider.GetEntityProfile(ctx.Context, entityID)
 	if getEntityErr != nil {
 		return false, errors.New("failed to retrieve the existing entity")
 	}
@@ -587,7 +607,9 @@ func (p *provisioningExecutor) resolveAmbiguousEntityForProvisioning(ctx *provid
 	category entitytype.TypeCategory, identifyingAttrs map[string]interface{}) (*string, error) {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
-	matches, searchErr := p.entityProvider.SearchEntities(identifyingAttrs)
+	// Deployment-wide like the existence lookup: the holders may all be outside a sign-in boundary.
+	matches, searchErr := p.entityProvider.SearchEntities(security.WithRuntimeContext(context.Background()),
+		identifyingAttrs)
 	if searchErr != nil {
 		return nil, fmt.Errorf("failed to search for matching entities: code=%s, description=%s",
 			searchErr.Code, searchErr.Description)
@@ -634,6 +656,7 @@ func (p *provisioningExecutor) HasRequiredInputs(ctx *providers.NodeContext,
 //
 // Missing inputs are ordered as: required non-credentials -> optional non-credentials ->
 // required credentials -> optional credentials and then each group sorted by attribute name.
+// Attrs with a display order in the schema lead, lowest first and by attribute name for the same order.
 // maxPerPrompt caps the forwarded prompt batch after this list is built.
 // includeOptional only affects optional non-credential attrs.
 func (p *provisioningExecutor) hasRequiredInputs(ctx *providers.NodeContext,
@@ -676,6 +699,7 @@ func (p *provisioningExecutor) hasRequiredInputs(ctx *providers.NodeContext,
 		schemaMissing = append(schemaMissing, ncOptionalMissing...)
 		schemaMissing = append(schemaMissing, credRequiredMissing...)
 		schemaMissing = append(schemaMissing, credOptionalMissing...)
+		orderByDisplayOrder(schemaMissing, allSchemaAttrs)
 
 		// Schema attrs lead: a record field is asked for last so the prompt reads schema first.
 		missing = append(schemaMissing, missing...)
@@ -723,9 +747,11 @@ func (p *provisioningExecutor) buildMissingInputs(
 			continue
 		}
 		nodeInp, inNodeInputs := nodeInputMap[attr.Attribute]
-		effectiveRequired := attr.Required
-		if inNodeInputs {
-			effectiveRequired = attr.Required || nodeInp.Required
+		effectiveRequired := isEffectivelyRequired(attr, ctx.NodeInputs)
+		// An optional attribute the entity type hides on create is asked for only when the node
+		// declares it.
+		if !effectiveRequired && attr.HiddenOnCreate && !inNodeInputs {
+			continue
 		}
 
 		if attr.Credential {
@@ -855,12 +881,20 @@ func (p *provisioningExecutor) getMaxDynamicInputs(ctx *providers.NodeContext) i
 	return 0
 }
 
+// isEffectivelyRequired reports whether attr must have a value: the entity type requires it, or a node
+// input raises it to required. A node input cannot lower a required attribute to optional.
+func isEffectivelyRequired(attr entitytype.AttributeInfo, nodeInputs []providers.Input) bool {
+	return attr.Required || slices.ContainsFunc(nodeInputs, func(inp providers.Input) bool {
+		return inp.Identifier == attr.Attribute && inp.Required
+	})
+}
+
 // isAttrSatisfied returns true if the attribute has a non-empty usable value in the user inputs, the
 // runtime data or, for a non-credential attribute, the external identity's claims. Credentials are
 // never taken from claims, so a claim never stands in for one.
 func (p *provisioningExecutor) isAttrSatisfied(ctx *providers.NodeContext, extIdentity *core.ExternalIdentity,
 	attr entitytype.AttributeInfo) bool {
-	if val, ok := ctx.UserInputs[attr.Attribute]; ok && val != "" {
+	if val, ok := ctx.ConsumeInput(attr.Attribute); ok && val != "" {
 		return true
 	}
 	if val, ok := ctx.RuntimeData[attr.Attribute]; ok && val != "" {
@@ -869,19 +903,21 @@ func (p *provisioningExecutor) isAttrSatisfied(ctx *providers.NodeContext, extId
 	if attr.Credential {
 		return false
 	}
-	// External claims are only a fallback and must never take priority over runtime data.
-	if val, ok := extIdentity.Claim(attr.Attribute); ok && val != "" {
-		return true
+	// External claims are only a fallback and must never take priority over runtime data. A claim
+	// satisfies the attribute only when it converts to the attribute's type, as it's stored then.
+	if extIdentity == nil {
+		return false
 	}
-	return false
+	value, ok := entitytypemodel.ConvertReceivedValue(extIdentity.Claims[attr.Attribute], attr.Type)
+	return ok && value != nil
 }
 
 // getAttributesForProvisioning collects entity attributes from context in a single schema pass,
 // returning identifying (non-credential) and credential attributes as separate maps.
 // Schema is the whitelist for both maps.
-// Values are resolved from non-empty UserInputs then non-empty RuntimeData. Non-credential values
-// are converted from the engine's string representation to the type declared by the schema
-// attribute.
+// Values are resolved from non-empty UserInputs then non-empty RuntimeData, and a non-credential value
+// then from the external identity's claims. Non-credential values are converted to the type declared by
+// the schema attribute.
 func (p *provisioningExecutor) getAttributesForProvisioning(
 	ctx *providers.NodeContext, category entitytype.TypeCategory,
 ) (identifyingAttrs map[string]interface{}, credentialAttrs map[string]interface{}, err error) {
@@ -900,24 +936,34 @@ func (p *provisioningExecutor) getAttributesForProvisioning(
 	extIdentity := core.GetExternalIdentity(ctx.RuntimeData)
 	for _, a := range schemaAttrs {
 		if a.Credential {
-			if value, exists := ctx.UserInputs[a.Attribute]; exists && value != "" {
+			if value, exists := ctx.ConsumeInput(a.Attribute); exists && value != "" {
 				credentialAttrs[a.Attribute] = value
 			} else if runtimeValue, exists := ctx.RuntimeData[a.Attribute]; exists && runtimeValue != "" {
 				credentialAttrs[a.Attribute] = runtimeValue
 			}
 		} else {
 			// External claims are only a fallback and must never take priority over runtime data.
-			if value, exists := ctx.UserInputs[a.Attribute]; exists && value != "" {
+			if value, exists := ctx.ConsumeInput(a.Attribute); exists && value != "" {
 				identifyingAttrs[a.Attribute] = convertToSchemaType(value, a.Type)
 			} else if runtimeValue, exists := ctx.RuntimeData[a.Attribute]; exists && runtimeValue != "" {
 				identifyingAttrs[a.Attribute] = convertToSchemaType(runtimeValue, a.Type)
-			} else if claimValue, exists := extIdentity.Claim(a.Attribute); exists &&
-				claimValue != "" {
-				identifyingAttrs[a.Attribute] = convertToSchemaType(claimValue, a.Type)
+			} else if extIdentity != nil && (extIdentity.AttributesSync != providers.SyncModeSessionOnly ||
+				isEffectivelyRequired(a, ctx.NodeInputs)) {
+				// A connection that keeps the attributes to the session stores only the required ones.
+				value, ok := entitytypemodel.ConvertReceivedValue(extIdentity.Claims[a.Attribute], a.Type)
+				if !ok {
+					p.logger.Debug(ctx.Context, "Skipping a claim that doesn't match the attribute type",
+						log.String("attribute", a.Attribute))
+				} else if value != nil {
+					identifyingAttrs[a.Attribute] = value
+				}
 			}
 		}
 	}
 
+	if err := applyPinnedValue(ctx, schemaAttrs, identifyingAttrs); err != nil {
+		return nil, nil, err
+	}
 	return identifyingAttrs, credentialAttrs, nil
 }
 
@@ -999,16 +1045,20 @@ func (p *provisioningExecutor) createAgentInStore(nodeCtx *providers.NodeContext
 	}
 
 	// The flow shows the agent's client credentials, so an OAuth client is always requested. The
-	// agent service fills in its grant types from Delegated.
-	oauthConfig := &providers.OAuthConfigWithSecret{}
+	// agent service fills in its grant types from Delegated and Kind. A key lets any agent authenticate
+	// with private_key_jwt; the agent service checks the key.
+	oauthConfig := &providers.OAuthConfigWithSecret{Certificate: collectedCertificate(nodeCtx)}
+	if oauthConfig.Certificate != nil {
+		oauthConfig.TokenEndpointAuthMethod = providers.TokenEndpointAuthMethodPrivateKeyJWT
+	}
 	agent := &providers.Agent{
 		OUID:        targetRef.ouID,
 		Type:        targetRef.entityType,
 		Description: collectedValue(nodeCtx, descriptionKey),
 		LogoURL:     collectedValue(nodeCtx, logoURLKey),
-		Owner:       nodeCtx.RuntimeData[ownerIDKey],
 		Delegated:   delegated,
 		Attributes:  attributesJSON,
+		Kind:        providers.AgentKind(collectedValue(nodeCtx, kindKey)),
 		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
 			{Type: providers.OAuthInboundAuthType, OAuthConfig: oauthConfig},
 		},
@@ -1016,16 +1066,35 @@ func (p *provisioningExecutor) createAgentInStore(nodeCtx *providers.NodeContext
 	if validUntil := collectedValue(nodeCtx, validUntilKey); validUntil != "" {
 		agent.ValidUntil = &validUntil
 	}
-	// The callback URIs, login flow and user type belong to a delegated agent, and all three are
-	// required with delegation, so leftovers from an earlier choice are not applied to one that acts
-	// on its own behalf. The service validates all three.
-	if delegated {
+	// The callback URIs and login flow belong to an agent that acts for a signed-in user, so leftovers
+	// from an earlier choice are not applied to one that acts on its own behalf. A delegated agent
+	// requires them and its user type; a personal agent always acts for its owner. The service
+	// validates them.
+	if delegated || agent.Kind == providers.AgentKindPersonalAssistant {
 		oauthConfig.RedirectURIs = splitTrimmed(collectedValue(nodeCtx, redirectURIsKey))
 		agent.AuthFlowID = collectedValue(nodeCtx, authFlowIDKey)
+		agent.AuthFlowHandle = collectedValue(nodeCtx, authFlowHandleKey)
+	}
+	if delegated {
 		if handle := collectedValue(nodeCtx, allowedUserTypesKey); handle != "" {
 			agent.AllowedUserTypes = []string{handle}
 		}
 	}
+	// Whether consent is asked on every authorization is the caller's to choose; unset leaves the agent
+	// service's default.
+	if raw := collectedValue(nodeCtx, alwaysPromptConsentKey); raw != "" {
+		alwaysPrompt, err := strconv.ParseBool(raw)
+		if err != nil {
+			return nil, errForAttribute(ErrInvalidFlagValue, alwaysPromptConsentKey)
+		}
+		agent.LoginConsent = &providers.LoginConsentConfig{AlwaysPrompt: &alwaysPrompt}
+	}
+
+	owner, svcErr := p.resolveAgentOwner(nodeCtx)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	agent.Owner = owner
 
 	createdAgent, svcErr := p.agentMgtProvider.CreateAgent(nodeCtx.Context, agent)
 	if svcErr != nil {
@@ -1049,7 +1118,7 @@ func agentDelegation(ctx *providers.NodeContext) (bool, *tidcommon.ServiceError)
 	if raw := collectedValue(ctx, delegatedKey); raw != "" {
 		parsed, err := strconv.ParseBool(raw)
 		if err != nil {
-			return false, errInvalidFlagValueFor(delegatedKey)
+			return false, errForAttribute(ErrInvalidFlagValue, delegatedKey)
 		}
 
 		return parsed, nil
@@ -1058,7 +1127,7 @@ func agentDelegation(ctx *providers.NodeContext) (bool, *tidcommon.ServiceError)
 	if property, ok := ctx.NodeProperties[propertyKeyDelegated]; ok && property != nil {
 		fallback, isBool := property.(bool)
 		if !isBool {
-			return false, errInvalidFlagValueFor(propertyKeyDelegated)
+			return false, errForAttribute(ErrInvalidFlagValue, propertyKeyDelegated)
 		}
 
 		return fallback, nil
@@ -1067,17 +1136,85 @@ func agentDelegation(ctx *providers.NodeContext) (bool, *tidcommon.ServiceError)
 	return false, nil
 }
 
+// collectedCertificate reads the key a caller supplied, as a JWKS URI or as a public key (a JWKS document),
+// or nil. An agent holds one certificate, so a JWKS URI wins over a public key: the keys behind it can be
+// rotated without updating the agent. The agent service checks the key.
+func collectedCertificate(nodeCtx *providers.NodeContext) *providers.Certificate {
+	if jwksURI := collectedValue(nodeCtx, jwksURIKey); jwksURI != "" {
+		return &providers.Certificate{Type: providers.CertificateTypeJWKSURI, Value: jwksURI}
+	}
+	if publicKey := collectedValue(nodeCtx, publicKeyKey); publicKey != "" {
+		return &providers.Certificate{Type: providers.CertificateTypeJWKS, Value: publicKey}
+	}
+	return nil
+}
+
+// resolveAgentOwner returns the local owner of an agent being created.
+func (p *provisioningExecutor) resolveAgentOwner(nodeCtx *providers.NodeContext) (
+	*providers.AgentOwner, *tidcommon.ServiceError) {
+	var ownerID string
+	if nodeCtx.FlowType == providers.FlowTypeAdministration {
+		ownerID = nodeCtx.RuntimeData[ownerIDKey]
+		if ownerID == "" {
+			return nil, nil
+		}
+	} else {
+		userID, svcErr := p.resolveRegisteringUserID(nodeCtx)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		ownerID = userID
+	}
+
+	return &providers.AgentOwner{ID: ownerID, IDType: providers.AgentOwnerIDTypeUUID,
+		IsLocal: providers.AgentOwnerLocal}, nil
+}
+
+// resolveRegisteringUserID resolves the registering user. A user the flow signed in takes precedence;
+// otherwise it is the subject of the request's token, so a caller with a signed-in user need not sign
+// them in again. A delegated token is refused.
+func (p *provisioningExecutor) resolveRegisteringUserID(nodeCtx *providers.NodeContext) (
+	string, *tidcommon.ServiceError) {
+	if nodeCtx.AuthUser.IsAuthenticated() {
+		_, entityRef, svcErr := p.authnProvider.GetEntityReference(nodeCtx.Context, nodeCtx.AuthUser)
+		if svcErr != nil || entityRef == nil || entityRef.EntityID == "" {
+			return "", &ErrUserNotAuthenticated
+		}
+		return entityRef.EntityID, nil
+	}
+	if subject := security.GetSubject(nodeCtx.Context); subject != "" && !security.IsDelegated(nodeCtx.Context) &&
+		tokenIssuedToApplication(nodeCtx) {
+		return subject, nil
+	}
+	return "", &ErrUserNotAuthenticated
+}
+
+// tokenIssuedToApplication reports whether the request's token was issued to the OAuth client of the
+// application running the flow. A token that names no client does not qualify.
+func tokenIssuedToApplication(nodeCtx *providers.NodeContext) bool {
+	clientID := security.GetClientID(nodeCtx.Context)
+	if clientID == "" {
+		return false
+	}
+	return slices.ContainsFunc(nodeCtx.Application.InboundAuthConfig,
+		func(inbound providers.InboundAuthConfigWithSecret) bool {
+			return inbound.OAuthConfig != nil && inbound.OAuthConfig.ClientID == clientID
+		})
+}
+
 // collectedValue reads a value the flow collected for key, preferring what an executor resolved
 // over what the caller submitted. Submitted values are unfiltered, so a resolved one wins. A constant
 // input of the node is read first.
 func collectedValue(ctx *providers.NodeContext, key string) string {
-	if isConstantNodeInput(ctx, key) && ctx.UserInputs[key] != "" {
-		return ctx.UserInputs[key]
+	if isConstantNodeInput(ctx, key) {
+		if val, _ := ctx.ConsumeInput(key); val != "" {
+			return val
+		}
 	}
 	if val, ok := ctx.RuntimeData[key]; ok && val != "" {
 		return val
 	}
-	if val, ok := ctx.UserInputs[key]; ok && val != "" {
+	if val, ok := ctx.ConsumeInput(key); ok && val != "" {
 		return val
 	}
 	return ""
@@ -1128,8 +1265,19 @@ func (p *provisioningExecutor) handleCreateEntityError(
 // getTargetEntityRef retrieves the target entity reference (entity type and OU ID) for provisioning.
 func (p *provisioningExecutor) getTargetEntityRef(ctx *providers.NodeContext,
 	category entitytype.TypeCategory) (*entityRef, error) {
-	ouID := p.getOUID(ctx)
+	ouID, err := p.getOUID(ctx)
+	if err != nil {
+		return nil, err
+	}
 	entityType := p.getEntityType(ctx)
+	placement, _ := ctx.NodeProperties[propertyKeyProvisioningOU].(string)
+	inUserTypeOU := provisioningOU(placement) == provisioningOUUserType
+	// Without a type resolver's record, as in a sign-in flow, the user type's unit is the named type's own.
+	if inUserTypeOU && ouID == "" && entityType != "" {
+		if ouID, err = p.entityTypeOUID(ctx, category, entityType); err != nil {
+			return nil, err
+		}
+	}
 
 	if ouID == "" || entityType == "" {
 		defaultEntityRef, err := p.getDefaultEntityRef(ctx, category)
@@ -1146,25 +1294,55 @@ func (p *provisioningExecutor) getTargetEntityRef(ctx *providers.NodeContext,
 		}
 	}
 
+	if inUserTypeOU && ouID == "" {
+		return nil, errors.New("the user type's organization unit is not resolved")
+	}
+
 	return &entityRef{
 		entityType: entityType,
 		ouID:       ouID,
 	}, nil
 }
 
+// entityTypeOUID returns the organization unit that owns the named entity type.
+func (p *provisioningExecutor) entityTypeOUID(ctx *providers.NodeContext, category entitytype.TypeCategory,
+	handle string) (string, error) {
+	if p.entityTypeService == nil {
+		return "", errors.New("entity type service is not configured")
+	}
+	// Reading the type grants nothing; the entity provisioned into its unit is authorized on its own.
+	entityType, svcErr := p.entityTypeService.GetEntityTypeByHandle(
+		security.WithRuntimeContext(ctx.Context), category, handle)
+	if svcErr != nil {
+		return "", fmt.Errorf("failed to retrieve entity type %q in category %q: %s",
+			handle, category, svcErr.Error.DefaultValue)
+	}
+	return entityType.OUID, nil
+}
+
 // getOUID retrieves the organization unit ID from runtime data.
 // Priority: RuntimeData["ouId"] (set by OUResolverExecutor) > RuntimeData["defaultOUID"] (set by UserTypeResolver).
-func (p *provisioningExecutor) getOUID(ctx *providers.NodeContext) string {
+// With the provisioningOU property set to userType, only RuntimeData["defaultOUID"] is used; getTargetEntityRef
+// falls back to the provisioned type's own unit when it is not set.
+func (p *provisioningExecutor) getOUID(ctx *providers.NodeContext) (string, error) {
+	placement, _ := ctx.NodeProperties[propertyKeyProvisioningOU].(string)
+	switch provisioningOU(placement) {
+	case "", provisioningOUResolved:
+	case provisioningOUUserType:
+		return ctx.RuntimeData[defaultOUIDKey], nil
+	default:
+		return "", fmt.Errorf("unsupported %s value %q", propertyKeyProvisioningOU, placement)
+	}
 	// Check for ouId in runtime data (e.g. from OUResolverExecutor).
 	if val, ok := ctx.RuntimeData[ouIDKey]; ok && val != "" {
-		return val
+		return val, nil
 	}
 	// Fallback: check for defaultOUID in runtime data (set by UserTypeResolver).
 	if val, ok := ctx.RuntimeData[defaultOUIDKey]; ok && val != "" {
-		return val
+		return val, nil
 	}
 
-	return ""
+	return "", nil
 }
 
 // getEntityType retrieves the entity type to provision into from runtime data, which a type
@@ -1189,18 +1367,6 @@ func (p *provisioningExecutor) assignGroupsAndRoles(
 
 	groupIDs := p.getGroupsToAssign(ctx)
 	roleIDs := p.getRolesToAssign(ctx)
-
-	// Seeding from the authorization mapping (rule-based or direct) is a one-time assignment at
-	// creation, it opts in to whatever the federated login's mapping already resolved for this
-	// entity's claims, alongside the fixed lists above.
-	if isSeedGroupsFromMappingEnabled(ctx) {
-		mappedGroupIDs := systemutils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedGroupIDs], " ")
-		groupIDs = systemutils.MergeUniqueStrings(groupIDs, mappedGroupIDs)
-	}
-	if isSeedRolesFromMappingEnabled(ctx) {
-		mappedRoleIDs := systemutils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedRoleIDs], " ")
-		roleIDs = systemutils.MergeUniqueStrings(roleIDs, mappedRoleIDs)
-	}
 
 	if len(groupIDs) == 0 && len(roleIDs) == 0 {
 		logger.Debug(ctx.Context, "No group or role configured for assignment, skipping")
@@ -1231,35 +1397,13 @@ func (p *provisioningExecutor) assignGroupsAndRoles(
 	return nil
 }
 
-// isSeedGroupsFromMappingEnabled returns the value of the seedGroupsFromMapping node property,
-// defaulting to false if absent or not a bool.
-func isSeedGroupsFromMappingEnabled(ctx *providers.NodeContext) bool {
-	if val, ok := ctx.NodeProperties[propertyKeySeedGroupsFromMapping]; ok {
-		if boolVal, ok := val.(bool); ok {
-			return boolVal
-		}
-	}
-	return false
-}
-
-// isSeedRolesFromMappingEnabled returns the value of the seedRolesFromMapping node property,
-// defaulting to false if absent or not a bool.
-func isSeedRolesFromMappingEnabled(ctx *providers.NodeContext) bool {
-	if val, ok := ctx.NodeProperties[propertyKeySeedRolesFromMapping]; ok {
-		if boolVal, ok := val.(bool); ok {
-			return boolVal
-		}
-	}
-	return false
-}
-
 // getGroupsToAssign parses the assignGroup node property into a slice of group IDs.
 // The property value is a comma-separated string; a single ID produces a one-element slice.
 func (p *provisioningExecutor) getGroupsToAssign(ctx *providers.NodeContext) []string {
 	if len(ctx.NodeProperties) == 0 {
 		return nil
 	}
-	val, ok := ctx.NodeProperties[propertyKeyAssignGroup]
+	val, ok := ctx.NodeProperties[common.NodePropertyAssignGroup]
 	if !ok {
 		return nil
 	}
@@ -1276,7 +1420,7 @@ func (p *provisioningExecutor) getRolesToAssign(ctx *providers.NodeContext) []st
 	if len(ctx.NodeProperties) == 0 {
 		return nil
 	}
-	val, ok := ctx.NodeProperties[propertyKeyAssignRole]
+	val, ok := ctx.NodeProperties[common.NodePropertyAssignRole]
 	if !ok {
 		return nil
 	}
@@ -1359,4 +1503,27 @@ func (p *provisioningExecutor) selfRegistrableEntityTypes(ctx *providers.NodeCon
 		}
 	}
 	return types, nil
+}
+
+// applyPinnedValue sets the value a verification pin made before the user existed holds. The flow proved that
+// value, so a different one it collected since does not replace it.
+func applyPinnedValue(ctx *providers.NodeContext, schemaAttrs []entitytype.AttributeInfo,
+	identifyingAttrs map[string]interface{}) error {
+	proof, err := pinnedVerificationEvidence(ctx)
+	if err != nil || proof == nil || proof.Pin.Subject != "" {
+		return err
+	}
+
+	pin := proof.Pin
+	contactType := entitytypemodel.ContactTypeForChannel(pin.Channel)
+	for _, a := range schemaAttrs {
+		if a.Credential || a.Attribute != pin.Attribute {
+			continue
+		}
+		collected := systemutils.ConvertInterfaceValueToString(identifyingAttrs[a.Attribute])
+		if entitytypemodel.CanonicalContactValue(contactType, collected) != pin.Value {
+			identifyingAttrs[a.Attribute] = convertToSchemaType(pin.Value, a.Type)
+		}
+	}
+	return nil
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import ThemeCreatePage from '../ThemeCreatePage';
@@ -276,5 +277,33 @@ describe('ThemeCreatePage', () => {
     render(<ThemeCreatePage />);
 
     expect(mockUseGetTheme).toHaveBeenCalledWith('modern-id');
+  });
+
+  it('creates the theme in the selected project', async () => {
+    const user = userEvent.setup();
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <ThemeCreatePage />
+      </ProjectScopeProvider>,
+    );
+
+    await user.click(screen.getByText('Set Ready'));
+    await user.click(screen.getByText('Set Name'));
+    await user.click(screen.getByRole('button', {name: /Continue/i}));
+    await user.click(screen.getByRole('button', {name: /Create Theme/i}));
+
+    expect(mockMutate).toHaveBeenCalledWith(expect.objectContaining({projectId: 'project-1'}), expect.any(Object));
+  });
+
+  it('creates the theme in no project outside one', async () => {
+    const user = userEvent.setup();
+    render(<ThemeCreatePage />);
+
+    await user.click(screen.getByText('Set Ready'));
+    await user.click(screen.getByText('Set Name'));
+    await user.click(screen.getByRole('button', {name: /Continue/i}));
+    await user.click(screen.getByRole('button', {name: /Create Theme/i}));
+
+    expect(mockMutate.mock.calls[0][0]).not.toHaveProperty('projectId');
   });
 });

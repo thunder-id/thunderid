@@ -18,6 +18,9 @@ export interface UserRoutePaths {
     detail: (userId: string) => string;
     add: () => string;
   };
+  agents: {
+    detail: (agentId: string) => string;
+  };
 }
 
 /**
@@ -30,6 +33,9 @@ export const defaultUserRoutePaths: UserRoutePaths = {
     list: () => '/users',
     detail: (userId) => `/users/${userId}`,
     add: () => '/users/add',
+  },
+  agents: {
+    detail: (agentId) => `/agents/${agentId}`,
   },
 };
 
@@ -45,4 +51,12 @@ export const defaultUserRoutePaths: UserRoutePaths = {
 export default function useUserRoutes(): UserRoutePaths['users'] {
   const routes = useRoutes<Partial<UserRoutePaths>>();
   return routes.users ?? defaultUserRoutePaths.users;
+}
+
+/**
+ * Resolves the agent route paths the user pages link to, such as the agents a user owns.
+ */
+export function useUserAgentRoutes(): UserRoutePaths['agents'] {
+  const routes = useRoutes<Partial<UserRoutePaths>>();
+  return routes.agents ?? defaultUserRoutePaths.agents;
 }

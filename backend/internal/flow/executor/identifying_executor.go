@@ -67,6 +67,8 @@ func newIdentifyingExecutor(
 			SupportedModes: []string{ExecutorModeIdentify, ExecutorModeResolve, ExecutorModeCheckState},
 			SupportedProperties: []providers.ExecutorSupportedProperties{
 				{Property: propertyKeyLoginHintAttribute},
+				{Property: propertyKeyBoundToUserType},
+				{Property: propertyKeyContinueOnNoMatch},
 			},
 		})
 	return &identifyingExecutor{
@@ -87,7 +89,7 @@ func (i *identifyingExecutor) IdentifyEntity(ctx context.Context, filters map[st
 	logger.Debug(ctx, "Identifying entity with filters")
 
 	if entityID, ok := filters[userAttributeUserID].(string); ok && entityID != "" {
-		entity, epErr := i.entityProvider.GetEntityProfile(entityID)
+		entity, epErr := i.entityProvider.GetEntityProfile(ctx, entityID)
 		if epErr != nil {
 			if epErr.Code == entityprovider.ErrorCodeEntityNotFound {
 				execResp.Error = errForEntityCategory(ErrEntityNotFound, category)
@@ -108,7 +110,7 @@ func (i *identifyingExecutor) IdentifyEntity(ctx context.Context, filters map[st
 		}
 	}
 
-	entityID, err := i.entityProvider.IdentifyEntity(searchableFilter)
+	entityID, err := i.entityProvider.IdentifyEntity(ctx, searchableFilter)
 	if err != nil {
 		switch err.Code {
 		case entityprovider.ErrorCodeEntityNotFound:
@@ -158,11 +160,8 @@ func (i *identifyingExecutor) Execute(ctx *providers.NodeContext) (*providers.Ex
 		}
 	}
 
-	loginHint := ctx.UserInputs[userInputLoginHint]
-	loginHintAttr, _ := ctx.NodeProperties[propertyKeyLoginHintAttribute].(string)
-
-	if loginHintAttr != "" {
-		if loginHint == "" {
+	if loginHintAttr := cibaLoginHintAttribute(ctx); loginHintAttr != "" {
+		if loginHint, _ := ctx.ConsumeInput(userInputLoginHint); loginHint == "" {
 			execResp.Inputs = append(execResp.Inputs,
 				providers.Input{Identifier: userInputLoginHint, Required: true})
 			execResp.Status = providers.ExecUserInputRequired
@@ -182,13 +181,44 @@ func (i *identifyingExecutor) Execute(ctx *providers.NodeContext) (*providers.Ex
 	default:
 		// Default identify behavior (including explicit "identify" mode and unset).
 		// Fails if zero or more than one user matches.
-		return i.executeIdentify(ctx, execResp)
+		return i.applyIdentifyProperties(ctx, i.executeIdentify(ctx, execResp))
 	}
+}
+
+// applyIdentifyProperties applies the node's properties to the identify outcome: boundToUserType fails a match of
+// another user type than the one the flow resolved, and continueOnNoMatch turns no match into an onIncomplete with
+// no error, so the engine keeps the identifier and shows nothing.
+func (i *identifyingExecutor) applyIdentifyProperties(ctx *providers.NodeContext,
+	resp *providers.ExecutorResponse) (*providers.ExecutorResponse, error) {
+	if bound, _ := ctx.NodeProperties[propertyKeyBoundToUserType].(bool); bound &&
+		resp.Status == providers.ExecComplete {
+		userType := ctx.RuntimeData[categoryTypeKey]
+		if userType == "" {
+			return nil, errors.New("identify is bound to a user type, but the flow resolved none")
+		}
+		entity, epErr := i.entityProvider.GetEntityProfile(ctx.Context, resp.RuntimeData[userAttributeUserID])
+		if epErr != nil {
+			return nil, fmt.Errorf("failed to read the identified user: %s", epErr.Message)
+		}
+		if entity.Type != userType {
+			resp.RuntimeData[userAttributeUserID] = ""
+			resp.Status = providers.ExecFailure
+			resp.Error = errForEntityCategory(ErrUserTypeNotAllowed, categoryUnscoped)
+		}
+	}
+	if noMatchContinues, _ := ctx.NodeProperties[propertyKeyContinueOnNoMatch].(bool); noMatchContinues &&
+		resp.Error != nil && resp.Error.Code == ErrEntityNotFound.Code {
+		resp.Status = providers.ExecUserInputRequired
+		resp.Error = nil
+		resp.Inputs = nil
+		resp.RuntimeData[userAttributeUserID] = ""
+	}
+	return resp, nil
 }
 
 // executeIdentify handles the default identify mode which expects exactly one user match.
 func (i *identifyingExecutor) executeIdentify(ctx *providers.NodeContext,
-	execResp *providers.ExecutorResponse) (*providers.ExecutorResponse, error) {
+	execResp *providers.ExecutorResponse) *providers.ExecutorResponse {
 	logger := i.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
 	userSearchAttributes := i.buildSearchAttributes(ctx)
@@ -198,26 +228,26 @@ func (i *identifyingExecutor) executeIdentify(ctx *providers.NodeContext,
 		logger.Debug(ctx.Context, "Failed to identify user due to error: "+err.Error())
 		execResp.Status = providers.ExecFailure
 		execResp.Error = errForEntityCategory(ErrFailedToIdentifyEntity, categoryUnscoped)
-		return execResp, nil
+		return execResp
 	}
 
 	// Only promote ExecFailure to ExecUserInputRequired for recoverable user-input
 	// errors (i.e. user not found). Other failures reported by IdentifyEntity — such
 	// as ambiguous matches or system errors — are not recoverable in identify mode
 	// and must be returned as-is so the caller can handle them appropriately.
-	// When loginHintAttribute is set the identifier was supplied externally — there is no
-	// interactive user to re-enter it, so keep ExecFailure.
-	loginHintAttr, _ := ctx.NodeProperties[propertyKeyLoginHintAttribute].(string)
+	// When a CIBA request's login hint names the user, the identifier was supplied externally and there is
+	// no interactive user to re-enter it, so keep ExecFailure.
+	loginHintAttr := cibaLoginHintAttribute(ctx)
 	if execResp.Status == providers.ExecFailure &&
 		execResp.Error != nil && execResp.Error.Code == ErrEntityNotFound.Code && loginHintAttr == "" {
 		logger.Debug(ctx.Context, "User not found — promoting to user input required",
 			log.Int("searchAttributeCount", len(userSearchAttributes)))
 		execResp.Status = providers.ExecUserInputRequired
 		execResp.Inputs = i.GetRequiredInputs(ctx)
-		return execResp, nil
+		return execResp
 	}
 	if execResp.Status == providers.ExecFailure {
-		return execResp, nil
+		return execResp
 	}
 
 	if userID == nil || *userID == "" {
@@ -229,7 +259,7 @@ func (i *identifyingExecutor) executeIdentify(ctx *providers.NodeContext,
 			execResp.Status = providers.ExecFailure
 		}
 		execResp.Error = errForEntityCategory(ErrEntityNotFound, categoryUnscoped)
-		return execResp, nil
+		return execResp
 	}
 
 	// A recovery flow never reaches the assertion check, so a held account is refused here.
@@ -240,14 +270,14 @@ func (i *identifyingExecutor) executeIdentify(ctx *providers.NodeContext,
 			// Answered as a failed account lookup.
 			execResp.Status = providers.ExecFailure
 			execResp.Error = errForEntityCategory(ErrFailedToIdentifyEntity, categoryUnscoped)
-			return execResp, nil
+			return execResp
 		}
 		if held {
 			// A refusal that names no hold takes the unknown-user branch.
 			if stated != nil {
 				execResp.Status = providers.ExecFailure
 				execResp.Error = stated
-				return execResp, nil
+				return execResp
 			}
 			if loginHintAttr == "" {
 				execResp.Status = providers.ExecUserInputRequired
@@ -256,7 +286,7 @@ func (i *identifyingExecutor) executeIdentify(ctx *providers.NodeContext,
 				execResp.Status = providers.ExecFailure
 			}
 			execResp.Error = errForEntityCategory(ErrEntityNotFound, categoryUnscoped)
-			return execResp, nil
+			return execResp
 		}
 	}
 
@@ -266,7 +296,7 @@ func (i *identifyingExecutor) executeIdentify(ctx *providers.NodeContext,
 	logger.Debug(ctx.Context, "Identifying executor completed successfully",
 		log.MaskedString(log.LoggerKeyUserID, *userID))
 
-	return execResp, nil
+	return execResp
 }
 
 // executeResolve handles the resolve mode for user disambiguation.
@@ -280,13 +310,17 @@ func (i *identifyingExecutor) executeResolve(ctx *providers.NodeContext,
 	// Include dynamic user inputs from disambiguation prompts. The disambiguation step
 	// may generate inputs (e.g., ouHandle, userType) that are not defined in the node's
 	// required inputs, so we merge user inputs to ensure they are used for filtering.
-	// We exclude non-searchable inputs and internal identifiers to prevent injection.
+	// We exclude non-searchable inputs and internal identifiers to prevent injection. The login hint is no user
+	// attribute: a CIBA request has already mapped it to the configured attribute, and other requests ignore it.
+	dynamicInputs := make([]string, 0)
 	for key, value := range ctx.UserInputs {
 		if _, exists := userSearchAttributes[key]; !exists && value != "" &&
-			!slices.Contains(nonSearchableInputs, key) && key != userAttributeUserID {
+			!slices.Contains(nonSearchableInputs, key) && key != userAttributeUserID && key != userInputLoginHint {
 			userSearchAttributes[key] = value
+			dynamicInputs = append(dynamicInputs, key)
 		}
 	}
+	ctx.AppendConsumedInputs(dynamicInputs)
 
 	candidates, err := i.getCandidates(ctx, userSearchAttributes, logger)
 	if err != nil {
@@ -301,8 +335,13 @@ func (i *identifyingExecutor) executeResolve(ctx *providers.NodeContext,
 	switch len(candidates) {
 	case 0:
 		logger.Debug(ctx.Context, "No matching users after filtering")
-		execResp.Status = providers.ExecUserInputRequired
-		execResp.Inputs = i.GetRequiredInputs(ctx)
+		// A CIBA request's login hint was supplied externally, so no user is there to enter another one.
+		if cibaLoginHintAttribute(ctx) != "" {
+			execResp.Status = providers.ExecFailure
+		} else {
+			execResp.Status = providers.ExecUserInputRequired
+			execResp.Inputs = i.GetRequiredInputs(ctx)
+		}
 		execResp.Error = errForEntityCategory(ErrEntityNotFound, categoryUnscoped)
 		return execResp, nil
 	case 1:
@@ -341,7 +380,7 @@ func (i *identifyingExecutor) executeResolveLinkHolders(ctx *providers.NodeConte
 	// attribute-based resolve may have left with users who do not hold this link. The picks carried in
 	// the user inputs narrow them again each round.
 	federated := federatedIdentityFrom(ctx)
-	holders, epErr := i.entityProvider.GetLinkedEntities(federated.IdpID, federated.Sub)
+	holders, epErr := i.entityProvider.GetLinkedEntities(ctx.Context, federated.IdpID, federated.Sub)
 	if epErr != nil {
 		logger.Debug(ctx.Context, "Failed to retrieve the users linked to the federated identity",
 			log.String("errorCode", string(epErr.Code)))
@@ -352,7 +391,7 @@ func (i *identifyingExecutor) executeResolveLinkHolders(ctx *providers.NodeConte
 
 	picked := make(map[string]interface{})
 	for _, option := range extractDisambiguationOptions(holders) {
-		if value := ctx.UserInputs[option.Identifier]; value != "" {
+		if value, _ := ctx.ConsumeInput(option.Identifier); value != "" {
 			picked[option.Identifier] = value
 		}
 	}
@@ -401,7 +440,7 @@ func (i *identifyingExecutor) bindLinkHolder(ctx *providers.NodeContext, execRes
 	if i.authnProvider == nil {
 		return nil, errors.New("no authentication provider to bind the resolved link holder")
 	}
-	if svcErr := authenticateEntityByID(ctx, i.authnProvider, entityID, ctx.AuthUser, execResp); svcErr != nil {
+	if svcErr := authenticateEntityByID(ctx, i.authnProvider, entityID, ctx.AuthUser, execResp, false); svcErr != nil {
 		if svcErr.Type == tidcommon.ServerErrorType {
 			return nil, fmt.Errorf("failed to bind the resolved link holder: %s", svcErr.Code)
 		}
@@ -451,7 +490,7 @@ func (i *identifyingExecutor) executeCheckStateFederated(ctx *providers.NodeCont
 	execResp *providers.ExecutorResponse, federated *core.ExternalIdentity) (*providers.ExecutorResponse, error) {
 	logger := i.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
-	holders, epErr := i.entityProvider.GetLinkedEntities(federated.IdpID, federated.Sub)
+	holders, epErr := i.entityProvider.GetLinkedEntities(ctx.Context, federated.IdpID, federated.Sub)
 	if epErr != nil {
 		if epErr.Code == entityprovider.ErrorCodeNotImplemented {
 			execResp.Status = providers.ExecComplete
@@ -478,7 +517,7 @@ func (i *identifyingExecutor) executeIdentifyFederated(ctx *providers.NodeContex
 	execResp *providers.ExecutorResponse, federated *core.ExternalIdentity) (*providers.ExecutorResponse, error) {
 	logger := i.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
-	holders, epErr := i.entityProvider.GetLinkedEntities(federated.IdpID, federated.Sub)
+	holders, epErr := i.entityProvider.GetLinkedEntities(ctx.Context, federated.IdpID, federated.Sub)
 	if epErr != nil {
 		logger.Debug(ctx.Context, "Failed to retrieve the users linked to the federated identity",
 			log.String("errorCode", string(epErr.Code)))
@@ -515,12 +554,12 @@ func setEntityStateFromCount(execResp *providers.ExecutorResponse, count int) {
 }
 
 // buildSearchAttributes collects search attributes from user inputs and runtime data.
-// When the loginHintAttribute node property is set, the login_hint value from UserInputs is
+// In a CIBA request with the loginHintAttribute node property set, the login_hint value from UserInputs is
 // mapped to the configured attribute so the flow admin controls which user attribute resolves
 // the identifier without hardcoding a specific attribute.
 func (i *identifyingExecutor) buildSearchAttributes(ctx *providers.NodeContext) map[string]interface{} {
-	if hintAttr, ok := ctx.NodeProperties[propertyKeyLoginHintAttribute].(string); ok && hintAttr != "" {
-		if hint, exists := ctx.UserInputs[userInputLoginHint]; exists && hint != "" {
+	if hintAttr := cibaLoginHintAttribute(ctx); hintAttr != "" {
+		if hint, exists := ctx.ConsumeInput(userInputLoginHint); exists && hint != "" {
 			return map[string]interface{}{hintAttr: hint}
 		}
 	}
@@ -561,7 +600,7 @@ func (i *identifyingExecutor) searchCandidates(ctx context.Context,
 		}
 	}
 
-	users, err := i.entityProvider.SearchEntities(searchableFilters)
+	users, err := i.entityProvider.SearchEntities(ctx, searchableFilters)
 	if err != nil {
 		if err.Code == entityprovider.ErrorCodeEntityNotFound {
 			logger.Debug(ctx, "No users found for the provided filters")
@@ -738,4 +777,15 @@ func extractDisambiguationOptions(candidates []*providers.Entity) []providers.In
 	}
 
 	return inputs
+}
+
+// cibaLoginHintAttribute returns the attribute a CIBA request's login hint is matched against. Outside a CIBA
+// request it returns an empty string, so the step identifies the user from its own inputs.
+func cibaLoginHintAttribute(ctx *providers.NodeContext) string {
+	callbackType := common.RuntimeDataOrShared(ctx.RuntimeData, ctx.SharedRuntimeData, common.RuntimeKeyCallbackType)
+	if callbackType != string(providers.GrantTypeCIBA) {
+		return ""
+	}
+	attribute, _ := ctx.NodeProperties[propertyKeyLoginHintAttribute].(string)
+	return attribute
 }

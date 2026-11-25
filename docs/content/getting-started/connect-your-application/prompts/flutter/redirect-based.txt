@@ -13,7 +13,7 @@ I have a Flutter application (Dart) and I want to integrate {{productName}}'s au
 
 ## Configuration
 - **Application ID**: {{applicationId}}
-- **Base URL**: https://localhost:8090 (or your {{productName}} instance URL)
+- **Base URL**: {{baseUrl}}
 - **SDK**: thunderid_flutter
 
 ## IMPORTANT Configuration Rules

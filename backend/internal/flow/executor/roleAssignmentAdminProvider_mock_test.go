@@ -49,17 +49,17 @@ func (_m *roleAssignmentAdminProviderMock) EXPECT() *roleAssignmentAdminProvider
 	return &roleAssignmentAdminProviderMock_Expecter{mock: &_m.Mock}
 }
 
-// RemoveAssignments provides a mock function for the type roleAssignmentAdminProviderMock
-func (_mock *roleAssignmentAdminProviderMock) RemoveAssignments(ctx context.Context, id string, ouID string, assignments []role.RoleAssignment) *common.ServiceError {
-	ret := _mock.Called(ctx, id, ouID, assignments)
+// AddAssigneesToRoles provides a mock function for the type roleAssignmentAdminProviderMock
+func (_mock *roleAssignmentAdminProviderMock) AddAssigneesToRoles(ctx context.Context, assignments []role.RoleAssignment, roleIDs []string) *common.ServiceError {
+	ret := _mock.Called(ctx, assignments, roleIDs)
 
 	if len(ret) == 0 {
-		panic("no return value specified for RemoveAssignments")
+		panic("no return value specified for AddAssigneesToRoles")
 	}
 
 	var r0 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, []role.RoleAssignment) *common.ServiceError); ok {
-		r0 = returnFunc(ctx, id, ouID, assignments)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []role.RoleAssignment, []string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, assignments, roleIDs)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*common.ServiceError)
@@ -68,21 +68,95 @@ func (_mock *roleAssignmentAdminProviderMock) RemoveAssignments(ctx context.Cont
 	return r0
 }
 
-// roleAssignmentAdminProviderMock_RemoveAssignments_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RemoveAssignments'
-type roleAssignmentAdminProviderMock_RemoveAssignments_Call struct {
+// roleAssignmentAdminProviderMock_AddAssigneesToRoles_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AddAssigneesToRoles'
+type roleAssignmentAdminProviderMock_AddAssigneesToRoles_Call struct {
 	*mock.Call
 }
 
-// RemoveAssignments is a helper method to define mock.On call
+// AddAssigneesToRoles is a helper method to define mock.On call
 //   - ctx context.Context
-//   - id string
-//   - ouID string
 //   - assignments []role.RoleAssignment
-func (_e *roleAssignmentAdminProviderMock_Expecter) RemoveAssignments(ctx any, id any, ouID any, assignments any) *roleAssignmentAdminProviderMock_RemoveAssignments_Call {
-	return &roleAssignmentAdminProviderMock_RemoveAssignments_Call{Call: _e.mock.On("RemoveAssignments", ctx, id, ouID, assignments)}
+//   - roleIDs []string
+func (_e *roleAssignmentAdminProviderMock_Expecter) AddAssigneesToRoles(ctx any, assignments any, roleIDs any) *roleAssignmentAdminProviderMock_AddAssigneesToRoles_Call {
+	return &roleAssignmentAdminProviderMock_AddAssigneesToRoles_Call{Call: _e.mock.On("AddAssigneesToRoles", ctx, assignments, roleIDs)}
 }
 
-func (_c *roleAssignmentAdminProviderMock_RemoveAssignments_Call) Run(run func(ctx context.Context, id string, ouID string, assignments []role.RoleAssignment)) *roleAssignmentAdminProviderMock_RemoveAssignments_Call {
+func (_c *roleAssignmentAdminProviderMock_AddAssigneesToRoles_Call) Run(run func(ctx context.Context, assignments []role.RoleAssignment, roleIDs []string)) *roleAssignmentAdminProviderMock_AddAssigneesToRoles_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 []role.RoleAssignment
+		if args[1] != nil {
+			arg1 = args[1].([]role.RoleAssignment)
+		}
+		var arg2 []string
+		if args[2] != nil {
+			arg2 = args[2].([]string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *roleAssignmentAdminProviderMock_AddAssigneesToRoles_Call) Return(serviceError *common.ServiceError) *roleAssignmentAdminProviderMock_AddAssigneesToRoles_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *roleAssignmentAdminProviderMock_AddAssigneesToRoles_Call) RunAndReturn(run func(ctx context.Context, assignments []role.RoleAssignment, roleIDs []string) *common.ServiceError) *roleAssignmentAdminProviderMock_AddAssigneesToRoles_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListAssignableRoles provides a mock function for the type roleAssignmentAdminProviderMock
+func (_mock *roleAssignmentAdminProviderMock) ListAssignableRoles(ctx context.Context, ouID string) ([]role.Role, *common.ServiceError) {
+	ret := _mock.Called(ctx, ouID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListAssignableRoles")
+	}
+
+	var r0 []role.Role
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]role.Role, *common.ServiceError)); ok {
+		return returnFunc(ctx, ouID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []role.Role); ok {
+		r0 = returnFunc(ctx, ouID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]role.Role)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, ouID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// roleAssignmentAdminProviderMock_ListAssignableRoles_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListAssignableRoles'
+type roleAssignmentAdminProviderMock_ListAssignableRoles_Call struct {
+	*mock.Call
+}
+
+// ListAssignableRoles is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ouID string
+func (_e *roleAssignmentAdminProviderMock_Expecter) ListAssignableRoles(ctx any, ouID any) *roleAssignmentAdminProviderMock_ListAssignableRoles_Call {
+	return &roleAssignmentAdminProviderMock_ListAssignableRoles_Call{Call: _e.mock.On("ListAssignableRoles", ctx, ouID)}
+}
+
+func (_c *roleAssignmentAdminProviderMock_ListAssignableRoles_Call) Run(run func(ctx context.Context, ouID string)) *roleAssignmentAdminProviderMock_ListAssignableRoles_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -92,30 +166,20 @@ func (_c *roleAssignmentAdminProviderMock_RemoveAssignments_Call) Run(run func(c
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
-		var arg2 string
-		if args[2] != nil {
-			arg2 = args[2].(string)
-		}
-		var arg3 []role.RoleAssignment
-		if args[3] != nil {
-			arg3 = args[3].([]role.RoleAssignment)
-		}
 		run(
 			arg0,
 			arg1,
-			arg2,
-			arg3,
 		)
 	})
 	return _c
 }
 
-func (_c *roleAssignmentAdminProviderMock_RemoveAssignments_Call) Return(serviceError *common.ServiceError) *roleAssignmentAdminProviderMock_RemoveAssignments_Call {
-	_c.Call.Return(serviceError)
+func (_c *roleAssignmentAdminProviderMock_ListAssignableRoles_Call) Return(roles []role.Role, serviceError *common.ServiceError) *roleAssignmentAdminProviderMock_ListAssignableRoles_Call {
+	_c.Call.Return(roles, serviceError)
 	return _c
 }
 
-func (_c *roleAssignmentAdminProviderMock_RemoveAssignments_Call) RunAndReturn(run func(ctx context.Context, id string, ouID string, assignments []role.RoleAssignment) *common.ServiceError) *roleAssignmentAdminProviderMock_RemoveAssignments_Call {
+func (_c *roleAssignmentAdminProviderMock_ListAssignableRoles_Call) RunAndReturn(run func(ctx context.Context, ouID string) ([]role.Role, *common.ServiceError)) *roleAssignmentAdminProviderMock_ListAssignableRoles_Call {
 	_c.Call.Return(run)
 	return _c
 }

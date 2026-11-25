@@ -98,6 +98,12 @@ export const FlowStatus = {
 export const ADMINISTRATION_FLOW_TYPE = 'ADMINISTRATION';
 
 /**
+ * Flow type of the administrator-initiated flows, such as attribute verification and credential reset,
+ * that pause once they send the user a link.
+ */
+export const ADMIN_INITIATED_FLOW_TYPE = 'ADMIN_INITIATED';
+
+/**
  * Page size used when walking the flow listing to resolve a handle. Matches the server's maximum
  * page size, so the common case of a handful of administration flows resolves in one request. A
  * larger value is refused rather than clamped.
@@ -106,18 +112,11 @@ export const FLOW_PAGE_SIZE = 100;
 
 /**
  * `flow` server-config entries; an unset handle is the opt-out, running the native endpoint. The
- * account lifecycle actions have no native endpoint, so an unset handle withholds them.
+ * account lifecycle actions and attribute verification have no native endpoint, so an unset handle
+ * withholds them. Attribute verification and credential reset name an `ADMIN_INITIATED` flow, which
+ * starts by handle.
  */
 export const AdministrationFlowConfigKey = {
-  APPLICATION_DELETION: 'applicationDeletionFlow',
-  GROUP_DELETION: 'groupDeletionFlow',
-  SECRET_REGENERATION: 'secretRegenerationFlow',
-  GROUP_MEMBERSHIP_REMOVAL: 'groupMembershipRemovalFlow',
-  ROLE_ASSIGNMENT_REMOVAL: 'roleAssignmentRemovalFlow',
-  ROLE_DELETION: 'roleDeletionFlow',
-  ROLE_PERMISSION_REMOVAL: 'rolePermissionRemovalFlow',
-  ACTION_DELETION: 'actionDeletionFlow',
-  USER_DELETION: 'userDeletionFlow',
   USER_UNLOCK: 'userUnlockFlow',
   USER_SUSPEND: 'userSuspendFlow',
   USER_UNSUSPEND: 'userUnsuspendFlow',
@@ -126,6 +125,8 @@ export const AdministrationFlowConfigKey = {
   AGENT_UNSUSPEND: 'agentUnsuspendFlow',
   APPLICATION_SUSPEND: 'applicationSuspendFlow',
   APPLICATION_UNSUSPEND: 'applicationUnsuspendFlow',
+  ADMIN_ATTRIBUTE_VERIFICATION: 'adminAttributeVerificationFlow',
+  ADMIN_USER_CREDENTIAL_RESET: 'adminUserCredentialResetFlow',
 } as const;
 
 export type AdministrationFlowConfigKeyValue =
@@ -136,26 +137,23 @@ export type AdministrationFlowConfigKeyValue =
  * the wrong place.
  */
 export const AdministrationFlowInput = {
-  ACTION: 'targetActionId',
   APPLICATION: 'targetApplicationId',
-  ASSIGNEE: 'targetAssigneeId',
+  ATTRIBUTE: 'attribute',
+  CREDENTIAL: 'credential',
   GROUP: 'targetGroupId',
-  MEMBER: 'targetMemberId',
   OPERATOR_NOTE: 'operatorNote',
-  PERMISSIONS: 'targetPermissions',
-  RESOURCE: 'targetResourceId',
-  RESOURCE_SERVER: 'targetResourceServerId',
   ROLE: 'targetRoleId',
   SUBJECT: 'subject',
 } as const;
 
 /**
- * Keys of values a flow returns; a regenerated client secret is readable only here. `emailSent` is
- * `"false"` when a best-effort email node sent nothing.
+ * Keys of values a flow returns. `emailSent` is `"false"` when a best-effort email node sent nothing.
+ * `channel` and `maskedDestination` say where a verification link went.
  */
 export const AdministrationFlowData = {
-  CLIENT_SECRET: 'clientSecret',
+  CHANNEL: 'channel',
   EMAIL_SENT: 'emailSent',
+  MASKED_DESTINATION: 'maskedDestination',
 } as const;
 
 /**
@@ -269,6 +267,30 @@ export async function executeAdministrationFlow(
   }
 
   throw new FlowExecutionFailure(result.error ?? {}, `The ${action} flow did not complete`);
+}
+
+/**
+ * Starts the administrator-initiated flow a handle names for a subject and returns the response as is.
+ *
+ * The start is verbose because it fixes verbose mode for the whole execution, and the page the emailed
+ * link opens shows its form only in verbose mode. The flow pauses once it sends the link, so the caller
+ * decides what a successful start looks like; {@link executeAdministrationFlow} would treat the pause as
+ * a failure.
+ */
+export async function startAdminInitiatedFlow(
+  http: HttpLike,
+  serverUrl: string,
+  handle: string,
+  inputs: Record<string, string>,
+): Promise<FlowExecutionResponse> {
+  const response = await http.request({
+    url: `${serverUrl}/flow/execute`,
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    data: {flowType: ADMIN_INITIATED_FLOW_TYPE, handle, inputs, verbose: true},
+  });
+
+  return (response?.data ?? {}) as FlowExecutionResponse;
 }
 
 /**

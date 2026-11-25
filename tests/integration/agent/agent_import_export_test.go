@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/suite"
+	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
@@ -197,6 +198,44 @@ func (s *AgentImportExportSuite) TestExportImportRoundTrip_EntityOnlyAgent() {
 	s.Assert().Equal(pre.AttrName(), restored.AttrName())
 	s.Assert().Equal(pre.Description, restored.Description)
 	s.Assert().Equal(pre.OUID, restored.OUID)
+}
+
+// TestExportImportRoundTrip_ExternalOwner verifies an owner managed elsewhere is exported as an
+// object and imported again without being looked up, as a control plane applies it to a gateway.
+func (s *AgentImportExportSuite) TestExportImportRoundTrip_ExternalOwner() {
+	owner := testutils.ExternalAgentOwner("0199a1b2-7c3d-7e4f-9a8b-0000000000aa", "uuid")
+	createdID, err := s.createAgent(Agent{
+		OUID:       s.ouID,
+		Type:       "default",
+		Owner:      owner,
+		Attributes: agentAttrs("Agent RT External Owner "+s.handleSuffix, nil),
+	})
+	s.Require().NoError(err, "failed to create source agent")
+
+	exportResp, err := s.exportAgents(agentExportRequest{Agents: []string{createdID}})
+	s.Require().NoError(err)
+	yamlContent := exportResp.Resources
+	s.Assert().Contains(yamlContent, "id: "+owner.ID)
+	s.Assert().Contains(yamlContent, "isLocal: false")
+
+	s.Require().NoError(s.deleteAgent(createdID))
+
+	importResp, err := s.importAgents(agentImportRequest{
+		Content: yamlContent,
+		Options: agentImportOptions{Upsert: true, ContinueOnError: false, Target: "runtime"},
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(1, importResp.Summary.Imported, "import results: %+v", importResp.Results)
+
+	importedID := importResp.Results[0].ResourceID
+	defer func() { _ = s.deleteAgent(importedID) }()
+
+	restored, err := s.agentGet(importedID)
+	s.Require().NoError(err)
+	s.Require().NotNil(restored.Owner)
+	s.Assert().Equal(owner.ID, restored.Owner.ID)
+	s.Require().NotNil(restored.Owner.IsLocal)
+	s.Assert().False(*restored.Owner.IsLocal)
 }
 
 // TestExportImportRoundTrip_AgentWithConfidentialOAuth creates an agent with
@@ -499,7 +538,7 @@ func (s *AgentImportExportSuite) TestExportImportRoundTrip_AgentWithPassword() {
 }
 
 // Importing onto an agent that is already there replaces its password. A placeholder filled with
-// nothing is refused: the profile is written, and the agent keeps the password it has.
+// nothing keeps the password the agent has, as for a user.
 func (s *AgentImportExportSuite) TestImportAgent_UpsertReplacesThePassword() {
 	agentName := "Agent Upsert Password " + s.handleSuffix
 	original := "Original-Pass2!" + s.handleSuffix
@@ -535,11 +574,81 @@ func (s *AgentImportExportSuite) TestImportAgent_UpsertReplacesThePassword() {
 		"the replaced password still signs the agent in")
 
 	importResp = importWith("")
-	s.Equal("failed", importResp.Results[0].Status)
-	s.Equal("AGT-1016", importResp.Results[0].Code, importResp.Results[0].Message)
-	s.Contains(importResp.Results[0].Message, "credential update failed")
+	s.Equal(1, importResp.Summary.Imported, "import results: %+v", importResp.Results)
 	s.Equal(http.StatusOK, s.authenticateAgent(agentName, rotated),
 		"an empty password replaced the one the agent had")
+}
+
+// Replacing an agent's password through import revokes the tokens issued to the agent before it, as an
+// administrator's password change does for a user. Its client credentials token names the agent as subject.
+func (s *AgentImportExportSuite) TestImportAgent_ReplacingThePasswordRevokesItsTokens() {
+	agentName := "Agent Password Revokes " + s.handleSuffix
+	clientID := "agent-pw-revokes-client-" + s.handleSuffix
+	clientSecret := "agent-pw-revokes-secret-" + s.handleSuffix
+	observerID := "agent-pw-revokes-observer-" + s.handleSuffix
+	observerSecret := "agent-pw-revokes-observer-secret-" + s.handleSuffix
+
+	createdID, err := s.createAgent(Agent{
+		OUID:       s.ouID,
+		Type:       "default",
+		Attributes: agentAttrs(agentName, map[string]interface{}{"password": "Original-Pass4!" + s.handleSuffix}),
+		InboundAuthConfig: []InboundAuthConfig{{Type: "oauth2", Config: &OAuthAgentConfig{
+			ClientID:                clientID,
+			ClientSecret:            clientSecret,
+			GrantTypes:              []string{"client_credentials"},
+			TokenEndpointAuthMethod: "client_secret_basic",
+		}}},
+	})
+	s.Require().NoError(err)
+	defer func() { _ = s.deleteAgent(createdID) }()
+
+	observerAppID, err := testutils.CreateApplication(testutils.Application{
+		Name: "agent_pw_revokes_observer_" + s.handleSuffix,
+		OUID: s.ouID,
+		Type: "fullstack",
+		InboundAuthConfig: []map[string]interface{}{{"type": "oauth2", "config": map[string]interface{}{
+			"clientId":                observerID,
+			"clientSecret":            observerSecret,
+			"redirectUris":            []string{"https://localhost:3000"},
+			"grantTypes":              []string{"client_credentials"},
+			"tokenEndpointAuthMethod": "client_secret_basic",
+		}}},
+	})
+	s.Require().NoError(err)
+	defer func() { _ = testutils.DeleteApplication(observerAppID) }()
+
+	issueToken := func() string {
+		issued, err := testutils.RequestToken(clientID, clientSecret, "", "", "client_credentials")
+		s.Require().NoError(err)
+		s.Require().Equal(http.StatusOK, issued.StatusCode, "token request failed: %s", string(issued.Body))
+		return issued.Token.AccessToken
+	}
+	active := func(token string) bool {
+		isActive, err := testutils.IntrospectToken(token, observerID, observerSecret)
+		s.Require().NoError(err)
+		return isActive
+	}
+	token := issueToken()
+	s.Require().True(active(token), "the token should be active before the import")
+
+	exportResp, err := s.exportAgents(agentExportRequest{Agents: []string{createdID}})
+	s.Require().NoError(err)
+	importResp, err := s.importAgents(agentImportRequest{
+		Content: exportResp.Resources,
+		Options: agentImportOptions{Upsert: true, Target: "runtime"},
+		Variables: s.extractTemplateVariables(exportResp.Resources, map[string]interface{}{
+			"clientId":     clientID,
+			"clientSecret": clientSecret,
+			"password":     "Rotated-Pass4!" + s.handleSuffix,
+		}),
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(1, importResp.Summary.Imported, "import results: %+v", importResp.Results)
+
+	s.False(active(token), "a token issued before the password was replaced was still active")
+	// A token's iat has second granularity while the cutoff is sub-second, and the comparison is at or before.
+	time.Sleep(1100 * time.Millisecond)
+	s.True(active(issueToken()), "a token issued after the password was replaced was not active")
 }
 
 // A Data Plane imports what a Control Plane exports: a password named as a secret the Data Plane
@@ -628,14 +737,15 @@ func (s *AgentImportExportSuite) TestImportAgent_RefusesANewAgentsUnusableCreden
 	}
 }
 
-// Two agents whose display names normalize alike would claim one password variable, and so one
-// password, so the export holding both is refused rather than written.
-func (s *AgentImportExportSuite) TestExportAgent_RefusesTwoAgentsWithOnePasswordVariable() {
+// Two agents whose display names normalize alike each carry their own ID in the password variable, so
+// the export holding both is written and each agent keeps a password variable of its own.
+func (s *AgentImportExportSuite) TestExportAgent_NamesTwoAgentsWithOneNormalizedNameApart() {
 	// Without a display attribute an agent is named by its ID, which no other agent shares.
 	s.Require().NoError(s.installAgentType(&testutils.UserTypeSystemAttributes{Display: "name"}))
 	defer func() { s.NoError(s.installAgentType(nil)) }()
 	var ids []string
-	for _, name := range []string{"Agent Clash " + s.handleSuffix, "Agent-Clash-" + s.handleSuffix} {
+	names := []string{"Agent Clash " + s.handleSuffix, "Agent-Clash-" + s.handleSuffix}
+	for _, name := range names {
 		id, err := s.createAgent(Agent{
 			OUID:       s.ouID,
 			Type:       "default",
@@ -646,10 +756,14 @@ func (s *AgentImportExportSuite) TestExportAgent_RefusesTwoAgentsWithOnePassword
 		ids = append(ids, id)
 	}
 
-	_, err := s.exportAgents(agentExportRequest{Agents: ids})
+	exported, err := s.exportAgents(agentExportRequest{Agents: ids})
 
-	s.Require().Error(err, "expected the export to be refused")
-	s.Contains(err.Error(), "EXP-1003", "the refusal must name the duplicate template variable error")
+	s.Require().NoError(err, "agents whose names normalize alike must not refuse the export")
+	first := testutils.ExportVariableName("AGENT", ids[0], "PASSWORD")
+	second := testutils.ExportVariableName("AGENT", ids[1], "PASSWORD")
+	s.NotEqual(first, second, "the two agents must not share a password variable")
+	s.Contains(exported.Resources, "{{."+first+"}}")
+	s.Contains(exported.Resources, "{{."+second+"}}")
 }
 
 // ---------------------------------------------------------------------------
@@ -884,4 +998,129 @@ func (s *AgentImportExportSuite) extractTemplateVariables(
 		}
 	}
 	return out
+}
+
+// agentDocument builds one agent document for an import. extra is appended as is, so a test can add a kind, an
+// owner, a credentials block, or a credential written as an attribute.
+func (s *AgentImportExportSuite) agentDocument(id, name string, attributes, extra string) string {
+	doc := "resource_type: agent\n"
+	if id != "" {
+		doc += "id: " + id + "\n"
+	}
+	doc += "type: default\nouId: " + s.ouID + "\nattributes:\n  name: " + name + "\n" + attributes + extra
+	return doc
+}
+
+// createOwnerUser creates a user of the seeded person type to own a personal agent.
+func (s *AgentImportExportSuite) createOwnerUser() string {
+	s.T().Helper()
+	userTypes, err := testutils.ListUserTypes()
+	s.Require().NoError(err)
+	for _, userType := range userTypes {
+		if userType.Handle != "person" {
+			continue
+		}
+		username := common.GenerateUniqueUsername("agent_ie_owner")
+		attributes, err := json.Marshal(map[string]string{
+			"username": username, "email": username + "@example.com", "password": "Owner-Pass1!" + s.handleSuffix,
+		})
+		s.Require().NoError(err)
+		userID, err := testutils.CreateUser(testutils.User{OUID: userType.OUID, Type: userType.Handle,
+			Attributes: attributes})
+		s.Require().NoError(err)
+		return userID
+	}
+	s.FailNow("the seeded person user type is missing")
+	return ""
+}
+
+const personalAgentOwnerYAML = "kind: personal-assistant\nowner:\n  id: 0199a1b2-7c3d-7e4f-9a8b-0000000000bb\n  isLocal: false\n"
+
+// Only the owner sets a personal agent's password, so an import that creates a personal agent with one is
+// refused before the agent exists, whether the password sits under credentials or is written as an attribute.
+func (s *AgentImportExportSuite) TestImportAgent_CreateRefusesAPersonalAgentsPassword() {
+	cases := map[string]struct{ attributes, extra string }{
+		"credentials block":  {extra: personalAgentOwnerYAML + "credentials:\n  password: \"Imported-Pass1!\"\n"},
+		"attribute password": {attributes: "  password: \"Imported-Pass1!\"\n", extra: personalAgentOwnerYAML},
+	}
+	for name, tc := range cases {
+		for _, dryRun := range []bool{false, true} {
+			s.Run(fmt.Sprintf("%s dryRun=%t", name, dryRun), func() {
+				agentName := "Agent Personal Refused " + strings.ReplaceAll(name, " ", "-") + " " + s.handleSuffix
+
+				importResp, err := s.importAgents(agentImportRequest{
+					Content: s.agentDocument("", agentName, tc.attributes, tc.extra),
+					DryRun:  dryRun,
+					Options: agentImportOptions{Upsert: true, ContinueOnError: true, Target: "runtime"},
+				})
+
+				s.Require().NoError(err)
+				s.Require().Len(importResp.Results, 1)
+				s.Equal("failed", importResp.Results[0].Status, "import results: %+v", importResp.Results)
+				s.Equal("AGT-1069", importResp.Results[0].Code, importResp.Results[0].Message)
+				s.Equal(0, importResp.Summary.Imported)
+			})
+		}
+	}
+}
+
+// Re-importing an existing personal agent with a password is refused before its profile is written.
+func (s *AgentImportExportSuite) TestImportAgent_UpsertRefusesAPersonalAgentsPassword() {
+	agentName := "Agent Personal Upsert " + s.handleSuffix
+	ownerID := s.createOwnerUser()
+	defer func() { _ = testutils.DeleteUser(ownerID) }()
+	localOwnerYAML := "kind: personal-assistant\nowner:\n  id: " + ownerID + "\n  isLocal: true\n" +
+		"inboundAuthConfig:\n  - type: oauth2\n    config:\n      grantTypes: [authorization_code]\n" +
+		"      responseTypes: [code]\n      redirectUris: [\"https://agent.example.com/callback\"]\n" +
+		"      pkceRequired: true\n"
+	created, err := s.importAgents(agentImportRequest{
+		Content: s.agentDocument("", agentName, "", localOwnerYAML),
+		Options: agentImportOptions{Upsert: true, ContinueOnError: false, Target: "runtime"},
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(1, created.Summary.Imported, "import results: %+v", created.Results)
+	agentID := created.Results[0].ResourceID
+	defer func() { _ = s.deleteAgent(agentID) }()
+
+	// The dry run refuses the document the real import refuses, instead of reporting that it would succeed.
+	for _, dryRun := range []bool{true, false} {
+		importResp, err := s.importAgents(agentImportRequest{
+			Content: s.agentDocument(agentID, agentName+" Renamed", "", localOwnerYAML+
+				"credentials:\n  password: \"Imported-Pass1!\"\n"),
+			DryRun:  dryRun,
+			Options: agentImportOptions{Upsert: true, ContinueOnError: true, Target: "runtime"},
+		})
+
+		s.Require().NoError(err)
+		s.Require().Len(importResp.Results, 1)
+		s.Equal("failed", importResp.Results[0].Status, "dryRun=%t import results: %+v", dryRun, importResp.Results)
+		s.Equal("AGT-1069", importResp.Results[0].Code, importResp.Results[0].Message)
+	}
+	restored, err := s.agentGet(agentID)
+	s.Require().NoError(err)
+	s.Contains(string(restored.Attributes), agentName, "the profile was written before the password was refused")
+	s.NotContains(string(restored.Attributes), "Renamed")
+}
+
+// An import that updates an agent and names a credential as an attribute is refused by the agent service, and
+// the import reports its error.
+func (s *AgentImportExportSuite) TestImportAgent_UpsertReportsARefusedUpdate() {
+	agentName := "Agent Refused Update " + s.handleSuffix
+	createdID, err := s.createAgent(Agent{
+		OUID:       s.ouID,
+		Type:       "default",
+		Attributes: agentAttrs(agentName, nil),
+	})
+	s.Require().NoError(err)
+	defer func() { _ = s.deleteAgent(createdID) }()
+
+	importResp, err := s.importAgents(agentImportRequest{
+		Content: s.agentDocument(createdID, agentName, "  password: \"Imported-Pass1!\"\n", ""),
+		Options: agentImportOptions{Upsert: true, ContinueOnError: true, Target: "runtime"},
+	})
+
+	s.Require().NoError(err)
+	s.Require().Len(importResp.Results, 1)
+	s.Equal("failed", importResp.Results[0].Status, "import results: %+v", importResp.Results)
+	s.Equal("AGT-1068", importResp.Results[0].Code, importResp.Results[0].Message)
 }

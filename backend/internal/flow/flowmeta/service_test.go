@@ -17,6 +17,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/actorprovider"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
+	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/ou"
@@ -26,6 +27,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/i18n/mgtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/inboundclientmock"
 	"github.com/thunder-id/thunderid/tests/mocks/ouprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/serverconfigmock"
 )
 
 const (
@@ -42,6 +44,7 @@ type FlowMetaServiceTestSuite struct {
 	mockOUService      *ouprovidermock.OrganizationUnitProviderMock
 	mockDesignResolve  *resolvemock.DesignResolveServiceInterfaceMock
 	mockI18nService    *mgtmock.I18nServiceInterfaceMock
+	mockServerConfig   *serverconfigmock.ServerConfigServiceMock
 	service            FlowMetaServiceInterface
 	ctx                context.Context
 }
@@ -56,13 +59,29 @@ func (suite *FlowMetaServiceTestSuite) SetupTest() {
 	suite.mockOUService = ouprovidermock.NewOrganizationUnitProviderMock(suite.T())
 	suite.mockDesignResolve = resolvemock.NewDesignResolveServiceInterfaceMock(suite.T())
 	suite.mockI18nService = mgtmock.NewI18nServiceInterfaceMock(suite.T())
+	suite.mockServerConfig = serverconfigmock.NewServerConfigServiceMock(suite.T())
+	suite.mockServerConfig.EXPECT().GetMergedConfig(mock.Anything, "flow").
+		Return(flowconfig.FlowSectionConfig{}, nil).Maybe()
+	suite.newService(suite.mockServerConfig)
+	suite.ctx = context.Background()
+}
+
+// newServiceWithFlowConfig rebuilds the service over a server config that returns the given "flow" section once.
+func (suite *FlowMetaServiceTestSuite) newServiceWithFlowConfig(cfg any, svcErr *tidcommon.ServiceError) {
+	suite.mockServerConfig = serverconfigmock.NewServerConfigServiceMock(suite.T())
+	suite.mockServerConfig.EXPECT().GetMergedConfig(mock.Anything, "flow").Return(cfg, svcErr).Once()
+	suite.newService(suite.mockServerConfig)
+}
+
+// newService builds the service over the given server config reader.
+func (suite *FlowMetaServiceTestSuite) newService(serverConfig flowconfig.ServerConfigReader) {
 	suite.service = newFlowMetaService(
-		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil),
+		actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil, nil),
 		suite.mockOUService,
 		suite.mockDesignResolve,
 		suite.mockI18nService,
+		serverConfig,
 	)
-	suite.ctx = context.Background()
 }
 
 func (suite *FlowMetaServiceTestSuite) TearDownTest() {
@@ -88,7 +107,7 @@ func (suite *FlowMetaServiceTestSuite) expectInboundLookup(
 		SystemAttributes: sysAttrs,
 	}
 	suite.mockInboundClient.On("GetInboundClientByEntityID", mock.Anything, appID).Return(client, nil)
-	suite.mockEntityProvider.On("GetEntityProfile", appID).
+	suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, appID).
 		Return(entity, (*entityprovider.EntityProviderError)(nil))
 }
 
@@ -371,6 +390,68 @@ func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_SystemFlow_NoTypeOrID
 	assert.Equal(suite.T(), 3, result.I18n.TotalResults)
 	assert.Equal(suite.T(), []string{"en-US"}, result.I18n.Languages)
 	assert.Contains(suite.T(), result.I18n.Translations, "system")
+}
+
+func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_Ref_ResolvesApplication() {
+	appID := "019a8c5e-2f41-7b3d-a9e6-5c0d1f7b3e28"
+	suite.expectInboundLookup(appID, "", "Referenced App", false, map[string]interface{}{"url": "https://example.com"})
+	suite.mockDesignResolve.On("ResolveDesign", mock.Anything, providers.DesignResolveTypeAPP, appID).
+		Return(nil, nil)
+	suite.mockI18nService.On("ResolveTranslations", mock.Anything, "en-US", "").
+		Return(&providers.LanguageTranslationsResponse{}, nil)
+	suite.mockI18nService.On("ListLanguages", mock.Anything).Return([]string{"en-US"}, nil)
+
+	result, svcErr := suite.service.GetFlowMetadata(suite.ctx, MetaTypeRef, "AZqMXi9Bez2p5lwNH3s-KA", nil, nil)
+
+	assert.Nil(suite.T(), svcErr)
+	assert.NotNil(suite.T(), result.Application)
+	assert.Equal(suite.T(), appID, result.Application.ID)
+	assert.Equal(suite.T(), "Referenced App", result.Application.Name)
+	assert.Equal(suite.T(), "https://example.com", result.Application.URL)
+}
+
+func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_Ref_InvalidReference() {
+	result, svcErr := suite.service.GetFlowMetadata(suite.ctx, MetaTypeRef, "not*a*reference", nil, nil)
+
+	assert.Nil(suite.T(), result)
+	assert.NotNil(suite.T(), svcErr)
+	assert.Equal(suite.T(), ErrorApplicationNotFound.Code, svcErr.Code)
+}
+
+func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_DefaultReturnURL() {
+	suite.newServiceWithFlowConfig(flowconfig.FlowSectionConfig{DefaultReturnURL: "https://app.example.com"}, nil)
+	suite.mockI18nService.On("ResolveTranslations", mock.Anything, "en-US", "").
+		Return(&providers.LanguageTranslationsResponse{}, nil)
+	suite.mockI18nService.On("ListLanguages", mock.Anything).Return([]string{"en-US"}, nil)
+
+	result, svcErr := suite.service.GetFlowMetadata(suite.ctx, MetaType(""), "", nil, nil)
+
+	assert.Nil(suite.T(), svcErr)
+	assert.Equal(suite.T(), "https://app.example.com", result.DefaultReturnURL)
+}
+
+func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_DefaultReturnURL_ServerConfigError() {
+	suite.newServiceWithFlowConfig(nil, &tidcommon.InternalServerError)
+	suite.mockI18nService.On("ResolveTranslations", mock.Anything, "en-US", "").
+		Return(&providers.LanguageTranslationsResponse{}, nil)
+	suite.mockI18nService.On("ListLanguages", mock.Anything).Return([]string{"en-US"}, nil)
+
+	result, svcErr := suite.service.GetFlowMetadata(suite.ctx, MetaType(""), "", nil, nil)
+
+	assert.Nil(suite.T(), svcErr)
+	assert.Empty(suite.T(), result.DefaultReturnURL)
+}
+
+func (suite *FlowMetaServiceTestSuite) TestGetFlowMetadata_NoServerConfig() {
+	suite.newService(nil)
+	suite.mockI18nService.On("ResolveTranslations", mock.Anything, "en-US", "").
+		Return(&providers.LanguageTranslationsResponse{}, nil)
+	suite.mockI18nService.On("ListLanguages", mock.Anything).Return([]string{"en-US"}, nil)
+
+	result, svcErr := suite.service.GetFlowMetadata(suite.ctx, MetaType(""), "", nil, nil)
+
+	assert.Nil(suite.T(), svcErr)
+	assert.Empty(suite.T(), result.DefaultReturnURL)
 }
 
 // noopAuthnMgr returns an authentication-provider mock with no expectations, for tests that

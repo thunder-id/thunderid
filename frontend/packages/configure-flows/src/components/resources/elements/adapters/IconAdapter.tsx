@@ -1,9 +1,9 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {OxygenIcon, useOxygenIcons} from '@thunderid/design';
 import {Box} from '@wso2/oxygen-ui';
-import * as Icons from '@wso2/oxygen-ui-icons-react';
-import {type ReactElement, type ComponentType} from 'react';
+import type {ReactElement} from 'react';
 import type {Element as FlowElement} from '../../../../models/elements';
 
 /**
@@ -38,11 +38,16 @@ function IconAdapter({resource}: IconAdapterPropsInterface): ReactElement {
   const size = iconElement?.size ?? 24;
   const color = iconElement?.color ?? 'currentColor';
 
-  const IconComponent = (name in Icons ? Icons[name as keyof typeof Icons] : undefined) as
-    | ComponentType<{size?: number; color?: string}>
-    | undefined;
+  const icons = useOxygenIcons();
 
-  if (!IconComponent) {
+  // Hold the icon's space while the icon set loads.
+  if (!icons) {
+    return <Box display="inline-flex" sx={{height: size, width: size}} />;
+  }
+
+  const icon = icons.get(name);
+
+  if (!icon) {
     return (
       <Box
         display="inline-flex"
@@ -63,7 +68,7 @@ function IconAdapter({resource}: IconAdapterPropsInterface): ReactElement {
     );
   }
 
-  return <IconComponent size={size} color={color} />;
+  return <OxygenIcon icon={icon} size={size} color={color} />;
 }
 
 export default IconAdapter;

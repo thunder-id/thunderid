@@ -9,13 +9,13 @@ For the canonical, deeper reference (flat package/file layout, export rules, log
 - Writing or changing any backend Go code → read [.agent/skills/backend/SKILL.md](../.agent/skills/backend/SKILL.md) first.
 - Writing or fixing tests → read [.agent/skills/backend-tests/SKILL.md](../.agent/skills/backend-tests/SKILL.md).
 - Touching `store.go`, schema, or queries → read [.agent/skills/db/SKILL.md](../.agent/skills/db/SKILL.md).
-- Changing any interface → regenerate mocks with `make mockery`. CI's `verify_mocks` job fails if mocks are out of sync. Never hand-edit mock files.
+- Changing any interface → regenerate mocks with `make mockery`. CI's `verify-mocks` job fails if mocks are out of sync. Never hand-edit mock files.
 
 ## Conventions
 
 - Ensure all identity-related code aligns with relevant RFC specifications.
 - Declarative resource attributes use camelCase, matching the REST API. The `yaml` struct tag must use the same camelCase name as the field's `json` tag (for example `yaml:"ouId"`, not `yaml:"ou_id"`). This does not apply to non-declarative YAML such as `deployment.yaml` server config, or to `json` tags for protocol payloads (OAuth, DCR) that follow their own RFC conventions.
-- Logging: use the `log` package from `internal/system` and pass the request `context.Context` first so entries carry the trace ID; avoid PII. See the overview for the full conventions (non-request contexts, `MaskString`).
+- Logging: use the `log` package from `internal/system` and pass the request `context.Context` first so entries carry the trace ID; avoid PII. See the overview for the full conventions (non-request contexts, `log.MaskedString`).
 - Cryptographic operations (encrypt/decrypt/sign/verify) must go through the injected `providers.RuntimeCryptoProvider`, not `internal/system/cryptolib` directly. `cryptolib` is a low-level primitives package meant to be wrapped by the default key manager provider (`internal/system/kmprovider/defaultkm`); other packages should depend on the `RuntimeCryptoProvider` interface so alternate key manager providers stay swappable.
 - JWE "alg"/"enc" validation (e.g. checking a configured algorithm is supported) must use `jwe.JWEServiceInterface`'s `SupportedKeyEncryptionAlgorithms()` / `SupportedContentEncryptionAlgorithms()` methods, not ad-hoc calls to the crypto provider or hardcoded algorithm lists.
 
@@ -25,4 +25,5 @@ For the canonical, deeper reference (flat package/file layout, export rules, log
   - service / store / API handler change → `make test_unit` first.
   - DB or API-contract change → also add `make test_integration` (filter with `RUN="TestName"` or `PACKAGE="pkg/path"`).
   - Code only the Control Plane runs (wired in `cmd/cpserver`) → `make build_backend build_cp_backend`, then `make test_integration_cp`. It sets `INTEGRATION_PLANE=control`, swaps the Control Plane binary into the distribution, boots the all-in-one server beside it as a Data Plane on port 8096, and by default runs only `tests/integration/controlplane` (same `RUN`/`PACKAGE` filters). `make test_integration` leaves that package out.
+  - A flow that spans the Control Plane, its sync and the Data Plane (author on the Control Plane, prove on the Data Plane) → `make build_quickstart`, then `make test_integration_pack`. It sets `INTEGRATION_PLANE=pack`, unzips the quickstart pack, runs its `setup.sh`, starts auth-dp (8091), the Data Plane (8090) and the Control Plane (8095), and runs only `tests/integration/pack` (same `RUN`/`PACKAGE` filters). It needs those ports free, so it does not run beside `test_integration_cp`; `make test_integration` leaves that package out. Call `testutils.PackSyncToDP()` after a Control Plane write before reading the Data Plane.
 - **Final gate**: `make test_unit` + `make test_integration`, or `make pr_checks` before opening a PR.

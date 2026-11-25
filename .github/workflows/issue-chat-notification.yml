@@ -4,6 +4,9 @@ on:
   issues:
     types: [opened, reopened]
 
+permissions:
+  contents: read
+
 jobs:
   notify-google-chat:
     if: |

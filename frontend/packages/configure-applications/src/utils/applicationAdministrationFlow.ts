@@ -1,13 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {
-  AdministrationFlowConfigKey,
-  AdministrationFlowData,
-  AdministrationFlowInput,
-  runAdministrationFlow,
-  type HttpLike,
-} from '@thunderid/utils';
+import type {HttpLike} from '@thunderid/utils';
 
 export type {HttpLike};
 
@@ -27,56 +21,25 @@ export async function deleteApplicationNatively(
 }
 
 /**
- * Deletes an application through the configured deletion flow, falling back to the native endpoint.
+ * Regenerates an application's client secret through the native endpoint and returns the new secret.
  *
- * Only the flow revokes the application's tokens; a configured flow that cannot be resolved refuses.
+ * The response is the only moment the secret is readable: no read path returns it afterwards.
  */
-export async function deleteApplicationViaFlow(
+export async function regenerateClientSecretNatively(
   http: HttpLike,
   serverUrl: string,
   applicationId: string,
-): Promise<void> {
-  const result = await runAdministrationFlow(
-    http,
-    serverUrl,
-    AdministrationFlowConfigKey.APPLICATION_DELETION,
-    {[AdministrationFlowInput.APPLICATION]: applicationId},
-    'application deletion',
-  );
+): Promise<{clientSecret: string; revocationIncomplete: boolean}> {
+  const response = await http.request({
+    url: `${serverUrl}/applications/${applicationId}/client-secret/regenerate`,
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+  });
+  const data = response.data as {clientSecret?: string; revocationIncomplete?: boolean} | undefined;
 
-  if (result === null) {
-    await deleteApplicationNatively(http, serverUrl, applicationId);
-  }
-}
-
-/**
- * Regenerates an application's client secret through the configured regeneration flow, returning the
- * new secret, or null when no flow is configured.
- *
- * The flow's response is the only moment the secret is readable: no read path returns it afterwards.
- */
-export async function regenerateClientSecretViaFlow(
-  http: HttpLike,
-  serverUrl: string,
-  applicationId: string,
-): Promise<string | null> {
-  const result = await runAdministrationFlow(
-    http,
-    serverUrl,
-    AdministrationFlowConfigKey.SECRET_REGENERATION,
-    {[AdministrationFlowInput.APPLICATION]: applicationId},
-    'client secret regeneration',
-  );
-
-  if (result === null) {
-    return null;
+  if (!data?.clientSecret) {
+    throw new Error('The client secret regeneration completed without returning a secret');
   }
 
-  const secret = result[AdministrationFlowData.CLIENT_SECRET];
-
-  if (!secret) {
-    throw new Error('The client secret regeneration flow completed without returning a secret');
-  }
-
-  return secret;
+  return {clientSecret: data.clientSecret, revocationIncomplete: data.revocationIncomplete === true};
 }

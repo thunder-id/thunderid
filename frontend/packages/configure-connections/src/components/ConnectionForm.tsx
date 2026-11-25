@@ -1,6 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {KeyValuePairsField, MaskedSecretField} from '@thunderid/components';
 import {useConfig} from '@thunderid/contexts';
 import {
   Alert,
@@ -21,11 +22,9 @@ import {
 import {type JSX, type ReactNode, useMemo, useState} from 'react';
 import {Trans, useTranslation} from 'react-i18next';
 import AuthenticationSection from './AuthenticationSection';
-import KeyValuePairsField from './KeyValuePairsField';
-import MaskedSecretField from './MaskedSecretField';
 import ReadOnlyCopyField from './ReadOnlyCopyField';
 import useConnectionMeta from '../api/useConnectionMeta';
-import {fieldsForMode, type ConnectionFieldDef} from '../config/connectionFormFields';
+import {fieldsForMode, type ConnectionFieldDef, type ConnectionFieldOption} from '../config/connectionFormFields';
 import type {ConnectionType, OutboundAuthMethod} from '../models/connection';
 import {type ConnectionFormValues, validateConnectionForm} from '../utils/connectionFormMapping';
 
@@ -90,6 +89,23 @@ export default function ConnectionForm({
 
   const setField = (name: string, value: string): void => {
     onFieldChange(name, value);
+  };
+
+  // Applies the chosen option's field defaults on create, keeping any value the user customised.
+  const setSelectField = (field: ConnectionFieldDef, value: string): void => {
+    setField(field.name, value);
+    if (mode !== 'create') {
+      return;
+    }
+    const options: ConnectionFieldOption[] = field.options ?? [];
+    const chosen: ConnectionFieldOption | undefined = options.find((option) => option.value === value);
+    Object.entries(chosen?.fieldDefaults ?? {}).forEach(([name, defaultValue]) => {
+      const current: string = values[name] ?? '';
+      const isDefault: boolean = options.some((option) => option.fieldDefaults?.[name] === current);
+      if (current === '' || isDefault) {
+        setField(name, defaultValue);
+      }
+    });
   };
 
   const fieldError = (field: ConnectionFieldDef): string | undefined => {
@@ -205,7 +221,7 @@ export default function ConnectionForm({
               <Select
                 id={`connection-field-${field.name}`}
                 value={values[field.name] ?? ''}
-                onChange={(e) => setField(field.name, e.target.value)}
+                onChange={(e) => setSelectField(field, e.target.value)}
                 data-testid={`connection-field-select-${field.name}`}
               >
                 {(field.options ?? []).map((option) => (
@@ -238,20 +254,20 @@ export default function ConnectionForm({
           const error: string | undefined = fieldError(field);
           const required: boolean = isRequiredNow(field);
           fieldContent = (
-            <FormControl fullWidth required={required} error={Boolean(error)}>
-              <FormLabel htmlFor={`connection-field-${field.name}`}>{label}</FormLabel>
-              <TextField
-                id={`connection-field-${field.name}`}
-                fullWidth
-                type={field.kind === 'number' ? 'number' : undefined}
-                value={values[field.name] ?? ''}
-                placeholder={field.placeholder}
-                error={Boolean(error)}
-                helperText={error ?? (field.hintKey ? renderHint(field.hintKey) : undefined)}
-                onChange={(e) => setField(field.name, e.target.value)}
-                onBlur={() => setTouched((prev) => ({...prev, [field.name]: true}))}
-              />
-            </FormControl>
+            <TextField
+              labelPlacement="top"
+              label={label}
+              required={required}
+              id={`connection-field-${field.name}`}
+              fullWidth
+              type={field.kind === 'number' ? 'number' : undefined}
+              value={values[field.name] ?? ''}
+              placeholder={field.placeholder}
+              error={Boolean(error)}
+              helperText={error ?? (field.hintKey ? renderHint(field.hintKey) : undefined)}
+              onChange={(e) => setField(field.name, e.target.value)}
+              onBlur={() => setTouched((prev) => ({...prev, [field.name]: true}))}
+            />
           );
         }
 

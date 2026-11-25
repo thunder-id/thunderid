@@ -23,6 +23,7 @@ const INPUT_ELEMENT_TYPES = new Set<string>([
   ElementTypes.PhoneInput,
   ElementTypes.NumberInput,
   ElementTypes.DateInput,
+  ElementTypes.DateTimeInput,
   ElementTypes.OtpInput,
   ElementTypes.Checkbox,
   ElementTypes.Dropdown,
@@ -159,6 +160,8 @@ function normalizeInputProperties(component: Record<string, unknown>): Record<st
       inputType = 'tel';
     } else if (component['variant'] === 'NUMBER') {
       inputType = 'number';
+    } else if (component['type'] === ElementTypes.DateTimeInput) {
+      inputType = 'datetime-local';
     } else {
       inputType = 'text';
     }
@@ -333,8 +336,7 @@ function transformNodeToCanvas(apiNode: FlowNode): CanvasNode {
           height: apiNode.layout.size.height,
         }
       : undefined,
-    deletable:
-      stepType !== StaticStepTypes.Start && stepType !== StaticStepTypes.Variables && stepType !== StepTypes.End,
+    deletable: stepType !== StaticStepTypes.Start && stepType !== StepTypes.End,
     data: {},
   };
 
@@ -352,7 +354,6 @@ function transformNodeToCanvas(apiNode: FlowNode): CanvasNode {
       displayOnly: true,
       inputs: apiNode.inputs ?? [],
     };
-    canvasNode.deletable = false;
   }
 
   // Handle PROMPT/VIEW nodes with UI components
@@ -433,6 +434,10 @@ function transformNodeToCanvas(apiNode: FlowNode): CanvasNode {
     canvasNode.category = 'INTERFACE';
   }
 
+  if (apiNode.condition) {
+    canvasNode.data.condition = apiNode.condition;
+  }
+
   return canvasNode;
 }
 
@@ -469,6 +474,21 @@ function generateEdgesFromNodes(apiNodes: FlowNode[]): Edge[] {
         source: node.id,
         sourceHandle: `${node.id}${VisualFlowConstants.FLOW_BUILDER_NEXT_HANDLE_SUFFIX}`,
         target: node.onSuccess,
+        type: 'smoothstep',
+        animated: false,
+        markerEnd: {
+          type: MarkerType.Arrow,
+        },
+      });
+    }
+
+    // Handle VARIABLES node -> onFailure step connection
+    if (stepType === StaticStepTypes.Variables && node.onFailure && nodeIds.has(node.onFailure)) {
+      edges.push({
+        id: `${node.id}-failure-to-${node.onFailure}`,
+        source: node.id,
+        sourceHandle: 'failure',
+        target: node.onFailure,
         type: 'smoothstep',
         animated: false,
         markerEnd: {

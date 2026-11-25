@@ -4,7 +4,8 @@
 import type {UseQueryResult} from '@tanstack/react-query';
 import {render, screen, within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import {useGetThemes, type ThemeListResponse} from '@thunderid/design';
+import {ProjectScopeProvider} from '@thunderid/contexts';
+import {useGetLayouts, useGetThemes, type ThemeListResponse} from '@thunderid/design';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {Application} from '../../../../models/application';
 import AppearanceSection from '../AppearanceSection';
@@ -44,6 +45,24 @@ describe('AppearanceSection', () => {
       data: {themes: mockThemes},
       isLoading: false,
     } as UseQueryResult<ThemeListResponse>);
+  });
+
+  describe('Project', () => {
+    it("should offer the selected project's themes", () => {
+      render(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <AppearanceSection application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />
+        </ProjectScopeProvider>,
+      );
+
+      expect(vi.mocked(useGetThemes)).toHaveBeenCalledWith({projectId: 'project-1'});
+    });
+
+    it('should offer every theme outside a project', () => {
+      render(<AppearanceSection application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />);
+
+      expect(vi.mocked(useGetThemes)).toHaveBeenCalledWith({projectId: undefined});
+    });
   });
 
   describe('Rendering', () => {
@@ -198,5 +217,15 @@ describe('AppearanceSection', () => {
       const input = screen.getByPlaceholderText('applications:edit.customization.theme.placeholder');
       expect(input).toHaveValue('');
     });
+  });
+
+  it("lists the selected project's layouts", () => {
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <AppearanceSection application={mockApplication} editedApp={{}} onFieldChange={mockOnFieldChange} />
+      </ProjectScopeProvider>,
+    );
+
+    expect(vi.mocked(useGetLayouts)).toHaveBeenCalledWith({projectId: 'project-1'});
   });
 });

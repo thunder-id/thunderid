@@ -4,6 +4,8 @@
 package entity
 
 import (
+	"fmt"
+
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/sharing"
@@ -22,6 +24,7 @@ func Initialize(
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	ouService ou.OrganizationUnitServiceInterface,
 	sharingService sharing.SharingServiceInterface,
+	observabilitySvc providers.ObservabilityProvider,
 ) (EntityServiceInterface, error) {
 	store, transactioner, err := initializeStore(cacheManager)
 	if err != nil {
@@ -29,7 +32,7 @@ func Initialize(
 	}
 
 	svc := newEntityService(store, newEntityRuntimeDBStore(), hashService, entityTypeService, ouService,
-		transactioner, sharingService)
+		transactioner, sharingService, observabilitySvc)
 	return svc, nil
 }
 
@@ -49,4 +52,16 @@ func initializeStore(cacheManager cache.CacheManagerInterface) (
 	cacheBackedEntityStore := newCacheBackedEntityStore(dbStore, entityByIDCache,
 		entityWithCredsByIDCache, entityIDByIdentifierCache)
 	return newEntityCompositeStore(fileStore, cacheBackedEntityStore), transactioner, nil
+}
+
+// SetSystemFlowProvider gives the entity service the engine that runs the system flows around its changes. It is
+// bound after the service, once the engine exists, and only on a server that issues tokens. A service that
+// cannot take it is reported rather than left without one.
+func SetSystemFlowProvider(service EntityServiceInterface, provider systemFlowProvider) error {
+	es, ok := service.(*entityService)
+	if !ok {
+		return fmt.Errorf("entity service does not support system flow provider injection")
+	}
+	es.systemFlows = provider
+	return nil
 }

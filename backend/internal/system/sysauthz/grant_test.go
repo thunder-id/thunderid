@@ -35,6 +35,24 @@ type stubPermissionResolver struct {
 	rolePerms security.PermissionSet
 	roleErr   error
 	roleCalls int
+
+	// delimiters is what the resource servers being granted on report. Left nil, every resource
+	// server named is reported as ":"-delimited, which is what the system one is and what the cases
+	// below are about. Set it to override administrative delimiters or model missing metadata.
+	delimiters map[string]string
+}
+
+func (s *stubPermissionResolver) ResolveDelimiters(
+	_ context.Context, resourceServerIDs []string,
+) map[string]string {
+	if s.delimiters != nil {
+		return s.delimiters
+	}
+	defaults := make(map[string]string, len(resourceServerIDs))
+	for _, id := range resourceServerIDs {
+		defaults[id] = ":"
+	}
+	return defaults
 }
 
 func (r *stubPermissionResolver) ResolveForEntity(
@@ -58,11 +76,24 @@ func (r *stubPermissionResolver) ResolveForRole(
 	return r.rolePerms, r.roleErr
 }
 
+// perEntityResolver resolves each entity to its own permissions.
+type perEntityResolver struct {
+	stubPermissionResolver
+	entities map[string]security.PermissionSet
+}
+
+func (r *perEntityResolver) ResolveForEntity(_ context.Context, entityID string) (security.PermissionSet, error) {
+	r.entityCalls++
+	if r.entityErr != nil {
+		return nil, r.entityErr
+	}
+	return r.entities[entityID], nil
+}
+
 // newGuardService returns a service with the given resolver injected.
 func newGuardService(resolver PermissionResolver) *systemAuthorizationService {
 	svc := &systemAuthorizationService{
-		logger:   log.GetLogger().With(log.String("component", "SystemAuthorizationService")),
-		policies: &policies{membershipPolicy: &ouMembershipPolicy{}},
+		logger: log.GetLogger().With(log.String("component", "SystemAuthorizationService")),
 	}
 	if resolver != nil {
 		svc.SetPermissionResolver(resolver)
@@ -461,4 +492,256 @@ func TestGrantsNothing(t *testing.T) {
 			assert.Equal(t, tt.want, grantsNothing(tt.granted))
 		})
 	}
+}
+
+// perRoleResolver resolves each role to its own permissions and counts the caller lookups.
+type perRoleResolver struct {
+	stubPermissionResolver
+	roles map[string]security.PermissionSet
+}
+
+func (r *perRoleResolver) ResolveForRole(_ context.Context, roleID string) (security.PermissionSet, error) {
+	r.roleCalls++
+	return r.roles[roleID], r.roleErr
+}
+
+func TestGrantableMemberships(t *testing.T) {
+	// A caller who is not root may grant only the roles whose permissions it holds, and its own permissions are
+	// resolved once for the whole list.
+	t.Run("NonRootCallerGetsOnlyTheRolesItCovers", func(t *testing.T) {
+		resolver := &perRoleResolver{
+			stubPermissionResolver: stubPermissionResolver{
+				entityPerms: security.PermissionSet{escRSSystem: {"system:user"}},
+			},
+			roles: map[string]security.PermissionSet{
+				"user-admin":    {escRSSystem: {"system:user"}},
+				"payroll-admin": {escRSPayroll: {"payroll:write"}},
+				"empty":         {},
+			},
+		}
+		svc := newGuardService(resolver)
+
+		ids, svcErr := svc.GrantableMemberships(callerWith("david", "system:user"), PrincipalTypeRole,
+			[]string{"payroll-admin", "user-admin", "empty"})
+
+		require.Nil(t, svcErr)
+		assert.Equal(t, []string{"user-admin", "empty"}, ids)
+		assert.Equal(t, 1, resolver.entityCalls)
+	})
+
+	t.Run("RootAndRuntimeCallersGetEveryRoleWithoutALookup", func(t *testing.T) {
+		for name, ctx := range map[string]context.Context{
+			"root":    callerWith("root", "system"),
+			"runtime": security.WithRuntimeContext(context.Background()),
+		} {
+			resolver := &stubPermissionResolver{}
+			svc := newGuardService(resolver)
+
+			ids, svcErr := svc.GrantableMemberships(ctx, PrincipalTypeRole, []string{"a", "b"})
+
+			require.Nil(t, svcErr, name)
+			assert.Equal(t, []string{"a", "b"}, ids, name)
+			assert.Zero(t, resolver.entityCalls+resolver.roleCalls, name)
+		}
+	})
+
+	t.Run("AnUnauthenticatedCallerGetsOnlyRolesConferringNothing", func(t *testing.T) {
+		resolver := &perRoleResolver{roles: map[string]security.PermissionSet{
+			"user-admin": {escRSSystem: {"system:user"}},
+			"empty":      {},
+		}}
+		svc := newGuardService(resolver)
+
+		ids, svcErr := svc.GrantableMemberships(context.Background(), PrincipalTypeRole,
+			[]string{"user-admin", "empty"})
+
+		require.Nil(t, svcErr)
+		assert.Equal(t, []string{"empty"}, ids)
+		assert.Zero(t, resolver.entityCalls)
+	})
+
+	t.Run("AnEmptyListLooksNothingUp", func(t *testing.T) {
+		resolver := &stubPermissionResolver{}
+		svc := newGuardService(resolver)
+
+		ids, svcErr := svc.GrantableMemberships(callerWith("david", "system:user"), PrincipalTypeRole, nil)
+
+		require.Nil(t, svcErr)
+		assert.Empty(t, ids)
+		assert.Zero(t, resolver.entityCalls+resolver.roleCalls)
+	})
+
+	t.Run("AFailedLookupFailsTheCheck", func(t *testing.T) {
+		for name, resolver := range map[string]*perRoleResolver{
+			"caller": {
+				stubPermissionResolver: stubPermissionResolver{entityErr: errors.New("store down")},
+				roles:                  map[string]security.PermissionSet{"user-admin": {escRSSystem: {"system:user"}}},
+			},
+			"role": {stubPermissionResolver: stubPermissionResolver{roleErr: errors.New("store down")}},
+		} {
+			svc := newGuardService(resolver)
+
+			ids, svcErr := svc.GrantableMemberships(callerWith("david", "system:user"), PrincipalTypeRole,
+				[]string{"user-admin"})
+
+			assert.Nil(t, ids, name)
+			require.NotNil(t, svcErr, name)
+			assert.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code, name)
+		}
+	})
+
+	t.Run("WithoutAResolverEveryRoleIsRefused", func(t *testing.T) {
+		svc := newGuardService(nil)
+
+		ids, svcErr := svc.GrantableMemberships(callerWith("david", "system:user"), PrincipalTypeRole,
+			[]string{"user-admin"})
+
+		assert.Nil(t, ids)
+		require.NotNil(t, svcErr)
+		assert.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
+	})
+}
+
+// Missing metadata must not enable parent coverage.
+func TestCanGrantPermissions_ExactWhenMatchingMetadataIsUnavailable(t *testing.T) {
+	resolver := &stubPermissionResolver{
+		entityPerms: security.PermissionSet{escRSSystem: {"reservations"}},
+		delimiters:  map[string]string{},
+	}
+	svc := newGuardService(resolver)
+
+	svcErr := svc.CanGrantPermissions(callerWith("david", "system:group"),
+		security.PermissionSet{escRSSystem: {"reservations:create"}})
+
+	require.NotNil(t, svcErr)
+	assert.Equal(t, ErrorGrantNotPermitted.Code, svcErr.Code)
+}
+
+// A resolved delimiter can represent enabled hierarchy or legacy delegation.
+func TestCanGrantPermissions_CoveredByResolvedDelimiter(t *testing.T) {
+	resolver := &stubPermissionResolver{
+		entityPerms: security.PermissionSet{escRSSystem: {"reservations"}},
+		delimiters:  map[string]string{escRSSystem: ":"},
+	}
+	svc := newGuardService(resolver)
+
+	svcErr := svc.CanGrantPermissions(callerWith("david", "system:group"),
+		security.PermissionSet{escRSSystem: {"reservations:create"}})
+
+	assert.Nil(t, svcErr)
+}
+
+func TestGrantableMemberships_UsesResolvedDelimiters(t *testing.T) {
+	tests := []struct {
+		name, server, held, required string
+		delimiters                   map[string]string
+		allowed                      bool
+	}{
+		{"configured delimiter", "custom", "reports", "reports-view", map[string]string{"custom": "-"}, true},
+		{"legacy colon", "custom", "reports", "reports:view", map[string]string{"custom": ":"}, true},
+		{"missing metadata stays exact", "custom", "reports", "reports:view", map[string]string{}, false},
+		{"System retains colon semantics", escRSSystem, "system:user", "system:user:view", map[string]string{}, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			resolver := &stubPermissionResolver{
+				entityPerms: security.PermissionSet{tc.server: {tc.held}},
+				rolePerms:   security.PermissionSet{tc.server: {tc.required}},
+				delimiters:  tc.delimiters,
+			}
+			service := newGuardService(resolver)
+			ids, svcErr := service.GrantableMemberships(callerWith("david", "system:user"), PrincipalTypeRole,
+				[]string{"role-1"})
+			require.Nil(t, svcErr)
+			if tc.allowed {
+				assert.Equal(t, []string{"role-1"}, ids)
+			} else {
+				assert.Empty(t, ids)
+			}
+			assert.Equal(t, 1, resolver.entityCalls)
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Entity control
+// ---------------------------------------------------------------------------
+
+func TestCanControlEntity(t *testing.T) {
+	t.Run("EntityControlsSelfWithoutLookup", func(t *testing.T) {
+		resolver := &stubPermissionResolver{}
+		svc := newGuardService(resolver)
+
+		svcErr := svc.CanControlEntity(callerWith("user1", "system:user"), "user1")
+
+		assert.Nil(t, svcErr)
+		assert.Zero(t, resolver.entityCalls, "controlling self must not trigger lookups")
+	})
+
+	t.Run("AssistantCannotControlAdministratorEntity", func(t *testing.T) {
+		resolver := &perEntityResolver{
+			entities: map[string]security.PermissionSet{
+				"david": {escRSSystem: {"system:user:update"}},
+				"admin": {escRSSystem: {"system:user", "system:group"}},
+			},
+		}
+		svc := newGuardService(resolver)
+
+		svcErr := svc.CanControlEntity(callerWith("david", "system:user:update"), "admin")
+
+		require.NotNil(t, svcErr)
+		assert.Equal(t, ErrorGrantNotPermitted.Code, svcErr.Code)
+		assert.Equal(t, 2, resolver.entityCalls)
+	})
+
+	t.Run("AdminCanControlEntityWhosePermissionsAreCovered", func(t *testing.T) {
+		resolver := &perEntityResolver{
+			entities: map[string]security.PermissionSet{
+				"admin": {escRSSystem: {"system:user"}},
+				"bob":   {escRSSystem: {"system:user:view"}},
+			},
+		}
+		svc := newGuardService(resolver)
+
+		svcErr := svc.CanControlEntity(callerWith("admin", "system:user"), "bob")
+
+		assert.Nil(t, svcErr)
+		assert.Equal(t, 2, resolver.entityCalls)
+	})
+
+	t.Run("AdminCanControlUnprivilegedEntityConferringNothing", func(t *testing.T) {
+		resolver := &perEntityResolver{
+			entities: map[string]security.PermissionSet{
+				"admin":   {escRSSystem: {"system:user"}},
+				"regular": {},
+			},
+		}
+		svc := newGuardService(resolver)
+
+		svcErr := svc.CanControlEntity(callerWith("admin", "system:user"), "regular")
+
+		assert.Nil(t, svcErr)
+		assert.Equal(t, 1, resolver.entityCalls, "unprivileged entity confers nothing, avoiding caller lookup")
+	})
+
+	t.Run("EntityLookupErrorIsRefused", func(t *testing.T) {
+		resolver := &stubPermissionResolver{entityErr: errors.New("database unavailable")}
+		svc := newGuardService(resolver)
+
+		svcErr := svc.CanControlEntity(callerWith("david", "system:user"), "otherUser")
+
+		require.NotNil(t, svcErr)
+		assert.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
+	})
+
+	t.Run("MissingEntityIDFailsClosed", func(t *testing.T) {
+		resolver := &stubPermissionResolver{}
+		svc := newGuardService(resolver)
+
+		svcErr := svc.CanControlEntity(callerWith("david", "system:user"), "")
+
+		require.NotNil(t, svcErr)
+		assert.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
+		assert.Zero(t, resolver.entityCalls)
+	})
 }

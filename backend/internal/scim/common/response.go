@@ -60,7 +60,7 @@ func mapSCIMError(svcErr *tidcommon.ServiceError) (httpStatus int, scimType Scim
 		return http.StatusBadRequest, ScimErrorTypeNoTarget
 
 		// 400 mutability — request attempted to change an immutable or read-only (declarative) resource.
-	case ErrorImmutableUserType.Code, ErrorMutabilityViolation.Code:
+	case ErrorImmutableUserType.Code, ErrorMutabilityViolation.Code, ErrorManagedResource.Code:
 		return http.StatusBadRequest, ScimErrorTypeMutability
 
 	// 400 invalidFilter — filter query parameter is not supported or not syntactically valid.

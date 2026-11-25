@@ -39,6 +39,7 @@ import type {PlatformApplicationTemplate, TechnologyApplicationTemplate} from '.
 import getConfigurationTypeFromTemplate from '../../utils/getConfigurationTypeFromTemplate';
 import hasInvalidCorsRows from '../../utils/hasInvalidCorsRows';
 import isRedirectCapableTemplate from '../../utils/isRedirectCapableTemplate';
+import isValidRedirectUriFormat from '../../utils/isValidRedirectUriFormat';
 
 /**
  * Zod schema for validating URL inputs (hosting URLs and callback URLs).
@@ -290,12 +291,13 @@ export default function ConfigureDetails({
     selectedTemplateConfig,
     integrations,
     selectedAuthFlow,
-    relyingPartyId: contextRelyingPartyId,
     setRelyingPartyId,
     relyingPartyName: contextRelyingPartyName,
     setRelyingPartyName,
     appName,
     corsOrigins,
+    redirectUris,
+    postLogoutRedirectUris,
   } = useApplicationCreate();
   const {
     control,
@@ -335,6 +337,16 @@ export default function ConfigureDetails({
   // selected template can't block a step that no longer shows them.
   const showsCorsEditor: boolean = effectiveIsRedirectCapable && Boolean(selectedTemplateConfig?.capabilities?.cors);
   const hasInvalidCorsOrigins: boolean = showsCorsEditor && hasInvalidCorsRows(corsOrigins);
+
+  // The URL and deep link configurations always contribute a callback URL, so only a template
+  // without one depends on the redirect URI editor for the application's required redirect URI.
+  const isRedirectUriRequired: boolean = effectiveConfigurationType === ApplicationCreateFlowConfiguration.NONE;
+  const enteredRedirectUris: string[] = redirectUris.map((uri) => uri.trim()).filter(Boolean);
+  const enteredPostLogoutRedirectUris: string[] = postLogoutRedirectUris.map((uri) => uri.trim()).filter(Boolean);
+  const hasRedirectUriErrors: boolean =
+    effectiveIsRedirectCapable &&
+    ((isRedirectUriRequired && enteredRedirectUris.length === 0) ||
+      [...enteredRedirectUris, ...enteredPostLogoutRedirectUris].some((uri) => !isValidRedirectUriFormat(uri)));
 
   const isWallet: boolean = selectedTemplateConfig?.id === 'wallet';
   const [walletVendor, setWalletVendor] = useState<string>(CUSTOM_WALLET_VENDOR);
@@ -402,27 +414,10 @@ export default function ConfigureDetails({
    * Initialize relying party fields with defaults if empty.
    */
   useEffect(() => {
-    if (isPasskeyConfigEnabled) {
-      if (!relyingPartyId && !contextRelyingPartyId) {
-        // Default to hostname from window location (or hostingUrl if valid domain?)
-        // Better to use window.location.hostname as a sensible default for local dev
-        // or extract domain from hostingUrl if possible.
-        // For now using window.location.hostname to match previous behavior
-        setValue('relyingPartyId', window.location.hostname);
-      }
-      if (!relyingPartyName && !contextRelyingPartyName) {
-        setValue('relyingPartyName', appName);
-      }
+    if (isPasskeyConfigEnabled && !relyingPartyName && !contextRelyingPartyName) {
+      setValue('relyingPartyName', appName);
     }
-  }, [
-    isPasskeyConfigEnabled,
-    relyingPartyId,
-    relyingPartyName,
-    contextRelyingPartyId,
-    contextRelyingPartyName,
-    appName,
-    setValue,
-  ]);
+  }, [isPasskeyConfigEnabled, relyingPartyName, contextRelyingPartyName, appName, setValue]);
 
   /**
    * Sync relying party fields with context.
@@ -466,8 +461,8 @@ export default function ConfigureDetails({
   useEffect((): void => {
     let ready: boolean;
 
-    if (isPasskeyConfigEnabled && (!relyingPartyId || !relyingPartyName)) {
-      // If Passkey is enabled, we MUST have valid relying party info
+    if (isPasskeyConfigEnabled && (!relyingPartyName || (isEmbeddedApproach && !relyingPartyId))) {
+      // Embedded sign-in runs passkeys on the application's own page, so the gate host cannot stand in.
       ready = false;
     } else if (effectiveConfigurationType === ApplicationCreateFlowConfiguration.NONE) {
       // Even if no base config needed, if Passkey is enabled we need those fields valid, which the
@@ -488,7 +483,7 @@ export default function ConfigureDetails({
 
     // A malformed CORS origin used to be dropped on submit without a word, so block here instead.
     // This reads the same rows that get merged into the allow-list, so the two cannot disagree.
-    onReadyChange(ready && !hasInvalidCorsOrigins);
+    onReadyChange(ready && !hasInvalidCorsOrigins && !hasRedirectUriErrors);
   }, [
     isValid,
     effectiveConfigurationType,
@@ -499,11 +494,13 @@ export default function ConfigureDetails({
     relyingPartyId,
     relyingPartyName,
     isPasskeyConfigEnabled,
+    isEmbeddedApproach,
     errors,
     onReadyChange,
     selectedTemplateConfig,
     isDuplicateWalletClientId,
     hasInvalidCorsOrigins,
+    hasRedirectUriErrors,
   ]);
 
   // For platforms that don't require configuration AND no passkey configuration needed AND the
@@ -560,27 +557,25 @@ export default function ConfigureDetails({
           {/* Mobile (non-wallet): the admin enters the app's deep link directly. */}
           {!isWallet && (
             <>
-              <FormControl fullWidth required>
-                <FormLabel htmlFor="deeplink-input">
-                  {t('applications:onboarding.configure.details.deeplink.label')}
-                </FormLabel>
-                <Controller
-                  name="deeplink"
-                  control={control}
-                  render={({field}) => (
-                    <TextField
-                      {...field}
-                      fullWidth
-                      id="deeplink-input"
-                      placeholder={t('applications:onboarding.configure.details.deeplink.placeholder')}
-                      error={!!errors.deeplink}
-                      helperText={
-                        errors.deeplink?.message ?? t('applications:onboarding.configure.details.deeplink.helperText')
-                      }
-                    />
-                  )}
-                />
-              </FormControl>
+              <Controller
+                name="deeplink"
+                control={control}
+                render={({field}) => (
+                  <TextField
+                    labelPlacement="top"
+                    label={t('applications:onboarding.configure.details.deeplink.label')}
+                    required
+                    {...field}
+                    fullWidth
+                    id="deeplink-input"
+                    placeholder={t('applications:onboarding.configure.details.deeplink.placeholder')}
+                    error={!!errors.deeplink}
+                    helperText={
+                      errors.deeplink?.message ?? t('applications:onboarding.configure.details.deeplink.helperText')
+                    }
+                  />
+                )}
+              />
               <Alert severity="info">{t('applications:onboarding.configure.details.mobile.info')}</Alert>
             </>
           )}
@@ -663,20 +658,17 @@ export default function ConfigureDetails({
               </Grid>
 
               {isWalletCustom && (
-                <FormControl fullWidth>
-                  <FormLabel htmlFor="wallet-client-id-input">
-                    {t('applications:onboarding.configure.details.wallet.clientId.label')}
-                  </FormLabel>
-                  <TextField
-                    fullWidth
-                    id="wallet-client-id-input"
-                    value={customClientId}
-                    error={isDuplicateWalletClientId}
-                    placeholder={t('applications:onboarding.configure.details.wallet.clientId.placeholder')}
-                    helperText={t('applications:onboarding.configure.details.wallet.clientId.helperText')}
-                    onChange={(e): void => applyCustomClientId(e.target.value)}
-                  />
-                </FormControl>
+                <TextField
+                  labelPlacement="top"
+                  label={t('applications:onboarding.configure.details.wallet.clientId.label')}
+                  fullWidth
+                  id="wallet-client-id-input"
+                  value={customClientId}
+                  error={isDuplicateWalletClientId}
+                  placeholder={t('applications:onboarding.configure.details.wallet.clientId.placeholder')}
+                  helperText={t('applications:onboarding.configure.details.wallet.clientId.helperText')}
+                  onChange={(e): void => applyCustomClientId(e.target.value)}
+                />
               )}
 
               {isDuplicateWalletClientId && (
@@ -690,27 +682,25 @@ export default function ConfigureDetails({
               )}
 
               {isWalletCustom && (
-                <FormControl fullWidth required>
-                  <FormLabel htmlFor="wallet-deeplink-input">
-                    {t('applications:onboarding.configure.details.deeplink.label')}
-                  </FormLabel>
-                  <Controller
-                    name="deeplink"
-                    control={control}
-                    render={({field}) => (
-                      <TextField
-                        {...field}
-                        fullWidth
-                        id="wallet-deeplink-input"
-                        placeholder={t('applications:onboarding.configure.details.deeplink.placeholder')}
-                        error={!!errors.deeplink}
-                        helperText={
-                          errors.deeplink?.message ?? t('applications:onboarding.configure.details.deeplink.helperText')
-                        }
-                      />
-                    )}
-                  />
-                </FormControl>
+                <Controller
+                  name="deeplink"
+                  control={control}
+                  render={({field}) => (
+                    <TextField
+                      labelPlacement="top"
+                      label={t('applications:onboarding.configure.details.deeplink.label')}
+                      required
+                      {...field}
+                      fullWidth
+                      id="wallet-deeplink-input"
+                      placeholder={t('applications:onboarding.configure.details.deeplink.placeholder')}
+                      error={!!errors.deeplink}
+                      helperText={
+                        errors.deeplink?.message ?? t('applications:onboarding.configure.details.deeplink.helperText')
+                      }
+                    />
+                  )}
+                />
               )}
             </>
           )}
@@ -728,28 +718,25 @@ export default function ConfigureDetails({
           {effectiveConfigurationType === ApplicationCreateFlowConfiguration.URL && (
             <Stack spacing={3}>
               {/* Hosting URL */}
-              <FormControl fullWidth required>
-                <FormLabel htmlFor="hosting-url-input">
-                  {t('applications:onboarding.configure.details.hostingUrl.label')}
-                </FormLabel>
-                <Controller
-                  name="hostingUrl"
-                  control={control}
-                  render={({field}) => (
-                    <TextField
-                      {...field}
-                      fullWidth
-                      id="hosting-url-input"
-                      placeholder={t('applications:onboarding.configure.details.hostingUrl.placeholder')}
-                      error={!!errors.hostingUrl}
-                      helperText={
-                        errors.hostingUrl?.message ??
-                        t('applications:onboarding.configure.details.hostingUrl.helperText')
-                      }
-                    />
-                  )}
-                />
-              </FormControl>
+              <Controller
+                name="hostingUrl"
+                control={control}
+                render={({field}) => (
+                  <TextField
+                    labelPlacement="top"
+                    label={t('applications:onboarding.configure.details.hostingUrl.label')}
+                    required
+                    {...field}
+                    fullWidth
+                    id="hosting-url-input"
+                    placeholder={t('applications:onboarding.configure.details.hostingUrl.placeholder')}
+                    error={!!errors.hostingUrl}
+                    helperText={
+                      errors.hostingUrl?.message ?? t('applications:onboarding.configure.details.hostingUrl.helperText')
+                    }
+                  />
+                )}
+              />
 
               {/* After Sign-in URL (Callback URL) */}
               <Stack spacing={2}>
@@ -789,28 +776,25 @@ export default function ConfigureDetails({
                 </FormControl>
 
                 {callbackMode === 'custom' && (
-                  <FormControl fullWidth>
-                    <FormLabel htmlFor="callback-url-input" id="custom-callback-url-label">
-                      {t('applications:onboarding.configure.details.callbackUrl.label')}
-                    </FormLabel>
-                    <Controller
-                      name="callbackUrl"
-                      control={control}
-                      render={({field}) => (
-                        <TextField
-                          {...field}
-                          fullWidth
-                          id="callback-url-input"
-                          placeholder={t('applications:onboarding.configure.details.callbackUrl.placeholder')}
-                          error={!!errors.callbackUrl}
-                          helperText={
-                            errors.callbackUrl?.message ??
-                            t('applications:onboarding.configure.details.callbackUrl.helperText')
-                          }
-                        />
-                      )}
-                    />
-                  </FormControl>
+                  <Controller
+                    name="callbackUrl"
+                    control={control}
+                    render={({field}) => (
+                      <TextField
+                        labelPlacement="top"
+                        label={t('applications:onboarding.configure.details.callbackUrl.label')}
+                        {...field}
+                        fullWidth
+                        id="callback-url-input"
+                        placeholder={t('applications:onboarding.configure.details.callbackUrl.placeholder')}
+                        error={!!errors.callbackUrl}
+                        helperText={
+                          errors.callbackUrl?.message ??
+                          t('applications:onboarding.configure.details.callbackUrl.helperText')
+                        }
+                      />
+                    )}
+                  />
                 )}
 
                 <Alert severity="info">{t('applications:onboarding.configure.details.callbackUrl.info')}</Alert>
@@ -818,7 +802,7 @@ export default function ConfigureDetails({
             </Stack>
           )}
 
-          {effectiveIsRedirectCapable && <ConfigureRedirectUris />}
+          {effectiveIsRedirectCapable && <ConfigureRedirectUris redirectUriRequired={isRedirectUriRequired} />}
         </Stack>
       )}
 
@@ -828,54 +812,58 @@ export default function ConfigureDetails({
           <Typography variant="h1" gutterBottom>
             {t('applications:onboarding.configure.details.passkey.title') || 'Passkeys'}
           </Typography>
-          <FormControl fullWidth required>
-            <FormLabel htmlFor="relying-party-id-input">
-              {t('applications:onboarding.configure.details.relyingPartyId.label') || 'Relying party ID'}
-            </FormLabel>
-            <Controller
-              name="relyingPartyId"
-              control={control}
-              render={({field}) => (
-                <TextField
-                  {...field}
-                  fullWidth
-                  id="relying-party-id-input"
-                  placeholder={
-                    t('applications:onboarding.configure.details.relyingPartyId.placeholder') || 'e.g., example.com'
-                  }
-                  error={!!errors.relyingPartyId}
-                  helperText={
-                    errors.relyingPartyId?.message ??
-                    t('applications:onboarding.configure.details.relyingPartyId.helperText')
-                  }
-                />
-              )}
-            />
-          </FormControl>
-          <FormControl fullWidth required>
-            <FormLabel htmlFor="relying-party-name-input">
-              {t('applications:onboarding.configure.details.relyingPartyName.label') || 'Relying party name'}
-            </FormLabel>
-            <Controller
-              name="relyingPartyName"
-              control={control}
-              render={({field}) => (
-                <TextField
-                  {...field}
-                  fullWidth
-                  id="relying-party-name-input"
-                  placeholder={
-                    t('applications:onboarding.configure.details.relyingPartyName.placeholder') || 'e.g., My App'
-                  }
-                  error={!!errors.relyingPartyName}
-                  helperText={
-                    errors.relyingPartyName?.message ??
-                    t('applications:onboarding.configure.details.relyingPartyName.helperText')
-                  }
-                />
-              )}
-            />
-          </FormControl>
+          <Controller
+            name="relyingPartyId"
+            control={control}
+            render={({field}) => (
+              <TextField
+                labelPlacement="top"
+                label={t('applications:onboarding.configure.details.relyingPartyId.label') || 'Relying party ID'}
+                required={isEmbeddedApproach}
+                {...field}
+                fullWidth
+                id="relying-party-id-input"
+                placeholder={
+                  t('applications:onboarding.configure.details.relyingPartyId.placeholder') || 'e.g., example.com'
+                }
+                error={!!errors.relyingPartyId}
+                helperText={
+                  errors.relyingPartyId?.message ??
+                  (isEmbeddedApproach
+                    ? t(
+                        'applications:onboarding.configure.details.relyingPartyId.embeddedHelperText',
+                        'The domain of your application, where users create and use their passkeys.',
+                      )
+                    : t(
+                        'applications:onboarding.configure.details.relyingPartyId.helperText',
+                        'The domain where the passkey is valid. Leave empty to use the host of the sign-in page.',
+                      ))
+                }
+              />
+            )}
+          />
+          <Controller
+            name="relyingPartyName"
+            control={control}
+            render={({field}) => (
+              <TextField
+                labelPlacement="top"
+                label={t('applications:onboarding.configure.details.relyingPartyName.label') || 'Relying party name'}
+                required
+                {...field}
+                fullWidth
+                id="relying-party-name-input"
+                placeholder={
+                  t('applications:onboarding.configure.details.relyingPartyName.placeholder') || 'e.g., My App'
+                }
+                error={!!errors.relyingPartyName}
+                helperText={
+                  errors.relyingPartyName?.message ??
+                  t('applications:onboarding.configure.details.relyingPartyName.helperText')
+                }
+              />
+            )}
+          />
         </Stack>
       )}
     </Stack>

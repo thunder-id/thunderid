@@ -115,6 +115,11 @@ const sidebar: SidebarsConfig = {
       label: 'Management',
     },
     {
+      type: 'doc',
+      id: 'sdks-and-tools/javascript/apis/flow-variables',
+      label: 'Flow Variables',
+    },
+    {
       type: 'category',
       label: 'Branding & Theme',
       collapsed: true,

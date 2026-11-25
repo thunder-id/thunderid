@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {Box} from '@wso2/oxygen-ui';
@@ -42,6 +42,7 @@ function BaseEdge({
   sourcePosition,
   targetPosition,
   label,
+  data,
   style,
   deletable,
   markerEnd,
@@ -158,6 +159,13 @@ function BaseEdge({
               position: 'absolute',
               transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
               zIndex: 1000,
+              ...(data?.['conditionSkip'] === true && {
+                bgcolor: 'background.paper',
+                borderRadius: 1,
+                color: 'text.primary',
+                px: 0.5,
+                typography: 'caption',
+              }),
             }}
           >
             {label}

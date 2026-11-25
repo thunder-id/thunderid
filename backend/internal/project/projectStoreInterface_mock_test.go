@@ -47,16 +47,16 @@ func (_m *projectStoreInterfaceMock) EXPECT() *projectStoreInterfaceMock_Expecte
 }
 
 // CreateProject provides a mock function for the type projectStoreInterfaceMock
-func (_mock *projectStoreInterfaceMock) CreateProject(ctx context.Context, record projectRecord) error {
-	ret := _mock.Called(ctx, record)
+func (_mock *projectStoreInterfaceMock) CreateProject(ctx context.Context, project Project) error {
+	ret := _mock.Called(ctx, project)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreateProject")
 	}
 
 	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, projectRecord) error); ok {
-		r0 = returnFunc(ctx, record)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, Project) error); ok {
+		r0 = returnFunc(ctx, project)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -70,20 +70,20 @@ type projectStoreInterfaceMock_CreateProject_Call struct {
 
 // CreateProject is a helper method to define mock.On call
 //   - ctx context.Context
-//   - record projectRecord
-func (_e *projectStoreInterfaceMock_Expecter) CreateProject(ctx any, record any) *projectStoreInterfaceMock_CreateProject_Call {
-	return &projectStoreInterfaceMock_CreateProject_Call{Call: _e.mock.On("CreateProject", ctx, record)}
+//   - project Project
+func (_e *projectStoreInterfaceMock_Expecter) CreateProject(ctx any, project any) *projectStoreInterfaceMock_CreateProject_Call {
+	return &projectStoreInterfaceMock_CreateProject_Call{Call: _e.mock.On("CreateProject", ctx, project)}
 }
 
-func (_c *projectStoreInterfaceMock_CreateProject_Call) Run(run func(ctx context.Context, record projectRecord)) *projectStoreInterfaceMock_CreateProject_Call {
+func (_c *projectStoreInterfaceMock_CreateProject_Call) Run(run func(ctx context.Context, project Project)) *projectStoreInterfaceMock_CreateProject_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
 			arg0 = args[0].(context.Context)
 		}
-		var arg1 projectRecord
+		var arg1 Project
 		if args[1] != nil {
-			arg1 = args[1].(projectRecord)
+			arg1 = args[1].(Project)
 		}
 		run(
 			arg0,
@@ -98,7 +98,7 @@ func (_c *projectStoreInterfaceMock_CreateProject_Call) Return(err error) *proje
 	return _c
 }
 
-func (_c *projectStoreInterfaceMock_CreateProject_Call) RunAndReturn(run func(ctx context.Context, record projectRecord) error) *projectStoreInterfaceMock_CreateProject_Call {
+func (_c *projectStoreInterfaceMock_CreateProject_Call) RunAndReturn(run func(ctx context.Context, project Project) error) *projectStoreInterfaceMock_CreateProject_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -161,22 +161,22 @@ func (_c *projectStoreInterfaceMock_DeleteProject_Call) RunAndReturn(run func(ct
 }
 
 // GetProject provides a mock function for the type projectStoreInterfaceMock
-func (_mock *projectStoreInterfaceMock) GetProject(ctx context.Context, id string) (projectRecord, error) {
+func (_mock *projectStoreInterfaceMock) GetProject(ctx context.Context, id string) (Project, error) {
 	ret := _mock.Called(ctx, id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetProject")
 	}
 
-	var r0 projectRecord
+	var r0 Project
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (projectRecord, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (Project, error)); ok {
 		return returnFunc(ctx, id)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) projectRecord); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) Project); ok {
 		r0 = returnFunc(ctx, id)
 	} else {
-		r0 = ret.Get(0).(projectRecord)
+		r0 = ret.Get(0).(Project)
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
 		r1 = returnFunc(ctx, id)
@@ -216,55 +216,55 @@ func (_c *projectStoreInterfaceMock_GetProject_Call) Run(run func(ctx context.Co
 	return _c
 }
 
-func (_c *projectStoreInterfaceMock_GetProject_Call) Return(projectRecordMoqParam projectRecord, err error) *projectStoreInterfaceMock_GetProject_Call {
-	_c.Call.Return(projectRecordMoqParam, err)
+func (_c *projectStoreInterfaceMock_GetProject_Call) Return(project Project, err error) *projectStoreInterfaceMock_GetProject_Call {
+	_c.Call.Return(project, err)
 	return _c
 }
 
-func (_c *projectStoreInterfaceMock_GetProject_Call) RunAndReturn(run func(ctx context.Context, id string) (projectRecord, error)) *projectStoreInterfaceMock_GetProject_Call {
+func (_c *projectStoreInterfaceMock_GetProject_Call) RunAndReturn(run func(ctx context.Context, id string) (Project, error)) *projectStoreInterfaceMock_GetProject_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// GetProjectByRootOUID provides a mock function for the type projectStoreInterfaceMock
-func (_mock *projectStoreInterfaceMock) GetProjectByRootOUID(ctx context.Context, rootOUID string) (projectRecord, error) {
-	ret := _mock.Called(ctx, rootOUID)
+// GetProjectByHandle provides a mock function for the type projectStoreInterfaceMock
+func (_mock *projectStoreInterfaceMock) GetProjectByHandle(ctx context.Context, handle string) (Project, error) {
+	ret := _mock.Called(ctx, handle)
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetProjectByRootOUID")
+		panic("no return value specified for GetProjectByHandle")
 	}
 
-	var r0 projectRecord
+	var r0 Project
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (projectRecord, error)); ok {
-		return returnFunc(ctx, rootOUID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (Project, error)); ok {
+		return returnFunc(ctx, handle)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) projectRecord); ok {
-		r0 = returnFunc(ctx, rootOUID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) Project); ok {
+		r0 = returnFunc(ctx, handle)
 	} else {
-		r0 = ret.Get(0).(projectRecord)
+		r0 = ret.Get(0).(Project)
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = returnFunc(ctx, rootOUID)
+		r1 = returnFunc(ctx, handle)
 	} else {
 		r1 = ret.Error(1)
 	}
 	return r0, r1
 }
 
-// projectStoreInterfaceMock_GetProjectByRootOUID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetProjectByRootOUID'
-type projectStoreInterfaceMock_GetProjectByRootOUID_Call struct {
+// projectStoreInterfaceMock_GetProjectByHandle_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetProjectByHandle'
+type projectStoreInterfaceMock_GetProjectByHandle_Call struct {
 	*mock.Call
 }
 
-// GetProjectByRootOUID is a helper method to define mock.On call
+// GetProjectByHandle is a helper method to define mock.On call
 //   - ctx context.Context
-//   - rootOUID string
-func (_e *projectStoreInterfaceMock_Expecter) GetProjectByRootOUID(ctx any, rootOUID any) *projectStoreInterfaceMock_GetProjectByRootOUID_Call {
-	return &projectStoreInterfaceMock_GetProjectByRootOUID_Call{Call: _e.mock.On("GetProjectByRootOUID", ctx, rootOUID)}
+//   - handle string
+func (_e *projectStoreInterfaceMock_Expecter) GetProjectByHandle(ctx any, handle any) *projectStoreInterfaceMock_GetProjectByHandle_Call {
+	return &projectStoreInterfaceMock_GetProjectByHandle_Call{Call: _e.mock.On("GetProjectByHandle", ctx, handle)}
 }
 
-func (_c *projectStoreInterfaceMock_GetProjectByRootOUID_Call) Run(run func(ctx context.Context, rootOUID string)) *projectStoreInterfaceMock_GetProjectByRootOUID_Call {
+func (_c *projectStoreInterfaceMock_GetProjectByHandle_Call) Run(run func(ctx context.Context, handle string)) *projectStoreInterfaceMock_GetProjectByHandle_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -282,34 +282,34 @@ func (_c *projectStoreInterfaceMock_GetProjectByRootOUID_Call) Run(run func(ctx 
 	return _c
 }
 
-func (_c *projectStoreInterfaceMock_GetProjectByRootOUID_Call) Return(projectRecordMoqParam projectRecord, err error) *projectStoreInterfaceMock_GetProjectByRootOUID_Call {
-	_c.Call.Return(projectRecordMoqParam, err)
+func (_c *projectStoreInterfaceMock_GetProjectByHandle_Call) Return(project Project, err error) *projectStoreInterfaceMock_GetProjectByHandle_Call {
+	_c.Call.Return(project, err)
 	return _c
 }
 
-func (_c *projectStoreInterfaceMock_GetProjectByRootOUID_Call) RunAndReturn(run func(ctx context.Context, rootOUID string) (projectRecord, error)) *projectStoreInterfaceMock_GetProjectByRootOUID_Call {
+func (_c *projectStoreInterfaceMock_GetProjectByHandle_Call) RunAndReturn(run func(ctx context.Context, handle string) (Project, error)) *projectStoreInterfaceMock_GetProjectByHandle_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetProjectList provides a mock function for the type projectStoreInterfaceMock
-func (_mock *projectStoreInterfaceMock) GetProjectList(ctx context.Context, limit int, offset int) ([]projectRecord, error) {
+func (_mock *projectStoreInterfaceMock) GetProjectList(ctx context.Context, limit int, offset int) ([]Project, error) {
 	ret := _mock.Called(ctx, limit, offset)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetProjectList")
 	}
 
-	var r0 []projectRecord
+	var r0 []Project
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int) ([]projectRecord, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int) ([]Project, error)); ok {
 		return returnFunc(ctx, limit, offset)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int) []projectRecord); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, int, int) []Project); ok {
 		r0 = returnFunc(ctx, limit, offset)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]projectRecord)
+			r0 = ret.Get(0).([]Project)
 		}
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, int, int) error); ok {
@@ -356,12 +356,12 @@ func (_c *projectStoreInterfaceMock_GetProjectList_Call) Run(run func(ctx contex
 	return _c
 }
 
-func (_c *projectStoreInterfaceMock_GetProjectList_Call) Return(projectRecordMoqParams []projectRecord, err error) *projectStoreInterfaceMock_GetProjectList_Call {
-	_c.Call.Return(projectRecordMoqParams, err)
+func (_c *projectStoreInterfaceMock_GetProjectList_Call) Return(projects []Project, err error) *projectStoreInterfaceMock_GetProjectList_Call {
+	_c.Call.Return(projects, err)
 	return _c
 }
 
-func (_c *projectStoreInterfaceMock_GetProjectList_Call) RunAndReturn(run func(ctx context.Context, limit int, offset int) ([]projectRecord, error)) *projectStoreInterfaceMock_GetProjectList_Call {
+func (_c *projectStoreInterfaceMock_GetProjectList_Call) RunAndReturn(run func(ctx context.Context, limit int, offset int) ([]Project, error)) *projectStoreInterfaceMock_GetProjectList_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -422,6 +422,63 @@ func (_c *projectStoreInterfaceMock_GetProjectListCount_Call) Return(n int, err 
 }
 
 func (_c *projectStoreInterfaceMock_GetProjectListCount_Call) RunAndReturn(run func(ctx context.Context) (int, error)) *projectStoreInterfaceMock_GetProjectListCount_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdateProject provides a mock function for the type projectStoreInterfaceMock
+func (_mock *projectStoreInterfaceMock) UpdateProject(ctx context.Context, project Project) error {
+	ret := _mock.Called(ctx, project)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateProject")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, Project) error); ok {
+		r0 = returnFunc(ctx, project)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// projectStoreInterfaceMock_UpdateProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateProject'
+type projectStoreInterfaceMock_UpdateProject_Call struct {
+	*mock.Call
+}
+
+// UpdateProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - project Project
+func (_e *projectStoreInterfaceMock_Expecter) UpdateProject(ctx any, project any) *projectStoreInterfaceMock_UpdateProject_Call {
+	return &projectStoreInterfaceMock_UpdateProject_Call{Call: _e.mock.On("UpdateProject", ctx, project)}
+}
+
+func (_c *projectStoreInterfaceMock_UpdateProject_Call) Run(run func(ctx context.Context, project Project)) *projectStoreInterfaceMock_UpdateProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 Project
+		if args[1] != nil {
+			arg1 = args[1].(Project)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *projectStoreInterfaceMock_UpdateProject_Call) Return(err error) *projectStoreInterfaceMock_UpdateProject_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *projectStoreInterfaceMock_UpdateProject_Call) RunAndReturn(run func(ctx context.Context, project Project) error) *projectStoreInterfaceMock_UpdateProject_Call {
 	_c.Call.Return(run)
 	return _c
 }

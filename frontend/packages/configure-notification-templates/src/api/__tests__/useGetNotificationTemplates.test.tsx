@@ -66,6 +66,22 @@ describe('useGetNotificationTemplates', () => {
     });
   });
 
+  it("lists only a project's templates when given one", async () => {
+    mockHttpRequest.mockResolvedValueOnce(listResponse());
+
+    const {result} = renderHook(() => useGetNotificationTemplates('email', {projectId: 'project-1'}));
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(mockHttpRequest).toHaveBeenCalledWith({
+      url: 'https://api.test.com/notification-templates/email/templates?limit=30&offset=0&projectId=project-1',
+      method: 'GET',
+      headers: {'Content-Type': 'application/json'},
+    });
+  });
+
   it('surfaces an error when the request fails', async () => {
     mockHttpRequest.mockRejectedValueOnce(new Error('List failed'));
 

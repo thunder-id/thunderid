@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/testhelpers"
 )
 
@@ -431,6 +432,33 @@ func (s *SchemaValidateTestSuite) TestValidate_SkipCredentialRequired() {
 	s.Require().False(ok, "missing required credential should fail when skipCredentialRequired=false")
 }
 
+func (s *SchemaValidateTestSuite) TestValidateValues_ChecksOnlyGivenAttributes() {
+	schema, err := CompileSchema(json.RawMessage(`{
+		"email": {"type": "string", "required": true},
+		"password": {"type": "string", "required": true, "credential": true, "regex": "^.{8,}$"}
+	}`))
+	s.Require().NoError(err)
+
+	ok, err := schema.ValidateValues(context.Background(), json.RawMessage(`{"password":"longenough"}`), s.logger)
+	s.Require().NoError(err)
+	s.Require().True(ok, "a matching credential should pass without the required email")
+
+	ok, err = schema.ValidateValues(context.Background(), json.RawMessage(`{"password":"short"}`), s.logger)
+	s.Require().NoError(err)
+	s.Require().False(ok, "a credential that fails the regex should be rejected")
+
+	ok, err = schema.ValidateValues(context.Background(), json.RawMessage(`{"pin":"12345678"}`), s.logger)
+	s.Require().NoError(err)
+	s.Require().False(ok, "an undeclared attribute should be rejected")
+
+	ok, err = schema.ValidateValues(context.Background(), nil, s.logger)
+	s.Require().NoError(err)
+	s.Require().True(ok)
+
+	_, err = schema.ValidateValues(context.Background(), json.RawMessage(`not-json`), s.logger)
+	s.Require().Error(err)
+}
+
 func (s *SchemaValidateTestSuite) TestGetAttributes_NonCredentialRequiredOnly_ReturnsOnlyRequiredNonCredential() {
 	schema, err := CompileSchema(json.RawMessage(`{
 		"email":     {"type": "string", "required": true},
@@ -484,6 +512,81 @@ func (s *SchemaValidateTestSuite) TestGetAttributes_EnumKeepsDeclaredOrder() {
 	s.Equal([]string{"openai", "anthropic", "gemini", "mistral"}, attrMap["modelProvider"].Enum)
 	s.Empty(attrMap["model"].Enum, "an unconstrained string carries no permitted values")
 	s.Empty(attrMap["active"].Enum, "a non-string property carries no permitted values")
+}
+
+func (s *SchemaValidateTestSuite) TestGetAttributes_DisplaySettings() {
+	schema, err := CompileSchema(json.RawMessage(`{
+		"username": {"type": "string", "required": true, "display": {"order": 0}},
+		"nickname": {"type": "string", "display": {"order": 2, "onCreate": {"hidden": true}}},
+		"tags":     {"type": "array", "items": {"type": "string"}, "display": {"onCreate": {"hidden": false}}},
+		"active":   {"type": "boolean"}
+	}`))
+	s.Require().NoError(err)
+
+	attrMap := make(map[string]AttributeInfo)
+	for _, a := range schema.GetAttributes(AttributeFilter{AllowNonCredential: true}) {
+		attrMap[a.Attribute] = a
+	}
+
+	s.Require().NotNil(attrMap["username"].DisplayOrder)
+	s.Equal(0, *attrMap["username"].DisplayOrder)
+	s.Require().NotNil(attrMap["nickname"].DisplayOrder)
+	s.Equal(2, *attrMap["nickname"].DisplayOrder)
+	s.Nil(attrMap["active"].DisplayOrder)
+	s.True(attrMap["nickname"].HiddenOnCreate)
+	s.False(attrMap["tags"].HiddenOnCreate)
+	s.False(attrMap["active"].HiddenOnCreate)
+}
+
+func (s *SchemaValidateTestSuite) TestCompileSchema_InvalidDisplaySettings() {
+	cases := []struct {
+		name    string
+		schema  string
+		wantErr string
+	}{
+		{"display not an object", `{"name": {"type": "string", "display": 1}}`,
+			"'display' field must be an object"},
+		{"null display", `{"name": {"type": "string", "display": null}}`,
+			"'display' field must be an object"},
+		{"unknown display key", `{"name": {"type": "string", "display": {"width": 1}}}`,
+			"invalid field 'display.width'"},
+		{"negative order", `{"name": {"type": "string", "display": {"order": -1}}}`,
+			"'display.order' field must be a non-negative integer"},
+		{"fractional order", `{"name": {"type": "string", "display": {"order": 1.5}}}`,
+			"'display.order' field must be a non-negative integer"},
+		{"string order", `{"name": {"type": "string", "display": {"order": "1"}}}`,
+			"'display.order' field must be a non-negative integer"},
+		{"null order", `{"name": {"type": "string", "display": {"order": null}}}`,
+			"'display.order' field must be a non-negative integer"},
+		{"onCreate not an object", `{"name": {"type": "string", "display": {"onCreate": true}}}`,
+			"'display.onCreate' field must be an object"},
+		{"unknown onCreate key", `{"name": {"type": "string", "display": {"onCreate": {"shown": true}}}}`,
+			"invalid field 'display.onCreate.shown'"},
+		{"non-boolean hidden", `{"name": {"type": "string", "display": {"onCreate": {"hidden": "no"}}}}`,
+			"'display.onCreate.hidden' field must be a boolean"},
+		{"null hidden", `{"name": {"type": "string", "display": {"onCreate": {"hidden": null}}}}`,
+			"'display.onCreate.hidden' field must be a boolean"},
+		{"nested display", `{"address": {"type": "object",
+			"properties": {"city": {"type": "string", "display": {"order": 1}}}}}`,
+			"invalid field 'display' for leaf property"},
+		{"not an object", `{"name": "string"}`,
+			"invalid property 'name': property definition must be an object"},
+	}
+	for _, tc := range cases {
+		_, err := CompileSchema(json.RawMessage(tc.schema))
+		s.ErrorContains(err, tc.wantErr, tc.name)
+	}
+}
+
+func (s *SchemaValidateTestSuite) TestValidate_IgnoresDisplaySettings() {
+	schema, err := CompileSchema(json.RawMessage(`{
+		"email": {"type": "email", "required": true, "display": {"order": 1, "onCreate": {"hidden": false}}}
+	}`))
+	s.Require().NoError(err)
+
+	valid, err := schema.Validate(context.Background(), json.RawMessage(`{"email": "a@example.com"}`), s.logger, false)
+	s.Require().NoError(err)
+	s.True(valid)
 }
 
 func (s *SchemaValidateTestSuite) TestGetAttributes_NonCredentialRequiredOnly_EmptySchema() {
@@ -804,6 +907,88 @@ func (s *SchemaValidateTestSuite) TestIsStringBackedType() {
 	for _, attrType := range []string{TypeNumber, TypeBoolean, TypeObject, TypeArray} {
 		s.False(IsStringBackedType(attrType), attrType)
 	}
+}
+
+func (s *SchemaValidateTestSuite) TestConvertReceivedValue() {
+	cases := []struct {
+		name     string
+		received interface{}
+		attrType string
+		want     interface{}
+		ok       bool
+	}{
+		{"null", nil, TypeString, nil, true},
+		{"empty string", "", TypeString, nil, true},
+		{"string", "Ada", TypeString, "Ada", true},
+		{"number", "42", TypeNumber, float64(42), true},
+		{"boolean", true, TypeBoolean, true, true},
+		{"single value to array", "a", TypeArray, []interface{}{"a"}, true},
+		{"array", []interface{}{"a", "b"}, TypeArray, []interface{}{"a", "b"}, true},
+		{"object", map[string]interface{}{"a": 1}, TypeObject, map[string]interface{}{"a": 1}, true},
+		{"object to string", map[string]interface{}{"a": 1}, TypeString, nil, false},
+		{"object to array", map[string]interface{}{"a": 1}, TypeArray, nil, false},
+		{"array to object", []interface{}{"a"}, TypeObject, nil, false},
+		{"unparseable boolean", "maybe", TypeBoolean, nil, false},
+		{"unparseable number", "many", TypeNumber, nil, false},
+		{"infinite number", "1e999", TypeNumber, nil, false},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			got, ok := ConvertReceivedValue(tc.received, tc.attrType)
+			s.Equal(tc.ok, ok)
+			if tc.ok {
+				s.Equal(tc.want, got)
+			}
+		})
+	}
+}
+
+func (s *SchemaValidateTestSuite) TestIsContactType() {
+	for attrType, expected := range map[string]bool{
+		TypeEmail: true, TypeMobile: true, TypeString: false, TypeObject: false, "": false,
+	} {
+		s.Equal(expected, IsContactType(attrType), attrType)
+	}
+}
+
+func (s *SchemaValidateTestSuite) TestContactChannel() {
+	s.Equal(providers.VerificationChannelEmail, ContactChannel(TypeEmail))
+	s.Equal(providers.VerificationChannelSMS, ContactChannel(TypeMobile))
+}
+
+func (s *SchemaValidateTestSuite) TestCanonicalContactValue() {
+	for _, test := range []struct{ name, attrType, value, expected string }{
+		{"email domain and whitespace", TypeEmail, "  User@EXAMPLE.COM  ", "User@example.com"},
+		{"email local case", TypeEmail, "user@example.com", "user@example.com"},
+		{"email without a domain", TypeEmail, " User ", "User"},
+		{"mobile exact", TypeMobile, "+94771234567", "+94771234567"},
+		{"mobile whitespace preserved", TypeMobile, " +94771234567 ", " +94771234567 "},
+		{"other type unchanged", TypeString, " Private@EXAMPLE.COM ", " Private@EXAMPLE.COM "},
+	} {
+		s.Run(test.name, func() {
+			s.Equal(test.expected, CanonicalContactValue(test.attrType, test.value))
+		})
+	}
+}
+
+func (s *SchemaValidateTestSuite) TestVerificationClaims() {
+	claims := VerificationClaims([]AttributeInfo{
+		{Attribute: "email", Type: TypeEmail},
+		{Attribute: "mobile", Type: TypeMobile},
+		{Attribute: "workEmail", Type: TypeEmail},
+		{Attribute: "workEmail_verified", Type: TypeBoolean},
+		{Attribute: "nickname", Type: TypeString},
+	})
+
+	s.Equal(map[string]string{"email_verified": "email", "mobile_verified": "mobile"}, claims,
+		"a name the schema declares is not issued")
+	s.Empty(VerificationClaims(nil))
+}
+
+func (s *SchemaValidateTestSuite) TestIsVerificationClaimName() {
+	s.True(IsVerificationClaimName("email_verified"))
+	s.False(IsVerificationClaimName("email"))
+	s.False(IsVerificationClaimName("verified"))
 }
 
 func (s *SchemaValidateTestSuite) TestContactRegex_Override() {

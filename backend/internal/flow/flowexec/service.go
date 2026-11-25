@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -31,11 +32,9 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// serverConfigProvider is the narrow subset of serverconfig.ServerConfigService consumed by flowexec
-// for reading the "flow" section (per-type default handles and expiries). Defined locally so flowexec
-// does not import the serverconfig package.
-type serverConfigProvider interface {
-	GetMergedConfig(ctx context.Context, name string) (any, *tidcommon.ServiceError)
+// flowVisibilityProvider tells whether an organization unit owns a flow or was shared it.
+type flowVisibilityProvider interface {
+	IsFlowVisible(ctx context.Context, flowID, ouID string) (bool, *tidcommon.ServiceError)
 }
 
 // flowExecService is the implementation of FlowExecServiceInterface
@@ -45,13 +44,16 @@ type flowExecService struct {
 	graphBuilder        graphbuilder.GraphBuilderInterface
 	flowStore           flowStoreInterface
 	actorProvider       providers.ActorProvider
+	ouProvider          providers.OrganizationUnitProvider
 	observabilitySvc    providers.ObservabilityProvider
 	transactioner       providers.Transactioner
 	cryptoSvc           providers.RuntimeCryptoProvider
 	attestationVerifier providers.AttestationProvider
 	jwtService          jwt.JWTServiceInterface
-	serverConfigSvc     serverConfigProvider
+	serverConfigSvc     flowconfig.ServerConfigReader
 	governance          providers.IdentityGovernanceProvider
+	flowVisibility      flowVisibilityProvider
+	permissionProvider  providers.PermissionProvider
 	cfg                 flowconfig.Config
 	// ssoHandleTTL is how long a handle returned in the response body stays usable.
 	ssoHandleTTL time.Duration
@@ -61,14 +63,17 @@ type flowExecService struct {
 func newFlowExecService(flowProvider providers.FlowProvider,
 	flowStore flowStoreInterface, flowEngine flowEngineInterface,
 	actorProvider providers.ActorProvider,
+	ouProvider providers.OrganizationUnitProvider,
 	observabilitySvc providers.ObservabilityProvider,
 	transactioner providers.Transactioner,
 	cryptoSvc providers.RuntimeCryptoProvider,
 	attestationVerifier providers.AttestationProvider,
 	graphBuilder graphbuilder.GraphBuilderInterface,
 	jwtService jwt.JWTServiceInterface,
-	serverConfigSvc serverConfigProvider,
+	serverConfigSvc flowconfig.ServerConfigReader,
 	governance providers.IdentityGovernanceProvider,
+	flowVisibility flowVisibilityProvider,
+	permissionProvider providers.PermissionProvider,
 	cfg flowconfig.Config,
 	ssoHandleTTL time.Duration) FlowExecServiceInterface {
 	return &flowExecService{
@@ -76,6 +81,7 @@ func newFlowExecService(flowProvider providers.FlowProvider,
 		flowStore:           flowStore,
 		flowEngine:          flowEngine,
 		actorProvider:       actorProvider,
+		ouProvider:          ouProvider,
 		observabilitySvc:    observabilitySvc,
 		transactioner:       transactioner,
 		cryptoSvc:           cryptoSvc,
@@ -84,6 +90,8 @@ func newFlowExecService(flowProvider providers.FlowProvider,
 		jwtService:          jwtService,
 		serverConfigSvc:     serverConfigSvc,
 		governance:          governance,
+		flowVisibility:      flowVisibility,
+		permissionProvider:  permissionProvider,
 		cfg:                 cfg,
 		ssoHandleTTL:        ssoHandleTTL,
 	}
@@ -91,10 +99,10 @@ func newFlowExecService(flowProvider providers.FlowProvider,
 
 // Execute executes a flow with the given data
 func (s *flowExecService) Execute(ctx context.Context,
-	appID, executionID, flowType string, verbose bool,
+	appID, executionID, flowType, handle string, verbose bool,
 	action string, inputs map[string]string, challengeToken, flowSecret, attestationToken string,
 	sessionData []SessionData) (*FlowStep, *tidcommon.ServiceError) {
-	return s.execute(ctx, "", appID, executionID, flowType, verbose, action, inputs,
+	return s.execute(ctx, "", appID, executionID, flowType, handle, verbose, action, inputs,
 		challengeToken, flowSecret, attestationToken, sessionData)
 }
 
@@ -102,12 +110,12 @@ func (s *flowExecService) Execute(ctx context.Context,
 func (s *flowExecService) ExecuteByID(ctx context.Context, flowID, executionID string, verbose bool,
 	action string, inputs map[string]string, challengeToken string, sessionData []SessionData) (
 	*FlowStep, *tidcommon.ServiceError) {
-	return s.execute(ctx, flowID, "", executionID, "", verbose, action, inputs, challengeToken, "", "",
+	return s.execute(ctx, flowID, "", executionID, "", "", verbose, action, inputs, challengeToken, "", "",
 		sessionData)
 }
 
-func (s *flowExecService) execute(ctx context.Context, flowID, appID, executionID, flowType string, verbose bool,
-	action string, inputs map[string]string, challengeToken, flowSecret, attestationToken string,
+func (s *flowExecService) execute(ctx context.Context, flowID, appID, executionID, flowType, handle string,
+	verbose bool, action string, inputs map[string]string, challengeToken, flowSecret, attestationToken string,
 	sessionData []SessionData) (*FlowStep, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "FlowExecService"))
 
@@ -118,13 +126,19 @@ func (s *flowExecService) execute(ctx context.Context, flowID, appID, executionI
 	var loadErr *tidcommon.ServiceError
 
 	if isNewFlow(executionID) {
-		engineCtx, loadErr = s.loadNewContext(ctx, flowID, appID, flowType, verbose, action, inputs,
+		engineCtx, loadErr = s.loadNewContext(ctx, flowID, appID, flowType, handle, verbose, action, inputs,
 			flowSecret, attestationToken, logger)
 		if loadErr != nil {
-			logger.Error(ctx, "Failed to load new flow context",
-				log.String("appID", appID),
-				log.String("flowType", flowType),
-				log.String("error", loadErr.Error.DefaultValue))
+			// A refused organization unit is caller input any anonymous caller can send, not a failure.
+			if loadErr.Code == ErrorInvalidOrganizationUnit.Code {
+				logger.Debug(ctx, "Refused to start a flow for the requested organization unit",
+					log.String("appID", appID))
+			} else {
+				logger.Error(ctx, "Failed to load new flow context",
+					log.String("appID", appID),
+					log.String("flowType", flowType),
+					log.String("error", loadErr.Error.DefaultValue))
+			}
 
 			if s.observabilitySvc.IsEnabled() {
 				evt := event.NewEvent(
@@ -153,12 +167,13 @@ func (s *flowExecService) execute(ctx context.Context, flowID, appID, executionI
 		}
 		setChallengeTokenInCtx(engineCtx, challengeToken)
 
-		// Continuation re-checks the caller: the gate must hold on every step of an administration
-		// flow, not only the one that started it. New flows are gated inside loadNewContext, as soon
-		// as the flow type is known and before any lookup work is done on the caller's behalf.
-		if svcErr := validateAdministrationCaller(ctx, engineCtx.FlowType); svcErr != nil {
+		// Continuation re-checks the caller on every step, not only the one that started the flow. New flows
+		// are checked inside loadNewContext, as soon as the flow type is known.
+		authorityCtx, svcErr := s.continuationAuthority(ctx, engineCtx, logger)
+		if svcErr != nil {
 			return nil, svcErr
 		}
+		engineCtx.Context = authorityCtx
 	}
 
 	// Checked after the context loads, so a flow started before the application was suspended is
@@ -249,6 +264,9 @@ func (s *flowExecService) execute(ctx context.Context, flowID, appID, executionI
 				return nil, &tidcommon.InternalServerError
 			}
 		}
+		if flowStep.Status == providers.FlowStatusIncomplete {
+			flowStep.ExpiresAt = engineCtx.expiresAt
+		}
 	}
 
 	return &flowStep, nil
@@ -306,28 +324,128 @@ func (s *flowExecService) buildErrorAssertion(ctx context.Context, engineCtx *En
 	return token
 }
 
-// validateAdministrationCaller gates administration flows on an authenticated caller that holds the
-// root system permission.
+// validateFlowCaller requires a caller who presented a token holding a system permission. It is the floor a
+// flow that acts for its caller checks on every step a caller sends with a token.
 //
-// The check is deliberately positive: it asserts what the caller must present rather than inferring
-// it from the absence of the runtime marker. /flow/execute is a public path, so an unauthenticated
-// request reaches the service with a runtime context, and an authenticated one only clears the
-// middleware's authorization step because the path has no entry in the API permission table and
-// therefore falls back to the root permission. Asserting the permission here keeps the gate intact
-// if either of those tables changes.
-//
-// PermissionValidator remains in the administration flow templates as defense in depth; this is the
-// boundary that must hold even for a hand-built flow that omits it.
-func validateAdministrationCaller(ctx context.Context, flowType providers.FlowType) *tidcommon.ServiceError {
-	if flowType != providers.FlowTypeAdministration {
-		return nil
-	}
+// The check is positive: /flow/execute is a public path, so a request without a valid token reaches the
+// service as a runtime caller, and the API permission table lets any authenticated caller through.
+func (s *flowExecService) validateFlowCaller(ctx context.Context) *tidcommon.ServiceError {
 	if security.IsRuntimeContext(ctx) || security.GetSubject(ctx) == "" {
-		return &ErrorAdministrationAuthenticationRequired
+		return &ErrorFlowAuthenticationRequired
 	}
-	if !security.HasSystemPermission(security.GetPermissions(ctx)) {
+	if !security.HasAnySystemPermission(security.GetPermissions(ctx)) {
 		return &ErrorAdministrationPermissionRequired
 	}
+	return nil
+}
+
+// startAuthority returns the context a new flow of flowType runs with: the server's authority, keeping any
+// subject attached for audit, or the caller's own once the caller clears the floor.
+func (s *flowExecService) startAuthority(ctx context.Context, flowType providers.FlowType) (
+	context.Context, *tidcommon.ServiceError) {
+	if !actsForCaller(flowType) {
+		return security.WithRuntimeContext(ctx), nil
+	}
+	if svcErr := s.validateFlowCaller(ctx); svcErr != nil {
+		return nil, svcErr
+	}
+	return ctx, nil
+}
+
+// continuationAuthority returns the context a continued flow runs with. A flow that records its authority runs
+// as the caller when the caller who started it sends the step with their token. A step sent without a token runs
+// with the recorded authority, as that caller with the permissions they still hold, except in an administration
+// flow, whose every step that caller sends. An invitation flow runs each step with the request's own context.
+func (s *flowExecService) continuationAuthority(ctx context.Context, engineCtx *EngineContext,
+	logger *log.Logger) (context.Context, *tidcommon.ServiceError) {
+	flowType := engineCtx.rootFlowType()
+	if !actsForCaller(flowType) {
+		return security.WithRuntimeContext(ctx), nil
+	}
+	if !recordsAuthority(flowType) {
+		return ctx, nil
+	}
+	authority := engineCtx.authority
+	if authority == nil || authority.Subject == "" {
+		return nil, &ErrorFlowRestartRequired
+	}
+
+	if subject := security.GetSubject(ctx); !security.IsRuntimeContext(ctx) && subject != "" {
+		if subject != authority.Subject {
+			return nil, &ErrorFlowStartedByAnotherCaller
+		}
+		if svcErr := s.validateFlowCaller(ctx); svcErr != nil {
+			return nil, svcErr
+		}
+		return ctx, nil
+	}
+
+	if flowType == providers.FlowTypeAdministration || s.permissionProvider == nil {
+		return nil, &ErrorFlowAuthenticationRequired
+	}
+	current, err := s.permissionProvider.GetEntityPermissions(ctx, authority.Subject)
+	if err != nil {
+		logger.Error(ctx, "Failed to resolve the permissions of the caller who started the flow",
+			log.String(log.LoggerKeyExecutionID, engineCtx.ExecutionID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	held := security.HeldPermissions(authority.Permissions, current)
+	if !security.HasAnySystemPermission(held) {
+		return nil, &ErrorAdministrationPermissionRequired
+	}
+	// A suspended caller's tokens are revoked; the authority recorded for them goes the same way.
+	if s.governance != nil {
+		decision, svcErr := s.governance.EvaluateAccess(ctx, authority.Subject, providers.AccessPlaneSession, "")
+		if svcErr != nil {
+			return nil, &tidcommon.InternalServerError
+		}
+		if !decision.Admitted {
+			return nil, &ErrorAdministrationPermissionRequired
+		}
+	}
+	return security.WithRecordedCaller(ctx, authority.Subject, authority.OUID, held), nil
+}
+
+// validateFlowSharedWithCaller requires the organization unit of the caller's token to own the flow or have it
+// shared. Without a way to tell, the flow is refused. A caller holding the root system permission reaches every
+// organization unit, as in the authorization service, so it is not confined to its token's.
+func (s *flowExecService) validateFlowSharedWithCaller(ctx context.Context, flowID string) *tidcommon.ServiceError {
+	if security.HasSystemPermission(security.GetPermissions(ctx)) {
+		return nil
+	}
+	if s.flowVisibility == nil {
+		return &ErrorFlowNotSharedWithOU
+	}
+	visible, svcErr := s.flowVisibility.IsFlowVisible(ctx, flowID, security.GetOUID(ctx))
+	if svcErr != nil && svcErr.Type == tidcommon.ServerErrorType {
+		return svcErr
+	}
+	// A client error, such as the token's OU no longer existing, refuses the flow like one not shared.
+	if svcErr != nil || !visible {
+		return &ErrorFlowNotSharedWithOU
+	}
+	return nil
+}
+
+// validateInvitationCaller requires the caller's token to name the organization unit an invitation flow acts for.
+func validateInvitationCaller(ctx context.Context) *tidcommon.ServiceError {
+	if security.GetOUID(ctx) == "" {
+		return &ErrorInvitationOUMissing
+	}
+	return nil
+}
+
+// validateSelfFlowCaller gates the start of a self flow on a bearer access token this
+// deployment issued, with a subject. A runtime context is not refused: on this public path a user's
+// token arrives as one that still carries its subject.
+func (s *flowExecService) validateSelfFlowCaller(ctx context.Context) *tidcommon.ServiceError {
+	if !security.IsSelfIssued(ctx) || security.GetSubject(ctx) == "" {
+		return tidcommon.CustomServiceError(ErrorFlowAuthenticationRequired, tidcommon.I18nMessage{
+			Key:          "error.flowexecservice.flow_access_token_required_description",
+			DefaultValue: "Starting this flow requires the access token of a signed-in user",
+		})
+	}
+
 	return nil
 }
 
@@ -358,7 +476,7 @@ func applyInboundSSO(engineCtx *EngineContext, ctx context.Context, sessionData 
 	engineCtx.SSOHandleIn = inbound.HandleFor(flowID)
 }
 
-// applyOutboundSSO adds the SSO session this step started or ended to the step, keyed by flow
+// applyOutboundSSO adds the SSO session this step started, reused or ended to the step, keyed by flow
 // identifier, for the response body to return to a caller that holds its handles itself.
 func (s *flowExecService) applyOutboundSSO(flowStep *FlowStep) {
 	if flowStep.SSOHandleOut != "" && flowStep.SSOFlowID != "" {
@@ -367,7 +485,7 @@ func (s *flowExecService) applyOutboundSSO(flowStep *FlowStep) {
 				FlowIdentifier: session.FlowIdentifier(flowStep.SSOFlowID),
 				SessionHandle:  flowStep.SSOHandleOut,
 			},
-			ExpiresIn: int64(s.ssoHandleTTL.Seconds()),
+			ExpiresIn: s.handleExpiresIn(flowStep.SSOHandleExpiresAt, time.Now()),
 		}}
 	}
 	if flowStep.SSOClearFlowID != "" {
@@ -375,10 +493,21 @@ func (s *flowExecService) applyOutboundSSO(flowStep *FlowStep) {
 	}
 }
 
-// initContext initializes a new flow context with the given details.
-func (s *flowExecService) loadNewContext(ctx context.Context, flowID, appID, flowTypeStr string, verbose bool,
-	action string, inputs map[string]string, flowSecret, attestationToken string, logger *log.Logger) (
-	*EngineContext, *tidcommon.ServiceError) {
+// handleExpiresIn returns the seconds from now a returned handle stays usable: the time its session has left
+// when known, never more than the configured handle lifetime. Rounded up, so a session started in this
+// request reports the whole lifetime.
+func (s *flowExecService) handleExpiresIn(expiresAt, now time.Time) int64 {
+	remaining := s.ssoHandleTTL
+	if !expiresAt.IsZero() {
+		remaining = min(max(expiresAt.Sub(now), 0), s.ssoHandleTTL)
+	}
+	return int64(math.Ceil(remaining.Seconds()))
+}
+
+// loadNewContext initializes a new flow context with the given details.
+func (s *flowExecService) loadNewContext(ctx context.Context, flowID, appID, flowTypeStr, handle string,
+	verbose bool, action string, inputs map[string]string, flowSecret, attestationToken string,
+	logger *log.Logger) (*EngineContext, *tidcommon.ServiceError) {
 	var flowType providers.FlowType
 	var resolvedFlow *providers.CompleteFlowDefinition
 	if flowID == "" {
@@ -388,31 +517,69 @@ func (s *flowExecService) loadNewContext(ctx context.Context, flowID, appID, flo
 			return nil, err
 		}
 	} else {
-		// Initiating by flow ID is an administration-only entry point by construction, so the caller is
-		// gated before the flow is resolved. Checking the flow type first would let an unauthenticated
-		// caller on this public path distinguish a missing flow from an existing one, and an
-		// administration flow from any other, purely from the error it gets back.
-		if svcErr := validateAdministrationCaller(ctx, providers.FlowTypeAdministration); svcErr != nil {
+		// Initiating by flow ID requires a caller who clears the floor, checked before the flow is resolved.
+		// Checking the flow type first would let a caller on this public path distinguish a missing flow from
+		// an existing one, and one flow type from another, purely from the error it gets back.
+		if svcErr := s.validateFlowCaller(ctx); svcErr != nil {
 			return nil, svcErr
 		}
-		flow, svcErr := s.flowProvider.GetFlow(ctx, flowID)
+		// The flow is resolved as the server, since what authorizes it depends on its type.
+		flow, svcErr := s.flowProvider.GetFlow(security.WithRuntimeContext(ctx), flowID)
 		if svcErr != nil {
 			return nil, svcErr
 		}
-		// The flow the ID resolves to must itself be an administration flow: the entry point must not
-		// become a way to start an authentication, registration, recovery or sign-out flow directly,
-		// bypassing the application binding and initiation guards those types require.
-		if flow.FlowType != providers.FlowTypeAdministration {
+		// Only administration and invitation flows start by ID: the entry point must not become a
+		// way to start an authentication, registration, recovery or sign-out flow directly, bypassing
+		// the application binding and initiation guards those types require. Both start in the unit the
+		// caller's token names, which must own the flow or have been shared it; an administration flow is
+		// also gated below.
+		switch flow.FlowType {
+		case providers.FlowTypeAdministration:
+			if svcErr := s.validateFlowSharedWithCaller(ctx, flow.ID); svcErr != nil {
+				return nil, svcErr
+			}
+		case providers.FlowTypeInvitation:
+			if svcErr := validateInvitationCaller(ctx); svcErr != nil {
+				return nil, svcErr
+			}
+			if svcErr := s.validateFlowSharedWithCaller(ctx, flow.ID); svcErr != nil {
+				return nil, svcErr
+			}
+		default:
 			return nil, &ErrorFlowIDExecutionNotPermitted
 		}
 		flowType = flow.FlowType
 		resolvedFlow = flow
 	}
 
-	// Gate administration flows before any further resolution so an unauthenticated caller cannot
-	// drive application lookups or context creation.
-	if svcErr := validateAdministrationCaller(ctx, flowType); svcErr != nil {
+	// Decided before any further resolution so a caller who does not clear the floor cannot drive
+	// application lookups or context creation.
+	ctx, svcErr := s.startAuthority(ctx, flowType)
+	if svcErr != nil {
 		return nil, svcErr
+	}
+
+	// A self flow is named by its handle, runs for no application and binds the caller. An
+	// administrator-initiated flow is named the same way and binds the user the administrator names.
+	var boundSubject string
+	switch flowType {
+	case providers.FlowTypeSelf:
+		resolvedFlow, boundSubject, svcErr = s.resolveSelfFlow(ctx, handle)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+
+		flowID, appID = resolvedFlow.ID, ""
+	case providers.FlowTypeAdminInitiated:
+		resolvedFlow, svcErr = s.resolveFlowByHandle(ctx, handle, flowType)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		if svcErr := s.validateFlowSharedWithCaller(ctx, resolvedFlow.ID); svcErr != nil {
+			return nil, svcErr
+		}
+
+		flowID, appID, boundSubject = resolvedFlow.ID, "", inputs[adminInitiatedSubjectInput]
 	}
 
 	if svcErr := s.checkDirectFlowInitiationAllowed(
@@ -420,13 +587,56 @@ func (s *flowExecService) loadNewContext(ctx context.Context, flowID, appID, flo
 		return nil, svcErr
 	}
 
-	engineCtx, err := s.initContext(ctx, flowID, appID, flowType, resolvedFlow, verbose, logger)
+	engineCtx, err := s.initContext(ctx, flowID, appID, flowType, resolvedFlow, nil, verbose, logger)
 	if err != nil {
 		return nil, err
 	}
+	engineCtx.boundSubject = boundSubject
 
 	prepareContext(engineCtx, action, inputs)
+	if flowType == providers.FlowTypeInvitation {
+		// The flow acts for the caller's own unit and remembers who started it; an input cannot change either.
+		engineCtx.RuntimeData[common.RuntimeKeyOUID] = security.GetOUID(ctx)
+		engineCtx.RuntimeData[common.RuntimeKeyInviter] = security.GetSubject(ctx)
+	}
 	return engineCtx, nil
+}
+
+// resolveSelfFlow checks the caller before the handle is resolved, so an unauthenticated caller
+// cannot learn which handles exist, and returns the self flow the handle names and the caller
+// it runs for.
+func (s *flowExecService) resolveSelfFlow(ctx context.Context, handle string) (
+	*providers.CompleteFlowDefinition, string, *tidcommon.ServiceError) {
+	if svcErr := s.validateSelfFlowCaller(ctx); svcErr != nil {
+		return nil, "", svcErr
+	}
+
+	flow, svcErr := s.resolveFlowByHandle(ctx, handle, providers.FlowTypeSelf)
+	if svcErr != nil {
+		return nil, "", svcErr
+	}
+
+	return flow, security.GetSubject(ctx), nil
+}
+
+// resolveFlowByHandle returns the flow of the type that the handle names. The caller is checked before.
+func (s *flowExecService) resolveFlowByHandle(ctx context.Context, handle string, flowType providers.FlowType) (
+	*providers.CompleteFlowDefinition, *tidcommon.ServiceError) {
+	if handle == "" {
+		return nil, &ErrorFlowHandleRequired
+	}
+
+	flow, svcErr := s.flowProvider.GetFlowByHandle(security.WithRuntimeContext(ctx), handle, flowType)
+	if svcErr != nil {
+		// A provider's client error means no flow of the type has the handle.
+		if svcErr.Type == tidcommon.ClientErrorType {
+			return nil, &ErrorFlowHandleNotFound
+		}
+
+		return nil, svcErr
+	}
+
+	return flow, nil
 }
 
 // checkDirectFlowInitiationAllowed governs which applications may initiate an authentication or
@@ -576,7 +786,7 @@ func (s *flowExecService) resolveFlowInitiationModeFromProfile(
 
 // initContext initializes a new flow context with the given details.
 func (s *flowExecService) initContext(ctx context.Context, requestedFlowID, appID string, flowType providers.FlowType,
-	resolvedFlow *providers.CompleteFlowDefinition, verbose bool,
+	resolvedFlow *providers.CompleteFlowDefinition, runtimeData map[string]string, verbose bool,
 	logger *log.Logger) (*EngineContext, *tidcommon.ServiceError) {
 	graphID := requestedFlowID
 	if graphID == "" {
@@ -598,7 +808,7 @@ func (s *flowExecService) initContext(ctx context.Context, requestedFlowID, appI
 	flow := resolvedFlow
 	var svcErr *tidcommon.ServiceError
 	if flow == nil {
-		flow, svcErr = s.flowProvider.GetFlow(ctx, graphID)
+		flow, svcErr = s.flowProvider.GetFlow(security.WithRuntimeContext(ctx), graphID)
 	}
 	if svcErr != nil {
 		// The configured flow may have been deleted while still referenced by the
@@ -613,6 +823,10 @@ func (s *flowExecService) initContext(ctx context.Context, requestedFlowID, appI
 
 	engineCtx.FlowType = flow.FlowType
 	engineCtx.SSOFlowVersion = flow.ActiveVersion
+	if recordsAuthority(flow.FlowType) {
+		engineCtx.authority = &flowAuthority{Subject: security.GetSubject(ctx), OUID: security.GetOUID(ctx),
+			Permissions: security.GetPermissions(ctx)}
+	}
 	graph, svcErr := s.graphBuilder.GetGraph(ctx, flow)
 	if svcErr != nil {
 		logger.Error(ctx, "Error retrieving graph from graph builder",
@@ -623,13 +837,85 @@ func (s *flowExecService) initContext(ctx context.Context, requestedFlowID, appI
 	engineCtx.Context = ctx
 	engineCtx.AppID = appID
 	engineCtx.Verbose = verbose
+	engineCtx.RuntimeData = runtimeData
 
 	// Set application context if required
 	if err := s.setApplicationToContext(&engineCtx, logger); err != nil {
 		return nil, err
 	}
 
+	if err := s.boundSignIn(ctx, &engineCtx, logger); err != nil {
+		return nil, err
+	}
+
 	return &engineCtx, nil
+}
+
+// boundSignIn applies the sign-in boundary to authentication and device grant flows. A named unit
+// fixes the sign-in to that unit, and an unshared application fixes it to its own.
+func (s *flowExecService) boundSignIn(ctx context.Context, engineCtx *EngineContext,
+	logger *log.Logger) *tidcommon.ServiceError {
+	if engineCtx.FlowType != providers.FlowTypeAuthentication && engineCtx.FlowType != providers.FlowTypeDeviceGrant {
+		return nil
+	}
+	engineCtx.SignInBounded = true
+
+	ouID := sysContext.GetAccessingOUID(ctx)
+	if ouID != "" {
+		accessible, svcErr := s.ouProvider.IsEligibleOU(signInBoundaryContext(engineCtx), ouID)
+		if svcErr != nil && svcErr.Type != tidcommon.ClientErrorType {
+			logger.Error(ctx, "Failed to resolve application access for an organization unit",
+				log.String("appID", engineCtx.AppID), log.String("errorCode", svcErr.Code))
+			return &tidcommon.InternalServerError
+		}
+		// An organization unit that does not exist comes back as a client error, and is refused like one
+		// the application is not shared with so the answer does not reveal which.
+		if svcErr != nil || !accessible {
+			logger.Debug(ctx, "Application is not accessible from the requested organization unit",
+				log.String("appID", engineCtx.AppID), log.String("ouID", ouID))
+			return &ErrorInvalidOrganizationUnit
+		}
+	} else {
+		var svcErr *tidcommon.ServiceError
+		if ouID, svcErr = unsharedAppOUID(s.ouProvider, engineCtx, logger); svcErr != nil {
+			return svcErr
+		}
+	}
+
+	if ouID != "" {
+		engineCtx.mergeRuntimeData(map[string]string{common.RuntimeKeyOUID: ouID, common.RuntimeKeyOUFixed: "true"})
+	}
+	return nil
+}
+
+// unsharedAppOUID returns the application's own organization unit when the application is not shared, or "".
+func unsharedAppOUID(ouProvider providers.OrganizationUnitProvider, engineCtx *EngineContext,
+	logger *log.Logger) (string, *tidcommon.ServiceError) {
+	shared, svcErr := ouProvider.IsApplicationShared(signInBoundaryContext(engineCtx))
+	if svcErr != nil {
+		logger.Error(engineCtx.Context, "Failed to resolve whether the application is shared",
+			log.String("appID", engineCtx.AppID), log.String("errorCode", svcErr.Code))
+		return "", &tidcommon.InternalServerError
+	}
+	if shared {
+		return "", nil
+	}
+	return engineCtx.Application.OUID, nil
+}
+
+// signInBoundary returns the sign-in boundary of a bounded flow: its application, its ouId and its signed-in subject.
+func signInBoundary(engineCtx *EngineContext) authnprovidercm.SignInBoundary {
+	subject, _ := authenticatedSubject(engineCtx.AuthUser)
+	return authnprovidercm.SignInBoundary{
+		OUID:          engineCtx.RuntimeData[common.RuntimeKeyOUID],
+		ApplicationID: engineCtx.AppID,
+		EntityID:      subject,
+	}
+}
+
+// signInBoundaryContext returns the flow's request context carrying its sign-in boundary.
+func signInBoundaryContext(engineCtx *EngineContext) context.Context {
+	return authnprovidercm.WithSignInBoundary(engineCtx.Context, signInBoundary(engineCtx))
 }
 
 // fallbackToDefaultFlow attempts to recover from a failure to retrieve the configured flow.
@@ -649,7 +935,8 @@ func (s *flowExecService) fallbackToDefaultFlow(ctx context.Context, graphID str
 	logger.Warn(ctx, "Configured authentication flow not found; falling back to default flow",
 		log.String("graphID", graphID), log.String("defaultFlowHandle", handle))
 
-	flow, svcErr := s.flowProvider.GetFlowByHandle(ctx, handle, providers.FlowTypeAuthentication)
+	flow, svcErr := s.flowProvider.GetFlowByHandle(security.WithRuntimeContext(ctx), handle,
+		providers.FlowTypeAuthentication)
 	if svcErr != nil {
 		logger.Error(ctx, "Failed to retrieve default authentication flow",
 			log.String("defaultFlowHandle", handle), log.String("error", svcErr.Error.DefaultValue))
@@ -666,8 +953,30 @@ func (s *flowExecService) loadPrevContext(ctx context.Context, executionID, acti
 		return nil, err
 	}
 
-	prepareContext(engineCtx, action, inputs)
+	prepareContext(engineCtx, action, engineCtx.onlyRequestedInputs(inputs))
 	return engineCtx, nil
+}
+
+// GetExecutionPosition returns the flow a paused execution runs and the node it is paused at.
+func (s *flowExecService) GetExecutionPosition(ctx context.Context, executionID string) (
+	string, string, *tidcommon.ServiceError) {
+	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "FlowExecService"))
+
+	dbModel, svcErr := s.getFlowContext(ctx, executionID, logger)
+	if svcErr != nil {
+		return "", "", svcErr
+	}
+	var content flowContextContent
+	if err := json.Unmarshal([]byte(dbModel.Context), &content); err != nil {
+		logger.Error(ctx, "Failed to read the position of a flow context",
+			log.String(log.LoggerKeyExecutionID, executionID), log.Error(err))
+		return "", "", &tidcommon.InternalServerError
+	}
+	nodeID := ""
+	if content.CurrentNodeID != nil {
+		nodeID = *content.CurrentNodeID
+	}
+	return content.GraphID, nodeID, nil
 }
 
 // loadContextFromStore retrieves the flow context from the store based on the given details.
@@ -689,7 +998,8 @@ func (s *flowExecService) loadContextFromStore(ctx context.Context, executionID 
 		return nil, &tidcommon.InternalServerError
 	}
 
-	flow, svcErr := s.flowProvider.GetFlow(ctx, graphID)
+	// The flow was authorized when the execution started, so it is reloaded as the server.
+	flow, svcErr := s.flowProvider.GetFlow(security.WithRuntimeContext(ctx), graphID)
 	if svcErr != nil {
 		logger.Error(ctx, "Error retrieving flow graph from flow provider",
 			log.String("graphID", graphID), log.String("error", svcErr.Error.DefaultValue))
@@ -704,7 +1014,7 @@ func (s *flowExecService) loadContextFromStore(ctx context.Context, executionID 
 	}
 
 	graphResolver := graphResolverFunc(func(rctx context.Context, flowID string) (core.GraphInterface, error) {
-		f, svcErr := s.flowProvider.GetFlow(rctx, flowID)
+		f, svcErr := s.flowProvider.GetFlow(security.WithRuntimeContext(rctx), flowID)
 		if svcErr != nil {
 			return nil, fmt.Errorf("failed to get flow %s: %s", flowID, svcErr.Error.DefaultValue)
 		}
@@ -738,7 +1048,10 @@ func (s *flowExecService) setApplicationToContext(engineCtx *EngineContext,
 	logger *log.Logger) *tidcommon.ServiceError {
 	// Skip application loading for app-independent flows
 	if engineCtx.FlowType == providers.FlowTypeUserOnboarding ||
+		engineCtx.FlowType == providers.FlowTypeSelf ||
+		engineCtx.FlowType == providers.FlowTypeAdminInitiated ||
 		engineCtx.FlowType == providers.FlowTypeAdministration ||
+		engineCtx.FlowType == providers.FlowTypeInvitation ||
 		engineCtx.FlowType == providers.FlowTypeSystem {
 		return nil
 	}
@@ -753,6 +1066,20 @@ func (s *flowExecService) setApplicationToContext(engineCtx *EngineContext,
 		return svcErr
 	}
 	engineCtx.Application = *app
+
+	// An agent's client rules may limit the subject it accepts. Resolved for every flow type, so the
+	// constraint holds when an authentication flow is entered through a CALL in the same request.
+	if app.EntityCategory == providers.EntityCategoryAgent {
+		client, svcErr := s.actorProvider.GetOAuthClientByID(engineCtx.Context, engineCtx.AppID)
+		if svcErr != nil {
+			logger.Error(engineCtx.Context, "Failed to resolve the agent's client rules",
+				log.String("appID", engineCtx.AppID), log.String("errorCode", svcErr.Code))
+			return &tidcommon.InternalServerError
+		}
+		if client != nil {
+			engineCtx.RequiredSubjectID = client.Rules.RequiredSubjectID
+		}
+	}
 
 	// A sign-out flow runs a different flow than the one that owns the SSO session. Carry the login
 	// (auth) flow id so the session is resolved, and its cookie cleared, under that flow rather than
@@ -822,6 +1149,7 @@ func (s *flowExecService) storeContext(ctx context.Context, engineCtx *EngineCon
 	if expirySeconds <= 0 {
 		expirySeconds = s.getFlowExpirySeconds(ctx, engineCtx.FlowType)
 	}
+	engineCtx.expiresAt = time.Now().Add(time.Duration(expirySeconds) * time.Second)
 
 	encryptedEngineCtx, err := s.encryptEngineContext(ctx, engineCtx)
 	if err != nil {
@@ -935,12 +1263,29 @@ func (s *flowExecService) getFlowGraph(ctx context.Context, appID string, flowTy
 func validateFlowType(flowTypeStr string) (providers.FlowType, *tidcommon.ServiceError) {
 	switch providers.FlowType(flowTypeStr) {
 	case providers.FlowTypeAuthentication, providers.FlowTypeRegistration, providers.FlowTypeUserOnboarding,
-		providers.FlowTypeRecovery, providers.FlowTypeSignOut, providers.FlowTypeAdministration,
-		providers.FlowTypeDeviceGrant:
+		providers.FlowTypeSelf, providers.FlowTypeAdminInitiated, providers.FlowTypeRecovery,
+		providers.FlowTypeSignOut, providers.FlowTypeAdministration, providers.FlowTypeDeviceGrant:
 		return providers.FlowType(flowTypeStr), nil
 	default:
 		return "", &ErrorInvalidFlowType
 	}
+}
+
+// validateInitiatedFlowType validates the type of a flow initiated for an application. A self flow
+// acts on the caller of the execute path, and an administrator-initiated flow is started only by an
+// administrator on that path, so no application initiates either.
+func (s *flowExecService) validateInitiatedFlowType(flowTypeStr string) (
+	providers.FlowType, *tidcommon.ServiceError) {
+	flowType, err := validateFlowType(flowTypeStr)
+	if err != nil {
+		return "", err
+	}
+
+	if flowType == providers.FlowTypeSelf || flowType == providers.FlowTypeAdminInitiated {
+		return "", &ErrorInvalidFlowType
+	}
+
+	return flowType, nil
 }
 
 // isNewFlow checks if the flow is a new flow based on the provided input.
@@ -959,7 +1304,7 @@ func (s *flowExecService) getSystemFlowGraph(ctx context.Context, flowType provi
 
 	handle := s.resolveDefaultFlowHandle(ctx, flowType)
 
-	flow, err := s.flowProvider.GetFlowByHandle(ctx, handle, flowType)
+	flow, err := s.flowProvider.GetFlowByHandle(security.WithRuntimeContext(ctx), handle, flowType)
 	if err != nil {
 		logger.Error(ctx, "Failed to get system flow by handle",
 			log.String("handle", handle), log.String("flowType", string(flowType)))
@@ -991,10 +1336,7 @@ func withoutConstantInputs(graph core.GraphInterface, inputs map[string]string) 
 // prepareContext prepares the flow context by merging any data. Inputs the flow holds constant are left
 // out, so no way of starting or continuing a flow can set one.
 func prepareContext(ctx *EngineContext, action string, inputs map[string]string) {
-	// Append any inputs present to the context
-	if inputs = withoutConstantInputs(ctx.Graph, inputs); len(inputs) > 0 {
-		ctx.UserInputs = sysutils.MergeStringMaps(ctx.UserInputs, inputs)
-	}
+	ctx.mergeInputs(withoutConstantInputs(ctx.Graph, inputs))
 
 	if ctx.UserInputs == nil {
 		ctx.UserInputs = make(map[string]string)
@@ -1034,14 +1376,15 @@ func (s *flowExecService) InitiateFlow(ctx context.Context,
 	}
 
 	// Validate flow type
-	flowType, err := validateFlowType(initContext.FlowType)
+	flowType, err := s.validateInitiatedFlowType(initContext.FlowType)
 	if err != nil {
 		return "", err
 	}
 
 	// Today's callers (authorization, CIBA, sign-out) only ever initiate their own flow types, but the
-	// gate is applied here too so this entry point can never become a way around it.
-	if svcErr := validateAdministrationCaller(ctx, flowType); svcErr != nil {
+	// authority is decided here too so this entry point can never become a way around it.
+	ctx, svcErr := s.startAuthority(ctx, flowType)
+	if svcErr != nil {
 		return "", svcErr
 	}
 
@@ -1052,12 +1395,19 @@ func (s *flowExecService) InitiateFlow(ctx context.Context,
 
 	// Initialize the engine context
 	// This uses verbose true to ensure step layouts are returned during execution
-	engineCtx, err := s.initContext(ctx, "", initContext.ApplicationID, flowType, nil, true, logger)
+	engineCtx, err := s.initContext(ctx, "", initContext.ApplicationID, flowType, nil,
+		initContext.RuntimeData, true, logger)
 	if err != nil {
-		logger.Error(ctx, "Failed to initialize flow context",
-			log.String("appID", initContext.ApplicationID),
-			log.String("flowType", initContext.FlowType),
-			log.String("error", err.Error.DefaultValue))
+		// A refused organization unit is caller input any anonymous caller can send, not a failure.
+		if err.Code == ErrorInvalidOrganizationUnit.Code {
+			logger.Debug(ctx, "Refused to start a flow for the requested organization unit",
+				log.String("appID", initContext.ApplicationID))
+		} else {
+			logger.Error(ctx, "Failed to initialize flow context",
+				log.String("appID", initContext.ApplicationID),
+				log.String("flowType", initContext.FlowType),
+				log.String("error", err.Error.DefaultValue))
+		}
 		return "", err
 	}
 
@@ -1065,8 +1415,6 @@ func (s *flowExecService) InitiateFlow(ctx context.Context,
 		return "", svcErr
 	}
 
-	// Replace the RuntimeData with initContext RuntimeData
-	engineCtx.RuntimeData = initContext.RuntimeData
 	engineCtx.SetInitiatorRequest(initContext.InitiatorRequest)
 
 	// Store the context without executing the flow
@@ -1098,13 +1446,14 @@ func (s *flowExecService) InitiateAndExecute(ctx context.Context,
 		return nil, &ErrorInvalidFlowInitContext
 	}
 
-	flowType, err := validateFlowType(initContext.FlowType)
+	flowType, err := s.validateInitiatedFlowType(initContext.FlowType)
 	if err != nil {
 		return nil, err
 	}
 
-	// See InitiateFlow: gated here so no initiation entry point bypasses the administration check.
-	if svcErr := validateAdministrationCaller(ctx, flowType); svcErr != nil {
+	// See InitiateFlow: decided here so no initiation entry point bypasses it.
+	ctx, svcErr := s.startAuthority(ctx, flowType)
+	if svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -1112,7 +1461,8 @@ func (s *flowExecService) InitiateAndExecute(ctx context.Context,
 		return nil, &ErrorInvalidFlowInitContext
 	}
 
-	engineCtx, err := s.initContext(ctx, "", initContext.ApplicationID, flowType, nil, true, logger)
+	engineCtx, err := s.initContext(ctx, "", initContext.ApplicationID, flowType, nil,
+		initContext.RuntimeData, true, logger)
 	if err != nil {
 		logger.Error(ctx, "Failed to initialize flow context",
 			log.String("appID", initContext.ApplicationID),
@@ -1125,7 +1475,7 @@ func (s *flowExecService) InitiateAndExecute(ctx context.Context,
 		return nil, svcErr
 	}
 
-	engineCtx.RuntimeData = initContext.RuntimeData
+	engineCtx.TraceID = sysContext.GetTraceID(ctx)
 	engineCtx.SetInitiatorRequest(initContext.InitiatorRequest)
 	prepareContext(engineCtx, "", initContext.InitialInputs)
 
@@ -1159,7 +1509,8 @@ func (s *flowExecService) ExecuteSystemFlow(ctx context.Context, sysCtx *common.
 		return nil, &tidcommon.InternalServerError
 	}
 
-	engineCtx, svcErr := s.initContext(ctx, flow.ID, "", providers.FlowTypeSystem, flow, false, logger)
+	engineCtx, svcErr := s.initContext(security.WithRuntimeContext(ctx), flow.ID, "", providers.FlowTypeSystem, flow,
+		nil, false, logger)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -1246,27 +1597,7 @@ func (s *flowExecService) getFlowContext(ctx context.Context, executionID string
 // Returns a zero FlowSectionConfig when the serverconfig service is not wired or the section is
 // absent, letting callers fall back to built-in defaults.
 func (s *flowExecService) getFlowSectionConfig(ctx context.Context) flowconfig.FlowSectionConfig {
-	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "FlowExecService"))
-
-	if s.serverConfigSvc == nil {
-		return flowconfig.FlowSectionConfig{}
-	}
-
-	merged, svcErr := s.serverConfigSvc.GetMergedConfig(ctx, "flow")
-	if svcErr != nil {
-		logger.Error(ctx, "Failed to retrieve merged flow section from serverconfig",
-			log.String("error", svcErr.Error.DefaultValue))
-		return flowconfig.FlowSectionConfig{}
-	}
-
-	cfg, ok := merged.(flowconfig.FlowSectionConfig)
-	if !ok {
-		logger.Error(ctx, "Unexpected type for merged flow server config; using built-in defaults",
-			log.String("type", fmt.Sprintf("%T", merged)))
-		return flowconfig.FlowSectionConfig{}
-	}
-
-	return cfg
+	return flowconfig.ReadFlowSectionConfig(ctx, s.serverConfigSvc)
 }
 
 // getFlowExpirySeconds returns the context TTL for the given flow type.
@@ -1278,8 +1609,12 @@ func (s *flowExecService) getFlowExpirySeconds(ctx context.Context, flowType pro
 		return firstPositiveExpiry(cfg.AuthFlow.ExpirySeconds, defaultAuthFlowExpiry)
 	case providers.FlowTypeRegistration:
 		return firstPositiveExpiry(cfg.RegistrationFlow.ExpirySeconds, defaultRegistrationFlowExpiry)
-	case providers.FlowTypeUserOnboarding:
+	case providers.FlowTypeUserOnboarding, providers.FlowTypeInvitation:
 		return firstPositiveExpiry(cfg.UserOnboardingFlow.ExpirySeconds, defaultUserOnboardingFlowExpiry)
+	case providers.FlowTypeSelf:
+		return firstPositiveExpiry(cfg.SelfFlow.ExpirySeconds, defaultSelfFlowExpiry)
+	case providers.FlowTypeAdminInitiated:
+		return firstPositiveExpiry(cfg.AdminInitiatedFlow.ExpirySeconds, defaultAdminInitiatedFlowExpiry)
 	case providers.FlowTypeRecovery:
 		return firstPositiveExpiry(cfg.RecoveryFlow.ExpirySeconds, defaultRecoveryFlowExpiry)
 	case providers.FlowTypeSignOut:

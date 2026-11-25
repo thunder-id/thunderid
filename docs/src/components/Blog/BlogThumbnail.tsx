@@ -26,8 +26,8 @@ export default function BlogThumbnail({
 
   if (image) {
     return (
-      <Box sx={{position: 'relative', height: minHeight, overflow: 'hidden'}}>
-        <Box component="img" src={image} alt="" sx={{width: '100%', height: '100%', objectFit: 'cover'}} />
+      <Box sx={{position: 'relative', minHeight, overflow: 'hidden'}}>
+        <Box component="img" src={image} alt="" sx={{position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover'}} />
       </Box>
     );
   }

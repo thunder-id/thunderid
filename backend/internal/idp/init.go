@@ -15,12 +15,16 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // Initialize initializes the IDP service. Declarative resource loading and HTTP routing for
 // identity providers now happen in the connection package (/connections/{vendor}), which is the
 // sole owner of the "connection" declarative resource type.
+//
+// bus is required: the service publishes the audit event of every identity provider connection it
+// creates, updates or deletes on it.
 func Initialize(
 	cacheManager cache.CacheManagerInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
@@ -28,7 +32,12 @@ func Initialize(
 	groupService group.GroupServiceInterface,
 	resourceService providers.ResourceServerProvider,
 	ouService ou.OrganizationUnitServiceInterface,
+	bus eventbus.EventBusInterface,
 ) (IDPServiceInterface, error) {
+	if bus == nil {
+		return nil, errNilEventBus
+	}
+
 	// Create store and transactioner based on store mode
 	idpStore, transactioner, err := initializeStore(cacheManager)
 	if err != nil {
@@ -36,7 +45,7 @@ func Initialize(
 	}
 
 	idpService := newIDPService(idpStore, entityTypeService, roleService, groupService, resourceService, transactioner,
-		ouService)
+		ouService, bus)
 	return idpService, nil
 }
 

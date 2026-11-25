@@ -21,11 +21,10 @@ import {
   CardHeader,
   CircularProgress,
   Divider,
-  FormControl,
-  FormLabel,
   IconButton,
   InputAdornment,
   Popover,
+  Stack,
   TextField,
   Tooltip,
   Typography,
@@ -125,6 +124,8 @@ export interface I18nTextInputProps {
    * i18n API. Hosts wire this up to their own translation cache invalidation logic.
    */
   onTranslationCreated?: () => void;
+  /** Disables the text field and the translation popover, for a value that cannot be changed. */
+  disabled?: boolean;
 }
 
 /**
@@ -496,6 +497,7 @@ export default function I18nTextInput({
   defaultNewKey = undefined,
   labels: labelsProp = undefined,
   onTranslationCreated = undefined,
+  disabled = false,
 }: I18nTextInputProps): ReactElement {
   const {t} = useTranslation();
   const {resolve} = useTemplateLiteralResolver();
@@ -507,15 +509,31 @@ export default function I18nTextInput({
   const isDynamic = isI18nTemplatePattern(value);
   const resolvedValue = isDynamic ? (resolve(value, {t}) ?? '') : '';
 
+  const trigger = (
+    <IconButton
+      ref={setIconButtonEl}
+      aria-label={labels.triggerTooltip}
+      onClick={() => setIsPopoverOpen(!isPopoverOpen)}
+      size="small"
+      edge="end"
+      color={isDynamic ? 'primary' : 'default'}
+      disabled={disabled}
+    >
+      <SquareFunction size={16} />
+    </IconButton>
+  );
+
   return (
-    <FormControl fullWidth>
-      <FormLabel>{label}</FormLabel>
+    <Stack>
       <TextField
+        labelPlacement="top"
+        label={label}
         fullWidth
         value={value}
         onChange={(e: ChangeEvent<HTMLInputElement>) => onChange(e.target.value)}
         placeholder={placeholder}
         size="small"
+        disabled={disabled}
         sx={
           isDynamic
             ? {
@@ -531,17 +549,8 @@ export default function I18nTextInput({
         InputProps={{
           endAdornment: (
             <InputAdornment position="end">
-              <Tooltip title={labels.triggerTooltip}>
-                <IconButton
-                  ref={setIconButtonEl}
-                  onClick={() => setIsPopoverOpen(!isPopoverOpen)}
-                  size="small"
-                  edge="end"
-                  color={isDynamic ? 'primary' : 'default'}
-                >
-                  <SquareFunction size={16} />
-                </IconButton>
-              </Tooltip>
+              {/* A disabled button fires no events, so its tooltip could never show. */}
+              {disabled ? trigger : <Tooltip title={labels.triggerTooltip}>{trigger}</Tooltip>}
             </InputAdornment>
           ),
         }}
@@ -566,7 +575,7 @@ export default function I18nTextInput({
         </Box>
       )}
       <I18nPopover
-        open={isPopoverOpen}
+        open={isPopoverOpen && !disabled}
         anchorEl={iconButtonEl}
         onClose={() => setIsPopoverOpen(false)}
         value={value}
@@ -575,6 +584,6 @@ export default function I18nTextInput({
         labels={labels}
         onTranslationCreated={onTranslationCreated}
       />
-    </FormControl>
+    </Stack>
   );
 }

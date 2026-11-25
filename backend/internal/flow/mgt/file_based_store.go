@@ -32,6 +32,7 @@ func (f *fileBasedStore) Create(id string, data interface{}) error {
 		Interceptors: flow.Interceptors,
 		Nodes:        flow.Nodes,
 		OUID:         flow.OUID,
+		ProjectID:    flow.ProjectID,
 	})
 	return err
 }
@@ -48,6 +49,7 @@ func (f *fileBasedStore) CreateFlow(_ context.Context, flowID string, flow *Flow
 		Interceptors:  flow.Interceptors,
 		Nodes:         flow.Nodes,
 		OUID:          flow.OUID,
+		ProjectID:     flow.ProjectID,
 		CreatedAt:     "",
 		UpdatedAt:     "",
 	}
@@ -77,6 +79,7 @@ func (f *fileBasedStore) ListFlows(_ context.Context, limit, offset int, flowTyp
 				Name:          flow.Name,
 				ActiveVersion: flow.ActiveVersion,
 				OUID:          flow.OUID,
+				ProjectID:     flow.ProjectID,
 			}
 			flows = append(flows, basicFlow)
 		}
@@ -124,6 +127,27 @@ func (f *fileBasedStore) ownedFlows(ctx context.Context, ouID, flowType string) 
 		}
 	}
 	return owned, nil
+}
+
+// ListFlowsByProject implements flowStoreInterface.
+func (f *fileBasedStore) ListFlowsByProject(ctx context.Context, projectID, ouID string, limit, offset int,
+	flowType string) ([]BasicFlowDefinition, int, error) {
+	all, _, err := f.ListFlows(ctx, int(^uint(0)>>1), 0, flowType)
+	if err != nil {
+		return nil, 0, err
+	}
+	flows := make([]BasicFlowDefinition, 0)
+	for _, flow := range all {
+		if flow.ProjectID == projectID && (ouID == "" || flow.OUID == ouID) {
+			flows = append(flows, flow)
+		}
+	}
+
+	total := len(flows)
+	if offset >= total {
+		return []BasicFlowDefinition{}, total, nil
+	}
+	return flows[offset:min(offset+limit, total)], total, nil
 }
 
 // ListFlowsByIDs implements flowStoreInterface.

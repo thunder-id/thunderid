@@ -7,12 +7,12 @@ import AccessChangeValidatorProperties from './execution-properties/AccessChange
 import AgentTypeResolverProperties from './execution-properties/AgentTypeResolverProperties';
 import ConsentProperties from './execution-properties/ConsentProperties';
 import {EXECUTOR_TO_IDP_TYPE_MAP, EXECUTORS_WITH_FIXED_INPUTS} from './execution-properties/constants';
+import CredentialSetterProperties from './execution-properties/CredentialSetterProperties';
 import CriteriaRevocationProperties from './execution-properties/CriteriaRevocationProperties';
 import EmailProperties from './execution-properties/EmailProperties';
 import ExecutorInputsEditor from './execution-properties/ExecutorInputsEditor';
 import ExtensionProperties from './execution-properties/ExtensionProperties';
 import FederationProperties from './execution-properties/FederationProperties';
-import GroupExecutorProperties from './execution-properties/GroupExecutorProperties';
 import HttpRequestProperties from './execution-properties/HttpRequestProperties';
 import IdentifyingProperties from './execution-properties/IdentifyingProperties';
 import IdentityGovernanceProperties from './execution-properties/IdentityGovernanceProperties';
@@ -25,10 +25,10 @@ import OUExecutorProperties from './execution-properties/OUExecutorProperties';
 import OUResolverProperties from './execution-properties/OUResolverProperties';
 import PasskeyProperties from './execution-properties/PasskeyProperties';
 import PermissionValidatorProperties from './execution-properties/PermissionValidatorProperties';
-import PreDeleteProperties from './execution-properties/PreDeleteProperties';
 import ProvisioningProperties from './execution-properties/ProvisioningProperties';
 import RoleExecutorProperties from './execution-properties/RoleExecutorProperties';
 import SessionSignOutProperties from './execution-properties/SessionSignOutProperties';
+import SharingExecutorProperties from './execution-properties/SharingExecutorProperties';
 import SmsProperties from './execution-properties/SmsProperties';
 import SsoCheckProperties from './execution-properties/SsoCheckProperties';
 import UserTypeResolverProperties from './execution-properties/UserTypeResolverProperties';
@@ -72,7 +72,11 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
     return null;
   }
 
-  const showInputsEditor = !EXECUTORS_WITH_FIXED_INPUTS.has(executorName);
+  // Record Verification acts on the pin alone; Prepare Verification takes the attribute input.
+  const showInputsEditor =
+    executorName === ExecutionTypes.AttributeVerification
+      ? (resource?.data as StepData | undefined)?.action?.executor?.['mode'] === 'prepare'
+      : !EXECUTORS_WITH_FIXED_INPUTS.has(executorName);
 
   let executorSpecificProperties: ReactNode = null;
 
@@ -104,9 +108,6 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
     case ExecutionTypes.PermissionValidator:
       executorSpecificProperties = <PermissionValidatorProperties resource={resource} onChange={onChange} />;
       break;
-    case ExecutionTypes.PreDelete:
-      executorSpecificProperties = <PreDeleteProperties resource={resource} onChange={onChange} />;
-      break;
     case ExecutionTypes.CriteriaRevocation:
       executorSpecificProperties = <CriteriaRevocationProperties resource={resource} onChange={onChange} />;
       break;
@@ -116,8 +117,8 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
     case ExecutionTypes.RoleExecutor:
       executorSpecificProperties = <RoleExecutorProperties resource={resource} onChange={onChange} />;
       break;
-    case ExecutionTypes.GroupExecutor:
-      executorSpecificProperties = <GroupExecutorProperties resource={resource} onChange={onChange} />;
+    case ExecutionTypes.SharingExecutor:
+      executorSpecificProperties = <SharingExecutorProperties resource={resource} onChange={onChange} />;
       break;
     case ExecutionTypes.IdentityGovernance:
       executorSpecificProperties = <IdentityGovernanceProperties resource={resource} onChange={onChange} />;
@@ -152,12 +153,15 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
     case ExecutionTypes.SessionSignOut:
       executorSpecificProperties = <SessionSignOutProperties resource={resource} onChange={onChange} />;
       break;
-    case ExecutionTypes.AttributeUniquenessValidator:
     case ExecutionTypes.CredentialSetter:
+      executorSpecificProperties = <CredentialSetterProperties resource={resource} onChange={onChange} />;
+      break;
+    case ExecutionTypes.AttributeUniquenessValidator:
     case ExecutionTypes.PreSuspend:
     case ExecutionTypes.Session:
     case ExecutionTypes.OwnerResolver:
     case ExecutionTypes.AccountLinking:
+    case ExecutionTypes.AttributeVerification:
       executorSpecificProperties = <NoConfigProperties />;
       break;
     default:

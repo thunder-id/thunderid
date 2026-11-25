@@ -13,14 +13,18 @@ vi.mock('../start/Start', () => ({
 
 // Mock the Variables component
 vi.mock('../variables/Variables', () => ({
-  default: ({id}: {id: string}) => <div data-testid="variables-component">{id}</div>,
+  default: ({id, data}: {id: string; data?: {inputs?: unknown[]}}) => (
+    <div data-testid="variables-component">
+      {id}:{data?.inputs?.length ?? 0}
+    </div>
+  ),
 }));
 
 describe('CommonStaticStepFactory', () => {
-  it('should render the Variables placeholder with the id of its node', () => {
-    render(<CommonStaticStepFactory type={StaticStepTypes.Variables} id="vars" />);
+  it('should render the Variables node with the id and the declarations of its node', () => {
+    render(<CommonStaticStepFactory type={StaticStepTypes.Variables} id="vars" data={{inputs: [{identifier: 'a'}]}} />);
 
-    expect(screen.getByTestId('variables-component')).toHaveTextContent('vars');
+    expect(screen.getByTestId('variables-component')).toHaveTextContent('vars:1');
   });
 
   it('should render Start component when type is StaticStepTypes.Start', () => {

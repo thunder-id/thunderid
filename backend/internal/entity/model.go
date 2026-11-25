@@ -6,6 +6,7 @@ package entity
 
 import (
 	"encoding/json"
+	"time"
 
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -106,4 +107,21 @@ type entityRuntimeData struct {
 	State      providers.EntityState
 	Attributes json.RawMessage
 	Revision   int64
+}
+
+// clearedVerification names a verified attribute a write invalidated.
+type clearedVerification struct {
+	attribute string
+	reason    verificationInvalidationReason
+}
+
+// AttributeVerificationRecord is a verification to record: the attribute of an entity of the given category and type,
+// the canonical value it was proved for, and when.
+type AttributeVerificationRecord struct {
+	EntityID       string
+	EntityCategory providers.EntityCategory
+	EntityType     string
+	Attribute      string
+	Value          string
+	VerifiedAt     time.Time
 }

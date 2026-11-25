@@ -1,6 +1,7 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen, waitFor, within, userEvent} from '@thunderid/test-utils';
 import type {User} from '@thunderid/types';
 import type {ReactNode} from 'react';
@@ -163,6 +164,14 @@ vi.mock('@/components/edit-user/AttributesSummarySection', () => ({
   default: () => <div data-testid="attributes-summary" />,
 }));
 
+vi.mock('@/components/edit-user/UserRolesSection', () => ({
+  default: ({userId}: {userId: string}) => <div data-testid="user-roles" data-user-id={userId} />,
+}));
+
+vi.mock('@/components/edit-user/OwnedAgentsSection', () => ({
+  default: ({userId}: {userId: string}) => <div data-testid="owned-agents" data-user-id={userId} />,
+}));
+
 vi.mock('@/components/edit-user/EditUserAttributes', () => ({
   default: ({onFieldChange}: {onFieldChange: (field: string, value: unknown) => void}) => {
     stagingCallbackIdentities.add(onFieldChange);
@@ -203,12 +212,32 @@ vi.mock('@thunderid/configure-resource-sharing', () => ({
 }));
 
 vi.mock('@/components/edit-user/CredentialsTabPanel', () => ({
-  default: ({userId, credentialFields}: {userId: string; credentialFields: {fieldName: string}[]}) => (
-    <div data-testid="credentials-tab-panel" data-user-id={userId}>
+  default: ({
+    userId,
+    credentialFields,
+    resetLinkFieldNames = [],
+    accessStatus = undefined,
+  }: {
+    userId: string;
+    credentialFields: {fieldName: string}[];
+    resetLinkFieldNames?: string[];
+    accessStatus?: string;
+  }) => (
+    <div
+      data-testid="credentials-tab-panel"
+      data-user-id={userId}
+      data-reset-link-fields={resetLinkFieldNames.join(',')}
+      data-access-status={accessStatus ?? ''}
+    >
       {credentialFields.map((field) => field.fieldName).join(',')}
     </div>
   ),
 }));
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  isLoading: false,
+};
 
 describe('UserEditPage', () => {
   const mockUserData: User = {
@@ -296,6 +325,57 @@ describe('UserEditPage', () => {
     // A fresh object per call, like useMutation. A stable stand-in hides identity churn.
     mockUseUpdateUser.mockImplementation(() => ({...defaultUpdateReturn}));
     mockUseDeleteUser.mockReturnValue({...defaultDeleteReturn});
+  });
+
+  describe('inside a project', () => {
+    it('returns to the list for a user of another project', async () => {
+      mockUseGetUser.mockReturnValue({
+        data: {...mockUserData, projectId: 'project-2'},
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      });
+
+      render(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <UserEditPage />
+        </ProjectScopeProvider>,
+      );
+
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith('/users', {replace: true});
+      });
+    });
+
+    it('returns to the list for a user of the organization', async () => {
+      render(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <UserEditPage />
+        </ProjectScopeProvider>,
+      );
+
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith('/users', {replace: true});
+      });
+    });
+
+    it('shows a user of the selected project', () => {
+      mockUseGetUser.mockReturnValue({
+        data: {...mockUserData, projectId: 'project-1'},
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      });
+
+      render(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <UserEditPage />
+        </ProjectScopeProvider>,
+      );
+
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+      expect(mockNavigate).not.toHaveBeenCalledWith('/users', {replace: true});
+    });
   });
 
   describe('Loading and Error States', () => {
@@ -616,6 +696,8 @@ describe('UserEditPage', () => {
       expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
         'General',
         'Attributes',
+        'Roles',
+        'Agents',
         'Affiliations',
         'Advanced',
       ]);
@@ -624,12 +706,50 @@ describe('UserEditPage', () => {
       expect(screen.getByRole('button', {name: /^delete$/i})).toBeInTheDocument();
     });
 
+    it("shows the user's roles on the Roles tab", async () => {
+      const user = userEvent.setup();
+      render(<UserEditPage />);
+
+      expect(screen.queryByTestId('user-roles')).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('tab', {name: 'Roles'}));
+      expect(screen.getByTestId('user-roles')).toHaveAttribute('data-user-id', 'user123');
+    });
+
+    it('omits the Advanced tab and disables Save when the admin may only view users', async () => {
+      const user = userEvent.setup();
+      render(
+        <CapabilitiesProvider capabilities={viewOnly}>
+          <UserEditPage />
+        </CapabilitiesProvider>,
+      );
+
+      expect(screen.queryByRole('tab', {name: 'Advanced'})).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('tab', {name: 'Attributes'}));
+      await user.click(screen.getByText('Edit an attribute'));
+      expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+    });
+
     it('shows the read-only attributes summary and QuickCopy on the General tab', () => {
       render(<UserEditPage />);
 
       expect(screen.getByTestId('quick-copy')).toBeInTheDocument();
       expect(screen.getByTestId('attributes-summary')).toBeInTheDocument();
       expect(screen.queryByTestId('edit-user-attributes')).not.toBeInTheDocument();
+    });
+
+    it("lists the user's owned agents on an Agents tab before Affiliations", async () => {
+      const user = userEvent.setup();
+      render(<UserEditPage />);
+
+      const names = screen.getAllByRole('tab').map((tab) => tab.textContent);
+      expect(names.indexOf('Agents')).toBe(names.indexOf('Affiliations') - 1);
+      expect(screen.queryByTestId('owned-agents')).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('tab', {name: 'Agents'}));
+
+      expect(screen.getByTestId('owned-agents')).toHaveAttribute('data-user-id', 'user123');
     });
 
     it('navigates back when Back button is clicked', async () => {
@@ -1012,6 +1132,8 @@ describe('UserEditPage', () => {
         'General',
         'Attributes',
         'Credentials',
+        'Roles',
+        'Agents',
         'Affiliations',
         'Advanced',
       ]);
@@ -1068,6 +1190,34 @@ describe('UserEditPage', () => {
       const panel = screen.getByTestId('credentials-tab-panel');
       expect(panel).toHaveAttribute('data-user-id', 'user123');
       expect(panel).toHaveTextContent('password,pin');
+    });
+
+    // The flow resets only a text credential, so a number credential gets no reset link.
+    it('offers a reset link only for text credentials, and passes the access status', async () => {
+      const user = userEvent.setup();
+      mockUseGetUser.mockReturnValue({
+        data: {...mockUserData, status: {value: 'SUSPENDED'}},
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      });
+      mockUseGetUserType.mockReturnValue({
+        data: {
+          ...schemaWithCredentials,
+          schema: {...schemaWithCredentials.schema, pin: {type: 'number', credential: true}},
+        },
+        isLoading: false,
+        error: null,
+      });
+
+      render(<UserEditPage />);
+
+      await user.click(screen.getByRole('tab', {name: 'Credentials'}));
+
+      const panel = screen.getByTestId('credentials-tab-panel');
+      expect(panel).toHaveTextContent('password,pin');
+      expect(panel).toHaveAttribute('data-reset-link-fields', 'password');
+      expect(panel).toHaveAttribute('data-access-status', 'SUSPENDED');
     });
   });
 

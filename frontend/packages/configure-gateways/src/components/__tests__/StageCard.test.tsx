@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {render, screen, userEvent} from '@thunderid/test-utils';
 import {describe, expect, it, vi} from 'vitest';
 import StageCard, {type StageCardProps} from '../StageCard';
@@ -17,6 +18,66 @@ function renderStage(props: Partial<StageCardProps>): void {
     />,
   );
 }
+
+describe('StageCard refused resources', () => {
+  it('says how many resources the stage refused, naming them on hover', async () => {
+    renderStage({
+      refused: [
+        {key: 'application/app-2', resourceType: 'application', id: 'app-2', name: 'Billing', state: 'failed'},
+        {key: 'flow/f-9', resourceType: 'flow', id: 'f-9', state: 'failed'},
+      ],
+    });
+
+    const refused = screen.getByTestId('stage-refused');
+    expect(refused).toHaveTextContent('2 refused, not running');
+    await userEvent.hover(refused);
+    expect(await screen.findByText('Billing, f-9')).toBeInTheDocument();
+  });
+
+  it("offers to configure the gateway's values to an admin who can view them", () => {
+    render(
+      <CapabilitiesProvider
+        capabilities={{
+          can: (resource, action = 'view') =>
+            action === 'view' && (resource === 'gatewayvariable' || resource === 'gatewaysecret'),
+          isLoading: false,
+        }}
+      >
+        <StageCard name="Staging" version={{number: 3, hash: 'abc123'}} onExplore={vi.fn()} onConfigure={vi.fn()} />
+      </CapabilitiesProvider>,
+    );
+    expect(screen.getByRole('button', {name: 'Configure'})).toBeInTheDocument();
+  });
+
+  it("hides Configure from an admin who cannot view the gateway's secrets", () => {
+    render(
+      <CapabilitiesProvider capabilities={{can: (resource) => resource !== 'gatewaysecret', isLoading: false}}>
+        <StageCard name="Staging" version={{number: 3, hash: 'abc123'}} onExplore={vi.fn()} onConfigure={vi.fn()} />
+      </CapabilitiesProvider>,
+    );
+    expect(screen.queryByRole('button', {name: 'Configure'})).not.toBeInTheDocument();
+  });
+
+  it('says nothing of refusals when there are none', () => {
+    renderStage({refused: []});
+
+    expect(screen.queryByTestId('stage-refused')).not.toBeInTheDocument();
+  });
+});
+
+describe('StageCard partly applied version', () => {
+  it('says how much of the version the stage holds when a deploy applied it in part', () => {
+    renderStage({partial: {held: 3, total: 5}});
+
+    expect(screen.getByTestId('stage-partial')).toHaveTextContent('v3 partly applied: 3 of 5 resources');
+  });
+
+  it('says nothing of it when the stage holds the version whole', () => {
+    renderStage({});
+
+    expect(screen.queryByTestId('stage-partial')).not.toBeInTheDocument();
+  });
+});
 
 describe('StageCard redeploy', () => {
   it('offers a redeploy while values changed since the deploy', () => {

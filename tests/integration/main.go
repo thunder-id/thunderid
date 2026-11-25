@@ -42,7 +42,7 @@ var (
 
 func main() {
 	parseFlags()
-	controlPlane = os.Getenv("INTEGRATION_PLANE") == "control"
+	controlPlane = testutils.IsControlPlaneRun()
 
 	// The external services the tests stand in for run once for the whole run, shared by every group.
 	if testutils.TestGroup() == "" {
@@ -52,6 +52,15 @@ func main() {
 			os.Exit(1)
 		}
 		defer stopMockServices()
+	}
+	if testutils.IsPackRun() {
+		if shouldRunGroups() {
+			os.Exit(runGroups())
+		}
+		if code := runPack(); code != 0 {
+			os.Exit(code)
+		}
+		return
 	}
 	if shouldRunGroups() {
 		os.Exit(runGroups())
@@ -200,7 +209,8 @@ func parseFlags() {
 
 // useTrustedIssuerTokens makes the trusted issuer's tokens the ones the Control Plane suites send:
 // one carrying the system scope for every test client, one without it for the test that it is
-// refused, and one for a user the issuer's user endpoint does not know.
+// refused, one for a user the issuer's user endpoint does not know, one for each child permission
+// of system in ControlPlaneChildScopes, and the ones the MCP endpoint's tests send.
 func useTrustedIssuerTokens(issuer *testutils.TrustedIssuer) error {
 	admin, err := testutils.IssueManagementToken(issuer, "system", managementTokenLifetime)
 	if err != nil {
@@ -221,7 +231,43 @@ func useTrustedIssuerTokens(issuer *testutils.TrustedIssuer) error {
 	if err != nil {
 		return err
 	}
-	return os.Setenv(testutils.StrangerTokenEnv, stranger)
+	if err := os.Setenv(testutils.StrangerTokenEnv, stranger); err != nil {
+		return err
+	}
+	for _, scope := range testutils.ControlPlaneChildScopes {
+		token, err := testutils.IssueManagementToken(issuer, scope, managementTokenLifetime)
+		if err != nil {
+			return err
+		}
+		if err := os.Setenv(testutils.ControlPlaneScopedTokenEnv(scope), token); err != nil {
+			return err
+		}
+	}
+
+	now := time.Now()
+	mcp := testutils.MCPResource()
+	mcpTokens := []struct {
+		env                 string
+		audience            any
+		scope               string
+		issuedAt, expiresAt time.Time
+	}{
+		{testutils.MCPScopedTokenEnv, mcp, "system", now, now.Add(managementTokenLifetime)},
+		{testutils.MCPUnscopedTokenEnv, mcp, "", now, now.Add(managementTokenLifetime)},
+		{testutils.MCPExpiredTokenEnv, mcp, "system", now.Add(-2 * time.Hour), now.Add(-time.Hour)},
+		{testutils.OtherResourceTokenEnv, testutils.OtherResource, "system", now, now.Add(managementTokenLifetime)},
+	}
+	for _, t := range mcpTokens {
+		token, err := testutils.IssueToken(issuer, t.audience, testutils.TrustedIssuerAdminSubject, t.scope,
+			t.issuedAt, t.expiresAt)
+		if err != nil {
+			return err
+		}
+		if err := os.Setenv(t.env, token); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func initTests() {
@@ -288,6 +334,26 @@ func cleanTestCache() error {
 // goTestCommand builds the go test run of the given packages against this run's server, with
 // gotestsum when it is installed.
 func goTestCommand(filter []string, packages []string) *exec.Cmd {
+	cmd := newGoTestCommand(filter, packages)
+	if testutils.IsPackRun() {
+		cmd.Env = append(os.Environ(), testutils.PackEnv()...)
+		return cmd
+	}
+
+	// Export test-context state so that test subprocesses can self-initialize
+	// via ensureInitialized() without requiring an explicit InitializeTestContext call.
+	cmd.Env = append(os.Environ(),
+		"SERVER_EXTRACTED_HOME="+testutils.GetExtractedProductHome(),
+		"SERVER_PORT="+serverPort,
+		"ZIP_PATTERN="+zipFilePattern,
+		"SERVER_PID="+strconv.Itoa(testutils.GetServerPID()),
+	)
+	return cmd
+}
+
+// newGoTestCommand builds the go test run of the given packages, with gotestsum when it is installed,
+// leaving its environment for the caller to set.
+func newGoTestCommand(filter []string, packages []string) *exec.Cmd {
 	var cmdName string
 	var args []string
 
@@ -306,15 +372,6 @@ func goTestCommand(filter []string, packages []string) *exec.Cmd {
 	cmd := exec.Command(cmdName, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-
-	// Export test-context state so that test subprocesses can self-initialize
-	// via ensureInitialized() without requiring an explicit InitializeTestContext call.
-	cmd.Env = append(os.Environ(),
-		"SERVER_EXTRACTED_HOME="+testutils.GetExtractedProductHome(),
-		"SERVER_PORT="+serverPort,
-		"ZIP_PATTERN="+zipFilePattern,
-		"SERVER_PID="+strconv.Itoa(testutils.GetServerPID()),
-	)
 	return cmd
 }
 
@@ -327,17 +384,33 @@ func packagesToTest() ([]string, error) {
 	if controlPlane {
 		return []string{controlPlanePackages}, nil
 	}
+	if testutils.IsPackRun() {
+		return packTestPackages()
+	}
 	out, err := exec.Command("go", "list", "./...").Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list test packages: %w", err)
 	}
-	controlPlaneRoot := strings.TrimSuffix(strings.TrimPrefix(controlPlanePackages, "."), "/...")
+	var otherPlaneRoots []string
+	for _, planePackages := range []string{controlPlanePackages, packPackages} {
+		otherPlaneRoots = append(otherPlaneRoots, strings.TrimSuffix(strings.TrimPrefix(planePackages, "."), "/..."))
+	}
 	var packages []string
 	for _, pkg := range strings.Fields(string(out)) {
-		if strings.HasSuffix(pkg, controlPlaneRoot) || strings.Contains(pkg, controlPlaneRoot+"/") {
+		if inAnyRoot(pkg, otherPlaneRoots) {
 			continue
 		}
 		packages = append(packages, pkg)
 	}
 	return packages, nil
+}
+
+// inAnyRoot reports whether a package is one of the roots or below one.
+func inAnyRoot(pkg string, roots []string) bool {
+	for _, root := range roots {
+		if strings.HasSuffix(pkg, root) || strings.Contains(pkg, root+"/") {
+			return true
+		}
+	}
+	return false
 }

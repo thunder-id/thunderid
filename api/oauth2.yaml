@@ -53,7 +53,7 @@ paths:
         instead of the inline query parameters.
       tags:
         - Authorization
-      parameters:
+      parameters: &authorizeQueryParameters
         - name: response_type
           in: query
           required: true
@@ -173,6 +173,46 @@ paths:
               schema:
                 $ref: '#/components/schemas/OAuthError'
 
+  /ou/{ouId}/oauth2/authorize:
+    parameters:
+      - name: ouId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Identifier of the organization unit to sign in to.
+    get:
+      summary: Authorization endpoint for an organization unit
+      description: |
+        The authorization endpoint with the sign-in bounded to the organization unit in the path:
+        the user signs in to that organization unit, and the application must be accessible from it.
+        Takes the same query parameters and answers as `/oauth2/authorize`. Served only when the
+        deployment enables organization-unit-qualified endpoints.
+
+        An organization unit the application is not accessible from, and one that does not exist,
+        are both redirected to the client with the same `unauthorized_client` error, so the answer
+        does not reveal which organization units exist.
+      tags:
+        - Authorization
+      parameters: *authorizeQueryParameters
+      responses:
+        "302":
+          description: >-
+            Redirect to the login page, or to the client redirect_uri on error, including an
+            organization unit the application is not accessible from or that does not exist.
+          headers:
+            Location:
+              schema:
+                type: string
+        "400":
+          description: >-
+            Bad Request: malformed or duplicate query parameters, or a blank organization unit
+            (`invalid_request`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+
   /oauth2/auth/callback:
     post:
       summary: Authorization callback
@@ -189,9 +229,13 @@ paths:
         The caller also posts, in `sessionData`, the SSO sessions the flow's responses returned, from
         every response of the flow and not only the last one. When the authorization request asked for
         the `device_sso` scope, the code keeps the posted sessions, up to ten, and the code exchange
-        returns them in `device_secret`. They are kept as posted; a token exchange that presents them
-        checks they are the user's. An entry with a missing field, or a field longer than 128
-        characters, is ignored and does not fail the sign-in. The request body is limited to 1 MiB.
+        returns them in `device_secret`. For the Device Code type, the device authorization request
+        keeps them the same way and the device's token response returns them. They are kept as posted;
+        a token exchange that presents them checks they are the user's. An entry with a missing field,
+        or a field longer than 128 characters, is ignored and does not fail the sign-in. When every
+        kept session carries its `expiresIn`, the device secret ends when the last of them does, never
+        later than the session absolute timeout, and none is returned when every session has ended. The
+        request body is limited to 1 MiB.
       tags:
         - Authorization
       requestBody:
@@ -311,7 +355,7 @@ paths:
 
         Token exchange additionally supports requesting an Identity Assertion Authorization Grant (ID-JAG) by setting `requested_token_type` to `urn:ietf:params:oauth:token-type:id-jag`, with `subject_token_type` set to `urn:ietf:params:oauth:token-type:id_token` and a single required `audience` value matching one of the client's configured `allowedAudiences`. The `resource` parameter is optional and, when present, is embedded in the issued ID-JAG for the resource authorization server to process. The ID-JAG also carries the subject ID token's claims that the client's `token.idToken.userAttributes` lists, except `roles`, `groups`, and the claims the ID-JAG defines itself. Requires the client to be confidential and to have ID-JAG issuance enabled (`token.idJag.enabled`) on its OAuth configuration. The response has `issued_token_type=urn:ietf:params:oauth:token-type:id-jag` and `token_type=N_A`, since the issued value is a JWT authorization grant rather than an access token.
 
-        Token exchange also signs a user in to another application with an SSO session they already hold (back-channel SSO). The `subject_token` is the `device_secret` a code exchange returned, with `subject_token_type` set to `urn:ietf:params:oauth:token-type:jwt`; its `sso-session+jwt` type header selects this path. The calling client's authentication flow runs silently on the session it carries for that client's login flow, as `prompt=none` does at the authorization endpoint, so it only succeeds for a client whose login flow is one of the sessions'. The response carries the tokens the authorization code grant would give: an access token, an ID token when `openid` is in `scope`, and a refresh token when the client allows the `refresh_token` grant; all belong to the same session. `scope` and a single `resource` select what is requested, `actor_token` is not accepted, and `requested_token_type` may only be an access token. Public clients may use it. A flow that cannot complete without the user, or a session that has ended or belongs to another flow, is answered with `interaction_required`; a session of another user than the device secret's `sub` with `invalid_grant`.
+        Token exchange also signs a user in to another application with an SSO session they already hold (back-channel SSO). The `subject_token` is the `device_secret` a code exchange or a device code token response returned, with `subject_token_type` set to `urn:ietf:params:oauth:token-type:jwt`; its `sso-session+jwt` type header selects this path. The calling client's authentication flow runs silently on the session it carries for that client's login flow, as `prompt=none` does at the authorization endpoint, so it only succeeds for a client whose login flow is one of the sessions'. The response carries the tokens the authorization code grant would give: an access token, an ID token when `openid` is in `scope`, and a refresh token when the client allows the `refresh_token` grant; all belong to the same session. `scope` and a single `resource` select what is requested, `actor_token` is not accepted, and `requested_token_type` may only be an access token. Public clients may use it. A flow that cannot complete without the user, or a session that has ended or belongs to another flow, is answered with `interaction_required`; a session of another user than the device secret's `sub` with `invalid_grant`. For a shared application, a flow that decides no organization unit before it reuses the session follows the one the user last signed in to with that session, when the user can sign in to the application there; otherwise the flow needs the user, and the exchange is answered with `interaction_required`. A sign-in the organization unit boundary refuses, because the flow decided no organization unit or the user is not in the one it decided, is also answered with `invalid_grant`, with the description `The subject cannot sign in to this application`. The same exchange on `/ou/{ouId}/oauth2/token` signs the user in to that organization unit.
 
         The `urn:ietf:params:oauth:grant-type:jwt-bearer` grant presents an ID-JAG assertion (obtained from a trusted external IdP) via the required `assertion` parameter, and exchanges it for a ThunderID access token. Optional `scope` and `resource` parameters further narrow the granted scopes and audience; `resource` must be a subset of the assertion's own `resource` claim when the assertion carries one. No refresh token is issued for this grant.
       tags:
@@ -383,6 +427,71 @@ paths:
                     error_description: "The device authorization request has expired"
         "401":
           description: Unauthorized — client authentication failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+
+  /ou/{ouId}/oauth2/token:
+    parameters:
+      - name: ouId
+        in: path
+        required: true
+        schema:
+          type: string
+        description: Identifier of the organization unit the request acts for.
+    post:
+      summary: Token endpoint for an organization unit
+      description: |
+        The token endpoint acting for the organization unit in the path. Served only when the deployment enables organization-unit-qualified endpoints. The client authenticates as on `/oauth2/token` and must be accessible from the organization unit. An organization unit the client is not accessible from, and one that does not exist, are both answered with the same `unauthorized_client` error, so the answer does not reveal which organization units exist.
+
+        Three grants act for an organization unit, with the same request parameters as on `/oauth2/token`:
+
+        - `client_credentials` issues the client a token for the organization unit.
+        - `authorization_code` redeems a code whose sign-in landed in the organization unit, such as one issued through `/ou/{ouId}/oauth2/authorize`. The sign-in records its organization unit only when the client's token configuration asks for the `ouId` attribute, so a code without it, or one for another organization unit, is answered with `invalid_grant` and the description `The authorization code was not issued for the requested organization unit`. `/oauth2/token` redeems either code.
+        - `urn:ietf:params:oauth:grant-type:token-exchange` with a device secret as the `subject_token` (`subject_token_type` `urn:ietf:params:oauth:token-type:jwt` and the `sso-session+jwt` type header) signs the user in to the organization unit. The client's authentication flow runs silently on the session, as it does on `/oauth2/token`, with the sign-in bounded to the organization unit: the `ouId` claim the tokens carry is the organization unit's, and the roles and permissions are those assigned there. A user who cannot sign in to the organization unit is answered with `invalid_grant`.
+
+        Every other grant, and a token exchange whose subject token is not a device secret, is refused with `invalid_request`.
+      tags:
+        - Token
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+      responses:
+        "200":
+          description: Token issued successfully.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              description: Always `no-store`.
+            Pragma:
+              schema:
+                type: string
+              description: Always `no-cache`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        "400":
+          description: >-
+            Bad Request: a grant the organization unit endpoint does not serve (`invalid_request`), an
+            organization unit the client is not accessible from or that does not exist
+            (`unauthorized_client`), an authorization code not issued for the organization unit
+            (`invalid_grant`), a device secret whose user cannot sign in to it (`interaction_required`), or any
+            error `/oauth2/token` gives for the same request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+              example:
+                error: "invalid_grant"
+                error_description: "The authorization code was not issued for the requested organization unit"
+        "401":
+          description: "Unauthorized: client authentication failed."
           content:
             application/json:
               schema:
@@ -649,7 +758,7 @@ paths:
                 type: string
                 description: Signed (JWS) or encrypted (JWE) UserInfo response.
         "401":
-          description: Unauthorized — missing or invalid Bearer token.
+          description: Unauthorized — missing or invalid Bearer token, or a token for an external identity provider's subject (one that carries `idp`).
           headers:
             WWW-Authenticate:
               schema:
@@ -688,7 +797,7 @@ paths:
               schema:
                 type: string
         "401":
-          description: Unauthorized — missing or invalid Bearer token.
+          description: Unauthorized — missing or invalid Bearer token, or a token for an external identity provider's subject (one that carries `idp`).
         "403":
           description: Forbidden — token scope is insufficient.
         "500":
@@ -743,7 +852,7 @@ paths:
                 $ref: '#/components/schemas/DCRRegistrationResponse'
               example:
                 client_id: "s6BhdRkqt3"
-                client_secret: "ZJYCqe3GGRvdrudKyZS0XhGv_Z45DuKhCUk0gBR1vZk"
+                client_secret: "<client_secret>"
                 client_secret_expires_at: 0
                 client_name: "My App"
                 redirect_uris:
@@ -760,8 +869,20 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OAuthError'
+              examples:
+                missing_id_token_encryption_alg:
+                  summary: Missing ID token encryption algorithm
+                  value:
+                    error: invalid_client_metadata
+                    error_description: idToken encryptionAlg is required when encryptionEnc is set
         "401":
           description: Unauthorized — missing or insufficient access token (when DCR is not insecure).
+          headers:
+            WWW-Authenticate:
+              description: '`Bearer` when no token was sent, `Bearer error="invalid_token"` when a token was sent.'
+              schema:
+                type: string
+              example: 'Bearer error="invalid_token"'
           content:
             application/json:
               schema:
@@ -807,6 +928,12 @@ paths:
                 $ref: '#/components/schemas/DCRRegistrationResponse'
         "401":
           description: Unauthorized, the caller does not hold the required system-level permission.
+          headers:
+            WWW-Authenticate:
+              description: '`Bearer` when no token was sent, `Bearer error="invalid_token"` when a token was sent.'
+              schema:
+                type: string
+              example: 'Bearer error="invalid_token"'
           content:
             application/json:
               schema:
@@ -871,6 +998,12 @@ paths:
                 $ref: '#/components/schemas/OAuthError'
         "401":
           description: Unauthorized, the caller does not hold the required system-level permission.
+          headers:
+            WWW-Authenticate:
+              description: '`Bearer` when no token was sent, `Bearer error="invalid_token"` when a token was sent.'
+              schema:
+                type: string
+              example: 'Bearer error="invalid_token"'
           content:
             application/json:
               schema:
@@ -897,6 +1030,12 @@ paths:
           description: Client registration deleted.
         "401":
           description: Unauthorized, the caller does not hold the required system-level permission.
+          headers:
+            WWW-Authenticate:
+              description: '`Bearer` when no token was sent, `Bearer error="invalid_token"` when a token was sent.'
+              schema:
+                type: string
+              example: 'Bearer error="invalid_token"'
           content:
             application/json:
               schema:
@@ -1101,7 +1240,7 @@ components:
             - urn:ietf:params:oauth:grant-type:device_code
         sessionData:
           type: array
-          description: The SSO sessions the flow's responses returned, as the flow execution API's `sessionData` has them. The code keeps them, up to ten, for the `device_sso` scope. An entry with a missing field, or a field longer than 128 characters, is ignored.
+          description: The SSO sessions the flow's responses returned, as the flow execution API's `sessionData` has them. The code, or the device authorization request, keeps them, up to ten, for the `device_sso` scope. An entry with a missing field, or a field longer than 128 characters, is ignored.
           items:
             type: object
             properties:
@@ -1111,6 +1250,14 @@ components:
               sessionHandle:
                 type: string
                 description: The session handle.
+              expiresIn:
+                type: integer
+                format: int64
+                description: >-
+                  Whole seconds the session has left, from the flow execution API's `expiresIn` for it,
+                  less the time since it was returned. Optional. Zero or less means the session has
+                  ended. A session without it leaves the device secret lasting the session absolute
+                  timeout.
 
     AuthCallbackResponse:
       type: object
@@ -1230,8 +1377,8 @@ components:
         subject_token_type:
           type: string
           description: >-
-            The type URI of the subject token. A device secret (`device_secret` from a code exchange)
-            is sent as `urn:ietf:params:oauth:token-type:jwt`.
+            The type URI of the subject token. A device secret (`device_secret` from a code exchange or a
+            device code token response) is sent as `urn:ietf:params:oauth:token-type:jwt`.
         actor_token:
           type: string
           description: The actor token for token exchange (RFC 8693).
@@ -1322,16 +1469,20 @@ components:
         device_secret:
           type: string
           description: >-
-            The SSO sessions the callback posted for the authorization code (authorization code grant
-            only). Returned only when the authorization request asked for the `device_sso` scope and the
-            callback posted sessions, so a sign-in that reused an existing session, which returns none
-            to post, gets none. A JWT signed by the server and typed `sso-session+jwt`. Its `aud` is
-            this server, since it is presented back here as a token exchange `subject_token`; its `sub`
-            is the resource ID of the user who signed in, not the application's token subject, so it
-            is the same for every application; its `exp` the session absolute timeout from now, and its
-            `session_data` claim lists the sessions as `flow_identifier` and `session_handle` pairs, as
-            the flow execution API's `sessionData` does. The handles resume the sessions, so keep it as
-            secret as a credential.
+            The SSO sessions the callback posted for the authorization code or the device authorization
+            request (authorization code and Device Code grants only). Returned only when the authorization
+            request, or the device authorization request, asked for the `device_sso` scope and at least
+            one posted session was kept. A sign-in returns its session to post whether it started the
+            session or reused it. For an authorization code, it is not returned when every posted
+            session's `expiresIn` said it has ended, even though the granted scope still lists
+            `device_sso`. A JWT signed by the server and typed `sso-session+jwt`. Its `aud` is this
+            server, since it is presented back here as a token exchange `subject_token`; its `sub` is the
+            resource ID of the user who signed in, not the application's token subject, so it is the same
+            for every application; its `exp` the session absolute timeout from now, unless the sessions
+            were posted for an authorization code and every one carried `expiresIn`, in which case when
+            the last of them ends; and its `session_data` claim lists the sessions as `flow_identifier`
+            and `session_handle` pairs, as the flow execution API's `sessionData` does. The handles resume
+            the sessions, so keep it as secret as a credential.
 
     PARRequest:
       type: object
@@ -1435,6 +1586,9 @@ components:
           type: string
         token_type:
           type: string
+          enum: [Bearer, DPoP]
+          description: |
+            `DPoP` when the token is bound to a DPoP key (RFC 9449), otherwise `Bearer`.
         exp:
           type: integer
           format: int64
@@ -1453,6 +1607,12 @@ components:
             Identity class of the token subject. Present on tokens issued through the
             `client_credentials` grant, where the OAuth client itself is the subject, so a resource
             server can apply policy that differs by class. Absent for user-subject tokens.
+        idp:
+          type: string
+          description: |
+            Issuer of the external identity provider whose identifier `sub` is. Present on tokens
+            issued for an external subject, through the `jwt-bearer` grant or token exchange of an
+            external token, whose `sub` is not a user of this deployment. Absent otherwise.
         aud:
           description: Audience — may be a string or an array of strings.
           oneOf:
@@ -1470,6 +1630,34 @@ components:
             type: object
             additionalProperties: true
           description: The RFC 9396 authorization details the token carries, when it has any.
+        cnf:
+          type: object
+          description: |
+            Confirmation claim (RFC 7800). Present for DPoP-bound tokens, carrying the thumbprint of
+            the key the token is bound to (RFC 9449 Section 6.2).
+          properties:
+            jkt:
+              type: string
+              description: Base64url-encoded SHA-256 JWK thumbprint of the DPoP public key.
+        act:
+          $ref: '#/components/schemas/ActorClaim'
+
+    ActorClaim:
+      type: object
+      description: |
+        Actor claim (RFC 8693 Section 4.1) naming the party acting on behalf of the token subject,
+        such as an agent acting for a user. Present only on delegated tokens. When one actor delegates
+        to another, the earlier actor is nested under `act`, so the outermost object is the current actor.
+      properties:
+        sub:
+          type: string
+          description: Subject identifier of the actor.
+        iss:
+          type: string
+          description: Issuer of the actor's identity, when it differs from the token issuer.
+        act:
+          $ref: '#/components/schemas/ActorClaim'
+      additionalProperties: true
 
     JWKSResponse:
       type: object
@@ -1555,6 +1743,9 @@ components:
           type: string
         email_verified:
           type: boolean
+          description: |
+            Whether the user verified the `email` in this response, as recorded at sign-in. Released only with
+            `email`.
         gender:
           type: string
         birthdate:
@@ -1567,6 +1758,7 @@ components:
           type: string
         phone_number_verified:
           type: boolean
+          description: Whether the user verified the `phone_number` in this response, as `email_verified` describes.
         updated_at:
           type: integer
           format: int64
@@ -1649,8 +1841,10 @@ components:
           type: string
         id_token_encrypted_response_alg:
           type: string
+          description: Key-management algorithm for ID token encryption. Required when `id_token_encrypted_response_enc` is set. Supported values are `RSA-OAEP` and `RSA-OAEP-256`.
         id_token_encrypted_response_enc:
           type: string
+          description: Content-encryption algorithm for ID token encryption. Required when `id_token_encrypted_response_alg` is set. Supported values are `A128CBC-HS256` and `A256GCM`.
       description: Language-tagged fields (e.g. `client_name#fr`) are also accepted as top-level properties.
 
     DCRUpdateRequest:
@@ -1746,8 +1940,10 @@ components:
           type: string
         id_token_encrypted_response_alg:
           type: string
+          description: Key-management algorithm configured for ID token encryption.
         id_token_encrypted_response_enc:
           type: string
+          description: Content-encryption algorithm configured for ID token encryption.
       description: Language-tagged variants (e.g. `client_name#fr`) are included as top-level properties in the response.
 
     BackchannelAuthRequest:

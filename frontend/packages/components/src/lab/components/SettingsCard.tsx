@@ -124,7 +124,7 @@ export default function SettingsCard({
               <Switch
                 checked={enabled}
                 onChange={(e) => onToggle(e.target.checked)}
-                inputProps={{'aria-label': `Toggle ${title}`}}
+                slotProps={{input: {role: 'switch', 'aria-label': `Toggle ${title}`}}}
               />
             )}
           </Stack>

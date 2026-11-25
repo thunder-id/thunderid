@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {render, screen} from '@testing-library/react';
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import PresentationDefinitionSelect from '../PresentationDefinitionSelect';
 
@@ -10,10 +11,10 @@ interface VpQueryResult {
   isLoading: boolean;
 }
 
-const mockUseGetVerifiablePresentations = vi.fn<() => VpQueryResult>();
+const mockUseGetVerifiablePresentations = vi.fn<(projectId?: string) => VpQueryResult>();
 
 vi.mock('@thunderid/configure-verifiable-credentials', () => ({
-  useGetVerifiablePresentations: (): VpQueryResult => mockUseGetVerifiablePresentations(),
+  useGetVerifiablePresentations: (projectId?: string): VpQueryResult => mockUseGetVerifiablePresentations(projectId),
 }));
 
 vi.mock('react-i18next', async (importOriginal) => ({
@@ -42,6 +43,16 @@ describe('PresentationDefinitionSelect', () => {
       />,
     );
   };
+
+  it("should offer the selected project's presentation definitions", () => {
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <PresentationDefinitionSelect propertyKey="presentation_definition_id" value="" onChange={onChange} />
+      </ProjectScopeProvider>,
+    );
+
+    expect(mockUseGetVerifiablePresentations).toHaveBeenCalledWith('project-1');
+  });
 
   it('should render the field validation message when one is supplied', () => {
     renderComponent('Presentation definition is required');

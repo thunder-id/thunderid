@@ -11,7 +11,9 @@ import (
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
+	"github.com/thunder-id/thunderid/internal/system/config"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -132,8 +134,47 @@ func (s *DeclarativeResourceTestSuite) TestValidateOUWrapper() {
 		Name:   "Test OU",
 	}
 
-	err := validateOUWrapper(ou, store, nil)
+	err := validateOUWrapper(ou, store, nil, false)
 	assert.NoError(s.T(), err)
+}
+
+// Where projects are served, a declared organization unit names its project, except the system one, which
+// names none.
+func (s *DeclarativeResourceTestSuite) TestValidateOUWrapperProject() {
+	config.ResetServerRuntime()
+	cfg := &config.Config{}
+	cfg.Server.SystemOUID = testSystemOUID
+	s.Require().NoError(config.InitializeServerRuntime("/tmp/test", cfg))
+	defer config.ResetServerRuntime()
+
+	for name, tc := range map[string]struct {
+		ou             OrganizationUnit
+		requireProject bool
+		wantErr        string
+	}{
+		"in a project":             {ou: OrganizationUnit{ID: "ou-1", ProjectID: "project-1"}, requireProject: true},
+		"without a project":        {ou: OrganizationUnit{ID: "ou-1"}, requireProject: true, wantErr: "projectId"},
+		"without projects served":  {ou: OrganizationUnit{ID: "ou-1"}},
+		"system without a project": {ou: OrganizationUnit{ID: testSystemOUID}, requireProject: true},
+		"system in a project": {
+			ou: OrganizationUnit{ID: testSystemOUID, ProjectID: "project-1"}, wantErr: "system",
+		},
+	} {
+		s.Run(name, func() {
+			fbStore, _ := newFileBasedStore()
+			ou := tc.ou
+			ou.Handle = "test"
+			ou.Name = "Test OU"
+
+			err := validateOUWrapper(&ou, fbStore.(*fileBasedStore), nil, tc.requireProject)
+
+			if tc.wantErr == "" {
+				s.NoError(err)
+				return
+			}
+			s.ErrorContains(err, tc.wantErr)
+		})
+	}
 }
 
 func (s *DeclarativeResourceTestSuite) TestValidateOUWrapperMissingID() {
@@ -144,7 +185,7 @@ func (s *DeclarativeResourceTestSuite) TestValidateOUWrapperMissingID() {
 		Name:   "Test OU",
 	}
 
-	err := validateOUWrapper(ou, store, nil)
+	err := validateOUWrapper(ou, store, nil, false)
 	assert.Error(s.T(), err)
 	assert.Contains(s.T(), err.Error(), "ID is required")
 }
@@ -157,7 +198,7 @@ func (s *DeclarativeResourceTestSuite) TestValidateOUWrapperMissingName() {
 		Handle: "test",
 	}
 
-	err := validateOUWrapper(ou, store, nil)
+	err := validateOUWrapper(ou, store, nil, false)
 	assert.Error(s.T(), err)
 	assert.Contains(s.T(), err.Error(), "name is required")
 }
@@ -170,7 +211,7 @@ func (s *DeclarativeResourceTestSuite) TestValidateOUWrapperMissingHandle() {
 		Name: "Test OU",
 	}
 
-	err := validateOUWrapper(ou, store, nil)
+	err := validateOUWrapper(ou, store, nil, false)
 	assert.Error(s.T(), err)
 	assert.Contains(s.T(), err.Error(), "handle is required")
 }
@@ -196,7 +237,7 @@ func (s *DeclarativeResourceTestSuite) TestValidateOUWrapperDuplicateID() {
 		Name:   "Test OU 2",
 	}
 
-	err = validateOUWrapper(ou2, store, nil)
+	err = validateOUWrapper(ou2, store, nil, false)
 	assert.Error(s.T(), err)
 	assert.Contains(s.T(), err.Error(), "duplicate organization unit ID")
 	assert.Contains(s.T(), err.Error(), "test-ou-duplicate")
@@ -220,7 +261,7 @@ func (s *DeclarativeResourceTestSuite) TestValidateOUWrapperDuplicateIDInDBStore
 		Name:   "Test OU",
 	}
 
-	err := validateOUWrapper(ou, fileStore, dbStore)
+	err := validateOUWrapper(ou, fileStore, dbStore, false)
 	assert.Error(s.T(), err)
 	assert.Contains(s.T(), err.Error(), "duplicate organization unit ID")
 	assert.Contains(s.T(), err.Error(), "test-ou-db-duplicate")
@@ -246,7 +287,7 @@ func (s *DeclarativeResourceTestSuite) TestValidateOUWrapperNoDuplicateInComposi
 		Name:   "Test OU",
 	}
 
-	err := validateOUWrapper(ou, fileStore, dbStore)
+	err := validateOUWrapper(ou, fileStore, dbStore, false)
 	assert.NoError(s.T(), err)
 
 	dbStore.AssertExpectations(s.T())
@@ -269,7 +310,7 @@ func (s *DeclarativeResourceTestSuite) TestValidateOUWrapperErrorInDBStore() {
 		Name:   "Test OU",
 	}
 
-	err := validateOUWrapper(ou, fileStore, dbStore)
+	err := validateOUWrapper(ou, fileStore, dbStore, false)
 	assert.Error(s.T(), err)
 	assert.Contains(s.T(), err.Error(), "failed to check organization unit existence")
 	assert.Contains(s.T(), err.Error(), "database connection failed")
@@ -712,4 +753,68 @@ func (s *DeclarativeResourceTestSuite) TestGetAllResourceIDs_ErrorGettingGrandch
 	ids, err := s.exporter.GetAllResourceIDs(context.Background())
 	assert.NotNil(s.T(), err)
 	assert.Nil(s.T(), ids)
+}
+
+// Where projects are served, a declared organization unit in a project has its parent in the same project or is
+// placed under the system organization unit, wherever that parent is declared or stored.
+func (s *DeclarativeResourceTestSuite) TestValidateDeclaredOUPlacement() {
+	config.ResetServerRuntime()
+	cfg := &config.Config{}
+	cfg.Server.SystemOUID = testSystemOUID
+	s.Require().NoError(config.InitializeServerRuntime("/tmp/test", cfg))
+	defer config.ResetServerRuntime()
+	defer func() { _ = entity.GetInstance().Clear() }()
+
+	parentOf := func(id string) *string { return &id }
+	for name, tc := range map[string]struct {
+		child   OrganizationUnit
+		dbOU    *OrganizationUnit
+		wantErr bool
+	}{
+		"parent in the same project": {
+			child: OrganizationUnit{ID: "child", ProjectID: "project-1", Parent: parentOf("root")},
+		},
+		"parent is the system organization unit": {
+			child: OrganizationUnit{ID: "child", ProjectID: "project-1", Parent: parentOf(testSystemOUID)},
+		},
+		"parent in another project": {
+			child:   OrganizationUnit{ID: "child", ProjectID: "project-2", Parent: parentOf("root")},
+			wantErr: true,
+		},
+		"parent stored in another project": {
+			child:   OrganizationUnit{ID: "child", ProjectID: "project-1", Parent: parentOf("db-root")},
+			dbOU:    &OrganizationUnit{ID: "db-root", ProjectID: "project-2"},
+			wantErr: true,
+		},
+		"parent that exists nowhere": {
+			child: OrganizationUnit{ID: "child", ProjectID: "project-1", Parent: parentOf("missing")},
+		},
+	} {
+		s.Run(name, func() {
+			_ = entity.GetInstance().Clear()
+			fbStore, _ := newFileBasedStore()
+			store := fbStore.(*fileBasedStore)
+			for _, ou := range []OrganizationUnit{
+				{ID: testSystemOUID, Handle: "system", Name: "System"},
+				{ID: "root", Handle: "root", Name: "Root", ProjectID: "project-1"},
+				tc.child,
+			} {
+				s.Require().NoError(store.CreateOrganizationUnit(context.Background(), ou))
+			}
+			dbStore := newOrganizationUnitStoreInterfaceMock(s.T())
+			if tc.dbOU != nil {
+				dbStore.On("GetOrganizationUnit", mock.Anything, tc.dbOU.ID).Return(*tc.dbOU, nil).Maybe()
+			}
+			dbStore.On("GetOrganizationUnit", mock.Anything, mock.Anything).
+				Return(OrganizationUnit{}, ErrOrganizationUnitNotFound).Maybe()
+
+			err := validateDeclaredOUPlacement(store, dbStore)
+
+			if tc.wantErr {
+				s.ErrorContains(err, "another project")
+				return
+			}
+			s.NoError(err)
+		})
+	}
 }

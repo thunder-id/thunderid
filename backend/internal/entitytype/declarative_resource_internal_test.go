@@ -742,6 +742,116 @@ func TestLoadDeclarativeResources_RejectsDuplicateHandlesAcrossFiles(t *testing.
 	assert.Contains(t, err.Error(), "duplicate entity type handle")
 }
 
+// TestValidateOneDeclarativeAgentTypePerOU tests that an organization unit holds at most one agent type
+// across declarative entity types and, in composite mode, the DB store.
+func TestValidateOneDeclarativeAgentTypePerOU(t *testing.T) {
+	newStore := func(t *testing.T, types ...EntityType) *entityTypeFileBasedStore {
+		store, ok := newEntityTypeFileBasedStoreForTest().(*entityTypeFileBasedStore)
+		assert.True(t, ok)
+		for _, et := range types {
+			assert.NoError(t, store.CreateEntityType(context.Background(), et))
+		}
+		return store
+	}
+
+	t.Run("agent types in different organization units", func(t *testing.T) {
+		store := newStore(t,
+			EntityType{ID: "t1", Category: TypeCategoryAgent, Handle: "default", OUID: "ou-1"},
+			EntityType{ID: "t2", Category: TypeCategoryAgent, Handle: "tools", OUID: "ou-2"},
+		)
+		assert.NoError(t, validateOneDeclarativeAgentTypePerOU(store, nil))
+	})
+
+	t.Run("user types share an organization unit with each other and an agent type", func(t *testing.T) {
+		store := newStore(t,
+			EntityType{ID: "t1", Category: TypeCategoryUser, Handle: "employee", OUID: "ou-1"},
+			EntityType{ID: "t2", Category: TypeCategoryUser, Handle: "customer", OUID: "ou-1"},
+			EntityType{ID: "t3", Category: TypeCategoryAgent, Handle: "default", OUID: "ou-1"},
+		)
+		assert.NoError(t, validateOneDeclarativeAgentTypePerOU(store, nil))
+	})
+
+	t.Run("two agent types in the same organization unit", func(t *testing.T) {
+		store := newStore(t,
+			EntityType{ID: "t1", Category: TypeCategoryAgent, Handle: "default", OUID: "ou-1"},
+			EntityType{ID: "t2", Category: TypeCategoryAgent, Handle: "tools", OUID: "ou-1"},
+		)
+		err := validateOneDeclarativeAgentTypePerOU(store, nil)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "an organization unit can have only one agent type")
+	})
+
+	t.Run("organization unit has no agent type in the DB store", func(t *testing.T) {
+		store := newStore(t,
+			EntityType{ID: "t1", Category: TypeCategoryAgent, Handle: "tools", OUID: "ou-1"})
+		dbStore := newEntityTypeStoreInterfaceMock(t)
+		dbStore.On("GetEntityTypeListByOUIDs", mock.Anything, TypeCategoryAgent, []string{"ou-1"},
+			1, 0).Return([]EntityTypeListItem{}, nil).Once()
+		assert.NoError(t, validateOneDeclarativeAgentTypePerOU(store, dbStore))
+	})
+
+	t.Run("organization unit already has an agent type in the DB store", func(t *testing.T) {
+		store := newStore(t,
+			EntityType{ID: "t1", Category: TypeCategoryAgent, Handle: "tools", OUID: "ou-1"})
+		dbStore := newEntityTypeStoreInterfaceMock(t)
+		dbStore.On("GetEntityTypeListByOUIDs", mock.Anything, TypeCategoryAgent, []string{"ou-1"},
+			1, 0).Return([]EntityTypeListItem{{ID: "db-1", Handle: "default"}}, nil).Once()
+		err := validateOneDeclarativeAgentTypePerOU(store, dbStore)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), `already has agent type "default" in the database store`)
+	})
+
+	t.Run("DB store lookup fails", func(t *testing.T) {
+		store := newStore(t,
+			EntityType{ID: "t1", Category: TypeCategoryAgent, Handle: "tools", OUID: "ou-1"})
+		dbStore := newEntityTypeStoreInterfaceMock(t)
+		dbStore.On("GetEntityTypeListByOUIDs", mock.Anything, TypeCategoryAgent, []string{"ou-1"},
+			1, 0).Return(nil, errors.New("db error")).Once()
+		err := validateOneDeclarativeAgentTypePerOU(store, dbStore)
+		assert.Error(t, err)
+		assert.Contains(t, err.Error(), "failed to check the organization unit of agent type")
+	})
+}
+
+// TestLoadDeclarativeResources_RejectsAgentTypesSharingAnOUAcrossFiles verifies the loader fails when two
+// YAML files declare agent types in the same organization unit.
+func TestLoadDeclarativeResources_RejectsAgentTypesSharingAnOUAcrossFiles(t *testing.T) {
+	tmpDir := t.TempDir()
+	typesDir := tmpDir + "/config/resources/user_types"
+	assert.NoError(t, os.MkdirAll(typesDir, 0750))
+
+	writeType := func(file, id string) {
+		content := "id: \"" + id + "\"\n" +
+			"category: agent\n" +
+			"handle: \"" + id + "\"\n" +
+			"displayName: \"Type " + id + "\"\n" +
+			"ouId: \"550e8400-e29b-41d4-a716-446655440000\"\n" +
+			"schema: |\n  {\"name\": {\"type\": \"string\"}}\n"
+		assert.NoError(t, os.WriteFile(typesDir+"/"+file, []byte(content), 0600))
+	}
+	writeType("a.yaml", "agent-type-a")
+	writeType("b.yaml", "agent-type-b")
+	defer func() {
+		for _, id := range []string{"agent-type-a", "agent-type-b"} {
+			_ = entity.GetInstance().Delete(entity.NewCompositeKey(id, entity.KeyTypeEntityType))
+		}
+	}()
+
+	config.ResetServerRuntime()
+	assert.NoError(t, config.InitializeServerRuntime(tmpDir, &config.Config{
+		DeclarativeResources: config.DeclarativeResources{Enabled: true},
+	}))
+	defer config.ResetServerRuntime()
+
+	fileStore, _ := newEntityTypeFileBasedStore()
+	mockSvc := NewEntityTypeServiceInterfaceMock(t)
+	mockSvc.On("ResolveEntityTypeHandles", mock.Anything, mock.Anything).Return(nil).Maybe()
+
+	err := loadDeclarativeResources(fileStore, mockSvc)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "an organization unit can have only one agent type")
+}
+
 func TestValidateEntityType_DefaultsPrimaryContacts(t *testing.T) {
 	entityType := &EntityType{
 		ID: "id", Handle: "contacts", DisplayName: "Contacts", OUID: "ou", Category: TypeCategoryUser,

@@ -6,6 +6,7 @@ export {type User} from './concepts/user';
 export {
   type AccessStatus,
   type AccessHoldReason,
+  type SuspensionAppliedBy,
   type AccessLockedMethod,
   type AccessStatusDetails,
   type AccessStatusReport,

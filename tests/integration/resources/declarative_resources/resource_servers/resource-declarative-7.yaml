@@ -1,0 +1,11 @@
+resource_type: resource_server
+id: decl-rs-7
+name: Declarative Project Resource Server
+description: A declarative test resource server that belongs to a project
+identifier: https://localhost:8090/decl-rs-7
+ouId: 01900000-0000-7000-8000-000000000001
+projectId: 019a0000-0000-7000-8000-0000000d0007
+delimiter: ":"
+actions:
+  - name: Read
+    handle: read

@@ -1,30 +1,11 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {renderHook} from '@testing-library/react';
-import {describe, it, expect, vi} from 'vitest';
+import {describe, it, expect} from 'vitest';
 import elements from '../../data/elements.json';
 import steps from '../../data/steps.json';
 import useGetFlowBuilderResources from '../useGetFlowBuilderResources';
-
-const TEST_PRODUCT_NAME = 'TestProduct';
-
-// Mock useConfig to avoid ConfigProvider requirement.
-vi.mock('@thunderid/contexts', async (importOriginal) => {
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-  const actual = (await importOriginal()) as Record<string, unknown>;
-
-  return {
-    ...actual,
-    useConfig: () => ({
-      config: {
-        brand: {
-          product_name: TEST_PRODUCT_NAME,
-        },
-      },
-    }),
-  };
-});
 
 describe('useGetFlowBuilderResources', () => {
   describe('Return Structure', () => {
@@ -103,6 +84,36 @@ describe('useGetFlowBuilderResources', () => {
       expect(data.executors.length).toBeGreaterThan(0);
     });
 
+    it('should offer the verification executors on the resource panel', () => {
+      const {result} = renderHook(() => useGetFlowBuilderResources());
+
+      const offered = (
+        result.current.data.executors as {
+          display?: {label?: string; showOnResourcePanel?: boolean};
+          data?: {action?: {executor?: {name?: string; mode?: string}}};
+        }[]
+      )
+        .filter((entry) => entry.data?.action?.executor?.name === 'AttributeVerificationExecutor')
+        .map((entry) => ({
+          label: entry.display?.label,
+          executor: entry.data?.action?.executor,
+          showOnResourcePanel: entry.display?.showOnResourcePanel,
+        }));
+
+      expect(offered).toEqual([
+        {
+          label: 'Prepare Verification',
+          executor: {name: 'AttributeVerificationExecutor', mode: 'prepare'},
+          showOnResourcePanel: true,
+        },
+        {
+          label: 'Record Verification',
+          executor: {name: 'AttributeVerificationExecutor', mode: 'record'},
+          showOnResourcePanel: true,
+        },
+      ]);
+    });
+
     it('should return all resource types in data object', () => {
       const {result} = renderHook(() => useGetFlowBuilderResources());
 
@@ -112,17 +123,6 @@ describe('useGetFlowBuilderResources', () => {
       expect(data).toHaveProperty('steps');
       expect(data).toHaveProperty('templates');
       expect(data).toHaveProperty('widgets');
-    });
-  });
-
-  describe('Brand Placeholder Substitution', () => {
-    it('should substitute {{productName}} placeholders with the configured product name', () => {
-      const {result} = renderHook(() => useGetFlowBuilderResources());
-
-      const serialised = JSON.stringify(result.current.data);
-
-      expect(serialised).not.toContain('{{productName}}');
-      expect(serialised).toContain(TEST_PRODUCT_NAME);
     });
   });
 

@@ -1,11 +1,18 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {AccessStatusIndicator, QueryErrorNotice, ResourceAvatar, getInitials} from '@thunderid/components';
+import {
+  AccessStatusIndicator,
+  EditOrViewAction,
+  getInitials,
+  QueryErrorNotice,
+  ResourceAvatar,
+} from '@thunderid/components';
+import {isRecordLocked, useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {IconButton, Tooltip, Typography, ListingTable, DataGrid} from '@wso2/oxygen-ui';
-import {Eye, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
+import {Eye, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useState, useCallback} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
@@ -21,8 +28,10 @@ export default function UsersList() {
   const logger = useLogger('UsersList');
   const dataGridLocaleText = useDataGridLocaleText();
   const routes = useUserRoutes();
+  const {can} = useCapabilitiesContext();
 
-  const {data: userData, isLoading, error, refetch} = useGetUsers();
+  const {projectId} = useProjectScope();
+  const {data: userData, isLoading, error, refetch} = useGetUsers({projectId});
 
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -118,7 +127,7 @@ export default function UsersList() {
         hideable: false,
         renderCell: (params: DataGrid.GridRenderCellParams<UserWithDetails>) => (
           <ListingTable.RowActions>
-            {params.row.isReadOnly ? (
+            {isRecordLocked(params.row) ? (
               <Tooltip title={t('common:status.readOnly', 'Read only')}>
                 <IconButton
                   aria-label={t('common:status.readOnly', 'Read only')}
@@ -131,38 +140,29 @@ export default function UsersList() {
               </Tooltip>
             ) : (
               <>
-                <Tooltip title={t('common:actions.edit', 'Edit')}>
-                  <IconButton
-                    aria-label={t('common:actions.edit', 'Edit')}
-                    size="small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleEditClick(params.row.id);
-                    }}
-                  >
-                    <Pencil size={16} />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title={t('common:actions.delete', 'Delete')}>
-                  <IconButton
-                    aria-label={t('common:actions.delete', 'Delete')}
-                    size="small"
-                    color="error"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteClick(params.row.id);
-                    }}
-                  >
-                    <Trash2 size={16} />
-                  </IconButton>
-                </Tooltip>
+                <EditOrViewAction canEdit={can('user', 'update')} onClick={() => handleEditClick(params.row.id)} />
+                {can('user', 'delete') && (
+                  <Tooltip title={t('common:actions.delete', 'Delete')}>
+                    <IconButton
+                      aria-label={t('common:actions.delete', 'Delete')}
+                      size="small"
+                      color="error"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteClick(params.row.id);
+                      }}
+                    >
+                      <Trash2 size={16} />
+                    </IconButton>
+                  </Tooltip>
+                )}
               </>
             )}
           </ListingTable.RowActions>
         ),
       },
     ],
-    [handleDeleteClick, handleEditClick, t],
+    [can, handleDeleteClick, handleEditClick, t],
   );
 
   if (error) {

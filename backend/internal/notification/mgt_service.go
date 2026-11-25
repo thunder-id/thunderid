@@ -16,6 +16,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/ou"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
@@ -53,22 +55,37 @@ type notificationSenderMgtService struct {
 	transactioner      providers.Transactioner
 	dependencyRegistry resourcedependency.Registry
 	uuidGenerator      func() (string, error)
+	bus                eventbus.EventBusInterface
 }
 
 // newNotificationSenderMgtService returns a new instance of NotificationSenderMgtSvcInterface.
 func newNotificationSenderMgtService(
 	store notificationStoreInterface, tx providers.Transactioner,
-	ouService ou.OrganizationUnitServiceInterface) NotificationSenderMgtSvcInterface {
+	ouService ou.OrganizationUnitServiceInterface, bus eventbus.EventBusInterface) NotificationSenderMgtSvcInterface {
 	return &notificationSenderMgtService{
 		notificationStore: store,
 		ouService:         ouService,
 		transactioner:     tx,
 		uuidGenerator:     sysutils.GenerateUUIDv7,
+		bus:               bus,
 	}
 }
 
 // CreateSender creates a new notification sender.
 func (s *notificationSenderMgtService) CreateSender(
+	ctx context.Context, sender common.NotificationSenderDTO) (
+	*common.NotificationSenderDTO, *tidcommon.ServiceError) {
+	created, svcErr := s.createSender(ctx, sender)
+	var senderID string
+	if svcErr == nil {
+		senderID = created.ID
+	}
+	s.publishSenderEvent(ctx, audit.EventNotificationSenderCreate, audit.ActionCreate, senderID, svcErr)
+	return created, svcErr
+}
+
+// createSender creates a new notification sender without publishing its audit event.
+func (s *notificationSenderMgtService) createSender(
 	ctx context.Context, sender common.NotificationSenderDTO) (
 	*common.NotificationSenderDTO, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "NotificationSenderMgtService"))
@@ -232,6 +249,14 @@ func (s *notificationSenderMgtService) GetSenderByName(ctx context.Context, name
 // UpdateSender updates an existing notification sender
 func (s *notificationSenderMgtService) UpdateSender(ctx context.Context, id string,
 	sender common.NotificationSenderDTO) (*common.NotificationSenderDTO, *tidcommon.ServiceError) {
+	updated, svcErr := s.updateSender(ctx, id, sender)
+	s.publishSenderEvent(ctx, audit.EventNotificationSenderUpdate, audit.ActionUpdate, id, svcErr)
+	return updated, svcErr
+}
+
+// updateSender updates an existing notification sender without publishing its audit event.
+func (s *notificationSenderMgtService) updateSender(ctx context.Context, id string,
+	sender common.NotificationSenderDTO) (*common.NotificationSenderDTO, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "NotificationSenderMgtService"))
 	logger.Debug(ctx, "Updating notification sender", log.String("id", id), log.String("name", sender.Name))
 
@@ -322,6 +347,18 @@ func (s *notificationSenderMgtService) UpdateSender(ctx context.Context, id stri
 
 // DeleteSender deletes a notification sender
 func (s *notificationSenderMgtService) DeleteSender(ctx context.Context, id string) *tidcommon.ServiceError {
+	svcErr := s.deleteSender(ctx, id)
+	// A delete that found nothing to remove succeeds without an event, so no caller can record a
+	// deletion of an ID it made up.
+	if svcErr == errSenderNotFoundNoop {
+		return nil
+	}
+	s.publishSenderEvent(ctx, audit.EventNotificationSenderDelete, audit.ActionDelete, id, svcErr)
+	return svcErr
+}
+
+// deleteSender deletes a notification sender without publishing its audit event.
+func (s *notificationSenderMgtService) deleteSender(ctx context.Context, id string) *tidcommon.ServiceError {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "NotificationSenderMgtService"))
 	logger.Debug(ctx, "Deleting notification sender", log.String("id", id))
 
@@ -338,7 +375,17 @@ func (s *notificationSenderMgtService) DeleteSender(ctx context.Context, id stri
 		return svcErr
 	}
 
+	// The store deletes without reporting whether a row matched, so the sender is looked up first.
+	missing := false
 	transactErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		existing, err := s.notificationStore.getSenderByID(txCtx, id)
+		if err != nil {
+			return err
+		}
+		if existing == nil {
+			missing = true
+			return nil
+		}
 		if err := s.notificationStore.deleteSender(txCtx, id); err != nil {
 			return err
 		}
@@ -350,8 +397,23 @@ func (s *notificationSenderMgtService) DeleteSender(ctx context.Context, id stri
 			log.Error(transactErr), log.String("id", id))
 		return &tidcommon.InternalServerError
 	}
+	if missing {
+		return errSenderNotFoundNoop
+	}
 
 	return nil
+}
+
+// publishSenderEvent publishes the audit event of an attempt on the notification sender with id, after
+// the change committed or was refused. No property of the sender is recorded: its properties hold the
+// credentials of the provider it sends through.
+func (s *notificationSenderMgtService) publishSenderEvent(ctx context.Context, name string, action audit.Action,
+	id string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the ID the caller asked for, even one that matches no sender, as forensic
+	// evidence of what was probed; the payload caps it and the sink escapes it.
+	target := audit.Ref{Type: audit.TargetTypeNotificationSender, ID: id}
+	eventbus.TryPublish(ctx, s.bus,
+		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
 }
 
 // SetDependencyRegistry injects the dependency registry. Called by servicemanager after the

@@ -37,6 +37,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cors"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/crypto/cryptomock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
@@ -46,11 +48,17 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 	"github.com/thunder-id/thunderid/tests/mocks/serverconfigmock"
 	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
 const testServiceAppID = "app123"
 const testClientID = "test-client-id"
-const testOUID = "default-ou"
+const (
+	testOUID      = "default-ou"
+	testProjectID = "project-1"
+	testSystemOU  = "system-ou"
+)
+
 const testConflictingAppID = "app456"
 
 type ServiceTestSuite struct {
@@ -158,13 +166,20 @@ func (suite *ServiceTestSuite) setupTestService() (
 		Maybe().Return(&providers.Entity{}, noEPErr)
 	mockEntityService.On("DeleteEntity", mock.Anything, mock.Anything).Maybe().Return(noEPErr)
 	mockEntityService.On("UpdateSystemAttributes", mock.Anything, mock.Anything, mock.Anything).Maybe().Return(noEPErr)
+	mockEntityService.On("UpdateOwnership", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Maybe().Return(noEPErr)
 	mockEntityService.On("UpdateSystemCredentials", mock.Anything, mock.Anything, mock.Anything).
 		Maybe().Return(noEPErr)
+	// No client secret so far: an update that supplies one sets it rather than rotating it. A test
+	// about rotation resets this and says what is stored.
+	mockEntityService.On("GetCredentialsByType", mock.Anything, mock.Anything, mock.Anything).
+		Maybe().Return([]entity.StoredCredential{}, noEPErr)
 	mockStore.On("Validate", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Maybe().Return(nil)
 	mockStore.On("ResolveInboundAuthProfileHandles", mock.Anything, mock.Anything).Maybe().Return(nil)
 	mockOUService := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
 	mockOUService.On("IsOrganizationUnitExists", mock.Anything, mock.Anything).Maybe().Return(true, nil)
+	mockOUService.On("GetSystemOUID", mock.Anything).Maybe().Return(testSystemOU, nil)
 	// Production always wires a sharing service, so the default service carries one too. It
 	// answers permissively: a test that cares about sharing installs its own through
 	// sharingServiceOnly.
@@ -187,9 +202,25 @@ func (suite *ServiceTestSuite) setupTestService() (
 		ouService:            mockOUService,
 		dependencyRegistry:   noopDepRegistry{},
 		sharingService:       mockSharing,
+		authzService:         allowAllAuthz(suite.T()),
 		governance:           governance,
+		bus:                  discardingBus{},
 	}
 	return service, mockStore
+}
+
+// allowAllAuthz returns an authorization mock that allows every action and every list, so tests not
+// about authorization reach the logic they cover.
+func allowAllAuthz(t interface {
+	mock.TestingT
+	Cleanup(func())
+}) *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
+	m := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	m.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	m.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
+		Return(&sysauthz.AccessibleResources{AllAllowed: true}, nil).Maybe()
+	m.On("CanControlEntity", mock.Anything, mock.Anything).Return(nil).Maybe()
+	return m
 }
 
 // activeReads answers a governance read with ACTIVE for every entity.
@@ -199,6 +230,16 @@ func activeReads(_ context.Context, entities []providers.Entity) []identitygover
 		reads[i].Status.Value = providers.AccessStatusActive
 	}
 	return reads
+}
+
+// withMutableRuntime initializes a server runtime without declarative resources for the test.
+func (suite *ServiceTestSuite) withMutableRuntime() {
+	config.ResetServerRuntime()
+	err := config.InitializeServerRuntime("/tmp/test", &config.Config{
+		DeclarativeResources: config.DeclarativeResources{Enabled: false},
+	})
+	require.NoError(suite.T(), err)
+	suite.T().Cleanup(config.ResetServerRuntime)
 }
 
 // noopDepRegistry is a no-op resourcedependency.Registry for tests that don't exercise cascade.
@@ -214,6 +255,10 @@ func (noopDepRegistry) GetDependencies(
 
 func (r noopDepRegistry) CascadeDelete(context.Context, string, string) (int, error) {
 	return 0, r.cascadeErr
+}
+
+func (r noopDepRegistry) SuspensionDependents(context.Context, string, string) ([]string, error) {
+	return nil, nil
 }
 
 func (noopDepRegistry) ValidateReferenceUpdate(
@@ -236,6 +281,10 @@ func (recordingDepRegistry) GetDependencies(
 func (r recordingDepRegistry) CascadeDelete(context.Context, string, string) (int, error) {
 	*r.cascadeCalls++
 	return 1, nil
+}
+
+func (r recordingDepRegistry) SuspensionDependents(context.Context, string, string) ([]string, error) {
+	return nil, nil
 }
 
 func (recordingDepRegistry) ValidateReferenceUpdate(
@@ -306,6 +355,7 @@ func mockLoadFullApplication(
 			ID:               dto.ID,
 			Category:         providers.EntityCategoryApp,
 			OUID:             dto.OUID,
+			ProjectID:        dto.ProjectID,
 			SystemAttributes: sysAttrsJSON,
 		},
 		nil,
@@ -655,113 +705,95 @@ func (suite *ServiceTestSuite) TestGetApplicationList_InvalidFilter() {
 func (suite *ServiceTestSuite) TestGetApplicationListByProject() {
 	for name, tc := range map[string]struct {
 		filters map[string]interface{}
-		ouID    string
+		ouIDs   []string
 	}{
-		"the project's root organization unit": {ouID: "root-ou"},
-		"an organization unit filter":          {filters: map[string]interface{}{"ouId": "child-ou"}, ouID: "child-ou"},
+		"the whole project": {},
+		"an organization unit filter": {
+			filters: map[string]interface{}{"ouId": "child-ou"}, ouIDs: []string{"child-ou"},
+		},
 	} {
 		suite.Run(name, func() {
 			service, mockStore := suite.setupTestService()
-			filterOUID, _ := tc.filters["ouId"].(string)
-			resolver := newProjectOUResolverMock(suite.T())
-			resolver.EXPECT().ResolveProjectOU(mock.Anything, "project-1", filterOUID).Return(tc.ouID, nil).Once()
-			service.projectResolver = resolver
-
-			resetEntityServiceMethod(service, "GetEntityPageInOU").
-				On("GetEntityPageInOU", mock.Anything, providers.EntityCategoryApp, tc.ouID, entity.OUEntityScopeAll,
-					serverconst.MaxCompositeStoreRecords, 0, map[string]interface{}(nil)).
-				Return(&entity.OUEntityPage{
-					Owned:        []providers.Entity{{ID: "owned-app", Category: providers.EntityCategoryApp}},
-					Shared:       []providers.Entity{{ID: "shared-app", Category: providers.EntityCategoryApp}},
-					TotalResults: 2,
-				}, nil)
+			resetEntityServiceMethod(service, "GetEntityListCountByProject").
+				On("GetEntityListCountByProject", mock.Anything, providers.EntityCategoryApp, testProjectID, tc.ouIDs).
+				Return(1, nil)
+			resetEntityServiceMethod(service, "GetEntityListByProject").
+				On("GetEntityListByProject", mock.Anything, providers.EntityCategoryApp, testProjectID, tc.ouIDs,
+					serverconst.MaxCompositeStoreRecords, 0).
+				Return([]providers.Entity{{ID: "project-app", Category: providers.EntityCategoryApp,
+					ProjectID: testProjectID}}, nil)
 			mockStore.On("GetInboundClientList", mock.Anything).Return([]inboundmodel.InboundClient{
-				{ID: "owned-app"}, {ID: "shared-app"},
+				{ID: "project-app"},
 			}, nil)
 
-			result, svcErr := service.GetApplicationListByProject(context.Background(), "project-1", tc.filters)
+			result, svcErr := service.GetApplicationListByProject(context.Background(), testProjectID, tc.filters)
 
 			suite.Require().Nil(svcErr)
-			assert.Equal(suite.T(), 2, result.TotalResults)
-			suite.Require().Len(result.Applications, 2)
-			assert.Equal(suite.T(), "owned-app", result.Applications[0].ID)
+			assert.Equal(suite.T(), 1, result.TotalResults)
+			suite.Require().Len(result.Applications, 1)
+			assert.Equal(suite.T(), "project-app", result.Applications[0].ID)
+			assert.Equal(suite.T(), testProjectID, result.Applications[0].ProjectID)
 			assert.Equal(suite.T(), new(true), result.Applications[0].IsOwnedByOU)
-			assert.Equal(suite.T(), "shared-app", result.Applications[1].ID)
-			assert.Equal(suite.T(), new(false), result.Applications[1].IsOwnedByOU)
 		})
 	}
 }
 
-func (suite *ServiceTestSuite) TestGetApplicationListByProject_NothingInScope() {
-	for name, tc := range map[string]struct {
-		projectID string
-		resolver  func() projectOUResolver
-	}{
-		"an unknown project": {
-			projectID: "project-1",
-			resolver:  suite.projectResolverReturning(&project.ErrorProjectNotFound),
-		},
-		"an organization unit outside the project": {
-			projectID: "project-1",
-			resolver:  suite.projectResolverReturning(&project.ErrorOUNotInProject),
-		},
-		"an unknown organization unit": {
-			projectID: "project-1",
-			resolver: suite.projectResolverReturning(
-				&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "OU-1003"}),
-		},
-		"an empty project ID": {
-			resolver: func() projectOUResolver { return newProjectOUResolverMock(suite.T()) },
-		},
-		"a deployment without projects": {
-			projectID: "project-1",
-			resolver:  func() projectOUResolver { return nil },
-		},
-	} {
-		suite.Run(name, func() {
-			service, _ := suite.setupTestService()
-			service.projectResolver = tc.resolver()
+func (suite *ServiceTestSuite) TestGetApplicationListByProject_EmptyProjectID() {
+	service, _ := suite.setupTestService()
 
-			result, svcErr := service.GetApplicationListByProject(context.Background(), tc.projectID, nil)
+	result, svcErr := service.GetApplicationListByProject(context.Background(), "", nil)
 
-			suite.Require().Nil(svcErr)
-			assert.Zero(suite.T(), result.TotalResults)
-			assert.Empty(suite.T(), result.Applications)
-		})
-	}
+	suite.Require().Nil(svcErr)
+	assert.Zero(suite.T(), result.TotalResults)
+	assert.Empty(suite.T(), result.Applications)
+}
+
+func (suite *ServiceTestSuite) TestGetApplicationListByProject_StoreErrors() {
+	suite.Run("count fails", func() {
+		service, _ := suite.setupTestService()
+		resetEntityServiceMethod(service, "GetEntityListCountByProject").
+			On("GetEntityListCountByProject", mock.Anything, providers.EntityCategoryApp, testProjectID,
+				[]string(nil)).
+			Return(0, errors.New("db"))
+
+		result, svcErr := service.GetApplicationListByProject(context.Background(), testProjectID, nil)
+
+		assert.Nil(suite.T(), result)
+		assert.Equal(suite.T(), &tidcommon.InternalServerError, svcErr)
+	})
+	suite.Run("list fails", func() {
+		service, _ := suite.setupTestService()
+		resetEntityServiceMethod(service, "GetEntityListCountByProject").
+			On("GetEntityListCountByProject", mock.Anything, providers.EntityCategoryApp, testProjectID,
+				[]string(nil)).
+			Return(1, nil)
+		resetEntityServiceMethod(service, "GetEntityListByProject").
+			On("GetEntityListByProject", mock.Anything, providers.EntityCategoryApp, testProjectID,
+				[]string(nil), serverconst.MaxCompositeStoreRecords, 0).
+			Return(nil, errors.New("db"))
+
+		result, svcErr := service.GetApplicationListByProject(context.Background(), testProjectID, nil)
+
+		assert.Nil(suite.T(), result)
+		assert.Equal(suite.T(), &tidcommon.InternalServerError, svcErr)
+	})
 }
 
 func (suite *ServiceTestSuite) TestGetApplicationListByProject_InvalidFilter() {
 	service, _ := suite.setupTestService()
-	service.projectResolver = newProjectOUResolverMock(suite.T())
 
-	result, svcErr := service.GetApplicationListByProject(context.Background(), "project-1",
+	result, svcErr := service.GetApplicationListByProject(context.Background(), testProjectID,
 		map[string]interface{}{"name": "App 1"})
 
 	assert.Nil(suite.T(), result)
 	assert.Equal(suite.T(), &ErrorInvalidFilter, svcErr)
 }
 
-func (suite *ServiceTestSuite) TestGetApplicationListByProject_ResolverError() {
-	service, _ := suite.setupTestService()
-	service.projectResolver = suite.projectResolverReturning(&tidcommon.InternalServerError)()
-
-	result, svcErr := service.GetApplicationListByProject(context.Background(), "project-1", nil)
-
-	assert.Nil(suite.T(), result)
-	assert.Equal(suite.T(), &tidcommon.InternalServerError, svcErr)
-}
-
-func (suite *ServiceTestSuite) TestProjectErrorCodesMatchTheProjectService() {
-	assert.Equal(suite.T(), project.ErrorProjectNotFound.Code, projectNotFoundErrorCode)
-	assert.Equal(suite.T(), project.ErrorOUNotInProject.Code, ouNotInProjectErrorCode)
-}
-
-// projectResolverReturning builds a project resolver that fails with the given error.
-func (suite *ServiceTestSuite) projectResolverReturning(svcErr *tidcommon.ServiceError) func() projectOUResolver {
-	return func() projectOUResolver {
-		resolver := newProjectOUResolverMock(suite.T())
-		resolver.EXPECT().ResolveProjectOU(mock.Anything, "project-1", mock.Anything).Return("", svcErr).Once()
+// projectValidatorReturning builds a project validator that fails with the given error.
+func (suite *ServiceTestSuite) projectValidatorReturning(svcErr *tidcommon.ServiceError) func() projectOUValidator {
+	return func() projectOUValidator {
+		resolver := newProjectOUValidatorMock(suite.T())
+		resolver.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, mock.Anything).Return(svcErr).Once()
 		return resolver
 	}
 }
@@ -1250,6 +1282,42 @@ func (suite *ServiceTestSuite) TestDeleteApplication_Success() {
 	svcErr := service.DeleteApplication(context.Background(), testServiceAppID)
 
 	assert.Nil(suite.T(), svcErr)
+}
+
+// Deleting an application removes its client before its record. The client's removal revokes what it issued
+// and the record's removal what was issued to the application, both in the services that own them.
+func (suite *ServiceTestSuite) TestDeleteApplication_RemovesTheClientBeforeTheRecord() {
+	suite.withMutableRuntime()
+	service, mockStore := suite.setupTestService()
+	ep := resetEntityServiceMethod(service, "GetEntityProfile")
+	ep.On("GetEntityProfile", mock.Anything, testServiceAppID).
+		Return(&providers.Entity{ID: testServiceAppID, Category: providers.EntityCategoryApp}, nil)
+	var order []string
+	mockStore.On("DeleteInboundClient", mock.Anything, testServiceAppID).
+		Run(func(mock.Arguments) { order = append(order, "client") }).Return(nil)
+	resetEntityServiceMethod(service, "DeleteEntity").On("DeleteEntity", mock.Anything, testServiceAppID).
+		Run(func(mock.Arguments) { order = append(order, "entity") }).Return(nil)
+
+	svcErr := service.DeleteApplication(context.Background(), testServiceAppID)
+
+	assert.Nil(suite.T(), svcErr)
+	assert.Equal(suite.T(), []string{"client", "entity"}, order)
+}
+
+// A client whose tokens could not be revoked is kept, and so is the record, so deleting again revokes them.
+func (suite *ServiceTestSuite) TestDeleteApplication_FailedClientRevocationKeepsTheRecord() {
+	suite.withMutableRuntime()
+	service, mockStore := suite.setupTestService()
+	ep := resetEntityServiceMethod(service, "GetEntityProfile")
+	ep.On("GetEntityProfile", mock.Anything, testServiceAppID).
+		Return(&providers.Entity{ID: testServiceAppID, Category: providers.EntityCategoryApp}, nil)
+	mockStore.On("DeleteInboundClient", mock.Anything, testServiceAppID).Return(errors.New("revocation failed"))
+	entities := resetEntityServiceMethod(service, "DeleteEntity")
+
+	svcErr := service.DeleteApplication(context.Background(), testServiceAppID)
+
+	assert.Equal(suite.T(), &tidcommon.InternalServerError, svcErr)
+	entities.AssertNotCalled(suite.T(), "DeleteEntity", mock.Anything, testServiceAppID)
 }
 
 // Deletion must stay idempotent. On a retry after a partial delete the entity is already gone, and
@@ -4048,6 +4116,16 @@ func (suite *ServiceTestSuite) TestTranslateInboundClientFKError() {
 			wantCode: ErrorInvalidUserType.Code,
 		},
 		{
+			name:     "InvalidAgentType",
+			err:      inboundclient.ErrFKInvalidAgentType,
+			wantCode: ErrorInvalidAgentType.Code,
+		},
+		{
+			name:     "AnyAgentTypeNotAlone",
+			err:      inboundclient.ErrFKAnyAgentTypeNotAlone,
+			wantCode: ErrorAnyAgentTypeNotAlone.Code,
+		},
+		{
 			name:     "UserSchemaLookupFailed",
 			err:      inboundclient.ErrUserSchemaLookupFailed,
 			wantCode: tidcommon.InternalServerError.Code,
@@ -4186,69 +4264,194 @@ func (suite *ServiceTestSuite) TestValidateApplicationFields_OUIDWinsWhenBothPro
 
 func (suite *ServiceTestSuite) TestValidateApplicationFields_ProjectResolved() {
 	for name, tc := range map[string]struct {
-		app  *model.ApplicationDTO
-		ouID string
+		app      *model.ApplicationDTO
+		callerOU string
+		ouID     string
 	}{
 		"no organization unit": {
-			app: &model.ApplicationDTO{Name: "test-app", ProjectID: "project-1"},
+			app:  &model.ApplicationDTO{Name: "test-app", ProjectID: testProjectID},
+			ouID: testSystemOU,
+		},
+		"no organization unit from a caller in one": {
+			app:      &model.ApplicationDTO{Name: "test-app", ProjectID: testProjectID},
+			callerOU: "caller-ou",
+			ouID:     testSystemOU,
 		},
 		"an organization unit ID": {
-			app:  &model.ApplicationDTO{Name: "test-app", ProjectID: "project-1", OUID: "child-ou"},
+			app:  &model.ApplicationDTO{Name: "test-app", ProjectID: testProjectID, OUID: "child-ou"},
 			ouID: "child-ou",
 		},
 		"an organization unit handle": {
-			app:  &model.ApplicationDTO{Name: "test-app", ProjectID: "project-1", OUHandle: "child"},
+			app:  &model.ApplicationDTO{Name: "test-app", ProjectID: testProjectID, OUHandle: "child"},
 			ouID: "child-ou",
 		},
 	} {
 		suite.Run(name, func() {
 			service, _ := suite.setupTestService()
-			resolver := newProjectOUResolverMock(suite.T())
-			resolver.EXPECT().ResolveProjectOU(mock.Anything, "project-1", tc.ouID).Return(testOUID, nil).Once()
-			service.projectResolver = resolver
+			resolver := newProjectOUValidatorMock(suite.T())
+			resolver.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, tc.ouID).Return(nil).Once()
+			service.projectValidator = resolver
 			service.ouService.(*oumock.OrganizationUnitServiceInterfaceMock).
 				On("GetOrganizationUnitByPath", mock.Anything, "child").
 				Return(ou.OrganizationUnit{ID: "child-ou"}, nil).Maybe()
 
-			svcErr := service.validateApplicationFields(context.Background(), tc.app)
+			ctx := security.WithSecurityContextTest(context.Background(),
+				security.NewSecurityContextForTest("admin-1", tc.callerOU, "", nil, nil))
+
+			svcErr := service.validateApplicationFields(ctx, tc.app)
 
 			assert.Nil(suite.T(), svcErr)
-			assert.Equal(suite.T(), testOUID, tc.app.OUID)
+			assert.Equal(suite.T(), tc.ouID, tc.app.OUID)
+		})
+	}
+}
+
+func (suite *ServiceTestSuite) TestValidateApplicationFields_DefaultOU() {
+	for name, callerOU := range map[string]string{
+		"a caller without an organization unit": "",
+		"a caller with an organization unit":    "caller-ou",
+	} {
+		suite.Run(name, func() {
+			service, _ := suite.setupTestService()
+			ctx := security.WithSecurityContextTest(context.Background(),
+				security.NewSecurityContextForTest("admin-1", callerOU, "", nil, nil))
+			app := &model.ApplicationDTO{Name: "test-app"}
+
+			svcErr := service.validateApplicationFields(ctx, app)
+
+			assert.Nil(suite.T(), svcErr)
+			assert.Equal(suite.T(), testSystemOU, app.OUID)
+		})
+	}
+}
+
+func (suite *ServiceTestSuite) TestCheckProjectGiven() {
+	for name, tc := range map[string]struct {
+		projectID       string
+		projectRequired bool
+		expected        *tidcommon.ServiceError
+	}{
+		"a project":           {projectID: testProjectID, projectRequired: true},
+		"no project required": {},
+		"a missing project":   {projectRequired: true, expected: &ErrorProjectRequired},
+	} {
+		suite.Run(name, func() {
+			service, _ := suite.setupTestService()
+			service.projectRequired = tc.projectRequired
+
+			assert.Equal(suite.T(), tc.expected, service.checkProjectGiven(tc.projectID))
+		})
+	}
+}
+
+func (suite *ServiceTestSuite) TestCreateApplication_ProjectRequired() {
+	suite.withServerRuntime()
+	service, _ := suite.setupTestService()
+	service.projectValidator = newProjectOUValidatorMock(suite.T())
+	service.projectRequired = true
+
+	_, svcErr := service.createApplication(context.Background(), &model.ApplicationDTO{Name: "test-app"})
+
+	assert.Equal(suite.T(), &ErrorProjectRequired, svcErr)
+}
+
+// A system organization unit that is not configured or does not exist is a server error when the
+// application defaults to it.
+func (suite *ServiceTestSuite) TestValidateApplicationFields_NoSystemOU() {
+	service, _ := suite.setupTestService()
+	ouService := oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
+	ouService.On("GetSystemOUID", mock.Anything).Return("", &tidcommon.InternalServerError)
+	service.ouService = ouService
+
+	svcErr := service.validateApplicationFields(context.Background(), &model.ApplicationDTO{Name: "test-app"})
+
+	assert.Equal(suite.T(), &tidcommon.InternalServerError, svcErr)
+}
+
+// withServerRuntime loads a server runtime with the default configuration.
+func (suite *ServiceTestSuite) withServerRuntime() {
+	cfg := &config.Config{}
+	config.ResetServerRuntime()
+	suite.Require().NoError(config.InitializeServerRuntime("/tmp/test", cfg))
+	suite.T().Cleanup(config.ResetServerRuntime)
+}
+
+func (suite *ServiceTestSuite) TestValidateApplicationForUpdate_KeepsOUWhenOmitted() {
+	testConfig := &config.Config{
+		DeclarativeResources: config.DeclarativeResources{
+			Enabled: false,
+		},
+	}
+	config.ResetServerRuntime()
+	err := config.InitializeServerRuntime("/tmp/test", testConfig)
+	require.NoError(suite.T(), err)
+	defer config.ResetServerRuntime()
+
+	service, mockStore := suite.setupTestService()
+	resolver := newProjectOUValidatorMock(suite.T())
+	resolver.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, "child-ou").Return(nil)
+	service.projectValidator = resolver
+
+	existingApp := &model.ApplicationProcessedDTO{
+		ID:        testServiceAppID,
+		Name:      "Test App",
+		OUID:      "child-ou",
+		ProjectID: testProjectID,
+	}
+	app := &model.ApplicationDTO{Name: "Test App", ProjectID: testProjectID}
+
+	mockLoadFullApplication(mockStore, service, existingApp)
+
+	_, _, svcErr := service.validateApplicationForUpdate(context.Background(), testServiceAppID, app)
+
+	assert.Nil(suite.T(), svcErr)
+	assert.Equal(suite.T(), "child-ou", app.OUID)
+}
+
+func (suite *ServiceTestSuite) TestValidateApplicationFields_ProjectWithoutProjectService() {
+	for name, tc := range map[string]struct {
+		ouID     string
+		expected string
+	}{
+		"no organization unit": {expected: testSystemOU},
+		"an organization unit": {ouID: "child-ou", expected: "child-ou"},
+	} {
+		suite.Run(name, func() {
+			service, _ := suite.setupTestService()
+			service.projectValidator = nil
+			app := &model.ApplicationDTO{Name: "test-app", ProjectID: testProjectID, OUID: tc.ouID}
+
+			svcErr := service.validateApplicationFields(context.Background(), app)
+
+			assert.Nil(suite.T(), svcErr)
+			assert.Equal(suite.T(), tc.expected, app.OUID)
+			assert.Equal(suite.T(), testProjectID, app.ProjectID)
 		})
 	}
 }
 
 func (suite *ServiceTestSuite) TestValidateApplicationFields_ProjectNotResolved() {
 	for name, tc := range map[string]struct {
-		resolver func() projectOUResolver
+		resolver func() projectOUValidator
 		expected *tidcommon.ServiceError
 	}{
 		"an unknown project": {
-			resolver: suite.projectResolverReturning(&project.ErrorProjectNotFound),
+			resolver: suite.projectValidatorReturning(&project.ErrorProjectNotFound),
 			expected: &ErrorInvalidProject,
 		},
 		"an organization unit outside the project": {
-			resolver: suite.projectResolverReturning(&project.ErrorOUNotInProject),
+			resolver: suite.projectValidatorReturning(&project.ErrorOUNotInProject),
 			expected: &ErrorOUNotInProject,
 		},
-		"an unknown organization unit": {
-			resolver: suite.projectResolverReturning(
-				&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "OU-1003"}),
-			expected: &ErrorInvalidRequestFormat,
-		},
-		"a deployment without projects": {
-			resolver: func() projectOUResolver { return nil },
-			expected: &ErrorInvalidProject,
-		},
 		"a lookup failure": {
-			resolver: suite.projectResolverReturning(&tidcommon.InternalServerError),
+			resolver: suite.projectValidatorReturning(&tidcommon.InternalServerError),
 			expected: &tidcommon.InternalServerError,
 		},
 	} {
 		suite.Run(name, func() {
 			service, _ := suite.setupTestService()
-			service.projectResolver = tc.resolver()
-			app := &model.ApplicationDTO{Name: "test-app", ProjectID: "project-1", OUID: "child-ou"}
+			service.projectValidator = tc.resolver()
+			app := &model.ApplicationDTO{Name: "test-app", ProjectID: testProjectID, OUID: "child-ou"}
 
 			svcErr := service.validateApplicationFields(context.Background(), app)
 
@@ -4373,6 +4576,28 @@ func (suite *ServiceTestSuite) TestGetResourceDependencies_Success() {
 	assert.Equal(suite.T(), "Admin App", result[1].DisplayName)
 }
 
+// An application that allows an agent type blocks its deletion: the handle could otherwise be recreated
+// in another organization unit and inherit the allowance.
+func (suite *ServiceTestSuite) TestGetResourceDependencies_AllowedAgentTypeBlocksDelete() {
+	service, mockStore := suite.setupTestService()
+	mockStore.EXPECT().
+		GetEntityIDsByReference(
+			mock.Anything, resourcedependency.ResourceTypeAgentType, "support-agents",
+			serverconst.MaxCompositeStoreRecords, 0).
+		Return([]string{"app-1"}, 1, nil)
+
+	ep := resetEntityServiceMethod(service, "GetEntitiesByIDs")
+	ep.On("GetEntitiesByIDs", mock.Anything, []string{"app-1"}).Return([]providers.Entity{
+		{ID: "app-1", Category: providers.EntityCategoryApp},
+	}, nil)
+
+	result, err := service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeAgentType, "support-agents")
+	assert.NoError(suite.T(), err)
+	require.Len(suite.T(), result, 1)
+	assert.Equal(suite.T(), resourcedependency.BehaviorRestrict, result[0].BehaviorOnDelete)
+}
+
 // Agents share the inbound-client store; the application provider must skip non-app entities.
 func (suite *ServiceTestSuite) TestGetResourceDependencies_FiltersOutNonAppEntities() {
 	service, mockStore := suite.setupTestService()
@@ -4433,6 +4658,86 @@ func (suite *ServiceTestSuite) TestGetResourceDependencies_SystemAttributesWitho
 	assert.NoError(suite.T(), err)
 	require.Len(suite.T(), result, 1)
 	assert.Equal(suite.T(), "", result[0].DisplayName)
+}
+
+func (suite *ServiceTestSuite) TestGetResourceDependencies_OUReportsOwnedApplications() {
+	service, mockStore := suite.setupTestService()
+	sysAttrs, _ := json.Marshal(map[string]interface{}{"name": "Portal App"})
+	ep := resetEntityServiceMethod(service, "GetEntityListByOUIDs")
+	ep.On("GetEntityListByOUIDs", mock.Anything, providers.EntityCategoryApp, []string{"ou-1"},
+		serverconst.MaxCompositeStoreRecords, 0, map[string]interface{}(nil)).Return([]providers.Entity{
+		{ID: "app-1", Category: providers.EntityCategoryApp, SystemAttributes: sysAttrs},
+		{ID: "app-2", Category: providers.EntityCategoryApp},
+	}, nil)
+
+	result, err := service.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), []resourcedependency.ResourceDependency{
+		{
+			ResourceType:     resourcedependency.ResourceTypeApplication,
+			ID:               "app-1",
+			DisplayName:      "Portal App",
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		},
+		{
+			ResourceType:     resourcedependency.ResourceTypeApplication,
+			ID:               "app-2",
+			DisplayName:      "",
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		},
+	}, result)
+	mockStore.AssertNotCalled(suite.T(), "GetEntityIDsByReference", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything)
+}
+
+func (suite *ServiceTestSuite) TestGetResourceDependencies_OUWithoutApplications() {
+	service, _ := suite.setupTestService()
+	ep := resetEntityServiceMethod(service, "GetEntityListByOUIDs")
+	ep.On("GetEntityListByOUIDs", mock.Anything, providers.EntityCategoryApp, []string{"ou-1"},
+		serverconst.MaxCompositeStoreRecords, 0, map[string]interface{}(nil)).Return([]providers.Entity{}, nil)
+
+	result, err := service.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
+
+	assert.NoError(suite.T(), err)
+	assert.NotNil(suite.T(), result)
+	assert.Empty(suite.T(), result)
+}
+
+func (suite *ServiceTestSuite) TestGetResourceDependencies_OUEntityServiceError() {
+	service, _ := suite.setupTestService()
+	ep := resetEntityServiceMethod(service, "GetEntityListByOUIDs")
+	ep.On("GetEntityListByOUIDs", mock.Anything, providers.EntityCategoryApp, []string{"ou-1"},
+		serverconst.MaxCompositeStoreRecords, 0, map[string]interface{}(nil)).Return(nil, errors.New("store error"))
+
+	result, err := service.GetResourceDependencies(context.Background(), resourcedependency.ResourceTypeOU, "ou-1")
+
+	assert.EqualError(suite.T(), err, "store error")
+	assert.Nil(suite.T(), result)
+}
+
+func (suite *ServiceTestSuite) TestApplicationName() {
+	withName, _ := json.Marshal(map[string]interface{}{"name": "Portal App"})
+	withoutName, _ := json.Marshal(map[string]interface{}{"description": "some desc"})
+	nonStringName, _ := json.Marshal(map[string]interface{}{"name": 42})
+
+	testCases := []struct {
+		name     string
+		sysAttrs json.RawMessage
+		expected string
+	}{
+		{name: "WithName", sysAttrs: withName, expected: "Portal App"},
+		{name: "WithoutName", sysAttrs: withoutName, expected: ""},
+		{name: "NonStringName", sysAttrs: nonStringName, expected: ""},
+		{name: "NoSystemAttributes", sysAttrs: nil, expected: ""},
+		{name: "MalformedSystemAttributes", sysAttrs: json.RawMessage("{"), expected: ""},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			assert.Equal(suite.T(), tc.expected, applicationName(providers.Entity{SystemAttributes: tc.sysAttrs}))
+		})
+	}
 }
 
 func (suite *ServiceTestSuite) TestCreateApplication_CreateInboundClientFailsAndCompensationFails() {
@@ -4558,7 +4863,7 @@ func (suite *ServiceTestSuite) TestUpdateEntityDataForApplicationUpdate_UpdateSy
 	ep.On("UpdateSystemAttributes", mock.Anything, mock.Anything, mock.Anything).
 		Return(errors.New("internal error"))
 
-	svcErr := service.updateEntityDataForApplicationUpdate(context.Background(), testServiceAppID, app, nil)
+	svcErr := service.updateEntityDataForApplicationUpdate(context.Background(), testServiceAppID, app, nil, true)
 
 	assert.Equal(suite.T(), &tidcommon.InternalServerError, svcErr)
 }
@@ -4572,7 +4877,7 @@ func (suite *ServiceTestSuite) TestUpdateEntityDataForApplicationUpdate_FlowSecr
 	ep.On("UpdateSystemCredentials", mock.Anything, mock.Anything, mock.Anything).
 		Return(errors.New("internal error"))
 
-	svcErr := service.updateEntityDataForApplicationUpdate(context.Background(), testServiceAppID, app, nil)
+	svcErr := service.updateEntityDataForApplicationUpdate(context.Background(), testServiceAppID, app, nil, true)
 
 	assert.Equal(suite.T(), &tidcommon.InternalServerError, svcErr)
 }
@@ -4595,7 +4900,7 @@ func (suite *ServiceTestSuite) TestUpdateEntityDataForApplicationUpdate_NoFlowSe
 	ep := service.entityService.(*entitymock.EntityServiceInterfaceMock)
 
 	svcErr := service.updateEntityDataForApplicationUpdate(
-		context.Background(), testServiceAppID, app, inboundAuthConfig)
+		context.Background(), testServiceAppID, app, inboundAuthConfig, true)
 
 	assert.Nil(suite.T(), svcErr)
 	ep.AssertNotCalled(suite.T(), "UpdateSystemCredentials", mock.Anything, mock.Anything)
@@ -4618,7 +4923,7 @@ func (suite *ServiceTestSuite) TestUpdateEntityDataForApplicationUpdate_UpdateCr
 		Return(errors.New("internal error"))
 
 	svcErr := service.updateEntityDataForApplicationUpdate(
-		context.Background(), testServiceAppID, app, inboundAuthConfig)
+		context.Background(), testServiceAppID, app, inboundAuthConfig, true)
 
 	assert.Equal(suite.T(), &tidcommon.InternalServerError, svcErr)
 }
@@ -4775,14 +5080,20 @@ func (suite *ServiceTestSuite) TestSyncPasskeyOriginsToCORS_AddsNewOrigins() {
 	mockCfgSvc.On("GetWritableConfig", mock.Anything, string(serverconfig.ConfigNameCORS)).
 		Return(existing, (*tidcommon.ServiceError)(nil))
 
+	// The write runs as an internal operation, so a data plane does not refuse it, and keeps the caller
+	// the audit event names.
 	var capturedRaw json.RawMessage
-	mockCfgSvc.On("SetConfig", mock.Anything, serverconfig.ConfigNameCORS, mock.MatchedBy(
+	mockCfgSvc.On("SetConfig", mock.MatchedBy(func(ctx context.Context) bool {
+		return security.IsRuntimeContext(ctx) && security.GetSubject(ctx) == "admin-1"
+	}), serverconfig.ConfigNameCORS, mock.MatchedBy(
 		func(raw json.RawMessage) bool {
 			capturedRaw = raw
 			return true
 		})).Return((*tidcommon.ServiceError)(nil))
 
-	svc.syncPasskeyOriginsToCORS(context.Background(), []string{"https://app.example.com"})
+	ctx := security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest("admin-1", "ou-1", "", nil, nil))
+	svc.syncPasskeyOriginsToCORS(ctx, []string{"https://app.example.com"})
 
 	var saved map[string]json.RawMessage
 	require.NoError(suite.T(), json.Unmarshal(capturedRaw, &saved))
@@ -4871,6 +5182,8 @@ func (suite *ServiceTestSuite) newFlowTargetTestService(entity *providers.Entity
 		inboundClientService: mockStore,
 		entityService:        mockEntityService,
 		dependencyRegistry:   noopDepRegistry{},
+		authzService:         allowAllAuthz(suite.T()),
+		bus:                  discardingBus{},
 	}
 	return service, mockStore
 }
@@ -4897,6 +5210,10 @@ func (blockingDepRegistry) CascadeDelete(context.Context, string, string) (int, 
 	return 0, nil
 }
 
+func (blockingDepRegistry) SuspensionDependents(context.Context, string, string) ([]string, error) {
+	return nil, nil
+}
+
 func (blockingDepRegistry) ValidateReferenceUpdate(
 	context.Context, string, string) *tidcommon.ServiceError {
 	return nil
@@ -4914,6 +5231,10 @@ func (unknownDepRegistry) GetDependencies(
 
 func (unknownDepRegistry) CascadeDelete(context.Context, string, string) (int, error) {
 	return 0, nil
+}
+
+func (unknownDepRegistry) SuspensionDependents(context.Context, string, string) ([]string, error) {
+	return nil, nil
 }
 
 func (unknownDepRegistry) ValidateReferenceUpdate(
@@ -4982,6 +5303,7 @@ func (suite *ServiceTestSuite) TestValidateDeleteApplication_RefusesDeclarativeR
 		inboundClientService: mockStore,
 		entityService:        mockEntityService,
 		dependencyRegistry:   noopDepRegistry{},
+		authzService:         allowAllAuthz(suite.T()),
 	}
 
 	target, svcErr := service.ValidateDeleteApplication(context.Background(), testServiceAppID)
@@ -4997,10 +5319,8 @@ func (suite *ServiceTestSuite) TestValidateRegenerateClientSecret_RefusesPublicC
 	mockStore.On("GetOAuthClientByClientID", mock.Anything, "public-client").
 		Return(&providers.OAuthClient{PublicClient: true}, nil)
 
-	target, svcErr := service.ValidateCredentialAction(
-		context.Background(), testServiceAppID, model.CredentialActionRegenerate)
+	svcErr := service.ValidateClientSecretRegeneration(context.Background(), testServiceAppID)
 
-	assert.Nil(suite.T(), target)
 	assert.Equal(suite.T(), ErrorApplicationHasNoClientSecret.Code, svcErr.Code)
 }
 
@@ -5008,10 +5328,8 @@ func (suite *ServiceTestSuite) TestValidateRegenerateClientSecret_RefusesPublicC
 func (suite *ServiceTestSuite) TestValidateRegenerateClientSecret_RefusesApplicationWithoutClient() {
 	service, _ := suite.newFlowTargetTestService(&providers.Entity{Category: providers.EntityCategoryApp})
 
-	target, svcErr := service.ValidateCredentialAction(
-		context.Background(), testServiceAppID, model.CredentialActionRegenerate)
+	svcErr := service.ValidateClientSecretRegeneration(context.Background(), testServiceAppID)
 
-	assert.Nil(suite.T(), target)
 	assert.Equal(suite.T(), ErrorApplicationHasNoClientSecret.Code, svcErr.Code)
 }
 
@@ -5023,11 +5341,7 @@ func (suite *ServiceTestSuite) TestValidateRegenerateClientSecret_ReturnsRevocat
 			TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodClientSecretBasic,
 		}, nil)
 
-	target, svcErr := service.ValidateCredentialAction(
-		context.Background(), testServiceAppID, model.CredentialActionRegenerate)
-
-	assert.Nil(suite.T(), svcErr)
-	assert.Equal(suite.T(), "secret-client", target.ClientKey)
+	assert.Nil(suite.T(), service.ValidateClientSecretRegeneration(context.Background(), testServiceAppID))
 }
 
 // A revocation is sized from the client id recorded in the entity's attributes. When that blob cannot be
@@ -5045,6 +5359,62 @@ func (suite *ServiceTestSuite) TestValidateDeleteApplication_RefusesUnreadableSy
 	assert.Equal(suite.T(), tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
+func (suite *ServiceTestSuite) TestValidateRegenerateClientSecret_RefusesUncoveredApplicationPermissions() {
+	service, _ := suite.newFlowTargetTestService(appEntityWithClientID("client-1"))
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	authzMock.On("CanControlEntity", mock.Anything, testServiceAppID).
+		Return(&sysauthz.ErrorGrantNotPermitted).Once()
+	service.authzService = authzMock
+
+	svcErr := service.ValidateClientSecretRegeneration(context.Background(), testServiceAppID)
+
+	assert.NotNil(suite.T(), svcErr)
+	assert.Equal(suite.T(), sysauthz.ErrorGrantNotPermitted.Code, svcErr.Code)
+}
+
+func (suite *ServiceTestSuite) TestValidateDeleteApplication_RefusesUncoveredApplicationPermissions() {
+	service, _ := suite.newFlowTargetTestService(appEntityWithClientID("client-1"))
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	authzMock.On("CanControlEntity", mock.Anything, testServiceAppID).
+		Return(&sysauthz.ErrorGrantNotPermitted).Once()
+	service.authzService = authzMock
+
+	target, svcErr := service.ValidateDeleteApplication(context.Background(), testServiceAppID)
+
+	assert.Nil(suite.T(), target)
+	assert.NotNil(suite.T(), svcErr)
+	assert.Equal(suite.T(), sysauthz.ErrorGrantNotPermitted.Code, svcErr.Code)
+}
+
+// Any update can set a client secret, switch the authentication method or replace the certificate, so
+// every update needs the caller to hold the application's permissions, not just a secret rotation.
+func (suite *ServiceTestSuite) TestUpdateApplication_RefusesUncoveredApplicationPermissions() {
+	service, mockStore := suite.setupTestService()
+	authzMock := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+	authzMock.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	authzMock.On("CanControlEntity", mock.Anything, testServiceAppID).
+		Return(&sysauthz.ErrorGrantNotPermitted).Once()
+	service.authzService = authzMock
+
+	app, svcErr := service.UpdateApplication(context.Background(), testServiceAppID, &model.ApplicationDTO{
+		Name: "app",
+		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{{
+			Type: providers.OAuthInboundAuthType,
+			OAuthConfig: &providers.OAuthConfigWithSecret{
+				GrantTypes:              []providers.GrantType{providers.GrantTypeClientCredentials},
+				TokenEndpointAuthMethod: providers.TokenEndpointAuthMethodPrivateKeyJWT,
+			},
+		}},
+	})
+
+	suite.Nil(app)
+	suite.Require().NotNil(svcErr)
+	suite.Equal(sysauthz.ErrorGrantNotPermitted.Code, svcErr.Code)
+	suite.Empty(mockStore.Calls)
+}
+
 // An unset token endpoint auth method defaults to client_secret_basic when the client is written, so such
 // a client does hold a secret to rotate. Both paths read one predicate so they cannot disagree on it.
 func (suite *ServiceTestSuite) TestValidateRegenerateClientSecret_AllowsUnspecifiedAuthMethod() {
@@ -5052,20 +5422,17 @@ func (suite *ServiceTestSuite) TestValidateRegenerateClientSecret_AllowsUnspecif
 	mockStore.On("GetOAuthClientByClientID", mock.Anything, "unset-method-client").
 		Return(&providers.OAuthClient{}, nil)
 
-	target, svcErr := service.ValidateCredentialAction(
-		context.Background(), testServiceAppID, model.CredentialActionRegenerate)
-
-	assert.Nil(suite.T(), svcErr)
-	assert.Equal(suite.T(), "unset-method-client", target.ClientKey)
+	assert.Nil(suite.T(), service.ValidateClientSecretRegeneration(context.Background(), testServiceAppID))
 }
 
 // The rotation must be refused before anything is written when the application cannot be rotated,
 // so a refusal never leaves a half-rotated credential behind.
 func (suite *ServiceTestSuite) TestRegenerateClientSecret_RefusedBeforePersist() {
 	service, _ := suite.newFlowTargetTestService(&providers.Entity{Category: providers.EntityCategoryApp})
+	regeneratesThroughTheHolder(service, service.entityService.(*entitymock.EntityServiceInterfaceMock))
 
-	secret, svcErr := service.ApplyCredentialAction(
-		context.Background(), testServiceAppID, model.CredentialActionRegenerate)
+	secret, svcErr := regeneratedSecret(service.RegenerateClientSecret(
+		context.Background(), testServiceAppID))
 
 	assert.Empty(suite.T(), secret)
 	assert.Equal(suite.T(), ErrorApplicationHasNoClientSecret.Code, svcErr.Code)
@@ -5089,13 +5456,16 @@ func (suite *ServiceTestSuite) TestRegenerateClientSecret_PersistsAndReturnsNewS
 		inboundClientService: mockStore,
 		entityService:        mockEntityService,
 		dependencyRegistry:   noopDepRegistry{},
+		authzService:         allowAllAuthz(suite.T()),
+		bus:                  discardingBus{},
 	}
+	regeneratesThroughTheHolder(service, mockEntityService)
 
-	secret, svcErr := service.ApplyCredentialAction(
-		context.Background(), testServiceAppID, model.CredentialActionRegenerate)
+	secret, svcErr := regeneratedSecret(service.RegenerateClientSecret(
+		context.Background(), testServiceAppID))
 
 	assert.Nil(suite.T(), svcErr)
-	assert.NotEmpty(suite.T(), secret)
+	assert.Equal(suite.T(), testRegeneratedSecret, secret)
 	mockEntityService.AssertExpectations(suite.T())
 }
 
@@ -5246,6 +5616,58 @@ func (suite *ServiceTestSuite) sharingTestService() (
 		ID: testServiceAppID, Name: "Test App", OUID: "owner-ou",
 	})
 	return service, sharingMock
+}
+
+// A shared application stays in its project as well as its organization unit.
+func (suite *ServiceTestSuite) TestUpdateApplication_SharedApplicationCannotChangeProject() {
+	service, sharingMock := suite.sharingTestService()
+	resolver := newProjectOUValidatorMock(suite.T())
+	resolver.EXPECT().ValidateProjectOU(mock.Anything, "project-2", "owner-ou").Return(nil).Once()
+	service.projectValidator = resolver
+	sharingMock.EXPECT().ListPolicies(mock.Anything, ApplicationSharingType, testServiceAppID).
+		Return([]sharing.Policy{{ID: "p1"}}, nil).Once()
+
+	result, svcErr := service.UpdateApplication(context.Background(), testServiceAppID,
+		&model.ApplicationDTO{Name: "Test App", OUID: "owner-ou", ProjectID: "project-2"})
+
+	suite.Nil(result)
+	suite.Require().NotNil(svcErr)
+	suite.Equal(ErrorSharedApplicationCannotMove.Code, svcErr.Code)
+}
+
+// An update that names no project keeps the application in its project, and the organization unit
+// must still belong to it.
+func (suite *ServiceTestSuite) TestValidateApplicationForUpdate_KeepsItsProject() {
+	for name, tc := range map[string]struct {
+		resolveErr *tidcommon.ServiceError
+		expected   *tidcommon.ServiceError
+	}{
+		"an organization unit in the project": {},
+		"an organization unit outside the project": {
+			resolveErr: &project.ErrorOUNotInProject, expected: &ErrorOUNotInProject,
+		},
+	} {
+		suite.Run(name, func() {
+			service, store := suite.setupTestService()
+			mockLoadFullApplication(store, service, &model.ApplicationProcessedDTO{
+				ID: testServiceAppID, Name: "Test App", OUID: "owner-ou", ProjectID: testProjectID,
+			})
+			resolver := newProjectOUValidatorMock(suite.T())
+			resolver.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, "owner-ou").
+				Return(tc.resolveErr).Once()
+			service.projectValidator = resolver
+			app := &model.ApplicationDTO{Name: "Test App", OUID: "owner-ou"}
+
+			_, _, svcErr := service.validateApplicationForUpdate(context.Background(), testServiceAppID, app)
+
+			if tc.expected != nil {
+				suite.Equal(tc.expected, svcErr)
+				return
+			}
+			suite.Nil(svcErr)
+			suite.Equal(testProjectID, app.ProjectID)
+		})
+	}
 }
 
 // mockStore reaches the inbound client mock the service was built with.
@@ -5963,4 +6385,46 @@ func (suite *ServiceTestSuite) TestUpdateApplication_SharingLookupFailureOnMove(
 	suite.Nil(result)
 	suite.Require().NotNil(svcErr)
 	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}
+
+// A flow's application deletion and secret regeneration are refused unless the caller may act on applications in
+// the application's unit.
+func (suite *ServiceTestSuite) TestFlowValidations_RequireTheApplicationActionInItsUnit() {
+	cases := map[string]struct {
+		action   security.Action
+		validate func(*applicationService) *tidcommon.ServiceError
+	}{
+		"deletion": {security.ActionDeleteApplication, func(s *applicationService) *tidcommon.ServiceError {
+			_, svcErr := s.ValidateDeleteApplication(context.Background(), testServiceAppID)
+			return svcErr
+		}},
+		"secret regeneration": {security.ActionUpdateApplication, func(s *applicationService) *tidcommon.ServiceError {
+			return s.ValidateClientSecretRegeneration(context.Background(), testServiceAppID)
+		}},
+	}
+	for name, tc := range cases {
+		for outcome, authzErr := range map[string]*tidcommon.ServiceError{
+			"denied": nil, "check failure": &tidcommon.InternalServerError,
+		} {
+			suite.Run(name+" "+outcome, func() {
+				entity := appEntityWithClientID("client-1")
+				entity.OUID = "ou-app"
+				service, _ := suite.newFlowTargetTestService(entity)
+				authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(suite.T())
+				authz.On("IsActionAllowed", mock.Anything, tc.action,
+					&sysauthz.ActionContext{ResourceType: security.ResourceTypeApplication, OUID: "ou-app"}).
+					Return(false, authzErr)
+				service.authzService = authz
+
+				svcErr := tc.validate(service)
+
+				suite.Require().NotNil(svcErr)
+				if authzErr == nil {
+					suite.Equal(tidcommon.ErrorUnauthorized.Code, svcErr.Code)
+				} else {
+					suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+				}
+			})
+		}
+	}
 }

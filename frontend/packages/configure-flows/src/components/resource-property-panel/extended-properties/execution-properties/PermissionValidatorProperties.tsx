@@ -1,7 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {FormHelperText, FormLabel, Stack, TextField, Typography} from '@wso2/oxygen-ui';
+import {Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {useEffect, useMemo, useState, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {CommonResourcePropertiesPropsInterface} from './types';
@@ -33,21 +33,18 @@ function PermissionValidatorProperties({resource, onChange}: CommonResourcePrope
         {t('flows:core.executions.permissionValidator.description')}
       </Typography>
 
-      <div>
-        <FormLabel htmlFor="required-scopes">
-          {t('flows:core.executions.permissionValidator.requiredScopes.label')}
-        </FormLabel>
-        <TextField
-          id="required-scopes"
-          value={localValue}
-          onChange={(e) => setLocalValue(e.target.value)}
-          onBlur={() => onChange('data.properties.requiredScopes', parseCommaSeparated(localValue), resource)}
-          placeholder={t('flows:core.executions.permissionValidator.requiredScopes.placeholder')}
-          fullWidth
-          size="small"
-        />
-        <FormHelperText>{t('flows:core.executions.permissionValidator.requiredScopes.hint')}</FormHelperText>
-      </div>
+      <TextField
+        labelPlacement="top"
+        label={t('flows:core.executions.permissionValidator.requiredScopes.label')}
+        helperText={t('flows:core.executions.permissionValidator.requiredScopes.hint')}
+        id="required-scopes"
+        value={localValue}
+        onChange={(e) => setLocalValue(e.target.value)}
+        onBlur={() => onChange('data.properties.requiredScopes', parseCommaSeparated(localValue), resource)}
+        placeholder={t('flows:core.executions.permissionValidator.requiredScopes.placeholder')}
+        fullWidth
+        size="small"
+      />
     </Stack>
   );
 }

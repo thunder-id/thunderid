@@ -1,6 +1,7 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import {screen, fireEvent, waitFor, renderWithProviders, renderHook, within} from '@thunderid/test-utils';
 import {useTranslation} from 'react-i18next';
 import {describe, it, expect, vi, beforeEach, beforeAll} from 'vitest';
@@ -245,6 +246,60 @@ describe('CreateOrganizationUnitPage', () => {
         expect.any(Object),
       );
     });
+  });
+
+  it('creates the organization unit in the selected project', async () => {
+    renderWithProviders(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <CreateOrganizationUnitPage />
+      </ProjectScopeProvider>,
+    );
+
+    fireEvent.change(screen.getByLabelText(/Name/i), {target: {value: 'Test Organization'}});
+    await waitFor(() => {
+      expect(screen.getByText(t('common:actions.create'))).not.toBeDisabled();
+    });
+    fireEvent.click(screen.getByText(t('common:actions.create')));
+
+    await waitFor(() => {
+      expect(mockMutate).toHaveBeenCalledWith(
+        expect.objectContaining({name: 'Test Organization', projectId: 'project-1'}),
+        expect.any(Object),
+      );
+    });
+  });
+
+  it('returns to the list outside a project when organization units are created only in projects', async () => {
+    renderWithProviders(<CreateOrganizationUnitPage createInProjectsOnly />);
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText(/Name/i)).not.toBeInTheDocument();
+    });
+  });
+
+  it('creates the organization unit inside a project when organization units are created only in projects', () => {
+    renderWithProviders(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <CreateOrganizationUnitPage createInProjectsOnly />
+      </ProjectScopeProvider>,
+    );
+
+    expect(screen.getByLabelText(/Name/i)).toBeInTheDocument();
+  });
+
+  it('creates the organization unit in no project without a selected project', async () => {
+    renderWithProviders(<CreateOrganizationUnitPage />);
+
+    fireEvent.change(screen.getByLabelText(/Name/i), {target: {value: 'Test Organization'}});
+    await waitFor(() => {
+      expect(screen.getByText(t('common:actions.create'))).not.toBeDisabled();
+    });
+    fireEvent.click(screen.getByText(t('common:actions.create')));
+
+    await waitFor(() => {
+      expect(mockMutate).toHaveBeenCalled();
+    });
+    expect(mockMutate.mock.calls[0][0]).not.toHaveProperty('projectId');
   });
 
   it('should navigate back when close button is clicked', async () => {

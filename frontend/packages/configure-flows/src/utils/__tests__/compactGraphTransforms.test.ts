@@ -111,6 +111,19 @@ describe('collapseExecutorChains', () => {
     expect(result.nodes.some((node) => node.type === EXECUTION_STACK_NODE_TYPE)).toBe(false);
   });
 
+  it('should not stack an executor whose only outgoing edge is a display-only skip edge', () => {
+    const nodes = [view('view-1'), executor('exec-a'), executor('exec-b'), view('view-2')];
+    const edges = [
+      successEdge('e1', 'view-1', 'exec-a'),
+      {...successEdge('skip', 'exec-a', 'exec-b'), data: {conditionSkip: true}},
+      successEdge('e3', 'exec-b', 'view-2'),
+    ];
+
+    const result = collapseExecutorChains(nodes, edges);
+
+    expect(result.nodes.some((node) => node.type === EXECUTION_STACK_NODE_TYPE)).toBe(false);
+  });
+
   it('should not absorb a member that has a second incoming edge', () => {
     // exec-b is also reachable from view-2, so exec-a -> exec-b must not merge
     const nodes = [view('view-1'), executor('exec-a'), executor('exec-b'), view('view-2'), view('view-3')];

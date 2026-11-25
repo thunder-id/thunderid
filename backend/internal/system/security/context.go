@@ -28,6 +28,8 @@ type SecurityContext struct {
 	revocationSubject   string
 	revocationAppKey    string
 	revocationAudiences []string
+	selfIssued          bool
+	recorded            bool
 	establishedAt       time.Time
 	permissions         []string
 	attributes          map[string]interface{}
@@ -76,6 +78,13 @@ func GetSubject(ctx context.Context) string {
 	return ""
 }
 
+// IsSelfIssued reports whether the caller presented a token this deployment issued. It is false for a
+// trusted-issuer token, a management API key and a context without a security context.
+func IsSelfIssued(ctx context.Context) bool {
+	authCtx := getSecurityContext(ctx)
+	return authCtx != nil && authCtx.selfIssued
+}
+
 // GetOUID retrieves the organization unit ID from the context.
 // Returns empty string if no security context is present.
 func GetOUID(ctx context.Context) string {
@@ -84,6 +93,14 @@ func GetOUID(ctx context.Context) string {
 		return authCtx.ouID
 	}
 	return ""
+}
+
+// IsManagementAPIKey reports whether the context was authenticated by the management API key. Only
+// that authenticator builds a context with its subject and no token, so a bearer token whose sub
+// claim carries the same string is not taken for the key.
+func IsManagementAPIKey(ctx context.Context) bool {
+	authCtx := getSecurityContext(ctx)
+	return authCtx != nil && authCtx.subject == managementAPIKeySubject && authCtx.token == ""
 }
 
 // GetPermissions retrieves the granted permissions for the authenticated caller from the context.
@@ -96,6 +113,24 @@ func GetPermissions(ctx context.Context) []string {
 		return result
 	}
 	return []string{}
+}
+
+// IsDelegated reports whether the verified token on the context is a delegated token: one issued to a
+// client acting for a user, which carries the client in an "act" claim (RFC 8693 §4.1). It reads only the
+// verified token claims, so a request cannot supply or hide the answer.
+func IsDelegated(ctx context.Context) bool {
+	authCtx := getSecurityContext(ctx)
+	if authCtx == nil {
+		return false
+	}
+	return authCtx.attributes[claimActor] != nil
+}
+
+// GetClientID returns the OAuth client the verified token on the context was issued to, read from its
+// client_id claim. It is empty when there is no token or the token names no client.
+func GetClientID(ctx context.Context) string {
+	clientID, _ := GetAttribute(ctx, claimClientID).(string)
+	return clientID
 }
 
 // GetAttribute retrieves a specific attribute from the security token.
@@ -140,6 +175,25 @@ func GetAttribute(ctx context.Context, key string) interface{} {
 // rather than going through the securityService middleware that attaches it for REST requests.
 func WithSecurityContext(ctx context.Context, sc *SecurityContext) context.Context {
 	return withSecurityContext(ctx, sc)
+}
+
+// WithRecordedCaller rebuilds a caller recorded earlier in the same flow, for a step that caller started but
+// does not send. The result is never a runtime context.
+func WithRecordedCaller(ctx context.Context, subject, ouID string, permissions []string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx = context.WithValue(ctx, runtimeContextKey, false)
+	sc := newSecurityContext(subject, ouID, "", permissions, nil)
+	sc.recorded = true
+	return withSecurityContext(ctx, sc)
+}
+
+// IsRecordedCaller reports whether the caller was rebuilt by WithRecordedCaller rather than presenting a
+// credential on this request.
+func IsRecordedCaller(ctx context.Context) bool {
+	authCtx := getSecurityContext(ctx)
+	return authCtx != nil && authCtx.recorded
 }
 
 // WithRuntimeContext marks the context as an internal runtime caller.

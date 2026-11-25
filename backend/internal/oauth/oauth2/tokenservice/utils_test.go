@@ -22,8 +22,10 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	syscontext "github.com/thunder-id/thunderid/internal/system/context"
+	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
+	"github.com/thunder-id/thunderid/tests/mocks/authzmock"
 	"github.com/thunder-id/thunderid/tests/mocks/ouprovidermock"
 )
 
@@ -931,11 +933,11 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_OUOnly_SkipsEntityFetch()
 
 	app := newOAuthAppForClientAttributesWith(testBCCOUID,
 		[]string{constants.ClaimOUID, constants.ClaimOUName, constants.ClaimOUHandle})
-	claims, err := BuildClientAttributes(app, actors)
+	claims, err := BuildClientAttributes(context.Background(), app, actors)
 
 	assert.NoError(suite.T(), err)
 	assert.Nil(suite.T(), claims, "the organization claims are not this function's to return")
-	actors.AssertNotCalled(suite.T(), "GetActor")
+	actors.AssertNotCalled(suite.T(), "GetActor", mock.Anything, mock.Anything)
 }
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_OUAttributes_PartialSelection() {
@@ -970,14 +972,14 @@ func newOAuthAppForOwnAttributes(clientAttributes []string) *providers.OAuthClie
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_ResolvesRegardlessOfEntityCategory() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
-	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
+	actors.On("GetActor", mock.Anything, testBCCAppID).Return(&providers.Entity{
 		ID:         testBCCAppID,
 		Attributes: []byte(`{"modelProvider":"anthropic"}`),
 	}, (*tidcommon.ServiceError)(nil))
 
 	app := newOAuthAppForOwnAttributes([]string{"modelProvider"})
 	app.EntityCategory = providers.EntityCategoryUser
-	claims, err := BuildClientAttributes(app, actors)
+	claims, err := BuildClientAttributes(context.Background(), app, actors)
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "anthropic", claims["modelProvider"])
@@ -987,7 +989,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_NoClientAttributesConfigu
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
 
 	app := newOAuthAppForOwnAttributes(nil)
-	claims, err := BuildClientAttributes(app, actors)
+	claims, err := BuildClientAttributes(context.Background(), app, actors)
 
 	assert.NoError(suite.T(), err)
 	assert.Nil(suite.T(), claims)
@@ -995,13 +997,13 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_NoClientAttributesConfigu
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentOwnAttributes_HappyPath() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
-	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
+	actors.On("GetActor", mock.Anything, testBCCAppID).Return(&providers.Entity{
 		ID:         testBCCAppID,
 		Attributes: []byte(`{"modelProvider":"anthropic","model":"claude","unrequested":"x"}`),
 	}, (*tidcommon.ServiceError)(nil))
 
 	app := newOAuthAppForOwnAttributes([]string{"modelProvider", "model"})
-	claims, err := BuildClientAttributes(app, actors)
+	claims, err := BuildClientAttributes(context.Background(), app, actors)
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "anthropic", claims["modelProvider"])
@@ -1011,13 +1013,13 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentOwnAttributes_HappyP
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentOwnAttributes_SkipsReservedClaimNames() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
-	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
+	actors.On("GetActor", mock.Anything, testBCCAppID).Return(&providers.Entity{
 		ID:         testBCCAppID,
 		Attributes: []byte(`{"scope":"malicious-override","modelProvider":"anthropic"}`),
 	}, (*tidcommon.ServiceError)(nil))
 
 	app := newOAuthAppForOwnAttributes([]string{"scope", "modelProvider"})
-	claims, err := BuildClientAttributes(app, actors)
+	claims, err := BuildClientAttributes(context.Background(), app, actors)
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "anthropic", claims["modelProvider"])
@@ -1027,13 +1029,13 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentOwnAttributes_SkipsR
 // sub_type is reserved, so an agent cannot surface a schema attribute of that name.
 func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentOwnAttributes_SkipsSubType() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
-	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
+	actors.On("GetActor", mock.Anything, testBCCAppID).Return(&providers.Entity{
 		ID:         testBCCAppID,
 		Attributes: []byte(`{"sub_type":"app","modelProvider":"anthropic"}`),
 	}, (*tidcommon.ServiceError)(nil))
 
 	app := newOAuthAppForOwnAttributes([]string{"sub_type", "modelProvider"})
-	claims, err := BuildClientAttributes(app, actors)
+	claims, err := BuildClientAttributes(context.Background(), app, actors)
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "anthropic", claims["modelProvider"])
@@ -1042,15 +1044,16 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentOwnAttributes_SkipsS
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentSystemAttributes_HappyPath() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
-	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
-		ID:               testBCCAppID,
-		Category:         providers.EntityCategoryAgent,
-		Attributes:       []byte(`{"modelProvider":"anthropic","name":"Ledger Agent"}`),
-		SystemAttributes: []byte(`{"owner":"user-123","clientId":"cid","description":"d"}`),
+	actors.On("GetActor", mock.Anything, testBCCAppID).Return(&providers.Entity{
+		ID:         testBCCAppID,
+		Category:   providers.EntityCategoryAgent,
+		Attributes: []byte(`{"modelProvider":"anthropic","name":"Ledger Agent"}`),
+		SystemAttributes: []byte(`{"owner":{"id":"user-123","idType":"uuid","isLocal":true},` +
+			`"clientId":"cid","description":"d"}`),
 	}, (*tidcommon.ServiceError)(nil))
 
 	app := newOAuthAppForOwnAttributes([]string{"modelProvider", "name", "owner"})
-	claims, err := BuildClientAttributes(app, actors)
+	claims, err := BuildClientAttributes(context.Background(), app, actors)
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "anthropic", claims["modelProvider"])
@@ -1058,6 +1061,41 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentSystemAttributes_Hap
 	assert.Equal(suite.T(), "user-123", claims["owner"])
 	assert.NotContains(suite.T(), claims, "clientId")
 	assert.NotContains(suite.T(), claims, "description")
+}
+
+// The owner is stored as an object; the claim carries only its ID, and nothing when there is none.
+func (suite *UtilsTestSuite) TestBuildClientAttributes_OwnerClaimCarriesID() {
+	tests := []struct {
+		name      string
+		sysAttrs  string
+		wantClaim interface{}
+	}{
+		{"local owner", `{"owner":{"id":"user-123","idType":"uuid","isLocal":true}}`, "user-123"},
+		{"external owner", `{"owner":{"id":"a@example.com","idType":"email","isLocal":false}}`,
+			"a@example.com"},
+		{"no owner", `{"clientId":"cid"}`, nil},
+		{"not an object", `{"owner":"user-123"}`, nil},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			actors := actorprovidermock.NewActorProviderMock(suite.T())
+			actors.On("GetActor", mock.Anything, testBCCAppID).Return(&providers.Entity{
+				ID:               testBCCAppID,
+				Category:         providers.EntityCategoryAgent,
+				SystemAttributes: []byte(tc.sysAttrs),
+			}, (*tidcommon.ServiceError)(nil))
+
+			claims, err := BuildClientAttributes(
+				context.Background(), newOAuthAppForOwnAttributes([]string{"owner"}), actors)
+
+			assert.NoError(suite.T(), err)
+			if tc.wantClaim == nil {
+				assert.NotContains(suite.T(), claims, "owner")
+				return
+			}
+			assert.Equal(suite.T(), tc.wantClaim, claims["owner"])
+		})
+	}
 }
 
 // sub_valid_until surfaces the stored validUntil, kept in RFC 3339, in Unix seconds like exp and iat, and
@@ -1070,19 +1108,20 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_SubValidUntil() {
 	}{
 		{"bounded", `{"validUntil":"2027-01-27T14:00:00+05:30"}`, int64(1801038600)},
 		{"unbounded sentinel", `{"validUntil":"9999-12-31T23:59:59Z"}`, nil},
-		{"not stored", `{"owner":"user-123"}`, nil},
+		{"not stored", `{"owner":{"id":"user-123","idType":"uuid","isLocal":true}}`, nil},
 		{"unreadable", `{"validUntil":"2027-01-27"}`, nil},
 	}
 	for _, tc := range tests {
 		suite.Run(tc.name, func() {
 			actors := actorprovidermock.NewActorProviderMock(suite.T())
-			actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
+			actors.On("GetActor", mock.Anything, testBCCAppID).Return(&providers.Entity{
 				ID:               testBCCAppID,
 				Category:         providers.EntityCategoryAgent,
 				SystemAttributes: []byte(tc.sysAttrs),
 			}, (*tidcommon.ServiceError)(nil))
 
-			claims, err := BuildClientAttributes(newOAuthAppForOwnAttributes([]string{"sub_valid_until"}), actors)
+			claims, err := BuildClientAttributes(
+				context.Background(), newOAuthAppForOwnAttributes([]string{"sub_valid_until"}), actors)
 
 			assert.NoError(suite.T(), err)
 			if tc.wantClaim == nil {
@@ -1097,13 +1136,14 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_SubValidUntil() {
 // The claim is opt-in: an agent with a lifespan that did not select it carries no sub_valid_until.
 func (suite *UtilsTestSuite) TestBuildClientAttributes_SubValidUntilOnlyWhenSelected() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
-	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
-		ID:               testBCCAppID,
-		Category:         providers.EntityCategoryAgent,
-		SystemAttributes: []byte(`{"owner":"user-123","validUntil":"2027-01-27T08:30:00Z"}`),
+	actors.On("GetActor", mock.Anything, testBCCAppID).Return(&providers.Entity{
+		ID:       testBCCAppID,
+		Category: providers.EntityCategoryAgent,
+		SystemAttributes: []byte(`{"owner":{"id":"user-123","idType":"uuid","isLocal":true},` +
+			`"validUntil":"2027-01-27T08:30:00Z"}`),
 	}, (*tidcommon.ServiceError)(nil))
 
-	claims, err := BuildClientAttributes(newOAuthAppForOwnAttributes([]string{"owner"}), actors)
+	claims, err := BuildClientAttributes(context.Background(), newOAuthAppForOwnAttributes([]string{"owner"}), actors)
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "user-123", claims["owner"])
@@ -1113,13 +1153,14 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_SubValidUntilOnlyWhenSele
 // Only an agent has a lifespan to surface; an application client never carries the claim.
 func (suite *UtilsTestSuite) TestBuildClientAttributes_SubValidUntilNotForApplications() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
-	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
+	actors.On("GetActor", mock.Anything, testBCCAppID).Return(&providers.Entity{
 		ID:               testBCCAppID,
 		Category:         providers.EntityCategoryApp,
 		SystemAttributes: []byte(`{"validUntil":"2027-01-27T08:30:00Z"}`),
 	}, (*tidcommon.ServiceError)(nil))
 
-	claims, err := BuildClientAttributes(newOAuthAppForOwnAttributes([]string{"sub_valid_until"}), actors)
+	claims, err := BuildClientAttributes(
+		context.Background(), newOAuthAppForOwnAttributes([]string{"sub_valid_until"}), actors)
 
 	assert.NoError(suite.T(), err)
 	assert.NotContains(suite.T(), claims, "sub_valid_until")
@@ -1127,32 +1168,32 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_SubValidUntilNotForApplic
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_GroupsAndRoles_Resolved() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
-	actors.On("GetActorGroups", testBCCAppID).Return([]providers.EntityGroup{
+	actors.On("GetActorGroups", mock.Anything, testBCCAppID).Return([]providers.EntityGroup{
 		{ID: "g1", Name: "engineering"},
 		{ID: "g2", Name: "admins"},
 	}, (*tidcommon.ServiceError)(nil))
-	actors.On("GetActorRoles", testBCCAppID, []string{"g1", "g2"}).
+	actors.On("GetActorRoles", mock.Anything, testBCCAppID, []string{"g1", "g2"}).
 		Return([]string{"admin", "editor"}, (*tidcommon.ServiceError)(nil))
 
 	app := newOAuthAppForOwnAttributes([]string{"groups", "roles"})
-	claims, err := BuildClientAttributes(app, actors)
+	claims, err := BuildClientAttributes(context.Background(), app, actors)
 
 	assert.NoError(suite.T(), err)
 	assert.ElementsMatch(suite.T(), []string{"engineering", "admins"}, claims["groups"])
 	assert.ElementsMatch(suite.T(), []string{"admin", "editor"}, claims["roles"])
-	actors.AssertNotCalled(suite.T(), "GetActor")
+	actors.AssertNotCalled(suite.T(), "GetActor", mock.Anything, mock.Anything)
 }
 
 // A client's groups and roles are those of its own organization unit. A group of an organization
 // unit it is shared with is left out, and its roles are read from assignments made in its own.
 func (suite *UtilsTestSuite) TestBuildClientAttributes_GroupsAndRoles_OwnOUOnly() {
 	base := actorprovidermock.NewActorProviderMock(suite.T())
-	base.On("GetActorGroups", testBCCAppID).Return([]providers.EntityGroup{
+	base.On("GetActorGroups", mock.Anything, testBCCAppID).Return([]providers.EntityGroup{
 		{ID: "g-own", Name: "owners", OUID: "ou-owner"},
 		{ID: "g-sharee", Name: "sharee-team", OUID: "ou-child"},
 	}, (*tidcommon.ServiceError)(nil))
 	inOU := newOuActorRoleProviderMock(suite.T())
-	inOU.On("GetActorRolesInOU", testBCCAppID, []string{"g-own"}, "ou-owner").
+	inOU.On("GetActorRolesInOU", mock.Anything, testBCCAppID, []string{"g-own"}, "ou-owner").
 		Return([]string{"owner-role"}, (*tidcommon.ServiceError)(nil))
 	// The server's own provider reads roles in an organization unit as well.
 	actors := struct {
@@ -1162,7 +1203,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_GroupsAndRoles_OwnOUOnly(
 
 	app := newOAuthAppForOwnAttributes([]string{"groups", "roles"})
 	app.OUID = "ou-owner"
-	claims, err := BuildClientAttributes(app, actors)
+	claims, err := BuildClientAttributes(context.Background(), app, actors)
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), []string{"owners"}, claims["groups"])
@@ -1172,48 +1213,48 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_GroupsAndRoles_OwnOUOnly(
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_GroupsOnly_DoesNotResolveRoles() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
-	actors.On("GetActorGroups", testBCCAppID).Return([]providers.EntityGroup{
+	actors.On("GetActorGroups", mock.Anything, testBCCAppID).Return([]providers.EntityGroup{
 		{ID: "g1", Name: "engineering"},
 	}, (*tidcommon.ServiceError)(nil))
 
 	app := newOAuthAppForOwnAttributes([]string{"groups"})
-	claims, err := BuildClientAttributes(app, actors)
+	claims, err := BuildClientAttributes(context.Background(), app, actors)
 
 	assert.NoError(suite.T(), err)
 	assert.ElementsMatch(suite.T(), []string{"engineering"}, claims["groups"])
 	assert.NotContains(suite.T(), claims, "roles")
-	actors.AssertNotCalled(suite.T(), "GetActorRoles")
+	actors.AssertNotCalled(suite.T(), "GetActorRoles", mock.Anything, mock.Anything, mock.Anything)
 }
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_GroupRoles_SkippedWhenNotRequested() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
-	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
+	actors.On("GetActor", mock.Anything, testBCCAppID).Return(&providers.Entity{
 		ID:         testBCCAppID,
 		Category:   providers.EntityCategoryAgent,
 		Attributes: []byte(`{"modelProvider":"anthropic"}`),
 	}, (*tidcommon.ServiceError)(nil))
 
 	app := newOAuthAppForOwnAttributes([]string{"modelProvider"})
-	claims, err := BuildClientAttributes(app, actors)
+	claims, err := BuildClientAttributes(context.Background(), app, actors)
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "anthropic", claims["modelProvider"])
 	assert.NotContains(suite.T(), claims, "groups")
 	assert.NotContains(suite.T(), claims, "roles")
-	actors.AssertNotCalled(suite.T(), "GetActorGroups")
-	actors.AssertNotCalled(suite.T(), "GetActorRoles")
+	actors.AssertNotCalled(suite.T(), "GetActorGroups", mock.Anything, mock.Anything)
+	actors.AssertNotCalled(suite.T(), "GetActorRoles", mock.Anything, mock.Anything, mock.Anything)
 }
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_SystemAttributes_SkippedForNonAgentEntity() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
-	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
+	actors.On("GetActor", mock.Anything, testBCCAppID).Return(&providers.Entity{
 		ID:               testBCCAppID,
 		Category:         providers.EntityCategoryApp,
 		SystemAttributes: []byte(`{"name":"My App"}`),
 	}, (*tidcommon.ServiceError)(nil))
 
 	app := newOAuthAppForOwnAttributes([]string{"name"})
-	claims, err := BuildClientAttributes(app, actors)
+	claims, err := BuildClientAttributes(context.Background(), app, actors)
 
 	assert.NoError(suite.T(), err)
 	assert.Nil(suite.T(), claims)
@@ -1221,13 +1262,13 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_SystemAttributes_SkippedF
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_SystemAttributes_EmptyWhenNotStored() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
-	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
+	actors.On("GetActor", mock.Anything, testBCCAppID).Return(&providers.Entity{
 		ID:       testBCCAppID,
 		Category: providers.EntityCategoryAgent,
 	}, (*tidcommon.ServiceError)(nil))
 
 	app := newOAuthAppForOwnAttributes([]string{"name", "owner"})
-	claims, err := BuildClientAttributes(app, actors)
+	claims, err := BuildClientAttributes(context.Background(), app, actors)
 
 	assert.NoError(suite.T(), err)
 	assert.Nil(suite.T(), claims)
@@ -1235,7 +1276,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_SystemAttributes_EmptyWhe
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_StaleSystemNameDoesNotOverrideSchemaName() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
-	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
+	actors.On("GetActor", mock.Anything, testBCCAppID).Return(&providers.Entity{
 		ID:               testBCCAppID,
 		Category:         providers.EntityCategoryAgent,
 		Attributes:       []byte(`{"name":"schema-name"}`),
@@ -1243,7 +1284,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_StaleSystemNameDoesNotOve
 	}, (*tidcommon.ServiceError)(nil))
 
 	app := newOAuthAppForOwnAttributes([]string{"name"})
-	claims, err := BuildClientAttributes(app, actors)
+	claims, err := BuildClientAttributes(context.Background(), app, actors)
 
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), "schema-name", claims["name"])
@@ -1251,7 +1292,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_StaleSystemNameDoesNotOve
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentGetActorError_ReturnsError() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
-	actors.On("GetActor", testBCCAppID).Return(
+	actors.On("GetActor", mock.Anything, testBCCAppID).Return(
 		(*providers.Entity)(nil),
 		&tidcommon.ServiceError{
 			Code:  "AGT-0001",
@@ -1260,7 +1301,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentGetActorError_Return
 	)
 
 	app := newOAuthAppForOwnAttributes([]string{"modelProvider"})
-	claims, err := BuildClientAttributes(app, actors)
+	claims, err := BuildClientAttributes(context.Background(), app, actors)
 
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), claims)
@@ -1396,4 +1437,156 @@ func (suite *UtilsTestSuite) TestBuildAccessEvaluationsRequest_SetsTheContextOnE
 
 	request = BuildAccessEvaluationsRequest("app-1", "app", nil, nil, []string{"read"}, "rs-1", nil)
 	suite.Nil(request.Evaluations[0].Context, "no context is sent when there is none")
+}
+
+// A refused scope that reports permissions the subject holds beneath it yields those instead, so a
+// client asking for a resource receives the part of it the subject can satisfy.
+func (suite *UtilsTestSuite) TestFilterAuthorizedScopesSubstitutesHeldDescendants() {
+	t := suite.T()
+	scopes := []string{"reservations", "invoices:read"}
+	evaluations := []providers.AccessEvaluationResponse{
+		{Decision: false, GrantedInstead: []string{"reservations:create", "reservations:view"}},
+		{Decision: true},
+	}
+
+	granted := FilterAuthorizedScopes(scopes, evaluations)
+
+	// The resource itself is never substituted in: holding what is beneath it is not holding it.
+	assert.Equal(t, []string{"reservations:create", "reservations:view", "invoices:read"}, granted)
+}
+
+// A refusal with nothing beneath it contributes nothing, exactly as before.
+func (suite *UtilsTestSuite) TestFilterAuthorizedScopesLeavesAPlainRefusalAlone() {
+	t := suite.T()
+	granted := FilterAuthorizedScopes(
+		[]string{"reservations"}, []providers.AccessEvaluationResponse{{Decision: false}})
+
+	assert.Empty(t, granted)
+}
+
+func (suite *UtilsTestSuite) TestFilterAuthorizedScopesIgnoresContextAlternatives() {
+	for _, tc := range []struct {
+		name     string
+		decision bool
+		typed    []string
+		want     []string
+	}{
+		{"context cannot grant", false, nil, []string{}},
+		{"typed alternatives", false, []string{"reports:view"}, []string{"reports:view"}},
+		{"approval keeps requested scope", true, []string{"reports:view"}, []string{"reports"}},
+	} {
+		suite.Run(tc.name, func() {
+			result := FilterAuthorizedScopes([]string{"reports"}, []providers.AccessEvaluationResponse{{
+				Decision:       tc.decision,
+				GrantedInstead: tc.typed,
+				Context: map[string]interface{}{
+					"granted_instead": []string{"admin:everything"},
+				},
+			}})
+			suite.Equal(tc.want, result)
+		})
+	}
+}
+
+func (suite *UtilsTestSuite) TestApplyMappedAuthorizationDirectTargetsAreExact() {
+	for _, tc := range []struct {
+		name, held, requested string
+		want                  []string
+	}{
+		{"parent does not grant child", "reservations", "reservations:create", nil},
+		{"child does not answer parent", "reservations:create", "reservations", nil},
+		{"literal target", "reservations:create", "reservations:create", []string{"reservations:create"}},
+	} {
+		suite.Run(tc.name, func() {
+			authz := authzmock.NewAuthorizationProviderMock(suite.T())
+			targets := []providers.AuthorizationTarget{{
+				Type: providers.AuthorizationTargetPermission, ResourceServerID: "rs-1", Permission: tc.held,
+			}}
+			granted, err := ApplyMappedAuthorization(
+				context.Background(), authz, nil, targets, "rs-1", []string{tc.requested}, true, log.GetLogger())
+			suite.Nil(err)
+			suite.Equal(tc.want, granted)
+		})
+	}
+}
+
+// The mapping is the sole authority for an external token: no targets grant nothing, and permission
+// targets are granted without an authorization provider, which only roles and groups need.
+func (suite *UtilsTestSuite) TestApplyMappedAuthorizationWithoutRolesNeedsNoProvider() {
+	for _, tc := range []struct {
+		name    string
+		targets []providers.AuthorizationTarget
+		want    []string
+	}{
+		{"no targets", nil, nil},
+		{"permission target", []providers.AuthorizationTarget{{
+			Type: providers.AuthorizationTargetPermission, ResourceServerID: "rs-1", Permission: "read",
+		}}, []string{"read"}},
+	} {
+		suite.Run(tc.name, func() {
+			granted, err := ApplyMappedAuthorization(
+				context.Background(), nil, nil, tc.targets, "rs-1", []string{"read", "write"}, true, log.GetLogger())
+			suite.Nil(err)
+			suite.Equal(tc.want, granted)
+		})
+	}
+}
+
+func (suite *UtilsTestSuite) TestApplyMappedAuthorizationPreservesRoleAlternatives() {
+	authz := authzmock.NewAuthorizationProviderMock(suite.T())
+	authz.On("EvaluateAccessBatch", mock.Anything, mock.Anything).Return(
+		&providers.AccessEvaluationsResponse{Evaluations: []providers.AccessEvaluationResponse{{
+			Decision:       false,
+			GrantedInstead: []string{"reservations:view"},
+		}}}, nil).Once()
+	targets := []providers.AuthorizationTarget{{Type: providers.AuthorizationTargetRole, ID: "role-1"}}
+	granted, err := ApplyMappedAuthorization(
+		context.Background(), authz, nil, targets, "rs-1", []string{"reservations"}, true, log.GetLogger())
+	suite.Nil(err)
+	suite.Equal([]string{"reservations:view"}, granted)
+}
+
+func (suite *UtilsTestSuite) TestResolveUserAttributesCacheTTL() {
+	accessToken := func(validity int64) *providers.OAuthTokenConfig {
+		return &providers.OAuthTokenConfig{AccessToken: &providers.AccessTokenConfig{
+			UserConfig: &providers.AccessTokenSubConfig{ValidityPeriod: validity},
+		}}
+	}
+	withRefresh := []providers.GrantType{providers.GrantTypeAuthorizationCode, providers.GrantTypeRefreshToken}
+	withoutRefresh := []providers.GrantType{providers.GrantTypeAuthorizationCode}
+	appRefresh := accessToken(3600)
+	appRefresh.RefreshToken = &providers.RefreshTokenConfig{ValidityPeriod: 86400}
+
+	tests := []struct {
+		name             string
+		serverRefreshTTL int64
+		grants           []providers.GrantType
+		token            *providers.OAuthTokenConfig
+		redemptionWindow int64
+		want             int64
+	}{
+		{"refresh allowed and longer than access", 7200, withRefresh, accessToken(3600), 600, 7860},
+		{"refresh allowed and shorter than access", 1800, withRefresh, accessToken(7200), 600, 7860},
+		{"refresh allowed with the application's refresh validity", 7200, withRefresh, appRefresh, 600, 87060},
+		{"refresh allowed with no refresh validity falls back to JWT", 0, withRefresh, nil, 600, 1560},
+		{"refresh not allowed ignores refresh validity", 7200, withoutRefresh, accessToken(3600), 600, 4260},
+		{"refresh not allowed with no access validity falls back to JWT", 0, withoutRefresh, accessToken(0), 600, 1560},
+		{"no token configuration falls back to JWT", 0, withoutRefresh, nil, 600, 1560},
+		{"no access token configuration falls back to JWT", 0, withoutRefresh,
+			&providers.OAuthTokenConfig{}, 600, 1560},
+		{"the grant's redemption window is added", 0, withoutRefresh, accessToken(3600), 1800, 5460},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			cfg := oauthconfig.Config{
+				JWT: engineconfig.JWTConfig{ValidityPeriod: 900},
+				OAuth: engineconfig.OAuthConfig{
+					RefreshToken: engineconfig.RefreshTokenConfig{ValidityPeriod: tc.serverRefreshTTL},
+				},
+			}
+			app := &providers.OAuthClient{GrantTypes: tc.grants, Token: tc.token}
+
+			assert.Equal(suite.T(), tc.want, ResolveUserAttributesCacheTTL(cfg, app, tc.redemptionWindow))
+		})
+	}
 }

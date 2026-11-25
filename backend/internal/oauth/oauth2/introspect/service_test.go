@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
@@ -154,6 +155,55 @@ func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_InvalidToken_Is
 	assert.False(s.T(), response.Active)
 }
 
+// A token is inactive from its exp, even while the validator still accepts it within its leeway, and
+// active before it with exp surfaced.
+func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_ExpBoundary() {
+	now := time.Now()
+	cases := []struct {
+		name    string
+		token   string
+		refresh bool
+		exp     time.Time
+		active  bool
+	}{
+		{
+			name:  "access token past exp within leeway",
+			token: accessTokenFor("expired-access"),
+			exp:   now.Add(-15 * time.Second),
+		},
+		{
+			name:    "refresh token past exp within leeway",
+			token:   refreshTokenFor("expired-refresh"),
+			refresh: true,
+			exp:     now.Add(-15 * time.Second),
+		},
+		{name: "access token at exp", token: accessTokenFor("at-exp"), exp: now},
+		{name: "access token before exp", token: accessTokenFor("live"), exp: now.Add(time.Minute), active: true},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			claims := map[string]interface{}{"exp": float64(tc.exp.Unix())}
+			if tc.refresh {
+				s.tokenValidatorMock.On("ValidateRefreshToken", mock.Anything, tc.token).
+					Return(&tokenservice.RefreshTokenClaims{Claims: claims}, nil)
+			} else {
+				s.stubAccessToken(tc.token, claims)
+			}
+
+			response, err := s.introspectService.IntrospectToken(context.Background(), tc.token, "")
+
+			assert.NoError(s.T(), err)
+			if !tc.active {
+				assert.Equal(s.T(), &IntrospectResponse{Active: false}, response)
+				return
+			}
+			assert.True(s.T(), response.Active)
+			assert.Equal(s.T(), tc.exp.Unix(), response.Exp)
+		})
+	}
+}
+
 // A revoked but otherwise valid token is reported inactive (RFC 7009 deny-list enforcement).
 func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_RevokedToken_IsInactive() {
 	s.stubAccessTokenError(accessTokenFor("revoked-token"), revocation.ErrTokenRevoked)
@@ -198,6 +248,35 @@ func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_SurfacesSubType
 	}
 }
 
+// A token issued for an external identity provider's subject names that provider in idp, so an
+// introspecting resource server can tell its sub from a subject of this deployment.
+func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_SurfacesSourceIDP() {
+	token := accessTokenFor("external-subject-token")
+	s.stubAccessToken(token, map[string]interface{}{
+		"sub":       "partner-user-42",
+		"idp":       "https://partner.example.com",
+		"client_id": "client123",
+	})
+
+	response, err := s.introspectService.IntrospectToken(context.Background(), token, "")
+
+	assert.NoError(s.T(), err)
+	assert.True(s.T(), response.Active)
+	assert.Equal(s.T(), "partner-user-42", response.Sub)
+	assert.Equal(s.T(), "https://partner.example.com", response.Idp)
+}
+
+// A token for a subject of this deployment carries no idp, and introspection reports none.
+func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_OmitsAbsentSourceIDP() {
+	token := accessTokenFor("local-subject-token")
+	s.stubAccessToken(token, map[string]interface{}{"sub": "user123", "client_id": "client123"})
+
+	response, err := s.introspectService.IntrospectToken(context.Background(), token, "")
+
+	assert.NoError(s.T(), err)
+	assert.Empty(s.T(), response.Idp)
+}
+
 // A token without the claim reports no subject type rather than a guessed one.
 func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_OmitsAbsentSubType() {
 	token := accessTokenFor("no-sub-type")
@@ -208,6 +287,68 @@ func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_OmitsAbsentSubT
 	assert.NoError(s.T(), err)
 	assert.True(s.T(), response.Active)
 	assert.Empty(s.T(), response.SubType)
+}
+
+// A delegated token's act claim is surfaced with its nested delegation chain intact, so a resource
+// server can see every actor without decoding the token itself.
+func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_SurfacesActorClaimWithDelegationChain() {
+	act := map[string]interface{}{
+		"sub": "agent-b",
+		"act": map[string]interface{}{
+			"sub": "agent-a",
+			"iss": "https://external.example.com",
+		},
+	}
+	token := accessTokenFor("delegated-token")
+	s.stubAccessToken(token, map[string]interface{}{"sub": "user123", "act": act})
+
+	response, err := s.introspectService.IntrospectToken(context.Background(), token, "")
+
+	assert.NoError(s.T(), err)
+	assert.True(s.T(), response.Active)
+	assert.Equal(s.T(), "user123", response.Sub)
+	assert.Equal(s.T(), act, response.Act)
+
+	body, err := json.Marshal(response)
+	assert.NoError(s.T(), err)
+	assert.JSONEq(s.T(),
+		`{"sub":"agent-b","act":{"sub":"agent-a","iss":"https://external.example.com"}}`,
+		string(extractJSONField(s.T(), body, "act")))
+}
+
+// A token without an act claim, or with one that is not an object, reports no actor.
+func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_OmitsAbsentOrMalformedActorClaim() {
+	cases := map[string]map[string]interface{}{
+		"absent":    {"sub": "user123"},
+		"empty":     {"sub": "user123", "act": map[string]interface{}{}},
+		"notObject": {"sub": "user123", "act": "agent-a"},
+	}
+	for name, claims := range cases {
+		s.Run(name, func() {
+			token := accessTokenFor("actor-" + name)
+			s.stubAccessToken(token, claims)
+
+			response, err := s.introspectService.IntrospectToken(context.Background(), token, "")
+
+			assert.NoError(s.T(), err)
+			assert.True(s.T(), response.Active)
+			assert.Nil(s.T(), response.Act)
+
+			body, err := json.Marshal(response)
+			assert.NoError(s.T(), err)
+			assert.NotContains(s.T(), string(body), `"act"`)
+		})
+	}
+}
+
+// extractJSONField returns the raw JSON of one top-level field of the encoded object.
+func extractJSONField(t *testing.T, body []byte, field string) json.RawMessage {
+	t.Helper()
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(body, &fields); err != nil {
+		t.Fatalf("decoding response: %v", err)
+	}
+	return fields[field]
 }
 
 // The details are returned as the token's claim text, so a number is kept exactly.

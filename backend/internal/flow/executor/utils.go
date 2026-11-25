@@ -4,17 +4,22 @@
 package executor
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
+	"github.com/thunder-id/thunderid/internal/entityprovider"
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
@@ -22,6 +27,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -31,8 +37,8 @@ import (
 // credential issuer) asserted as one RuntimeData entry, replacing any earlier one whole so the claims of
 // two sign-ins never mix. Claims never reach RuntimeData under their own names, so none can stand in
 // for flow control state. Token metadata is dropped, and so is the sub claim when it is set as
-// the subject.
-func setExternalIdentity(execResp *providers.ExecutorResponse, idpID, sub string,
+// the subject. connection is nil for a credential issuer.
+func setExternalIdentity(execResp *providers.ExecutorResponse, connection *providers.IDPDTO, sub string,
 	claims map[string]interface{}) error {
 	claims = maps.Clone(claims)
 	for _, key := range tokenMetadataClaims {
@@ -41,7 +47,16 @@ func setExternalIdentity(execResp *providers.ExecutorResponse, idpID, sub string
 	if sub != "" {
 		delete(claims, userAttributeSub)
 	}
-	encoded, err := json.Marshal(core.ExternalIdentity{IdpID: idpID, Sub: sub, Claims: claims})
+	identity := core.ExternalIdentity{Sub: sub, Claims: claims}
+	if connection != nil {
+		var modes *providers.SyncConfiguration
+		if connection.AttributeConfiguration != nil {
+			modes = connection.AttributeConfiguration.Sync
+		}
+		identity.IdpID = connection.ID
+		identity.AttributesSync = modes.AttributesMode()
+	}
+	encoded, err := json.Marshal(identity)
 	if err != nil {
 		return fmt.Errorf("failed to encode the external identity: %w", err)
 	}
@@ -49,7 +64,7 @@ func setExternalIdentity(execResp *providers.ExecutorResponse, idpID, sub string
 		execResp.RuntimeData = make(map[string]string)
 	}
 	execResp.RuntimeData[common.RuntimeKeyExternalIdentity] = string(encoded)
-	if idpID != "" && sub != "" {
+	if identity.IdpID != "" && sub != "" {
 		execResp.SharedRuntimeData = map[string]string{common.RuntimeKeyFederatedLoginCompleted: dataValueTrue}
 	}
 	return nil
@@ -76,6 +91,10 @@ type revocationPlan struct {
 	// TTLSeconds is how long the deny-list row must live to outlast the artifacts the criteria match.
 	// Zero leaves the revocation service on its configured default.
 	TTLSeconds int64 `json:"ttlSeconds,omitempty"`
+	// HolderScopes are the scopes every holder of the target loses. A plan records them when holders can
+	// be added between the plan and the change, so the post flow can extend the plan to the holders the
+	// change removed that the plan did not see.
+	HolderScopes []revocation.AudienceScope `json:"holderScopes,omitempty"`
 	// NothingToRevoke records that the preparatory node established there is no artifact to revoke, which
 	// is how an empty criteria list is distinguished from a missing one. Only a node that verified the
 	// absence sets it; without it an empty list stays an error, so a plan can never be silently skipped.
@@ -124,15 +143,6 @@ func revocationPlanFor(data map[string]string, want revocation.Reason) (revocati
 		return revocationPlan{}, errors.New("trusted revocation plan has no target")
 	}
 	return plan, nil
-}
-
-// applicationTargetFromPlan returns the application the trusted plan acts on.
-func applicationTargetFromPlan(data map[string]string, want revocation.Reason) (string, error) {
-	plan, err := revocationPlanFor(data, want)
-	if err != nil {
-		return "", err
-	}
-	return plan.TargetID, nil
 }
 
 // getAuthnServiceName returns the authn service name for an executor.
@@ -309,14 +319,20 @@ func setFederatedEntityState(ctx context.Context, execResp *providers.ExecutorRe
 }
 
 // authenticateEntityByID signs in an entity whose ID the flow already trusts, such as one it just
-// provisioned or the federated link's holder the user picked, onto base. On success it sets the
-// AuthUser and copies the authenticated claims into runtime data. It returns the authentication
-// provider's error as is, and ErrEntityAuthFailed when the AuthUser comes back unauthenticated.
+// provisioned or the account holding the federated link that the user picked, onto base. The
+// authentication provider runs any deferred sync of a federated sign-in to the entity when it holds the
+// sign-in's link, and created marks an entity the flow just created. On success it sets the AuthUser,
+// writes what the sync keeps to the session into runtime data, and copies the authenticated claims into
+// runtime data. It returns the authentication provider's error as is, and ErrEntityAuthFailed when the
+// AuthUser comes back unauthenticated.
 func authenticateEntityByID(ctx *providers.NodeContext, authnProvider providers.AuthnProviderManager,
-	entityID string, base providers.AuthUser, execResp *providers.ExecutorResponse) *tidcommon.ServiceError {
+	entityID string, base providers.AuthUser, execResp *providers.ExecutorResponse,
+	created bool) *tidcommon.ServiceError {
 	credential := map[string]interface{}{authnprovidercm.CredentialTypeProvisionedEntityID: entityID}
+	metadata := core.BuildProviderMetadata(ctx)
+	metadata.Created = created
 	authUser, authenticatedClaims, svcErr := authnProvider.AuthenticateUser(ctx.Context, nil, credential,
-		nil, nil, base)
+		nil, metadata, base)
 	if svcErr != nil {
 		return svcErr
 	}
@@ -324,48 +340,95 @@ func authenticateEntityByID(ctx *providers.NodeContext, authnProvider providers.
 		return &ErrEntityAuthFailed
 	}
 	execResp.AuthUser = authUser
+	if values := takeSessionValues(authenticatedClaims); values != nil {
+		if err := writeSessionValues(execResp, values); err != nil {
+			return &tidcommon.InternalServerError
+		}
+	}
 	for key, value := range authenticatedClaims {
 		execResp.RuntimeData[key] = systemutils.ConvertInterfaceValueToString(value)
 	}
 	return nil
 }
 
-// resolveAndSetMappedAuthorizationTargets resolves the IDP's AuthorizationRuleMapping (explicit value
-// rules) and AuthorizationDirectMapping (direct name-based lookup) against federatedAttributes,
-// unions their targets, and stores the result as runtime data for later executors. Logs and continues
-// without the direct targets when they can't be resolved, rather than failing the federated login over
-// what is best-effort enrichment of its runtime state.
-func resolveAndSetMappedAuthorizationTargets(
-	ctx context.Context, execResp *providers.ExecutorResponse,
-	idpService providers.IDPProvider, idpDTO *providers.IDPDTO, federatedAttributes map[string]interface{},
-	logger *log.Logger,
-) {
-	targets := idp.GetRuleAuthorizationTargets(idpDTO, federatedAttributes)
-	directTargets, svcErr := idpService.GetDirectAuthorizationTargets(ctx, idpDTO, federatedAttributes)
-	if svcErr != nil {
-		logger.Warn(ctx, "Failed to resolve direct authorization targets, continuing with rule-based targets only",
-			log.String("idpId", idpDTO.ID), log.String("error", svcErr.Error.DefaultValue))
-	} else {
-		targets = append(targets, directTargets...)
-	}
-	setMappedAuthorizationTargets(execResp, targets)
+// federatedSignInMetadata returns the provider metadata for a federated sign-in. Registration and
+// onboarding defer the sync to the existing-user rules, so a registration that rejects an existing user
+// never syncs one.
+func federatedSignInMetadata(ctx *providers.NodeContext) *providers.AuthnMetadata {
+	metadata := core.BuildProviderMetadata(ctx)
+	metadata.DeferSync = ctx.FlowType == providers.FlowTypeRegistration ||
+		ctx.FlowType == providers.FlowTypeUserOnboarding
+	return metadata
 }
 
-// setMappedAuthorizationTargets splits resolved authorization mapping targets (rule-based or direct)
-// by kind and stores them as runtime data for later executors. Always writes all three keys, even when
-// empty.
-func setMappedAuthorizationTargets(execResp *providers.ExecutorResponse, targets []providers.AuthorizationTarget) {
+// takeSessionValues removes the values a sign-in keeps to the session from the provider's authenticated
+// claims and returns them, or nil when the claims carry none.
+func takeSessionValues(claims map[string]interface{}) *authnprovidercm.SessionValues {
+	raw, ok := claims[authnprovidercm.ClaimSessionValues]
+	if !ok {
+		return nil
+	}
+	delete(claims, authnprovidercm.ClaimSessionValues)
+	values, _ := raw.(*authnprovidercm.SessionValues)
+	if values == nil {
+		values = &authnprovidercm.SessionValues{}
+	}
+	return values
+}
+
+// writeSessionValues writes what a sign-in keeps to the session into runtime data, in the format the
+// rest of the flow reads. A nil values clears what an earlier sign-in in the flow kept.
+func writeSessionValues(execResp *providers.ExecutorResponse, values *authnprovidercm.SessionValues) error {
 	if execResp.RuntimeData == nil {
 		execResp.RuntimeData = make(map[string]string)
 	}
-	roleIDs, groupIDs, permissions := idp.SplitAuthorizationTargets(targets)
-	execResp.RuntimeData[common.RuntimeKeyMappedRoleIDs] = systemutils.StringifyStringArray(roleIDs, " ")
-	execResp.RuntimeData[common.RuntimeKeyMappedGroupIDs] = systemutils.StringifyStringArray(groupIDs, " ")
-	encoded, err := json.Marshal(permissions)
-	if err != nil {
-		encoded = []byte("[]")
+	runtimeData := execResp.RuntimeData
+	if values == nil {
+		values = &authnprovidercm.SessionValues{}
 	}
-	execResp.RuntimeData[common.RuntimeKeyMappedPermissions] = string(encoded)
+	attributes := ""
+	if len(values.Attributes) > 0 {
+		encoded, err := json.Marshal(values.Attributes)
+		if err != nil {
+			return fmt.Errorf("failed to encode the session attributes: %w", err)
+		}
+		attributes = string(encoded)
+	}
+	permissions, err := json.Marshal(values.Permissions)
+	if err != nil {
+		return fmt.Errorf("failed to encode the mapped permissions: %w", err)
+	}
+	if values.Permissions == nil {
+		permissions = []byte("[]")
+	}
+	runtimeData[common.RuntimeKeySessionAttributes] = attributes
+	runtimeData[common.RuntimeKeySessionGroupIDs] = systemutils.StringifyStringArray(
+		values.GroupIDsWithAncestors, " ")
+	runtimeData[common.RuntimeKeySessionDirectGroupIDs] = systemutils.StringifyStringArray(values.GroupIDs, " ")
+	runtimeData[common.RuntimeKeySessionRoleIDs] = systemutils.StringifyStringArray(values.RoleIDs, " ")
+	runtimeData[common.RuntimeKeyMappedPermissions] = string(permissions)
+	return nil
+}
+
+// getSessionGroupAndRoleIDs returns the mapped groups, with their ancestors, and the mapped roles a
+// federated sign-in granted for the session only.
+func getSessionGroupAndRoleIDs(runtimeData map[string]string) (groupIDs, roleIDs []string) {
+	return systemutils.ParseStringArray(runtimeData[common.RuntimeKeySessionGroupIDs], " "),
+		systemutils.ParseStringArray(runtimeData[common.RuntimeKeySessionRoleIDs], " ")
+}
+
+// getSessionAttributes returns the attributes a federated sign-in kept to the session, or nil when
+// there are none or they can't be read.
+func getSessionAttributes(runtimeData map[string]string) map[string]interface{} {
+	encoded := runtimeData[common.RuntimeKeySessionAttributes]
+	if encoded == "" {
+		return nil
+	}
+	var attributes map[string]interface{}
+	if err := json.Unmarshal([]byte(encoded), &attributes); err != nil {
+		return nil
+	}
+	return attributes
 }
 
 // isRegistrationFlow reports whether executors should apply their registration behavior. A linking
@@ -482,8 +545,8 @@ func refusalResponse(execResp *providers.ExecutorResponse, svcErr *tidcommon.Ser
 	return execResp, nil
 }
 
-// statedHold returns the flow error for a hold the authentication provider manager states, or nil
-// when svcErr states none.
+// statedHold returns the flow error for a hold, or a failed federated sync, the authentication
+// provider manager states, or nil when svcErr states neither.
 func statedHold(svcErr *tidcommon.ServiceError) *tidcommon.ServiceError {
 	if svcErr == nil {
 		return nil
@@ -493,6 +556,8 @@ func statedHold(svcErr *tidcommon.ServiceError) *tidcommon.ServiceError {
 		return &ErrAccountLocked
 	case authnprovidermgr.ErrorAccountSuspended.Code:
 		return &ErrAccountSuspended
+	case authnprovidermgr.ErrorFederatedSyncFailed.Code:
+		return &ErrFederatedUserSyncFailed
 	default:
 		return nil
 	}
@@ -516,12 +581,30 @@ func governanceFault(svcErr *tidcommon.ServiceError) error {
 	return fmt.Errorf("identity governance check failed: %s", svcErr.Error.DefaultValue)
 }
 
+// verificationClaimContacts returns the verification claims the server issues for a user type, mapped to
+// their contact attribute. Another category, or no entity type service, has none.
+func verificationClaimContacts(ctx context.Context, entityTypeService entitytype.EntityTypeServiceInterface,
+	entityCategory, userType string) (map[string]string, error) {
+	if entityTypeService == nil || userType == "" ||
+		providers.EntityCategory(entityCategory) != providers.EntityCategoryUser {
+		return nil, nil
+	}
+
+	attributes, svcErr := entityTypeService.GetAttributes(ctx, entitytype.TypeCategoryUser, userType,
+		entitytype.AttributeFilter{AllowNonCredential: true})
+	if svcErr != nil {
+		return nil, fmt.Errorf("failed to fetch attributes of user type %s: code: %s", userType, svcErr.Code)
+	}
+
+	return entitytypemodel.VerificationClaims(attributes), nil
+}
+
 // dispatchPlaneFor maps the flow a challenge belongs to onto the plane it is checked at. A lock gives
-// way at the recovery plane, so recovery and registration challenges still go out; every other flow
-// is checked at the dispatch plane.
+// way at the recovery plane, so recovery, registration and administrator-initiated challenges still go out;
+// every other flow is checked at the dispatch plane.
 func dispatchPlaneFor(flowType providers.FlowType) providers.AccessPlane {
 	switch flowType {
-	case providers.FlowTypeRecovery, providers.FlowTypeRegistration:
+	case providers.FlowTypeRecovery, providers.FlowTypeRegistration, providers.FlowTypeAdminInitiated:
 		return providers.AccessPlaneRecovery
 	default:
 		return providers.AccessPlaneDispatch
@@ -539,4 +622,223 @@ func requestedAuthorizationDetails(ctx *providers.NodeContext) ([]providers.Auth
 		return nil, fmt.Errorf("authorization details are malformed: %w", err)
 	}
 	return details, nil
+}
+
+// runtimeProperty resolves a node property against the runtime data alone, so no user input, external
+// claim or request value can set it. An unresolved placeholder is an error.
+func runtimeProperty(ctx *providers.NodeContext, key string) (string, error) {
+	value, _ := ctx.NodeProperties[key].(string)
+	resolved := core.ResolvePlaceholder(&providers.NodeContext{RuntimeData: ctx.RuntimeData},
+		value, nil, nil, false, log.GetLogger())
+	if strings.Contains(resolved, "{{") {
+		return "", fmt.Errorf("property %q did not resolve from the runtime data", key)
+	}
+	return resolved, nil
+}
+
+// isInviter reports whether the caller is the one who started the invitation flow,
+// presenting their own token.
+func isInviter(ctx *providers.NodeContext) bool {
+	subject := security.GetSubject(ctx.Context)
+	return !security.IsRuntimeContext(ctx.Context) && !security.IsRecordedCaller(ctx.Context) && subject != "" &&
+		subject == ctx.RuntimeData[common.RuntimeKeyInviter]
+}
+
+// deliveredRecipients returns the distinct recipients senders sent to since an earlier node cleared
+// the list. A list that does not decode is an error.
+func deliveredRecipients(ctx *providers.NodeContext) ([]string, error) {
+	raw := ctx.SharedRuntimeData[common.RuntimeKeyDeliveredRecipients]
+	if raw == "" {
+		return nil, nil
+	}
+
+	var recipients []string
+	if err := json.Unmarshal([]byte(raw), &recipients); err != nil {
+		return nil, errors.New("invalid delivered recipients")
+	}
+
+	return recipients, nil
+}
+
+// withDeliveredRecipient returns shared runtime data that adds the recipient to the delivered recipients.
+func withDeliveredRecipient(ctx *providers.NodeContext, recipient string) (map[string]string, error) {
+	recipients, err := deliveredRecipients(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if !slices.Contains(recipients, recipient) {
+		recipients = append(recipients, recipient)
+	}
+
+	encoded, err := json.Marshal(recipients)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode delivered recipients: %w", err)
+	}
+
+	return map[string]string{common.RuntimeKeyDeliveredRecipients: string(encoded)}, nil
+}
+
+// sharedVerificationEvidence returns shared runtime data carrying the evidence. The evidence holds only
+// strings and booleans, so it always encodes.
+func sharedVerificationEvidence(proof verificationEvidence) (map[string]string, error) {
+	encoded, err := json.Marshal(proof)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode attribute verification evidence: %w", err)
+	}
+
+	return map[string]string{common.RuntimeKeyAttributeVerificationEvidence: string(encoded)}, nil
+}
+
+// pinnedVerificationEvidence returns the attribute verification evidence an earlier node recorded on
+// shared runtime data, or nil when no contact is pinned. Evidence that does not decode, or names no pin,
+// is an error.
+func pinnedVerificationEvidence(ctx *providers.NodeContext) (*verificationEvidence, error) {
+	raw := ctx.SharedRuntimeData[common.RuntimeKeyAttributeVerificationEvidence]
+	if raw == "" {
+		return nil, nil
+	}
+
+	var proof verificationEvidence
+	if err := json.Unmarshal([]byte(raw), &proof); err != nil {
+		return nil, errors.New("invalid verification evidence")
+	}
+
+	if proof.Pin == nil {
+		return nil, errors.New("missing verification pin")
+	}
+
+	return &proof, nil
+}
+
+// entityScopeCriterion revokes, for one entity, what a scope grants: the scope itself, or, for a scope of
+// a hierarchical resource server, the subtree of permissions below it.
+func entityScopeCriterion(entityID string, scope revocation.AudienceScope) revocation.Criterion {
+	if scope.SubtreeDelimiter != "" {
+		return revocation.Criterion{Type: revocation.CriterionTypeEntityScopeSubtree,
+			Value: revocation.EntityScopeSubtreeCriterionValue(entityID, scope.Audience, scope.Scope,
+				scope.SubtreeDelimiter)}
+	}
+	return revocation.Criterion{Type: revocation.CriterionTypeEntityScope,
+		Value: revocation.EntityScopeCriterionValue(entityID, scope.Audience, scope.Scope)}
+}
+
+// isClientDeletionPlan reports whether the plan removes a client, the only case that detaches session
+// participation: an inbound client's deletion, or an application deletion an administration flow plans. A secret
+// rotation does not: the session is still legitimately the user's.
+func isClientDeletionPlan(plan revocationPlan) bool {
+	return plan.TargetID != "" &&
+		(plan.Reason == revocation.ReasonClientRemoved || plan.Reason == revocation.ReasonApplicationRemoved)
+}
+
+// orderByDisplayOrder moves the inputs whose attribute sets a display order to the front, lowest
+// first and by attribute name for the same order, and keeps the others after them in their order.
+func orderByDisplayOrder(inputs []providers.Input, attrs []entitytype.AttributeInfo) {
+	order := make(map[string]int, len(attrs))
+	for _, attr := range attrs {
+		if attr.DisplayOrder != nil {
+			order[attr.Attribute] = *attr.DisplayOrder
+		}
+	}
+	if len(order) == 0 {
+		return
+	}
+
+	slices.SortStableFunc(inputs, func(a, b providers.Input) int {
+		orderA, hasA := order[a.Identifier]
+		orderB, hasB := order[b.Identifier]
+		switch {
+		case hasA && hasB:
+			return cmp.Or(cmp.Compare(orderA, orderB), cmp.Compare(a.Identifier, b.Identifier))
+		case hasA:
+			return -1
+		case hasB:
+			return 1
+		default:
+			return 0
+		}
+	})
+}
+
+// isEmptyAttribute reports whether a profile attribute holds no value, so the collector treats it as missing.
+func isEmptyAttribute(value any) bool {
+	return value == nil || value == ""
+}
+
+// resolveKnownRecipient returns the recipient the flow already knows. known is false when it knows none.
+func resolveKnownRecipient(ctx *providers.NodeContext, execResp *providers.ExecutorResponse,
+	authnProvider providers.AuthnProviderManager, entityProvider entityprovider.EntityProviderInterface,
+	recipientType, attribute string, logger *log.Logger) (recipient string, known bool, err error) {
+	if ctx.RuntimeData[common.RuntimeKeyRecipientType] == recipientType {
+		if expected := ctx.RuntimeData[common.RuntimeKeyExpectedRecipient]; expected != "" {
+			return expected, true, nil
+		}
+	}
+
+	if isConstantNodeInput(ctx, attribute) && ctx.UserInputs[attribute] != "" {
+		return ctx.UserInputs[attribute], true, nil
+	}
+
+	userID := ctx.RuntimeData[userAttributeUserID]
+	signedInUserID, signedInResolved := "", false
+	if userID == "" {
+		if signedInUserID, err = resolveSignedInUserID(ctx, execResp, authnProvider); err != nil {
+			return "", true, err
+		}
+		userID, signedInResolved = signedInUserID, true
+	}
+	if userID == "" {
+		return "", false, nil
+	}
+
+	if entityProvider == nil {
+		return "", true, errors.New("entity provider is not configured for recipient resolution")
+	}
+	user, providerErr := entityProvider.GetEntityProfile(ctx.Context, userID)
+	if providerErr != nil {
+		if providerErr.Code == entityprovider.ErrorCodeEntityNotFound {
+			return "", true, nil
+		}
+		return "", true, fmt.Errorf("failed to fetch user from entity provider: %w", providerErr)
+	}
+	if recipient, attrErr := GetUserAttribute(user, attribute); attrErr == nil {
+		return recipient, true, nil
+	}
+	if claim, ok := core.GetExternalClaim(ctx.RuntimeData, attribute); ok && claim != "" {
+		return claim, true, nil
+	}
+	if submitted := ctx.UserInputs[attribute]; submitted != "" {
+		if !signedInResolved {
+			if signedInUserID, err = resolveSignedInUserID(ctx, execResp, authnProvider); err != nil {
+				return "", true, err
+			}
+		}
+		if signedInUserID == userID {
+			return submitted, true, nil
+		}
+	}
+	logger.Debug(ctx.Context, "Recipient attribute not found on user entity", log.String("attribute", attribute))
+	return "", true, nil
+}
+
+// resolveSignedInUserID returns the ID of the user signed in to the flow, or an empty ID when no user is signed in
+// or the signed in user has no account. Unlike GetUserIDFromContext it skips userID in runtime data, since the
+// caller compares the two, and it fails on a server error.
+func resolveSignedInUserID(ctx *providers.NodeContext, execResp *providers.ExecutorResponse,
+	authnProvider providers.AuthnProviderManager) (string, error) {
+	if authnProvider == nil || !ctx.AuthUser.IsAuthenticated() {
+		return "", nil
+	}
+	authUser, entityRef, svcErr := authnProvider.GetEntityReference(ctx.Context, ctx.AuthUser)
+	if svcErr != nil {
+		if svcErr.Type == tidcommon.ServerErrorType {
+			return "", fmt.Errorf("failed to resolve the authenticated user: %s", svcErr.Code)
+		}
+		return "", nil
+	}
+	execResp.AuthUser = authUser
+	if entityRef == nil {
+		return "", nil
+	}
+	return entityRef.EntityID, nil
 }

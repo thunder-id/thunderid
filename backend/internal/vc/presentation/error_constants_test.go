@@ -19,6 +19,7 @@ func TestDefinitionClientErrorStatus(t *testing.T) {
 		{"NotFound", ErrorDefinitionNotFound.Code, http.StatusNotFound},
 		{"AlreadyExists", ErrorDefinitionAlreadyExists.Code, http.StatusConflict},
 		{"Immutable", ErrorDefinitionImmutable.Code, http.StatusConflict},
+		{"IDConflict", ErrorDefinitionIDConflict.Code, http.StatusConflict},
 		{"InvalidRequestDefaultsToBadRequest", ErrorDefinitionInvalidRequest.Code, http.StatusBadRequest},
 		{"UnknownDefaultsToBadRequest", "VP-9999", http.StatusBadRequest},
 	}

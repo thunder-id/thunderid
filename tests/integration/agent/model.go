@@ -5,25 +5,28 @@ package agent
 
 import (
 	"encoding/json"
+
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 // Agent represents the structure for agent request and response in tests.
 type Agent struct {
-	ID          string          `json:"id,omitempty"`
-	OUID        string          `json:"ouId,omitempty"`
-	OUHandle    string          `json:"ouHandle,omitempty"`
-	Type        string          `json:"type,omitempty"`
-	Display     string          `json:"display,omitempty"`
-	Description string          `json:"description,omitempty"`
-	Owner       string          `json:"owner,omitempty"`
-	Attributes  json.RawMessage `json:"attributes,omitempty"`
-	IsReadOnly  bool            `json:"isReadOnly"`
-	Delegated   bool            `json:"delegated,omitempty"`
-	ValidUntil  *string         `json:"validUntil,omitempty"`
-	Lifespan    *AgentLifespan  `json:"lifespan,omitempty"`
-	Status      *AgentStatus    `json:"status,omitempty"`
+	ID          string                `json:"id,omitempty"`
+	OUID        string                `json:"ouId,omitempty"`
+	OUHandle    string                `json:"ouHandle,omitempty"`
+	Type        string                `json:"type,omitempty"`
+	Display     string                `json:"display,omitempty"`
+	Description string                `json:"description,omitempty"`
+	Owner       *testutils.AgentOwner `json:"owner,omitempty"`
+	Attributes  json.RawMessage       `json:"attributes,omitempty"`
+	IsReadOnly  bool                  `json:"isReadOnly"`
+	Delegated   bool                  `json:"delegated,omitempty"`
+	ValidUntil  *string               `json:"validUntil,omitempty"`
+	Lifespan    *AgentLifespan        `json:"lifespan,omitempty"`
+	Status      *AgentStatus          `json:"status,omitempty"`
 
 	AuthFlowID                string              `json:"authFlowId,omitempty"`
+	DeviceGrantFlowID         string              `json:"deviceGrantFlowId,omitempty"`
 	RegistrationFlowID        string              `json:"registrationFlowId,omitempty"`
 	IsRegistrationFlowEnabled bool                `json:"isRegistrationFlowEnabled,omitempty"`
 	ThemeID                   string              `json:"themeId,omitempty"`

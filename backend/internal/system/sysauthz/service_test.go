@@ -12,6 +12,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -22,7 +23,7 @@ import (
 // every logger.IsDebugEnabled() branch in service.go is exercised.
 func TestMain(m *testing.M) {
 	_ = log.GetLogger().SetLevel("debug")
-	security.InitSystemPermissions("")
+	security.InitControlPlanePermissions("")
 	os.Exit(m.Run())
 }
 
@@ -34,7 +35,7 @@ type SystemAuthzTestSuite struct {
 
 func (s *SystemAuthzTestSuite) SetupTest() {
 	var err error
-	s.service, err = Initialize()
+	s.service, err = InitializeOUBoundedAuthorization()
 	s.Require().NoError(err)
 }
 
@@ -58,6 +59,13 @@ func buildCtxWithOU(permissions, ouID string) context.Context {
 		perms = strings.Fields(permissions)
 	}
 	authCtx := security.NewSecurityContextForTest("user123", ouID, "token", perms, nil)
+	return security.WithSecurityContextTest(context.Background(), authCtx)
+}
+
+// buildManagementAPIKeyCtx returns a context authenticated by the management API key: the key's
+// subject with no token.
+func buildManagementAPIKeyCtx() context.Context {
+	authCtx := security.NewSecurityContextForTest("management-api-key", "", "", []string{"system"}, nil)
 	return security.WithSecurityContextTest(context.Background(), authCtx)
 }
 
@@ -109,13 +117,95 @@ func (s *SystemAuthzTestSuite) TestIsActionAllowed() {
 			wantAllowed: true,
 		},
 		{
-			// Step 4 + actionCtx: system scope ignores actionCtx and grants access.
-			name:   "SystemScope_WithActionContext_GrantsAccess",
-			ctx:    buildCtx("system"),
+			// The "system" permission reaches an OU other than the caller's.
+			name:   "SystemScope_OtherOU_Allowed",
+			ctx:    buildCtxWithOU("system", "ou1"),
 			action: security.ActionReadUser,
 			actionCtx: &ActionContext{
 				OUID: "ou-abc", ResourceType: security.ResourceTypeUser, ResourceID: "user-xyz",
 			},
+			wantAllowed: true,
+		},
+		{
+			// The "system" permission covers every action within the caller's own OU.
+			name:   "SystemScope_OwnOU_Allowed",
+			ctx:    buildCtxWithOU("system", "ou-abc"),
+			action: security.ActionDeleteUser,
+			actionCtx: &ActionContext{
+				OUID: "ou-abc", ResourceType: security.ResourceTypeUser, ResourceID: "user-xyz",
+			},
+			wantAllowed: true,
+		},
+		{
+			// Root OUs are not created through the API under the OU boundary, even with "system".
+			name:        "SystemScope_RootOUCreation_Denied",
+			ctx:         buildCtxWithOU("system", "ou1"),
+			action:      security.ActionCreateOU,
+			actionCtx:   &ActionContext{ResourceType: security.ResourceTypeOU},
+			wantAllowed: false,
+		},
+		{
+			// Root OUs are not created through the API under the OU boundary with a narrower permission.
+			name:        "OUScope_RootOUCreation_Denied",
+			ctx:         buildCtxWithOU("system:ou", "ou1"),
+			action:      security.ActionCreateOU,
+			actionCtx:   &ActionContext{ResourceType: security.ResourceTypeOU},
+			wantAllowed: false,
+		},
+		{
+			// A child OU is created under the caller's own OU.
+			name:        "OUScope_ChildOfOwnOU_Allowed",
+			ctx:         buildCtxWithOU("system:ou", "ou1"),
+			action:      security.ActionCreateOU,
+			actionCtx:   &ActionContext{ResourceType: security.ResourceTypeOU, OUID: "ou1"},
+			wantAllowed: true,
+		},
+		{
+			// The management API key imports root OUs.
+			name:        "ManagementAPIKey_RootOUCreation_Allowed",
+			ctx:         buildManagementAPIKeyCtx(),
+			action:      security.ActionCreateOU,
+			actionCtx:   &ActionContext{ResourceType: security.ResourceTypeOU},
+			wantAllowed: true,
+		},
+		{
+			// Resources that apply to the whole deployment are not written through the API under the OU
+			// boundary, even with "system".
+			name:        "SystemScope_DeploymentWideWrite_Denied",
+			ctx:         buildCtxWithOU("system", "ou1"),
+			action:      security.ActionUpdateDesign,
+			actionCtx:   &ActionContext{ResourceType: security.ResourceTypeDesign, ResourceID: "theme-1"},
+			wantAllowed: false,
+		},
+		{
+			name:        "ServerConfigScope_DeploymentWideWrite_Denied",
+			ctx:         buildCtxWithOU("system:serverconfig", "ou1"),
+			action:      security.ActionUpdateServerConfig,
+			actionCtx:   &ActionContext{ResourceType: security.ResourceTypeServerConfig, ResourceID: "cors"},
+			wantAllowed: false,
+		},
+		{
+			// Resources that apply to the whole deployment are read with a token under the OU boundary.
+			name:        "DesignScope_DeploymentWideRead_Allowed",
+			ctx:         buildCtxWithOU("system:design:view", "ou1"),
+			action:      security.ActionReadDesign,
+			actionCtx:   &ActionContext{ResourceType: security.ResourceTypeDesign, ResourceID: "theme-1"},
+			wantAllowed: true,
+		},
+		{
+			// The management API key imports the resources that apply to the whole deployment.
+			name:        "ManagementAPIKey_DeploymentWideWrite_Allowed",
+			ctx:         buildManagementAPIKeyCtx(),
+			action:      security.ActionCreateI18n,
+			actionCtx:   &ActionContext{ResourceType: security.ResourceTypeI18n},
+			wantAllowed: true,
+		},
+		{
+			// The management API key spans the deployment, so any OU is in reach.
+			name:        "ManagementAPIKey_AnyOU_Allowed",
+			ctx:         buildManagementAPIKeyCtx(),
+			action:      security.ActionCreateUser,
+			actionCtx:   &ActionContext{ResourceType: security.ResourceTypeUser, OUID: "ou2"},
 			wantAllowed: true,
 		},
 		{
@@ -174,8 +264,42 @@ func (s *SystemAuthzTestSuite) TestIsActionAllowed() {
 			wantAllowed: false,
 		},
 		{
+			// Step 5: The caller is the resource's stored owner → allowed.
+			name:   "ResourceOwner_ResourceOwnerIDMatchesSubject_Allowed",
+			ctx:    buildCtx(""),
+			action: security.ActionUpdateAgent,
+			actionCtx: &ActionContext{
+				ResourceType:    security.ResourceTypeAgent,
+				ResourceID:      "agent-1",
+				ResourceOwnerID: "user123",
+			},
+			wantAllowed: true,
+		},
+		{
+			// Step 5: Another user owns the resource → falls through to permission check.
+			name:   "ResourceOwner_ResourceOwnerIDMismatch_FallsThrough_Denied",
+			ctx:    buildCtx(""),
+			action: security.ActionReadAgent,
+			actionCtx: &ActionContext{
+				ResourceType:    security.ResourceTypeAgent,
+				ResourceID:      "agent-1",
+				ResourceOwnerID: "other-user",
+			},
+			wantAllowed: false,
+		},
+		{
+			// Step 5: An agent without an ResourceOwnerID is not owner-accessible, even when its ID is the subject.
+			name:   "ResourceOwner_AgentWithoutResourceOwnerID_FallsThrough_Denied",
+			ctx:    buildCtx(""),
+			action: security.ActionReadAgent,
+			actionCtx: &ActionContext{
+				ResourceType: security.ResourceTypeAgent,
+				ResourceID:   "user123",
+			},
+			wantAllowed: false,
+		},
+		{
 			// Step 5: Empty ResourceID → not applicable → falls through to permission check.
-			name:   "ResourceOwner_EmptyResourceID_FallsThrough_Denied",
 			ctx:    buildCtx(""),
 			action: security.ActionReadUser,
 			actionCtx: &ActionContext{
@@ -257,7 +381,7 @@ func (s *SystemAuthzTestSuite) TestIsActionAllowed() {
 	for _, tt := range tests {
 		s.T().Run(tt.name, func(t *testing.T) {
 			if tt.overridePolicy != nil {
-				svc := s.service.(*systemAuthorizationService)
+				svc := s.service.(*ouBoundedAuthzService)
 				original := svc.policies.membershipPolicy
 				svc.policies.membershipPolicy = tt.overridePolicy
 				defer func() { svc.policies.membershipPolicy = original }()
@@ -306,9 +430,17 @@ func (s *SystemAuthzTestSuite) TestGetAccessibleResources() {
 			wantIDs:        []string{},
 		},
 		{
-			// Step 4: "system" permission → all resources accessible.
-			name:           "SystemScope_AllAllowed_OUs",
-			ctx:            buildCtx("system"),
+			// The "system" permission lists every OU.
+			name:           "SystemScope_OUs_AllAllowed",
+			ctx:            buildCtxWithOU("system", "ou1"),
+			action:         security.ActionListOUs,
+			resourceType:   security.ResourceTypeOU,
+			wantAllAllowed: true,
+		},
+		{
+			// The management API key spans the deployment.
+			name:           "ManagementAPIKey_OUs_AllAllowed",
+			ctx:            buildManagementAPIKeyCtx(),
 			action:         security.ActionListOUs,
 			resourceType:   security.ResourceTypeOU,
 			wantAllAllowed: true,
@@ -378,7 +510,7 @@ func (s *SystemAuthzTestSuite) TestGetAccessibleResources() {
 	for _, tt := range tests {
 		s.T().Run(tt.name, func(t *testing.T) {
 			if tt.overridePolicy != nil {
-				svc := s.service.(*systemAuthorizationService)
+				svc := s.service.(*ouBoundedAuthzService)
 				original := svc.policies.membershipPolicy
 				svc.policies.membershipPolicy = tt.overridePolicy
 				defer func() { svc.policies.membershipPolicy = original }()
@@ -483,4 +615,211 @@ func (s *SystemAuthzTestSuite) TestSetOUHierarchyResolver_NilResolver_FallsBackT
 	allowed, svcErr = s.service.IsActionAllowed(ctx, security.ActionReadUserType, actionCtx)
 	assert.False(s.T(), allowed)
 	assert.Nil(s.T(), svcErr)
+}
+
+// ---------------------------------------------------------------------------
+// Initialize
+// ---------------------------------------------------------------------------
+
+func (s *SystemAuthzTestSuite) TestIsImportOnlyAction() {
+	tests := []struct {
+		name      string
+		action    security.Action
+		actionCtx *ActionContext
+		want      bool
+	}{
+		{"RootOUCreation", security.ActionCreateOU, &ActionContext{ResourceType: security.ResourceTypeOU}, true},
+		{"ChildOUCreation", security.ActionCreateOU,
+			&ActionContext{ResourceType: security.ResourceTypeOU, OUID: "ou1"}, false},
+		{"OUCreationWithoutContext", security.ActionCreateOU, nil, false},
+		{"OtherAction", security.ActionUpdateOU, &ActionContext{ResourceType: security.ResourceTypeOU}, false},
+		{"DesignCreation", security.ActionCreateDesign,
+			&ActionContext{ResourceType: security.ResourceTypeDesign}, true},
+		{"DesignUpdate", security.ActionUpdateDesign, &ActionContext{ResourceType: security.ResourceTypeDesign}, true},
+		{"DesignDeletion", security.ActionDeleteDesign,
+			&ActionContext{ResourceType: security.ResourceTypeDesign}, true},
+		{"DesignRead", security.ActionReadDesign, &ActionContext{ResourceType: security.ResourceTypeDesign}, false},
+		{"TranslationCreation", security.ActionCreateI18n, nil, true},
+		{"TranslationUpdate", security.ActionUpdateI18n, nil, true},
+		{"TranslationDeletion", security.ActionDeleteI18n, nil, true},
+		{"TranslationList", security.ActionListI18n, nil, false},
+		{"ServerConfigUpdate", security.ActionUpdateServerConfig, nil, true},
+		{"ServerConfigRead", security.ActionReadServerConfig, nil, false},
+		{"AuthzDetailCreation", security.ActionCreateAuthzDetail, nil, true},
+		{"AuthzDetailUpdate", security.ActionUpdateAuthzDetail, nil, true},
+		{"AuthzDetailDeletion", security.ActionDeleteAuthzDetail, nil, true},
+		{"AuthzDetailRead", security.ActionReadAuthzDetail, nil, false},
+	}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			s.Equal(tt.want, isImportOnlyAction(tt.action, tt.actionCtx))
+		})
+	}
+}
+
+func (s *SystemAuthzTestSuite) TestInitializeBoundary() {
+	t := s.T()
+	deploymentBounded, err := InitializeDeploymentBoundedAuthorization()
+	assert.NoError(t, err)
+	assert.IsType(t, &deploymentBoundedAuthzService{}, deploymentBounded)
+
+	ouBounded, err := InitializeOUBoundedAuthorization()
+	assert.NoError(t, err)
+	assert.IsType(t, &ouBoundedAuthzService{}, ouBounded)
+}
+
+// ---------------------------------------------------------------------------
+// Deployment boundary
+// ---------------------------------------------------------------------------
+
+func (s *SystemAuthzTestSuite) TestIsActionAllowedDeploymentBoundary() {
+	t := s.T()
+	service := newDeploymentBoundedAuthzService()
+	tests := []struct {
+		name        string
+		ctx         context.Context
+		action      security.Action
+		actionCtx   *ActionContext
+		wantAllowed bool
+	}{
+		{
+			name:        "ScopedCaller_OtherOU_Allowed",
+			ctx:         buildCtxWithOU("system:ou:view", "ou1"),
+			action:      security.ActionReadOU,
+			actionCtx:   &ActionContext{ResourceType: security.ResourceTypeOU, OUID: "ou2"},
+			wantAllowed: true,
+		},
+		{
+			name:        "OUScope_RootOUCreation_Allowed",
+			ctx:         buildCtxWithOU("system:ou", "ou1"),
+			action:      security.ActionCreateOU,
+			actionCtx:   &ActionContext{ResourceType: security.ResourceTypeOU},
+			wantAllowed: true,
+		},
+		{
+			name:        "DesignScope_DeploymentWideWrite_Allowed",
+			ctx:         buildCtxWithOU("system:design", "ou1"),
+			action:      security.ActionUpdateDesign,
+			actionCtx:   &ActionContext{ResourceType: security.ResourceTypeDesign, ResourceID: "theme-1"},
+			wantAllowed: true,
+		},
+		{
+			name:        "RuntimeContext_Allowed",
+			ctx:         buildRuntimeCtx(),
+			action:      security.ActionCreateOU,
+			actionCtx:   &ActionContext{ResourceType: security.ResourceTypeOU},
+			wantAllowed: true,
+		},
+		{
+			name:        "UnauthenticatedCaller_Denied",
+			ctx:         context.Background(),
+			action:      security.ActionReadOU,
+			actionCtx:   &ActionContext{ResourceType: security.ResourceTypeOU, OUID: "ou1"},
+			wantAllowed: false,
+		},
+		{
+			name:        "InsufficientScope_Denied",
+			ctx:         buildCtxWithOU("system:ou:view", "ou1"),
+			action:      security.ActionUpdateOU,
+			actionCtx:   &ActionContext{ResourceType: security.ResourceTypeOU, OUID: "ou1"},
+			wantAllowed: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			allowed, svcErr := service.IsActionAllowed(tt.ctx, tt.action, tt.actionCtx)
+			assert.Nil(t, svcErr)
+			assert.Equal(t, tt.wantAllowed, allowed)
+		})
+	}
+}
+
+func (s *SystemAuthzTestSuite) TestGetAccessibleResourcesDeploymentBoundary() {
+	t := s.T()
+	service := newDeploymentBoundedAuthzService()
+	// The deployment boundary never consults the hierarchy, so a resolver changes nothing.
+	service.SetOUHierarchyResolver(&stubOUHierarchyResolver{ancestorIDs: []string{"parent-ou"}})
+
+	result, svcErr := service.GetAccessibleResources(
+		buildCtxWithOU("system:ou:view", "ou1"), security.ActionListOUs, security.ResourceTypeOU)
+	assert.Nil(t, svcErr)
+	assert.True(t, result.AllAllowed)
+
+	result, svcErr = service.GetAccessibleResources(
+		buildCtxWithOU("system:user:view", "ou1"), security.ActionListOUs, security.ResourceTypeOU)
+	assert.Nil(t, svcErr)
+	assert.False(t, result.AllAllowed)
+	assert.Empty(t, result.IDs)
+}
+
+// ---------------------------------------------------------------------------
+// GetBoundary and record-independent checks
+// ---------------------------------------------------------------------------
+
+func (s *SystemAuthzTestSuite) TestGetBoundary() {
+	ctx := buildCtxWithOU("system", "ou-1")
+
+	s.Equal(Boundary{Type: BoundaryTypeOU, OUID: "ou-1"}, newOUBoundedAuthzService().GetBoundary(ctx))
+	s.Equal(Boundary{Type: BoundaryTypeDeployment}, newDeploymentBoundedAuthzService().GetBoundary(ctx))
+}
+
+func (s *SystemAuthzTestSuite) TestIsActionAllowedWithoutRecord() {
+	boundaries := map[string]SystemAuthorizationServiceInterface{
+		"ou":         newOUBoundedAuthzService(),
+		"deployment": newDeploymentBoundedAuthzService(),
+	}
+	tests := []struct {
+		name        string
+		permissions string
+		action      security.Action
+		wantAllowed bool
+	}{
+		{"catalog view grants read", "system:app:view", security.ActionReadApplication, true},
+		{"catalog view does not grant update", "system:app:view", security.ActionUpdateApplication, false},
+		{"resource permission grants every action", "system:project", security.ActionDeleteProject, true},
+	}
+	for boundaryName, service := range boundaries {
+		for _, tc := range tests {
+			s.Run(boundaryName+"/"+tc.name, func() {
+				allowed, svcErr := service.IsActionAllowed(buildCtxWithOU(tc.permissions, "ou-1"), tc.action, nil)
+				s.Nil(svcErr)
+				s.Equal(tc.wantAllowed, allowed)
+			})
+		}
+	}
+}
+
+// On the data plane the OU actions require the organization tree. The deployment-wide system root
+// still passes the permission step and reaches every organization unit, while an organization
+// permission stays within the caller's organization unit.
+func TestOUBoundedAuthorization_DataPlanePermissions(t *testing.T) {
+	security.InitDataPlanePermissions("")
+	t.Cleanup(func() { security.InitControlPlanePermissions("") })
+	service, err := InitializeOUBoundedAuthorization()
+	require.NoError(t, err)
+
+	tests := []struct {
+		name        string
+		ctx         context.Context
+		ouID        string
+		wantAllowed bool
+	}{
+		{name: "System_OtherOU_Allowed", ctx: buildCtxWithOU("system", "ou1"), ouID: "ou2", wantAllowed: true},
+		{name: "OrgView_OwnOU_Allowed", ctx: buildCtxWithOU("org:ou:view", "ou1"), ouID: "ou1", wantAllowed: true},
+		{name: "OrgView_OtherOU_Denied", ctx: buildCtxWithOU("org:ou:view", "ou1"), ouID: "ou2"},
+		{name: "StaleSystemChild_Denied", ctx: buildCtxWithOU("system:ou:view", "ou1"), ouID: "ou1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			allowed, svcErr := service.IsActionAllowed(tt.ctx, security.ActionReadOU,
+				&ActionContext{ResourceType: security.ResourceTypeOU, OUID: tt.ouID})
+			assert.Nil(t, svcErr)
+			assert.Equal(t, tt.wantAllowed, allowed)
+		})
+	}
+
+	result, svcErr := service.GetAccessibleResources(
+		buildCtxWithOU("system", "ou1"), security.ActionListOUs, security.ResourceTypeOU)
+	assert.Nil(t, svcErr)
+	assert.True(t, result.AllAllowed)
 }

@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {FormHelperText, FormLabel, Stack, TextField, Typography} from '@wso2/oxygen-ui';
+import {Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {useEffect, useMemo, useState, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {CommonResourcePropertiesPropsInterface} from './types';
@@ -33,21 +33,18 @@ function AgentTypeResolverProperties({resource, onChange}: CommonResourcePropert
         {t('flows:core.executions.agentTypeResolver.description')}
       </Typography>
 
-      <div>
-        <FormLabel htmlFor="allowed-agent-types">
-          {t('flows:core.executions.agentTypeResolver.allowedAgentTypes.label')}
-        </FormLabel>
-        <TextField
-          id="allowed-agent-types"
-          value={localValue}
-          onChange={(e) => setLocalValue(e.target.value)}
-          onBlur={() => onChange('data.properties.allowedAgentTypes', parseCommaSeparated(localValue), resource)}
-          placeholder={t('flows:core.executions.agentTypeResolver.allowedAgentTypes.placeholder')}
-          fullWidth
-          size="small"
-        />
-        <FormHelperText>{t('flows:core.executions.agentTypeResolver.allowedAgentTypes.hint')}</FormHelperText>
-      </div>
+      <TextField
+        labelPlacement="top"
+        label={t('flows:core.executions.agentTypeResolver.allowedAgentTypes.label')}
+        helperText={t('flows:core.executions.agentTypeResolver.allowedAgentTypes.hint')}
+        id="allowed-agent-types"
+        value={localValue}
+        onChange={(e) => setLocalValue(e.target.value)}
+        onBlur={() => onChange('data.properties.allowedAgentTypes', parseCommaSeparated(localValue), resource)}
+        placeholder={t('flows:core.executions.agentTypeResolver.allowedAgentTypes.placeholder')}
+        fullWidth
+        size="small"
+      />
     </Stack>
   );
 }

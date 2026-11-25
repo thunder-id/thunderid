@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {render, renderHook, screen, fireEvent} from '@thunderid/test-utils';
 import {useTranslation} from 'react-i18next';
 import {describe, expect, it, vi, beforeAll, beforeEach} from 'vitest';
@@ -101,6 +102,11 @@ const templates = [
   {id: 'tmpl-2', handle: 'password-reset', displayName: 'Password Reset'},
 ];
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  isLoading: false,
+};
+
 describe('NotificationTemplatesList', () => {
   let t: (key: string) => string;
 
@@ -125,6 +131,28 @@ describe('NotificationTemplatesList', () => {
     expect(screen.getByTestId('row-tmpl-2')).toBeInTheDocument();
     expect(screen.getByText('OTP Verification')).toBeInTheDocument();
     expect(screen.getByText('Password Reset')).toBeInTheDocument();
+  });
+
+  it("lists only the selected project's templates", () => {
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <NotificationTemplatesList channel="email" />
+      </ProjectScopeProvider>,
+    );
+
+    expect(mockUseGetTemplates).toHaveBeenCalledWith('email', expect.objectContaining({projectId: 'project-1'}));
+  });
+
+  it('hides the edit and delete row actions when the admin may only view templates', () => {
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <NotificationTemplatesList channel="email" />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.getByTestId('row-tmpl-1')).toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: t('common:actions.edit')})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: t('common:actions.delete')})).not.toBeInTheDocument();
   });
 
   it('navigates to the template editor when a row is clicked', () => {

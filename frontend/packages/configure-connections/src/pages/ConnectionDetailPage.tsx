@@ -1,8 +1,20 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {DocumentTitle, QueryErrorNotice, SettingsCard, UnsavedChangesBar} from '@thunderid/components';
-import {useConfig} from '@thunderid/contexts';
+import {
+  AUTHENTICATION_METHOD_FIELD_NAMES,
+  decodeKeyValuePairs,
+  DocumentTitle,
+  getServiceAuthenticationState,
+  MASKED_SECRET,
+  outboundAuthenticationFromFormValues,
+  QueryErrorNotice,
+  ReadOnlyFieldset,
+  ServiceAuthenticationMethods,
+  SettingsCard,
+  UnsavedChangesBar,
+} from '@thunderid/components';
+import {useCapabilitiesContext, useConfig, useGateCallbackUrl, useRecordAccess} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {
   Alert,
@@ -38,17 +50,13 @@ import ConnectionForm from '../components/ConnectionForm';
 import ConnectionUsagesSection from '../components/ConnectionUsagesSection';
 import OrganizationUnitSection from '../components/OrganizationUnitSection';
 import ReadOnlyCopyField from '../components/ReadOnlyCopyField';
-import ServiceAuthenticationMethods from '../components/ServiceAuthenticationMethods';
 import SetDefaultEmailSenderDialog from '../components/SetDefaultEmailSenderDialog';
 import SubjectMappingSection from '../components/SubjectMappingSection';
+import SyncSection from '../components/SyncSection';
 import {CONNECTION_FORM_FIELDS} from '../config/connectionFormFields';
 import {VENDOR_META_BY_TYPE} from '../config/connectionVendorMeta';
+import ConnectionConstants from '../constants/connection-constants';
 import useConnectionRoutes from '../hooks/useConnectionRoutes';
-import {
-  AUTHENTICATION_METHOD_FIELD_NAMES,
-  AuthenticationMethods,
-  type AuthenticationMethod,
-} from '../models/authentication-methods';
 import type {
   AccountLinking,
   AttributeConfiguration,
@@ -59,6 +67,8 @@ import type {
   OutboundAuthField,
   OutboundAuthMethod,
   SubjectMappingValues,
+  SyncConfiguration,
+  SyncMode,
 } from '../models/connection';
 import {ConnectionTypes} from '../models/connection';
 import {
@@ -70,14 +80,12 @@ import {
   type ConnectionFormValues,
   formValuesToRequest,
   HTTPS_REQUIRED_WITH_AUTHENTICATION_ERROR,
-  MASKED_SECRET,
-  outboundAuthenticationFromFormValues,
   responseToFormValues,
+  smtpServerChanged,
   urlOriginChanged,
   validateConnectionForm,
 } from '../utils/connectionFormMapping';
 import isConflictError from '../utils/isConflictError';
-import {decodeKeyValuePairs, parseKeyValuePairs} from '../utils/keyValuePairs';
 import {hasDuplicateSubjectAttributes, normalizeSubjectAttributeMappings} from '../utils/subjectMapping';
 
 interface TabPanelProps {
@@ -92,6 +100,13 @@ function TabPanel({children, value, index}: TabPanelProps): JSX.Element {
       {value === index && <Box sx={{py: 3}}>{children}</Box>}
     </div>
   );
+}
+
+const SYNC_SETTINGS: (keyof SyncConfiguration)[] = ['attributes', 'groupsAndRoles'];
+
+/** The mode a sync setting takes, with an unset one taking its server default. */
+function effectiveSyncMode(sync: SyncConfiguration | undefined, setting: keyof SyncConfiguration): SyncMode {
+  return sync?.[setting] ?? ConnectionConstants.DEFAULT_SYNC_MODES[setting];
 }
 
 /** Canonical serialization of an attribute configuration for dirty-checking (order-independent). */
@@ -116,9 +131,10 @@ function canonicalAttr(config: AttributeConfiguration | undefined): string {
 
 export default function ConnectionDetailPage(): JSX.Element | null {
   const {t} = useTranslation('connections');
+  const {can} = useCapabilitiesContext();
   const navigate = useNavigate();
   const routes = useConnectionRoutes();
-  const {config: appConfig, getGateCallbackUrl} = useConfig();
+  const {config: appConfig} = useConfig();
   const productName: string = appConfig.brand.product_name;
   const {type, id} = useParams<{type: string; id?: string}>();
 
@@ -136,6 +152,8 @@ export default function ConnectionDetailPage(): JSX.Element | null {
   const instancesQuery = useConnectionInstances(connectionType, {enabled: Boolean(meta) && !id});
   const resolvedId: string | undefined = id ?? instancesQuery.data?.[0]?.id;
   const connectionQuery = useConnection(connectionType, resolvedId);
+  const {readOnly, canDelete} = useRecordAccess('connection', connectionQuery.data);
+  const canUpdate = !readOnly;
 
   const [activeTab, setActiveTab] = useState(0);
   const [editedValues, setEditedValues] = useState<ConnectionFormValues>({});
@@ -151,6 +169,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
   );
   const [directMappingsValid, setDirectMappingsValid] = useState(true);
   const [editedLinking, setEditedLinking] = useState<AccountLinking | undefined | null>(null);
+  const [editedSync, setEditedSync] = useState<SyncConfiguration | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
   const [generalError, setGeneralError] = useState<string | null>(null);
@@ -190,7 +209,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
   }, [meta, navigate, routes]);
 
   const fields = useMemo(() => (meta ? CONNECTION_FORM_FIELDS[connectionType] : []), [meta, connectionType]);
-  const redirectUri = getGateCallbackUrl();
+  const redirectUri = useGateCallbackUrl();
   const data = connectionQuery.data;
 
   const baseline = useMemo<ConnectionFormValues>(
@@ -206,6 +225,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
   const baselineSubjectMapping: SubjectMappingValues = {
     subjectAttributeMappings: normalizeSubjectAttributeMappings(data?.subjectAttributeMappings),
   };
+  const baselineSync: SyncConfiguration | undefined = data?.attributeConfiguration?.sync;
 
   if (!meta) {
     return null;
@@ -228,6 +248,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
     setEditedDirectMappings(null);
     setDirectMappingsValid(true);
     setEditedLinking(null);
+    setEditedSync(null);
     setNameError(null);
     setGeneralError(null);
   };
@@ -247,6 +268,11 @@ export default function ConnectionDetailPage(): JSX.Element | null {
   const linkingDirty: boolean =
     editedLinking !== null &&
     JSON.stringify(editedLinking?.attributes ?? []) !== JSON.stringify(baselineLinking?.attributes ?? []);
+  const syncDirty: boolean =
+    editedSync !== null &&
+    SYNC_SETTINGS.some(
+      (setting) => effectiveSyncMode(editedSync, setting) !== effectiveSyncMode(baselineSync, setting),
+    );
   const dirty: boolean =
     formDirty ||
     attrDirty ||
@@ -254,28 +280,29 @@ export default function ConnectionDetailPage(): JSX.Element | null {
     authzMappingsDirty ||
     directMappingsDirty ||
     linkingDirty ||
+    syncDirty ||
     !authzMappingsValid ||
     !directMappingsValid;
-  const selectedAuthenticationScheme =
-    (values['authenticationScheme'] as AuthenticationMethod | undefined) ?? AuthenticationMethods.NONE;
-  const persistedAuthenticationScheme = data?.authentication?.type?.toUpperCase() ?? AuthenticationMethods.NONE;
   const authenticationTargetChanged =
     supportsAuthentication &&
     (connectionType === ConnectionTypes.SMS_GATEWAY
       ? (values['url'] ?? '').trim() !== (data?.url ?? '').trim()
       : (values['endpoint'] ?? '').trim() !== (data?.endpoint ?? '').trim() ||
         (values['batchEndpoint'] ?? '').trim() !== (data?.batchEndpoint ?? '').trim());
-  const requiresFreshCredentials =
-    authenticationTargetChanged && selectedAuthenticationScheme !== AuthenticationMethods.NONE;
-  const hasStoredCredentialForSelectedScheme =
-    !authenticationTargetChanged &&
-    selectedAuthenticationScheme === persistedAuthenticationScheme &&
-    (selectedAuthenticationScheme === AuthenticationMethods.BEARER
-      ? Boolean(data?.authentication?.properties?.['token'])
-      : selectedAuthenticationScheme === AuthenticationMethods.BASIC
-        ? Boolean(data?.authentication?.properties?.['username']) &&
-          Boolean(data?.authentication?.properties?.['password'])
-        : false);
+  const {
+    selectedAuthenticationScheme,
+    requiresFreshCredentials,
+    hasStoredCredentialForSelectedScheme,
+    hasStoredHTTPHeaders,
+    storedHTTPHeaders,
+    authenticationErrors,
+    hasRequiredAuthenticationCredential,
+    authenticationChanged,
+  } = getServiceAuthenticationState(values, data?.authentication, {
+    replacing: secretReplacing,
+    targetChanged: authenticationTargetChanged,
+    requiredMessage: t('validation.required', 'This field is required.'),
+  });
   // A provider's credential is stored only for the method it was saved with, and comes back
   // masked. Switching to another method leaves nothing stored for it, so its credential has to
   // be entered rather than shown as kept.
@@ -283,17 +310,23 @@ export default function ConnectionDetailPage(): JSX.Element | null {
     (values[AUTH_TYPE_FIELD] || AUTH_TYPE_NONE) === data?.authentication?.type &&
     Object.values(data?.authentication?.properties ?? {}).includes(MASKED_SECRET);
   const reentersCredentialsOnOriginChange: boolean = meta?.reentersCredentialsOnOriginChange ?? false;
-  // The stored credentials must not follow the URL to another origin, so they are entered again.
-  const credentialsMustBeReentered: boolean =
-    reentersCredentialsOnOriginChange &&
-    hasStoredOutboundCredential &&
-    urlOriginChanged(baseline['url'] ?? '', values['url'] ?? '');
   const selectedOutboundMethod: OutboundAuthMethod | undefined = authenticationMethods.find(
     (method) => method.type === (values[AUTH_TYPE_FIELD] || AUTH_TYPE_NONE),
   );
   const selectedOutboundFields: OutboundAuthField[] = selectedOutboundMethod?.fields ?? [];
   const outboundAdditionalProperties = decodeKeyValuePairs(values[AUTH_ADDITIONAL_PROPERTIES_FIELD] ?? '', 'pairs');
   const outboundFieldValue = (field: OutboundAuthField): string => (values[authPropertyField(field.key)] ?? '').trim();
+  const smtpUsernameChanged: boolean = selectedOutboundFields.some(
+    (field) => !field.credential && outboundFieldValue(field) !== (baseline[authPropertyField(field.key)] ?? '').trim(),
+  );
+  // The stored credentials must not follow the URL to another origin, or an SMTP password to another
+  // server or username, so they are entered again.
+  const credentialsMustBeReentered: boolean =
+    reentersCredentialsOnOriginChange &&
+    hasStoredOutboundCredential &&
+    (connectionType === ConnectionTypes.SMTP
+      ? smtpServerChanged(baseline, values) || smtpUsernameChanged
+      : urlOriginChanged(baseline['url'] ?? '', values['url'] ?? ''));
   // A credential typed while the origin gate was engaged stays visible if the URL is changed back.
   const outboundSecretReplacing: boolean =
     secretReplacing ||
@@ -315,51 +348,6 @@ export default function ConnectionDetailPage(): JSX.Element | null {
     values,
     authenticationMethods,
   );
-  const hasStoredHTTPHeaders =
-    selectedAuthenticationScheme === AuthenticationMethods.API_KEY &&
-    selectedAuthenticationScheme === persistedAuthenticationScheme &&
-    Boolean(Object.keys(data?.authentication?.properties ?? {}).length);
-  const requiredCredentialError = t('validation.required', 'This field is required.');
-  const enteredHeaders = parseKeyValuePairs(values['httpHeaders'] ?? '');
-  const authenticationErrors = {
-    bearerToken:
-      selectedAuthenticationScheme === AuthenticationMethods.BEARER &&
-      (secretReplacing || !hasStoredCredentialForSelectedScheme) &&
-      ((values['bearerToken'] ?? '').trim() === '' || (values['bearerToken'] ?? '').trim() === MASKED_SECRET)
-        ? requiredCredentialError
-        : undefined,
-    basicUsername:
-      selectedAuthenticationScheme === AuthenticationMethods.BASIC &&
-      (secretReplacing || !hasStoredCredentialForSelectedScheme) &&
-      (values['basicUsername'] ?? '').trim() === ''
-        ? requiredCredentialError
-        : undefined,
-    basicPassword:
-      selectedAuthenticationScheme === AuthenticationMethods.BASIC &&
-      (secretReplacing || !hasStoredCredentialForSelectedScheme) &&
-      ((values['basicPassword'] ?? '').trim() === '' || (values['basicPassword'] ?? '').trim() === MASKED_SECRET)
-        ? requiredCredentialError
-        : undefined,
-    httpHeaders:
-      selectedAuthenticationScheme === AuthenticationMethods.API_KEY &&
-      ((requiresFreshCredentials &&
-        (enteredHeaders.length === 0 ||
-          enteredHeaders.some(
-            ({name, value}) => name.trim() === '' || value.trim() === '' || value === MASKED_SECRET,
-          ))) ||
-        (!hasStoredHTTPHeaders && (values['httpHeaders'] ?? '').trim() === ''))
-        ? requiredCredentialError
-        : undefined,
-  };
-  const hasRequiredAuthenticationCredential = Object.values(authenticationErrors).every((error) => !error);
-  const hasEnteredAuthenticationCredential =
-    selectedAuthenticationScheme === AuthenticationMethods.BEARER
-      ? (values['bearerToken'] ?? '').trim() !== ''
-      : selectedAuthenticationScheme === AuthenticationMethods.BASIC
-        ? (values['basicUsername'] ?? '').trim() !== '' && (values['basicPassword'] ?? '').trim() !== ''
-        : selectedAuthenticationScheme === AuthenticationMethods.API_KEY
-          ? (values['httpHeaders'] ?? '').trim() !== ''
-          : false;
   const fieldErrors: Record<string, string> = validateConnectionForm(values, fields, 'edit');
   const valid: boolean =
     Object.keys(fieldErrors).length === 0 &&
@@ -407,6 +395,8 @@ export default function ConnectionDetailPage(): JSX.Element | null {
     const hasAuthzMappings = Boolean(effectiveAuthzMappings && effectiveAuthzMappings.length > 0);
     const hasDirectMappings = Boolean(effectiveDirectMappings && effectiveDirectMappings.length > 0);
     const hasLinking = Boolean(effectiveLinking && effectiveLinking.attributes.length > 0);
+    const effectiveSync: SyncConfiguration | undefined = editedSync ?? baselineSync;
+    const hasSync = Boolean(effectiveSync?.attributes ?? effectiveSync?.groupsAndRoles);
     // userTypeResolution is required by the wire type, but a connection may carry only authorization
     // mappings or only account linking (e.g. a token-exchange-only connection with no attribute mapping
     // configured at all). The empty default is inert: GetMappedUserType treats it identically to no
@@ -414,7 +404,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
     // conditionally) so clearing either drops it from the payload instead of leaking effectiveAttr's
     // stale value (baselineAttr, when unedited, still carries whatever the server last returned).
     const mergedAttributeConfiguration: AttributeConfiguration | undefined =
-      effectiveAttr || hasAuthzMappings || hasDirectMappings || hasLinking
+      effectiveAttr || hasAuthzMappings || hasDirectMappings || hasLinking || hasSync
         ? {
             userTypeResolution: {default: ''},
             ...effectiveAttr,
@@ -423,15 +413,9 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                 ? {rules: effectiveAuthzMappings, direct: effectiveDirectMappings}
                 : undefined,
             accountLinking: hasLinking ? effectiveLinking : undefined,
+            sync: hasSync ? effectiveSync : undefined,
           }
         : undefined;
-    const authenticationChanged =
-      selectedAuthenticationScheme !== persistedAuthenticationScheme ||
-      ((selectedAuthenticationScheme === AuthenticationMethods.BEARER ||
-        selectedAuthenticationScheme === AuthenticationMethods.BASIC) &&
-        (secretReplacing || hasEnteredAuthenticationCredential)) ||
-      (selectedAuthenticationScheme === AuthenticationMethods.API_KEY &&
-        values['httpHeaders'] !== baseline['httpHeaders']);
     const requestFields = supportsAuthentication
       ? fields.filter((field) => !AUTHENTICATION_METHOD_FIELD_NAMES.has(field.name))
       : fields;
@@ -548,7 +532,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                     />
                   </Tooltip>
                 )}
-                {isDefaultReady && !isDefault && (
+                {isDefaultReady && !isDefault && can('serverconfig', 'update') && (
                   <Tooltip
                     title={
                       isDefaultLocked
@@ -646,11 +630,13 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                 data-testid="connection-tab-subject-mapping"
               />
             )}
-            <Tab
-              label={t('detail.tabs.advanced', 'Advanced')}
-              sx={{textTransform: 'none'}}
-              data-testid="connection-tab-advanced"
-            />
+            {canDelete && (
+              <Tab
+                label={t('detail.tabs.advanced', 'Advanced')}
+                sx={{textTransform: 'none'}}
+                data-testid="connection-tab-advanced"
+              />
+            )}
           </Tabs>
 
           <TabPanel value={activeTab} index={0}>
@@ -685,26 +671,33 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                       )
                 }
               >
-                <ConnectionForm
-                  type={connectionType}
-                  mode="edit"
-                  values={values}
-                  secretReplacing={secretReplacing}
-                  hasStoredSecret
-                  vendorDisplayName={meta.displayName}
-                  nameError={nameError}
-                  showNameField={isCustom}
-                  excludeFieldNames={supportsAuthentication ? AUTHENTICATION_METHOD_FIELD_NAMES : undefined}
-                  showAuthentication={false}
-                  onFieldChange={handleFieldChange}
-                  onSecretReplacingChange={setSecretReplacing}
-                />
+                <ReadOnlyFieldset readOnly={!canUpdate}>
+                  <ConnectionForm
+                    type={connectionType}
+                    mode="edit"
+                    values={values}
+                    secretReplacing={secretReplacing}
+                    hasStoredSecret
+                    vendorDisplayName={meta.displayName}
+                    nameError={nameError}
+                    showNameField={isCustom}
+                    excludeFieldNames={supportsAuthentication ? AUTHENTICATION_METHOD_FIELD_NAMES : undefined}
+                    showAuthentication={false}
+                    onFieldChange={handleFieldChange}
+                    onSecretReplacingChange={setSecretReplacing}
+                  />
+                </ReadOnlyFieldset>
                 {credentialsMustBeReentered && (
                   <Alert severity="warning" sx={{mt: 2}}>
-                    {t(
-                      'detail.authentication.originChanged',
-                      'The URL origin changed. Enter the credentials again under Authentication before saving.',
-                    )}
+                    {connectionType === ConnectionTypes.SMTP
+                      ? t(
+                          'detail.authentication.smtpServerChanged',
+                          'The SMTP host, port, or username changed. Enter the password again under Authentication before saving.',
+                        )
+                      : t(
+                          'detail.authentication.originChanged',
+                          'The URL origin changed. Enter the credentials again under Authentication before saving.',
+                        )}
                   </Alert>
                 )}
               </SettingsCard>
@@ -719,16 +712,18 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                   title={t('detail.authentication.title')}
                   description={t('detail.outboundAuthentication.description', {productName})}
                 >
-                  <AuthenticationSection
-                    methods={authenticationMethods}
-                    values={values}
-                    mode="edit"
-                    secretReplacing={outboundSecretReplacing}
-                    hasStoredSecret={hasStoredOutboundCredential && !credentialsMustBeReentered}
-                    showHeading={false}
-                    onFieldChange={handleFieldChange}
-                    onSecretReplacingChange={setSecretReplacing}
-                  />
+                  <ReadOnlyFieldset readOnly={!canUpdate}>
+                    <AuthenticationSection
+                      methods={authenticationMethods}
+                      values={values}
+                      mode="edit"
+                      secretReplacing={outboundSecretReplacing}
+                      hasStoredSecret={hasStoredOutboundCredential && !credentialsMustBeReentered}
+                      showHeading={false}
+                      onFieldChange={handleFieldChange}
+                      onSecretReplacingChange={setSecretReplacing}
+                    />
+                  </ReadOnlyFieldset>
                   {fieldErrors['url'] === HTTPS_REQUIRED_WITH_AUTHENTICATION_ERROR && (
                     <Alert severity="error" sx={{mt: 2}}>
                       {t(
@@ -764,34 +759,37 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                       )
                 }
               >
-                <ServiceAuthenticationMethods
-                  method={selectedAuthenticationScheme}
-                  bearerToken={values['bearerToken'] ?? ''}
-                  basicUsername={values['basicUsername'] ?? ''}
-                  basicPassword={values['basicPassword'] ?? ''}
-                  httpHeaders={values['httpHeaders'] ?? ''}
-                  hasStoredHTTPHeaders={hasStoredHTTPHeaders}
-                  hasStoredSecret={hasStoredCredentialForSelectedScheme}
-                  replacing={secretReplacing}
-                  errors={authenticationErrors}
-                  onChange={(name, value) => {
-                    clearSaveError();
-                    if (name === 'authenticationScheme') {
-                      setSecretReplacing(false);
-                      setEditedValues((prev) => ({
-                        ...prev,
-                        authenticationScheme: value,
-                        bearerToken: '',
-                        basicUsername: '',
-                        basicPassword: '',
-                        httpHeaders: '',
-                      }));
-                      return;
-                    }
-                    setEditedValues((prev) => ({...prev, [name]: value}));
-                  }}
-                  onReplacingChange={setSecretReplacing}
-                />
+                <ReadOnlyFieldset readOnly={!canUpdate}>
+                  <ServiceAuthenticationMethods
+                    method={selectedAuthenticationScheme}
+                    bearerToken={values['bearerToken'] ?? ''}
+                    basicUsername={values['basicUsername'] ?? ''}
+                    basicPassword={values['basicPassword'] ?? ''}
+                    httpHeaders={values['httpHeaders'] ?? ''}
+                    hasStoredHTTPHeaders={hasStoredHTTPHeaders}
+                    storedHTTPHeaders={storedHTTPHeaders}
+                    hasStoredSecret={hasStoredCredentialForSelectedScheme}
+                    replacing={secretReplacing}
+                    errors={authenticationErrors}
+                    onChange={(name, value) => {
+                      clearSaveError();
+                      if (name === 'authenticationScheme') {
+                        setSecretReplacing(false);
+                        setEditedValues((prev) => ({
+                          ...prev,
+                          authenticationScheme: value,
+                          bearerToken: '',
+                          basicUsername: '',
+                          basicPassword: '',
+                          httpHeaders: '',
+                        }));
+                        return;
+                      }
+                      setEditedValues((prev) => ({...prev, [name]: value}));
+                    }}
+                    onReplacingChange={setSecretReplacing}
+                  />
+                </ReadOnlyFieldset>
               </SettingsCard>
             </TabPanel>
           )}
@@ -799,16 +797,21 @@ export default function ConnectionDetailPage(): JSX.Element | null {
           {supportsAttributes && (
             <TabPanel value={activeTab} index={attributeMappingTabIndex}>
               <Stack direction="column" spacing={4}>
-                <AttributeMappingSection
-                  key={`attrs-${resolvedId}-${attrsKey}`}
-                  initialConfig={baselineAttr}
-                  onChange={(config, isValid) => {
-                    setEditedAttr(config);
-                    setAttrValid(isValid);
-                  }}
-                />
+                <ReadOnlyFieldset readOnly={!canUpdate}>
+                  <AttributeMappingSection
+                    key={`attrs-${resolvedId}-${attrsKey}`}
+                    initialConfig={baselineAttr}
+                    onChange={(config, isValid) => {
+                      setEditedAttr(config);
+                      setAttrValid(isValid);
+                    }}
+                  />
+                </ReadOnlyFieldset>
+                {/* Locks its own controls, so the permission tree can still be expanded to read. */}
                 <AuthorizationMappingSection
+                  readOnly={!canUpdate}
                   key={`authz-${resolvedId}-${attrsKey}`}
+                  ouId={data?.ouId}
                   initialRuleConfig={baselineAuthzMappings}
                   initialDirectConfig={baselineDirectMappings}
                   onRuleChange={(mappings, isValid) => {
@@ -820,53 +823,76 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                     setDirectMappingsValid(isValid);
                   }}
                 />
-                <AccountLinkingSection
-                  key={`linking-${resolvedId}-${attrsKey}`}
-                  initialConfig={baselineLinking}
-                  onChange={(linking) => setEditedLinking(linking)}
-                />
+                <ReadOnlyFieldset readOnly={!canUpdate}>
+                  <AccountLinkingSection
+                    key={`linking-${resolvedId}-${attrsKey}`}
+                    initialConfig={baselineLinking}
+                    onChange={(linking) => setEditedLinking(linking)}
+                  />
+                </ReadOnlyFieldset>
+                <ReadOnlyFieldset readOnly={!canUpdate}>
+                  <SyncSection
+                    sync={editedSync ?? baselineSync}
+                    onChange={(sync) => {
+                      clearSaveError();
+                      // A setting changed back to its stored mode keeps the stored value, so an unset
+                      // mode stays unset instead of being saved as its default.
+                      const normalized: SyncConfiguration = {...sync};
+                      SYNC_SETTINGS.forEach(<K extends keyof SyncConfiguration>(setting: K) => {
+                        if (effectiveSyncMode(sync, setting) === effectiveSyncMode(baselineSync, setting)) {
+                          normalized[setting] = baselineSync?.[setting];
+                        }
+                      });
+                      setEditedSync(normalized);
+                    }}
+                  />
+                </ReadOnlyFieldset>
               </Stack>
             </TabPanel>
           )}
 
           {supportsSubjectMapping && (
             <TabPanel value={activeTab} index={subjectMappingTabIndex}>
-              <SubjectMappingSection
-                values={subjectMappingValues}
-                onChange={(field, value) => {
-                  clearSaveError();
-                  setEditedSubjectMapping((prev) => ({...prev, [field]: value}));
-                }}
-              />
+              <ReadOnlyFieldset readOnly={!canUpdate}>
+                <SubjectMappingSection
+                  values={subjectMappingValues}
+                  onChange={(field, value) => {
+                    clearSaveError();
+                    setEditedSubjectMapping((prev) => ({...prev, [field]: value}));
+                  }}
+                />
+              </ReadOnlyFieldset>
             </TabPanel>
           )}
 
-          <TabPanel value={activeTab} index={advancedTabIndex}>
-            <Stack direction="column" spacing={4}>
-              <SettingsCard title={t('detail.dangerZone.title')} description={t('detail.dangerZone.description')}>
-                <Typography variant="h6" gutterBottom color="error">
-                  {t('detail.dangerZone.delete.title')}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{mb: 3}}>
-                  {t(meta.deleteDescriptionKey ?? 'detail.dangerZone.delete.description')}
-                </Typography>
-                <Button
-                  variant="contained"
-                  color="error"
-                  startIcon={<Trash2 size={16} />}
-                  onClick={() => {
-                    setDeleteError(null);
-                    setDeleteOpen(true);
-                  }}
-                  data-testid="connection-delete-button"
-                >
-                  {t('form.actions.delete')}
-                </Button>
-              </SettingsCard>
-            </Stack>
-          </TabPanel>
+          {canDelete && (
+            <TabPanel value={activeTab} index={advancedTabIndex}>
+              <Stack direction="column" spacing={4}>
+                <SettingsCard title={t('detail.dangerZone.title')} description={t('detail.dangerZone.description')}>
+                  <Typography variant="h6" gutterBottom color="error">
+                    {t('detail.dangerZone.delete.title')}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{mb: 3}}>
+                    {t(meta.deleteDescriptionKey ?? 'detail.dangerZone.delete.description')}
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    color="error"
+                    startIcon={<Trash2 size={16} />}
+                    onClick={() => {
+                      setDeleteError(null);
+                      setDeleteOpen(true);
+                    }}
+                    data-testid="connection-delete-button"
+                  >
+                    {t('form.actions.delete')}
+                  </Button>
+                </SettingsCard>
+              </Stack>
+            </TabPanel>
+          )}
 
-          {dirty && (
+          {dirty && canUpdate && (
             <UnsavedChangesBar
               message={t('detail.saveBar.unsaved', 'You have unsaved changes.')}
               resetLabel={t('detail.saveBar.reset', 'Reset')}

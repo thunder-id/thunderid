@@ -8,19 +8,10 @@ import {
   SettingsCard,
   UnsavedChangesBar,
 } from '@thunderid/components';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage} from '@thunderid/utils';
-import {
-  Button,
-  Chip,
-  FormControl,
-  FormLabel,
-  PageContent,
-  PageTitle,
-  Stack,
-  TextField,
-  Typography,
-} from '@wso2/oxygen-ui';
+import {Button, Chip, PageContent, PageTitle, Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {ArrowLeft, KeyRound} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -50,6 +41,8 @@ function GatewayDetail({gatewayId}: {gatewayId: string}): JSX.Element {
   const navigate = useNavigate();
   const routes = useGatewayRoutes();
   const logger = useLogger('GatewayDetailPage');
+  const {can} = useCapabilitiesContext();
+  const canUpdate = can('gateway', 'update');
   const {data: gateway, isLoading, error, refetch} = useGetGateway(gatewayId);
   const updateGateway = useUpdateGateway();
   const [edited, setEdited] = useState<Partial<Record<EditableField, string>>>({});
@@ -168,47 +161,42 @@ function GatewayDetail({gatewayId}: {gatewayId: string}): JSX.Element {
           description={t('gateways:detail.connection.description', 'Where this gateway answers and how it is trusted.')}
         >
           <Stack spacing={3}>
-            <FormControl fullWidth required>
-              <FormLabel htmlFor="gateway-edit-name-input">{t('gateways:form.name.label', 'Name')}</FormLabel>
-              <TextField
-                id="gateway-edit-name-input"
-                fullWidth
-                value={valueOf('name', gateway)}
-                onChange={(e) => handleChange('name', e.target.value)}
-                disabled={updateGateway.isPending}
-              />
-            </FormControl>
-            <FormControl fullWidth required>
-              <FormLabel htmlFor="gateway-edit-base-url-input">
-                {t('gateways:form.baseUrl.label', 'Base URL')}
-              </FormLabel>
-              <TextField
-                id="gateway-edit-base-url-input"
-                fullWidth
-                value={valueOf('baseUrl', gateway)}
-                onChange={(e) => handleChange('baseUrl', e.target.value)}
-                disabled={updateGateway.isPending}
-              />
-            </FormControl>
-            <FormControl fullWidth>
-              <FormLabel htmlFor="gateway-edit-ca-certificate-input">
-                {t('gateways:form.caCertificate.label', 'CA certificate (optional)')}
-              </FormLabel>
-              <TextField
-                id="gateway-edit-ca-certificate-input"
-                fullWidth
-                multiline
-                minRows={4}
-                value={valueOf('caCertificate', gateway)}
-                onChange={(e) => handleChange('caCertificate', e.target.value)}
-                disabled={updateGateway.isPending}
-                helperText={t(
-                  'gateways:form.caCertificate.hint',
-                  'A PEM certificate to trust when calling this gateway, for one serving a certificate no public authority signed.',
-                )}
-                slotProps={{htmlInput: {sx: {fontFamily: 'monospace', fontSize: '0.8rem'}}}}
-              />
-            </FormControl>
+            <TextField
+              labelPlacement="top"
+              label={t('gateways:form.name.label', 'Name')}
+              required
+              id="gateway-edit-name-input"
+              fullWidth
+              value={valueOf('name', gateway)}
+              onChange={(e) => handleChange('name', e.target.value)}
+              disabled={!canUpdate || updateGateway.isPending}
+            />
+            <TextField
+              labelPlacement="top"
+              label={t('gateways:form.baseUrl.label', 'Base URL')}
+              required
+              id="gateway-edit-base-url-input"
+              fullWidth
+              value={valueOf('baseUrl', gateway)}
+              onChange={(e) => handleChange('baseUrl', e.target.value)}
+              disabled={!canUpdate || updateGateway.isPending}
+            />
+            <TextField
+              labelPlacement="top"
+              label={t('gateways:form.caCertificate.label', 'CA certificate (optional)')}
+              id="gateway-edit-ca-certificate-input"
+              fullWidth
+              multiline
+              minRows={4}
+              value={valueOf('caCertificate', gateway)}
+              onChange={(e) => handleChange('caCertificate', e.target.value)}
+              disabled={!canUpdate || updateGateway.isPending}
+              helperText={t(
+                'gateways:form.caCertificate.hint',
+                'A PEM certificate to trust when calling this gateway, for one serving a certificate no public authority signed.',
+              )}
+              slotProps={{htmlInput: {sx: {fontFamily: 'monospace', fontSize: '0.8rem'}}}}
+            />
           </Stack>
         </SettingsCard>
 
@@ -219,9 +207,11 @@ function GatewayDetail({gatewayId}: {gatewayId: string}): JSX.Element {
             'The key presented to this gateway is never shown after it is set. Rotate it to replace it.',
           )}
           headerAction={
-            <Button variant="outlined" startIcon={<KeyRound size={16} />} onClick={() => setRotateOpen(true)}>
-              {t('gateways:rotateKey.action', 'Rotate key')}
-            </Button>
+            can('gateway', 'update') && (
+              <Button variant="outlined" startIcon={<KeyRound size={16} />} onClick={() => setRotateOpen(true)}>
+                {t('gateways:rotateKey.action', 'Rotate key')}
+              </Button>
+            )
           }
         >
           <Typography variant="body2" color="text.secondary">
@@ -232,35 +222,37 @@ function GatewayDetail({gatewayId}: {gatewayId: string}): JSX.Element {
           </Typography>
         </SettingsCard>
 
-        <SettingsCard
-          title={t('gateways:detail.dangerZone.title', 'Danger zone')}
-          description={t(
-            'gateways:detail.dangerZone.description',
-            'Removing the registration stops this deployment administering the gateway.',
-          )}
-          headerAction={
-            <Button variant="contained" color="error" onClick={() => setDeleteOpen(true)}>
-              {t('gateways:delete.title', 'Remove gateway')}
-            </Button>
-          }
-        >
-          <Typography variant="body2" color="text.secondary">
-            {t(
-              'gateways:delete.disclaimer',
-              'The gateway itself is not changed. It keeps running with the configuration it already holds.',
+        {can('gateway', 'delete') && (
+          <SettingsCard
+            title={t('gateways:detail.dangerZone.title', 'Danger zone')}
+            description={t(
+              'gateways:detail.dangerZone.description',
+              'Removing the registration stops this deployment administering the gateway.',
             )}
-          </Typography>
-        </SettingsCard>
+            headerAction={
+              <Button variant="contained" color="error" onClick={() => setDeleteOpen(true)}>
+                {t('gateways:delete.title', 'Remove gateway')}
+              </Button>
+            }
+          >
+            <Typography variant="body2" color="text.secondary">
+              {t(
+                'gateways:delete.disclaimer',
+                'The gateway itself is not changed. It keeps running with the configuration it already holds.',
+              )}
+            </Typography>
+          </SettingsCard>
+        )}
       </Stack>
 
-      {(hasChanges || isInvalid) && (
+      {canUpdate && (hasChanges || isInvalid) && (
         <UnsavedChangesBar
           message={t('gateways:edit.unsavedChanges', 'You have unsaved changes.')}
           resetLabel={t('common:actions.reset', 'Reset')}
           saveLabel={t('common:actions.save', 'Save')}
           savingLabel={t('common:status.saving', 'Saving...')}
           isSaving={updateGateway.isPending}
-          saveDisabled={isInvalid}
+          saveDisabled={isInvalid || !can('gateway', 'update')}
           error={
             updateGateway.error
               ? getErrorMessage(updateGateway.error, tForErrors, 'edit.error', 'The gateway could not be updated.')

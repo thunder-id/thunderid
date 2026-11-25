@@ -725,3 +725,36 @@ func (s *CompositeStoreTestSuite) TestListFlowsByIDs_ReportsEitherStoreFailing()
 	_, err = s.compositeStore.ListFlowsByIDs(context.Background(), ids, "")
 	assert.Error(s.T(), err)
 }
+
+func (s *CompositeStoreTestSuite) TestListFlowsByProject_MergesBothStoresAndPages() {
+	dbFlows := []BasicFlowDefinition{s.createBasicTestFlow("flow-1", "auth", "Auth", false)}
+	fileFlows := []BasicFlowDefinition{
+		s.createBasicTestFlow("flow-1", "auth", "Auth Override", true),
+		s.createBasicTestFlow("flow-2", "signup", "Signup", true),
+	}
+	s.mockDBStore.EXPECT().ListFlowsByProject(mock.Anything, "project-1", "ou-1", 10000, 0, "").
+		Return(dbFlows, 1, nil).Once()
+	s.mockFileStore.EXPECT().ListFlowsByProject(mock.Anything, "project-1", "ou-1", 10000, 0, "").
+		Return(fileFlows, 2, nil).Once()
+
+	page, total, err := s.compositeStore.ListFlowsByProject(context.Background(), "project-1", "ou-1", 1, 1, "")
+
+	require.NoError(s.T(), err)
+	assert.Equal(s.T(), 2, total, "a flow in both stores is counted once")
+	require.Len(s.T(), page, 1)
+	assert.Equal(s.T(), "flow-2", page[0].ID)
+}
+
+func (s *CompositeStoreTestSuite) TestListFlowsByProject_ReportsEitherStoreFailing() {
+	s.mockDBStore.EXPECT().ListFlowsByProject(mock.Anything, "project-1", "", 10000, 0, "").
+		Return(nil, 0, errors.New("db error")).Once()
+	_, _, err := s.compositeStore.ListFlowsByProject(context.Background(), "project-1", "", 10, 0, "")
+	assert.Error(s.T(), err)
+
+	s.mockDBStore.EXPECT().ListFlowsByProject(mock.Anything, "project-1", "", 10000, 0, "").
+		Return(nil, 0, nil).Once()
+	s.mockFileStore.EXPECT().ListFlowsByProject(mock.Anything, "project-1", "", 10000, 0, "").
+		Return(nil, 0, errors.New("file error")).Once()
+	_, _, err = s.compositeStore.ListFlowsByProject(context.Background(), "project-1", "", 10, 0, "")
+	assert.Error(s.T(), err)
+}

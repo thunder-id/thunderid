@@ -7,6 +7,7 @@ import {
   useGetOrganizationUnit,
   useHasMultipleOUs,
 } from '@thunderid/configure-organization-units';
+import {useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage} from '@thunderid/utils';
 import {
@@ -26,7 +27,7 @@ import {
 import {Home} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useState, type ChangeEvent, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import {useNavigate} from 'react-router';
+import {Navigate, useNavigate} from 'react-router';
 import useCreateVerifiableCredential from '../api/useCreateVerifiableCredential';
 import ConfigureName from '../components/create-verifiable-credential/ConfigureName';
 import ClaimsEditor from '../components/CredentialClaimsEditor';
@@ -40,14 +41,32 @@ import {
 
 type Step = 'ORGANIZATION_UNIT' | 'NAME' | 'DETAILS' | 'CLAIMS';
 
-export default function VerifiableCredentialCreatePage(): JSX.Element {
+/**
+ * Props for the {@link VerifiableCredentialCreatePage} component.
+ */
+export interface VerifiableCredentialCreatePageProps {
+  /**
+   * Whether a credential configuration is created in a project only. When set, the page returns to the list
+   * outside a selected project, since a configuration created there would be refused.
+   */
+  createInProjectsOnly?: boolean;
+}
+
+export default function VerifiableCredentialCreatePage({
+  createInProjectsOnly = false,
+}: VerifiableCredentialCreatePageProps): JSX.Element {
   const navigate = useNavigate();
   const {t} = useTranslation('verifiable-credentials');
   const logger = useLogger('VerifiableCredentialCreatePage');
   const routes = useVerifiableCredentialRoutes();
   const createVC = useCreateVerifiableCredential();
 
-  const {hasMultipleOUs, isLoading: isOuLoading, ouList} = useHasMultipleOUs();
+  // Inside a project the configuration goes to the system organization unit or one of the project's own,
+  // picked on the organization unit step. The step is offered only when the project has organization units;
+  // without any, the API places the configuration in the system organization unit.
+  const {projectId} = useProjectScope();
+  const isInProject = Boolean(projectId);
+  const {hasMultipleOUs, isLoading: isOuLoading, ouList} = useHasMultipleOUs(projectId);
 
   const [step, setStep] = useState<Step>('ORGANIZATION_UNIT');
   const [name, setName] = useState<string>('');
@@ -58,7 +77,8 @@ export default function VerifiableCredentialCreatePage(): JSX.Element {
   const [format, setFormat] = useState<string>('dc+sd-jwt');
   const [claims, setClaims] = useState<ClaimRow[]>(credentialToClaimRows(undefined));
 
-  const effectiveOuId: string = ouId !== '' ? ouId : !hasMultipleOUs && ouList.length === 1 ? ouList[0].id : '';
+  const effectiveOuId: string =
+    ouId !== '' ? ouId : !isInProject && !hasMultipleOUs && ouList.length === 1 ? ouList[0].id : '';
 
   // A create error is stale once the wizard's data changes.
   const clearCreateError = (): void => {
@@ -119,7 +139,7 @@ export default function VerifiableCredentialCreatePage(): JSX.Element {
   const stepReady: Record<Step, boolean> = {
     ORGANIZATION_UNIT: effectiveOuId !== '',
     NAME: name.trim() !== '' && handle.trim() !== '',
-    DETAILS: vct.trim() !== '' && effectiveOuId !== '',
+    DETAILS: vct.trim() !== '' && (isInProject || effectiveOuId !== ''),
     CLAIMS: claims.some((c) => c.name.trim() !== '') && Object.keys(claimNameErrors).length === 0,
   };
 
@@ -133,7 +153,7 @@ export default function VerifiableCredentialCreatePage(): JSX.Element {
 
   const buildRequest = () => ({
     handle: handle.trim(),
-    ouId: effectiveOuId,
+    ...(isInProject ? {projectId, ...(effectiveOuId ? {ouId: effectiveOuId} : {})} : {ouId: effectiveOuId}),
     name: name.trim() || undefined,
     vct: vct.trim(),
     format: format.trim() || undefined,
@@ -175,17 +195,17 @@ export default function VerifiableCredentialCreatePage(): JSX.Element {
     required?: boolean,
     helperText?: string,
   ): JSX.Element => (
-    <FormControl fullWidth required={required}>
-      <FormLabel htmlFor={id}>{label}</FormLabel>
-      <TextField
-        fullWidth
-        id={id}
-        value={value}
-        placeholder={placeholder}
-        helperText={helperText}
-        onChange={(e: ChangeEvent<HTMLInputElement>): void => setValue(e.target.value)}
-      />
-    </FormControl>
+    <TextField
+      labelPlacement="top"
+      label={label}
+      required={required}
+      fullWidth
+      id={id}
+      value={value}
+      placeholder={placeholder}
+      helperText={helperText}
+      onChange={(e: ChangeEvent<HTMLInputElement>): void => setValue(e.target.value)}
+    />
   );
 
   const renderStep = (): JSX.Element => {
@@ -240,6 +260,10 @@ export default function VerifiableCredentialCreatePage(): JSX.Element {
 
   const pageTitle = t('create.title', 'New credential template');
 
+  if (createInProjectsOnly && !isInProject) {
+    return <Navigate to={routes.verifiableCredentials.list()} replace />;
+  }
+
   if (effectiveStep === 'ORGANIZATION_UNIT') {
     if (isOuLoading || !hasMultipleOUs) {
       return (
@@ -261,6 +285,7 @@ export default function VerifiableCredentialCreatePage(): JSX.Element {
             "Choose the organization unit that will own this verifiable credential. You can't change this once created.",
           )}
           value={effectiveOuId}
+          projectId={projectId}
           onChange={handleOuIdChange}
           onBack={close}
           onContinue={handleNext}

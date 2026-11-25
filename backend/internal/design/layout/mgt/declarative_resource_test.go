@@ -296,7 +296,7 @@ func (s *DeclarativeResourceTestSuite) TestLoadDeclarativeResources_Integration(
 	}
 
 	// This should not panic even with empty directory (pass nil for dbStore in test)
-	err := loadDeclarativeResources(store, nil)
+	err := loadDeclarativeResources(store, nil, false)
 
 	// Error is expected if directory doesn't exist, which is acceptable for this test
 	// We're verifying that the function can be called without panicking
@@ -319,7 +319,7 @@ func (s *DeclarativeResourceTestSuite) TestLoadDeclarativeResources_WithDBStore(
 	dbStore := newLayoutMgtStoreInterfaceMock(s.T())
 	dbStore.On("IsLayoutExist", context.Background(), "layout-dup").Return(false, nil)
 
-	err = loadDeclarativeResources(store, dbStore)
+	err = loadDeclarativeResources(store, dbStore, false)
 	s.NoError(err)
 }
 
@@ -371,7 +371,7 @@ func (s *DeclarativeResourceTestSuite) TestValidateLayoutWrapper() {
 		Layout:      json.RawMessage(`{"type": "centered"}`),
 	}
 
-	err := validateLayoutWrapper(layout, nil)
+	err := validateLayoutWrapper(layout, nil, false)
 	s.NoError(err)
 }
 
@@ -385,7 +385,7 @@ func (s *DeclarativeResourceTestSuite) TestValidateLayoutWrapper_DBStoreDuplicat
 	dbStore := newLayoutMgtStoreInterfaceMock(s.T())
 	dbStore.On("IsLayoutExist", context.Background(), "layout1").Return(true, nil)
 
-	err := validateLayoutWrapper(layout, dbStore)
+	err := validateLayoutWrapper(layout, dbStore, false)
 	s.Error(err)
 	s.Contains(err.Error(), "already exists in database")
 }
@@ -400,13 +400,31 @@ func (s *DeclarativeResourceTestSuite) TestValidateLayoutWrapper_DBStoreError() 
 	dbStore := newLayoutMgtStoreInterfaceMock(s.T())
 	dbStore.On("IsLayoutExist", context.Background(), "layout1").Return(false, errors.New("db error"))
 
-	err := validateLayoutWrapper(layout, dbStore)
+	err := validateLayoutWrapper(layout, dbStore, false)
 	s.Error(err)
 	s.Contains(err.Error(), "failed to check for duplicate layout ID")
 }
 
 func (s *DeclarativeResourceTestSuite) TestValidateLayoutWrapper_InvalidType() {
-	err := validateLayoutWrapper("not a layout", nil)
+	err := validateLayoutWrapper("not a layout", nil, false)
 	s.Error(err)
 	s.Contains(err.Error(), "invalid type")
+}
+
+func (s *DeclarativeResourceTestSuite) TestValidateLayoutWrapper_ProjectRequired() {
+	layout := &Layout{ID: "layout-1", DisplayName: "Layout", Layout: json.RawMessage(`{"a": 1}`)}
+
+	err := validateLayoutWrapper(layout, nil, true)
+	s.Error(err)
+	s.Contains(err.Error(), "must name its projectId")
+
+	layout.ProjectID = "proj-1"
+	s.NoError(validateLayoutWrapper(layout, nil, true))
+}
+
+func (s *DeclarativeResourceTestSuite) TestParseToLayout_KeepsProject() {
+	layout, err := parseToLayout([]byte("id: layout-1\ndisplayName: Layout\nprojectId: proj-1\nlayout: {}\n"))
+
+	s.NoError(err)
+	s.Equal("proj-1", layout.ProjectID)
 }

@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, FullScreenCreationWizardLayout, QueryErrorNotice} from '@thunderid/components';
-import {useGetAgentType, useGetAgentTypes, type AgentTypeListItem} from '@thunderid/configure-agent-types';
-import {OrganizationUnitTreePicker} from '@thunderid/configure-organization-units';
+import {useGetAgentType, useGetAllAgentTypes, type AgentTypeListItem} from '@thunderid/configure-agent-types';
+import {OrganizationUnitTreePicker, useGetOrganizationUnits} from '@thunderid/configure-organization-units';
 import {renderSchemaField, useGetUser, useGetUsers} from '@thunderid/configure-users';
+import {useProjectScope} from '@thunderid/contexts';
 import {useResolveDisplayName} from '@thunderid/hooks';
 import {useThunderID} from '@thunderid/react';
-import {getErrorMessage} from '@thunderid/utils';
+import {getErrorMessage, orderAttributes} from '@thunderid/utils';
 import {
   Alert,
   Box,
@@ -26,13 +27,23 @@ import {
 import {useCallback, useState, type JSX} from 'react';
 import {useForm} from 'react-hook-form';
 import {useTranslation} from 'react-i18next';
-import {useLocation, useNavigate} from 'react-router';
+import {useNavigate} from 'react-router';
 import useCreateAgent from '../api/useCreateAgent';
+import AgentOwnerField from '../components/AgentOwnerField';
 import ClientSecretSuccessDialog from '../components/ClientSecretSuccessDialog';
 import useAgentRoutes from '../hooks/useAgentRoutes';
-import type {Agent, AgentInboundAuthConfig, CreateAgentRequest} from '../models/agent';
+import type {Agent, AgentInboundAuthConfig, AgentOwner, CreateAgentRequest} from '../models/agent';
+import {isInvalidExternalOwner} from '../utils/externalOwner';
 
 type AttributeFormData = Record<string, unknown>;
+
+/**
+ * The wizard's two screens: the agent's type, where it belongs and who owns it, then what the type's
+ * schema holds.
+ */
+type AgentAddStep = 'setup' | 'details';
+
+const STEPS: readonly AgentAddStep[] = ['setup', 'details'];
 
 /** The OAuth client an agent is issued: the client credentials grant, authenticated with a secret. */
 const AGENT_CREDENTIALS: AgentInboundAuthConfig = {
@@ -56,12 +67,12 @@ function isNotFound(error: unknown): boolean {
 }
 
 /**
- * Creates an agent from a single form, without running an onboarding flow.
+ * Creates an agent step by step, without running an onboarding flow.
  *
  * Used when agent creation runs natively, for example on a deployment that holds configuration
- * only and so has no /flow/execute for the onboarding flow to call. It asks for an agent type, an
- * organization unit and what the type's schema holds, the agent's name among it, and posts them to
- * the agents API. An owner can be chosen from the users that exist here; without one the API makes the
+ * only and so has no /flow/execute for the onboarding flow to call. The first step asks for an agent
+ * type, an organization unit where there is one to choose, and an owner; the second asks for what the
+ * type's schema holds, the agent's name among it. All of it is posted to the agents API in one request. An owner can be chosen from the users that exist here; without one the API makes the
  * caller the owner, so that is offered only when the caller is a user here too. OAuth client
  * credentials are issued with the agent unless switched off: the API generates the client ID and
  * secret, and the secret is shown once here, since the agent's page can only regenerate it afterwards.
@@ -70,21 +81,39 @@ export default function AgentAddFormPage(): JSX.Element {
   const routes = useAgentRoutes();
   const {t} = useTranslation();
   const navigate = useNavigate();
-  const {pathname} = useLocation();
   const {resolveDisplayName} = useResolveDisplayName({handlers: {t}});
   const createAgent = useCreateAgent();
+  const {projectId} = useProjectScope();
+  // Inside a project the agent goes to the system organization unit or one of the project's own. The
+  // organization unit is offered only when the project has organization units; without any, the API places
+  // the agent in the system organization unit.
+  const isInProject = Boolean(projectId);
+  const {
+    data: projectOus,
+    isLoading: projectOusLoading,
+    error: projectOusError,
+    refetch: refetchProjectOus,
+  } = useGetOrganizationUnits({limit: 1, offset: 0, projectId}, isInProject);
+  const hasProjectOus = (projectOus?.totalResults ?? 0) > 0;
 
-  const isWelcomeFlow = pathname.startsWith(routes.welcome.getStarted());
-
+  const [step, setStep] = useState<AgentAddStep>('setup');
   const [description, setDescription] = useState<string>('');
   const [typeId, setTypeId] = useState<string>('');
   const [ouId, setOuId] = useState<string>('');
   const [ownerId, setOwnerId] = useState<string>('');
+  // Set while External is chosen; the user picker's choice applies otherwise.
+  const [externalOwner, setExternalOwner] = useState<AgentOwner | undefined>(undefined);
   const [issueCredentials, setIssueCredentials] = useState<boolean>(true);
   // The created agent whose secret is being shown; the agent's page opens once the secret is closed.
   const [created, setCreated] = useState<{id: string; clientSecret: string} | null>(null);
-  const {data: typeList, isLoading: typesLoading} = useGetAgentTypes({limit: 100, offset: 0});
-  const {data: agentType} = useGetAgentType(typeId || undefined);
+  const {data: typeList, isLoading: typesLoading, error: typesError, refetch: refetchTypes} = useGetAllAgentTypes();
+  // A failed refetch of agent types already read leaves them in place.
+  const typesReadError = typesError && !typeList ? typesError : null;
+  const types: AgentTypeListItem[] = typeList ?? [];
+  // With a single agent type there is nothing to choose, so it is used without offering the choice.
+  const soleType: AgentTypeListItem | undefined = types.length === 1 ? types[0] : undefined;
+  const selectedType: AgentTypeListItem | undefined = soleType ?? types.find((type) => type.id === typeId);
+  const {data: agentType, error: agentTypeError, refetch: refetchAgentType} = useGetAgentType(selectedType?.id);
   const {
     data: userList,
     isLoading: usersLoading,
@@ -109,8 +138,31 @@ export default function AgentAddFormPage(): JSX.Element {
     reset,
   } = useForm<AttributeFormData>({mode: 'onBlur', shouldUnregister: true});
 
-  const types: AgentTypeListItem[] = typeList?.types ?? [];
-  const selectedType: AgentTypeListItem | undefined = types.find((type) => type.id === typeId);
+  // An agent of a type belongs to the type's organization unit or one beneath it, so inside a project only
+  // the placements in that subtree are offered. None means the type cannot be used in this project.
+  const {
+    data: typePlacements,
+    isLoading: typePlacementsLoading,
+    error: typePlacementsError,
+    refetch: refetchTypePlacements,
+  } = useGetOrganizationUnits(
+    {limit: 1, offset: 0, projectId, placement: true, within: selectedType?.ouId},
+    isInProject && Boolean(selectedType),
+  );
+  const isTypeOutsideProject = isInProject && typePlacements?.totalResults === 0;
+  // Until both reads succeed it is not known where the agent can go, so the setup step stays incomplete.
+  const projectOusReadError = projectOus ? null : projectOusError;
+  const typePlacementsReadError = typePlacements ? null : typePlacementsError;
+  const placementsReadError = projectOusReadError ?? typePlacementsReadError;
+  // The picker selects the first placement once its own listing loads, so the agent waits for it rather than being
+  // sent without an organization unit, which would place it in the system organization unit.
+  const isPlacementKnown =
+    !isInProject ||
+    (!projectOusLoading &&
+      !typePlacementsLoading &&
+      !placementsReadError &&
+      !isTypeOutsideProject &&
+      (!hasProjectOus || Boolean(ouId)));
   const users = userList?.users ?? [];
   // Two users can share a display name, so the option shows the user's ID as well when they do.
   const duplicateDisplays = new Set(
@@ -140,8 +192,52 @@ export default function AgentAddFormPage(): JSX.Element {
   );
 
   const handleClose = (): void => {
-    void navigate(isWelcomeFlow ? routes.welcome.getStarted() : routes.agents.list());
+    void navigate(routes.agents.list());
   };
+
+  const stepIndex = STEPS.indexOf(step);
+  // A project without organization units has none to choose, so the first step asks for the type alone.
+  const asksForOu = !isInProject || hasProjectOus;
+  // The attributes come from the chosen type's schema, so the first step is done only once it has loaded.
+  const isSetupComplete =
+    Boolean(selectedType) &&
+    Boolean(agentType) &&
+    isPlacementKnown &&
+    (isInProject || Boolean(ouId)) &&
+    (Boolean(externalOwner) || callerCanOwn || Boolean(ownerId)) &&
+    !isInvalidExternalOwner(externalOwner);
+  const isDetailsStep = step === 'details';
+  const noAgentTypes = !typesLoading && !typesReadError && types.length === 0;
+  const selectedTypeName = selectedType ? resolveDisplayName(selectedType.displayName) || selectedType.handle : '';
+
+  const stepText: Record<AgentAddStep, {breadcrumb: string; title: string; subtitle: string}> = {
+    setup: {
+      breadcrumb: t('agents:addForm.steps.setup.breadcrumb', 'Type and owner'),
+      title: t('agents:addForm.steps.setup.title', 'Choose an agent type and owner'),
+      subtitle: asksForOu
+        ? t(
+            'agents:addForm.steps.setup.subtitleWithOrganizationUnit',
+            'Pick the type whose schema describes this agent, the organization unit it belongs to and who is responsible for it.',
+          )
+        : t(
+            'agents:addForm.steps.setup.subtitle',
+            'Pick the type whose schema describes this agent and who is responsible for it.',
+          ),
+    },
+    details: {
+      breadcrumb: t('agents:addForm.steps.details.breadcrumb', 'Details'),
+      title: t('agents:addForm.steps.details.title', 'Agent details'),
+      subtitle: t(
+        'agents:addForm.steps.details.subtitle',
+        'Fill in the attributes the {{type}} agent type defines, and choose how the agent authenticates.',
+        {type: selectedTypeName},
+      ),
+    },
+  };
+  // Only the current step is shown. The others stay mounted, so going back keeps what was entered,
+  // the owner field's own choices among it.
+  const stepSx = (shown: AgentAddStep): {display: 'none'} | undefined =>
+    step === shown ? undefined : {display: 'none'};
 
   const onSubmit = handleSubmit((values: AttributeFormData) => {
     // An optional field left empty is omitted rather than posted as an empty string.
@@ -150,9 +246,11 @@ export default function AgentAddFormPage(): JSX.Element {
     );
     const trimmedDescription = description.trim();
     const request: CreateAgentRequest = {
-      ouId,
+      ...(isInProject ? {projectId} : {}),
+      ...(ouId ? {ouId} : {}),
       type: selectedType?.handle ?? '',
-      ...(ownerId ? {owner: ownerId} : {}),
+      ...(externalOwner ? {owner: externalOwner} : {}),
+      ...(!externalOwner && ownerId ? {owner: {id: ownerId, idType: 'uuid', isLocal: true}} : {}),
       ...(trimmedDescription ? {description: trimmedDescription} : {}),
       ...(Object.keys(attributes).length > 0 ? {attributes} : {}),
       // The API generates the client ID and secret for an OAuth config that names none, so only how
@@ -176,28 +274,70 @@ export default function AgentAddFormPage(): JSX.Element {
   return (
     <FullScreenCreationWizardLayout
       onClose={handleClose}
-      progress={0}
-      breadcrumbItems={[{key: 'add-agent', label: t('agents:addAgent', 'Add agent')}]}
-      footer={null}
+      progress={((stepIndex + 1) / STEPS.length) * 100}
+      breadcrumbItems={[
+        {
+          key: 'add-agent',
+          label: t('agents:addAgent', 'Add agent'),
+          // Like Back, it waits for a create in flight, so a failed create keeps what it was given.
+          onClick: stepIndex > 0 && !createAgent.isPending ? () => setStep('setup') : undefined,
+        },
+        // The trail holds the steps reached so far, and each one before the current step leads back to it.
+        ...STEPS.slice(0, stepIndex + 1).map((reached) => ({
+          key: reached,
+          label: stepText[reached].breadcrumb,
+          onClick: reached !== step && !createAgent.isPending ? () => setStep(reached) : undefined,
+        })),
+      ]}
+      footer={
+        <Stack direction="row" justifyContent={stepIndex > 0 ? 'space-between' : 'flex-end'} spacing={2}>
+          {stepIndex > 0 && (
+            <Button
+              variant="outlined"
+              sx={{minWidth: 100}}
+              disabled={createAgent.isPending}
+              onClick={() => setStep(STEPS[stepIndex - 1])}
+            >
+              {t('common:actions.back', 'Back')}
+            </Button>
+          )}
+          {/* Keyed apart so Continue is never reused as Create: the click that opens the details
+              would otherwise land on a submit button once React re-renders, and create the agent. */}
+          {isDetailsStep ? (
+            <Button
+              key="create"
+              type="submit"
+              form="agent-attributes-form"
+              variant="contained"
+              sx={{minWidth: 140}}
+              disabled={!isSetupComplete || createAgent.isPending}
+            >
+              {createAgent.isPending ? t('agents:addForm.creating') : t('agents:addForm.submit')}
+            </Button>
+          ) : (
+            <Button
+              key="continue"
+              variant="contained"
+              sx={{minWidth: 140}}
+              disabled={!isSetupComplete}
+              onClick={() => setStep(STEPS[stepIndex + 1])}
+            >
+              {t('common:actions.continue', 'Continue')}
+            </Button>
+          )}
+        </Stack>
+      }
     >
       <DocumentTitle title={t('agents:addAgent', 'Add agent')} />
       <Stack spacing={3}>
         <Box>
           <Typography variant="h1" gutterBottom>
-            {t('agents:addAgent', 'Add agent')}
+            {stepText[step].title}
           </Typography>
           <Typography variant="body1" color="text.secondary">
-            {t('agents:addForm.subtitle')}
+            {stepText[step].subtitle}
           </Typography>
         </Box>
-
-        {typesLoading && (
-          <Box sx={{display: 'flex', justifyContent: 'center', py: 8}}>
-            <CircularProgress />
-          </Box>
-        )}
-
-        {!typesLoading && types.length === 0 && <Alert severity="info">{t('agents:addForm.noAgentTypes')}</Alert>}
 
         {createAgent.isError && (
           <Alert severity="error">
@@ -210,50 +350,57 @@ export default function AgentAddFormPage(): JSX.Element {
           </Alert>
         )}
 
-        <form
-          noValidate
-          onSubmit={(event) => {
-            void onSubmit(event);
-          }}
-        >
-          <Stack spacing={3}>
-            <FormControl fullWidth>
-              <FormLabel htmlFor="agent-description">{t('agents:addForm.description')}</FormLabel>
-              <TextField
-                id="agent-description"
-                value={description}
-                multiline
-                minRows={2}
-                placeholder={t('agents:addForm.descriptionPlaceholder')}
-                onChange={(event) => setDescription(event.target.value)}
-              />
-            </FormControl>
+        <Box>
+          <Stack spacing={3} sx={stepSx('setup')}>
+            {typesLoading && (
+              <Box sx={{display: 'flex', justifyContent: 'center', py: 8}}>
+                <CircularProgress />
+              </Box>
+            )}
 
-            <FormControl fullWidth required>
-              <FormLabel htmlFor="agent-type">{t('agents:addForm.agentType')}</FormLabel>
-              <Select
-                id="agent-type"
-                value={typeId}
-                displayEmpty
-                onChange={(event) => {
-                  setTypeId(String(event.target.value));
-                  setOuId('');
-                  // Another type's schema can share a field name, so its values are not carried over.
-                  reset({});
-                }}
-              >
-                <MenuItem value="">
-                  <em>{t('agents:addForm.selectAgentType')}</em>
-                </MenuItem>
-                {types.map((type: AgentTypeListItem) => (
-                  <MenuItem key={type.id} value={type.id}>
-                    {resolveDisplayName(type.displayName) || type.handle}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            {noAgentTypes && <Alert severity="info">{t('agents:addForm.noAgentTypes')}</Alert>}
 
-            {selectedType && (
+            {!typesLoading && !noAgentTypes && !soleType && (
+              <FormControl fullWidth required>
+                <FormLabel htmlFor="agent-type">{t('agents:addForm.agentType')}</FormLabel>
+                {typesReadError ? (
+                  // A failed read is shown in place of the picker, not as a list with no agent types.
+                  <QueryErrorNotice
+                    variant="inline"
+                    error={typesReadError}
+                    t={tForErrors}
+                    fallbackKey="agents:addForm.agentTypesError"
+                    fallbackDefaultValue="The agent types could not be loaded."
+                    onRetry={() => {
+                      void refetchTypes();
+                    }}
+                  />
+                ) : (
+                  <Select
+                    id="agent-type"
+                    value={typeId}
+                    displayEmpty
+                    onChange={(event) => {
+                      setTypeId(String(event.target.value));
+                      setOuId('');
+                      // Another type's schema can share a field name, so its values are not carried over.
+                      reset({});
+                    }}
+                  >
+                    <MenuItem value="">
+                      <em>{t('agents:addForm.selectAgentType')}</em>
+                    </MenuItem>
+                    {types.map((type: AgentTypeListItem) => (
+                      <MenuItem key={type.id} value={type.id}>
+                        {resolveDisplayName(type.displayName) || type.handle}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                )}
+              </FormControl>
+            )}
+
+            {selectedType && !isInProject && (
               <FormControl fullWidth required>
                 <FormLabel htmlFor="agent-ou">{t('agents:addForm.organizationUnit')}</FormLabel>
                 {/* An agent of a type belongs to the type's organization unit or one beneath it. */}
@@ -263,63 +410,149 @@ export default function AgentAddFormPage(): JSX.Element {
                   value={ouId}
                   onChange={setOuId}
                   rootOuId={selectedType.ouId || undefined}
+                  helperText={t(
+                    'agents:addForm.organizationUnitHint',
+                    'Agents of this agent type can be created in its organization unit, shown at the top, or in any unit below it.',
+                  )}
                 />
               </FormControl>
             )}
 
-            <FormControl fullWidth required={callerElsewhere}>
-              <FormLabel htmlFor="agent-owner">{t('agents:addForm.owner', 'Owner')}</FormLabel>
-              {usersError ? (
-                // A failed read is shown in place of the picker, not as an empty one: the agent would
-                // otherwise be owned by the caller with nothing said about the owners that did not load.
-                <QueryErrorNotice
-                  variant="inline"
-                  error={usersError}
-                  t={tForErrors}
-                  fallbackKey="agents:addForm.ownersError"
-                  fallbackDefaultValue="The users to choose an owner from could not be loaded."
-                  onRetry={() => {
-                    void refetchUsers();
-                  }}
-                />
-              ) : (
-                <Select
-                  id="agent-owner"
-                  value={ownerId}
-                  displayEmpty
-                  disabled={usersLoading}
-                  onChange={(event) => setOwnerId(String(event.target.value))}
-                >
-                  <MenuItem value="">
-                    <em>
-                      {callerElsewhere
-                        ? t('agents:addForm.selectOwner', 'Select an owner')
-                        : t('agents:addForm.ownerDefault', 'Me (default)')}
-                    </em>
-                  </MenuItem>
-                  {users.map((user) => (
-                    <MenuItem key={user.id} value={user.id}>
-                      {ownerLabel(user)}
-                    </MenuItem>
-                  ))}
-                </Select>
-              )}
-              {usersTruncated && (
-                <Typography variant="caption" color="text.secondary">
-                  {t('agents:addForm.ownerTruncated', 'Showing the first {{shown}} of {{total}} users.', {
-                    shown: users.length,
-                    total: userList?.totalResults,
-                  })}
-                </Typography>
-              )}
-              <Typography variant="caption" color="text.secondary">
-                {ownerHint}
-              </Typography>
-            </FormControl>
-
-            {Object.entries(agentType?.schema ?? {}).map(([fieldName, fieldDef]) =>
-              renderSchemaField(fieldName, fieldDef, control, errors, resolveDisplayName),
+            {selectedType && placementsReadError && (
+              <QueryErrorNotice
+                variant="inline"
+                error={placementsReadError}
+                t={tForErrors}
+                fallbackKey="agents:addForm.placementsError"
+                fallbackDefaultValue="The organization units this agent can be placed in could not be loaded."
+                onRetry={() => {
+                  if (projectOusReadError) void refetchProjectOus();
+                  if (typePlacementsReadError) void refetchTypePlacements();
+                }}
+              />
             )}
+
+            {selectedType && isTypeOutsideProject && (
+              <Alert severity="warning">
+                {t(
+                  'agents:addForm.typeOutsideProject',
+                  "Agents of this type cannot be created in this project. Choose a type whose organization unit is the system organization unit or one of this project's.",
+                )}
+              </Alert>
+            )}
+
+            {selectedType && isInProject && hasProjectOus && !isTypeOutsideProject && !placementsReadError && (
+              <FormControl fullWidth>
+                <FormLabel htmlFor="agent-ou">{t('agents:addForm.organizationUnit')}</FormLabel>
+                <OrganizationUnitTreePicker
+                  key={selectedType.id}
+                  id="agent-ou"
+                  value={ouId}
+                  onChange={setOuId}
+                  projectId={projectId}
+                  withinOuId={selectedType.ouId || undefined}
+                />
+              </FormControl>
+            )}
+
+            {agentTypeError && !agentType && (
+              // Without the type's schema there are no attribute fields to fill in, so Continue stays off.
+              <QueryErrorNotice
+                variant="inline"
+                error={agentTypeError}
+                t={tForErrors}
+                fallbackKey="agents:addForm.agentTypeSchemaError"
+                fallbackDefaultValue="The attributes of the selected agent type could not be loaded."
+                onRetry={() => {
+                  void refetchAgentType();
+                }}
+              />
+            )}
+
+            <AgentOwnerField
+              id="agent-owner"
+              required={callerElsewhere}
+              onExternalChange={setExternalOwner}
+              internalPicker={
+                <>
+                  {usersError ? (
+                    // A failed read is shown in place of the picker, not as an empty one: the agent would
+                    // otherwise be owned by the caller with nothing said about the owners that did not load.
+                    <QueryErrorNotice
+                      variant="inline"
+                      error={usersError}
+                      t={tForErrors}
+                      fallbackKey="agents:addForm.ownersError"
+                      fallbackDefaultValue="The users to choose an owner from could not be loaded."
+                      onRetry={() => {
+                        void refetchUsers();
+                      }}
+                    />
+                  ) : (
+                    <Select
+                      id="agent-owner-select"
+                      labelId="agent-owner-label"
+                      value={ownerId}
+                      displayEmpty
+                      disabled={usersLoading}
+                      onChange={(event) => setOwnerId(String(event.target.value))}
+                    >
+                      <MenuItem value="">
+                        <em>
+                          {callerElsewhere
+                            ? t('agents:addForm.selectOwner', 'Select an owner')
+                            : t('agents:addForm.ownerDefault', 'Me (default)')}
+                        </em>
+                      </MenuItem>
+                      {users.map((user) => (
+                        <MenuItem key={user.id} value={user.id}>
+                          {ownerLabel(user)}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  )}
+                  {usersTruncated && (
+                    <Typography variant="caption" color="text.secondary">
+                      {t('agents:addForm.ownerTruncated', 'Showing the first {{shown}} of {{total}} users.', {
+                        shown: users.length,
+                        total: userList?.totalResults,
+                      })}
+                    </Typography>
+                  )}
+                  <Typography variant="caption" color="text.secondary">
+                    {ownerHint}
+                  </Typography>
+                </>
+              }
+            />
+          </Stack>
+
+          <Stack spacing={3} sx={stepSx('details')}>
+            <form
+              id="agent-attributes-form"
+              noValidate
+              onSubmit={(event) => {
+                void onSubmit(event);
+              }}
+            >
+              <Stack spacing={3}>
+                {orderAttributes(agentType?.schema ?? {}, {onCreate: true}).map(([fieldName, fieldDef]) =>
+                  renderSchemaField(fieldName, fieldDef, control, errors, resolveDisplayName),
+                )}
+              </Stack>
+            </form>
+
+            <TextField
+              labelPlacement="top"
+              label={t('agents:addForm.description')}
+              fullWidth
+              id="agent-description"
+              value={description}
+              multiline
+              minRows={2}
+              placeholder={t('agents:addForm.descriptionPlaceholder')}
+              onChange={(event) => setDescription(event.target.value)}
+            />
 
             <FormControl fullWidth>
               <FormControlLabel
@@ -336,21 +569,8 @@ export default function AgentAddFormPage(): JSX.Element {
                 {t('agents:addForm.issueCredentialsHint')}
               </Typography>
             </FormControl>
-
-            <Stack direction="row" spacing={1}>
-              <Button
-                type="submit"
-                variant="contained"
-                disabled={!selectedType || !ouId || !agentType || (!callerCanOwn && !ownerId) || createAgent.isPending}
-              >
-                {createAgent.isPending ? t('agents:addForm.creating') : t('agents:addForm.submit')}
-              </Button>
-              <Button variant="outlined" onClick={handleClose}>
-                {t('common:actions.cancel', 'Cancel')}
-              </Button>
-            </Stack>
           </Stack>
-        </form>
+        </Box>
       </Stack>
 
       <ClientSecretSuccessDialog

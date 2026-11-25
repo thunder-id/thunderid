@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/thunder-id/thunderid/tools/cli/internal/plane"
 	"github.com/thunder-id/thunderid/tools/cli/internal/product"
 	"github.com/thunder-id/thunderid/tools/cli/internal/services/health"
 	"github.com/thunder-id/thunderid/tools/cli/internal/services/release"
@@ -178,6 +179,13 @@ func runWithResult(
 	meta, ok := knownSamples[sampleName]
 	if !ok {
 		return nil, "", "", fmt.Errorf("unknown sample %q — available: %s", sampleName, availableList())
+	}
+	// A sample registers its applications as declarative resources on the server it signs into.
+	// On the quickstart those are authored on the Control Plane and synced to the Data Plane, which
+	// the samples do not do yet.
+	if p := setup.PlaneOf(installPath); p != plane.Data {
+		return nil, "", "", fmt.Errorf("sample apps run on a Data Plane install, and this one is the %s. "+
+			"Remove %s, then run `npx %s --plane dp` to try them", p.Label(), installPath, product.Slug)
 	}
 	beginRun()
 

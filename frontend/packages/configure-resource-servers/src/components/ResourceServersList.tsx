@@ -1,11 +1,12 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {QueryErrorNotice} from '@thunderid/components';
+import {EditOrViewAction, QueryErrorNotice} from '@thunderid/components';
+import {useCapabilitiesContext, useHiddenResources, useProjectScope} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {Box, Chip, DataGrid, IconButton, ListingTable, Menu, MenuItem, Tooltip, Typography} from '@wso2/oxygen-ui';
-import {EllipsisVertical, Eye, Pencil, Trash2} from '@wso2/oxygen-ui-icons-react';
+import {EllipsisVertical, Eye, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useCallback, useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
@@ -23,6 +24,8 @@ export default function ResourceServersList(): JSX.Element {
   const {t} = useTranslation();
   const logger = useLogger('ResourceServersList');
   const dataGridLocaleText = useDataGridLocaleText();
+  const {projectId} = useProjectScope();
+  const {can} = useCapabilitiesContext();
 
   // Resolves an error through the `resourceServers` catalog. `t` defaults to the `common`
   // namespace, so this forwards explicit `ns:` prefixes unchanged and prefixes bare keys with
@@ -42,7 +45,18 @@ export default function ResourceServersList(): JSX.Element {
   const {data, isLoading, error, refetch} = useGetResourceServers({
     limit: paginationModel.pageSize,
     offset: paginationModel.page * paginationModel.pageSize,
+    projectId,
   });
+  const {isHiddenResourceServer} = useHiddenResources();
+  const rows = useMemo(
+    () =>
+      (data?.resourceServers ?? []).filter(
+        (resourceServer: ResourceServer) => !isHiddenResourceServer(resourceServer.identifier),
+      ),
+    [data?.resourceServers, isHiddenResourceServer],
+  );
+  // The page is read from the server, so the total drops by the hidden resource servers on it.
+  const rowCount = (data?.totalResults ?? 0) - ((data?.resourceServers?.length ?? 0) - rows.length);
   const {data: defaultConfig, isLoading: isDefaultLoading, error: defaultError} = useGetDefaultResourceServer();
   const defaultId = defaultConfig?.merged?.resourceServerId;
   // A declarative (read-only) default is locked: the backend rejects any write to it.
@@ -178,51 +192,49 @@ export default function ResourceServersList(): JSX.Element {
               </Tooltip>
             ) : (
               <>
-                <Tooltip title={t('common:actions.edit', 'Edit')}>
-                  <IconButton
-                    aria-label={t('common:actions.edit', 'Edit')}
-                    size="small"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      (async (): Promise<void> => {
-                        await navigate(routes.detail(params.row.id));
-                      })().catch((err: unknown) => {
-                        logger.error('Failed to navigate to resource server detail', {error: err});
-                      });
-                    }}
-                  >
-                    <Pencil size={16} />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title={t('common:actions.delete', 'Delete')}>
-                  <IconButton
-                    aria-label={t('common:actions.delete', 'Delete')}
-                    size="small"
-                    color="error"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setDeleteTarget(params.row);
-                    }}
-                  >
-                    <Trash2 size={16} />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title={t('resourceServers:listing.actions.more', 'More actions')}>
-                  <IconButton
-                    size="small"
-                    aria-label={t('resourceServers:listing.actions.more', 'More actions')}
-                    onClick={(e) => handleMenuOpen(e, params.row)}
-                  >
-                    <EllipsisVertical size={16} />
-                  </IconButton>
-                </Tooltip>
+                <EditOrViewAction
+                  canEdit={can('rs', 'update')}
+                  onClick={() => {
+                    (async (): Promise<void> => {
+                      await navigate(routes.detail(params.row.id));
+                    })().catch((err: unknown) => {
+                      logger.error('Failed to navigate to resource server detail', {error: err});
+                    });
+                  }}
+                />
+                {can('rs', 'delete') && (
+                  <Tooltip title={t('common:actions.delete', 'Delete')}>
+                    <IconButton
+                      aria-label={t('common:actions.delete', 'Delete')}
+                      size="small"
+                      color="error"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteTarget(params.row);
+                      }}
+                    >
+                      <Trash2 size={16} />
+                    </IconButton>
+                  </Tooltip>
+                )}
+                {can('serverconfig', 'update') && (
+                  <Tooltip title={t('resourceServers:listing.actions.more', 'More actions')}>
+                    <IconButton
+                      size="small"
+                      aria-label={t('resourceServers:listing.actions.more', 'More actions')}
+                      onClick={(e) => handleMenuOpen(e, params.row)}
+                    >
+                      <EllipsisVertical size={16} />
+                    </IconButton>
+                  </Tooltip>
+                )}
               </>
             )}
           </ListingTable.RowActions>
         ),
       },
     ],
-    [t, navigate, routes, logger, defaultId, handleMenuOpen],
+    [can, t, navigate, routes, logger, defaultId, handleMenuOpen],
   );
 
   if (error) {
@@ -242,7 +254,7 @@ export default function ResourceServersList(): JSX.Element {
       <ListingTable.Provider variant="data-grid-card" loading={isLoading}>
         <ListingTable.Container disablePaper>
           <ListingTable.DataGrid
-            rows={data?.resourceServers ?? []}
+            rows={rows}
             columns={columns}
             getRowId={(row) => (row as ResourceServer).id}
             onRowClick={(params) => {
@@ -252,7 +264,7 @@ export default function ResourceServersList(): JSX.Element {
                 logger.error('Failed to navigate to resource server detail', {error: err});
               });
             }}
-            rowCount={data?.totalResults ?? 0}
+            rowCount={rowCount}
             paginationMode="server"
             paginationModel={paginationModel}
             onPaginationModelChange={setPaginationModel}

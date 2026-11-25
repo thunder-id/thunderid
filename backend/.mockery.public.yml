@@ -1,4 +1,4 @@
-# Copyright 2025 The ThunderID Authors
+# Copyright 2025-2026 The ThunderID Authors
 # SPDX-License-Identifier: Apache-2.0
 
 # Mockery configuration file for generating public mocks
@@ -228,11 +228,13 @@ packages:
 
   github.com/thunder-id/thunderid/internal/user:
     config:
-      all: true
       dir: tests/mocks/usermock
       structname: '{{.InterfaceName}}Mock'
       pkgname: usermock
       filename: "{{.InterfaceName}}_mock.go"
+    interfaces:
+      ConfigurableUserService:
+      UserServiceInterface:
 
   github.com/thunder-id/thunderid/internal/authn:
     config:
@@ -417,9 +419,7 @@ packages:
       pkgname: oumock
       filename: "{{.InterfaceName}}_mock.go"
     # ConfigurableOUService is intentionally excluded: it is only used for two-phase
-    # service wiring within the ou package (unused outside it), and its SetOUFlowResolver
-    # method takes the unexported ouFlowResolver interface, which cannot be referenced
-    # from this external mock package.
+    # service wiring within the ou package (unused outside it).
     interfaces:
       HierarchyEnumeratorInterface:
       OUUserResolver:
@@ -427,7 +427,15 @@ packages:
       OURoleResolver:
       OrganizationUnitServiceInterface:
       organizationUnitStoreInterface:
-      ouFlowResolver:
+
+  github.com/thunder-id/thunderid/internal/flow/config:
+    config:
+      dir: tests/mocks/flow/flowconfigmock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: flowconfigmock
+      filename: "{{.InterfaceName}}_mock.go"
+    interfaces:
+      ServerConfigReader:
 
   github.com/thunder-id/thunderid/internal/flow/core:
     config:
@@ -630,6 +638,15 @@ packages:
           pkgname: identitygovernancemock
           filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/attributeverification:
+    interfaces:
+      AttributeVerificationServiceInterface:
+        config:
+          dir: tests/mocks/attributeverificationmock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: attributeverificationmock
+          filename: "{{.InterfaceName}}_mock.go"
+
   github.com/thunder-id/thunderid/pkg/thunderidengine/providers:
     interfaces:
       AuthnProviderManager:
@@ -643,6 +660,12 @@ packages:
           dir: tests/mocks/identitygovernanceprovidermock
           structname: '{{.InterfaceName}}Mock'
           pkgname: identitygovernanceprovidermock
+          filename: "{{.InterfaceName}}_mock.go"
+      AttributeVerificationProvider:
+        config:
+          dir: tests/mocks/attributeverificationprovidermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: attributeverificationprovidermock
           filename: "{{.InterfaceName}}_mock.go"
       AuthnProviderInterface:
         config:
@@ -758,6 +781,12 @@ packages:
           structname: '{{.InterfaceName}}Mock'
           pkgname: runtimestoreprovidermock
           filename: "{{.InterfaceName}}_mock.go"
+      PermissionProvider:
+        config:
+          dir: tests/mocks/permissionprovidermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: permissionprovidermock
+          filename: "{{.InterfaceName}}_mock.go"
 
   github.com/thunder-id/thunderid/internal/sharing:
     config:
@@ -767,6 +796,15 @@ packages:
       filename: "{{.InterfaceName}}_mock.go"
     interfaces:
       SharingServiceInterface:
+
+  github.com/thunder-id/thunderid/internal/system/managedresource:
+    config:
+      dir: tests/mocks/managedresourcemock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: managedresourcemock
+      filename: "{{.InterfaceName}}_mock.go"
+    interfaces:
+      StoreInterface:
 
   github.com/thunder-id/thunderid/internal/system/sysauthz:
     config:
@@ -848,3 +886,12 @@ packages:
       structname: '{{.InterfaceName}}Mock'
       pkgname: usersmock
       filename: "{{.InterfaceName}}_mock.go"
+  github.com/thunder-id/thunderid/internal/system/eventbus:
+    config:
+      dir: tests/mocks/eventbusmock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: eventbusmock
+      filename: "{{.InterfaceName}}_mock.go"
+    interfaces:
+      EventBusInterface:
+      RegistryInterface:

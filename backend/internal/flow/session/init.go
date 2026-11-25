@@ -16,7 +16,7 @@ import (
 // store. Timeouts fall back per field to the built-in
 // defaults so an unset (zero) value never makes sessions expire immediately.
 func Initialize(dbProvider provider.DBProviderInterface, deploymentID string,
-	timeouts Timeouts, criteriaRevoker CriteriaRevoker) (Service, TerminationHook, error) {
+	timeouts Timeouts, criteriaRevoker CriteriaRevoker, ouEligibility OUEligibility) (Service, TerminationHook, error) {
 	transactioner, err := dbProvider.GetRuntimePersistentDBTransactioner()
 	if err != nil {
 		return nil, nil, fmt.Errorf(
@@ -40,6 +40,7 @@ func Initialize(dbProvider provider.DBProviderInterface, deploymentID string,
 		resolver:         newResolver(store),
 		transactioner:    transactioner,
 		criteriaRevoker:  criteriaRevoker,
+		ouEligibility:    ouEligibility,
 		terminationTopic: eventlistener.NewTopic[TerminatedSession]("session.terminated"),
 		timeouts:         timeouts,
 		logger:           log.GetLogger().With(log.String(log.LoggerKeyComponentName, "SSOSessionService")),

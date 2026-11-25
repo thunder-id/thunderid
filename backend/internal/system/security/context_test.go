@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package security
@@ -164,6 +164,55 @@ func (s *SecurityContextTestSuite) testContextGetter(fieldName, expectedValue st
 			if result != tt.expected {
 				t.Errorf("Expected %s %s, got %s", fieldName, tt.expected, result)
 			}
+		})
+	}
+}
+
+func (s *SecurityContextTestSuite) TestIsDelegated() {
+	tests := []struct {
+		name     string
+		ctx      context.Context
+		expected bool
+	}{
+		{name: "no security context", ctx: context.Background(), expected: false},
+		{name: "runtime context", ctx: WithRuntimeContext(context.Background()), expected: false},
+		{name: "nil attributes", ctx: withSecurityContext(context.Background(),
+			newSecurityContext("api-key", "", "", nil, nil)), expected: false},
+		{name: "token without act", ctx: withSecurityContext(context.Background(),
+			newSecurityContext("user-1", "ou", "token", nil, map[string]interface{}{"sub": "user-1"})),
+			expected: false},
+		{name: "delegated token", ctx: withSecurityContext(context.Background(),
+			newSecurityContext("user-1", "ou", "token", nil, map[string]interface{}{
+				"sub": "user-1", "act": map[string]interface{}{"sub": "agent-1"},
+			})), expected: true},
+	}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			s.Equal(tt.expected, IsDelegated(tt.ctx))
+		})
+	}
+}
+
+func (s *SecurityContextTestSuite) TestGetClientID() {
+	tests := []struct {
+		name     string
+		ctx      context.Context
+		expected string
+	}{
+		{name: "no security context", ctx: context.Background(), expected: ""},
+		{name: "token without client_id", ctx: withSecurityContext(context.Background(),
+			newSecurityContext("user-1", "ou", "token", nil, map[string]interface{}{"sub": "user-1"})),
+			expected: ""},
+		{name: "non string client_id", ctx: withSecurityContext(context.Background(),
+			newSecurityContext("user-1", "ou", "token", nil, map[string]interface{}{"client_id": 42})),
+			expected: ""},
+		{name: "token with client_id", ctx: withSecurityContext(context.Background(),
+			newSecurityContext("user-1", "ou", "token", nil, map[string]interface{}{"client_id": "app-client"})),
+			expected: "app-client"},
+	}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			s.Equal(tt.expected, GetClientID(tt.ctx))
 		})
 	}
 }
@@ -440,6 +489,13 @@ func (s *SecurityContextTestSuite) TestGetSecurityContext() {
 	})
 }
 
+func (s *SecurityContextTestSuite) TestIsSelfIssued() {
+	s.False(IsSelfIssued(context.Background()), "no security context")
+	s.False(IsSelfIssued(withSecurityContext(context.Background(),
+		newSecurityContext("user", "ou", "token", nil, nil))), "a context not marked self-issued")
+	s.False(IsSelfIssued(WithRuntimeContext(context.Background())), "a runtime context")
+}
+
 func (s *SecurityContextTestSuite) TestWithRuntimeContext() {
 	s.T().Run("Marks context as runtime", func(t *testing.T) {
 		ctx := WithRuntimeContext(context.Background())
@@ -482,4 +538,22 @@ func (s *SecurityContextTestSuite) TestWithRuntimeContext() {
 			t.Errorf("Expected subject '%s', got '%s'", testUserID, GetSubject(ctx))
 		}
 	})
+}
+
+// A caller recorded earlier in a flow reads back as that caller, never as the runtime the flow step runs in.
+func (s *SecurityContextTestSuite) TestWithRecordedCaller() {
+	ctx := WithRecordedCaller(WithRuntimeContext(context.Background()), "admin-1", "ou-a",
+		[]string{"system:user:view"})
+
+	s.Equal("admin-1", GetSubject(ctx))
+	s.Equal("ou-a", GetOUID(ctx))
+	s.Equal([]string{"system:user:view"}, GetPermissions(ctx))
+	s.False(IsRuntimeContext(ctx))
+	s.True(IsRecordedCaller(ctx))
+}
+
+func (s *SecurityContextTestSuite) TestIsRecordedCaller_FalseForAPresentedCredential() {
+	s.False(IsRecordedCaller(context.Background()))
+	s.False(IsRecordedCaller(withSecurityContext(context.Background(),
+		newSecurityContext("admin-1", "ou-a", "token", []string{"system"}, nil))))
 }

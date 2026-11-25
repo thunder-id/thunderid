@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {ProjectScopeProvider} from '@thunderid/contexts';
 import type {Theme} from '@thunderid/design';
 import {fireEvent, render, screen, waitFor, within} from '@thunderid/test-utils';
 import type {JSX} from 'react';
@@ -12,12 +13,12 @@ import useApplicationCreateContext from '../../hooks/useApplicationCreateContext
 import type {Application} from '../../models/application';
 import {OrganizationUnitDefaultItem} from '../../models/application-create-flow';
 import type {CimdPreviewResponse} from '../../models/cimd';
+import type {CreateApplicationRequest} from '../../models/requests';
 import ApplicationCreatePage from '../ApplicationCreatePage';
 
 // Mock functions
 const mockCreateApplication = vi.fn();
 const mockNavigate = vi.fn();
-let mockPathname = '/';
 const mockUseGetApplications = vi.hoisted(() => vi.fn());
 const mockUserTypes = vi.hoisted(() => ({
   types: [
@@ -99,7 +100,7 @@ vi.mock('react-router', async () => {
   return {
     ...actual,
     useNavigate: () => mockNavigate,
-    useLocation: () => ({pathname: mockPathname}),
+    Navigate: ({to}: {to: string}) => <div data-testid="navigate" data-to={to} />,
   };
 });
 
@@ -217,16 +218,21 @@ vi.mock('@thunderid/configure-organization-units', async (importOriginal) => ({
   useGetOrganizationUnit: mockUseGetOrganizationUnit,
   OrganizationUnitPickerScreen: ({
     value,
+    projectId = undefined,
     onChange,
     onBack,
     onContinue,
   }: {
     value: string;
+    projectId?: string;
     onChange: (ouId: string) => void;
     onBack: () => void;
     onContinue: () => void;
   }) => (
-    <div data-testid="ou-picker-screen">
+    <div data-testid="ou-picker-screen" data-project-id={projectId}>
+      <button type="button" data-testid="ou-picker-select-system-ou" onClick={() => onChange('system-ou')}>
+        Select system OU
+      </button>
       <button type="button" data-testid="ou-picker-select-ou1" onClick={() => onChange('ou-1')}>
         Select OU 1
       </button>
@@ -787,7 +793,6 @@ describe('ApplicationCreatePage', () => {
     user = userEvent.setup();
 
     window.history.replaceState({}, '', '/');
-    mockPathname = '/';
 
     vi.clearAllMocks();
     mockNavigate.mockResolvedValue(undefined);
@@ -819,6 +824,31 @@ describe('ApplicationCreatePage', () => {
   });
 
   describe('Initial Rendering', () => {
+    it('returns to the list outside a project when applications are created in projects only', () => {
+      render(
+        <ApplicationCreateProvider>
+          <ApplicationCreatePage createInProjectsOnly />
+        </ApplicationCreateProvider>,
+      );
+
+      expect(screen.getByTestId('navigate')).toHaveAttribute('data-to', '/applications');
+      expect(screen.queryByTestId('application-configure-name')).not.toBeInTheDocument();
+      expect(mockNavigate).not.toHaveBeenCalledWith('/applications/types');
+    });
+
+    it('opens the wizard inside a project when applications are created in projects only', () => {
+      render(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <ApplicationCreateProvider>
+            <ApplicationCreatePage createInProjectsOnly />
+            <TemplateSeeder />
+          </ApplicationCreateProvider>
+        </ProjectScopeProvider>,
+      );
+
+      expect(screen.queryByTestId('navigate')).not.toBeInTheDocument();
+    });
+
     it('should render the name step by default', () => {
       renderWithProviders();
 
@@ -1080,47 +1110,8 @@ describe('ApplicationCreatePage', () => {
     });
   });
 
-  describe('Welcome flow breadcrumbs', () => {
-    it('shows welcome prefix breadcrumbs when in welcome flow', () => {
-      mockPathname = '/welcome/get-started';
-      renderWithProviders();
-
-      expect(screen.getByText('Welcome')).toBeInTheDocument();
-      expect(screen.getByText('New')).toBeInTheDocument();
-      expect(screen.getByText('Get started')).toBeInTheDocument();
-    });
-
-    it('navigates to /welcome when welcome breadcrumb is clicked', async () => {
-      mockPathname = '/welcome/get-started';
-      renderWithProviders();
-
-      await user.click(screen.getByRole('button', {name: 'Welcome'}));
-
-      expect(mockNavigate).toHaveBeenCalledWith('/welcome');
-    });
-
-    it('navigates to /welcome/create-project when create project breadcrumb is clicked', async () => {
-      mockPathname = '/welcome/get-started';
-      renderWithProviders();
-
-      await user.click(screen.getByRole('button', {name: 'New'}));
-
-      expect(mockNavigate).toHaveBeenCalledWith('/welcome/create-project');
-    });
-
-    it('navigates to /welcome/get-started when get-started breadcrumb is clicked', async () => {
-      mockPathname = '/welcome/get-started';
-      renderWithProviders();
-
-      await user.click(screen.getByRole('button', {name: 'Get started'}));
-
-      expect(mockNavigate).toHaveBeenCalledWith('/welcome/get-started');
-    });
-  });
-
   describe('Default breadcrumbs', () => {
-    it('navigates to /applications when the default breadcrumb is clicked outside the welcome flow', async () => {
-      mockPathname = '/';
+    it('navigates to /applications when the default breadcrumb is clicked', async () => {
       const {container} = renderWithProviders();
 
       const breadcrumbItem = container.querySelector('nav [role="button"]');
@@ -1176,6 +1167,173 @@ describe('ApplicationCreatePage', () => {
       await user.click(logoButton);
 
       expect(screen.getByTestId('preview-logo')).toHaveTextContent('test-logo.png');
+    });
+  });
+
+  describe('Inside a project', () => {
+    const renderInProject = () =>
+      render(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <ApplicationCreateProvider>
+            <ApplicationCreatePage />
+            <TemplateSeeder />
+          </ApplicationCreateProvider>
+        </ProjectScopeProvider>,
+      );
+
+    const createFromDesignStep = async (): Promise<CreateApplicationRequest> => {
+      await goToDesignStep();
+      // DESIGN → CONFIGURE
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      await waitFor(() => {
+        expect(screen.getByTestId('application-configure-details')).toBeInTheDocument();
+      });
+      // CONFIGURE → Create
+      await user.click(screen.getByTestId('application-wizard-next-button'));
+
+      await waitFor(() => {
+        expect(mockCreateApplication).toHaveBeenCalled();
+      });
+      return mockCreateApplication.mock.calls[0][0] as CreateApplicationRequest;
+    };
+
+    const mockProjectOus = (): void => {
+      mockUseHasMultipleOUs.mockReturnValue({
+        hasMultipleOUs: true,
+        isLoading: false,
+        ouList: [{id: 'ou-1', name: 'Project OU'}],
+      });
+    };
+
+    it('does not ask for an organization unit when the project has none', () => {
+      mockUseHasMultipleOUs.mockReturnValue({hasMultipleOUs: false, isLoading: false, ouList: []});
+
+      renderInProject();
+
+      expect(mockUseHasMultipleOUs).toHaveBeenCalledWith('project-1');
+      expect(screen.queryByTestId('ou-picker-screen')).not.toBeInTheDocument();
+      expect(screen.getByTestId('application-configure-name')).toBeInTheDocument();
+    });
+
+    it("asks for one of the project's organization units when the project has any", () => {
+      mockProjectOus();
+
+      renderInProject();
+
+      expect(screen.getByTestId('ou-picker-screen')).toHaveAttribute('data-project-id', 'project-1');
+      expect(screen.queryByTestId('application-configure-name')).not.toBeInTheDocument();
+    });
+
+    it('creates the application in the system organization unit the picker selects', async () => {
+      mockProjectOus();
+      mockCreateApplication.mockImplementation((_data, {onSuccess}: {onSuccess: (app: Application) => void}) => {
+        onSuccess({id: 'app-123', name: 'My App'} as Application);
+      });
+
+      renderInProject();
+      await user.click(screen.getByTestId('ou-picker-select-system-ou'));
+      await user.click(screen.getByTestId('ou-picker-continue'));
+
+      const request = await createFromDesignStep();
+      expect(request).toMatchObject({projectId: 'project-1', ouId: 'system-ou'});
+      expect(mockUseGetOrganizationUnit).toHaveBeenCalledWith('system-ou', true);
+    });
+
+    it('creates the application in the picked project organization unit', async () => {
+      mockProjectOus();
+      mockCreateApplication.mockImplementation((_data, {onSuccess}: {onSuccess: (app: Application) => void}) => {
+        onSuccess({id: 'app-123', name: 'My App'} as Application);
+      });
+
+      renderInProject();
+      await user.click(screen.getByTestId('ou-picker-select-ou1'));
+      await user.click(screen.getByTestId('ou-picker-continue'));
+
+      const request = await createFromDesignStep();
+      expect(request).toMatchObject({projectId: 'project-1', ouId: 'ou-1'});
+    });
+
+    it('creates the generated sign-in flow in the project when the project has no organization units', async () => {
+      mockCreateFlow.mockImplementation((_data, {onSuccess}: {onSuccess: (flow: unknown) => void}) => {
+        onSuccess({id: 'generated-flow-id', name: 'Generated Flow', handle: 'generated-flow'});
+      });
+      mockCreateApplication.mockImplementation((_data, {onSuccess}: {onSuccess: (app: Application) => void}) => {
+        onSuccess({id: 'app-123', name: 'My App'} as Application);
+      });
+      const ConfigureSignInOptionsModule = await import(
+        '../../components/create-application/configure-signin-options/ConfigureSignInOptions'
+      );
+      const useApplicationCreateContextModule = await import('../../hooks/useApplicationCreateContext');
+      vi.mocked(ConfigureSignInOptionsModule.default).mockImplementation(
+        ({onReadyChange}: {onReadyChange?: (ready: boolean) => void}) => {
+          const {setSelectedAuthFlow, setIntegrations} = useApplicationCreateContextModule.default();
+          const handleSetup = () => {
+            setSelectedAuthFlow(null);
+            setIntegrations({basic_auth: true});
+            onReadyChange?.(true);
+          };
+          return (
+            <div data-testid="application-configure-sign-in">
+              <button type="button" data-testid="setup-flow-generation" onClick={handleSetup}>
+                Setup Flow Generation
+              </button>
+            </div>
+          );
+        },
+      );
+
+      renderInProject();
+      await user.type(screen.getByTestId('app-name-input'), 'My App');
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      await waitFor(() => {
+        expect(screen.getByTestId('application-configure-sign-in')).toBeInTheDocument();
+      });
+      await user.click(screen.getByTestId('setup-flow-generation'));
+      await waitFor(() => {
+        expect(screen.getByRole('button', {name: /continue/i})).toBeEnabled();
+      });
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      await waitFor(() => {
+        expect(screen.getByTestId('application-configure-design')).toBeInTheDocument();
+      });
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      await waitFor(() => {
+        expect(screen.getByTestId('application-configure-details')).toBeInTheDocument();
+      });
+      await user.click(screen.getByTestId('application-wizard-next-button'));
+
+      await waitFor(() => {
+        expect(mockCreateFlow).toHaveBeenCalled();
+      });
+      const flowRequest = mockCreateFlow.mock.calls[0][0] as Record<string, unknown>;
+      expect(flowRequest.projectId).toBe('project-1');
+      expect(flowRequest).not.toHaveProperty('ouId');
+
+      vi.mocked(ConfigureSignInOptionsModule.default).mockImplementation(DefaultConfigureSignInOptionsImpl);
+    });
+
+    it('creates the application with the project alone', async () => {
+      mockCreateApplication.mockImplementation((_data, {onSuccess}: {onSuccess: (app: Application) => void}) => {
+        onSuccess({id: 'app-123', name: 'My App'} as Application);
+      });
+
+      renderInProject();
+
+      await goToDesignStep();
+      // DESIGN → CONFIGURE
+      await user.click(screen.getByRole('button', {name: /continue/i}));
+      await waitFor(() => {
+        expect(screen.getByTestId('application-configure-details')).toBeInTheDocument();
+      });
+      // CONFIGURE → Create
+      await user.click(screen.getByTestId('application-wizard-next-button'));
+
+      await waitFor(() => {
+        expect(mockCreateApplication).toHaveBeenCalled();
+      });
+      const request = mockCreateApplication.mock.calls[0][0] as CreateApplicationRequest;
+      expect(request.projectId).toBe('project-1');
+      expect(request).not.toHaveProperty('ouId');
     });
   });
 
@@ -2282,6 +2440,9 @@ describe('ApplicationCreatePage', () => {
         expect(mockCreateFlow).toHaveBeenCalled();
         expect(mockCreateApplication).toHaveBeenCalled();
       });
+
+      // With no relying party ID entered, none is sent, so the server uses its sign-in page host
+      expect((mockGenerateFlowGraph.mock.calls[0][0] as {relyingPartyId?: string}).relyingPartyId).toBeUndefined();
 
       // The generated flow is owned by the organization unit of the application
       expect(mockCreateFlow).toHaveBeenCalledWith(expect.objectContaining({ouId: 'ou-1'}), expect.anything());

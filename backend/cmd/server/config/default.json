@@ -4,6 +4,9 @@
     "port": 8090,
     "http_only": false,
     "identifier": "default-deployment",
+    "product_name": "ThunderID",
+    "system_ou_id": "",
+    "trusted_proxies": [],
     "timeouts": {
       "read_header_seconds": 10,
       "write_seconds": 10,
@@ -218,9 +221,6 @@
       "criteria": {
         "max_entries_per_change": 10000
       }
-    },
-    "token_exchange": {
-      "token_family": "none"
     }
   },
   "flow": {
@@ -290,6 +290,9 @@
     "access": {
       "exclude_paths": []
     }
+  },
+  "audit": {
+    "enabled": true
   },
   "observability": {
     "enabled": false,
@@ -492,7 +495,10 @@
     "allow_private_addresses": false,
     "removal_confirmation_threshold": 5,
     "store": "composite",
-    "apply_timeout_seconds": 300
+    "apply_timeout_seconds": 300,
+    "unused_value_grace_seconds": 3600,
+    "unused_value_sweep_interval_seconds": 300,
+    "pipeline": []
   },
   "import": {
     "timeout_seconds": 120

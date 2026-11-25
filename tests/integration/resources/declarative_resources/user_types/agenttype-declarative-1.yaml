@@ -1,0 +1,25 @@
+resource_type: user_type
+id: decl-agent-type-1
+category: agent
+handle: declarative-agents
+displayName: Declarative Agents
+ouId: decl-ou-1
+systemAttributes:
+  display: "name"
+schema: |
+  {
+    "name": {
+      "type": "string",
+      "required": true,
+      "unique": true
+    },
+    "description": {
+      "type": "string"
+    },
+    "department": {
+      "type": "string"
+    },
+    "environment": {
+      "type": "string"
+    }
+  }

@@ -15,14 +15,16 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
-// AppliedConfiguration is the configuration a gateway runs: every resource of the version recorded as
-// applied to it, each in the shape the resource's own read returns. An apply is recorded even when the
-// gateway refused some of its resources, which the next apply sends again, so a refused resource is
-// listed all the same; the apply's own result names it.
+// AppliedConfiguration is the configuration a gateway runs: every resource its master holds, which is
+// what the gateway accepted, each in the shape the resource's own read returns and tagged with the
+// version that sent it. A version applied in part, by a selection or with refusals, is shown as far as
+// the gateway holds it, never as the version whole.
 type AppliedConfiguration struct {
 	GatewayID string `json:"gatewayId"`
-	// Version is the hash of the version the gateway applied, empty when nothing was applied.
+	// Version is the hash of the version recorded as applied, empty when nothing was applied, and
+	// Complete whether the gateway holds it whole.
 	Version   string            `json:"version,omitempty"`
+	Complete  bool              `json:"complete"`
 	AppliedAt *time.Time        `json:"appliedAt,omitempty"`
 	Resources []AppliedResource `json:"resources"`
 	// Skipped are the version's documents that cannot be shown as their resource.
@@ -34,6 +36,8 @@ type AppliedResource struct {
 	ResourceType string `json:"resourceType"`
 	// ID is the resource's id, or its name for a resource exported without one.
 	ID string `json:"id"`
+	// SourceVersion is the hash of the version the apply that wrote the resource sent it from.
+	SourceVersion string `json:"sourceVersion,omitempty"`
 	// Resource is what the resource's own read returns.
 	Resource interface{} `json:"resource"`
 	// Parts are the collections the resource's own API serves apart from it, such as a group's
@@ -51,12 +55,12 @@ type SkippedResource struct {
 
 // AppliedConfigurationServiceInterface shows the configuration a gateway runs.
 type AppliedConfigurationServiceInterface interface {
-	// GetAppliedConfiguration returns every resource of the version a gateway last applied, as each
-	// resource's own read returns it.
+	// GetAppliedConfiguration returns every resource a gateway's master holds, as each resource's own
+	// read returns it.
 	GetAppliedConfiguration(ctx context.Context, gatewayID string) (*AppliedConfiguration, *tidcommon.ServiceError)
 }
 
-// appliedConfigurationService reads a gateway's applied version through the exporter of each
+// appliedConfigurationService reads what a gateway's master holds through the exporter of each
 // resource type, which is the one that wrote it.
 //
 // A gateway runs the version it applied, which this plane's live configuration may have moved on
@@ -94,14 +98,19 @@ func (s *appliedConfigurationService) GetAppliedConfiguration(ctx context.Contex
 	if applied.AppliedVersion == 0 {
 		return configuration, nil
 	}
-	version, svcErr := s.versions.bySeq(ctx, applied.AppliedVersion)
+	master, svcErr := s.versions.master(ctx, gatewayID)
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	configuration.Version = version.Hash
+	configuration.Version = applied.Applied
+	configuration.Complete = applied.Complete
 	configuration.AppliedAt = applied.AppliedAt
 
-	for _, resource := range parseBundle(version.Resources) {
+	sources := make(map[string]string, len(master.Entries))
+	for _, entry := range master.Entries {
+		sources[entry.Key] = entry.SourceVersion
+	}
+	for _, resource := range parseBundle(master.Resources) {
 		id := resource.ID
 		if id == "" {
 			id = resource.Name
@@ -111,6 +120,7 @@ func (s *appliedConfigurationService) GetAppliedConfiguration(ctx context.Contex
 			configuration.Skipped = append(configuration.Skipped, *skipped)
 			continue
 		}
+		shown.SourceVersion = sources[resource.key()]
 		configuration.Resources = append(configuration.Resources, *shown)
 	}
 	return configuration, nil

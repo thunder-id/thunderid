@@ -20,8 +20,12 @@ import (
 // It is given what the write returns rather than what a read returns, because only the write still
 // holds a client secret: it is hashed when stored and no read gives it back. The credentials the
 // agent's type declares are read from the attributes as submitted, for the same reason.
+//
+// The owner is captured only when the write sets it, as a create does or an update that changes it.
+// A gateway names its own owner for the agent, so an update that leaves the owner as it was must not
+// put this deployment's owner back in place of the one the gateway was given.
 func (s *agentService) captureValues(ctx context.Context, agent *model.AgentCompleteResponse,
-	submitted json.RawMessage) {
+	submitted json.RawMessage, ownerSet bool) {
 	if s.valueCapturer == nil || agent == nil {
 		return
 	}
@@ -32,12 +36,17 @@ func (s *agentService) captureValues(ctx context.Context, agent *model.AgentComp
 			log.MaskedString("agentID", agent.ID), log.Error(err))
 		credentials = nil
 	}
-	s.capture(ctx, &model.AgentGetResponse{
+	resource := &model.AgentGetResponse{
 		ID:                agent.ID,
 		OUID:              agent.OUID,
 		Type:              agent.Type,
+		Kind:              agent.Kind,
 		InboundAuthConfig: agent.InboundAuthConfig,
-	}, agent.Attributes, credentials)
+	}
+	if ownerSet {
+		resource.Owner = agent.Owner
+	}
+	s.capture(ctx, resource, agent.Attributes, credentials)
 }
 
 // captureCredentials hands the credentials just set on an agent to the value capturer.
@@ -50,8 +59,7 @@ func (s *agentService) captureCredentials(ctx context.Context, agent *providers.
 		agent.Attributes, credentials)
 }
 
-// capture names an agent by its display value, as the export does, and hands it to the value capturer
-// with its credentials.
+// capture hands an agent to the value capturer with its credentials, in the shape the export reads back.
 func (s *agentService) capture(ctx context.Context, resource *model.AgentGetResponse,
 	attributes json.RawMessage, credentials map[string]string) {
 	displayPaths := s.resolveDisplayPaths(ctx, []string{resource.Type})

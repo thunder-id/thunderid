@@ -25,6 +25,10 @@ type Master struct {
 	// Resources is every resource the gateway holds, one document each, in the same form a captured
 	// version holds them. A listing leaves it out.
 	Resources string `json:"resources,omitempty"`
+	// Project is the project the apply that wrote the master was scoped to, and ProjectRevert marks a
+	// master a rollback of that project wrote. An apply scoped to no project names none.
+	Project       string `json:"project,omitempty"`
+	ProjectRevert bool   `json:"projectRevert,omitempty"`
 	// Summary counts the entries by state.
 	Summary MasterSummary `json:"summary"`
 	// Entries is the manifest: one entry per resource key, sorted by key. A listing leaves it out.

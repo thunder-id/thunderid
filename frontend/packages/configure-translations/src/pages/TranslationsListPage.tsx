@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, ExternalLink} from '@thunderid/components';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {Button, PageContent, PageTitle} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
@@ -38,6 +39,7 @@ export default function TranslationsListPage(): JSX.Element {
   const navigate = useNavigate();
   const logger = useLogger('TranslationsListPage');
   const routes = useTranslationRoutes();
+  const {can} = useCapabilitiesContext();
 
   const handleAddLanguage = useCallback(() => {
     (async (): Promise<void> => {
@@ -56,9 +58,11 @@ export default function TranslationsListPage(): JSX.Element {
           {t('page.subtitle')} <ExternalLink docKey="translations" />
         </PageTitle.SubHeader>
         <PageTitle.Actions>
-          <Button variant="contained" startIcon={<Plus size={18} />} onClick={handleAddLanguage}>
-            {t('listing.addLanguage')}
-          </Button>
+          {can('i18n', 'create') && (
+            <Button variant="contained" startIcon={<Plus size={18} />} onClick={handleAddLanguage}>
+              {t('listing.addLanguage')}
+            </Button>
+          )}
         </PageTitle.Actions>
       </PageTitle>
 

@@ -8,11 +8,12 @@ import {
   PageLoadingAnimation,
   QueryErrorNotice,
   ResourceAvatar,
+  ResourceDeployStatus,
   UnsavedChangesBar,
 } from '@thunderid/components';
 import {FlowType, useGetFlows} from '@thunderid/configure-flows';
 import {useOrganizationAccess} from '@thunderid/configure-resource-sharing';
-import {useConfig} from '@thunderid/contexts';
+import {useConfig, useHiddenResources, useProjectScope, useRecordAccess} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
@@ -63,7 +64,7 @@ import getTemplateFieldConstraints from '../utils/getTemplateFieldConstraints';
 import getTemplateMetadata from '../utils/getTemplateMetadata';
 import isSystemConsoleClient from '../utils/isSystemConsoleClient';
 import isValidRedirectUriFormat from '../utils/isValidRedirectUriFormat';
-import {hasClientAccess, hasUserAccess} from '../utils/oauth2Rules';
+import {hasUserAccess} from '../utils/oauth2Rules';
 import validateBackchannelLogoutUri from '../utils/validateBackchannelLogoutUri';
 
 interface TabConfig {
@@ -108,26 +109,28 @@ export default function ApplicationEditPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const {applicationId} = useParams<{applicationId: string}>();
-
   const {data: application, isLoading, error, refetch} = useGetApplication(applicationId ?? '');
+  const {readOnly: isReadOnly, canDelete, canChangeState} = useRecordAccess('app', application);
+  const {projectId} = useProjectScope();
+  // Another project's application is not shown in the selected one: a deep link, a stale tab or a
+  // switch of project goes to the selected project's applications instead.
+  const isOtherProject = Boolean(projectId && application && application.projectId !== projectId);
+  // A hidden application is not shown either: a deep link goes to the applications instead.
+  const {isHiddenApplication} = useHiddenResources();
+  const isHidden = isHiddenApplication(
+    application?.inboundAuthConfig?.find((auth) => auth.type === 'oauth2')?.config?.clientId,
+  );
+  useEffect(() => {
+    if (isOtherProject || isHidden) void navigate(routes.applications.list(), {replace: true});
+  }, [isOtherProject, isHidden, navigate, routes]);
   const updateApplication = useUpdateApplication();
   const handleStatusChanged = useCallback((): void => {
     void refetch();
   }, [refetch]);
-  // TODO: Offer Organization Access to every application once sharing an application that signs
-  // users in is supported, by removing this check. Until then a granted unit can only request tokens
-  // through the application, so only applications with the client credentials grant get the tab,
-  // whatever other grants they also have. Read from the saved application, so the tab does not
-  // appear or vanish while grant types are being edited.
-  const offersOrganizationAccess = useMemo(
-    () =>
-      hasClientAccess(application?.inboundAuthConfig?.find((config) => config.type === 'oauth2')?.config.grantTypes),
-    [application],
-  );
   // Held here rather than in its tab, because inactive tabs unmount and the draft must survive them.
   const organizationAccess = useOrganizationAccess({
     resourcePath: `applications/${applicationId}`,
-    enabled: Boolean(applicationId) && offersOrganizationAccess,
+    enabled: Boolean(applicationId),
     // The tab's sentences say what access means for an application: `applications:organizationAccess.*`.
     wordingNamespace: 'applications',
   });
@@ -221,7 +224,7 @@ export default function ApplicationEditPage() {
       editedApp.deviceGrantFlowId ||
       application?.deviceGrantFlowId ||
       !defaultDeviceGrantFlow ||
-      application?.isReadOnly
+      isReadOnly
     ) {
       return;
     }
@@ -229,7 +232,7 @@ export default function ApplicationEditPage() {
     handleFieldChange('deviceGrantFlowId', defaultDeviceGrantFlow.id);
   }, [
     application?.deviceGrantFlowId,
-    application?.isReadOnly,
+    isReadOnly,
     deviceGrantEnabled,
     deviceGrantFlowList,
     editedApp.deviceGrantFlowId,
@@ -311,7 +314,7 @@ export default function ApplicationEditPage() {
 
   const resourceTypeTitle = t('navigation:pages.applications', 'Applications');
 
-  if (isLoading) {
+  if (isLoading || isOtherProject || isHidden) {
     return (
       <>
         <DocumentTitle title={resourceTypeTitle} />
@@ -379,7 +382,6 @@ export default function ApplicationEditPage() {
   // User-facing tabs (Flows, Customization) and the general Access section only apply when the
   // client can act on behalf of a user. When it can't, they are frozen/hidden rather than removed.
   const userAccessUnlocked = !oauth2Config || hasUserAccess(oauth2Config.grantTypes);
-  const userGatedApplication = userAccessUnlocked ? application : {...application, isReadOnly: true};
   const userAccessLockMessage = t(
     'applications:edit.userAccessLock.message',
     'These settings apply only to user-facing flows. Enable a user-facing grant (e.g. authorization code) in the Advanced tab to configure them.',
@@ -447,7 +449,7 @@ export default function ApplicationEditPage() {
                 application={application}
                 oauth2Config={oauth2Config}
                 onFieldChange={handleFieldChange}
-                isReadOnly={application.isReadOnly === true}
+                isReadOnly={isReadOnly}
                 onValidationChange={setMcpAccessInvalid}
                 sectionResetKey={sectionResetKey}
                 onGoToCredentials={isCimdClient ? undefined : () => setActiveTabKey('credentials')}
@@ -460,6 +462,7 @@ export default function ApplicationEditPage() {
             panel: (
               <EditCredentialsSettings
                 application={application}
+                readOnly={isReadOnly}
                 editedApp={editedApp}
                 oauth2Config={oauth2Config}
                 onFieldChange={handleFieldChange}
@@ -474,7 +477,12 @@ export default function ApplicationEditPage() {
             key: 'flows',
             label: t('applications:edit.page.tabs.flows'),
             panel: (
-              <EditFlowsSettings application={application} editedApp={editedApp} onFieldChange={handleFieldChange} />
+              <EditFlowsSettings
+                application={application}
+                readOnly={isReadOnly}
+                editedApp={editedApp}
+                onFieldChange={handleFieldChange}
+              />
             ),
             hidden: !userAccessUnlocked,
           },
@@ -484,6 +492,7 @@ export default function ApplicationEditPage() {
             panel: (
               <EditCustomizationSettings
                 application={application}
+                readOnly={isReadOnly}
                 editedApp={editedApp}
                 onFieldChange={handleFieldChange}
                 onValidationChange={setCustomizationSettingsInvalid}
@@ -499,6 +508,7 @@ export default function ApplicationEditPage() {
               <EditTokenSettings
                 sectionResetKey={sectionResetKey}
                 application={application}
+                readOnly={isReadOnly}
                 editedApp={editedApp}
                 oauth2Config={oauth2Config}
                 onFieldChange={handleFieldChange}
@@ -509,8 +519,13 @@ export default function ApplicationEditPage() {
           {
             key: 'organizationAccess',
             label: t('applications:edit.page.tabs.organizationAccess', 'Organization Access'),
-            panel: <EditOrganizationAccessSettings application={application} access={organizationAccess} />,
-            hidden: !offersOrganizationAccess,
+            panel: (
+              <EditOrganizationAccessSettings
+                application={application}
+                readOnly={isReadOnly}
+                access={organizationAccess}
+              />
+            ),
           },
           {
             key: 'advanced',
@@ -518,6 +533,8 @@ export default function ApplicationEditPage() {
             panel: (
               <EditAdvancedSettings
                 application={application}
+                readOnly={isReadOnly}
+                canDelete={canDelete}
                 editedApp={editedApp}
                 oauth2Config={oauth2Config}
                 // The backend rejects pkceRequired: true without the authorization_code grant, so
@@ -586,7 +603,7 @@ export default function ApplicationEditPage() {
                     application={application}
                     oauth2Config={oauth2Config}
                     onFieldChange={handleFieldChange}
-                    isReadOnly={application.isReadOnly === true}
+                    isReadOnly={isReadOnly}
                   />
                 ),
               },
@@ -598,6 +615,7 @@ export default function ApplicationEditPage() {
           panel: (
             <EditAccessSettings
               application={application}
+              readOnly={isReadOnly}
               editedApp={editedApp}
               onFieldChange={handleFieldChange}
               onValidationChange={setAccessSettingsInvalid}
@@ -615,6 +633,7 @@ export default function ApplicationEditPage() {
                 panel: (
                   <EditCredentialsSettings
                     application={application}
+                    readOnly={isReadOnly}
                     editedApp={editedApp}
                     oauth2Config={oauth2Config}
                     onFieldChange={handleFieldChange}
@@ -630,7 +649,8 @@ export default function ApplicationEditPage() {
           panel: (
             <SettingsLockNotice isUnlocked={userAccessUnlocked} message={userAccessLockMessage}>
               <EditFlowsSettings
-                application={userGatedApplication}
+                application={application}
+                readOnly={isReadOnly || !userAccessUnlocked}
                 editedApp={editedApp}
                 onFieldChange={handleFieldChange}
               />
@@ -643,7 +663,8 @@ export default function ApplicationEditPage() {
           panel: (
             <SettingsLockNotice isUnlocked={userAccessUnlocked} message={userAccessLockMessage}>
               <EditCustomizationSettings
-                application={userGatedApplication}
+                application={application}
+                readOnly={isReadOnly || !userAccessUnlocked}
                 editedApp={editedApp}
                 onFieldChange={handleFieldChange}
                 onValidationChange={setCustomizationSettingsInvalid}
@@ -659,6 +680,7 @@ export default function ApplicationEditPage() {
             <EditTokenSettingsTabs
               sectionResetKey={sectionResetKey}
               application={application}
+              readOnly={isReadOnly}
               editedApp={editedApp}
               oauth2Config={oauth2Config}
               onFieldChange={handleFieldChange}
@@ -669,8 +691,13 @@ export default function ApplicationEditPage() {
         {
           key: 'organizationAccess',
           label: t('applications:edit.page.tabs.organizationAccess', 'Organization Access'),
-          panel: <EditOrganizationAccessSettings application={application} access={organizationAccess} />,
-          hidden: !offersOrganizationAccess,
+          panel: (
+            <EditOrganizationAccessSettings
+              application={application}
+              readOnly={isReadOnly}
+              access={organizationAccess}
+            />
+          ),
         },
         {
           key: 'advanced',
@@ -678,6 +705,8 @@ export default function ApplicationEditPage() {
           panel: (
             <EditAdvancedSettings
               application={application}
+              readOnly={isReadOnly}
+              canDelete={canDelete}
               editedApp={editedApp}
               oauth2Config={oauth2Config}
               oauth2Constraints={oauth2Constraints}
@@ -691,7 +720,7 @@ export default function ApplicationEditPage() {
             />
           ),
         },
-      ].filter((tab) => !tab.hidden)
+      ]
     : [];
 
   const activeTabs = isMcpClient ? mcpTabs : standardTabs;
@@ -709,6 +738,7 @@ export default function ApplicationEditPage() {
         </Alert>
       )}
       <AccessStatusBanner status={application.status} category="application" sx={{mb: 2}} />
+      <ResourceDeployStatus resourceType="application" id={application.id} variant="notice" sx={{mb: 2}} />
       {/* Header */}
       <PageTitle>
         <PageTitle.BackButton component={<Link to={routes.applications.list()} />}>
@@ -719,7 +749,7 @@ export default function ApplicationEditPage() {
             size={55}
             variant="rounded"
             supportedShapes={['rounded']}
-            editable={!application.isReadOnly}
+            editable={!isReadOnly}
             value={editedApp.logoUrl ?? application.logoUrl}
             fallback={ApplicationConstants.DEFAULT_AVATAR}
             editAriaLabel={t('applications:edit.page.logoUpdate.label', 'Update logo')}
@@ -762,9 +792,10 @@ export default function ApplicationEditPage() {
             ) : (
               <>
                 <Typography variant="h3">{editedApp.name ?? application.name}</Typography>
-                {!application.isReadOnly && (
+                {!isReadOnly && (
                   <IconButton
                     size="small"
+                    aria-label={t('applications:edit.page.editName', 'Edit application name')}
                     onClick={() => {
                       setTempName(editedApp.name ?? application.name);
                       setIsEditingName(true);
@@ -824,9 +855,10 @@ export default function ApplicationEditPage() {
                 <Typography variant="body2" color="text.secondary">
                   {editedApp.description ?? application.description ?? t('applications:edit.page.description.empty')}
                 </Typography>
-                {!application.isReadOnly && (
+                {!isReadOnly && (
                   <IconButton
                     size="small"
+                    aria-label={t('applications:edit.page.editDescription', 'Edit description')}
                     onClick={() => {
                       setTempDescription(editedApp.description ?? application.description ?? '');
                       setIsEditingDescription(true);
@@ -859,8 +891,8 @@ export default function ApplicationEditPage() {
               ) : null;
             })()}
         </PageTitle.SubHeader>
-        {/* Read-only records too: the flows change only runtime state. */}
-        {!isConsoleClient && (
+        {/* Declarative records too: the flows change only runtime state. The default flows need update. */}
+        {!isConsoleClient && canChangeState && (
           <PageTitle.Actions>
             <AccountStatusAction
               category="application"
@@ -915,7 +947,7 @@ export default function ApplicationEditPage() {
             isMissingDeviceGrantFlow ||
             isInvalidBackchannelLogoutUri ||
             isMissingCertificate ||
-            application.isReadOnly === true
+            isReadOnly
           }
           error={
             (updateApplication.error

@@ -5,6 +5,8 @@
 package tokenservice
 
 import (
+	"context"
+
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
@@ -46,8 +48,8 @@ func (_m *ouActorRoleProviderMock) EXPECT() *ouActorRoleProviderMock_Expecter {
 }
 
 // GetActorRolesInOU provides a mock function for the type ouActorRoleProviderMock
-func (_mock *ouActorRoleProviderMock) GetActorRolesInOU(actorID string, groupIDs []string, ouID string) ([]string, *common.ServiceError) {
-	ret := _mock.Called(actorID, groupIDs, ouID)
+func (_mock *ouActorRoleProviderMock) GetActorRolesInOU(ctx context.Context, actorID string, groupIDs []string, ouID string) ([]string, *common.ServiceError) {
+	ret := _mock.Called(ctx, actorID, groupIDs, ouID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetActorRolesInOU")
@@ -55,18 +57,18 @@ func (_mock *ouActorRoleProviderMock) GetActorRolesInOU(actorID string, groupIDs
 
 	var r0 []string
 	var r1 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(string, []string, string) ([]string, *common.ServiceError)); ok {
-		return returnFunc(actorID, groupIDs, ouID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string, string) ([]string, *common.ServiceError)); ok {
+		return returnFunc(ctx, actorID, groupIDs, ouID)
 	}
-	if returnFunc, ok := ret.Get(0).(func(string, []string, string) []string); ok {
-		r0 = returnFunc(actorID, groupIDs, ouID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, []string, string) []string); ok {
+		r0 = returnFunc(ctx, actorID, groupIDs, ouID)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]string)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(string, []string, string) *common.ServiceError); ok {
-		r1 = returnFunc(actorID, groupIDs, ouID)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, []string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, actorID, groupIDs, ouID)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*common.ServiceError)
@@ -81,31 +83,37 @@ type ouActorRoleProviderMock_GetActorRolesInOU_Call struct {
 }
 
 // GetActorRolesInOU is a helper method to define mock.On call
+//   - ctx context.Context
 //   - actorID string
 //   - groupIDs []string
 //   - ouID string
-func (_e *ouActorRoleProviderMock_Expecter) GetActorRolesInOU(actorID any, groupIDs any, ouID any) *ouActorRoleProviderMock_GetActorRolesInOU_Call {
-	return &ouActorRoleProviderMock_GetActorRolesInOU_Call{Call: _e.mock.On("GetActorRolesInOU", actorID, groupIDs, ouID)}
+func (_e *ouActorRoleProviderMock_Expecter) GetActorRolesInOU(ctx any, actorID any, groupIDs any, ouID any) *ouActorRoleProviderMock_GetActorRolesInOU_Call {
+	return &ouActorRoleProviderMock_GetActorRolesInOU_Call{Call: _e.mock.On("GetActorRolesInOU", ctx, actorID, groupIDs, ouID)}
 }
 
-func (_c *ouActorRoleProviderMock_GetActorRolesInOU_Call) Run(run func(actorID string, groupIDs []string, ouID string)) *ouActorRoleProviderMock_GetActorRolesInOU_Call {
+func (_c *ouActorRoleProviderMock_GetActorRolesInOU_Call) Run(run func(ctx context.Context, actorID string, groupIDs []string, ouID string)) *ouActorRoleProviderMock_GetActorRolesInOU_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 string
+		var arg0 context.Context
 		if args[0] != nil {
-			arg0 = args[0].(string)
+			arg0 = args[0].(context.Context)
 		}
-		var arg1 []string
+		var arg1 string
 		if args[1] != nil {
-			arg1 = args[1].([]string)
+			arg1 = args[1].(string)
 		}
-		var arg2 string
+		var arg2 []string
 		if args[2] != nil {
-			arg2 = args[2].(string)
+			arg2 = args[2].([]string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
 		}
 		run(
 			arg0,
 			arg1,
 			arg2,
+			arg3,
 		)
 	})
 	return _c
@@ -116,7 +124,7 @@ func (_c *ouActorRoleProviderMock_GetActorRolesInOU_Call) Return(strings []strin
 	return _c
 }
 
-func (_c *ouActorRoleProviderMock_GetActorRolesInOU_Call) RunAndReturn(run func(actorID string, groupIDs []string, ouID string) ([]string, *common.ServiceError)) *ouActorRoleProviderMock_GetActorRolesInOU_Call {
+func (_c *ouActorRoleProviderMock_GetActorRolesInOU_Call) RunAndReturn(run func(ctx context.Context, actorID string, groupIDs []string, ouID string) ([]string, *common.ServiceError)) *ouActorRoleProviderMock_GetActorRolesInOU_Call {
 	_c.Call.Return(run)
 	return _c
 }

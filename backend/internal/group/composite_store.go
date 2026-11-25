@@ -5,6 +5,7 @@ package group
 
 import (
 	"context"
+	"maps"
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
@@ -163,6 +164,54 @@ func (c *compositeGroupStore) GetGroupListByOUIDs(
 	return groups, nil
 }
 
+// GetGroupListCountByProject returns the count of the groups of a project across both stores, narrowed to the
+// ones the given organization units own when ouIDs is not empty. A group ID is unique across the stores, so
+// the counts add up exactly.
+func (c *compositeGroupStore) GetGroupListCountByProject(
+	ctx context.Context, projectID string, ouIDs []string,
+) (int, error) {
+	dbCount, err := c.dbStore.GetGroupListCountByProject(ctx, projectID, ouIDs)
+	if err != nil {
+		return 0, err
+	}
+	fileCount, err := c.fileStore.GetGroupListCountByProject(ctx, projectID, ouIDs)
+	if err != nil {
+		return 0, err
+	}
+	if dbCount+fileCount > serverconst.MaxCompositeStoreRecords {
+		return 0, errResultLimitExceededInCompositeMode
+	}
+	return dbCount + fileCount, nil
+}
+
+// GetGroupListByProject retrieves the groups of a project from both stores and merges them, narrowed to the
+// ones the given organization units own when ouIDs is not empty.
+func (c *compositeGroupStore) GetGroupListByProject(
+	ctx context.Context, projectID string, ouIDs []string, limit, offset int,
+) ([]GroupBasicDAO, error) {
+	groups, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
+		func() (int, error) { return c.dbStore.GetGroupListCountByProject(ctx, projectID, ouIDs) },
+		func() (int, error) { return c.fileStore.GetGroupListCountByProject(ctx, projectID, ouIDs) },
+		func(count int) ([]GroupBasicDAO, error) {
+			return c.dbStore.GetGroupListByProject(ctx, projectID, ouIDs, count, 0)
+		},
+		func(count int) ([]GroupBasicDAO, error) {
+			return c.fileStore.GetGroupListByProject(ctx, projectID, ouIDs, count, 0)
+		},
+		mergeGroupBasicDAOs,
+		limit,
+		offset,
+		serverconst.MaxCompositeStoreRecords,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if limitExceeded {
+		return nil, errResultLimitExceededInCompositeMode
+	}
+	return groups, nil
+}
+
 // CreateGroup creates a group in the database store only.
 func (c *compositeGroupStore) CreateGroup(ctx context.Context, group GroupDAO) error {
 	return c.dbStore.CreateGroup(ctx, group)
@@ -197,7 +246,7 @@ func (c *compositeGroupStore) GetGroupMembers(
 		c.dbStore.GetGroupMemberCount, c.fileStore.GetGroupMemberCount,
 		c.dbStore.GetGroupMembers, c.fileStore.GetGroupMembers,
 		mergeMembers,
-		limit, offset,
+		limit, offset, refuseStoreOverLimit,
 	)
 }
 
@@ -208,6 +257,16 @@ func (c *compositeGroupStore) GetGroupMemberCount(ctx context.Context, groupID s
 		return 0, err
 	}
 	return len(members), nil
+}
+
+// GetGroupMember returns the group's direct member with the given ID from either store, checking the
+// database store first.
+func (c *compositeGroupStore) GetGroupMember(ctx context.Context, groupID, memberID string) (*Member, error) {
+	member, err := c.dbStore.GetGroupMember(ctx, groupID, memberID)
+	if err != nil || member != nil {
+		return member, err
+	}
+	return c.fileStore.GetGroupMember(ctx, groupID, memberID)
 }
 
 // UpdateGroup updates a group in the database store only.
@@ -279,9 +338,20 @@ func (c *compositeGroupStore) GetGroupsByOrganizationUnit(
 		c.dbStore.GetGroupsByOrganizationUnitCount, c.fileStore.GetGroupsByOrganizationUnitCount,
 		c.dbStore.GetGroupsByOrganizationUnit, c.fileStore.GetGroupsByOrganizationUnit,
 		mergeGroupBasicDAOs,
-		limit, offset,
+		limit, offset, clampStoreCounts,
 	)
 }
+
+// storeCountMode says how compositeMergeByID treats a store whose count alone exceeds the composite limit.
+type storeCountMode bool
+
+const (
+	// clampStoreCounts reads such a store as its first records, for listings that page.
+	clampStoreCounts storeCountMode = true
+	// refuseStoreOverLimit refuses the read, for reads that must be complete, such as the members a
+	// revocation is planned from.
+	refuseStoreOverLimit storeCountMode = false
+)
 
 // compositeMergeByID runs a paginated merge across the db and file stores keyed by a single ID.
 func compositeMergeByID[T any](
@@ -289,13 +359,13 @@ func compositeMergeByID[T any](
 	dbCount, fileCount func(context.Context, string) (int, error),
 	dbList, fileList func(context.Context, string, int, int) ([]T, error),
 	merge func([]T, []T) []T,
-	limit, offset int,
+	limit, offset int, countMode storeCountMode,
 ) ([]T, error) {
 	capCount := func(fn func(context.Context, string) (int, error)) func() (int, error) {
 		return func() (int, error) {
 			count, err := fn(ctx, id)
-			if err != nil {
-				return 0, err
+			if err != nil || countMode == refuseStoreOverLimit {
+				return count, err
 			}
 			return min(count, serverconst.MaxCompositeStoreRecords), nil
 		}
@@ -333,6 +403,13 @@ func (c *compositeGroupStore) RemoveGroupMembers(ctx context.Context, groupID st
 func (c *compositeGroupStore) DeleteMembershipsByMember(
 	ctx context.Context, memberType, memberID string) (int64, error) {
 	return c.dbStore.DeleteMembershipsByMember(ctx, memberType, memberID)
+}
+
+// GetMemberGroupIDs returns the member's direct group IDs from the database store only, since
+// declarative memberships are not writable.
+func (c *compositeGroupStore) GetMemberGroupIDs(
+	ctx context.Context, memberType, memberID string) ([]string, error) {
+	return c.dbStore.GetMemberGroupIDs(ctx, memberType, memberID)
 }
 
 // GetGroupsByIDs returns groups matching the given IDs, merged from both stores.
@@ -388,6 +465,12 @@ func (c *compositeGroupStore) IsGroupDeclarative(ctx context.Context, id string)
 	return c.fileStore.IsGroupDeclarative(ctx, id)
 }
 
+// IsGroupMemberDeclarative reports whether the member is declared in the file-based store, where it
+// cannot be removed. A member added through the API is held by the database store.
+func (c *compositeGroupStore) IsGroupMemberDeclarative(ctx context.Context, groupID, memberID string) (bool, error) {
+	return c.fileStore.IsGroupMemberDeclarative(ctx, groupID, memberID)
+}
+
 // GetTransitiveGroupsForEntity returns all groups an entity belongs to across both stores,
 // deduplicating by group ID. DB store covers mutable groups; file store covers declarative ones.
 //
@@ -414,11 +497,52 @@ func (c *compositeGroupStore) GetTransitiveGroupsForEntity(
 		result = append(result, g)
 		seen[g.ID] = true
 	}
+	resolvedInDB := maps.Clone(seen)
 	for _, g := range fileGroups {
 		if !seen[g.ID] {
 			result = append(result, g)
 			seen[g.ID] = true
 		}
+	}
+	return c.appendDeclarativeGroupsHeldInDB(ctx, entityID, result, seen, resolvedInDB)
+}
+
+// appendDeclarativeGroupsHeldInDB adds to result the declarative groups the entity belongs to through a
+// database membership, with their ancestors from both stores. Neither store's own lookup finds them: the
+// database one needs the group's row, and the file one reads only declared members. resolvedInDB holds the
+// groups the database lookup already resolved with their ancestors; a group the file lookup found still
+// has its database ancestors resolved here.
+func (c *compositeGroupStore) appendDeclarativeGroupsHeldInDB(ctx context.Context, entityID string,
+	result []providers.EntityGroup, seen, resolvedInDB map[string]bool) ([]providers.EntityGroup, error) {
+	directIDs, err := c.dbStore.GetMemberGroupIDs(ctx, string(memberTypeEntity), entityID)
+	if err != nil {
+		return nil, err
+	}
+	var missing []string
+	for _, id := range directIDs {
+		if resolvedInDB[id] {
+			continue
+		}
+		ancestors, err := resolveTransitiveGroupAncestors(ctx, c, id)
+		if err != nil {
+			return nil, err
+		}
+		for _, groupID := range append([]string{id}, ancestors...) {
+			if !seen[groupID] {
+				seen[groupID] = true
+				missing = append(missing, groupID)
+			}
+		}
+	}
+	if len(missing) == 0 {
+		return result, nil
+	}
+	groups, err := c.GetGroupsByIDs(ctx, missing)
+	if err != nil {
+		return nil, err
+	}
+	for _, g := range groups {
+		result = append(result, providers.EntityGroup{ID: g.ID, Name: g.Name, OUID: g.OUID})
 	}
 	return result, nil
 }

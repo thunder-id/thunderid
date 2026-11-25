@@ -2,14 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import draftToSharingSections from './draftToSharingSections';
+import getAssignmentsOffRules from './getAssignmentsOffRules';
 import {canEditSharingSectionsInPlace} from './planSharingPolicySave';
 import type {AccessSwitch, ClearedAccessItem, OrganizationAccessDraft} from '../models/organization-access';
-import type {SharingPolicy} from '../models/sharing-policy';
+import type {EditsRule, SharingPolicy} from '../models/sharing-policy';
 
 function clearChildUnits(draft: OrganizationAccessDraft): void {
   draft.childUnitsAccess = 'none';
   draft.childUnitExclusions = [];
   draft.childUnits = [];
+  draft.childUnitRules = {};
 }
 
 function clearOtherTrees(draft: OrganizationAccessDraft): void {
@@ -34,6 +36,7 @@ function clearOtherTrees(draft: OrganizationAccessDraft): void {
  * @param field - The choice being switched
  * @param to - The new value of that choice
  * @param saved - The policy as last read, against which an in-place edit is judged
+ * @param editsRule - Tells which rules the resource's screen edits; none by default
  * @returns The draft after the switch and what it cleared
  */
 export default function switchOrganizationAccess(
@@ -41,6 +44,7 @@ export default function switchOrganizationAccess(
   field: AccessSwitch['field'],
   to: AccessSwitch['to'],
   saved: SharingPolicy | undefined,
+  editsRule: EditsRule = () => false,
 ): AccessSwitch {
   const next: OrganizationAccessDraft = {...draft, [field]: to};
 
@@ -50,14 +54,22 @@ export default function switchOrganizationAccess(
     clearOtherTrees(next);
     if (to === 'chosen') next.childUnitsAccess = 'all';
   } else if (field === 'childUnitsAccess') {
-    if (draft.childUnitsAccess === 'all') next.childUnitExclusions = [];
+    if (draft.childUnitsAccess === 'all') {
+      next.childUnitExclusions = [];
+      next.childUnitRules = {};
+    }
     if (draft.childUnitsAccess === 'selected') next.childUnits = [];
+    // The terms belong to the units reached, so they go with the last of them.
+    if (to === 'none') next.childUnitRules = {};
   } else {
     if (draft.otherTreesAccess === 'selected') next.trees = [];
     if (draft.otherTreesAccess === 'every') next.everyTreeExclusions = [];
   }
 
-  if (next.otherTreesAccess === 'every' && !canEditSharingSectionsInPlace(saved ?? {}, draftToSharingSections(next))) {
+  if (
+    next.otherTreesAccess === 'every' &&
+    !canEditSharingSectionsInPlace(saved ?? {}, draftToSharingSections(next, undefined, editsRule))
+  ) {
     clearOtherTrees(next);
   }
 
@@ -74,6 +86,9 @@ export default function switchOrganizationAccess(
   if (droppedExclusions.length > 0) {
     cleared.push({kind: 'childUnitExclusions', ouIds: droppedExclusions});
   }
+  if (Object.keys(draft.childUnitRules ?? {}).length > 0 && Object.keys(next.childUnitRules ?? {}).length === 0) {
+    cleared.push({kind: 'childUnitRules', ouIds: []});
+  }
   const droppedUnits = dropped(
     draft.childUnits.map((unit) => unit.ouId),
     next.childUnits.map((unit) => unit.ouId),
@@ -89,7 +104,17 @@ export default function switchOrganizationAccess(
     cleared.push({kind: 'trees', ouIds: droppedTrees});
   }
 
-  return {field, to, next, cleared, losesEveryUnit, losesEveryTree};
+  // A rule turning assignments off is kept only while its section stays the same kind, or its unit
+  // stays named, so a switch can drop one that the console can't set again.
+  const rulesBefore = getAssignmentsOffRules(draftToSharingSections(draft, saved, editsRule));
+  const rulesAfter = getAssignmentsOffRules(draftToSharingSections(next, saved, editsRule));
+  const losesAssignmentsOff =
+    (rulesBefore.everyUnit && !rulesAfter.everyUnit) ||
+    (rulesBefore.allChildUnits && !rulesAfter.allChildUnits) ||
+    (rulesBefore.everyTree && !rulesAfter.everyTree) ||
+    dropped(rulesBefore.ouIds, rulesAfter.ouIds).length > 0;
+
+  return {field, to, next, cleared, losesEveryUnit, losesEveryTree, losesAssignmentsOff};
 }
 
 /**
@@ -105,16 +130,18 @@ export type BlockedNoneReason = 'otherIsNone' | 'dropsEveryTree';
  * @param draft - The draft as it stands
  * @param field - The section whose None choice is asked about
  * @param saved - The policy as last read, against which an in-place edit is judged
+ * @param editsRule - Tells which rules the resource's screen edits; none by default
  * @returns Why None can't be picked, or `null` when it can
  */
 export function getBlockedNoneReason(
   draft: OrganizationAccessDraft,
   field: 'childUnitsAccess' | 'otherTreesAccess',
   saved: SharingPolicy | undefined,
+  editsRule: EditsRule = () => false,
 ): BlockedNoneReason | null {
   if (draft.scope !== 'chosen' || draft[field] === 'none') return null;
 
-  const {next} = switchOrganizationAccess(draft, field, 'none', saved);
+  const {next} = switchOrganizationAccess(draft, field, 'none', saved, editsRule);
   if (next.childUnitsAccess !== 'none' || next.otherTreesAccess !== 'none') return null;
 
   const other = field === 'childUnitsAccess' ? draft.otherTreesAccess : draft.childUnitsAccess;

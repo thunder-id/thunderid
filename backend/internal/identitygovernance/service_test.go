@@ -43,7 +43,8 @@ func (s *ServiceTestSuite) SetupTest() {
 	s.port = newEntityStateProviderMock(s.T())
 	s.source = newAccountAccessSourceInterfaceMock(s.T())
 	s.now = time.Date(2026, 9, 8, 10, 0, 0, 0, time.UTC)
-	s.svc = newIdentityGovernanceService(s.port, s.source, transaction.NewNoOpTransactioner(), nil, nil, nil)
+	s.svc = newIdentityGovernanceService(s.port, s.source, transaction.NewNoOpTransactioner(), nil, nil, nil,
+		discardingBus(s.T()))
 	s.svc.now = func() time.Time { return s.now }
 	s.ctx = context.Background()
 }
@@ -53,7 +54,8 @@ func newTestService(t *testing.T, port entityStateProvider, cfg accountAccessVal
 	authorizer sysauthz.SystemAuthorizationServiceInterface) *identityGovernanceService {
 	source := newAccountAccessSourceInterfaceMock(t)
 	source.EXPECT().Current(mock.Anything).Return(cfg).Maybe()
-	return newIdentityGovernanceService(port, source, transaction.NewNoOpTransactioner(), notifier, authorizer, nil)
+	return newIdentityGovernanceService(port, source, transaction.NewNoOpTransactioner(), notifier, authorizer, nil,
+		discardingBus(t))
 }
 
 // admittedFailure returns RecordFailure's error and requires an attempt that read cleanly to be
@@ -140,7 +142,8 @@ func (s *ServiceTestSuite) TestIdentityHoldAppliesAtEveryPlane() {
 
 	for _, plane := range []providers.AccessPlane{
 		providers.AccessPlaneAuthentication, providers.AccessPlaneDispatch, providers.AccessPlaneRecovery,
-		providers.AccessPlaneSession, providers.AccessPlaneIssuance, providers.AccessPlaneApplication,
+		providers.AccessPlaneVerification, providers.AccessPlaneSession, providers.AccessPlaneIssuance,
+		providers.AccessPlaneApplication,
 	} {
 		decision, err := s.svc.EvaluateAccess(s.ctx, entity.ID, plane, testMethod)
 		s.Require().Nil(err)
@@ -181,6 +184,25 @@ func (s *ServiceTestSuite) TestASuspensionMemberHoldsUnderAnyState() {
 	s.Require().Nil(err)
 	s.False(decision.Admitted)
 	s.Equal(providers.AccessRefusalReasonSuspended, decision.Reason)
+}
+
+// The owner's suspension holds at every plane, as the organization's does.
+func (s *ServiceTestSuite) TestAnOwnerSuspensionHoldsAtEveryPlane() {
+	for _, plane := range []providers.AccessPlane{
+		providers.AccessPlaneAuthentication, providers.AccessPlaneDispatch, providers.AccessPlaneRecovery,
+		providers.AccessPlaneSession, providers.AccessPlaneIssuance, providers.AccessPlaneApplication,
+	} {
+		s.Run(string(plane), func() {
+			s.SetupTest()
+			s.expectRead(s.ownerSuspendedEntity())
+			s.expectConfig(methodGranularityConfig())
+
+			decision, err := s.svc.EvaluateAccess(s.ctx, "e1", plane, testMethod)
+			s.Require().Nil(err)
+			s.False(decision.Admitted)
+			s.Equal(providers.AccessRefusalReasonSuspended, decision.Reason)
+		})
+	}
 }
 
 // A method lock refuses at the authentication plane as a lock.
@@ -777,6 +799,102 @@ func (s *ServiceTestSuite) suspendedEntity() GovernedEntity {
 	return entity
 }
 
+// ownerSuspendedEntity is an account its owner holds suspended, with no suspension by the organization.
+func (s *ServiceTestSuite) ownerSuspendedEntity() GovernedEntity {
+	entity := s.activeEntity()
+	entity.AccessState.OwnerSuspend = &OwnerSuspendState{SuspendedAt: s.at(-2 * time.Hour)}
+	return entity
+}
+
+// The owner's suspension is placed in its own member.
+func (s *ServiceTestSuite) TestAnOwnerSuspensionIsPlacedApart() {
+	s.expectRead(s.activeEntity())
+	s.port.On("SetOwnerSuspension", mock.Anything, "e1", s.now).Return(true, nil).Once()
+
+	s.Require().Nil(s.svc.Suspend(WithOwnerApplier(s.ctx), "e1", ""))
+	s.port.AssertNotCalled(s.T(), "SetSuspension", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// The owner's suspension is placed even while the organization's is in force, and an existing one is left
+// as it is.
+func (s *ServiceTestSuite) TestAnOwnerSuspensionIgnoresTheOrganizationsHold() {
+	s.expectRead(s.suspendedEntity())
+	s.port.On("SetOwnerSuspension", mock.Anything, "e1", s.now).Return(true, nil).Once()
+	s.Require().Nil(s.svc.Suspend(WithOwnerApplier(s.ctx), "e1", ""))
+
+	s.SetupTest()
+	s.expectRead(s.ownerSuspendedEntity())
+	s.Require().Nil(s.svc.Suspend(WithOwnerApplier(s.ctx), "e1", ""))
+	s.port.AssertNotCalled(s.T(), "SetOwnerSuspension", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// The organization's suspension is placed even while the owner's is in force.
+func (s *ServiceTestSuite) TestTheOrganizationsSuspensionIgnoresTheOwnersHold() {
+	s.expectRead(s.ownerSuspendedEntity())
+	s.port.On("SetSuspension", mock.Anything, "e1", s.now, "Security advisory").Return(true, nil).Once()
+
+	s.Require().Nil(s.svc.Suspend(s.ctx, "e1", "Security advisory"))
+}
+
+// Each party lifts only its own suspension, and the other party's stays.
+func (s *ServiceTestSuite) TestEachPartyLiftsOnlyItsOwnSuspension() {
+	both := s.suspendedEntity()
+	both.Category = providers.EntityCategoryAgent
+	both.AccessState.OwnerSuspend = &OwnerSuspendState{SuspendedAt: s.at(-2 * time.Hour)}
+
+	s.expectRead(both)
+	s.port.On("ClearOwnerSuspension", mock.Anything, "e1").Return(true, nil).Once()
+	s.Require().Nil(s.svc.Unsuspend(WithOwnerApplier(s.ctx), "e1"))
+	s.port.AssertNotCalled(s.T(), "ClearSuspension", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+
+	s.SetupTest()
+	s.expectRead(both)
+	s.port.On("ClearSuspension", mock.Anything, "e1", (*AccountHold)(nil), s.at(-time.Hour)).Return(true, nil).Once()
+	s.Require().Nil(s.svc.Unsuspend(s.ctx, "e1"))
+	s.port.AssertNotCalled(s.T(), "ClearOwnerSuspension", mock.Anything, mock.Anything)
+}
+
+// A party with no suspension of its own has nothing to lift, whatever the other party holds.
+func (s *ServiceTestSuite) TestLiftingAnotherPartysSuspensionDoesNotApply() {
+	s.expectRead(s.suspendedEntity())
+	s.requireServiceError(s.svc.Unsuspend(WithOwnerApplier(s.ctx), "e1"), ErrorNotApplicable)
+
+	s.SetupTest()
+	s.expectRead(s.ownerSuspendedEntity())
+	s.requireServiceError(s.svc.Unsuspend(s.ctx, "e1"), ErrorNotApplicable)
+
+	s.port.AssertNotCalled(s.T(), "ClearOwnerSuspension", mock.Anything, mock.Anything)
+	s.port.AssertNotCalled(s.T(), "ClearSuspension", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A lift that finds the owner's suspension already gone does not apply.
+func (s *ServiceTestSuite) TestAnOwnerLiftOfAGoneSuspensionDoesNotApply() {
+	s.expectRead(s.ownerSuspendedEntity())
+	s.port.On("ClearOwnerSuspension", mock.Anything, "e1").Return(false, nil).Once()
+
+	s.requireServiceError(s.svc.Unsuspend(WithOwnerApplier(s.ctx), "e1"), ErrorNotApplicable)
+}
+
+// A suspend that finds the owner's suspension placed by a concurrent one still succeeds.
+func (s *ServiceTestSuite) TestAnOwnerSuspensionPlacedConcurrentlyIsInPlace() {
+	s.expectRead(s.activeEntity())
+	s.port.On("SetOwnerSuspension", mock.Anything, "e1", s.now).Return(false, nil).Once()
+
+	s.Require().Nil(s.svc.Suspend(WithOwnerApplier(s.ctx), "e1", ""))
+}
+
+// A failed write of the owner's suspension, or of its release, is a server error.
+func (s *ServiceTestSuite) TestAnOwnerSuspensionWriteFailureIsAServerError() {
+	s.expectRead(s.activeEntity())
+	s.port.On("SetOwnerSuspension", mock.Anything, "e1", s.now).Return(false, errors.New("db down")).Once()
+	s.requireServiceError(s.svc.Suspend(WithOwnerApplier(s.ctx), "e1", ""), tidcommon.InternalServerError)
+
+	s.SetupTest()
+	s.expectRead(s.ownerSuspendedEntity())
+	s.port.On("ClearOwnerSuspension", mock.Anything, "e1").Return(false, errors.New("db down")).Once()
+	s.requireServiceError(s.svc.Unsuspend(WithOwnerApplier(s.ctx), "e1"), tidcommon.InternalServerError)
+}
+
 func (s *ServiceTestSuite) TestEitherSuspensionStoreAloneHolds() {
 	for name, mutate := range map[providers.AuthenticationMethod]func(*GovernedEntity){
 		"document only": func(e *GovernedEntity) { e.State = providers.EntityStateActive },
@@ -804,7 +922,8 @@ func (s *ServiceTestSuite) TestASuspensionRefusesAtEveryPlane() {
 
 	for _, plane := range []providers.AccessPlane{
 		providers.AccessPlaneAuthentication, providers.AccessPlaneDispatch, providers.AccessPlaneRecovery,
-		providers.AccessPlaneSession, providers.AccessPlaneIssuance, providers.AccessPlaneApplication,
+		providers.AccessPlaneVerification, providers.AccessPlaneSession, providers.AccessPlaneIssuance,
+		providers.AccessPlaneApplication,
 	} {
 		decision, err := s.svc.EvaluateAccess(s.ctx, entity.ID, plane, testMethod)
 		s.Require().Nil(err)
@@ -1772,11 +1891,14 @@ func (s *ServiceTestSuite) TestLifecycleSelfTargetRefusedBeforeTheAuthorizer() {
 	}
 }
 
-func (s *ServiceTestSuite) TestApplicationHasNoSystemAuthorizationVocabulary() {
-	authz := s.authorizer(false)
-	s.Require().Nil(newTestService(s.T(), nil, accountAccessValue{}, nil, authz).
-		authorize(callerContext("operator"), governedSubject(providers.EntityCategoryApp)))
-	authz.AssertNotCalled(s.T(), "IsActionAllowed", mock.Anything, mock.Anything, mock.Anything)
+// An application is governed in its own organization unit, as its update is.
+func (s *ServiceTestSuite) TestApplicationLifecycleNeedsApplicationUpdate() {
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+	authz.EXPECT().IsActionAllowed(mock.Anything, security.ActionUpdateApplication, &sysauthz.ActionContext{
+		ResourceType: security.ResourceTypeApplication, OUID: "ou-a", ResourceID: "e1",
+	}).Return(false, nil).Once()
+	s.requireServiceError(newTestService(s.T(), nil, accountAccessValue{}, nil, authz).
+		authorize(callerContext("operator"), governedSubject(providers.EntityCategoryApp)), tidcommon.ErrorUnauthorized)
 }
 
 func (s *ServiceTestSuite) TestEmbeddableGovernanceWithoutAuthorization() {
@@ -2063,9 +2185,27 @@ func (s *ServiceTestSuite) TestASuspensionIsPublishedForAudit() {
 	s.Require().Equal(event.PrincipalTypeUser, evt.Data[event.DataKey.SubjectType])
 	s.Require().Equal("operator", evt.Data[event.DataKey.ActorSub])
 	s.Require().Equal(true, evt.Data[event.DataKey.OperatorNoteRecorded])
+	s.Require().Equal("organization", evt.Data[event.DataKey.AppliedBy])
 	for key, value := range evt.Data {
 		s.Require().NotContains(fmt.Sprint(value), "Credential exposure", "field %s carries the note", key)
 	}
+}
+
+// The owner's suspension is published as the owner's, with no actor, since it runs with the runtime context.
+func (s *ServiceTestSuite) TestAnOwnerSuspensionIsPublishedAsTheOwners() {
+	port := newEntityStateProviderMock(s.T())
+	port.On("GetGovernedEntity", mock.Anything, "e1", true).
+		Return(new(governedSubject(providers.EntityCategoryAgent)), nil)
+	port.On("SetOwnerSuspension", mock.Anything, "e1", mock.Anything).Return(true, nil)
+	svc, published := auditedService(s.T(), port, authorizerAllowing(s.T(), true))
+
+	s.Require().Nil(svc.Suspend(WithOwnerApplier(security.WithRuntimeContext(context.Background())), "e1", ""))
+
+	s.Require().Len(*published, 1)
+	evt := (*published)[0]
+	s.Require().Equal(string(event.EventTypeIdentitySuspended), evt.Type)
+	s.Require().Equal("owner", evt.Data[event.DataKey.AppliedBy])
+	s.Require().NotContains(evt.Data, event.DataKey.ActorSub)
 }
 
 // A refused or inapplicable operation is recorded as a failure, with why, and writes nothing.
@@ -2330,6 +2470,53 @@ func (s *ServiceTestSuite) TestAFailureOnAHeldIdentityIsRefusedWithoutCounting()
 
 	s.Require().Nil(err)
 	s.Equal(providers.AccessDecision{Reason: providers.AccessRefusalReasonLocked}, decision)
+	s.port.AssertNotCalled(s.T(), "IncrementFailure",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A contact proof is not a sign-in: an automatic lock on any method gives way at the verification
+// plane, the account-wide lock included.
+func (s *ServiceTestSuite) TestAtTheVerificationPlaneALockGivesWay() {
+	entity := s.activeEntity()
+	putLockEntry(&entity.AccessState, testMethod, LockEntry{LockCount: 1, UnlockAt: s.at(5 * time.Minute)})
+	putLockEntry(&entity.AccessState, providers.AuthenticationMethodOTP,
+		LockEntry{LockCount: 1, UnlockAt: s.at(5 * time.Minute)})
+	putLockEntry(&entity.AccessState, AuthenticationMethodAccount,
+		LockEntry{LockCount: 1, UnlockAt: s.at(5 * time.Minute)})
+	s.expectRead(entity)
+	s.expectConfig(methodGranularityConfig())
+
+	for _, method := range []providers.AuthenticationMethod{testMethod, providers.AuthenticationMethodOTP} {
+		decision, err := s.svc.EvaluateAccess(s.ctx, entity.ID, providers.AccessPlaneVerification, method)
+		s.Require().Nil(err)
+		s.True(decision.Admitted, string(method))
+	}
+}
+
+func (s *ServiceTestSuite) TestAtTheVerificationPlaneASuspensionRefuses() {
+	entity := s.activeEntity()
+	entity.State = providers.EntityStateSuspended
+	s.expectRead(entity)
+	s.expectConfig(methodGranularityConfig())
+
+	decision, err := s.svc.EvaluateAccess(s.ctx, entity.ID, providers.AccessPlaneVerification,
+		providers.AuthenticationMethodOTP)
+
+	s.Require().Nil(err)
+	s.False(decision.Admitted)
+	s.Equal(providers.AccessRefusalReasonSuspended, decision.Reason)
+}
+
+// A wrong verification code counts nothing and reads nothing, so it can neither form nor reveal a lock.
+func (s *ServiceTestSuite) TestAWrongVerificationCodeIsNotCounted() {
+	entity := s.activeEntity()
+
+	for _, method := range []providers.AuthenticationMethod{providers.AuthenticationMethodOTP, testMethod} {
+		decision, err := s.svc.RecordFailure(s.ctx, entity.ID, providers.AccessPlaneVerification, method)
+		s.Require().Nil(err)
+		s.True(decision.Admitted, string(method))
+	}
+	s.port.AssertNotCalled(s.T(), "GetGovernedEntity", mock.Anything, mock.Anything, mock.Anything)
 	s.port.AssertNotCalled(s.T(), "IncrementFailure",
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
@@ -2599,7 +2786,7 @@ func (s *ServiceTestSuite) TestReadEntityAccessReportsCurrentStatus() {
 				source.EXPECT().Current(s.ctx).Return(cfg).Once()
 			}
 			svc := newIdentityGovernanceService(newEntityStateProviderMock(s.T()), source,
-				transaction.NewNoOpTransactioner(), nil, nil, nil)
+				transaction.NewNoOpTransactioner(), nil, nil, nil, discardingBus(s.T()))
 			svc.now = func() time.Time { return s.now }
 			stored := RuntimeAttributes{AccessState: AccessState{LastLoginAt: "2026-09-07T10:00:00Z"}}
 			if tc.unlockAt != "" {

@@ -379,7 +379,7 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.flowmgtservice.flow_ou_required_description",
-			DefaultValue: "A flow needs an organization unit. Give its ouId in the request",
+			DefaultValue: "A flow needs an organization unit. Give its ouId or projectId in the request",
 		},
 	}
 	// ErrorSharingPolicyNotFound is the error returned when a sharing policy is not found for the flow.
@@ -572,10 +572,124 @@ var (
 				"can only be created from a declarative resource file or an import",
 		},
 	}
+	// ErrorOUResolverAfterSession is returned when an authentication flow can reach an OU resolver node from a
+	// session node.
+	ErrorOUResolverAfterSession = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1044",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.ou_resolver_after_session",
+			DefaultValue: "Resolve OU can't run after a Save/Load Session node",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.flowmgtservice.ou_resolver_after_session_description",
+			DefaultValue: "Node '{{param(nodeID)}}' is reachable from Save/Load Session node " +
+				"'{{param(sessionNodeID)}}'. Place it between the sign-in steps and Save/Load Session, " +
+				"or before Check SSO Session",
+		},
+	}
+	// ErrorInvalidProject is returned when a flow names a project that does not exist.
+	ErrorInvalidProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1045",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.invalid_project",
+			DefaultValue: "Invalid project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.invalid_project_description",
+			DefaultValue: "No project exists with the given project ID",
+		},
+	}
+	// ErrorOUNotInProject is returned when a flow names an organization unit outside its project.
+	ErrorOUNotInProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1046",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.ou_not_in_project",
+			DefaultValue: "Organization unit not in project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.ou_not_in_project_description",
+			DefaultValue: "The organization unit must belong to the project",
+		},
+	}
+	// ErrorProjectRequired is returned when a flow is created without a project.
+	ErrorProjectRequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1047",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.project_required",
+			DefaultValue: "Project required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.project_required_description",
+			DefaultValue: "Set projectId to the project the flow belongs to",
+		},
+	}
+	// ErrorProvisioningGroupNotFound is returned when a provisioning step assigns a group that does not exist.
+	ErrorProvisioningGroupNotFound = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1049",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.provisioning_group_not_found",
+			DefaultValue: "Assigned group not found",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.flowmgtservice.provisioning_group_not_found_description",
+			DefaultValue: "Node '{{param(nodeID)}}' assigns groups that do not exist: {{param(groupIDs)}}. " +
+				"Remove them from assignGroup",
+		},
+	}
+	// ErrorProvisioningRoleNotFound is returned when a provisioning step assigns a role that does not exist.
+	ErrorProvisioningRoleNotFound = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1050",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.provisioning_role_not_found",
+			DefaultValue: "Assigned role not found",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.flowmgtservice.provisioning_role_not_found_description",
+			DefaultValue: "Node '{{param(nodeID)}}' assigns roles that do not exist: {{param(roleIDs)}}. " +
+				"Remove them from assignRole",
+		},
+	}
 )
 
 // Internal errors
 var (
 	errFlowNotFound    = errors.New("flow not found")
 	errVersionNotFound = errors.New("version not found")
+	// ErrorManagedFlow is the error returned when attempting to change a flow a control plane deployed.
+	// Only a deploy from the control plane changes, restores or removes it.
+	ErrorManagedFlow = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FLM-1048",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.flow_is_managed",
+			DefaultValue: "Cannot modify a flow deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.flow_is_managed_description",
+			DefaultValue: "The flow was deployed by the control plane and can only be changed there",
+		},
+	}
 )
+
+// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+var errNilEventBus = errors.New("the flow management service needs an event bus")
+
+// errFlowNotFoundNoop is returned by deleteFlow once it has removed what was left of the sharing of a flow
+// that does not exist. DeleteFlow turns it into a success, so it never reaches a caller.
+var errFlowNotFoundNoop = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: ErrorFlowNotFound.Code,
+}
+
+// errSharingPolicyNotFoundNoop is returned by deleteSharingPolicy when the flow holds no policy under the
+// requested id. DeleteSharingPolicy turns it into a success, so it never reaches a caller.
+var errSharingPolicyNotFoundNoop = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: ErrorSharingPolicyNotFound.Code,
+}

@@ -24,6 +24,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/cjs/index.cjs"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js",
+      "require": "./dist/cjs/*.cjs"
     }
   },
   "types": "./dist/index.d.ts",
@@ -56,9 +61,11 @@
     "@testing-library/react": "catalog:",
     "@testing-library/user-event": "catalog:",
     "@thunderid/components": "workspace:^",
+    "@thunderid/configure-organization-units": "workspace:^",
     "@thunderid/configure-user-types": "workspace:^",
     "@thunderid/contexts": "workspace:^",
     "@thunderid/eslint-plugin": "workspace:^",
+    "@thunderid/hooks": "workspace:^",
     "@thunderid/logger": "workspace:^",
     "@thunderid/prettier-config": "workspace:^",
     "@thunderid/test-utils": "workspace:^",
@@ -88,8 +95,10 @@
     "@wso2/oxygen-ui-icons-react": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@thunderid/components": "workspace:^",
+    "@thunderid/configure-organization-units": "workspace:^",
     "@thunderid/configure-user-types": "workspace:^",
     "@thunderid/contexts": "workspace:^",
+    "@thunderid/hooks": "workspace:^",
     "@thunderid/logger": "workspace:^",
     "@thunderid/utils": "workspace:^",
     "react": "catalog:",

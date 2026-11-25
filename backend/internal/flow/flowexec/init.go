@@ -6,6 +6,8 @@ package flowexec
 import (
 	"net/http"
 
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
 	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
 	"github.com/thunder-id/thunderid/internal/flow/graphbuilder"
@@ -17,10 +19,14 @@ import (
 )
 
 // Initialize creates and configures the flow execution service components.
+//
+// mcpServer is optional. Given one, the onboard_agents and onboard_users MCP tools are registered with it.
 func Initialize(
 	mux *http.ServeMux,
+	mcpServer *mcp.Server,
 	flowProvider providers.FlowProvider,
 	actorProvider providers.ActorProvider,
+	ouProvider providers.OrganizationUnitProvider,
 	executorRegistry executor.ExecutorRegistryInterface,
 	interceptorRegistry interceptor.InterceptorRegistryInterface,
 	observabilitySvc providers.ObservabilityProvider,
@@ -30,10 +36,12 @@ func Initialize(
 	jwtService jwt.JWTServiceInterface,
 	storeProvider providers.RuntimeStoreProvider,
 	transactioner providers.Transactioner,
-	serverConfigSvc serverConfigProvider,
+	serverConfigSvc flowconfig.ServerConfigReader,
 	ssoTransport session.HandleTransportInterface,
 	governance providers.IdentityGovernanceProvider,
 	variableValuesProvider variableValueProvider,
+	flowVisibility flowVisibilityProvider,
+	permissionProvider providers.PermissionProvider,
 	cfg flowconfig.Config,
 ) (FlowExecServiceInterface, error) {
 	flowStore := newFlowStore(storeProvider)
@@ -45,11 +53,16 @@ func Initialize(
 	sessionTimeouts := session.NewTimeouts(cfg.Session.IdleTimeoutSeconds, cfg.Session.AbsoluteTimeoutSeconds,
 		cfg.Session.ActivityRefreshIntervalSeconds)
 	flowExecService := newFlowExecService(flowProvider, flowStore, flowEngine,
-		actorProvider, observabilitySvc, transactioner, cryptoSvc, attestationVerifier,
-		graphBuilder, jwtService, serverConfigSvc, governance, cfg, sessionTimeouts.Absolute)
+		actorProvider, ouProvider, observabilitySvc, transactioner, cryptoSvc, attestationVerifier,
+		graphBuilder, jwtService, serverConfigSvc, governance, flowVisibility, permissionProvider, cfg,
+		sessionTimeouts.Absolute)
 
 	handler := newFlowExecutionHandler(flowExecService, ssoTransport, sessionTimeouts.Absolute)
 	registerRoutes(mux, handler)
+	if mcpServer != nil {
+		registerMCPTools(mcpServer, &flowTools{
+			service: flowExecService, flows: flowProvider, serverConfig: serverConfigSvc})
+	}
 
 	return flowExecService, nil
 }

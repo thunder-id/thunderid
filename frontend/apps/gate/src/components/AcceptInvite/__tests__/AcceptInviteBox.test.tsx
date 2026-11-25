@@ -203,7 +203,7 @@ describe('AcceptInviteBox', () => {
       isValidatingToken: true,
     });
     render(<AcceptInviteBox />);
-    expect(screen.getByText(/Validating your invite link/)).toBeInTheDocument();
+    expect(screen.getByText(/Checking your link/)).toBeInTheDocument();
   });
 
   it('shows invalid token error', () => {
@@ -211,8 +211,8 @@ describe('AcceptInviteBox', () => {
       isTokenInvalid: true,
     });
     render(<AcceptInviteBox />);
-    expect(screen.getByText(/Unable to verify invite/)).toBeInTheDocument();
-    expect(screen.getByText(/This invite link is invalid or has expired/)).toBeInTheDocument();
+    expect(screen.getByText(/This link can't be used/)).toBeInTheDocument();
+    expect(screen.getByText(/It is invalid or has expired/)).toBeInTheDocument();
   });
 
   it('shows loading spinner when loading and no components', () => {

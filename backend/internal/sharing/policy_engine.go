@@ -652,6 +652,28 @@ func orderByDependency(lineages []Lineage) []Lineage {
 	return out
 }
 
+// childUnitShareRequest returns the request adding childOUID to the owner's policy, or one creating a policy naming it
+// when the owner has none (create). An owner policy reaching units as a whole, which left the child out, withholds it.
+func childUnitShareRequest(owner *Policy, childOUID string) (PolicyRequest, bool, *tidcommon.ServiceError) {
+	unit := ChildUnitRequest{OUID: childOUID, Reach: ReachUnit}
+	if owner == nil {
+		return PolicyRequest{ChildUnits: &ChildUnitsRequest{
+			Mode: ChildUnitsSelected, Units: []ChildUnitRequest{unit},
+		}}, true, nil
+	}
+	if owner.AllUnits != nil || (owner.ChildUnits != nil && owner.ChildUnits.Mode == ChildUnitsAll) {
+		return PolicyRequest{}, false, &ErrorChildUnitWithheld
+	}
+	req := requestFromPolicy(*owner)
+	if req.ChildUnits == nil {
+		req.ChildUnits = &ChildUnitsRequest{Mode: ChildUnitsSelected}
+	}
+	if !slices.ContainsFunc(req.ChildUnits.Units, func(u ChildUnitRequest) bool { return u.OUID == childOUID }) {
+		req.ChildUnits.Units = append(req.ChildUnits.Units, unit)
+	}
+	return req, false, nil
+}
+
 // requestFromPolicy rebuilds the request that recreates a policy, for export and replay. The
 // resolved rules are exported rather than the requested ones, so replaying reaches the same
 // result and the export is a fixed point. The id travels with it, because a declared policy owns

@@ -495,8 +495,8 @@ func (ts *LockNotificationTestSuite) TestAnUnreachableMailServerDoesNotChangeThe
 
 // Suspend tells the holder an administrator suspended the account.
 func (ts *LockNotificationTestSuite) TestSuspendEmailsTheHolder() {
-	_, suspend := copyShippedFlowWithSender(ts.T(), suspendFlowHandle, administrationFlowType, "notify_holder",
-		ts.senderID, nil)
+	_, suspend := copyShippedFlowWithSenders(ts.T(), suspendFlowHandle, administrationFlowType,
+		map[string]string{"notify_holder": ts.senderID}, nil)
 	userID, _, address, _ := ts.newUser("suspended")
 	runAdministrationFlow(ts.T(), suspend, userID)
 
@@ -508,8 +508,8 @@ func (ts *LockNotificationTestSuite) TestSuspendEmailsTheHolder() {
 
 // Unsuspend tells the holder the suspension is lifted and the account is still locked.
 func (ts *LockNotificationTestSuite) TestUnsuspendEmailsTheHolder() {
-	_, unsuspend := copyShippedFlowWithSender(ts.T(), unsuspendFlowHandle, administrationFlowType,
-		"notify_holder", ts.senderID, nil)
+	_, unsuspend := copyShippedFlowWithSenders(ts.T(), unsuspendFlowHandle, administrationFlowType,
+		map[string]string{"notify_holder": ts.senderID}, nil)
 	userID, _, address, _ := ts.newUser("unsuspended")
 	runAdministrationFlow(ts.T(), suspendFlowHandle, userID)
 	ts.smtp.ClearEmails()
@@ -526,8 +526,8 @@ func (ts *LockNotificationTestSuite) TestUnlockEmailsTheHolder() {
 	ts.useDefaultSender(ts.senderID)
 	ts.setAccountAccess(fmt.Sprintf(`{"user":{"default":{"lockDurationsSeconds":[%d]}}}`, notifiedRungSeconds))
 
-	_, unlock := copyShippedFlowWithSender(ts.T(), unlockFlowHandle, administrationFlowType, "notify_holder",
-		ts.senderID, nil)
+	_, unlock := copyShippedFlowWithSenders(ts.T(), unlockFlowHandle, administrationFlowType,
+		map[string]string{"notify_holder": ts.senderID}, nil)
 	userID, username, address, _ := ts.newUser("unlocked")
 	failAuthentication(ts.T(), "username", username, lockThreshold)
 	ts.Require().Equal("LOCKED", readStatus(ts.T(), userID).Value)

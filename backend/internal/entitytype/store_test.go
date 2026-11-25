@@ -8,6 +8,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/lib/pq"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -298,4 +299,61 @@ func loadRuntimeForScope() {
 	_ = config.InitializeServerRuntime("", &config.Config{
 		Server: engineconfig.ServerConfig{Identifier: "test-node"},
 	})
+}
+
+func (suite *StoreTestSuite) TestWriteAgentTypeOUIndexViolationReportsAgentTypeExistsInOU() {
+	violations := map[string]error{
+		"postgres": &pq.Error{Code: "23505", Constraint: agentTypeOUIndexName},
+		"sqlite":   errors.New("constraint failed: UNIQUE constraint failed: " + agentTypeOUIndexColumns + " (2067)"),
+	}
+	// The query arguments follow the context and the query: nine for a create, eight for an update.
+	writes := map[string]struct {
+		argCount int
+		write    func() error
+	}{
+		"create": {argCount: 9, write: func() error {
+			return suite.store.CreateEntityType(context.Background(),
+				EntityType{ID: "schema-1", Category: TypeCategoryAgent, Handle: "tools", OUID: "ou-1"})
+		}},
+		"update": {argCount: 8, write: func() error {
+			return suite.store.UpdateEntityTypeByID(context.Background(), TypeCategoryAgent, "schema-1",
+				EntityType{ID: "schema-1", Category: TypeCategoryAgent, Handle: "tools", OUID: "ou-1"})
+		}},
+	}
+
+	for writeName, w := range writes {
+		for dbName, violation := range violations {
+			suite.Run(writeName+" on "+dbName, func() {
+				suite.SetupTest()
+				suite.mockProvider.On("GetConfigDBClient").Return(suite.mockClient, nil).Once()
+				suite.mockClient.On("QueryContext", anyArgs(w.argCount+2)...).Return(nil, violation).Once()
+
+				err := w.write()
+
+				suite.ErrorIs(err, errAgentTypeExistsInOU)
+			})
+		}
+	}
+}
+
+func (suite *StoreTestSuite) TestWriteOtherUniqueViolationIsNotReportedAsAgentTypeExistsInOU() {
+	suite.mockProvider.On("GetConfigDBClient").Return(suite.mockClient, nil).Once()
+	suite.mockClient.On("QueryContext", anyArgs(11)...).
+		Return(nil, errors.New("UNIQUE constraint failed: ENTITY_TYPES.HANDLE, ENTITY_TYPES.CATEGORY, "+
+			"ENTITY_TYPES.DEPLOYMENT_ID (2067)")).Once()
+
+	err := suite.store.CreateEntityType(context.Background(),
+		EntityType{ID: "schema-1", Category: TypeCategoryAgent, Handle: "tools", OUID: "ou-1"})
+
+	suite.Error(err)
+	suite.NotErrorIs(err, errAgentTypeExistsInOU)
+}
+
+// anyArgs returns n mock.Anything matchers, for a variadic call whose argument values do not matter.
+func anyArgs(n int) []interface{} {
+	args := make([]interface{}, n)
+	for i := range args {
+		args[i] = mock.Anything
+	}
+	return args
 }

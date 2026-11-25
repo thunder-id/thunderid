@@ -31,6 +31,10 @@ interface RecoveryFlowSectionProps {
    * Singular noun used to refer to the entity in user-visible copy (default: 'application').
    */
   entityLabel?: string;
+  /**
+   * Whether the application can't be edited here
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -49,6 +53,7 @@ export default function RecoveryFlowSection({
   editedApp,
   onFieldChange,
   entityLabel = 'application',
+  readOnly = false,
 }: RecoveryFlowSectionProps) {
   const routes = useApplicationRoutes();
   const {t} = useTranslation();
@@ -66,7 +71,7 @@ export default function RecoveryFlowSection({
         {entity: entityLabel},
       )}
       enabled={editedApp.isRecoveryFlowEnabled ?? application.isRecoveryFlowEnabled ?? false}
-      onToggle={application.isReadOnly ? undefined : (enabled) => onFieldChange('isRecoveryFlowEnabled', enabled)}
+      onToggle={readOnly ? undefined : (enabled) => onFieldChange('isRecoveryFlowEnabled', enabled)}
     >
       {selectedFlowId && (
         <Alert severity="info" sx={{mb: 2}}>
@@ -94,7 +99,7 @@ export default function RecoveryFlowSection({
         value={recoveryFlowOptions.find((flow) => flow.id === selectedFlowId) ?? null}
         onChange={(_event, newValue) => onFieldChange('recoveryFlowId', newValue?.id ?? '')}
         loading={loadingRecoveryFlows}
-        disabled={application.isReadOnly}
+        disabled={readOnly}
         renderInput={(params) => (
           <TextField
             {...params}

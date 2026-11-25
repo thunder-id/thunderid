@@ -440,7 +440,8 @@ func (suite *RoleStoreTestSuite) TestCreateRole() {
 			},
 			setupMocks: func() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRole, "role1", "ou1", "Test Role",
+				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRole, "role1", "ou1", nil,
+					"Test Role",
 					"Test Description", testDeploymentID).Return(int64(1), nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRolePermission, "role1", "rs1",
 					"perm1", testDeploymentID).Return(int64(1), nil)
@@ -466,7 +467,8 @@ func (suite *RoleStoreTestSuite) TestCreateRole() {
 			},
 			setupMocks: func() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRole, "role1", "ou1", "Test Role",
+				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRole, "role1", "ou1", nil,
+					"Test Role",
 					"Test Description", testDeploymentID).Return(int64(1), nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRolePermission, "role1", "rs1",
 					"perm1", testDeploymentID).Return(int64(1), nil)
@@ -490,7 +492,8 @@ func (suite *RoleStoreTestSuite) TestCreateRole() {
 			setupMocks: func() {
 				execError := errors.New("insert failed")
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRole, "role1", "ou1", "Test Role",
+				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRole, "role1", "ou1", nil,
+					"Test Role",
 					"Test Description", testDeploymentID).Return(int64(0), execError)
 			},
 			shouldErr: true,
@@ -514,7 +517,8 @@ func (suite *RoleStoreTestSuite) TestCreateRole() {
 			setupMocks: func() {
 				permError := errors.New("permission insert failed")
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRole, "role1", "ou1", "Test Role",
+				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRole, "role1", "ou1", nil,
+					"Test Role",
 					"Test Description", testDeploymentID).Return(int64(1), nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRolePermission, "role1", "rs1",
 					"perm1", testDeploymentID).Return(int64(0), permError)
@@ -538,7 +542,8 @@ func (suite *RoleStoreTestSuite) TestCreateRole() {
 			setupMocks: func() {
 				assignError := errors.New("assignment insert failed")
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRole, "role1", "ou1", "Test Role",
+				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRole, "role1", "ou1", nil,
+					"Test Role",
 					"Test Description", testDeploymentID).Return(int64(1), nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRoleAssignment, "role1",
 					"ou1", assigneeTypeEntity, "user1", "", testDeploymentID).
@@ -1010,7 +1015,7 @@ func (suite *RoleStoreTestSuite) TestUpdateRole() {
 			},
 			setupMocks: func() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateRole, "ou1", "Updated Role",
+				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateRole, "ou1", nil, "Updated Role",
 					"Updated Description", "role1", testDeploymentID).
 					Return(int64(1), nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryDeleteRolePermissions, "role1",
@@ -1033,7 +1038,7 @@ func (suite *RoleStoreTestSuite) TestUpdateRole() {
 			},
 			setupMocks: func() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateRole, "ou1", "Updated Role",
+				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateRole, "ou1", nil, "Updated Role",
 					"Updated Description", "nonexistent", testDeploymentID).
 					Return(int64(0), nil)
 			},
@@ -1054,7 +1059,7 @@ func (suite *RoleStoreTestSuite) TestUpdateRole() {
 			},
 			setupMocks: func() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateRole, "ou1", "Updated Role",
+				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateRole, "ou1", nil, "Updated Role",
 					"Updated Description", "role1", testDeploymentID).
 					Return(int64(1), nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryDeleteRolePermissions, "role1",
@@ -1081,7 +1086,7 @@ func (suite *RoleStoreTestSuite) TestUpdateRole() {
 			setupMocks: func() {
 				deleteError := errors.New("delete permissions failed")
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateRole, "ou1", "Updated Role",
+				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateRole, "ou1", nil, "Updated Role",
 					"Updated Description", "role1", testDeploymentID).
 					Return(int64(1), nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryDeleteRolePermissions, "role1",
@@ -1105,7 +1110,7 @@ func (suite *RoleStoreTestSuite) TestUpdateRole() {
 			setupMocks: func() {
 				addError := errors.New("add permissions failed")
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
-				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateRole, "ou1", "Updated Role",
+				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateRole, "ou1", nil, "Updated Role",
 					"Updated Description", "role1", testDeploymentID).Return(int64(1), nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryDeleteRolePermissions, "role1",
 					testDeploymentID).Return(int64(1), nil)
@@ -2000,6 +2005,31 @@ func (suite *RoleStoreTestSuite) TestGetRoleAssignmentsCount_DBClientError() {
 	suite.Equal(0, count)
 }
 
+// --- GetDirectEntityRoleIDs ---
+
+func (suite *RoleStoreTestSuite) TestGetDirectEntityRoleIDs() {
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetDirectEntityRoleIDs, testUserID1, "ou-1",
+		testDeploymentID).Return([]map[string]interface{}{{"role_id": "role-a"}}, nil).Once()
+
+	roleIDs, err := suite.store.GetDirectEntityRoleIDs(context.Background(), testUserID1, "ou-1")
+
+	suite.NoError(err)
+	suite.Equal([]string{"role-a"}, roleIDs)
+	suite.Contains(queryGetDirectEntityRoleIDs.Query, "SHARING_POLICY_ID = ''")
+}
+
+func (suite *RoleStoreTestSuite) TestGetDirectEntityRoleIDs_QueryError() {
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetDirectEntityRoleIDs, testUserID1, "ou-1",
+		testDeploymentID).Return(nil, errors.New("db error")).Once()
+
+	roleIDs, err := suite.store.GetDirectEntityRoleIDs(context.Background(), testUserID1, "ou-1")
+
+	suite.Error(err)
+	suite.Nil(roleIDs)
+}
+
 // --- GetEntityRoleIDs ---
 
 func (suite *RoleStoreTestSuite) TestGetEntityRoleIDs_Success() {
@@ -2217,6 +2247,51 @@ func (suite *RoleStoreTestSuite) TestAssignmentReadsInOU() {
 
 		suite.Require().NoError(err)
 		suite.Equal(4, count)
+	})
+}
+
+func (suite *RoleStoreTestSuite) TestDeleteAssignmentsByRoleID() {
+	rows := []map[string]interface{}{
+		{"assignee_id": "user1", "assignee_type": "entity", "assignment_ou_id": "ou1", "sharing_policy_id": ""},
+		{"assignee_id": "group1", "assignee_type": "group", "assignment_ou_id": "ou1", "sharing_policy_id": ""},
+	}
+	suite.Run("returns the assignments the delete removed", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryDeleteAllRoleAssignments,
+			"role1", testDeploymentID).Return(rows, nil).Once()
+
+		removed, err := suite.store.DeleteAssignmentsByRoleID(context.Background(), "role1")
+
+		suite.Require().NoError(err)
+		suite.Equal([]RoleAssignment{
+			{ID: "user1", Type: assigneeTypeEntity, OUID: "ou1"},
+			{ID: "group1", Type: AssigneeTypeGroup, OUID: "ou1"},
+		}, removed)
+	})
+	suite.Run("delete error is propagated", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryDeleteAllRoleAssignments,
+			"role1", testDeploymentID).Return(nil, errors.New("db error")).Once()
+
+		_, err := suite.store.DeleteAssignmentsByRoleID(context.Background(), "role1")
+
+		suite.ErrorContains(err, "failed to delete assignments")
+	})
+	suite.Run("malformed row is reported", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryDeleteAllRoleAssignments,
+			"role1", testDeploymentID).Return([]map[string]interface{}{{"assignee_id": 1}}, nil).Once()
+
+		_, err := suite.store.DeleteAssignmentsByRoleID(context.Background(), "role1")
+
+		suite.Error(err)
+	})
+	suite.Run("db client error is propagated", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("no client")).Once()
+
+		_, err := suite.store.DeleteAssignmentsByRoleID(context.Background(), "role1")
+
+		suite.Error(err)
 	})
 }
 
@@ -2751,4 +2826,223 @@ func (suite *RoleStoreTestSuite) TestDirectAndMandatedQueriesDiffer() {
 	suite.Contains(queryGetMandatedAssignmentsByRole.Query, "SHARING_POLICY_ID <> ''")
 	suite.Contains(queryGetMandatedAssignmentsByRoleInOU.Query, "SHARING_POLICY_ID <> ''")
 	suite.Contains(queryGetMandatedRoleUnits.Query, "SHARING_POLICY_ID <> ''")
+}
+
+func (suite *RoleStoreTestSuite) TestGetRolesByPermission() {
+	suite.Run("returns the roles granting the permission", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetRolesByPermission, "rs1", "orders:read",
+			testDeploymentID).Return([]map[string]interface{}{
+			{"id": "role1", "name": "Order Viewer", "description": "Reads orders", "ou_id": "ou1"},
+		}, nil).Once()
+
+		roles, err := suite.store.GetRolesByPermission(context.Background(), "rs1", "orders:read")
+
+		suite.NoError(err)
+		suite.Equal([]Role{{ID: "role1", Name: "Order Viewer", Description: "Reads orders", OUID: "ou1"}}, roles)
+	})
+
+	suite.Run("query error is propagated", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetRolesByPermission, "rs1", "orders:read",
+			testDeploymentID).Return(nil, errors.New("db down")).Once()
+
+		_, err := suite.store.GetRolesByPermission(context.Background(), "rs1", "orders:read")
+
+		suite.ErrorContains(err, "db down")
+	})
+}
+func (suite *RoleStoreTestSuite) TestGetRoleListByProject() {
+	ctx := context.Background()
+
+	suite.Run("Project", func() {
+		suite.SetupTest()
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetRoleListByProject, "proj1", 10, 5,
+			testDeploymentID).Return([]map[string]interface{}{
+			{"id": "role1", "name": "Admin", "description": "", "ou_id": "ou1", "project_id": "proj1"},
+		}, nil)
+
+		roles, err := suite.store.GetRoleListByProject(ctx, "proj1", "", 10, 5)
+
+		suite.NoError(err)
+		suite.Require().Len(roles, 1)
+		suite.Equal("proj1", roles[0].ProjectID)
+	})
+
+	suite.Run("ProjectAndOU", func() {
+		suite.SetupTest()
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetRoleListByProjectAndOUID, "proj1", "ou1", 10, 5,
+			testDeploymentID).Return([]map[string]interface{}{
+			{"id": "role1", "name": "Admin", "description": "", "ou_id": "ou1", "project_id": "proj1"},
+		}, nil)
+
+		roles, err := suite.store.GetRoleListByProject(ctx, "proj1", "ou1", 10, 5)
+
+		suite.NoError(err)
+		suite.Require().Len(roles, 1)
+		suite.Equal("ou1", roles[0].OUID)
+	})
+
+	suite.Run("QueryError", func() {
+		suite.SetupTest()
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetRoleListByProject, "proj1", 10, 5,
+			testDeploymentID).Return(nil, errors.New("query error"))
+
+		roles, err := suite.store.GetRoleListByProject(ctx, "proj1", "", 10, 5)
+
+		suite.Error(err)
+		suite.Nil(roles)
+	})
+
+	suite.Run("InvalidRow", func() {
+		suite.SetupTest()
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryGetRoleListByProject, "proj1", 10, 5,
+			testDeploymentID).Return([]map[string]interface{}{{"id": 123}}, nil)
+
+		_, err := suite.store.GetRoleListByProject(ctx, "proj1", "", 10, 5)
+
+		suite.Error(err)
+	})
+}
+
+func (suite *RoleStoreTestSuite) TestGetRoleListCountByProject() {
+	ctx := context.Background()
+
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetRoleListCountByProject, "proj1", testDeploymentID).
+		Return([]map[string]interface{}{{"total": int64(3)}}, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetRoleListCountByProjectAndOUID, "proj1", "ou1",
+		testDeploymentID).Return([]map[string]interface{}{{"total": int64(1)}}, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetRoleListCountByProject, "broken", testDeploymentID).
+		Return(nil, errors.New("query error"))
+
+	count, err := suite.store.GetRoleListCountByProject(ctx, "proj1", "")
+	suite.NoError(err)
+	suite.Equal(3, count)
+
+	count, err = suite.store.GetRoleListCountByProject(ctx, "proj1", "ou1")
+	suite.NoError(err)
+	suite.Equal(1, count)
+
+	_, err = suite.store.GetRoleListCountByProject(ctx, "broken", "")
+	suite.Error(err)
+}
+
+func (suite *RoleStoreTestSuite) TestCreateAndUpdateRoleStoreTheProject() {
+	ctx := context.Background()
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateRole, "role1", "ou1", "proj1", "Shop Admin",
+		"", testDeploymentID).Return(int64(1), nil)
+	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateRole, "ou1", "proj2", "Shop Admin", "",
+		"role1", testDeploymentID).Return(int64(1), nil)
+	suite.mockDBClient.On("ExecuteContext", mock.Anything, queryDeleteRolePermissions, "role1", testDeploymentID).
+		Return(int64(0), nil).Maybe()
+
+	suite.NoError(suite.store.CreateRole(ctx, "role1", RoleCreationDetail{
+		Name: "Shop Admin", OUID: "ou1", ProjectID: "proj1",
+	}))
+	suite.NoError(suite.store.UpdateRole(ctx, "role1", RoleUpdateDetail{
+		Name: "Shop Admin", OUID: "ou1", ProjectID: "proj2",
+	}))
+}
+
+func (suite *RoleStoreTestSuite) TestBuildGetDirectAssignmentsQuery() {
+	query, args, err := buildGetDirectAssignmentsQuery("role1", "ou1", []string{"a", "b"}, testDeploymentID)
+
+	suite.Require().NoError(err)
+	suite.Equal("RLQ-ROLE_MGT-48", query.ID)
+	suite.Contains(query.PostgresQuery, "WHERE ROLE_ID = $1 AND ASSIGNMENT_OU_ID = $2 AND SHARING_POLICY_ID = '' "+
+		"AND ASSIGNEE_ID IN ($3,$4) AND DEPLOYMENT_ID = $5")
+	suite.Contains(query.SQLiteQuery, "WHERE ROLE_ID = ? AND ASSIGNMENT_OU_ID = ? AND SHARING_POLICY_ID = '' "+
+		"AND ASSIGNEE_ID IN (?,?) AND DEPLOYMENT_ID = ?")
+	suite.Equal([]interface{}{"role1", "ou1", "a", "b", testDeploymentID}, args)
+
+	_, _, err = buildGetDirectAssignmentsQuery("role1", "ou1", nil, testDeploymentID)
+	suite.Error(err)
+}
+
+func (suite *RoleStoreTestSuite) TestGetDirectAssignments() {
+	suite.Run("returns the named assignees' direct assignments", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, mock.MatchedBy(func(q dbmodel.DBQuery) bool {
+			return q.ID == "RLQ-ROLE_MGT-48"
+		}), "role1", "ou1", "user1", "user2", testDeploymentID).
+			Return([]map[string]interface{}{{"assignee_id": "user1", "assignee_type": "entity",
+				"assignment_ou_id": "ou1", "sharing_policy_id": ""}}, nil).Once()
+
+		assignments, err := suite.store.GetDirectAssignments(context.Background(), "role1", "ou1",
+			[]string{"user1", "user2"})
+
+		suite.NoError(err)
+		suite.Equal([]RoleAssignment{{ID: "user1", Type: assigneeTypeEntity, OUID: "ou1"}}, assignments)
+	})
+	suite.Run("no assignees reads nothing", func() {
+		assignments, err := suite.store.GetDirectAssignments(context.Background(), "role1", "ou1", nil)
+
+		suite.NoError(err)
+		suite.Empty(assignments)
+	})
+	suite.Run("query error is propagated", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, mock.Anything, "role1", "ou1", "user3",
+			testDeploymentID).Return(nil, errors.New("db error")).Once()
+
+		_, err := suite.store.GetDirectAssignments(context.Background(), "role1", "ou1", []string{"user3"})
+
+		suite.Error(err)
+	})
+	suite.Run("client error is propagated", func() {
+		suite.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("client error")).Once()
+
+		_, err := suite.store.GetDirectAssignments(context.Background(), "role1", "ou1", []string{"user5"})
+
+		suite.Error(err)
+	})
+}
+
+func (suite *RoleStoreTestSuite) TestGetHeldPermissionsByResourceServer_UsesOneScopedQuery() {
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+	suite.mockDBClient.On("QueryContext", mock.Anything,
+		mock.MatchedBy(func(query dbmodel.DBQuery) bool {
+			suite.Contains(query.Query, "SELECT DISTINCT rp.PERMISSION")
+			suite.Contains(query.Query, "ra.DEPLOYMENT_ID = $1")
+			suite.Contains(query.Query, "rp.DEPLOYMENT_ID = $1")
+			suite.Contains(query.Query, "ra.ASSIGNEE_ID = $2 AND ra.ASSIGNMENT_OU_ID = $3")
+			suite.Contains(query.Query, "ra.ASSIGNEE_ID IN ($4) AND ra.ASSIGNMENT_OU_ID = $5")
+			suite.Contains(query.Query, "rp.ROLE_ID IN ($6)")
+			suite.Contains(query.Query, "rp.RESOURCE_SERVER_ID = $7")
+			suite.NotContains(query.Query, "rp.PERMISSION IN")
+			suite.NotContains(query.SQLiteQuery, "rp.PERMISSION IN")
+			return true
+		}), testDeploymentID, "user-1", "ou-1", "group-1", "ou-1", "mapped-role", "booking-api").
+		Return([]map[string]interface{}{
+			{"permission": "reservations:create"}, {"permission": "reservations:view"},
+		}, nil).Once()
+	permissions, err := suite.store.GetHeldPermissionsByResourceServer(
+		context.Background(), "user-1", []string{"group-1"}, []string{"mapped-role"}, "ou-1", "booking-api")
+	suite.NoError(err)
+	suite.Equal([]string{"reservations:create", "reservations:view"}, permissions)
+	suite.mockDBClient.AssertNumberOfCalls(suite.T(), "QueryContext", 1)
+}
+
+func (suite *RoleStoreTestSuite) TestGetHeldPermissionsByResourceServer_EmptySubjectSkipsQuery() {
+	permissions, err := suite.store.GetHeldPermissionsByResourceServer(
+		context.Background(), "", nil, nil, "", "booking-api")
+	suite.NoError(err)
+	suite.Empty(permissions)
+	suite.mockDBClient.AssertNotCalled(suite.T(), "QueryContext")
+}
+
+func (suite *RoleStoreTestSuite) TestGetHeldPermissionsByResourceServer_QueryError() {
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, mock.Anything, testDeploymentID, "user-1", "booking-api").
+		Return(nil, errors.New("read failed")).Once()
+	permissions, err := suite.store.GetHeldPermissionsByResourceServer(
+		context.Background(), "user-1", nil, nil, "", "booking-api")
+	suite.ErrorContains(err, "read failed")
+	suite.Nil(permissions)
 }

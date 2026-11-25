@@ -1,0 +1,130 @@
+---
+displayed_sidebar: null
+title: <FlowVariablesForm />
+docType: reference
+description: Form that lets a delegated admin override the variables a flow shares with their organization unit, with a presentational base component for custom UI.
+---
+
+# `<FlowVariablesForm />`
+
+The `FlowVariablesForm` component lets a delegated admin override the variables a flow declares for their organization unit. It loads the variables the flow shares with the unit and the values the unit has set, shows them as a form, and saves the values that differ from their defaults.
+
+For a shared flow, a variable is offered to a unit only when a sharing policy names it. A variable the unit may not set is shown as set by its owner. This form saves the overrides of a unit the flow was shared with, not the owner's defaults. Change the defaults in the flow's `VARIABLES` node.
+
+## Usage
+
+```jsx title="src/FlowSettings.jsx" showLineNumbers
+import { FlowVariablesForm } from '@thunderid/react'
+
+function FlowSettings({ flowId, ouId }) {
+  return <FlowVariablesForm flowId={flowId} ouId={ouId} onSaved={() => alert('Saved')} />
+}
+```
+
+To let the admin pick the flow first, pair it with [`<SharedFlowList />`](../shared-flow-list).
+
+:::note
+The component must be rendered within `ThunderIDProvider`. The access token of the signed-in user needs the permissions the server requires to read and update the flow's variables.
+:::
+
+## Props
+
+`FlowVariablesForm` accepts the props below and every [`BaseFlowVariables`](#baseflowvariables) prop except `connections`, `error`, `initialValues`, `isSubmitting`, `onSubmit`, `overlay`, and `variables`, which it supplies from [`useFlowVariables`](../../hooks/use-flow-variables).
+
+| Prop | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `flowId` | `string` | Yes | Identifier of the flow whose variables are configured. |
+| `ouId` | `string` | Yes | The organization unit the overrides belong to. |
+| `onSaved` | `(values: FlowVariableValues) => void` | No | Called with the saved overrides. |
+
+Only the values that differ from their defaults are saved. A variable left at its default keeps following the default, even when the owner changes it later.
+
+## BaseFlowVariables
+
+`BaseFlowVariables` is the presentational form. It holds no data of its own: pass the variables and handle the submission. Use it to preview a flow's variables or to build a form from data you load yourself.
+
+```jsx title="src/Preview.jsx" showLineNumbers
+import { BaseFlowVariables } from '@thunderid/react'
+
+function Preview({ variables }) {
+  return <BaseFlowVariables variables={variables} />
+}
+```
+
+Without `overlay`, every variable is editable. Without `onSubmit`, the form has no save button.
+
+### Props
+
+| Prop | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `variables` | `FlowVariableDefinition[]` | Yes | The variables to render, as the flow declares them. |
+| `connections` | `Pick<ConnectionInstance, 'categories' \| 'id' \| 'name' \| 'type'>[]` | No | The connections a `CONNECTION_SELECT` variable can take. Defaults to none. |
+| `overlay` | `ResolvedOverlay` | No | What the unit may do with each variable, as `getFlowOverlayRules` returns it. |
+| `initialValues` | `FlowVariableValues` | No | The values the form starts with, over each variable's default. A variable left out starts at its default. |
+| `onSubmit` | `(values, overrides) => void` | No | Called when the form is submitted and valid. `values` holds every value. `overrides` holds the values of the variables the unit may set that differ from their default. |
+| `onChange` | `(values: FlowVariableValues) => void` | No | Called with every value after one changes. |
+| `onCancel` | `() => void` | No | Called when the admin selects Cancel. The button appears only when this is set, next to the save button, so it also needs `onSubmit`. |
+| `onCreateConnection` | `() => void` | No | Called when the admin asks to create a connection from the hint under a connection variable. Without it, the hint does not offer one. |
+| `isSubmitting` | `boolean` | No | Disables the form and shows a loading state on the save button. Defaults to `false`. |
+| `error` | `string \| null` | No | An error message shown above the variables. |
+| `readOnly` | `boolean` | No | Shows the variables without letting them be changed. Defaults to `false`. |
+| `ouName` | `string` | No | The name of the organization unit, used in the notice and the connection hint. |
+| `ownerName` | `string` | No | The name of whoever owns the flow, shown on a variable the unit may not set. |
+| `showScopeNotice` | `boolean` | No | Shows a notice that the settings apply to the organization unit only. Defaults to `false`. Set `ouName` for it to read well. |
+| `title` | `string` | No | Heading of the form. |
+| `description` | `string` | No | Text under the heading. |
+| `className` | `string` | No | CSS class for the root element. |
+| `preferences` | `Preferences` | No | Internationalization preferences. |
+| `renderField` | `(field, definition, index) => ReactNode` | No | Wraps the card of each variable, so you can add controls around it, such as selecting or removing a variable while you design it. |
+| `renderFieldAction` | `(definition, index) => ReactNode` | No | Content at the end of the label row of each variable. |
+| `children` | `(props: BaseFlowVariablesRenderProps) => ReactNode` | No | Renders custom UI in place of the default form. |
+
+### Custom UI
+
+Pass a render function as `children` to build the form with any UI while keeping the SDK's validation and rules. The function receives these values:
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `variables` | `FlowVariableDefinition[]` | The variables to render. |
+| `values` | `FlowVariableValues` | The current value of each variable. |
+| `errors` | `Record<string, string>` | The message to show under each invalid variable, keyed by identifier. |
+| `error` | `string \| null` | The form-level error. |
+| `getRule` | `(definition) => ResolvedFlowVariableRule` | What the unit may do with a variable: whether it can set its own value, and the default it starts from. |
+| `getOptions` | `(definition) => FlowVariableOption[]` | The choices of a select variable, narrowed to what the unit may pick. |
+| `handleChange` | `(identifier, value) => void` | Sets the value of one variable. |
+| `handleSubmit` | `() => void` | Submits the current values. Does nothing while they are not valid. |
+| `resetToDefaults` | `() => void` | Returns every variable the unit may set to its default. |
+| `isValid` | `boolean` | Whether the values can be submitted. It checks each value against its variable definition only, not against the overlay's `allowedValues` or `excludedValues`, so the server can still reject a value. Show the `error` your save reports. |
+| `isSubmitting` | `boolean` | Whether a submission is in progress. |
+| `onCancel` | `(() => void) \| undefined` | The `onCancel` prop. |
+
+## FlowVariableField
+
+`FlowVariableField` renders one variable in a card with its label, description, status, and the input its type calls for. `BaseFlowVariables` uses it for each variable, and you can use it to lay out the variables yourself.
+
+| Prop | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `definition` | `FlowVariableDefinition` | Yes | The variable to render. |
+| `value` | `FlowVariableValue \| undefined` | Yes | The current value. |
+| `onChange` | `(value: FlowVariableValue) => void` | Yes | Called when the value changes. |
+| `defaultValue` | `FlowVariableValue` | No | The value the variable has until the unit sets its own, which a sharing policy may have set. |
+| `editable` | `boolean` | No | Whether the unit may set its own value. A variable it may not set is shown as set by its owner. Defaults to `true`. |
+| `options` | `SelectOption[]` | No | The choices of a `SELECT` or `CONNECTION_SELECT`, as [`getFlowVariableOptions`](../../../../javascript/apis/flow-variables) returns them. |
+| `error` | `string` | No | The error to show under the field. |
+| `hint` | `ReactNode` | No | Extra text under the input. |
+| `ownerName` | `string` | No | Who set the variable, shown while it is not editable. |
+| `action` | `ReactNode` | No | Extra content at the end of the label row. |
+| `disabled` | `boolean` | No | Disables the input. |
+| `className` | `string` | No | CSS class for the card. |
+
+Each type renders its own input:
+
+| Variable type | Input |
+| :--- | :--- |
+| `TEXT_INPUT`, `EMAIL_INPUT`, `PHONE_INPUT`, `NUMBER_INPUT`, `DATE_INPUT` | Text field of the matching HTML input type |
+| `BOOLEAN_INPUT` | Toggle |
+| `SELECT`, `CONNECTION_SELECT` | Select. The empty entry shows the default, for example "Use the default: Dark", and returns the variable to it. |
+
+## Internationalization
+
+The labels, errors, and notices come from the `admin.flowVariables` keys in the SDK's translations, available in all nine locales. Override them through `preferences.i18n`. See [Internationalization](../../../../javascript/apis/i18n).

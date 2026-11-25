@@ -7,7 +7,7 @@ import {
   ThemeThumbnail,
   type LayoutPresetVariant,
 } from '@thunderid/configure-design';
-import {useConfig} from '@thunderid/contexts';
+import {useConfig, useProjectScope} from '@thunderid/contexts';
 import {
   useGetThemes,
   useGetTheme,
@@ -130,8 +130,10 @@ export default function ConfigureDesign({
   const {brand} = config;
   const {product_name: productName} = brand || {};
   const {ouDefaults, selectedTemplateConfig, appName} = useApplicationCreateContext();
-  const {data: themesData, isLoading: loadingThemes} = useGetThemes({limit: 100});
-  const {data: layoutsData} = useGetLayouts({limit: 100});
+  // Inside a project, the application picks from the project's themes and layouts.
+  const {projectId} = useProjectScope();
+  const {data: themesData, isLoading: loadingThemes} = useGetThemes({limit: 100, projectId});
+  const {data: layoutsData} = useGetLayouts({limit: 100, projectId});
 
   const [selectedThemeId, setSelectedThemeId] = useState<string | null>(externallyProvidedThemeId ?? null);
   const [selectedLayoutId, setSelectedLayoutId] = useState<string | null>(externallyProvidedLayoutId ?? null);
@@ -477,7 +479,7 @@ export default function ConfigureDesign({
                               light: `${import.meta.env.BASE_URL.replace(/\/$/, '')}/assets/images/logo-mini.svg`,
                               dark: `${import.meta.env.BASE_URL.replace(/\/$/, '')}/assets/images/logo-mini-inverted.svg`,
                             }}
-                            alt={{light: 'ThunderID', dark: 'ThunderID'}}
+                            alt={{light: productName, dark: productName}}
                             height={20}
                             width="auto"
                           />

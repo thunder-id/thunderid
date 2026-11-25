@@ -187,6 +187,7 @@ $GATE_APP_DEFAULT_PORT = 5190
 $CONSOLE_APP_DEFAULT_PORT = 5191
 $ADMIN_CONSOLE_APP_DEFAULT_PORT = 5192
 $QUICKSTART_AUTH_DP_PORT = 8091
+$QUICKSTART_DP_PORT = 8090
 $QUICKSTART_CP_PORT = 8095
 $DOCS_DEFAULT_PORT = 3000
 
@@ -883,6 +884,9 @@ function Prepare-Cp-Backend-For-Packaging {
     Copy-Item -Path (Join-Path $BACKEND_DIR "bootstrap") -Destination $package_folder -Recurse -Force
     # Never ship the dev-only CORS seed that Run stages into the source bootstrap dir.
     Remove-Item -Path (Join-Path $package_folder "bootstrap/03-dev-server-configurations.yaml") -Force -ErrorAction SilentlyContinue
+    # Ship the Control Plane resource server for the identity provider that signs operators into the
+    # Control Plane. It sits outside bootstrap/ because the Control Plane must not import it.
+    Copy-Item -Path (Join-Path $CPSERVER_DIR "idp-bootstrap") -Destination $package_folder -Recurse -Force
 
     # Key material is not generated into the distribution; setup-cp.ps1 generates it per deployment.
 }
@@ -901,6 +905,15 @@ function Prepare-Cp-Frontend-For-Packaging {
     if (Test-Path $dist) {
         Write-Host "Copying Control Plane console build output..."
         Copy-Item -Path (Join-Path $dist "*") -Destination $console_dir -Recurse -Force
+
+        # The Control Plane console gives the administrators it creates the bootstrap's Administrator role.
+        $cp_console_config = Join-Path $console_dir "config.js"
+        Add-QuickstartLine -Path $cp_console_config -Pattern '^};$' -Before -Lines @(
+            "  administrators: {",
+            "    role_ids: [`"01900000-0000-7000-8000-000000000050`"],",
+            "  },"
+        )
+        Assert-QuickstartPatch $cp_console_config "01900000-0000-7000-8000-000000000050"
     }
     else {
         Write-Host "Warning: Control Plane console build output not found at $dist"
@@ -1144,13 +1157,10 @@ function Package-Quickstart {
 
     # The Control Plane's console signs in through auth-dp as a trusted issuer, and asks for a token
     # for the Control Plane's own URL (the RFC 8707 "resource" parameter). auth-dp refuses a resource
-    # no resource server is registered for, so its System resource server, whose permissions the
-    # admin role already holds, is identified by that URL instead of the default Data Plane one.
-    $auth_dp_resources = Join-Path $auth_dp_dir "bootstrap/01-default-resources.yaml"
-    Write-QuickstartFile -Path $auth_dp_resources -Content ([regex]::Replace(
-            (Read-QuickstartFile $auth_dp_resources),
-            '(?m)^identifier: https://localhost:8090/mcp$',
-            "identifier: https://localhost:$QUICKSTART_CP_PORT"))
+    # no resource server is registered for, so it imports the Control Plane resource server, which
+    # is identified by that URL and declares the permissions the Control Plane enforces. The
+    # quickstart's 05-quickstart-cp-administrator.yaml grants its system root to the admin group.
+    Copy-Item -Path (Join-Path $CPSERVER_DIR "idp-bootstrap/*.yaml") -Destination (Join-Path $auth_dp_dir "bootstrap") -Force
     Remove-Item -Path (Join-Path $auth_dp_dir $CONSOLE_APP_DIST_DIR) -Recurse -Force -ErrorAction SilentlyContinue
 
     # Layer the Data Plane's own admin console application onto the managed dp and the cp. It is
@@ -1164,6 +1174,12 @@ function Package-Quickstart {
     $dp_console_config = Join-Path $dp_dir "$CONSOLE_APP_DIST_DIR/config.js"
     Write-QuickstartFile -Path $dp_console_config -Content ((Read-QuickstartFile $dp_console_config).Replace(
             "client_id: 'CONSOLE'", "client_id: 'ADMIN_CONSOLE'"))
+
+    # The Control Plane's console gives the administrators it creates the Administrator role, which
+    # Set-QuickstartServiceDeskAdmin above moved to the Service Desk Administrator role's ID.
+    $cp_console_config = Join-Path $cp_dir "$CONSOLE_APP_DIST_DIR/config.js"
+    Write-QuickstartFile -Path $cp_console_config -Content ((Read-QuickstartFile $cp_console_config).Replace(
+            '01900000-0000-7000-8000-000000000050', '01900000-0000-7000-8000-0000000000f5'))
 
     # auth-dp runs on its own port, distinct from the managed dp it shares a generated certificate
     # and signing keys with (see quickstart/setup.ps1). Patched into this copy of deployment.yaml
@@ -1184,13 +1200,19 @@ function Package-Quickstart {
     # copy only, with a trusted_issuer block naming auth-dp: the console SDK then sends the actual
     # /oauth2/authorize and /oauth2/token calls there, while every management-API call it makes is
     # repointed back to wherever the console itself is served from. Inserted right before the
-    # file's closing "};" so it lands inside the top-level config object.
+    # file's closing "};" so it lands inside the top-level config object. The same block adds
+    # gate_client naming the managed Data Plane: the CP serves no Gate app, so without it the
+    # console would build redirect URIs on its own origin instead of the Data Plane's.
     Add-QuickstartLine -Path (Join-Path $cp_dir "$CONSOLE_APP_DIST_DIR/config.js") -Pattern '^};$' -Before -Lines @(
         "  trusted_issuer: {",
         "    hostname: `"localhost`",",
         "    port: $QUICKSTART_AUTH_DP_PORT,",
         "    http_only: false,",
         "    client_id: `"CP_CONSOLE`",",
+        "  },",
+        "  gate_client: {",
+        "    hostname: `"localhost`",",
+        "    port: $QUICKSTART_DP_PORT,",
         "  },")
 
     # The browser enforces the CP's own Content-Security-Policy, not auth-dp's, on every fetch the
@@ -1209,7 +1231,7 @@ function Package-Quickstart {
     Write-QuickstartFile -Path $cp_deployment -Content (
         (Read-QuickstartFile $cp_deployment).TrimEnd("`n") + "`n`ngateway:`n  auto_apply: true`n  allow_private_addresses: true`n")
 
-    Assert-QuickstartPatch (Join-Path $auth_dp_dir "bootstrap/01-default-resources.yaml") "identifier: https://localhost:$QUICKSTART_CP_PORT"
+    Assert-QuickstartPatch (Join-Path $auth_dp_dir "bootstrap/control-plane-resource-server.yaml") "identifier: https://localhost:$QUICKSTART_CP_PORT"
     Assert-QuickstartPatch (Join-Path $auth_dp_dir "deployment.yaml") "port: $QUICKSTART_AUTH_DP_PORT"
     Assert-QuickstartPatch (Join-Path $dp_dir "bootstrap/01-default-resources.yaml") "Service Desk Administrators"
     Assert-QuickstartPatch (Join-Path $cp_dir "bootstrap/01-default-resources.yaml") "Service Desk Administrators"
@@ -1217,6 +1239,8 @@ function Package-Quickstart {
     Assert-QuickstartPatch (Join-Path $dp_dir "deployment.yaml") "  security:"
     Assert-QuickstartPatch (Join-Path $cp_dir "deployment.yaml") "issuer: `"https://localhost:$QUICKSTART_AUTH_DP_PORT`""
     Assert-QuickstartPatch (Join-Path $cp_dir "$CONSOLE_APP_DIST_DIR/config.js") "trusted_issuer"
+    Assert-QuickstartPatch (Join-Path $cp_dir "$CONSOLE_APP_DIST_DIR/config.js") "01900000-0000-7000-8000-0000000000f5"
+    Assert-QuickstartPatch (Join-Path $cp_dir "$CONSOLE_APP_DIST_DIR/config.js") "  gate_client: {"
     Assert-QuickstartPatch (Join-Path $cp_dir "config/resources/server_configs/csp.yaml") "https://localhost:$QUICKSTART_AUTH_DP_PORT"
 
     if ($GO_OS -eq "windows") {

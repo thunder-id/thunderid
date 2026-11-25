@@ -1,9 +1,9 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {OxygenIcon, useOxygenIcons} from '@thunderid/design';
 import {Avatar, Box, useColorScheme} from '@wso2/oxygen-ui';
-import * as Icons from '@wso2/oxygen-ui-icons-react';
-import type {ComponentType, ReactElement} from 'react';
+import type {ReactElement} from 'react';
 import resolveStaticResourcePath from '../utils/resolveStaticResourcePath';
 
 const isImagePath = (value: string): boolean => value.includes('/') || value.includes(':');
@@ -46,6 +46,8 @@ function ResourceDisplayImage({
   preserveColor = false,
 }: ResourceDisplayImageProps): ReactElement | null {
   const {mode, systemMode} = useColorScheme();
+  // An image that is not a path names an icon, resolved from the icon set once it has loaded.
+  const icons = useOxygenIcons(!!image && !isImagePath(image));
 
   // Determine the effective mode - if mode is 'system', use systemMode
   const effectiveMode = mode === 'system' ? systemMode : mode;
@@ -73,14 +75,11 @@ function ResourceDisplayImage({
     );
   }
 
-  const IconComponent = Icons[image as keyof typeof Icons] as ComponentType<{
-    size?: number;
-    color?: string;
-  }>;
+  const icon = icons?.get(image);
 
-  return IconComponent ? (
+  return icon ? (
     <Box display="inline-flex" alignItems="center" justifyContent="center" sx={{color: 'text.primary', flexShrink: 0}}>
-      <IconComponent size={size} />
+      <OxygenIcon icon={icon} size={size} />
     </Box>
   ) : null;
 }

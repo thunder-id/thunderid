@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -145,53 +144,26 @@ func (ts *ExportEntityResourcesTestSuite) TearDownSuite() {
 }
 
 // setTranslationOverride writes one override so the language becomes exportable. A language with no
-// overrides is not a resource the exporter can enumerate.
+// overrides is not a resource the exporter can enumerate. A data plane takes translations only from an
+// import with the management API key, and an import replaces every override of the language.
 func (ts *ExportEntityResourcesTestSuite) setTranslationOverride() {
 	ts.T().Helper()
 
-	body, err := json.Marshal(map[string]string{"value": entityExportValue})
-	ts.Require().NoError(err)
-
-	target := fmt.Sprintf("%s/i18n/languages/%s/translations/ns/%s/keys/%s",
-		testServerURL, url.PathEscape(entityExportLanguage),
-		url.PathEscape(entityExportNamespace), url.PathEscape(entityExportKey))
-
-	req, err := http.NewRequest(http.MethodPost, target, bytes.NewReader(body))
-	ts.Require().NoError(err)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := testutils.GetHTTPClient().Do(req)
-	ts.Require().NoError(err)
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	ts.Require().NoError(err)
-	ts.Require().Equalf(http.StatusOK, resp.StatusCode,
-		"failed to seed the translation override, body: %s", respBody)
+	_, err := testutils.ImportResource("translation", map[string]any{
+		"language": entityExportLanguage,
+		"translations": map[string]map[string]string{
+			entityExportNamespace: {entityExportKey: entityExportValue},
+		},
+	}, true)
+	ts.Require().NoError(err, "failed to seed the translation override")
 }
 
 // clearTranslationLanguage removes the suite's overrides so the shared server is left as found.
 func (ts *ExportEntityResourcesTestSuite) clearTranslationLanguage() {
 	ts.T().Helper()
 
-	target := fmt.Sprintf("%s/i18n/languages/%s/translations",
-		testServerURL, url.PathEscape(entityExportLanguage))
-
-	req, err := http.NewRequest(http.MethodDelete, target, nil)
-	if err != nil {
-		ts.T().Logf("Failed to build the translation cleanup request: %v", err)
-		return
-	}
-
-	resp, err := testutils.GetHTTPClient().Do(req)
-	if err != nil {
+	if err := testutils.DeleteImportedResource("translation", entityExportLanguage); err != nil {
 		ts.T().Logf("Failed to clear the translation language: %v", err)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNoContent {
-		ts.T().Logf("Unexpected status clearing the translation language: %d", resp.StatusCode)
 	}
 }
 
@@ -225,7 +197,8 @@ func (ts *ExportEntityResourcesTestSuite) TestUserExportParameterizesCredentials
 	// so the assertion above holds because the field is parameterized rather than dropped.
 	ts.Assert().Contains(yamlContent, "credentials:",
 		"an exported user must carry its credentials block")
-	ts.Assert().Contains(yamlContent, `password: "{{.USER_EXPORT_ENTITY_USER_PASSWORD}}"`,
+	ts.Assert().Contains(yamlContent,
+		`password: "{{.`+testutils.ExportVariableName("USER", ts.userID, "PASSWORD")+`}}"`,
 		"the credential must leave as a template variable")
 }
 
@@ -245,7 +218,7 @@ func (ts *ExportEntityResourcesTestSuite) TestUserWithoutAPasswordIsExportedWith
 	ts.Require().NoError(err)
 
 	ts.Assert().Contains(yamlContent, `username: "export-entity-no-password"`, "the user was not exported")
-	ts.Assert().NotContains(yamlContent, "USER_EXPORT_ENTITY_NO_PASSWORD_PASSWORD",
+	ts.Assert().NotContains(yamlContent, "__PASSWORD",
 		"a user without a password must not export a password variable")
 }
 
@@ -279,11 +252,9 @@ func (ts *ExportEntityResourcesTestSuite) TestUserWhoseTypeIsGoneIsLeftOut() {
 	ts.Assert().Contains(err.Error(), "EXP-1002", "the export must hold no resources")
 }
 
-// TestUserWithoutAUsernameIsLeftOut verifies a user with no username is left out of the export
-// rather than exported without one. Its credential placeholders are named after the username, so
-// there is nothing to name them after, and a user with no username cannot be identified on import.
-// The rest of the export still goes through.
-func (ts *ExportEntityResourcesTestSuite) TestUserWithoutAUsernameIsLeftOut() {
+// TestUserWithoutAUsernameIsExported verifies a user with no username, such as one whose type knows
+// it only by email, is exported under its ID with its credentials, alongside the rest of the export.
+func (ts *ExportEntityResourcesTestSuite) TestUserWithoutAUsernameIsExported() {
 	userID, err := testutils.CreateUser(testutils.User{
 		Type: entityExportUserTypeName,
 		OUID: ts.ouID,
@@ -298,17 +269,17 @@ func (ts *ExportEntityResourcesTestSuite) TestUserWithoutAUsernameIsLeftOut() {
 
 	ts.Assert().Contains(yamlContent, `username: "`+entityExportUsername+`"`,
 		"the other user must still be exported")
-	ts.Assert().NotContains(yamlContent, "export-entity-nameless@example.com",
-		"a user without a username must not be exported")
+	ts.Assert().Contains(yamlContent, "export-entity-nameless@example.com",
+		"a user without a username must be exported")
+	ts.Assert().Contains(yamlContent, userID, "a user without a username must be exported under its ID")
 }
 
-// TestUserExportRefusesTwoUsersWithOneVariableName verifies an export that cannot represent both
-// users is refused rather than returned.
+// TestUserExportNamesTwoUsersWithOneNormalizedUsernameApart verifies two users whose usernames normalize
+// to the same text still get a password variable each.
 //
-// A user's password placeholder is named after the username, so two usernames that normalize to the
-// same name claim one variable. Returning that bundle would import both users with the same password,
-// and dropping one silently would leave a bundle that looks complete.
-func (ts *ExportEntityResourcesTestSuite) TestUserExportRefusesTwoUsersWithOneVariableName() {
+// A user's password placeholder is named after the user's ID, so usernames that read alike cannot claim
+// one variable and import both users with the same password.
+func (ts *ExportEntityResourcesTestSuite) TestUserExportNamesTwoUsersWithOneNormalizedUsernameApart() {
 	first, err := testutils.CreateUser(testutils.User{
 		Type: entityExportUserTypeName,
 		OUID: ts.ouID,
@@ -327,11 +298,14 @@ func (ts *ExportEntityResourcesTestSuite) TestUserExportRefusesTwoUsersWithOneVa
 	ts.Require().NoError(err, "Failed to create the second user")
 	defer func() { _ = testutils.DeleteUser(second) }()
 
-	_, err = ts.exportResourcesYAML(ExportRequest{Users: []string{first, second}})
+	yamlContent, err := ts.exportResourcesYAML(ExportRequest{Users: []string{first, second}})
 
-	ts.Require().Error(err, "expected the export to be refused")
-	ts.Assert().Contains(err.Error(), "EXP-1003",
-		"the refusal must name the duplicate template variable error")
+	ts.Require().NoError(err, "usernames that normalize alike must not refuse the export")
+	firstVariable := testutils.ExportVariableName("USER", first, "PASSWORD")
+	secondVariable := testutils.ExportVariableName("USER", second, "PASSWORD")
+	ts.Assert().NotEqual(firstVariable, secondVariable, "the two users must not share a password variable")
+	ts.Assert().Contains(yamlContent, "{{."+firstVariable+"}}")
+	ts.Assert().Contains(yamlContent, "{{."+secondVariable+"}}")
 }
 
 // TestUserExportWithWildcard verifies the wildcard form enumerates users and includes the fixture.

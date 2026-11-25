@@ -5,6 +5,8 @@ package authentication
 
 import (
 	"encoding/json"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -39,6 +41,12 @@ type PermissionConsentFlowTestSuite struct {
 	rsID       string
 	roleID     string
 
+	// A subject granted the parent resource alone, and the role conferring it.
+	subtreeUserID string
+	subtreeRoleID string
+	branchUserID  string
+	branchRoleID  string
+
 	// Resource IDs in creation order; teardown removes them leaf first so the resource server can
 	// then be deleted.
 	resourceIDs []string
@@ -58,6 +66,8 @@ const (
 	permConsentPromptUsername  = "permission_consent_prompt_user"
 	permConsentApproveUsername = "permission_consent_approve_user"
 	permConsentDenyUsername    = "permission_consent_deny_user"
+	permConsentSubtreeUsername = "permission_consent_subtree_user"
+	permConsentBranchUsername  = "permission_consent_branch_user"
 	permConsentPassword        = "SecurePass123!"
 
 	permConsentRSIdentifier = "permission-consent-docs"
@@ -73,9 +83,13 @@ const (
 	// would pass.
 	permConsentDecoyPermission = "docsx"
 
-	// A permission the user is never granted. It is requested anyway, so the prompt is shown to
-	// carry only what was authorized.
-	permConsentUnheldPermission = "docs:payroll"
+	// A second permission beneath the parent resource, granted only through it rather than in its
+	// own right.
+	permConsentSecondChildPermission = "docs:payroll"
+
+	// A permission no role confers. It sits outside every granted resource, since a permission
+	// beneath one would be conferred by the grant of that resource.
+	permConsentUnheldPermission = "restricted"
 
 	permConsentPurposeType = "permissions"
 )
@@ -114,6 +128,9 @@ func (ts *PermissionConsentFlowTestSuite) SetupSuite() {
 		Description: "Resource server for permission consent flow testing",
 		Identifier:  permConsentRSIdentifier,
 		OUID:        ouID,
+		// Declared, so a grant of "docs" carries what sits beneath it. Without this the cases below
+		// would be asserting against a resource server whose permissions do not nest at all.
+		HierarchicalPermissions: true,
 	}, nil)
 	ts.Require().NoError(err, "Failed to create test resource server")
 
@@ -121,6 +138,7 @@ func (ts *PermissionConsentFlowTestSuite) SetupSuite() {
 	ts.createResource("Reports", "reports", docsID)
 	ts.createResource("Payroll", "payroll", docsID)
 	ts.createResource("Docs Extended", permConsentDecoyPermission, "")
+	ts.createResource("Restricted", permConsentUnheldPermission, "")
 
 	flowID, err := testutils.CreateFlow(testutils.Flow{
 		Name:     "Permission Consent Test Auth Flow",
@@ -171,6 +189,37 @@ func (ts *PermissionConsentFlowTestSuite) SetupSuite() {
 		},
 	})
 	ts.Require().NoError(err, "Failed to create test role")
+
+	// A subject granted the parent resource and nothing beneath it. The resource carries a permission
+	// of its own, and granting it grants what it contains, including the child the role above omits.
+	ts.subtreeUserID = ts.createPermConsentUser(permConsentSubtreeUsername, "permission.subtree@test.com")
+	ts.subtreeRoleID, err = testutils.CreateRole(testutils.Role{
+		Name:        "permission-consent-subtree",
+		Description: "Role granting only the parent resource",
+		OUID:        ouID,
+		Permissions: []testutils.ResourcePermissions{
+			{
+				ResourceServerID: ts.rsID,
+				Permissions:      []string{permConsentParentPermission},
+			},
+		},
+		Assignments: []testutils.Assignment{
+			{ID: ts.subtreeUserID, Type: "user"},
+		},
+	})
+	ts.Require().NoError(err, "Failed to create the subtree role")
+
+	ts.branchUserID = ts.createPermConsentUser(permConsentBranchUsername, "permission.branches@test.com")
+	ts.branchRoleID, err = testutils.CreateRole(testutils.Role{
+		Name: "permission-consent-branches",
+		OUID: ouID,
+		Permissions: []testutils.ResourcePermissions{{
+			ResourceServerID: ts.rsID,
+			Permissions:      []string{permConsentChildPermission, permConsentSecondChildPermission},
+		}},
+		Assignments: []testutils.Assignment{{ID: ts.branchUserID, Type: "user"}},
+	})
+	ts.Require().NoError(err)
 }
 
 // createResource creates a resource under the suite's resource server, recording it for teardown.
@@ -204,12 +253,22 @@ func (ts *PermissionConsentFlowTestSuite) createPermConsentUser(username, email 
 }
 
 func (ts *PermissionConsentFlowTestSuite) TearDownSuite() {
+	if ts.branchRoleID != "" {
+		if err := testutils.DeleteRole(ts.branchRoleID); err != nil {
+			ts.T().Logf("Failed to delete the branch role: %v", err)
+		}
+	}
+	if ts.subtreeRoleID != "" {
+		if err := testutils.DeleteRole(ts.subtreeRoleID); err != nil {
+			ts.T().Logf("Failed to delete the subtree role: %v", err)
+		}
+	}
 	if ts.roleID != "" {
 		if err := testutils.DeleteRole(ts.roleID); err != nil {
 			ts.T().Logf("Failed to delete test role: %v", err)
 		}
 	}
-	for _, id := range []string{ts.promptUserID, ts.approveUserID, ts.denyUserID} {
+	for _, id := range []string{ts.promptUserID, ts.approveUserID, ts.denyUserID, ts.subtreeUserID, ts.branchUserID} {
 		if id != "" {
 			if err := testutils.DeleteUser(id); err != nil {
 				ts.T().Logf("Failed to delete test user %s: %v", id, err)
@@ -377,7 +436,8 @@ func (ts *PermissionConsentFlowTestSuite) authenticateToPermissionConsent(userna
 	step, err := common.InitiateAuthenticationFlow(ts.appID, false, map[string]string{
 		"applicationId": ts.appID,
 		"requested_permissions": permConsentParentPermission + " " + permConsentChildPermission +
-			" " + permConsentDecoyPermission + " " + permConsentUnheldPermission,
+			" " + permConsentSecondChildPermission + " " + permConsentDecoyPermission +
+			" " + permConsentUnheldPermission,
 		"resource_server_identifier": permConsentRSIdentifier,
 	}, "")
 	ts.Require().NoError(err, "Failed to initiate authentication flow")
@@ -415,29 +475,26 @@ func (ts *PermissionConsentFlowTestSuite) requirePermissionPurpose(
 	return purposes[0]
 }
 
-// TestPermissionConsent_ElementsCarryRollupParents verifies the rollup linkage the Console groups by.
-// The nested permission is linked to the one it extends; the sibling that merely shares a prefix is
-// not, which is what the delimiter check in the parent computation exists for.
-func (ts *PermissionConsentFlowTestSuite) TestPermissionConsent_ElementsCarryRollupParents() {
+// The prompt offers every authorized permission as a choice, with the hierarchy links the gate
+// needs to show what each branch carries.
+func (ts *PermissionConsentFlowTestSuite) TestPermissionConsent_OffersEveryAuthorizedPermission() {
 	step := ts.authenticateToPermissionConsent(permConsentPromptUsername)
 	purpose := ts.requirePermissionPurpose(step)
 
-	parents := make(map[string]string, len(purpose.Optional))
+	ts.Equal(":", purpose.PermissionDelimiter,
+		"the gate needs the delimiter to tell a branch root from what sits beneath it")
+
+	offered := make([]string, 0, len(purpose.Optional))
 	for _, element := range purpose.Optional {
-		parents[element.Name] = element.Parent
+		offered = append(offered, element.Name)
+		if element.Name == permConsentChildPermission || element.Name == permConsentSecondChildPermission {
+			ts.Equal(permConsentParentPermission, element.Parent)
+		} else {
+			ts.Empty(element.Parent)
+		}
 	}
-
-	ts.Equal(permConsentParentPermission, parents[permConsentChildPermission],
-		"a permission nested under another must roll up to it")
-	ts.Empty(parents[permConsentParentPermission],
-		"a top-level permission has nothing to roll up to")
-	ts.Empty(parents[permConsentDecoyPermission],
-		"sharing a prefix without a delimiter is not a parent relationship")
-
-	// The application requests this permission but the user was never granted it. Offering it for
-	// consent would record a decision about access the user does not hold.
-	ts.NotContains(parents, permConsentUnheldPermission,
-		"a requested but unauthorized permission must never be prompted")
+	ts.ElementsMatch([]string{permConsentParentPermission, permConsentChildPermission,
+		permConsentSecondChildPermission, permConsentDecoyPermission}, offered)
 }
 
 // TestPermissionConsent_PurposeIsNamedForTheApplication verifies the purpose name identifies the
@@ -448,4 +505,143 @@ func (ts *PermissionConsentFlowTestSuite) TestPermissionConsent_PurposeIsNamedFo
 
 	ts.Equal("permissions:"+ts.appID, purpose.PurposeName,
 		"the permission purpose is derived from the application it belongs to")
+}
+
+// A role granting the parent resource authorizes everything beneath it, including the child the
+// explicitly-granted role deliberately omits, and nothing that merely shares its prefix.
+func (ts *PermissionConsentFlowTestSuite) TestPermissionConsent_ParentGrantCarriesTheSubtree() {
+	step := ts.authenticateToPermissionConsent(permConsentSubtreeUsername)
+	purpose := ts.requirePermissionPurpose(step)
+
+	offered := make([]string, 0, len(purpose.Optional))
+	for _, element := range purpose.Optional {
+		offered = append(offered, element.Name)
+	}
+
+	ts.ElementsMatch([]string{permConsentParentPermission, permConsentChildPermission,
+		permConsentSecondChildPermission}, offered)
+}
+
+// Two permissions neither of which sits under the other are two separate grants, so taking one and
+// refusing the other is an ordinary decision rather than a contradiction.
+func (ts *PermissionConsentFlowTestSuite) TestPermissionConsent_EachBranchIsDecidedOnItsOwn() {
+	step := ts.authenticateToPermissionConsent(permConsentBranchUsername)
+	purpose := ts.requirePermissionPurpose(step)
+	offered := make([]string, 0, len(purpose.Optional))
+	for _, element := range purpose.Optional {
+		offered = append(offered, element.Name)
+	}
+	ts.ElementsMatch([]string{permConsentChildPermission, permConsentSecondChildPermission}, offered)
+
+	decisions, err := json.Marshal(consentDecisions{
+		Approved: true,
+		Purposes: []consentPurposeDecision{{
+			PurposeName: purpose.PurposeName,
+			Approved:    true,
+			Elements: []consentElementDecision{
+				{Name: permConsentChildPermission, Approved: true},
+				{Name: permConsentSecondChildPermission, Approved: false},
+			},
+		}},
+	})
+	ts.Require().NoError(err)
+	completed, err := common.CompleteFlow(step.ExecutionID,
+		map[string]string{consentInputIdentifier: string(decisions)}, consentApproveAction, step.ChallengeToken)
+	ts.Require().NoError(err)
+	ts.Require().Equal("COMPLETE", completed.FlowStatus)
+	claims, err := testutils.DecodeJWTPayloadMap(completed.Assertion)
+	ts.Require().NoError(err)
+	permissions, ok := claims["authorized_permissions"].(string)
+	ts.Require().True(ok)
+	ts.ElementsMatch([]string{permConsentChildPermission}, strings.Fields(permissions),
+		"the refused branch is withheld and the approved one is issued")
+}
+
+func (ts *PermissionConsentFlowTestSuite) TestPermissionConsent_AcceptGrantsTheEntireRequestedSet() {
+	step := ts.authenticateToPermissionConsent(permConsentApproveUsername)
+	purpose := ts.requirePermissionPurpose(step)
+	elements := make([]consentElementDecision, 0, len(purpose.Optional))
+	for _, element := range purpose.Optional {
+		elements = append(elements, consentElementDecision{Name: element.Name, Approved: true})
+	}
+	decisions, err := json.Marshal(consentDecisions{Approved: true, Purposes: []consentPurposeDecision{{
+		PurposeName: purpose.PurposeName, Approved: true, Elements: elements,
+	}}})
+	ts.Require().NoError(err)
+	completed, err := common.CompleteFlow(step.ExecutionID,
+		map[string]string{consentInputIdentifier: string(decisions)}, consentApproveAction, step.ChallengeToken)
+	ts.Require().NoError(err)
+	ts.Require().Equal("COMPLETE", completed.FlowStatus)
+	claims, err := testutils.DecodeJWTPayloadMap(completed.Assertion)
+	ts.Require().NoError(err)
+	permissions, ok := claims["authorized_permissions"].(string)
+	ts.Require().True(ok)
+	ts.ElementsMatch([]string{permConsentParentPermission, permConsentChildPermission,
+		permConsentSecondChildPermission, permConsentDecoyPermission}, strings.Fields(permissions))
+}
+
+// Refusing everything is a decision the subject is allowed to make. Authentication succeeds and the
+// assertion carries no permissions, which is how refusing an optional permission has always worked.
+func (ts *PermissionConsentFlowTestSuite) TestPermissionConsent_DeclineGrantsNothingAndStillAuthenticates() {
+	step := ts.authenticateToPermissionConsent(permConsentDenyUsername)
+	purpose := ts.requirePermissionPurpose(step)
+	ts.NotEmpty(purpose.Optional)
+	completed, err := common.CompleteFlow(step.ExecutionID,
+		map[string]string{consentInputIdentifier: `{"approved":false}`}, consentApproveAction, step.ChallengeToken)
+	ts.Require().NoError(err)
+	ts.Require().Equal("COMPLETE", completed.FlowStatus)
+	claims, err := testutils.DecodeJWTPayloadMap(completed.Assertion)
+	ts.Require().NoError(err)
+	permissions, _ := claims["authorized_permissions"].(string)
+	ts.Empty(strings.Fields(permissions))
+}
+
+func (ts *PermissionConsentFlowTestSuite) TestPermissionConsent_DisplaysLargeCoveredCatalog() {
+	rootID := ts.resourceIDs[0]
+	for i := range 101 {
+		handle := "review" + strconv.Itoa(i)
+		actionID, err := testutils.CreateResourceAction(ts.rsID, rootID,
+			testutils.Action{Name: handle, Handle: handle})
+		ts.Require().NoError(err)
+		ts.T().Cleanup(func() { ts.NoError(testutils.DeleteResourceAction(ts.rsID, rootID, actionID)) })
+	}
+	step := ts.authenticateToPermissionConsent(permConsentPromptUsername)
+	purpose := ts.requirePermissionPurpose(step)
+	displayed := make([]string, 0, len(purpose.DisplayElements))
+	for _, element := range purpose.DisplayElements {
+		displayed = append(displayed, element.Name)
+	}
+	ts.Contains(displayed, "docs:review100")
+	ts.Contains(displayed, permConsentChildPermission)
+	ts.Contains(displayed, permConsentSecondChildPermission)
+	ts.NotContains(displayed, permConsentUnheldPermission)
+	ts.Len(displayed, 105)
+	ts.Len(purpose.Optional, 4)
+}
+
+func (ts *PermissionConsentFlowTestSuite) TestPermissionConsent_DisplaysDeclarativeCatalog() {
+	roleID, err := testutils.CreateRole(testutils.Role{
+		Name: "declarative-consent-reader", OUID: ts.ouID,
+		Permissions: []testutils.ResourcePermissions{{ResourceServerID: "decl-hierarchical-consent-rs",
+			Permissions: []string{"reports"}}},
+		Assignments: []testutils.Assignment{{ID: ts.promptUserID, Type: "user"}},
+	})
+	ts.Require().NoError(err)
+	ts.T().Cleanup(func() { ts.NoError(testutils.DeleteRole(roleID)) })
+	step, err := common.InitiateAuthenticationFlow(ts.appID, false, map[string]string{
+		"applicationId": ts.appID, "requested_permissions": "reports",
+		"resource_server_identifier": "https://declared-consent.example/api",
+	}, "")
+	ts.Require().NoError(err)
+	step, err = common.CompleteFlow(step.ExecutionID, map[string]string{
+		"username": permConsentPromptUsername, "password": permConsentPassword,
+	}, "action_001", step.ChallengeToken)
+	ts.Require().NoError(err)
+	purpose := ts.requirePermissionPurpose(step)
+	ts.Equal("_", purpose.PermissionDelimiter)
+	ts.Equal([]consentPromptElement{{Name: "reports"}}, purpose.Optional)
+	ts.Equal([]consentPromptElement{
+		{Name: "reports"}, {Name: "reports_online", Parent: "reports"},
+		{Name: "reports_online_create", Parent: "reports_online"}, {Name: "reports_view", Parent: "reports"},
+	}, purpose.DisplayElements)
 }

@@ -15,6 +15,7 @@ import (
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
+	"github.com/thunder-id/thunderid/internal/system/filter"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -41,7 +42,24 @@ func (h *resourceHandler) HandleResourceServerListRequest(w http.ResponseWriter,
 		return
 	}
 
-	result, svcErr := h.resourceService.GetResourceServerList(ctx, limit, offset)
+	ouID, svcErr := parseOUFilter(r.URL.Query())
+	if svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+
+	// With a project, the list is of the project's resource servers, narrowed to the ones an organization
+	// unit owns when the filter names one. With only an organization unit filter, the list is of the resource
+	// servers it owns. Without either, it is of every resource server.
+	var result *ResourceServerList
+	if query := r.URL.Query(); query.Has(projectIDQueryParam) {
+		result, svcErr = h.resourceService.GetResourceServerListByProject(
+			ctx, sysutils.SanitizeString(query.Get(projectIDQueryParam)), ouID, limit, offset)
+	} else if ouID != "" {
+		result, svcErr = h.resourceService.GetResourceServerListByOUID(ctx, ouID, limit, offset)
+	} else {
+		result, svcErr = h.resourceService.GetResourceServerList(ctx, limit, offset)
+	}
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return
@@ -67,12 +85,14 @@ func (h *resourceHandler) HandleResourceServerPostRequest(w http.ResponseWriter,
 
 	sanitized := sanitizeCreateResourceServerRequest(req)
 	serviceReq := providers.ResourceServer{
-		Name:        sanitized.Name,
-		Description: sanitized.Description,
-		Identifier:  sanitized.Identifier,
-		Type:        sanitized.Type,
-		OUID:        sanitized.OUID,
-		Delimiter:   sanitized.Delimiter,
+		Name:                    sanitized.Name,
+		Description:             sanitized.Description,
+		Identifier:              sanitized.Identifier,
+		Type:                    sanitized.Type,
+		OUID:                    sanitized.OUID,
+		ProjectID:               sanitized.ProjectID,
+		Delimiter:               sanitized.Delimiter,
+		HierarchicalPermissions: sanitized.HierarchicalPermissions,
 	}
 
 	result, svcErr := h.resourceService.CreateResourceServer(ctx, serviceReq)
@@ -120,6 +140,7 @@ func (h *resourceHandler) HandleResourceServerPutRequest(w http.ResponseWriter, 
 		Description:         sanitized.Description,
 		Identifier:          sanitized.Identifier,
 		OUID:                sanitized.OUID,
+		ProjectID:           sanitized.ProjectID,
 		AuthorizationEngine: sanitized.AuthorizationEngine,
 	}
 
@@ -554,6 +575,20 @@ func parsePaginationParams(query url.Values) (int, int, *tidcommon.ServiceError)
 	return limit, offset, nil
 }
 
+// parseOUFilter reads the organization unit a listing is narrowed to from an `ouId eq` filter, the only
+// filter expression a resource server listing supports. It returns "" without a filter.
+func parseOUFilter(query url.Values) (string, *tidcommon.ServiceError) {
+	filters, err := filter.ParseEqualityFilterParam(query)
+	if err != nil {
+		return "", &ErrorInvalidFilter
+	}
+	ouID, rest, err := filter.SplitOUIDFilter(filters)
+	if err != nil || len(rest) > 0 {
+		return "", &ErrorInvalidFilter
+	}
+	return sysutils.SanitizeString(ouID), nil
+}
+
 // parseActionKindParam parses the optional 'kind' query parameter for action-list endpoints.
 // An omitted parameter yields an empty kind (no filter); any value other than the supported action
 // kinds (tool|resource) is rejected with ErrorInvalidRequestFormat.
@@ -577,6 +612,8 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.S
 			statusCode = http.StatusNotFound
 		case ErrorNameConflict.Code, ErrorHandleConflict.Code, ErrorIdentifierConflict.Code:
 			statusCode = http.StatusConflict
+		case tidcommon.ErrorUnauthorized.Code:
+			statusCode = http.StatusForbidden
 		default:
 			statusCode = http.StatusBadRequest
 		}
@@ -596,12 +633,14 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.S
 // sanitizeCreateResourceServerRequest sanitizes input for creating a resource server.
 func sanitizeCreateResourceServerRequest(req *CreateResourceServerRequest) CreateResourceServerRequest {
 	return CreateResourceServerRequest{
-		Name:        sysutils.SanitizeString(req.Name),
-		Description: sysutils.SanitizeString(req.Description),
-		Identifier:  sysutils.SanitizeString(req.Identifier),
-		Type:        req.Type,
-		OUID:        sysutils.SanitizeString(req.OUID),
-		Delimiter:   sysutils.SanitizeString(req.Delimiter),
+		Name:                    sysutils.SanitizeString(req.Name),
+		Description:             sysutils.SanitizeString(req.Description),
+		Identifier:              sysutils.SanitizeString(req.Identifier),
+		Type:                    req.Type,
+		OUID:                    sysutils.SanitizeString(req.OUID),
+		ProjectID:               sysutils.SanitizeString(req.ProjectID),
+		Delimiter:               sysutils.SanitizeString(req.Delimiter),
+		HierarchicalPermissions: req.HierarchicalPermissions,
 	}
 }
 
@@ -612,6 +651,7 @@ func sanitizeUpdateResourceServerRequest(req *UpdateResourceServerRequest) Updat
 		Description:         sysutils.SanitizeString(req.Description),
 		Identifier:          sysutils.SanitizeString(req.Identifier),
 		OUID:                sysutils.SanitizeString(req.OUID),
+		ProjectID:           sysutils.SanitizeString(req.ProjectID),
 		AuthorizationEngine: sanitizeAuthorizationEngine(req.AuthorizationEngine),
 	}
 }
@@ -675,15 +715,17 @@ func toResourceServerResponse(rs *providers.ResourceServer) *ResourceServerRespo
 		resType = providers.ResourceServerTypeCustom
 	}
 	return &ResourceServerResponse{
-		ID:                  rs.ID,
-		Name:                rs.Name,
-		Description:         rs.Description,
-		Identifier:          rs.Identifier,
-		Type:                resType,
-		OUID:                rs.OUID,
-		Delimiter:           rs.Delimiter,
-		AuthorizationEngine: rs.AuthorizationEngine,
-		IsReadOnly:          rs.IsReadOnly,
+		ID:                      rs.ID,
+		Name:                    rs.Name,
+		Description:             rs.Description,
+		Identifier:              rs.Identifier,
+		Type:                    resType,
+		OUID:                    rs.OUID,
+		ProjectID:               rs.ProjectID,
+		Delimiter:               rs.Delimiter,
+		HierarchicalPermissions: rs.HierarchicalPermissions,
+		AuthorizationEngine:     rs.AuthorizationEngine,
+		IsReadOnly:              rs.IsReadOnly,
 	}
 }
 

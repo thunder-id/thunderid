@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import * as componentsModule from '@thunderid/components';
+import {CapabilitiesProvider, HiddenResourcesProvider} from '@thunderid/contexts';
 import {renderWithProviders, screen, fireEvent, waitFor} from '@thunderid/test-utils';
 import type {ReactNode} from 'react';
-import {describe, it, expect, vi, beforeEach} from 'vitest';
+import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import type {ResourceServer} from '../../models/resource-server';
 import ResourceServerEditPage from '../ResourceServerEditPage';
 
@@ -41,11 +42,14 @@ vi.mock('@thunderid/react', async (importOriginal) => {
   };
 });
 
+const mockUseProjectScope = vi.fn<() => {projectId?: string}>(() => ({}));
+
 vi.mock('@thunderid/contexts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@thunderid/contexts')>();
   return {
     ...actual,
     useConfig: () => ({getServerUrl: () => 'http://localhost:8090', config: {brand: {product_name: 'ThunderID'}}}),
+    useProjectScope: () => mockUseProjectScope(),
     useToast: () => ({showToast: vi.fn()}),
   };
 });
@@ -197,6 +201,11 @@ const mockMcpResourceServer: ResourceServer = {
   type: 'MCP',
 };
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  isLoading: false,
+};
+
 describe('ResourceServerEditPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -215,6 +224,70 @@ describe('ResourceServerEditPage', () => {
       isError: false,
       error: null,
       reset: mockUpdateReset,
+    });
+  });
+
+  describe('a hidden resource server', () => {
+    it('returns to the list when the resource server is hidden by its identifier', async () => {
+      renderWithProviders(
+        <HiddenResourcesProvider hidden={{resourceServerIdentifiers: ['https://api.example.com']}}>
+          <ResourceServerEditPage />
+        </HiddenResourcesProvider>,
+      );
+
+      expect(screen.getByRole('progressbar')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith('/resource-servers', {replace: true});
+      });
+    });
+
+    it('shows the resource server when another identifier is hidden', () => {
+      renderWithProviders(
+        <HiddenResourcesProvider hidden={{resourceServerIdentifiers: ['var:DATA_PLANE_URL']}}>
+          <ResourceServerEditPage />
+        </HiddenResourcesProvider>,
+      );
+
+      expect(screen.getByText(mockResourceServer.name)).toBeInTheDocument();
+      expect(mockNavigate).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('inside a project', () => {
+    afterEach(() => {
+      mockUseProjectScope.mockReturnValue({});
+    });
+
+    it('returns to the list for a resource server of another project', async () => {
+      mockUseProjectScope.mockReturnValue({projectId: 'project-1'});
+      mockUseGetResourceServer.mockReturnValue({
+        data: {...mockResourceServer, projectId: 'project-2'},
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      });
+
+      renderWithProviders(<ResourceServerEditPage />);
+
+      expect(screen.getByRole('progressbar')).toBeInTheDocument();
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith('/resource-servers', {replace: true});
+      });
+    });
+
+    it('shows a resource server of the selected project', () => {
+      mockUseProjectScope.mockReturnValue({projectId: 'project-1'});
+      mockUseGetResourceServer.mockReturnValue({
+        data: {...mockResourceServer, projectId: 'project-1'},
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      });
+
+      renderWithProviders(<ResourceServerEditPage />);
+
+      expect(screen.getByText(mockResourceServer.name)).toBeInTheDocument();
+      expect(mockNavigate).not.toHaveBeenCalled();
     });
   });
 
@@ -346,6 +419,24 @@ describe('ResourceServerEditPage', () => {
     fireEvent.click(screen.getByRole('tab', {name: 'Advanced'}));
 
     expect(screen.getByRole('button', {name: /Delete resource server/i})).toBeInTheDocument();
+  });
+
+  it('omits the Danger Zone and disables Save when the admin may only view resource servers', async () => {
+    renderWithProviders(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <ResourceServerEditPage />
+      </CapabilitiesProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('tab', {name: 'Advanced'}));
+
+    expect(screen.queryByText('Danger zone')).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Identifier'), {target: {value: 'https://new-api.example.com'}});
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+    });
   });
 
   it('does not render the Danger Zone for a read-only server', () => {

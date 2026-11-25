@@ -6,12 +6,14 @@ import useGetSharingPolicies from '../api/useGetSharingPolicies';
 import useSaveSharingPolicy from '../api/useSaveSharingPolicy';
 import type {
   AccessSwitch,
+  AssignmentsOffRules,
   OrganizationAccessDraft,
   OrganizationAccessOffers,
   SharingPolicySavePlan,
 } from '../models/organization-access';
-import type {SharingPolicy} from '../models/sharing-policy';
+import type {EditsRule, SharingPolicy} from '../models/sharing-policy';
 import draftToSharingSections from '../utils/draftToSharingSections';
+import getAssignmentsOffRules from '../utils/getAssignmentsOffRules';
 import getOrganizationAccessOffers from '../utils/getOrganizationAccessOffers';
 import planSharingPolicySave from '../utils/planSharingPolicySave';
 import sharingPolicyToDraft from '../utils/sharingPolicyToDraft';
@@ -31,6 +33,12 @@ export interface UseOrganizationAccessOptions {
    * Any sentence it leaves out keeps the generic wording.
    */
   wordingNamespace?: string;
+  /**
+   * Tells which sharing rules the resource's own screen edits, by field, such as a flow's variables. The draft holds
+   * them and a save writes them afresh, while every other rule is kept as saved. Keep the function stable between
+   * renders. By default the resource edits none, so none of its rules are touched.
+   */
+  editsRule?: EditsRule;
 }
 
 /**
@@ -45,6 +53,10 @@ export interface OrganizationAccessState {
   loadError: Error | null;
   reload: () => void;
   /**
+   * Tells which sharing rules the resource's own screen edits, as given to the hook.
+   */
+  editsRule?: EditsRule | undefined;
+  /**
    * The owner-issued policy as last read, or `undefined` when the resource is not shared.
    */
   savedPolicy: SharingPolicy | undefined;
@@ -53,6 +65,10 @@ export interface OrganizationAccessState {
    */
   draft: OrganizationAccessDraft;
   offers: OrganizationAccessOffers;
+  /**
+   * Where saving the draft keeps a role's assignments turned off.
+   */
+  assignmentsOff: AssignmentsOffRules;
   /**
    * Whether a resource file declares the policy, which makes it read-only here.
    */
@@ -103,6 +119,7 @@ export default function useOrganizationAccess({
   resourcePath,
   enabled = true,
   wordingNamespace = undefined,
+  editsRule = undefined,
 }: UseOrganizationAccessOptions): OrganizationAccessState {
   const policiesQuery = useGetSharingPolicies(resourcePath, enabled);
   const saveMutation = useSaveSharingPolicy(resourcePath, wordingNamespace);
@@ -114,14 +131,21 @@ export default function useOrganizationAccess({
     () => policiesQuery.data?.find((policy) => policy.stage === 'share'),
     [policiesQuery.data],
   );
-  const savedDraft = useMemo(() => sharingPolicyToDraft(savedPolicy), [savedPolicy]);
+  const savedDraft = useMemo(() => sharingPolicyToDraft(savedPolicy, editsRule), [savedPolicy, editsRule]);
   const basePolicy = edit ? edit.base : savedPolicy;
   const draft = edit?.draft ?? savedDraft;
   const offers = useMemo(() => getOrganizationAccessOffers(basePolicy), [basePolicy]);
+  const assignmentsOff = useMemo(
+    () => getAssignmentsOffRules(draftToSharingSections(draft, basePolicy, editsRule)),
+    [draft, basePolicy, editsRule],
+  );
 
   const plan = useMemo<SharingPolicySavePlan>(
-    () => (edit ? planSharingPolicySave(edit.base, draftToSharingSections(edit.draft)) : {type: 'none'}),
-    [edit],
+    () =>
+      edit
+        ? planSharingPolicySave(edit.base, draftToSharingSections(edit.draft, edit.base, editsRule))
+        : {type: 'none'},
+    [edit, editsRule],
   );
 
   const {reset: resetSaveMutation, mutateAsync: runSave} = saveMutation;
@@ -140,8 +164,8 @@ export default function useOrganizationAccess({
 
   const previewSwitch = useCallback(
     (field: AccessSwitch['field'], to: AccessSwitch['to']): AccessSwitch =>
-      switchOrganizationAccess(draft, field, to, basePolicy),
-    [draft, basePolicy],
+      switchOrganizationAccess(draft, field, to, basePolicy, editsRule),
+    [draft, basePolicy, editsRule],
   );
 
   const applySwitch = useCallback(
@@ -168,9 +192,11 @@ export default function useOrganizationAccess({
     isLoading: policiesQuery.isLoading,
     loadError: policiesQuery.error,
     reload: () => void refetch(),
+    editsRule,
     savedPolicy,
     draft,
     offers,
+    assignmentsOff,
     isDeclared: savedPolicy?.isReadOnly === true,
     hasChanges: plan.type !== 'none',
     updateDraft,

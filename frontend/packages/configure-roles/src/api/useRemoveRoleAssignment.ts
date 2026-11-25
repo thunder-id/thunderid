@@ -2,19 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
-import {AdministrationModes, useAdministrationOperation, useConfig, useToast} from '@thunderid/contexts';
+import {useAdministrationOperation, useConfig, useToast} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
 import {useTranslation} from 'react-i18next';
 import RoleQueryKeys from '../constants/role-query-keys';
 import type {RoleAssignment} from '../models/role';
-import {
-  removeRoleAssignmentNatively,
-  removeRoleAssignmentViaFlow,
-  type HttpLike,
-} from '../utils/roleAdministrationFlow';
+import {removeRoleAssignmentNatively, type HttpLike} from '../utils/roleAdministrationFlow';
 
 /**
- * One assignment per call: a loop of flow executions could not be rolled back if one failed.
+ * One assignment per call.
  */
 export interface RemoveRoleAssignmentVariables {
   roleId: string;
@@ -23,6 +19,9 @@ export interface RemoveRoleAssignmentVariables {
 
 /**
  * Custom React hook to remove a user or group assignment from a role.
+ *
+ * The removal calls `POST /roles/{id}/assignments/remove`; the server revokes the tokens the assignment
+ * granted before it is removed. A console that declares its own operation runs that instead.
  *
  * @returns TanStack Query mutation object for removing a role assignment
  */
@@ -43,17 +42,16 @@ export default function useRemoveRoleAssignment(): UseMutationResult<void, Error
         await mode(variables);
         return;
       }
-      if (mode === AdministrationModes.NATIVE) {
-        await removeRoleAssignmentNatively(client, getServerUrl(), roleId, assignment);
-        return;
-      }
-      await removeRoleAssignmentViaFlow(client, getServerUrl(), roleId, assignment);
+      await removeRoleAssignmentNatively(client, getServerUrl(), roleId, assignment);
     },
-    onSuccess: (_data, {roleId}) => {
+    onSuccess: () => {
+      showToast(t('assignments.remove.success'), 'success');
+    },
+    // A failure after the removal is written still changes the list, so it is refreshed either way.
+    onSettled: (_data, _error, {roleId}) => {
       queryClient.invalidateQueries({queryKey: [RoleQueryKeys.ROLE_ASSIGNMENTS, roleId]}).catch(() => {
         /* noop */
       });
-      showToast(t('assignments.remove.success'), 'success');
     },
   });
 }

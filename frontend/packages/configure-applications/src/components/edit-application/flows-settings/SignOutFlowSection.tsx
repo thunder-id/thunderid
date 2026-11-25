@@ -31,6 +31,10 @@ interface SignOutFlowSectionProps {
    * Singular noun used to refer to the entity in user-visible copy (default: 'application').
    */
   entityLabel?: string;
+  /**
+   * Whether the application can't be edited here
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -48,6 +52,7 @@ export default function SignOutFlowSection({
   editedApp,
   onFieldChange,
   entityLabel = 'application',
+  readOnly = false,
 }: SignOutFlowSectionProps) {
   const routes = useApplicationRoutes();
   const {t} = useTranslation();
@@ -91,7 +96,7 @@ export default function SignOutFlowSection({
         value={signoutFlowOptions.find((flow) => flow.id === selectedFlowId) ?? null}
         onChange={(_event, newValue) => onFieldChange('signOutFlowId', newValue?.id ?? '')}
         loading={loadingSignOutFlows}
-        disabled={application.isReadOnly}
+        disabled={readOnly}
         renderInput={(params) => (
           <TextField
             {...params}

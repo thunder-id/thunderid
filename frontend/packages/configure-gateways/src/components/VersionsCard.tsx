@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {Box, Button, Chip, CircularProgress, IconButton, Stack, Tooltip, Typography} from '@wso2/oxygen-ui';
 import {ChevronRight, Rocket} from '@wso2/oxygen-ui-icons-react';
 import {useState, type JSX} from 'react';
@@ -20,6 +21,11 @@ export interface VersionsCardProps {
   deploying?: string;
   /** The names of the targets each version is deployed to, by the version's key. */
   runners?: Record<string, string[]>;
+  /**
+   * The names of the targets that hold each version only in part, by the version's key. Such a target
+   * is not done with the version, so a Deploy to it stays on offer.
+   */
+  partlyRunners?: Record<string, string[]>;
   /** Every target's name, in path order, so each is tagged in a colour of its own. */
   targets?: string[];
   /**
@@ -27,6 +33,11 @@ export interface VersionsCardProps {
    * configuration is promoted along a path, only the first target takes a deploy.
    */
   deployTargets?: string[];
+  /**
+   * The names of the targets that hold a value set since the version they run was deployed. Such a
+   * target still takes a deploy of that version, which is how the value takes effect.
+   */
+  targetsWithChangedValues?: string[];
 }
 
 /** The colours targets are tagged in, by their place along the path. */
@@ -78,10 +89,13 @@ export default function VersionsCard({
   onDeploy = undefined,
   deploying = undefined,
   runners = {},
+  partlyRunners = {},
   targets = [],
   deployTargets = undefined,
+  targetsWithChangedValues = [],
 }: VersionsCardProps): JSX.Element {
   const {t} = useTranslation('deploy');
+  const canDeploy = useCapabilitiesContext().can('gateway', 'update');
   // One version is open at a time, the newest until another is opened; closing it leaves none open.
   const [opened, setOpened] = useState<string | null | undefined>(undefined);
   const openVersion = opened === undefined ? versions[0]?.version : opened;
@@ -93,12 +107,19 @@ export default function VersionsCard({
   );
   const folded = versions.length - listed.length;
 
-  // A version that every target a deploy can reach already runs has nowhere to go, so its Deploy is
-  // disabled and says where it runs.
+  // A version that every target a deploy can reach already runs whole, with no value set since, has
+  // nowhere to go, so its Deploy is disabled and says where it runs. A target holding it in part can
+  // still take the rest, and one with a value set since can take it again.
   const reachable = deployTargets ?? targets;
   const deployButton = (version: Version, deployedTo: string[]): JSX.Element | null => {
-    if (!onDeploy) return null;
-    const everywhere = reachable.length > 0 && reachable.every((name: string) => deployedTo.includes(name));
+    if (!onDeploy || !canDeploy) return null;
+    const partly = partlyRunners[version.version] ?? [];
+    const everywhere =
+      reachable.length > 0 &&
+      reachable.every(
+        (name: string) =>
+          deployedTo.includes(name) && !partly.includes(name) && !targetsWithChangedValues.includes(name),
+      );
     const button = (
       <Button
         variant="contained"
@@ -178,7 +199,7 @@ export default function VersionsCard({
         );
         return (
           <Box
-            key={version.version}
+            key={`${version.version}-${String(version.number)}`}
             data-testid={`deploy-version-${version.version}`}
             data-latest={index === 0 ? 'true' : undefined}
             data-open={isOpen ? 'true' : undefined}

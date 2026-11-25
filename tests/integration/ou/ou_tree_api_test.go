@@ -549,6 +549,10 @@ func deleteOUByID(suite *OUPathAPITestSuite, id string) error {
 
 // createOUForPath is a helper function to create an OU for path tests
 func createOUForPath(suite *OUPathAPITestSuite, ouRequest CreateOURequest) (string, error) {
+	if ouRequest.Parent == nil {
+		return testutils.ImportRootOrganizationUnit(ouRequest)
+	}
+
 	jsonData, err := json.Marshal(ouRequest)
 	if err != nil {
 		return "", err

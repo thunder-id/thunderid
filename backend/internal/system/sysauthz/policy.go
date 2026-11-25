@@ -50,8 +50,7 @@ type authorizationPolicy interface {
 }
 
 // ouMembershipPolicy enforces that the caller's organization unit matches the OU of the
-// resource being acted upon. This prevents non-system callers from operating on
-// resources that belong to a different OU.
+// resource being acted upon. It prevents callers from operating on resources in a different OU.
 type ouMembershipPolicy struct{}
 
 // isActionAllowed returns:
@@ -142,6 +141,54 @@ func (p *ouInheritancePolicy) getAccessibleResources(ctx context.Context, action
 	return true, &AccessibleResources{AllAllowed: false, IDs: resultIDs}, nil
 }
 
+// ouChildPolicy confines the management of organization units: a caller manages the organization units directly
+// beneath the one its token names, and reads that one too when includeSelf is set. It reaches no unit further down,
+// no sibling and no ancestor, and an organization unit that does not exist is denied like one it may not reach.
+type ouChildPolicy struct {
+	resolver    OUHierarchyResolver
+	includeSelf bool
+}
+
+// isActionAllowed returns:
+//   - PolicyDecisionNotApplicable when the action context carries no OUID.
+//   - PolicyDecisionAllowed when the organization unit is a direct child of the caller's, or the caller's own when
+//     includeSelf is set.
+//   - PolicyDecisionDenied otherwise.
+func (p *ouChildPolicy) isActionAllowed(ctx context.Context,
+	actionCtx *ActionContext) (policyDecision, *tidcommon.ServiceError) {
+	if actionCtx == nil || actionCtx.OUID == "" {
+		return policyDecisionNotApplicable, nil
+	}
+	callerOUID := security.GetOUID(ctx)
+	if callerOUID == "" {
+		return policyDecisionDenied, nil
+	}
+	if actionCtx.OUID == callerOUID {
+		if p.includeSelf {
+			return policyDecisionAllowed, nil
+		}
+		return policyDecisionDenied, nil
+	}
+	ancestorIDs, svcErr := p.resolver.GetAncestorOUIDs(ctx, actionCtx.OUID)
+	if svcErr != nil {
+		if svcErr.Type == tidcommon.ClientErrorType {
+			return policyDecisionDenied, nil
+		}
+		return policyDecisionDenied, svcErr
+	}
+	if len(ancestorIDs) > 0 && ancestorIDs[0] == callerOUID {
+		return policyDecisionAllowed, nil
+	}
+	return policyDecisionDenied, nil
+}
+
+// getAccessibleResources is never applicable: listing the children of an organization unit names that unit, so the
+// membership policy confines it to the caller's own.
+func (p *ouChildPolicy) getAccessibleResources(context.Context, security.Action,
+	security.ResourceType) (bool, *AccessibleResources, *tidcommon.ServiceError) {
+	return false, nil, nil
+}
+
 // inheritanceReadActions is the set of read-only actions that use OU-inheritance semantics.
 // An action listed here gives callers in child OUs visibility into resources defined in
 // parent OUs. Write actions must NOT be listed here — child OUs must never be able to
@@ -149,8 +196,19 @@ func (p *ouInheritancePolicy) getAccessibleResources(ctx context.Context, action
 // Each action implicitly encodes its resource type (e.g. ActionReadUserType → EntityType),
 // so a separate resource-type map is not needed.
 var inheritanceReadActions = map[security.Action]bool{
-	security.ActionReadUserType:  true,
-	security.ActionListUserTypes: true,
+	security.ActionReadUserType:   true,
+	security.ActionListUserTypes:  true,
+	security.ActionReadAgentType:  true,
+	security.ActionListAgentTypes: true,
+	// Flows reference the templates of the organization units above their own by handle.
+	security.ActionReadNotificationTemplate:  true,
+	security.ActionListNotificationTemplates: true,
+	// Flows reference the presentation definitions of the organization units above their own by handle.
+	security.ActionReadVC:  true,
+	security.ActionListVCs: true,
+	// Roles take permissions from the resource servers of the organization units above their own.
+	security.ActionReadResourceServer:  true,
+	security.ActionListResourceServers: true,
 }
 
 // isInheritanceEligible returns true when the action is registered for
@@ -163,6 +221,16 @@ func isInheritanceEligible(action security.Action) bool {
 // When a pre-built inheritancePolicy is available and the action is eligible,
 // that policy is used instead of the default globalPolicies.
 func selectPolicies(action security.Action, policies *policies) []authorizationPolicy {
+	switch action {
+	case security.ActionReadOU:
+		if policies.ouReadPolicy != nil {
+			return []authorizationPolicy{policies.ouReadPolicy}
+		}
+	case security.ActionUpdateOU, security.ActionDeleteOU:
+		if policies.ouWritePolicy != nil {
+			return []authorizationPolicy{policies.ouWritePolicy}
+		}
+	}
 	if policies.inheritancePolicy != nil && isInheritanceEligible(action) {
 		return []authorizationPolicy{policies.inheritancePolicy}
 	}

@@ -14,7 +14,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -33,9 +32,15 @@ func TestControlPlaneTestSuite(t *testing.T) {
 }
 
 func (ts *ControlPlaneTestSuite) SetupSuite() {
+	// The suite's agents are of the bootstrap default agent type, and an agent is placed within its agent
+	// type's organization unit tree, so the suite's organization unit sits below the default one.
+	defaultOUID, err := testutils.DefaultOUID()
+	ts.Require().NoError(err)
 	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
-		Handle: unique("cp-suite"),
-		Name:   "Control Plane suite",
+		Handle:    unique("cp-suite"),
+		Name:      "Control Plane suite",
+		Parent:    &defaultOUID,
+		ProjectID: defaultProjectID,
 	})
 	ts.Require().NoError(err)
 	ts.ouID = ouID
@@ -188,6 +193,7 @@ id: cp-declarative-ou
 handle: cp-declarative-ou
 name: Control Plane Declarative OU
 description: Owns the declarative sender
+projectId: `+defaultProjectID+`
 ---
 resource_type: connection
 id: `+senderID+`
@@ -230,7 +236,7 @@ value:
 
 func (ts *ControlPlaneTestSuite) TestAnUpdateReportsTheDerivedStatus() {
 	name := unique("CP Status App")
-	appID, err := testutils.CreateApplication(testutils.Application{OUID: ts.ouID, Name: name})
+	appID, err := testutils.CreateApplication(testutils.Application{ProjectID: defaultProjectID, Name: name})
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteApplication(appID) }()
 
@@ -238,7 +244,7 @@ func (ts *ControlPlaneTestSuite) TestAnUpdateReportsTheDerivedStatus() {
 		Status json.RawMessage `json:"status"`
 	}
 	status, raw := ts.call(http.MethodPut, "/applications/"+appID, map[string]any{
-		"ouId": ts.ouID, "name": name, "description": "Updated on the Control Plane",
+		"name": name, "description": "Updated on the Control Plane",
 	}, &updated)
 	ts.Require().Equal(http.StatusOK, status, string(raw))
 	ts.JSONEq(`{"value":"ACTIVE"}`, string(updated.Status), "the update must report the derived status")
@@ -285,7 +291,7 @@ func (ts *ControlPlaneTestSuite) TestExportRefersToValuesAndImportKeepsTheRefere
 	clientID := unique("cp-reference-client")
 	clientSecret := unique("cp-reference-secret")
 	appID, err := testutils.CreateApplication(testutils.Application{
-		OUID:         ts.ouID,
+		ProjectID:    defaultProjectID,
 		Name:         name,
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
@@ -300,9 +306,8 @@ func (ts *ControlPlaneTestSuite) TestExportRefersToValuesAndImportKeepsTheRefere
 	status, raw := ts.call(http.MethodPost, "/export", map[string]any{"applications": []string{appID}}, &exported)
 	ts.Require().Equal(http.StatusOK, status, string(raw))
 
-	variable := strings.ToUpper(strings.NewReplacer(" ", "_", "-", "_").Replace(name))
-	clientIDRef := "var:APPLICATION_" + variable + "_CLIENT_ID"
-	clientSecretRef := "sec:APPLICATION_" + variable + "_CLIENT_SECRET"
+	clientIDRef := "var:" + variableName("APPLICATION", appID, "CLIENT_ID")
+	clientSecretRef := "sec:" + variableName("APPLICATION", appID, "CLIENT_SECRET")
 	ts.Contains(exported.Resources, clientIDRef)
 	ts.Contains(exported.Resources, clientSecretRef)
 	ts.NotContains(exported.Resources, clientID, "the export carried the client ID")
@@ -346,7 +351,7 @@ func (ts *ControlPlaneTestSuite) TestExportRefersToValuesAndImportKeepsTheRefere
 func (ts *ControlPlaneTestSuite) TestExportRefersToAListAsOneReference() {
 	name := unique("CP List App")
 	appID, err := testutils.CreateApplication(testutils.Application{
-		OUID:         ts.ouID,
+		ProjectID:    defaultProjectID,
 		Name:         name,
 		ClientID:     unique("cp-list-client"),
 		ClientSecret: unique("cp-list-secret"),
@@ -361,8 +366,8 @@ func (ts *ControlPlaneTestSuite) TestExportRefersToAListAsOneReference() {
 	status, raw := ts.call(http.MethodPost, "/export", map[string]any{"applications": []string{appID}}, &exported)
 	ts.Require().Equal(http.StatusOK, status, string(raw))
 
-	variable := strings.ToUpper(strings.NewReplacer(" ", "_", "-", "_").Replace(name))
-	ts.Regexp(`redirectUris:\s*\n\s*- var:APPLICATION_`+variable+`_REDIRECT_URIS\s*\n`, exported.Resources)
+	redirectURIs := variableName("APPLICATION", appID, "REDIRECT_URIS")
+	ts.Regexp(`redirectUris:\s*\n\s*- var:`+redirectURIs+`\s*\n`, exported.Resources)
 	ts.NotContains(exported.Resources, "cp-list-one.example.com", "the export carried an address")
 	ts.NotContains(exported.Resources, "cp-list-two.example.com", "the export carried an address")
 }
@@ -379,7 +384,7 @@ func (ts *ControlPlaneTestSuite) TestAnImportedResourceServerKeepsItsIdentifierR
 	}
 	status, raw := ts.call(http.MethodPost, "/export", map[string]any{"resourceServers": []string{rsID}}, &exported)
 	ts.Require().Equal(http.StatusOK, status, string(raw))
-	reference := "var:" + variableName("RESOURCE_SERVER", name, "IDENTIFIER")
+	reference := "var:" + variableName("RESOURCE_SERVER", rsID, "IDENTIFIER")
 	ts.Require().Contains(exported.Resources, "identifier: "+reference)
 
 	ts.Require().NoError(testutils.DeleteResourceServer(rsID))
@@ -435,7 +440,7 @@ func (ts *ControlPlaneTestSuite) TestAnImportedMCPResourceServerKeepsItsIdentifi
 	}
 	status, raw = ts.call(http.MethodPost, "/export", map[string]any{"resourceServers": []string{rsID}}, &exported)
 	ts.Require().Equal(http.StatusOK, status, string(raw))
-	reference := "var:" + variableName("RESOURCE_SERVER", name, "IDENTIFIER")
+	reference := "var:" + variableName("RESOURCE_SERVER", rsID, "IDENTIFIER")
 	ts.Require().Contains(exported.Resources, "identifier: "+reference)
 
 	ts.Require().NoError(testutils.DeleteResourceServer(rsID))
@@ -462,7 +467,7 @@ func (ts *ControlPlaneTestSuite) TestAnImportedMCPResourceServerKeepsItsIdentifi
 	}
 	status, raw = ts.call(http.MethodPut, "/resource-servers/"+rsID, map[string]any{
 		"name":       name,
-		"identifier": "sec:" + variableName("RESOURCE_SERVER", name, "IDENTIFIER"),
+		"identifier": "sec:" + variableName("RESOURCE_SERVER", rsID, "IDENTIFIER"),
 		"ouId":       ts.ouID,
 	}, nil)
 	ts.Require().Equal(http.StatusBadRequest, status, string(raw))
@@ -473,15 +478,17 @@ func (ts *ControlPlaneTestSuite) TestAnImportedMCPResourceServerKeepsItsIdentifi
 // A Control Plane runs no executor, so a flow is validated against the static executor catalog:
 // a known executor is accepted and an unknown one refused.
 func (ts *ControlPlaneTestSuite) TestFlowsAreValidatedAgainstTheExecutorCatalog() {
-	flowID, err := testutils.CreateIsolatedAuthFlow(unique("cp-catalog-flow"))
+	flow := testutils.IsolatedAuthFlow(unique("cp-catalog-flow"))
+	flow.ProjectID = defaultProjectID
+	flowID, err := testutils.CreateFlow(flow)
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteFlow(flowID) }()
 
 	status, raw := ts.call(http.MethodPost, "/flows", map[string]any{
-		"name":     "Unknown executor flow",
-		"ouId":     ts.ouID,
-		"flowType": "AUTHENTICATION",
-		"handle":   unique("cp-unknown-executor"),
+		"name":      "Unknown executor flow",
+		"projectId": defaultProjectID,
+		"flowType":  "AUTHENTICATION",
+		"handle":    unique("cp-unknown-executor"),
 		"nodes": []map[string]any{
 			{"id": "start", "type": "START", "onSuccess": "task"},
 			{"id": "task", "type": "TASK_EXECUTION", "executor": map[string]any{"name": "NoSuchExecutor"},

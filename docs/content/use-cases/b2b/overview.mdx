@@ -1,0 +1,91 @@
+---
+title: Understand It
+docType: use-case
+sidebar_position: 1
+description: Why a B2B SaaS application needs organizations, and how an identity layer keeps every customer company's people, sign-in, and access apart in one deployment.
+---
+
+# Understand It
+
+A company signs up for your product. Its office manager creates an account and the company in the same visit, then
+invites the team. A month later a larger customer signs up, but its IT department will not hand out yet another
+password: its employees must sign in through the company's own identity provider. Then a consultant starts working with
+both companies at once.
+
+To each company, your product is the tool its people use. To your backend, every request now raises questions
+that a consumer application never had to answer:
+
+- Which company is this person acting for right now?
+- How did they come to belong to that company, and who decided it?
+- What are they allowed to do there, and only there?
+- Who runs each company's team: your staff, or the company's own administrator?
+
+Handling those questions is what it takes to build identity for a B2B SaaS application, and the sign-in screen is the
+smallest part of it.
+
+## The Problem
+
+A first version usually treats every user as an individual with a `company` field on their profile. As customers
+arrive, the same challenges surface whatever the product is:
+
+- **Self-service company onboarding.** A new customer expects to create their company and its first administrator in
+  one sign-up, without a sales call or a ticket to your team.
+- **One person, several companies.** Consultants, agencies, and parent-company staff need one account that can act for
+  more than one customer, with different permissions in each.
+- **Each company's own sign-in.** Larger customers require their employees to sign in through the company's identity
+  provider (IdP), the system such as Okta or Microsoft Entra ID that already holds their workforce accounts.
+- **Delegated administration.** Each customer wants its own administrator to add people, form teams, and grant access,
+  without filing requests with you and without ever seeing another customer's people.
+- **Isolation on every request.** Every API call has to know which company it acts for, so one customer's data never
+  leaks into another's, even when the same person belongs to both.
+- **One deployment for every customer.** Roles, sign-in journeys, and the application itself should be defined once
+  and reach every company, including the ones that sign up tomorrow.
+
+## How It Works
+
+Solving this puts a dedicated **identity layer** between your application and the people who use it, and models each
+customer company as an **organization** inside it. This is the multi-tenant pattern: one deployment of your application,
+with each customer company kept apart as its own tenant. Your team defines the application, its roles, and its sign-in
+journeys once, and shares them with every customer organization beneath a platform organization. Each customer
+organization holds its own people and its own settings, such as which identity provider its employees sign in with.
+
+When someone signs in, the identity layer decides which organization the sign-in lands in, checks that the person
+belongs there, and issues a signed **token**: a piece of data your application presents to its APIs, signed so the
+APIs can detect any change to it. The token names the organization and lists only the roles the person holds in it.
+
+<B2BSolutionArchitectureDiagram />
+
+The organization is decided once, at sign-in, and travels in the token. Every API call after that knows which company
+it acts for without asking again, and a person who belongs to two companies holds a separate token for each.
+
+:::tip Not Your Pattern?
+- Users are individual consumers who each own their account: see [Secure Consumer Access to Your Application](../b2c/index.mdx).
+- Users are autonomous agents or machine-to-machine clients: see [Identity for AI Agents](../ai-agents/index.mdx).
+:::
+
+## What You Will Build
+
+Each journey a customer company goes through runs as a [flow](../../guides/flows/what-are-flows.mdx): the sequence of
+screens and checks one journey runs, built from a template in a visual designer and changed without redeploying your
+application. This section builds five journeys:
+
+- **Company sign-up.** One sign-up creates the company's organization and makes its first account the company's admin.
+  See [Let Companies Sign Up](./journeys/organization-sign-up.mdx).
+- **Team administration.** Each company's admin manages its own people, groups, and role assignments from inside your
+  application, and never sees another company's. See
+  [Let Organization Admins Manage Teams](./journeys/delegated-administration.mdx).
+- **Invitations.** An admin invites people by email, both new people and people who already work with another company
+  on your platform. See [Invite People In](./journeys/invite-members.mdx).
+- **Enterprise sign-in.** Each company can connect its own OpenID Connect identity provider. Its employees' accounts are
+  created the first time they sign in, and [account linking](../../guides/identity-providers/link-accounts.mdx) joins
+  a federated sign-in to an account that already exists. See [Plug In an Enterprise IdP](./journeys/enterprise-sso.mdx).
+- **Switching organizations.** A person who works for several companies moves between them, with a token that always
+  names one. See [Switch Organizations](./journeys/switch-organizations.mdx).
+
+What a consumer application offers works for each organization too, such as password recovery from the recovery flow
+templates, [consent](../../guides/consent.mdx), and [account protection](../../guides/account-protection/overview.mdx).
+
+None of this locks you into a proprietary protocol: sign-in runs on standard
+[OAuth2 and OpenID Connect](../../guides/protocols/oauth-oidc/index.mdx), so your team's existing tooling and knowledge
+already apply. By the end of this section, companies sign themselves up, bring in their people by invitation or through
+their own identity provider, and manage their own teams, all from one shared application.

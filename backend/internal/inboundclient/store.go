@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
@@ -303,6 +304,9 @@ func referenceQueries(refType, refID, deploymentID string) (
 	case resourcedependency.ResourceTypeFlow:
 		return queryGetEntityIDsByFlowIDCount, queryGetEntityIDsByFlowID,
 			[]interface{}{refID, refID, refID, refID, refID, deploymentID}, true
+	case resourcedependency.ResourceTypeAgentType:
+		return queryGetEntityIDsByAllowedAgentTypeCount, queryGetEntityIDsByAllowedAgentType,
+			[]interface{}{refID, deploymentID}, true
 	default:
 		return dbmodel.DBQuery{}, dbmodel.DBQuery{}, nil, false
 	}
@@ -319,6 +323,8 @@ func clientReferences(c *inboundmodel.InboundClient, refType, refID string) bool
 	case resourcedependency.ResourceTypeFlow:
 		return c.AuthFlowID == refID || c.DeviceGrantFlowID == refID || c.RegistrationFlowID == refID ||
 			c.RecoveryFlowID == refID || c.SignOutFlowID == refID
+	case resourcedependency.ResourceTypeAgentType:
+		return slices.Contains(c.AllowedAgentTypes, refID)
 	default:
 		return false
 	}

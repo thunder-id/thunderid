@@ -31,6 +31,8 @@ type revokedSnapshot struct {
 	AppKeys []revokedEntry
 	// EntityScopes holds revoked per-principal scope entries, keyed by digest.
 	EntityScopes []revokedEntry
+	// EntityScopeSubtrees holds frozen per-principal subtree rules.
+	EntityScopeSubtrees []revokedEntry
 	// Scopes holds revoked deployment-wide scope entries, keyed by digest.
 	Scopes []revokedEntry
 }

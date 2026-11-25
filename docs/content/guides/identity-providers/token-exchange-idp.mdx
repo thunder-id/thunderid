@@ -122,20 +122,21 @@ If any step fails, the exchange returns HTTP 400 with `error=invalid_request` an
 
 Attribute configuration for token exchange uses the same `attributeConfiguration` structure as federated sign-in, including [Authorization Mapping](../add-oidc-provider#authorization-mapping). See [Add an OIDC Identity Provider](../add-oidc-provider#attribute-configuration) for the full reference.
 
-When the IdP connection has Authorization Mapping configured, it decides the granted scope instead of the external token's own `scope` claim:
+The connection's Authorization Mapping decides the granted permission scopes. The external token's own `scope` claim is never an authority for them:
 
 | Request | Resulting scope |
 |---|---|
 | `scope` supplied | The requested scopes, narrowed to whatever the mapping actually authorizes |
 | `scope` omitted | Nothing. An omitted request is not treated as "grant everything the mapping allows" here — unlike the [jwt-bearer grant](../../protocols/oauth-oidc/identity-assertion-grant/accept-identity-assertions), which does bound an omitted request by the assertion's own scope claim, token exchange has no equivalent claim on the subject token to fall back to, since an arbitrary external token's own `scope` claim is never authoritative here either way. |
 
-Without Authorization Mapping configured, the granted scope narrows the requested scope against the external token's own `scope` claim, same as any other token exchange.
+Without Authorization Mapping configured, no permission scope is granted. The issued token carries only the requested OIDC scopes, such as `openid`.
 
 ## Limitations
 
 - Only JWT tokens are supported. Opaque tokens (for example, GitHub access tokens) cannot be exchanged.
 - The external user's `sub` is passed through as-is. No local user lookup or just-in-time provisioning occurs.
-- External token scopes are narrowed by the existing intersection logic, or by the connection's Authorization Mapping when one is configured (see [Attribute Configuration](#attribute-configuration) above). External claims can be renamed to local attributes via the IdP's `attributeConfiguration`; the resulting attributes are still filtered by the application's `userAttributes` configuration.
+- The issued token carries an `idp` claim naming the external issuer. <ProductName />'s own APIs, the management APIs, the MCP server, and the UserInfo endpoint, do not accept it, even when Authorization Mapping is configured. To call those APIs with an identity from an external provider, use the [trusted issuer](../../trusted-issuer). A token exchanged again keeps the `idp` claim, and presented as the `actor_token` of another exchange, it is recorded in the new token's `act` claim with the external issuer as `iss`.
+- Permission scopes come only from the connection's Authorization Mapping (see [Attribute Configuration](#attribute-configuration) above). External claims can be renamed to local attributes via the IdP's `attributeConfiguration`; the resulting attributes are still filtered by the application's `userAttributes` configuration.
 - Token exchange is available to all applications that have the token exchange grant type. No per-application IdP restriction applies.
 
 ## Next Steps

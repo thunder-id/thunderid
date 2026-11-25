@@ -37,19 +37,75 @@ func TestTheClientPostsTheImportWithTheKey(t *testing.T) {
 	var presented string
 	gw := gatewayFor(t, func(w http.ResponseWriter, r *http.Request) {
 		presented = r.Header.Get(constants.APIKeyHeaderName)
-		assert.Equal(t, "/import", r.URL.Path)
+		assert.Equal(t, "/import/managed", r.URL.Path)
 		_ = json.NewDecoder(r.Body).Decode(&got)
 		_, _ = w.Write([]byte(`{"summary":{"failed":0}}`))
 	})
 
-	answer, err := newGatewayClient().Import(context.Background(), gw, "the-key",
+	answer, plain, err := newGatewayClient().Import(context.Background(), gw, "the-key",
 		gatewayImportRequest{Content: "docs", DryRun: true})
 
 	require.NoError(t, err)
+	assert.False(t, plain, "the managed import is not a fallback")
 	assert.JSONEq(t, `{"summary":{"failed":0}}`, string(answer))
 	assert.Equal(t, "the-key", presented)
 	assert.Equal(t, "docs", got.Content)
 	assert.True(t, got.DryRun)
+}
+
+// A gateway that predates the managed import answers 404 for it, so the deploy goes to the plain
+// import with the same body and key.
+func TestTheClientFallsBackToThePlainImportWhenThereIsNoManagedImport(t *testing.T) {
+	var paths []string
+	var got gatewayImportRequest
+	var presented string
+	gw := gatewayFor(t, func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		if r.URL.Path == "/import/managed" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		presented = r.Header.Get(constants.APIKeyHeaderName)
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		_, _ = w.Write([]byte(`{"summary":{"failed":0}}`))
+	})
+
+	answer, plain, err := newGatewayClient().Import(context.Background(), gw, "the-key",
+		gatewayImportRequest{Content: "docs"})
+
+	require.NoError(t, err)
+	assert.True(t, plain, "a deploy through the plain import is reported")
+	assert.Equal(t, []string{"/import/managed", "/import"}, paths)
+	assert.JSONEq(t, `{"summary":{"failed":0}}`, string(answer))
+	assert.Equal(t, "the-key", presented)
+	assert.Equal(t, "docs", got.Content)
+}
+
+// Only a missing route falls back: a gateway that refuses the managed import for another reason is
+// not asked again through the plain one.
+func TestTheClientDoesNotFallBackForOtherRefusals(t *testing.T) {
+	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden, http.StatusInternalServerError} {
+		var paths []string
+		gw := gatewayFor(t, func(w http.ResponseWriter, r *http.Request) {
+			paths = append(paths, r.URL.Path)
+			w.WriteHeader(status)
+		})
+
+		_, _, err := newGatewayClient().Import(context.Background(), gw, "k", gatewayImportRequest{})
+
+		assert.True(t, errors.Is(err, errGatewayRefused), "status %d", status)
+		assert.Equal(t, []string{"/import/managed"}, paths, "status %d", status)
+	}
+}
+
+// A gateway with neither import is reported as refusing, and nothing was written.
+func TestTheClientReportsAGatewayWithNoImport(t *testing.T) {
+	gw := gatewayFor(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNotFound) })
+
+	_, _, err := newGatewayClient().Import(context.Background(), gw, "k", gatewayImportRequest{})
+
+	assert.True(t, errors.Is(err, errGatewayRefused))
+	assert.True(t, errors.Is(err, errImportNotWritten))
 }
 
 // A gateway answering with anything but success is reported as refusing.
@@ -58,7 +114,7 @@ func TestTheClientReportsARefusal(t *testing.T) {
 		w.WriteHeader(http.StatusUnauthorized)
 	})
 
-	_, err := newGatewayClient().Import(context.Background(), gw, "wrong", gatewayImportRequest{})
+	_, _, err := newGatewayClient().Import(context.Background(), gw, "wrong", gatewayImportRequest{})
 
 	assert.True(t, errors.Is(err, errGatewayRefused))
 	assert.True(t, errors.Is(err, errImportNotWritten), "a 4xx is answered before anything is written")
@@ -70,7 +126,7 @@ func TestTheClientSaysWhenTheGatewayWroteNothing(t *testing.T) {
 	failing := gatewayFor(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	})
-	_, err := newGatewayClient().Import(context.Background(), failing, "k", gatewayImportRequest{})
+	_, _, err := newGatewayClient().Import(context.Background(), failing, "k", gatewayImportRequest{})
 	assert.True(t, errors.Is(err, errGatewayRefused))
 	assert.False(t, errors.Is(err, errImportNotWritten), "a server error may follow a partial write")
 
@@ -79,7 +135,7 @@ func TestTheClientSaysWhenTheGatewayWroteNothing(t *testing.T) {
 		require.NoError(t, hijackErr)
 		_ = conn.Close()
 	})
-	_, err = newGatewayClient().Import(context.Background(), hangingUp, "k", gatewayImportRequest{})
+	_, _, err = newGatewayClient().Import(context.Background(), hangingUp, "k", gatewayImportRequest{})
 	assert.Error(t, err)
 	assert.False(t, errors.Is(err, errImportNotWritten), "a connection lost after sending may have written")
 
@@ -87,16 +143,16 @@ func TestTheClientSaysWhenTheGatewayWroteNothing(t *testing.T) {
 	require.NoError(t, err)
 	closedAddress := listener.Addr().String()
 	require.NoError(t, listener.Close())
-	_, err = newGatewayClient().Import(context.Background(), &Gateway{ID: "gw-1", BaseURL: "https://" + closedAddress},
-		"k", gatewayImportRequest{})
+	_, _, err = newGatewayClient().Import(context.Background(),
+		&Gateway{ID: "gw-1", BaseURL: "https://" + closedAddress}, "k", gatewayImportRequest{})
 	assert.True(t, errors.Is(err, errImportNotWritten), "a refused connection sent nothing")
 
 	untrusted := *failing
 	untrusted.CACertificate = ""
-	_, err = newGatewayClient().Import(context.Background(), &untrusted, "k", gatewayImportRequest{})
+	_, _, err = newGatewayClient().Import(context.Background(), &untrusted, "k", gatewayImportRequest{})
 	assert.True(t, errors.Is(err, errImportNotWritten), "a certificate that does not verify sent nothing")
 
-	_, err = newGatewayClient().Import(context.Background(), &Gateway{ID: "gw-1", BaseURL: "http://dp.test"}, "k",
+	_, _, err = newGatewayClient().Import(context.Background(), &Gateway{ID: "gw-1", BaseURL: "http://dp.test"}, "k",
 		gatewayImportRequest{})
 	assert.True(t, errors.Is(err, errImportNotWritten), "a plain HTTP gateway is never called")
 }
@@ -109,7 +165,7 @@ func TestAnImportRefusedForAPrivateAddressWroteNothing(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = listener.Close() })
 
-	_, err = newGatewayClient().Import(context.Background(),
+	_, _, err = newGatewayClient().Import(context.Background(),
 		&Gateway{ID: "gw-1", BaseURL: "https://" + listener.Addr().String()}, "k", gatewayImportRequest{})
 
 	require.Error(t, err)
@@ -124,12 +180,12 @@ func TestTheClientVerifiesTheGateway(t *testing.T) {
 
 	untrusted := *gw
 	untrusted.CACertificate = ""
-	_, err := newGatewayClient().Import(context.Background(), &untrusted, "k", gatewayImportRequest{})
+	_, _, err := newGatewayClient().Import(context.Background(), &untrusted, "k", gatewayImportRequest{})
 	assert.Error(t, err)
 
 	broken := *gw
 	broken.CACertificate = "not a certificate"
-	_, err = newGatewayClient().Import(context.Background(), &broken, "k", gatewayImportRequest{})
+	_, _, err = newGatewayClient().Import(context.Background(), &broken, "k", gatewayImportRequest{})
 	assert.Error(t, err)
 }
 
@@ -139,7 +195,7 @@ func TestTheClientRefusesAPlainHTTPGateway(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true }))
 	t.Cleanup(server.Close)
 
-	_, err := newGatewayClient().Import(context.Background(), &Gateway{ID: "gw-1", BaseURL: server.URL}, "k",
+	_, _, err := newGatewayClient().Import(context.Background(), &Gateway{ID: "gw-1", BaseURL: server.URL}, "k",
 		gatewayImportRequest{})
 
 	assert.Error(t, err)
@@ -152,7 +208,7 @@ func TestTheClientFollowsNoRedirect(t *testing.T) {
 	target := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { followed = true }))
 	t.Cleanup(target.Close)
 	gw := gatewayFor(t, func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, target.URL+"/import", http.StatusTemporaryRedirect)
+		http.Redirect(w, r, target.URL+"/import/managed", http.StatusTemporaryRedirect)
 	})
 
 	_, err := newGatewayClient().ListVariables(context.Background(), gw, "k", StoreListQuery{})
@@ -170,14 +226,14 @@ func TestTheClientRefusesAPrivateAddressUnlessAllowed(t *testing.T) {
 	called := false
 	gw := gatewayFor(t, func(http.ResponseWriter, *http.Request) { called = true })
 
-	_, err := newGatewayClient().Import(context.Background(), gw, "k", gatewayImportRequest{})
+	_, _, err := newGatewayClient().Import(context.Background(), gw, "k", gatewayImportRequest{})
 
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, syshttp.ErrPrivateAddress), "refused for another reason: %v", err)
 	assert.False(t, called, "the key was sent to a private address")
 
 	configureGateway(5, true)
-	_, err = newGatewayClient().Import(context.Background(), gw, "k", gatewayImportRequest{})
+	_, _, err = newGatewayClient().Import(context.Background(), gw, "k", gatewayImportRequest{})
 	assert.NoError(t, err)
 	assert.True(t, called)
 }

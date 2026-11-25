@@ -20,7 +20,7 @@ import (
 // permission, which had no integration coverage: entity-type authorization is unit-tested against
 // mocks, and integration-tested only for /user-types.
 //
-// The caller here holds `system:usertype` and nothing else. Every /agent-types route refuses it at
+// The caller here holds `org:usertype` and nothing else. Every /agent-types route refuses it at
 // the security middleware with 403 AUTH-4030 (`system/security/middleware.go:51`), which is a
 // route-level permission gate that runs before the handler — so the two categories are separated
 // before any OU or resource logic is reached. The same token reads /user-types successfully
@@ -36,8 +36,9 @@ type AgentTypeAuthzTestSuite struct {
 	userID     string
 	roleID     string
 	scopedRSID string
+	signInApp  string
 
-	// scopedClient carries a token with system:usertype but no agenttype permission.
+	// scopedClient carries a token with org:usertype but no agenttype permission.
 	scopedClient *http.Client
 }
 
@@ -48,7 +49,9 @@ const (
 	agentTypeAuthzUsername     = "agent-type-authz-user"
 	agentTypeAuthzPassword     = "AgentTypeAuthz@123"
 
-	agentTypeAuthzClientID   = "CONSOLE"
+	// The user lives in the suite's OU, and a sign-in is bounded to its application's OU, so it signs in
+	// through an application in that OU rather than the Console.
+	agentTypeAuthzClientID   = "agent_type_authz_sign_in"
 	agentTypeAuthzRSIdentity = "https://authz-test.example.com/agenttype"
 )
 
@@ -59,7 +62,7 @@ func TestAgentTypeAuthzTestSuite(t *testing.T) {
 }
 
 func (s *AgentTypeAuthzTestSuite) SetupSuite() {
-	// Read-only: the suite needs the singleton's ID to address it, and never mutates it.
+	// Read-only: the suite needs the `default` agent type's ID to address it, and never mutates it.
 	snapshot, err := testutils.SnapshotAgentType()
 	s.Require().NoError(err, "the default agent type must exist before this suite runs")
 	s.agentTypeID = snapshot.ID
@@ -95,7 +98,7 @@ func (s *AgentTypeAuthzTestSuite) SetupSuite() {
 
 	// Declare both category permissions so the tree is complete, then grant only `usertype`.
 	// Granting nothing at all would not distinguish "no agenttype permission" from "no permissions".
-	rsID, err := testutils.CreateSystemScopedResourceServer(
+	rsID, err := testutils.CreateOrgScopedResourceServer(
 		s.ouID, "Authz Test RS (agenttype)", agentTypeAuthzRSIdentity, "usertype", "agenttype")
 	s.Require().NoError(err)
 	s.scopedRSID = rsID
@@ -104,17 +107,20 @@ func (s *AgentTypeAuthzTestSuite) SetupSuite() {
 		Name: "Agent Type Authz Role",
 		OUID: s.ouID,
 		Permissions: []testutils.ResourcePermissions{
-			{ResourceServerID: rsID, Permissions: []string{"system:usertype"}},
+			{ResourceServerID: rsID, Permissions: []string{"org:usertype"}},
 		},
 		Assignments: []testutils.Assignment{{ID: s.userID, Type: "user"}},
 	})
 	s.Require().NoError(err)
 	s.roleID = roleID
 
+	s.signInApp, err = testutils.CreateOUSignInApplication(s.ouID, agentTypeAuthzClientID)
+	s.Require().NoError(err)
+
 	tokenResp, err := testutils.ObtainAccessTokenWithPassword(
 		agentTypeAuthzClientID,
-		agentTypeAuthzRedirectURI,
-		"system system:usertype",
+		testutils.OUSignInRedirectURI,
+		"system org:usertype",
 		agentTypeAuthzUsername,
 		agentTypeAuthzPassword,
 		true,
@@ -125,9 +131,9 @@ func (s *AgentTypeAuthzTestSuite) SetupSuite() {
 	s.Require().NotEmpty(tokenResp.AccessToken)
 
 	granted := strings.Fields(tokenResp.Scope)
-	s.Require().Contains(granted, "system:usertype", "token must carry the usertype scope")
+	s.Require().Contains(granted, "org:usertype", "token must carry the usertype scope")
 	for _, scope := range granted {
-		s.Require().False(strings.HasPrefix(scope, "system:agenttype"),
+		s.Require().False(strings.HasPrefix(scope, "org:agenttype"),
 			"the token must carry no agenttype scope, or the suite proves nothing; got %v", granted)
 	}
 
@@ -138,6 +144,9 @@ func (s *AgentTypeAuthzTestSuite) TearDownSuite() {
 	// Cleanup failures are asserted, not swallowed. This suite builds a resource server with a
 	// nested permission tree, and a discarded error here would leave that tree in the shared
 	// database while the suite still reported PASS.
+	if s.signInApp != "" {
+		s.NoError(testutils.DeleteApplication(s.signInApp), "teardown: delete sign-in application")
+	}
 	if s.roleID != "" {
 		s.NoError(testutils.DeleteRole(s.roleID), "teardown: delete role")
 	}
@@ -234,9 +243,9 @@ func (s *AgentTypeAuthzTestSuite) TestUpdateAgentTypeWithoutCategoryPermissionIs
 	s.NotContains(schema, "injected", "a refused update must not reach the store")
 }
 
-// TestCreateAgentTypeWithoutCategoryPermissionIsRefused verifies the create route is gated, and
-// that the refusal is the permission gate rather than the `default`-only rule — the payload uses a
-// non-`default` handle, which an authorized caller would be told about via USRS-1014 instead.
+// TestCreateAgentTypeWithoutCategoryPermissionIsRefused verifies the create route is gated. The payload
+// is a valid agent type in an organization unit without one, which an authorized caller would create,
+// so the refusal can only be the permission gate.
 func (s *AgentTypeAuthzTestSuite) TestCreateAgentTypeWithoutCategoryPermissionIsRefused() {
 	resp := s.doScoped(http.MethodPost, agentTypeBasePath, AgentTypeRequest{
 		Handle:      "authz-injected-agent-type",
@@ -250,10 +259,9 @@ func (s *AgentTypeAuthzTestSuite) TestCreateAgentTypeWithoutCategoryPermissionIs
 }
 
 // TestDeleteAgentTypeWithoutCategoryPermissionIsRefused verifies the delete route is gated by the
-// permission as well, and that the refusal is the permission gate rather than the never-delete rule.
-// DELETE carries its own entry in the permission table, so this is a distinct middleware rule from
-// the routes above. An authorized caller receives USRS-1015 for the same request, so the code proves
-// which check ran first.
+// permission as well. DELETE carries its own entry in the permission table, so this is a distinct
+// middleware rule from the routes above. The 403 code and the agent type surviving the request prove
+// the permission gate ran before the service's own checks.
 func (s *AgentTypeAuthzTestSuite) TestDeleteAgentTypeWithoutCategoryPermissionIsRefused() {
 	resp := s.doScoped(http.MethodDelete, agentTypeBasePath+"/"+s.agentTypeID, nil)
 	defer closeBody(resp)

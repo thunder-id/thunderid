@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"testing"
 	"time"
 
@@ -24,7 +25,6 @@ type project struct {
 	Handle      string    `json:"handle"`
 	DisplayName string    `json:"displayName"`
 	Description string    `json:"description,omitempty"`
-	RootOUID    string    `json:"rootOuId"`
 	CreatedAt   time.Time `json:"createdAt"`
 }
 
@@ -32,13 +32,6 @@ type projectList struct {
 	TotalResults int       `json:"totalResults"`
 	Count        int       `json:"count"`
 	Projects     []project `json:"projects"`
-}
-
-type organizationUnit struct {
-	ID     string  `json:"id"`
-	Handle string  `json:"handle"`
-	Name   string  `json:"name"`
-	Parent *string `json:"parent"`
 }
 
 type errorResponse struct {
@@ -50,9 +43,34 @@ type ProjectAPITestSuite struct {
 	// suffix keeps this run's handles apart from leftovers of an interrupted earlier run.
 	suffix   string
 	projects []string
-	childOUs []string
+	ous      []string
 	apps     []string
 	agents   []string
+	flows    []string
+	// resourceServers are the resource servers a test created.
+	resourceServers []string
+	// roles are the roles a test created.
+	roles []string
+	// layouts are the layouts a test created.
+	layouts []string
+	// themes are the themes a test created.
+	themes []string
+	// templates are the email notification templates a test created.
+	templates []string
+	// smsTemplates are the SMS notification templates a test created.
+	smsTemplates []string
+	// presentationDefinitions are the presentation definitions a test created.
+	presentationDefinitions []string
+	// credentialConfigurations are the credential configurations a test created.
+	credentialConfigurations []string
+	// authorizationDetailTypes are the authorization details types a test created.
+	authorizationDetailTypes []string
+	// users are the users a test created.
+	users []string
+	// userTypes are the user types a test created.
+	userTypes []string
+	// groups are the groups a test created.
+	groups []string
 }
 
 func TestProjectAPITestSuite(t *testing.T) {
@@ -63,8 +81,9 @@ func (ts *ProjectAPITestSuite) SetupSuite() {
 	ts.suffix = fmt.Sprintf("%d", time.Now().UnixNano())
 }
 
-// TearDownTest removes what a test created, applications and children first so their projects can
-// be deleted.
+// TearDownTest removes what a test created: applications, agents, flows, resource servers, roles, layouts,
+// themes, notification templates, presentation definitions, credential configurations, users, user types
+// and groups first, then organization units, the latest first so that children go before their parents.
 func (ts *ProjectAPITestSuite) TearDownTest() {
 	for _, id := range ts.apps {
 		_ = testutils.DeleteApplication(id)
@@ -72,36 +91,79 @@ func (ts *ProjectAPITestSuite) TearDownTest() {
 	for _, id := range ts.agents {
 		_ = testutils.DeleteAgent(id)
 	}
-	for _, id := range ts.childOUs {
+	for _, id := range ts.flows {
+		_ = testutils.DeleteFlow(id)
+	}
+	for _, id := range ts.resourceServers {
+		_ = testutils.DeleteResourceServer(id)
+	}
+	for _, id := range ts.roles {
+		_ = testutils.DeleteRole(id)
+	}
+	for _, id := range ts.layouts {
+		ts.do(http.MethodDelete, "/design/layouts/"+id, "")
+	}
+	for _, id := range ts.themes {
+		ts.do(http.MethodDelete, "/design/themes/"+id, "")
+	}
+	for _, id := range ts.templates {
+		ts.do(http.MethodDelete, templatesPath+"/"+id, "")
+	}
+	for _, id := range ts.smsTemplates {
+		ts.do(http.MethodDelete, smsTemplatesPath+"/"+id, "")
+	}
+	for _, id := range ts.presentationDefinitions {
+		ts.do(http.MethodDelete, definitionsPath+"/"+id, "")
+	}
+	for _, id := range ts.credentialConfigurations {
+		ts.do(http.MethodDelete, configurationsPath+"/"+id, "")
+	}
+	for _, id := range ts.authorizationDetailTypes {
+		ts.do(http.MethodDelete, authorizationDetailTypesPath+"/"+id, "")
+	}
+	for _, id := range ts.users {
+		_ = testutils.DeleteUser(id)
+	}
+	for _, id := range ts.userTypes {
+		_ = testutils.DeleteUserType(id)
+	}
+	for _, id := range ts.groups {
+		_ = testutils.DeleteGroup(id)
+	}
+	for _, id := range slices.Backward(ts.ous) {
 		_ = testutils.DeleteOrganizationUnit(id)
 	}
 	for _, id := range ts.projects {
 		ts.do(http.MethodDelete, "/projects/"+id, "")
 	}
-	ts.projects, ts.childOUs, ts.apps, ts.agents = nil, nil, nil, nil
+	ts.projects, ts.ous, ts.apps, ts.agents, ts.flows, ts.resourceServers, ts.roles, ts.layouts =
+		nil, nil, nil, nil, nil, nil, nil, nil
+	ts.themes, ts.templates, ts.smsTemplates, ts.presentationDefinitions, ts.credentialConfigurations =
+		nil, nil, nil, nil, nil
+	ts.users, ts.userTypes, ts.groups, ts.authorizationDetailTypes = nil, nil, nil, nil
 }
 
 func (ts *ProjectAPITestSuite) handle(name string) string {
 	return "prj-" + name + "-" + ts.suffix
 }
 
-func (ts *ProjectAPITestSuite) TestCreateProjectCreatesItsRootOU() {
+func (ts *ProjectAPITestSuite) TestCreateProject() {
 	created := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Shop","description":"Online shop"}`,
 		ts.handle("shop")))
 
 	ts.NotEmpty(created.ID)
-	ts.NotEqual(created.ID, created.RootOUID)
+	ts.Equal(ts.handle("shop"), created.Handle)
+	ts.Equal("Shop", created.DisplayName)
+	ts.Equal("Online shop", created.Description)
 	ts.WithinDuration(time.Now(), created.CreatedAt, time.Minute)
-
-	var rootOU organizationUnit
-	ts.Equal(http.StatusOK, ts.getJSON("/organization-units/"+created.RootOUID, &rootOU))
-	ts.Nil(rootOU.Parent)
-	ts.Equal(ts.handle("shop"), rootOU.Handle)
-	ts.Equal("Shop", rootOU.Name)
 
 	var fetched project
 	ts.Equal(http.StatusOK, ts.getJSON("/projects/"+created.ID, &fetched))
 	ts.Equal(created, fetched)
+
+	// A project no longer creates an organization unit of its own.
+	status, _ := ts.do(http.MethodGet, "/organization-units/tree/"+ts.handle("shop"), "")
+	ts.Equal(http.StatusNotFound, status)
 }
 
 func (ts *ProjectAPITestSuite) TestCreateProjectKeepsSuppliedID() {
@@ -123,9 +185,8 @@ func (ts *ProjectAPITestSuite) TestCreateProjectWithUsedHandleConflicts() {
 	status, body := ts.do(http.MethodPost, "/projects",
 		fmt.Sprintf(`{"handle":%q,"displayName":"Second"}`, ts.handle("dup")))
 
-	// The handle is the root organization unit's, so the root OU handle conflict reports it.
 	ts.Equal(http.StatusConflict, status)
-	ts.Equal("OU-1008", codeOf(ts.T(), body))
+	ts.Equal("PRJ-1012", codeOf(ts.T(), body))
 }
 
 func (ts *ProjectAPITestSuite) TestCreateProjectValidation() {
@@ -133,7 +194,8 @@ func (ts *ProjectAPITestSuite) TestCreateProjectValidation() {
 		body string
 		code string
 	}{
-		"invalid handle": {`{"handle":"not/valid","displayName":"X"}`, "OU-1001"},
+		"invalid handle": {`{"handle":"not/valid","displayName":"X"}`, "PRJ-1011"},
+		"missing handle": {`{"displayName":"X"}`, "PRJ-1011"},
 		"missing name":   {fmt.Sprintf(`{"handle":%q}`, ts.handle("noname")), "PRJ-1003"},
 		"non uuid id":    {fmt.Sprintf(`{"id":"abc","handle":%q,"displayName":"X"}`, ts.handle("badid")), "PRJ-1005"},
 		"malformed body": {`{`, "PRJ-1001"},
@@ -162,7 +224,7 @@ func (ts *ProjectAPITestSuite) TestListProjects() {
 	for _, p := range list.Projects {
 		if p.ID == created.ID {
 			found = true
-			ts.Equal(created.RootOUID, p.RootOUID)
+			ts.Equal(created, p)
 		}
 	}
 	ts.True(found, "created project missing from the list")
@@ -176,12 +238,12 @@ func (ts *ProjectAPITestSuite) TestUpdateProject() {
 	var updated project
 	ts.Require().NoError(json.Unmarshal([]byte(body), &updated))
 	ts.Equal("After", updated.DisplayName)
+	ts.Equal("New", updated.Description)
 	ts.Equal(created.Handle, updated.Handle)
 
-	// The display name and description are the root organization unit's, so the OU shows the update.
-	var rootOU organizationUnit
-	ts.Require().Equal(http.StatusOK, ts.getJSON("/organization-units/"+created.RootOUID, &rootOU))
-	ts.Equal("After", rootOU.Name)
+	var fetched project
+	ts.Require().Equal(http.StatusOK, ts.getJSON("/projects/"+created.ID, &fetched))
+	ts.Equal(updated, fetched)
 
 	status, body = ts.do(http.MethodPut, "/projects/"+created.ID,
 		fmt.Sprintf(`{"handle":%q,"displayName":"After"}`, ts.handle("other")))
@@ -192,43 +254,27 @@ func (ts *ProjectAPITestSuite) TestUpdateProject() {
 	ts.Equal(http.StatusNotFound, status)
 }
 
-func (ts *ProjectAPITestSuite) TestDeleteProjectRemovesRootOU() {
+func (ts *ProjectAPITestSuite) TestDeleteProject() {
 	created := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Deleted"}`, ts.handle("del")))
 
 	status, _ := ts.do(http.MethodDelete, "/projects/"+created.ID, "")
 	ts.Equal(http.StatusNoContent, status)
 
 	ts.Equal(http.StatusNotFound, ts.getJSON("/projects/"+created.ID, &project{}))
-	ts.Equal(http.StatusNotFound, ts.getJSON("/organization-units/"+created.RootOUID, &organizationUnit{}))
+	_, err := testutils.GetOrganizationUnit(defaultOUID)
+	ts.NoError(err, "deleting a project leaves the default organization unit")
 
 	status, _ = ts.do(http.MethodDelete, "/projects/"+created.ID, "")
 	ts.Equal(http.StatusNoContent, status)
 }
 
-func (ts *ProjectAPITestSuite) TestRootOUCannotBeDeletedOutsideItsProject() {
-	created := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Guarded"}`, ts.handle("guard")))
-
-	status, body := ts.do(http.MethodDelete, "/organization-units/"+created.RootOUID, "")
+func (ts *ProjectAPITestSuite) TestDefaultOUCannotBeDeleted() {
+	status, body := ts.do(http.MethodDelete, "/organization-units/"+defaultOUID, "")
 
 	ts.Equal(http.StatusBadRequest, status)
-	ts.Equal("OU-1006", codeOf(ts.T(), body))
-	ts.Equal(http.StatusOK, ts.getJSON("/projects/"+created.ID, &project{}))
-}
-
-func (ts *ProjectAPITestSuite) TestDeleteProjectWithChildOUIsRefused() {
-	created := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Parent"}`, ts.handle("parent")))
-	childID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
-		Handle: ts.handle("child"), Name: "Child", Parent: &created.RootOUID,
-	})
-	ts.Require().NoError(err)
-	ts.childOUs = append(ts.childOUs, childID)
-
-	status, body := ts.do(http.MethodDelete, "/projects/"+created.ID, "")
-
-	ts.Equal(http.StatusBadRequest, status)
-	ts.Equal("OU-1006", codeOf(ts.T(), body))
-	ts.Equal(http.StatusOK, ts.getJSON("/projects/"+created.ID, &project{}))
-	ts.Equal(http.StatusOK, ts.getJSON("/organization-units/"+created.RootOUID, &organizationUnit{}))
+	ts.Equal("OU-1021", codeOf(ts.T(), body))
+	_, err := testutils.GetOrganizationUnit(defaultOUID)
+	ts.NoError(err)
 }
 
 // create posts a project, requires a 201, and records it for cleanup.

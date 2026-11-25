@@ -36,6 +36,14 @@ type OwnerResolver interface {
 	OwningOUID(ctx context.Context, resourceID string) (string, *tidcommon.ServiceError)
 }
 
+// ShareAuthorizer is the optional capability of a declaration whose resources may be shared into a direct child of
+// their owner.
+type ShareAuthorizer interface {
+	// AuthorizeShareInto refuses unless the caller may bring the resource into targetOUID; resourceID is empty for a
+	// resource about to be created.
+	AuthorizeShareInto(ctx context.Context, resourceID, targetOUID string) *tidcommon.ServiceError
+}
+
 // FieldDelimiterResolver reports the separator joining the segments of a hierarchical path.
 //
 // Optional only for a type that declares no field of kind FieldHierarchy. A type that declares one

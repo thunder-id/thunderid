@@ -4,6 +4,7 @@
 import {describe, it, expect} from 'vitest';
 import widgets from '../../data/widgets.json';
 import {ElementTypes} from '../../models/elements';
+import {StaticStepTypes} from '../../models/steps';
 import {WidgetTypes} from '../../models/widget';
 import VisualFlowConstants from '../VisualFlowConstants';
 
@@ -37,6 +38,14 @@ describe('VisualFlowConstants', () => {
       lists.forEach((list) => {
         expect(list.includes(type)).toBe(list.includes(follows));
       });
+    });
+  });
+
+  describe('VARIABLES droppable targets', () => {
+    it('should allow the variables step to be dropped on the canvas, and nowhere else', () => {
+      expect(VisualFlowConstants.FLOW_BUILDER_CANVAS_ALLOWED_RESOURCE_TYPES).toContain(StaticStepTypes.Variables);
+      expect(VisualFlowConstants.FLOW_BUILDER_VIEW_ALLOWED_RESOURCE_TYPES).not.toContain(StaticStepTypes.Variables);
+      expect(VisualFlowConstants.FLOW_BUILDER_FORM_ALLOWED_RESOURCE_TYPES).not.toContain(StaticStepTypes.Variables);
     });
   });
 

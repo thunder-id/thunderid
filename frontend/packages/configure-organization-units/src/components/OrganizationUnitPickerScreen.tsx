@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {Box, Button, Typography, useTheme} from '@wso2/oxygen-ui';
+import {Alert, Box, Button, Typography, useTheme} from '@wso2/oxygen-ui';
 import {ChevronLeft} from '@wso2/oxygen-ui-icons-react';
 import {motion} from 'framer-motion';
 import type {JSX, ReactNode} from 'react';
@@ -36,6 +36,12 @@ export interface OrganizationUnitPickerScreenProps {
   rootOuId?: string;
 
   /**
+   * When set, lists where a resource of this project can be placed: the system organization unit,
+   * which is selected when nothing else is, then the project's own organization units.
+   */
+  projectId?: string;
+
+  /**
    * Callback invoked when the user picks a different organization unit.
    */
   onChange: (ouId: string) => void;
@@ -59,6 +65,24 @@ export interface OrganizationUnitPickerScreenProps {
    * Label for the continue button.
    */
   continueLabel: string;
+
+  /**
+   * Why the selected organization unit cannot be used, shown under the tree. While it is set,
+   * Continue stays disabled.
+   */
+  error?: string;
+
+  /**
+   * An action shown beside the error, such as a button that opens what already uses the selected
+   * organization unit.
+   */
+  errorAction?: ReactNode;
+
+  /**
+   * Whether the first organization unit is selected when nothing is. Turn it off when the first one
+   * is often unusable, so the screen does not open on an error.
+   */
+  autoSelectFirst?: boolean;
 }
 
 /**
@@ -76,11 +100,15 @@ export default function OrganizationUnitPickerScreen({
   subtitle,
   value,
   rootOuId = undefined,
+  projectId = undefined,
   onChange,
   onBack,
   onContinue,
   backLabel,
   continueLabel,
+  error = undefined,
+  errorAction = undefined,
+  autoSelectFirst = true,
 }: OrganizationUnitPickerScreenProps): JSX.Element {
   const theme = useTheme();
 
@@ -160,11 +188,17 @@ export default function OrganizationUnitPickerScreen({
             id="organization-unit-picker-screen-tree"
             value={value}
             rootOuId={rootOuId}
+            projectId={projectId}
             onChange={onChange}
             maxHeight={420}
             spacious
-            autoSelectFirst
+            autoSelectFirst={autoSelectFirst}
           />
+          {error && (
+            <Alert severity="error" sx={{mt: 3}} action={errorAction}>
+              {error}
+            </Alert>
+          )}
         </MotionBox>
 
         <MotionBox
@@ -173,7 +207,7 @@ export default function OrganizationUnitPickerScreen({
           transition={{duration: 0.6, delay: 0.1}}
           sx={{display: 'flex', justifyContent: 'center', mt: 4.25}}
         >
-          <Button variant="contained" onClick={onContinue} disabled={!value} sx={{minWidth: 220}}>
+          <Button variant="contained" onClick={onContinue} disabled={!value || Boolean(error)} sx={{minWidth: 220}}>
             {continueLabel}
           </Button>
         </MotionBox>

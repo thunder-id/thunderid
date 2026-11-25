@@ -28,8 +28,7 @@ export {default as ConnectionDeleteDialog} from './components/ConnectionDeleteDi
 export {default as ConnectionForm} from './components/ConnectionForm';
 export {default as AuthenticationSection} from './components/AuthenticationSection';
 export {default as ConnectionsList} from './components/ConnectionsList';
-export {default as KeyValuePairsField} from './components/KeyValuePairsField';
-export {default as MaskedSecretField} from './components/MaskedSecretField';
+export {KeyValuePairsField, MaskedSecretField} from '@thunderid/components';
 export {default as ReadOnlyCopyField} from './components/ReadOnlyCopyField';
 export {default as SelectConnectionType} from './components/create-connection/SelectConnectionType';
 
@@ -68,6 +67,14 @@ export {default as buildConnectionCards} from './utils/buildConnectionCards';
 export * from './utils/connectionFormMapping';
 export {default as getConnectionIcon} from './utils/getConnectionIcon';
 export {default as isConflictError} from './utils/isConflictError';
-export * from './utils/keyValuePairs';
+export {
+  decodeKeyValuePairs,
+  encodeKeyValuePairs,
+  isCompleteKeyValuePair,
+  parseKeyValuePairs,
+  sanitizeKeyValuePart,
+  serializeKeyValuePairs,
+} from '@thunderid/components';
+export type {KeyValueFormat, KeyValuePair} from '@thunderid/components';
 export * from './utils/selectOptions';
 export * from './utils/subjectMapping';

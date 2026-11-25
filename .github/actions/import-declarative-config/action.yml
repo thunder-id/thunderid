@@ -6,8 +6,8 @@ inputs:
   config-path:
     description: 'Path to the declarative config YAML file, relative to the repo root'
     required: true
-  admin-token:
-    description: 'Admin bearer token to authenticate the import call'
+  api-key:
+    description: 'Management API key of the Data Plane, sent in the API-Key header to authenticate the import call. A Data Plane takes deployment-wide resources such as server configuration only from this key'
     required: true
   label:
     description: 'Human-readable label for log messages (defaults to config-path)'
@@ -29,7 +29,7 @@ runs:
       shell: bash
       env:
         CONFIG_PATH: ${{ inputs.config-path }}
-        ADMIN_TOKEN: ${{ inputs.admin-token }}
+        API_KEY: ${{ inputs.api-key }}
         LABEL_INPUT: ${{ inputs.label }}
         VARIABLES_JSON: ${{ inputs.variables-json }}
         SERVER_URL: ${{ inputs.server-url }}
@@ -50,7 +50,7 @@ runs:
         HTTP_STATUS=$(curl -k -s -o /tmp/import_response.json -w "%{http_code}" \
           -X POST "$SERVER_URL/import" \
           -H 'Content-Type: application/json' \
-          -H "Authorization: Bearer $ADMIN_TOKEN" \
+          -H "API-Key: $API_KEY" \
           -d "$BODY")
         echo "Import HTTP status: $HTTP_STATUS"
         cat /tmp/import_response.json | jq . || cat /tmp/import_response.json

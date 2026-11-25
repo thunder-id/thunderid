@@ -4,7 +4,6 @@
 import {waitFor} from '@testing-library/react';
 import {AdministrationModes} from '@thunderid/contexts';
 import {renderHook} from '@thunderid/test-utils';
-import {AdministrationFlowConfigKey, AdministrationFlowInput} from '@thunderid/utils';
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
 
 const mockHttpRequest = vi.fn();
@@ -24,8 +23,7 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   };
 });
 
-// How the console says this operation runs. Defaults to the flow, which is what a console that
-// declares nothing gets.
+// How the console says this operation runs. A console that declares nothing gets the flow mode.
 let administrationOperation: unknown = AdministrationModes.FLOW;
 
 const {default: useDeleteGroup} = await import('../useDeleteGroup');
@@ -69,94 +67,54 @@ describe('useDeleteGroup', () => {
     });
   });
 
-  describe('when a group deletion flow is configured', () => {
-    const routeRequests = (execute: () => Promise<unknown>): void => {
-      mockHttpRequest.mockImplementation((config: {url: string}) => {
-        if (config.url.endsWith('/server-config/flow')) {
-          return Promise.resolve({
-            data: {merged: {[AdministrationFlowConfigKey.GROUP_DELETION]: {defaultHandle: 'delete-group'}}},
-          });
-        }
-        if (config.url.includes('/flows?')) {
-          return Promise.resolve({
-            data: {flows: [{id: 'flow-1', handle: 'delete-group', flowType: 'ADMINISTRATION'}]},
-          });
-        }
-        if (config.url.endsWith('/flow/execute')) {
-          return execute();
-        }
-        if (config.url.endsWith('/groups/g1')) {
-          return Promise.resolve({});
-        }
+  it('should delete through the endpoint even when the console says flow', async () => {
+    mockHttpRequest.mockResolvedValue({});
+    const {result} = renderHook(() => useDeleteGroup());
 
-        return Promise.reject(new Error(`unexpected request ${config.url}`));
-      });
+    result.current.mutate('g1');
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(mockHttpRequest).toHaveBeenCalledTimes(1);
+    expect(mockHttpRequest).toHaveBeenCalledWith(
+      expect.objectContaining({url: 'https://localhost:8090/groups/g1', method: 'DELETE'}),
+    );
+  });
+
+  it('should delete through the endpoint when the console says native', async () => {
+    administrationOperation = AdministrationModes.NATIVE;
+    mockHttpRequest.mockResolvedValue({});
+    const {result} = renderHook(() => useDeleteGroup());
+
+    result.current.mutate('g1');
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(mockHttpRequest).toHaveBeenCalledTimes(1);
+    expect(mockHttpRequest).toHaveBeenCalledWith(
+      expect.objectContaining({url: 'https://localhost:8090/groups/g1', method: 'DELETE'}),
+    );
+  });
+
+  it('calls the function the console supplied', async () => {
+    const deleted: string[] = [];
+    administrationOperation = (groupId: string): Promise<void> => {
+      deleted.push(groupId);
+      return Promise.resolve();
     };
+    const {result} = renderHook(() => useDeleteGroup());
 
-    const requestedUrls = (): string[] => mockHttpRequest.mock.calls.map(([config]: [{url: string}]) => config.url);
+    result.current.mutate('g1');
 
-    it('should delete the group through the flow and never call the native endpoint', async () => {
-      routeRequests(() => Promise.resolve({data: {flowStatus: 'COMPLETE'}}));
-      const {result} = renderHook(() => useDeleteGroup());
-
-      result.current.mutate('g1');
-
-      await waitFor(() => {
-        expect(result.current.isSuccess).toBe(true);
-      });
-
-      expect(requestedUrls().some((url) => url.endsWith('/groups/g1'))).toBe(false);
-      expect(mockHttpRequest).toHaveBeenCalledWith(
-        expect.objectContaining({
-          url: 'https://localhost:8090/flow/execute',
-          data: {flowId: 'flow-1', inputs: {[AdministrationFlowInput.GROUP]: 'g1'}},
-        }),
-      );
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
     });
 
-    it('should report a flow refusal without falling back to the native endpoint', async () => {
-      routeRequests(() => Promise.resolve({data: {flowStatus: 'ERROR', error: {}}}));
-      const {result} = renderHook(() => useDeleteGroup());
-
-      result.current.mutate('g1');
-
-      await waitFor(() => {
-        expect(result.current.isError).toBe(true);
-      });
-
-      expect(requestedUrls().some((url) => url.endsWith('/groups/g1'))).toBe(false);
-    });
-
-    it('deletes through the endpoint when the console says native', async () => {
-      administrationOperation = AdministrationModes.NATIVE;
-      routeRequests(() => Promise.resolve({data: {flowStatus: 'COMPLETE'}}));
-      const {result} = renderHook(() => useDeleteGroup());
-
-      result.current.mutate('g1');
-
-      await waitFor(() => {
-        expect(result.current.isSuccess).toBe(true);
-      });
-
-      expect(requestedUrls()).toEqual(['https://localhost:8090/groups/g1']);
-    });
-
-    it('calls the function the console supplied', async () => {
-      const deleted: string[] = [];
-      administrationOperation = (groupId: string): Promise<void> => {
-        deleted.push(groupId);
-        return Promise.resolve();
-      };
-      const {result} = renderHook(() => useDeleteGroup());
-
-      result.current.mutate('g1');
-
-      await waitFor(() => {
-        expect(result.current.isSuccess).toBe(true);
-      });
-
-      expect(deleted).toEqual(['g1']);
-      expect(mockHttpRequest).not.toHaveBeenCalled();
-    });
+    expect(deleted).toEqual(['g1']);
+    expect(mockHttpRequest).not.toHaveBeenCalled();
   });
 });

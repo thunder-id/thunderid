@@ -59,6 +59,11 @@ sections:
         type: ((String) -> Unit)?
         tag: optional
         description: Called with an error message when a flow step fails.
+      - name: organizationUnitId
+        type: String?
+        tag: optional
+        description: Bounds the sign-in to this organization unit. The SDK sends it as `ouId` on the request that
+          starts the flow. When the flow completes, its session replaces the previous one.
       example: |-
         import dev.thunderid.compose.components.presentation.auth.SignIn
 
@@ -278,6 +283,171 @@ sections:
                 ChangeCredential()
             }
         }
+    - group: Components
+      kind: component
+      name: OrganizationUnitSwitcher
+      description: The `OrganizationUnitSwitcher` composable shows the current organization unit in a dropdown field
+        whose menu lists the organization units the signed-in user can access. Picking another one calls `ThunderIDClient.switchOrganizationUnit`,
+        then reloads the list and refreshes `ThunderIDState`. Pass `content` to replace the dropdown while keeping the
+        loading, paging, and switching. `BaseOrganizationUnitSwitcher` draws the same dropdown from data you pass,
+        with no SDK state. `OrganizationUnitSwitcher` requires `ThunderIDProvider` in its ancestor composable hierarchy.
+      rowsLabel: Parameters
+      rows:
+      - name: modifier
+        type: Modifier
+        tag: optional
+        description: Compose modifier applied to the switcher container.
+      - name: scope
+        type: OrganizationUnitScope?
+        tag: optional
+        description: Narrows the list. `OrganizationUnitScope.SIBLINGS` lists the accessible organization units that share the parent of the current organization unit. Defaults to `null`, which lists every accessible organization unit.
+      - name: limit
+        type: Int
+        tag: optional
+        description: Page size of the list. Defaults to `10`.
+      - name: switchOptions
+        type: SwitchOrganizationUnitOptions
+        tag: optional
+        description: Options passed to `switchOrganizationUnit`. Set `browser` when the application signs in through
+          redirects or a backend.
+      - name: onSelect
+        type: ((AccessibleOrganizationUnit) -> Unit)?
+        tag: optional
+        description: Takes over a pick. The switcher calls it with the organization unit instead of switching.
+      - name: onSwitched
+        type: (() -> Unit)?
+        tag: optional
+        description: Called after a switch completes and `ThunderIDState` has been refreshed.
+      - name: onSignInRequired
+        type: ((OrganizationUnitSwitchResult.SignInRequired) -> Unit)?
+        tag: optional
+        description: Called when an app-native switch needs the user, with the flow to drive.
+      - name: content
+        type: (@Composable (OrganizationUnitSwitcherState) -> Unit)?
+        tag: optional
+        description: Replaces the built-in dropdown. The state includes `organizationUnits`, `current`, `currentName`,
+          `isLoading`, `error`, paging, `switchingId`, and `onSwitch`.
+      example: |-
+        import dev.thunderid.android.api.account.OrganizationUnitScope
+        import dev.thunderid.compose.components.account.OrganizationUnitSwitcher
+        import dev.thunderid.compose.components.auth.guards.SignedIn
+
+        @Composable
+        fun Header() {
+            SignedIn {
+                OrganizationUnitSwitcher(
+                    modifier = Modifier.fillMaxWidth(),
+                    scope = OrganizationUnitScope.SIBLINGS
+                )
+            }
+        }
+    - group: Components
+      kind: component
+      name: FlowVariablesForm
+      description: 'The `FlowVariablesForm` composable lets a delegated admin override the variables a flow declares for their organization unit. It loads the variables the flow shares with the unit, the values the unit has set, and what the unit may change, shows them as a form, and saves the values that differ from their defaults. `FlowVariablesForm` requires `ThunderIDProvider` in its ancestor composable hierarchy.'
+      rowsLabel: Parameters
+      rows:
+      - name: flowId
+        type: 'String'
+        tag: required
+        description: 'Identifier of the flow whose variables are configured.'
+      - name: ouId
+        type: 'String'
+        tag: required
+        description: 'The organization unit the overrides belong to.'
+      - name: modifier
+        type: 'Modifier'
+        tag: optional
+        description: 'Compose modifier applied to the form.'
+      - name: onSaved
+        type: '((Map<String, Any>) -> Unit)?'
+        tag: optional
+        description: 'Called with the overrides as the server stored them.'
+      - name: onCancel
+        type: '(() -> Unit)?'
+        tag: optional
+        description: 'Called when the admin taps Cancel.'
+      - name: ouName
+        type: 'String?'
+        tag: optional
+        description: 'The name of the organization unit, used in the notice and the connection hint.'
+      - name: ownerName
+        type: 'String?'
+        tag: optional
+        description: 'The name of whoever owns the flow, shown on a variable the unit may not set.'
+      - name: readOnly
+        type: 'Boolean'
+        tag: optional
+        description: 'Shows the variables without letting them be changed. Defaults to `false`.'
+      - name: showScopeNotice
+        type: 'Boolean'
+        tag: optional
+        description: 'Shows a notice that the settings apply to the organization unit only. Defaults to `false`.'
+      - name: content
+        type: '@Composable (FlowVariablesFormState) -> Unit'
+        tag: optional
+        description: 'Renders custom UI in place of the default form.'
+      example: |-
+        import dev.thunderid.compose.components.management.FlowVariablesForm
+
+        @Composable
+        fun FlowSettings(flowId: String, ouId: String) {
+            FlowVariablesForm(
+                flowId = flowId,
+                ouId = ouId,
+                onSaved = { Log.d("Flow", "Saved") },
+            )
+        }
+    - group: Components
+      kind: component
+      name: SharedFlowList
+      description: 'The `SharedFlowList` composable lists the flows shared with an organization unit, the flows it owns, or both. Choosing a flow calls `onSelect`, so your app decides what to open, for example `FlowVariablesForm`. `SharedFlowList` requires `ThunderIDProvider` in its ancestor composable hierarchy.'
+      rowsLabel: Parameters
+      rows:
+      - name: ouId
+        type: 'String'
+        tag: required
+        description: 'The organization unit to list the flows of.'
+      - name: modifier
+        type: 'Modifier'
+        tag: optional
+        description: 'Compose modifier applied to the list.'
+      - name: ownership
+        type: 'SharedFlowOwnership'
+        tag: optional
+        description: 'Which flows to list: `SHARED`, `OWNED`, or `ALL`. Defaults to `SHARED`.'
+      - name: flowType
+        type: 'String?'
+        tag: optional
+        description: 'Restricts the list to one flow type, for example `AUTHENTICATION`.'
+      - name: limit
+        type: 'Int'
+        tag: optional
+        description: 'Page size. Defaults to `20`.'
+      - name: selectedFlowId
+        type: 'String?'
+        tag: optional
+        description: 'Identifier of the flow to highlight.'
+      - name: onSelect
+        type: '((ManagedFlow) -> Unit)?'
+        tag: optional
+        description: 'Called when a flow is chosen. Rows are selectable only when set.'
+      - name: content
+        type: '@Composable (AdminListState<ManagedFlow>) -> Unit'
+        tag: optional
+        description: 'Renders custom UI in place of the default list.'
+      example: |-
+        import dev.thunderid.compose.components.management.SharedFlowList
+
+        @Composable
+        fun FlowPicker(ouId: String) {
+            var selectedFlowId by remember { mutableStateOf<String?>(null) }
+            SharedFlowList(
+                ouId = ouId,
+                selectedFlowId = selectedFlowId,
+                onSelect = { selectedFlowId = it.id },
+            )
+        }
     - group: Functions
       kind: function
       name: Configuration
@@ -355,6 +525,25 @@ sections:
         management, and user profile operations. When you use the `dev.thunderid:compose` library, a `ThunderIDClient`
         instance is created and managed automatically. You can access it via `LocalThunderID.current.client` from any
         composable.'
+      rowsLabel: Organization Unit Methods
+      rows:
+      - name: getAccessibleOrganizationUnits(options)
+        type: AccessibleOrganizationUnits
+        description: Lists the organization units the signed-in user can access, from `GET /users/me/ous`. `options`
+          narrows the list with `scope` and pages it with `limit` and `offset`.
+      - name: getCurrentOrganizationUnit()
+        type: CurrentOrganizationUnit?
+        description: The organization unit the session was issued for, read from its `ouId`, `ouHandle`, and `ouName`
+          claims, or `null` when the session names none. For display only, never for an authorization decision.
+      - name: switchOrganizationUnit(ouId, options)
+        type: OrganizationUnitSwitchResult
+        description: Signs in again, bounded to organization unit `ouId`, through the first path that applies. It tries
+          a backend's `ouSwitch` endpoint (`POST {ouSwitch}?ouId=<id>`, default `/api/auth/switch`), then a device secret exchanged
+          at `{baseUrl}/ou/{ouId}/oauth2/token`, then a redirect sign-in through `options.browser`, then the app-native
+          `AUTHENTICATION` flow with `ouId` and the kept SSO session handles. Returns `Switched`, or `SignInRequired`
+          when the app-native flow needs the user. A failed switch keeps the session, except that a backend answering
+          `login_required` or `401` leaves the user signed out. An unknown or unusable organization unit fails with
+          `ORGANIZATION_UNIT_UNAVAILABLE`.
       example: |-
         import dev.thunderid.android.ThunderIDClient
         import dev.thunderid.android.ThunderIDConfig

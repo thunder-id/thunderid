@@ -75,6 +75,13 @@ func (u *userTypeResolver) Execute(ctx *providers.NodeContext) (*providers.Execu
 		return u.resolveRegistrationFlow(ctx, entitytype.TypeCategoryUser, execResp, logger)
 	case providers.FlowTypeUserOnboarding:
 		return u.resolveOnboardingFlow(ctx, entitytype.TypeCategoryUser, execResp, logger)
+	case providers.FlowTypeInvitation:
+		if len(allowedTypesFromProperties(ctx, propertyKeyAllowedUserTypes)) != 1 {
+			execResp.Status = providers.ExecFailure
+			execResp.Error = errForEntityCategory(ErrInvitationEntityTypeNotNamed, entitytype.TypeCategoryUser)
+			return execResp, nil
+		}
+		return u.resolveOnboardingFlow(ctx, entitytype.TypeCategoryUser, execResp, logger)
 	default:
 		logger.Debug(ctx.Context, "User type resolver is not applicable for the flow type",
 			log.String("flowType", string(ctx.FlowType)))

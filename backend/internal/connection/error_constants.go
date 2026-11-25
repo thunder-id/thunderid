@@ -233,4 +233,42 @@ var (
 			DefaultValue: "The filter must be a single ouId eq expression with a quoted organization unit ID",
 		},
 	}
+	// ErrorManagedConnection is the error returned when attempting to change a connection a control plane
+	// deployed. Only a deploy from the control plane changes or removes it.
+	ErrorManagedConnection = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1040",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.managed_connection",
+			DefaultValue: "Cannot modify a connection deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.managed_connection_description",
+			DefaultValue: "The connection was deployed by the control plane and can only be changed there",
+		},
+	}
+	// ErrorSharedConnectionReadOnly is returned when an organization unit a connection is shared into tries to
+	// change or delete the connection.
+	ErrorSharedConnectionReadOnly = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "CON-1041",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.shared_connection_read_only",
+			DefaultValue: "Shared connection is read only",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.connectionservice.shared_connection_read_only_description",
+			DefaultValue: "Only the organization unit that owns the connection can change or delete it",
+		},
+	}
 )
+
+// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+var errNilEventBus = errors.New("the connection service needs an event bus")
+
+// errSharingPolicyNotFoundNoop is returned by removeSharingPolicy when the connection holds no policy under
+// the requested id. deleteSharingPolicy turns it into a success, so it never reaches a caller.
+var errSharingPolicyNotFoundNoop = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: ErrorSharingPolicyNotFound.Code,
+}

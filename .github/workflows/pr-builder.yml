@@ -17,6 +17,9 @@ on:
   merge_group:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 # Avoid running multiple PR builders for the same PR on subsequent pushes. GitHub Actions'
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
@@ -145,7 +148,7 @@ jobs:
   verify-mocks:
     name: 🔍 Verify Mock Files
     needs: [preflight]
-    if: ${{ (github.event_name == 'pull_request' && needs.preflight.outputs.enabled == 'true') || github.event_name == 'merge_group' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && needs.preflight.outputs.enabled == 'true') || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -182,7 +185,7 @@ jobs:
   lint:
     name: 🧹 Lint Code
     needs: [preflight]
-    if: ${{ (github.event_name == 'pull_request' && needs.preflight.outputs.enabled == 'true') || github.event_name == 'merge_group' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && needs.preflight.outputs.enabled == 'true') || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -216,9 +219,14 @@ jobs:
         run: |
           make build_frontend
 
+      # A manual dispatch has no base commit to diff against, so it lints every package.
       - name: 🔍 Run Frontend Linter
         run: |
-          pnpm turbo run lint --affected --filter=!./tests/**
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            pnpm turbo run lint --filter=!./tests/**
+          else
+            pnpm turbo run lint --affected --filter=!./tests/**
+          fi
         env:
           TURBO_SCM_BASE: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event.pull_request.base.sha }}
 
@@ -1040,22 +1048,73 @@ jobs:
           path: target/coverage_integration.out
           if-no-files-found: error
 
+  test-integration-pack:
+    name: 🧪 Integration Tests (quickstart pack)
+    # The quickstart pack the build job packages: auth-dp, the Data Plane and the Control Plane, as
+    # shipped. The suites in tests/integration/pack author on the Control Plane and prove the result
+    # on the Data Plane. Each test group runs a pack of its own on its own ports, at the same time as
+    # the others. Its coverage joins the other integration jobs' in the integration patch coverage
+    # check, which is how the sync from the Control Plane to the Data Plane gets measured at all.
+    needs: [build]
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: 📥 Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: ⚙️ Set up Go Environment
+        uses: ./.github/actions/setup-go
+
+      - name: 📦 Install Dependencies
+        run: |
+          cd tests/integration
+          go mod download
+
+      - name: 📥 Download Quickstart Pack
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: quickstart-pack
+          path: target/dist/
+
+      - name: 🧪 Run Quickstart Pack Integration Tests
+        run: |
+          set -e
+          make test_integration_pack
+
+      - name: 📦 Upload Plane Logs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: integration-pack-logs
+          path: target/out/.test-pack-logs*/
+          if-no-files-found: ignore
+
+      - name: 📦 Archive Integration Coverage Report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: integration-coverage-pack
+          path: target/coverage_integration.out
+          if-no-files-found: error
+
   backend-integration-patch-coverage:
     name: 🛡️ Backend Integration Patch Coverage
     # Measures only what the integration suite executed. The combined
     # 🛡️ Patch Coverage Gate pools backend unit, backend integration, and both
     # frontend reports into one percentage, so a changed backend line covered
     # only by a unit test satisfies it. This job loads the integration-coverage-*
-    # artifacts, one per database the all-in-one server is tested against and one
-    # for the Control Plane, and nothing else, which is the whole reason it exists
+    # artifacts, one per database the all-in-one server is tested against, one
+    # for the Control Plane and one for the quickstart pack, and nothing else, which is the whole reason it exists
     # separately rather than as another threshold on that gate.
     #
     # Gated like the other checks: it needs only build and the integration jobs,
     # so unlike the combined gate it does not wait on the frontend or unit jobs,
     # and it is skipped when those did not succeed rather than reporting on data
     # it does not have.
-    needs: [build, test-integration, test-integration-cp]
-    if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && needs.build.result == 'success' && needs.test-integration.result == 'success' && needs.test-integration-cp.result == 'success' }}
+    needs: [build, test-integration, test-integration-cp, test-integration-pack]
+    if: ${{ !cancelled() && (github.event_name == 'pull_request' || github.event_name == 'merge_group') && needs.build.result == 'success' && needs.test-integration.result == 'success' && needs.test-integration-cp.result == 'success' && needs.test-integration-pack.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -1080,7 +1139,7 @@ jobs:
 
   test-integration-status:
     name: ✅ Integration Tests Status
-    needs: [preflight, test-integration, test-integration-cp]
+    needs: [preflight, test-integration, test-integration-cp, test-integration-pack]
     if: ${{ !cancelled() && (github.event_name != 'pull_request' || (needs.preflight.outputs.enabled == 'true')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -1088,7 +1147,8 @@ jobs:
       - name: Check integration test results
         run: |
           if [[ "${{ needs.test-integration.result }}" == "failure" || "${{ needs.test-integration.result }}" == "cancelled" ||
-                "${{ needs.test-integration-cp.result }}" == "failure" || "${{ needs.test-integration-cp.result }}" == "cancelled" ]]; then
+                "${{ needs.test-integration-cp.result }}" == "failure" || "${{ needs.test-integration-cp.result }}" == "cancelled" ||
+                "${{ needs.test-integration-pack.result }}" == "failure" || "${{ needs.test-integration-pack.result }}" == "cancelled" ]]; then
             echo "❌ Integration tests failed or were cancelled"
             exit 1
           fi
@@ -1182,6 +1242,16 @@ jobs:
           echo "ADMIN_PASSWORD=$ADMIN_PASSWORD" >> "$GITHUB_ENV"
           echo "✅ Resolved admin credentials (Secret > Variable > defaults.env)"
 
+      - name: 🔑 Generate Data Plane Management Key
+        run: |
+          # The pack's setup.sh keeps a key already in QUICKSTART_GATEWAY_KEY instead of generating
+          # one, so the Data Plane trusts this key. A Data Plane takes deployment-wide resources
+          # (server configuration among them) only from an import with it, so the imports below and
+          # the specs that change server configuration present it.
+          QUICKSTART_GATEWAY_KEY=$(openssl rand -hex 32)
+          echo "::add-mask::$QUICKSTART_GATEWAY_KEY"
+          echo "QUICKSTART_GATEWAY_KEY=$QUICKSTART_GATEWAY_KEY" >> "$GITHUB_ENV"
+
       - name: 📋 Load E2E Default Configuration
         run: |
           # Loads tests/e2e/defaults.env (the canonical fixed dataset, shared with run-e2e.sh
@@ -1234,19 +1304,11 @@ jobs:
           
           echo "Server started successfully!"
       
-      - name: 🔑 Obtain Admin Access Token
-        id: admin-token
-        uses: ./.github/actions/obtain-admin-token
-        with:
-          admin-username: ${{ env.ADMIN_USERNAME }}
-          admin-password: ${{ env.ADMIN_PASSWORD }}
-          client-id: ADMIN_CONSOLE
-
       - name: 📦 Import Vanilla Sample Resources
         uses: ./.github/actions/import-declarative-config
         with:
           config-path: samples/apps/vanilla-sample/thunderid-config/basic/thunderid-config.yaml
-          admin-token: ${{ steps.admin-token.outputs.token }}
+          api-key: ${{ env.QUICKSTART_GATEWAY_KEY }}
           label: Vanilla Sample resources
           variables-json: |
             {
@@ -1265,7 +1327,7 @@ jobs:
         uses: ./.github/actions/import-declarative-config
         with:
           config-path: samples/apps/react-sdk-sample/thunderid-config/thunderid-config.yaml
-          admin-token: ${{ steps.admin-token.outputs.token }}
+          api-key: ${{ env.QUICKSTART_GATEWAY_KEY }}
           label: React SDK Sample resources
           variables-json: |
             {
@@ -1278,14 +1340,14 @@ jobs:
         uses: ./.github/actions/import-declarative-config
         with:
           config-path: tests/e2e/thunderid-config.yaml
-          admin-token: ${{ steps.admin-token.outputs.token }}
+          api-key: ${{ env.QUICKSTART_GATEWAY_KEY }}
           label: E2E admin app
 
       - name: 📦 Import E2E Sample-App Infrastructure
         uses: ./.github/actions/import-declarative-config
         with:
           config-path: tests/e2e/thunderid-config-sample-apps.yaml
-          admin-token: ${{ steps.admin-token.outputs.token }}
+          api-key: ${{ env.QUICKSTART_GATEWAY_KEY }}
           label: E2E sample-app infrastructure
 
       - name: 🔄 Restart the Server with Security Enabled
@@ -1521,21 +1583,12 @@ jobs:
           fi
           echo "Server started successfully!"
 
-      - name: 🔑 Obtain Admin Access Token (Wayfinder)
-        if: ${{ !cancelled() }}
-        id: admin-token-wayfinder
-        uses: ./.github/actions/obtain-admin-token
-        with:
-          admin-username: ${{ env.ADMIN_USERNAME }}
-          admin-password: ${{ env.ADMIN_PASSWORD }}
-          client-id: ADMIN_CONSOLE
-
       - name: 📦 Import E2E Admin App (Wayfinder)
         if: ${{ !cancelled() }}
         uses: ./.github/actions/import-declarative-config
         with:
           config-path: tests/e2e/thunderid-config.yaml
-          admin-token: ${{ steps.admin-token-wayfinder.outputs.token }}
+          api-key: ${{ env.QUICKSTART_GATEWAY_KEY }}
           label: E2E admin app
 
       - name: 📦 Import Wayfinder Bundle
@@ -1543,7 +1596,7 @@ jobs:
         uses: ./.github/actions/import-declarative-config
         with:
           config-path: samples/apps/wayfinder-sample/thunderid-config/redirect/thunderid-config.yaml
-          admin-token: ${{ steps.admin-token-wayfinder.outputs.token }}
+          api-key: ${{ env.QUICKSTART_GATEWAY_KEY }}
           label: Wayfinder bundle
           variables-json: |
             {
@@ -1643,6 +1696,7 @@ jobs:
           ADMIN_USERNAME: ${{ env.ADMIN_USERNAME }}
           ADMIN_PASSWORD: ${{ env.ADMIN_PASSWORD }}
           WAYFINDER_APP_URL: http://localhost:5173
+          MANAGEMENT_API_KEY: ${{ env.QUICKSTART_GATEWAY_KEY }}
           PLAYWRIGHT_WORKERS: ${{ vars.PLAYWRIGHT_WORKERS || env.DEFAULT_PLAYWRIGHT_WORKERS }}
           DEBUG_AUTH: ${{ vars.PLAYWRIGHT_DEBUG_AUTH || env.DEFAULT_DEBUG_AUTH }}
           SERVER_URL: ${{ env.DEFAULT_SERVER_URL }}
@@ -1658,7 +1712,7 @@ jobs:
   build-docs:
     name: 📚 Build Documentation
     needs: [preflight]
-    if: ${{ needs.preflight.outputs.docs-changed == 'true' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || needs.preflight.outputs.docs-changed == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -1676,7 +1730,7 @@ jobs:
   validate-windows:
     name: 🪟 Validate Windows PowerShell
     needs: preflight
-    if: needs.preflight.outputs.powershell-changed == 'true'
+    if: ${{ github.event_name == 'workflow_dispatch' || needs.preflight.outputs.powershell-changed == 'true' }}
     uses: ./.github/workflows/windows-powershell-validation.yml
 
   cleanup-turbo-cache:

@@ -219,6 +219,18 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
             from: '/docs/next/use-cases/ai-agents/personal-assistants',
             to: '/docs/next/use-cases/ai-agents/personal-assistants/overview',
           },
+          {
+            from: '/docs/next/use-cases/b2b/multi-tenant-saas',
+            to: '/docs/next/use-cases/b2b/overview',
+          },
+          {
+            from: '/docs/next/use-cases/b2b/quick-start',
+            to: '/docs/next/getting-started/connect-your-b2b-application/react',
+          },
+          {
+            from: '/docs/next/use-cases/b2b/sdk-components',
+            to: '/docs/next/use-cases/b2b/overview',
+          },
         ],
 
         // The lastVersion is served at the bare /docs/ root. Redirect its versioned
@@ -409,6 +421,11 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
           label: 'Community',
         },
         {
+          to: '/events',
+          label: 'Events',
+          position: 'right',
+        },
+        {
           type: 'custom-GitHubStarButton',
           position: 'right',
         },
@@ -447,6 +464,8 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
   /* -------------------------------- Product Config ------------------------------- */
   customFields: {
     product: productConfig,
+    // Build day (YYYY-MM-DD), used as the server-rendered "today" for splitting upcoming and past events.
+    buildDate: new Date().toISOString().slice(0, 10),
   },
 };
 

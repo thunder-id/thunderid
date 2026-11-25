@@ -10,6 +10,7 @@ vi.mock('@thunderid/configure-organization-units', () => ({
     title,
     subtitle,
     value,
+    projectId = undefined,
     backLabel,
     continueLabel,
     onChange,
@@ -19,13 +20,14 @@ vi.mock('@thunderid/configure-organization-units', () => ({
     title: string;
     subtitle: string;
     value: string;
+    projectId?: string;
     backLabel: string;
     continueLabel: string;
     onChange: (ouId: string) => void;
     onBack: () => void;
     onContinue: () => void;
   }) => (
-    <div data-testid="ou-picker" data-value={value}>
+    <div data-testid="ou-picker" data-value={value} data-project-id={projectId}>
       <h1>{title}</h1>
       <p>{subtitle}</p>
       <button type="button" onClick={() => onChange('ou-b')}>
@@ -64,6 +66,21 @@ describe('FlowOrganizationUnitStep', () => {
     expect(screen.getByText(/will own this flow/)).toBeInTheDocument();
     expect(screen.getByTestId('ou-picker')).toHaveAttribute('data-value', 'ou-a');
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+  });
+
+  it("passes the project on to the picker so it offers the project's organization units", () => {
+    render(
+      <FlowOrganizationUnitStep
+        isLoading={false}
+        value=""
+        projectId="project-1"
+        onChange={vi.fn()}
+        onBack={vi.fn()}
+        onContinue={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('ou-picker')).toHaveAttribute('data-project-id', 'project-1');
   });
 
   it('reports a picked organization unit through onChange', () => {

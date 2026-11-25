@@ -141,8 +141,8 @@ func (a *attributeCollector) HasRequiredInputs(ctx *providers.NodeContext,
 		}
 
 		for _, input := range missingAttributes {
-			attribute, exists := authnUserAttrs.Attributes[input.Identifier]
-			if exists {
+			attribute := authnUserAttrs.Attributes[input.Identifier]
+			if attribute != nil && !isEmptyAttribute(attribute.Value) {
 				// If the attribute is a password, do not retrieve it from the profile.
 				if input.Identifier == userAttributePassword {
 					continue
@@ -191,8 +191,8 @@ func (a *attributeCollector) HasRequiredInputs(ctx *providers.NodeContext,
 	}
 
 	for _, input := range missingInputs {
-		attribute, exists := userAttributes[input.Identifier]
-		if exists {
+		attribute := userAttributes[input.Identifier]
+		if !isEmptyAttribute(attribute) {
 			// If the attribute is a password, do not retrieve it from the profile.
 			if input.Identifier == userAttributePassword {
 				continue
@@ -278,7 +278,7 @@ func (a *attributeCollector) updateUserInStore(ctx *providers.NodeContext, execR
 		return errors.New("failed to create updated user object")
 	}
 
-	if err := a.entityProvider.UpdateAttributes(userID, updatedUser.Attributes); err != nil {
+	if err := a.entityProvider.UpdateAttributes(ctx.Context, userID, updatedUser.Attributes); err != nil {
 		return fmt.Errorf("failed to update user attributes: %s", err.Message)
 	}
 	logger.Debug(ctx.Context, "User attributes updated successfully",
@@ -296,7 +296,7 @@ func (a *attributeCollector) getUserFromStore(
 		return nil, errors.New("user ID is not available in the context")
 	}
 
-	user, err := a.entityProvider.GetEntityProfile(userID)
+	user, err := a.entityProvider.GetEntityProfile(ctx.Context, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user by ID: %s", err.Message)
 	}
@@ -334,9 +334,19 @@ func (a *attributeCollector) getUpdatedUserObject(ctx *providers.NodeContext,
 		return false, userData, nil
 	}
 
-	// Merge attributes
+	// Merge only the attributes the user doesn't already have.
+	updated := false
 	for k, v := range newAttrs {
+		if !isEmptyAttribute(existingAttrs[k]) {
+			logger.Debug(ctx.Context, "Attribute already exists on the user, ignoring the provided value",
+				log.String("attributeName", k))
+			continue
+		}
 		existingAttrs[k] = v
+		updated = true
+	}
+	if !updated {
+		return false, userData, nil
 	}
 
 	// Marshal the merged attributes back to JSON
@@ -373,7 +383,8 @@ func (a *attributeCollector) getInputAttributes(ctx *providers.NodeContext) map[
 			attributesMap[inputAttr.Identifier] = convertToSchemaType(value, schemaType)
 		} else if runtimeValue, exists := ctx.RuntimeData[inputAttr.Identifier]; exists {
 			attributesMap[inputAttr.Identifier] = convertToSchemaType(runtimeValue, schemaType)
-		} else if claimValue, exists := extIdentity.Claim(inputAttr.Identifier); exists {
+		} else if claimValue, exists := extIdentity.Claim(inputAttr.Identifier); exists && inputAttr.Required {
+			// Only a required input takes the claim. The connection's sync decides what else is stored.
 			attributesMap[inputAttr.Identifier] = convertToSchemaType(claimValue, schemaType)
 		}
 	}

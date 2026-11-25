@@ -55,22 +55,19 @@ const (
 	ExecutorNameSession                      = executormeta.ExecutorNameSession
 	ExecutorNameSessionSignOut               = executormeta.ExecutorNameSessionSignOut
 	ExecutorNameOTPExecutor                  = executormeta.ExecutorNameOTPExecutor
-	ExecutorNamePreDelete                    = executormeta.ExecutorNamePreDelete
+	ExecutorNamePreRevocation                = executormeta.ExecutorNamePreRevocation
 	ExecutorNameCriteriaRevocation           = executormeta.ExecutorNameCriteriaRevocation
 	ExecutorNameSessionRevocation            = executormeta.ExecutorNameSessionRevocation
-	ExecutorNameUserDelete                   = executormeta.ExecutorNameUserDelete
 	ExecutorNameApplicationActionValidator   = executormeta.ExecutorNameApplicationActionValidator
-	ExecutorNameApplicationDelete            = executormeta.ExecutorNameApplicationDelete
-	ExecutorNameClientSecret                 = executormeta.ExecutorNameClientSecret
 	ExecutorNameAccessChangeValidator        = executormeta.ExecutorNameAccessChangeValidator
 	ExecutorNameRole                         = executormeta.ExecutorNameRole
-	ExecutorNameGroup                        = executormeta.ExecutorNameGroup
-	ExecutorNameActionDeletion               = executormeta.ExecutorNameActionDeletion
 	ExecutorNameOwnerResolver                = executormeta.ExecutorNameOwnerResolver
 	ExecutorNameAgentTypeResolver            = executormeta.ExecutorNameAgentTypeResolver
+	ExecutorNameAttributeVerification        = executormeta.ExecutorNameAttributeVerification
 	ExecutorNameIdentityGovernance           = executormeta.ExecutorNameIdentityGovernance
 	ExecutorNamePreSuspend                   = executormeta.ExecutorNamePreSuspend
 	ExecutorNameExtension                    = executormeta.ExecutorNameExtension
+	ExecutorNameSharing                      = executormeta.ExecutorNameSharing
 	ExecutorNameDeviceCode                   = executormeta.ExecutorNameDeviceCode
 )
 
@@ -86,16 +83,32 @@ const (
 	ExecutorModeRoleAssignmentRemoval  = executormeta.ExecutorModeRoleAssignmentRemoval
 	ExecutorModeRoleDeletion           = executormeta.ExecutorModeRoleDeletion
 	ExecutorModeRolePermissionRemoval  = executormeta.ExecutorModeRolePermissionRemoval
+	ExecutorModeRoleSelection          = executormeta.ExecutorModeRoleSelection
+	ExecutorModeRoleAssignment         = executormeta.ExecutorModeRoleAssignment
 	ExecutorModeGroupDeletion          = executormeta.ExecutorModeGroupDeletion
 	ExecutorModeGroupMembershipRemoval = executormeta.ExecutorModeGroupMembershipRemoval
 	ExecutorModeActionDeletion         = executormeta.ExecutorModeActionDeletion
 
-	ExecutorModeRevoke        = executormeta.ExecutorModeRevoke
-	ExecutorModeAdvanceCutoff = executormeta.ExecutorModeAdvanceCutoff
+	ExecutorModeRevoke              = executormeta.ExecutorModeRevoke
+	ExecutorModeAdvanceCutoff       = executormeta.ExecutorModeAdvanceCutoff
+	ExecutorModeRevokeBeforeRemoval = executormeta.ExecutorModeRevokeBeforeRemoval
+
+	ExecutorModeIdentityDeletion     = executormeta.ExecutorModeIdentityDeletion
+	ExecutorModeClientRemoval        = executormeta.ExecutorModeClientRemoval
+	ExecutorModeClientSecretRotation = executormeta.ExecutorModeClientSecretRotation
+	ExecutorModeCredentialUpdate     = executormeta.ExecutorModeCredentialUpdate
 
 	ExecutorModeUnlock    = executormeta.ExecutorModeUnlock
 	ExecutorModeSuspend   = executormeta.ExecutorModeSuspend
 	ExecutorModeUnsuspend = executormeta.ExecutorModeUnsuspend
+
+	ExecutorModeValidate = executormeta.ExecutorModeValidate
+	ExecutorModeShare    = executormeta.ExecutorModeShare
+	ExecutorModePrepare  = executormeta.ExecutorModePrepare
+	ExecutorModeRecord   = executormeta.ExecutorModeRecord
+
+	ExecutorModeSet        = executormeta.ExecutorModeSet
+	ExecutorModeInvalidate = executormeta.ExecutorModeInvalidate
 )
 
 // defaultProvisioningCategory is the entity default category a provisioning node works on when no
@@ -119,15 +132,20 @@ const (
 	userInputCode  = "code"
 	userInputState = "state"
 
+	userInputVerificationAttribute = "attribute"
+	userInputCredential            = "credential"
+
 	userInputOuName            = "ouName"
 	userInputOuHandle          = "ouHandle"
 	userInputOuDesc            = "ouDescription"
 	userInputInviteToken       = "inviteToken"
+	userInputRoles             = "roles"
 	userInputOTP               = "otp"
 	userInputMagicLinkToken    = "token"
 	userInputConsentDecisions  = "consent_decisions"
 	userInputLoginHint         = "login_hint"
 	revocationInputSubject     = "subject"
+	revocationInputEntity      = "targetEntityId"
 	revocationInputApplication = "targetApplicationId"
 
 	revocationInputRole           = "targetRoleId"
@@ -139,6 +157,9 @@ const (
 	revocationInputResourceServer = "targetResourceServerId"
 	revocationInputResource       = "targetResourceId"
 	revocationInputAction         = "targetActionId"
+	// revocationInputRemovedHolders lists, as a JSON array, the entities whose access the committed change
+	// removed. Only a system post flow reads it.
+	revocationInputRemovedHolders = "removedHolderIds"
 
 	governanceInputOperatorNote = "operatorNote"
 
@@ -172,13 +193,24 @@ const (
 	validUntilKey = "validUntil"
 	// delegatedKey marks an agent that acts on behalf of a signed-in user. Absent means false.
 	delegatedKey = "delegated"
-	// redirectURIsKey carries the callback URIs of a delegated agent, comma separated. It is the
-	// only part of an agent's OAuth configuration a flow supplies; the agent service derives the rest.
+	// redirectURIsKey carries the callback URIs of a delegated or personal agent, comma separated. With a
+	// key, it is the only part of an agent's OAuth configuration a flow supplies; the agent service derives
+	// the rest.
 	redirectURIsKey = "redirectUris"
 	// authFlowIDKey carries the authentication flow a delegated agent's users sign in through.
 	authFlowIDKey = "authFlowId"
 	// allowedUserTypesKey carries the one user type handle a delegated agent's users may belong to.
 	allowedUserTypesKey = "allowedUserTypes"
+	// publicKeyKey and jwksURIKey carry an agent's public key, as a JWKS document or as the URI that serves
+	// one. Either lets the agent authenticate with private_key_jwt.
+	publicKeyKey = "publicKey"
+	jwksURIKey   = "jwksUri"
+	// authFlowHandleKey names the login flow the agent's authorizations run.
+	authFlowHandleKey = "authFlowHandle"
+	// alwaysPromptConsentKey marks an agent whose every authorization asks for consent ("true" or "false").
+	alwaysPromptConsentKey = "alwaysPromptConsent"
+	// kindKey carries the agent's kind, such as personal-assistant. Absent means an ordinary agent.
+	kindKey = "kind"
 
 	// agentAttributeConflictCode is the agent service's unique-attribute clash code. It is repeated
 	// here rather than referenced from internal/agent: that package reaches the flow executor through
@@ -195,10 +227,6 @@ const (
 
 // Executor property keys
 const (
-	propertyKeyAssignGroup           = "assignGroup"
-	propertyKeyAssignRole            = "assignRole"
-	propertyKeySeedGroupsFromMapping = "seedGroupsFromMapping"
-	propertyKeySeedRolesFromMapping  = "seedRolesFromMapping"
 	// propertyKeyDelegated sets whether a provisioned agent acts on behalf of a signed-in user when the
 	// flow does not collect the choice itself. A value the flow collects takes precedence. It applies
 	// to the agent category only.
@@ -211,7 +239,6 @@ const (
 	propertyKeyMagicLinkURL                            = "magicLinkURL"
 	propertyKeySMSTemplate                             = "smsTemplate"
 	propertyKeyAllowedUserTypes                        = "allowedUserTypes"
-	propertyKeyAllowedAgentTypes                       = "allowedAgentTypes"
 	propertyKeyNotificationSenderID                    = "senderId"
 	propertyKeyDynamicInputsIncludeOptional            = "includeOptional"
 	propertyKeyDynamicInputsIncludeOptionalCredentials = "includeOptionalCredentials"
@@ -220,9 +247,13 @@ const (
 	propertyKeyPresentationDefinitionID                = "presentation_definition_id"
 	propertyKeyCallbackType                            = "callbackType"
 	propertyKeyLoginHintAttribute                      = "loginHintAttribute"
-	propertyKeyOTPLength                               = "otpLength"
-	propertyKeyOTPUseNumericOnly                       = "otpUseNumericOnly"
-	propertyKeyOTPValidityPeriodSeconds                = "otpValidityPeriodSeconds"
+	// propertyKeyBoundToUserType makes identify accept only a user of the user type the flow resolved.
+	propertyKeyBoundToUserType = "boundToUserType"
+	// propertyKeyContinueOnNoMatch makes identify continue on onIncomplete without an error when no user matches.
+	propertyKeyContinueOnNoMatch        = "continueOnNoMatch"
+	propertyKeyOTPLength                = "otpLength"
+	propertyKeyOTPUseNumericOnly        = "otpUseNumericOnly"
+	propertyKeyOTPValidityPeriodSeconds = "otpValidityPeriodSeconds"
 	// propertyKeyPromptOnSignOut, when set to boolean true on a session sign-out node, makes the executor
 	// confirm the logout with the End-User (via the node's onIncomplete prompt) whenever the RP-initiated
 	// logout was not accompanied by a valid id_token_hint (RuntimeKeyLogoutPromptRequired).
@@ -232,6 +263,29 @@ const (
 	// the Deny button or by letting the prompt time out. This applies even when every prompted
 	// element is optional.
 	propertyKeyConsentFailOnDeny = "failOnDeny"
+	// propertyKeyConsentPromptValidityPeriod, when set to boolean true on a consent node, lets the user choose
+	// how long their consent lasts, up to the validity period set on the application or agent.
+	propertyKeyConsentPromptValidityPeriod = "promptValidityPeriod"
+	// propertyKeyGenerateOUHandle, when set to boolean true on an OU creation node, makes the executor
+	// generate the organization unit handle from the name when the handle is not provided.
+	propertyKeyGenerateOUHandle = "generateOuHandle"
+
+	propertyKeyResourceType = "resourceType"
+	propertyKeyResourceID   = "resourceId"
+	propertyKeyOwningOUID   = "owningOuId"
+	propertyKeyTargetOUID   = "targetOuId"
+	// propertyKeyProvisioningOU names the organization unit provisioning creates the entity in: the resolved one
+	// (the default) or, with provisioningOUUserType, the one the flow's user type belongs to.
+	propertyKeyProvisioningOU = "provisioningOU"
+)
+
+// provisioningOU is a value of propertyKeyProvisioningOU.
+type provisioningOU string
+
+// Values of propertyKeyProvisioningOU.
+const (
+	provisioningOUResolved provisioningOU = "resolved"
+	provisioningOUUserType provisioningOU = "userType"
 )
 
 // suspensionRevocationTTL is how long a suspension's revocation rows are kept.
@@ -242,3 +296,9 @@ const suspensionRevocationTTL = 7 * 24 * time.Hour
 var nonSearchableInputs = []string{
 	"password", "code", "otp", "token", "userInputMagicLinkToken", "otpSessionToken",
 }
+
+// Masking of the contact a verification preparation returns.
+const (
+	contactMask               = "•••"
+	maskedMobileVisibleDigits = 2
+)

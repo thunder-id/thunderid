@@ -38,7 +38,7 @@ This composable must be used inside a component rendered within `<ThunderIDProvi
 :::
 
 :::tip Reactive state
-`isSignedIn`, `isLoading`, `isInitialized`, `user`, and `organization` are Vue `Ref`s. In templates Vue unwraps them automatically (`isSignedIn` instead of `isSignedIn.value`). In `<script>` code you must access `.value`.
+`isSignedIn`, `isLoading`, `isInitialized`, `user`, and `currentOrganizationUnit` are Vue `Ref`s. In templates Vue unwraps them automatically (`isSignedIn` instead of `isSignedIn.value`). In `<script>` code you must access `.value`.
 :::
 
 ## Return Values
@@ -50,13 +50,70 @@ The composable returns the full <ProductName /> context:
 | `isSignedIn` | `boolean` | Whether the user is currently signed in |
 | `isLoading` | `boolean` | Whether an authentication operation is in progress |
 | `user` | `User \| null` | The authenticated user object, or `null` if not signed in |
-| `organization` | `Organization \| null` | The current active organization |
+| `currentOrganizationUnit` | `CurrentOrganizationUnit \| null` | The organization unit the session was issued for, read from its `ouId`, `ouHandle`, and `ouName` claims for display only, or `null` |
 | `signIn` | `(...args) => Promise<User \| EmbeddedSignInFlowResponse>` | Initiates the sign-in flow |
 | `signOut` | `(...args) => Promise<any>` | Signs the current user out |
 | `signUp` | `(...args) => Promise<any>` | Initiates the sign-up flow |
 | `getAccessToken` | `() => Promise<string>` | Returns the current access token |
 | `getDecodedIdToken` | `() => Promise<IdToken>` | Returns the decoded ID token payload |
 | `http` | `{ request, requestAll }` | Authenticated HTTP client (see [Accessing Protected APIs](/sdks-and-tools/vue/guides/accessing-protected-apis)) |
+| `getCurrentOrganizationUnit` | `() => Promise<CurrentOrganizationUnit \| null>` | Reads the current organization unit from the session's claims |
+| `switchOrganizationUnit` | `(organizationUnitId: string, options?: SwitchOrganizationUnitOptions) => Promise<User \| undefined>` | Signs in again bounded to another organization unit. See [Switch Organization Units](#switch-organization-units) |
+
+## Switch Organization Units
+
+`switchOrganizationUnit(organizationUnitId, options)` signs the user in again bounded to the organization unit `organizationUnitId`, and replaces the session when that sign-in succeeds. <ProductName /> reuses the single sign-on (SSO) session when the user can sign in to that unit, so the user normally enters no credentials. On success the composable's `user` and `currentOrganizationUnit` refresh, and the promise resolves with the user. For how organizations map to organization units and what the new tokens carry, see [Switch Organizations](../../../../../use-cases/b2b/journeys/switch-organizations).
+
+```vue title="src/OpenOrganization.vue" showLineNumbers
+<script setup>
+import { ref } from 'vue'
+import { OrganizationUnitSwitchErrorCodes, useThunderID } from '@thunderid/vue'
+
+const props = defineProps({ organizationUnitId: { type: String, required: true } })
+const { currentOrganizationUnit, switchOrganizationUnit } = useThunderID()
+const error = ref(null)
+
+async function open() {
+  error.value = null
+  try {
+    await switchOrganizationUnit(props.organizationUnitId, { redirect: false })
+  } catch (err) {
+    error.value =
+      err.code === OrganizationUnitSwitchErrorCodes.InteractionRequired
+        ? 'Sign in again to open this organization.'
+        : 'The organization could not be opened.'
+  }
+}
+</script>
+
+<template>
+  <p>Working in {{ currentOrganizationUnit?.name }}</p>
+  <button @click="open">Open organization</button>
+  <p v-if="error" role="alert">{{ error }}</p>
+</template>
+```
+
+The path the switch takes depends on how the SDK signs users in:
+
+- **Redirect mode**, the default:
+    1. When the session holds a device secret, which a sign-in that requested the `device_sso` scope returns, the SDK exchanges it at `{baseUrl}/ou/{ouId}/oauth2/token` without leaving the page.
+    2. Without a device secret, the SDK tries a silent sign-in with `prompt=none` at `{baseUrl}/ou/{ouId}/oauth2/authorize` in a hidden iframe.
+    3. When the server needs the user, the SDK redirects the page to `{baseUrl}/ou/{ouId}/oauth2/authorize`, and the callback replaces the session. The promise resolves with `undefined`. With `redirect: false`, the switch fails with `InteractionRequired` instead.
+- **Embedded mode** (`mode: 'embedded'`): the SDK starts an `AUTHENTICATION` flow with `ouId`, presenting the SSO session handles it kept from earlier flow steps. When the flow completes at once, its assertion replaces the session. A flow that needs input fails with `InteractionRequired`, so render `<SignIn :organization-unit-id="organizationUnitId" />` instead.
+- **Backend mode** (`endpoints.backend` set): the SDK sends `POST {ouSwitch}?ouId=<id>` with `{"ouId": "<id>"}` as a JSON body, where `ouSwitch` is `endpoints.backend.ouSwitch` and defaults to `/api/auth/switch`. On success it reads the session again, and the page stays where it is. When the backend needs the user, it answers `401` or an OAuth error such as `interaction_required` or `login_required`. The SDK then sends the page to the backend's sign-in endpoint with `ouId`, unless `redirect` is `false`.
+
+`options.redirect` defaults to `true`. In redirect mode, any other key in `options` is sent as an extra authorization request parameter.
+
+A failed switch keeps the previous session, user, and current organization unit, except in backend mode when the backend reports that its session has ended (`login_required`, or a `401` left after one refresh), which signs the user out. It rejects with an error whose `code` is one of `OrganizationUnitSwitchErrorCodes`:
+
+| Code | Value | Cause |
+| :--- | :--- | :--- |
+| `UnauthorizedClient` | `switchOrganizationUnit-UnauthorizedClient-001` | The unit does not exist, or the application cannot be used from it. The server answers both with `unauthorized_client`, so they cannot be told apart. |
+| `InteractionRequired` | `switchOrganizationUnit-InteractionRequired-001` | The user has to sign in again, and the switch could not interact with the user. |
+| `InvalidOrganizationUnit` | `switchOrganizationUnit-ValidationError-001` | No organization unit ID was given. |
+| `Failed` | `switchOrganizationUnit-ResponseError-001` | The bounded sign-in failed for another reason. |
+
+To list the units the user can switch to, render [`<OrganizationUnitSwitcher />`](../../components/organization-unit-switcher), or call `getAccessibleOrganizationUnits({ baseUrl, scope, limit, offset })` from `@thunderid/vue` for a custom switcher. It reads `GET /users/me/ous` with the signed-in user's access token and resolves with one page: `current`, `organizationUnits` (each with `id`, `handle`, `name`, and an optional `logoUrl`), `totalResults`, `startIndex`, and `count`. Set `scope` to `'siblings'` to list only the accessible units that share the parent of the current unit.
 
 ## Error Handling
 

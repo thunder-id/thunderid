@@ -23,6 +23,7 @@ Teardown:
 package declarativesinglefile
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -37,6 +38,7 @@ import (
 // resourcesYAML is the fixture loaded by the server under test. It contains:
 //   - Two connection documents (one references an env var)
 //   - One organization_unit document
+//   - One agent type, a user_type document of the agent category, in the second organization unit
 //
 // The {{ t(...) }} expression in the GitHub IDP description verifies that
 // non-Go-template expressions inside the file are preserved as-is and do not
@@ -132,6 +134,16 @@ type: google
 clientId: sf-test-owner-both-client
 clientSecret: sf-test-owner-both-secret
 redirectUri: https://localhost:8095/callback
+---
+resource_type: user_type
+id: sf-decl-agent-type-1
+category: agent
+handle: sf-decl-agents
+displayName: Single File Declarative Agents
+ouHandle: sf-decl-ou-2
+schema:
+  name:
+    type: string
 `
 
 // envVars are set in the test process before the server starts so they are inherited
@@ -443,6 +455,60 @@ func (s *SingleFileModeSuite) TestDeclarativeResourcesAreImmutable() {
 
 	s.Equal(http.StatusBadRequest, resp.StatusCode,
 		"deleting a declarative IDP should return 400 Bad Request")
+}
+
+// TestDeclarativeAgentTypeLoadedFromFile verifies that an agent type declared in the resources file is
+// loaded into its organization unit, and that it is read-only.
+func (s *SingleFileModeSuite) TestDeclarativeAgentTypeLoadedFromFile() {
+	client := testutils.GetHTTPClient()
+
+	resp, err := client.Get(fmt.Sprintf("%s/agent-types/sf-decl-agent-type-1", testutils.TestServerURL))
+	s.Require().NoError(err)
+	defer resp.Body.Close()
+	s.Require().Equal(http.StatusOK, resp.StatusCode, "the declarative agent type should be readable")
+
+	var agentType map[string]interface{}
+	s.Require().NoError(json.NewDecoder(resp.Body).Decode(&agentType))
+	s.Equal("sf-decl-agents", agentType["handle"])
+	s.Equal(s.organizationUnitID("sf-decl-ou-2"), agentType["ouId"])
+
+	req, err := http.NewRequest(http.MethodDelete,
+		fmt.Sprintf("%s/agent-types/sf-decl-agent-type-1", testutils.TestServerURL), nil)
+	s.Require().NoError(err)
+	deleteResp, err := client.Do(req)
+	s.Require().NoError(err)
+	defer deleteResp.Body.Close()
+	s.Equal(http.StatusForbidden, deleteResp.StatusCode, "deleting a declarative agent type should be refused")
+	s.Equal("USRS-1008", s.errorCode(deleteResp))
+}
+
+// TestAgentTypeInOUOfDeclarativeAgentTypeRejected verifies that an organization unit holding a
+// declarative agent type accepts no second agent type through the API.
+func (s *SingleFileModeSuite) TestAgentTypeInOUOfDeclarativeAgentTypeRejected() {
+	body, err := json.Marshal(map[string]interface{}{
+		"handle":      "sf-runtime-agents",
+		"displayName": "Single File Runtime Agents",
+		"ouId":        s.organizationUnitID("sf-decl-ou-2"),
+		"schema":      map[string]interface{}{"name": map[string]interface{}{"type": "string"}},
+	})
+	s.Require().NoError(err)
+
+	resp, err := testutils.GetHTTPClient().Post(
+		testutils.TestServerURL+"/agent-types", "application/json", bytes.NewReader(body))
+	s.Require().NoError(err)
+	defer resp.Body.Close()
+
+	s.Equal(http.StatusConflict, resp.StatusCode)
+	s.Equal("USRS-1021", s.errorCode(resp))
+}
+
+// errorCode reads the product error code from an error response.
+func (s *SingleFileModeSuite) errorCode(resp *http.Response) string {
+	var errResp struct {
+		Code string `json:"code"`
+	}
+	s.Require().NoError(json.NewDecoder(resp.Body).Decode(&errResp))
+	return errResp.Code
 }
 
 // organizationUnitID reads the id the server reports for a declarative organization unit.

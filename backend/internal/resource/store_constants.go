@@ -13,14 +13,14 @@ var (
 	queryCreateResourceServer = dbmodel.DBQuery{
 		ID: "RSQ-RES_MGT-01",
 		Query: `INSERT INTO "RESOURCE_SERVER"
-			(ID, OU_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES, DEPLOYMENT_ID)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+			(ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES, DEPLOYMENT_ID)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
 	}
 
 	// queryGetResourceServerByID retrieves a resource server by ID.
 	queryGetResourceServerByID = dbmodel.DBQuery{
 		ID: "RSQ-RES_MGT-02",
-		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES
+		Query: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES
 			FROM "RESOURCE_SERVER"
 			WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
@@ -28,7 +28,7 @@ var (
 	// queryGetResourceServerList retrieves a list of resource servers with pagination.
 	queryGetResourceServerList = dbmodel.DBQuery{
 		ID: "RSQ-RES_MGT-03",
-		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES
+		Query: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES
 			FROM "RESOURCE_SERVER"
 			WHERE DEPLOYMENT_ID = $3
 			ORDER BY CREATED_AT DESC
@@ -45,8 +45,9 @@ var (
 	queryUpdateResourceServer = dbmodel.DBQuery{
 		ID: "RSQ-RES_MGT-05",
 		Query: `UPDATE "RESOURCE_SERVER"
-			SET OU_ID = $1, NAME = $2, DESCRIPTION = $3, IDENTIFIER = $4, TYPE = $5, PROPERTIES = $6
-			WHERE ID = $7 AND DEPLOYMENT_ID = $8`,
+			SET OU_ID = $1, PROJECT_ID = $2, NAME = $3, DESCRIPTION = $4, IDENTIFIER = $5, TYPE = $6,
+			PROPERTIES = $7
+			WHERE ID = $8 AND DEPLOYMENT_ID = $9`,
 	}
 
 	// queryDeleteResourceServer deletes a resource server.
@@ -61,16 +62,18 @@ var (
 		Query: `SELECT COUNT(*) as count FROM "RESOURCE_SERVER" WHERE NAME = $1 AND DEPLOYMENT_ID = $2`,
 	}
 
-	// queryCheckResourceServerIdentifierExists checks if a resource server identifier already exists.
+	// queryCheckResourceServerIdentifierExists retrieves the resource server identifiers that equal an identifier
+	// or match its lowercased normal form with or without a trailing "/".
 	queryCheckResourceServerIdentifierExists = dbmodel.DBQuery{
-		ID:    "RSQ-RES_MGT-33",
-		Query: `SELECT COUNT(*) as count FROM "RESOURCE_SERVER" WHERE IDENTIFIER = $1 AND DEPLOYMENT_ID = $2`,
+		ID: "RSQ-RES_MGT-33",
+		Query: `SELECT IDENTIFIER FROM "RESOURCE_SERVER"
+			WHERE (IDENTIFIER = $1 OR LOWER(IDENTIFIER) IN ($2, $3)) AND DEPLOYMENT_ID = $4`,
 	}
 
 	// queryGetResourceServerByIdentifier retrieves a resource server by identifier.
 	queryGetResourceServerByIdentifier = dbmodel.DBQuery{
 		ID: "RSQ-RES_MGT-34",
-		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES
+		Query: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES
 			FROM "RESOURCE_SERVER"
 			WHERE IDENTIFIER = $1 AND DEPLOYMENT_ID = $2`,
 	}
@@ -86,6 +89,62 @@ var (
 				WHERE a.RESOURCE_SERVER_ID = $1 AND a.RESOURCE_ID IS NULL AND a.DEPLOYMENT_ID = $2
 			LIMIT 1
 		) as dependencies`,
+	}
+
+	// queryGetResourceServerListByOUID retrieves a list of resource servers owned by an organization unit
+	// with pagination.
+	queryGetResourceServerListByOUID = dbmodel.DBQuery{
+		ID: "RSQ-RES_MGT-41",
+		Query: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES
+			FROM "RESOURCE_SERVER"
+			WHERE OU_ID = $1 AND DEPLOYMENT_ID = $4
+			ORDER BY CREATED_AT DESC, ID DESC
+			LIMIT $2 OFFSET $3`,
+	}
+
+	// queryGetResourceServerListCountByOUID retrieves the total count of resource servers owned by an
+	// organization unit.
+	queryGetResourceServerListCountByOUID = dbmodel.DBQuery{
+		ID:    "RSQ-RES_MGT-42",
+		Query: `SELECT COUNT(*) as total FROM "RESOURCE_SERVER" WHERE OU_ID = $1 AND DEPLOYMENT_ID = $2`,
+	}
+)
+
+// Resource server project queries
+var (
+	// queryGetResourceServerListByProject retrieves a list of the resource servers of a project with pagination.
+	queryGetResourceServerListByProject = dbmodel.DBQuery{
+		ID: "RSQ-RES_MGT-43",
+		Query: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES
+			FROM "RESOURCE_SERVER"
+			WHERE PROJECT_ID = $1 AND DEPLOYMENT_ID = $4
+			ORDER BY CREATED_AT DESC, ID DESC
+			LIMIT $2 OFFSET $3`,
+	}
+
+	// queryGetResourceServerListCountByProject retrieves the total count of the resource servers of a project.
+	queryGetResourceServerListCountByProject = dbmodel.DBQuery{
+		ID:    "RSQ-RES_MGT-44",
+		Query: `SELECT COUNT(*) as total FROM "RESOURCE_SERVER" WHERE PROJECT_ID = $1 AND DEPLOYMENT_ID = $2`,
+	}
+
+	// queryGetResourceServerListByProjectAndOUID retrieves a list of the resource servers of a project that
+	// an organization unit owns, with pagination.
+	queryGetResourceServerListByProjectAndOUID = dbmodel.DBQuery{
+		ID: "RSQ-RES_MGT-46",
+		Query: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES
+			FROM "RESOURCE_SERVER"
+			WHERE PROJECT_ID = $1 AND OU_ID = $2 AND DEPLOYMENT_ID = $5
+			ORDER BY CREATED_AT DESC, ID DESC
+			LIMIT $3 OFFSET $4`,
+	}
+
+	// queryGetResourceServerListCountByProjectAndOUID retrieves the total count of the resource servers of a
+	// project that an organization unit owns.
+	queryGetResourceServerListCountByProjectAndOUID = dbmodel.DBQuery{
+		ID: "RSQ-RES_MGT-47",
+		Query: `SELECT COUNT(*) as total FROM "RESOURCE_SERVER"
+			WHERE PROJECT_ID = $1 AND OU_ID = $2 AND DEPLOYMENT_ID = $3`,
 	}
 )
 
@@ -418,3 +477,40 @@ var (
 		        )`,
 	}
 )
+
+// queryGetDeclaredPermissions reads covered resources and their actions without per-resource lookups.
+var queryGetDeclaredPermissions = dbmodel.DBQuery{
+	ID: "RSQ-RES_MGT-46",
+	PostgresQuery: `WITH roots AS (
+		        SELECT value::text AS permission FROM json_array_elements_text($3::json)
+		    ), covered_resources AS (
+		        SELECT r.ID, r.PERMISSION FROM "RESOURCE" r
+		        WHERE r.RESOURCE_SERVER_ID = $1 AND r.DEPLOYMENT_ID = $2
+		            AND EXISTS (SELECT 1 FROM roots p WHERE r.PERMISSION = p.permission
+		                OR ($4 <> '' AND substr(r.PERMISSION, 1, length(p.permission || $4)) = p.permission || $4))
+		    )
+		    SELECT PERMISSION AS permission FROM covered_resources
+		    UNION
+		    SELECT a.PERMISSION AS permission FROM "ACTION" a
+		    JOIN covered_resources r ON r.ID = a.RESOURCE_ID
+		    WHERE a.RESOURCE_SERVER_ID = $1 AND a.DEPLOYMENT_ID = $2
+		        AND EXISTS (SELECT 1 FROM roots p WHERE a.PERMISSION = p.permission
+		            OR ($4 <> '' AND substr(a.PERMISSION, 1, length(p.permission || $4)) = p.permission || $4))
+		    ORDER BY permission`,
+	SQLiteQuery: `WITH roots AS (
+		        SELECT value AS permission FROM json_each($3)
+		    ), covered_resources AS (
+		        SELECT r.ID, r.PERMISSION FROM "RESOURCE" r
+		        WHERE r.RESOURCE_SERVER_ID = $1 AND r.DEPLOYMENT_ID = $2
+		            AND EXISTS (SELECT 1 FROM roots p WHERE r.PERMISSION = p.permission
+		                OR ($4 <> '' AND substr(r.PERMISSION, 1, length(p.permission || $4)) = p.permission || $4))
+		    )
+		    SELECT PERMISSION AS permission FROM covered_resources
+		    UNION
+		    SELECT a.PERMISSION AS permission FROM "ACTION" a
+		    JOIN covered_resources r ON r.ID = a.RESOURCE_ID
+		    WHERE a.RESOURCE_SERVER_ID = $1 AND a.DEPLOYMENT_ID = $2
+		        AND EXISTS (SELECT 1 FROM roots p WHERE a.PERMISSION = p.permission
+		            OR ($4 <> '' AND substr(a.PERMISSION, 1, length(p.permission || $4)) = p.permission || $4))
+		    ORDER BY permission`,
+}

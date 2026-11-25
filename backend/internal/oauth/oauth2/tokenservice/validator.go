@@ -188,6 +188,7 @@ func (tv *tokenValidator) ValidateRefreshToken(
 	jti, _ := extractStringClaim(claims, "jti")
 	tokenFamilyID, _ := extractStringClaim(claims, constants.ClaimTokenFamilyID)
 	sessionID, _ := extractStringClaim(claims, constants.ClaimSessionID)
+	ouID, _ := extractStringClaim(claims, constants.ClaimAccessTokenOUID)
 
 	// Extract claims request if present
 	var claimsRequest *oauth2model.ClaimsRequest
@@ -240,6 +241,7 @@ func (tv *tokenValidator) ValidateRefreshToken(
 		TokenFamilyID:        tokenFamilyID,
 		SessionID:            sessionID,
 		AuthorizationDetails: authorizationDetails,
+		OUID:                 ouID,
 	}, nil
 }
 
@@ -375,6 +377,17 @@ func (tv *tokenValidator) validateExchangeToken(
 		if err != nil {
 			return nil, nil, err
 		}
+		// An access token issued here for an external identity provider's subject names that provider in
+		// idp, which the token builder owns. Other token types may carry an idp user attribute instead.
+		// The claim's presence marks the subject external, as it does at the API gate, so a malformed
+		// value is refused rather than read as a local subject.
+		if _, external := claims[constants.ClaimIDP]; external && jwt.IsAccessTokenType(typ) {
+			sourceIDP, err := extractStringClaim(claims, constants.ClaimIDP)
+			if err != nil || sourceIDP == "" {
+				return nil, nil, fmt.Errorf("subject token has an invalid 'idp' claim")
+			}
+			selfClaims.SourceIDP = sourceIDP
+		}
 		selfTokenFamilyID, _ := extractStringClaim(claims, constants.ClaimTokenFamilyID)
 		if err := tv.ensureNotRevoked(ctx, claims, selfClaims.JTI, selfTokenFamilyID); err != nil {
 			return nil, nil, err
@@ -412,6 +425,8 @@ func (tv *tokenValidator) validateExchangeToken(
 	if err != nil {
 		return nil, nil, err
 	}
+	// An external issuer's sub is its own identifier.
+	externalClaims.SourceIDP = iss
 	return externalClaims, claims, nil
 }
 
@@ -637,14 +652,12 @@ func (tv *tokenValidator) resolveIDJAGIssuer(ctx context.Context, issuer string)
 
 // resolveMappedAuthorization resolves both AuthorizationRuleMapping (explicit value rules) and
 // AuthorizationDirectMapping (direct name-based lookup) for idpDTO against claims, unioning their
-// targets. The connection's authorization mapping is configured, and therefore the sole authority
-// for scopes, when either list is non-empty.
+// targets. The mapping is the only authority for an external token's permission scopes.
 func (tv *tokenValidator) resolveMappedAuthorization(
 	ctx context.Context, idpDTO *providers.IDPDTO, claims map[string]interface{},
 ) (MappedAuthorization, error) {
-	targets := idp.GetRuleAuthorizationTargets(idpDTO, claims)
-
-	directTargets, svcErr := tv.idpService.GetDirectAuthorizationTargets(ctx, idpDTO, claims)
+	resolved, svcErr := idp.ResolveAuthorizationMapping(
+		ctx, idpDTO, claims, tv.idpService.ResolveDirectAuthorizationTargets)
 	if svcErr != nil {
 		if svcErr.Type == tidcommon.ServerErrorType {
 			return MappedAuthorization{}, fmt.Errorf(
@@ -652,13 +665,8 @@ func (tv *tokenValidator) resolveMappedAuthorization(
 		}
 		return MappedAuthorization{}, fmt.Errorf("%s", svcErr.Error.DefaultValue)
 	}
-	targets = append(targets, directTargets...)
 
-	am := idpDTO.AttributeConfiguration
-	configured := am != nil && am.AuthorizationMapping != nil &&
-		(len(am.AuthorizationMapping.Rules) > 0 || len(am.AuthorizationMapping.Direct) > 0)
-
-	return MappedAuthorization{Targets: targets, Configured: configured}, nil
+	return MappedAuthorization{Targets: resolved.Targets}, nil
 }
 
 // tokenExchangeIssuerInfo holds the resolved properties needed to validate an external token.

@@ -28,7 +28,7 @@ describe('useGatewayRoutes', () => {
   });
 
   it('prefers the paths the host supplies', () => {
-    const hostPaths = {list: () => '/environments', detail: (id: string) => `/environments/${id}`};
+    const hostPaths = {list: () => '/gateways', detail: (id: string) => `/gateways/${id}`};
     mockUseRoutes.mockReturnValue({gateways: hostPaths});
 
     const {result} = renderHook(() => useGatewayRoutes());

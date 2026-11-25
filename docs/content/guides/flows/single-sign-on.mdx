@@ -68,6 +68,18 @@ To build this flow:
 
 The first time a user signs in, the flow takes the **Authenticate** path and **Save / Load Session** establishes the session. On the next sign-in through the same flow, **Check SSO Session** finds the session and takes the **Skip to** path.
 
+## Organization Units and Single Sign-On
+
+A sign-in lands in one organization unit (OU) where both the user and the application are found. See [Sign Users In to Organization Units](../organization-units/sign-in-to-organization-units.mdx). Single sign-on keeps to it:
+
+- A sign-in that has already decided its OU reuses a session only when the session's user can sign in to that OU. Otherwise the flow takes the **Authenticate** path, so another user of that OU can sign in, and a `prompt=none` request gets `login_required`.
+- A sign-in that reaches **Check SSO Session** with no OU decided follows the OU the user last signed in to with that session. If the user cannot sign in to the application from that OU, or the session has no such OU, the flow takes the **Authenticate** path. The user signs in again, and the flow decides the OU. A `prompt=none` request cannot ask the user, so it gets `login_required` instead.
+
+**Resolve OU** cannot come after **Save / Load Session**. Saving a sign-in flow that can reach a **Resolve OU** node from a **Save / Load Session** node is refused with `FLM-1044`. Place the node in one of two places:
+
+- **Sign in first.** Place a **Resolve OU** node with the `prompt` strategy on the **Authenticate** path, between the sign-in step and **Save / Load Session**. A fresh sign-in decides the OU there, from the OUs the user can sign in to. A sign-in that reuses the session skips it and follows the last-used OU.
+- **Pick first.** Place a **Resolve OU** node with the `prompt` strategy before **Check SSO Session**. Both the fresh and the reused path pass through it, and a reused session is checked again against the OU the user chose.
+
 ## Configure Session Lifetime
 
 Two timeouts bound every flow SSO session:
@@ -105,13 +117,12 @@ The cookie lifetime matches the absolute session timeout.
 
 An application that runs flows itself through `POST /flow/execute` has no browser cookie, so <ProductName /> also returns the session in the response body. The application stores it and sends it back on later requests.
 
-When a step starts a session, the response includes it in the `sessionData` array, in the same shape the request uses plus `expiresIn`. The per-flow cookie is set as well. The session starts at the **Save / Load Session** node, which need not be the last step, so `sessionData` can arrive on an `INCOMPLETE` response. Store it from any response that includes it.
+When a step starts or reuses a session, the response includes it in the `sessionData` array, in the same shape the request uses plus `expiresIn`. When the step started the session, the per-flow cookie is set as well. The session starts at the **Save / Load Session** node, which need not be the last step, so `sessionData` can arrive on an `INCOMPLETE` response. Store it from any response that includes it.
 
 ```json
 {
   "executionId": "01a17bb9-4fd5-7979-afda-9760afc83397",
   "flowStatus": "COMPLETE",
-  "data": {},
   "assertion": "<jwt_token>",
   "sessionData": [
     {
@@ -127,7 +138,7 @@ When a step starts a session, the response includes it in the `sessionData` arra
 |---|---|
 | `flowIdentifier` | Identifies the flow the session belongs to. It is the `<hash>` part of the `tid_sso_<hash>` cookie name. |
 | `sessionHandle` | The session handle. It is the cookie's value. |
-| `expiresIn` | Seconds until the session reaches its absolute timeout. It matches the cookie lifetime. |
+| `expiresIn` | Seconds until the session reaches its absolute timeout. For a reused session, this is the time it has left. The session cookie expires at the same time. |
 
 To reuse a session, send every session the application holds in the `sessionData` array of each request of the flow, not only the first. <ProductName /> does not keep the handle with the flow, so a **Check SSO Session** node reached after a prompt step uses the session sent with that request. <ProductName /> uses the entry whose `flowIdentifier` matches the flow being run, ahead of any session cookie. When that session is valid, **Check SSO Session** takes the **Skip to** path. An entry without a `flowIdentifier` or a `sessionHandle` is refused with a `400` error.
 
@@ -144,6 +155,6 @@ To reuse a session, send every session the application holds in the `sessionData
 }
 ```
 
-A step that reuses a session does not return `sessionData` again. To sign the user out, send the same `sessionData` with a `SIGNOUT` flow. A sign-out acts on the application's sign-in flow, so <ProductName /> uses the entry whose `flowIdentifier` matches that flow and ends only that session. The response lists the session in `clearedSessions`, by `flowIdentifier`, so the application can delete it. The listing does not confirm the session was still active.
+To sign the user out, send the same `sessionData` with a `SIGNOUT` flow. A sign-out acts on the application's sign-in flow, so <ProductName /> uses the entry whose `flowIdentifier` matches that flow and ends only that session. The response lists the session in `clearedSessions`, by `flowIdentifier`, so the application can delete it. The listing does not confirm the session was still active.
 
 The session handle resumes the session without authentication, so store it as you would a credential. The cookie's `HttpOnly` attribute does not protect a handle in a response body: any code that reads the response can read it. A handle is not bound to the application that received it, so any application whose sign-in flow is the session's flow can present it.

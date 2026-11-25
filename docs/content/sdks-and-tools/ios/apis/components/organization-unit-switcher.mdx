@@ -1,0 +1,166 @@
+---
+displayed_sidebar: null
+title: OrganizationUnitSwitcher
+docType: reference
+description: SwiftUI field that shows the current organization unit and opens a menu to switch the session to another unit the user can access.
+---
+
+# `OrganizationUnitSwitcher`
+
+The `OrganizationUnitSwitcher` component shows the current organization unit in a field that opens a menu of the units the signed-in user can access (`GET /users/me/ous`). Picking another unit switches the session to it with [`ThunderIDClient.switchOrganizationUnit(_:options:)`](../../thunderid-client#switchorganizationunit_options) and refreshes the signed-in user. If the switch fails, the session stays as it was, unless a backend reports that its session has ended, and the component shows a translated message.
+
+For how organization units, switching, and the single sign-on (SSO) session fit together, see [Switch Organizations](../../../../../use-cases/b2b/journeys/switch-organizations).
+
+`OrganizationUnitSwitcher` requires `.thunderIDProvider(config:)` in its ancestor view hierarchy.
+
+## Usage
+
+```swift
+import SwiftUI
+import ThunderID
+import ThunderIDSwiftUI
+
+struct Header: View {
+    @State private var signInUnit: AccessibleOrganizationUnit?
+
+    var body: some View {
+        SignedIn {
+            OrganizationUnitSwitcher(
+                scope: .siblings,
+                switchOptions: SwitchOrganizationUnitOptions(authorize: { url in
+                    try await FederatedAuthSession().authenticate(url: url, callbackURLScheme: "myapp")
+                }),
+                onSignInRequired: { unit, _ in signInUnit = unit }
+            )
+        }
+        .sheet(item: $signInUnit) { unit in
+            SignIn(applicationId: "<application-id>", organizationUnitId: unit.id)
+        }
+    }
+}
+```
+
+The `authorize` handler opens a sign-in URL in the browser and returns the URL it comes back to. Redirect mode switches through it, and on a backend the switch falls back to it when the backend needs the user. Replace `myapp` with your app's callback URL scheme.
+
+In app-native mode, a switch that needs the user calls `onSignInRequired`. Without it, the switcher only shows a message under the field, and the switch does not happen. This example shows `SignIn` for the picked unit instead.
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `scope` | `AccessibleOrganizationUnitScope?` | ❌ | Narrows the list relative to the current unit. `.siblings` lists the accessible units that share the parent of the current unit. Omit it to list every unit the user can access. |
+| `limit` | `Int` | ❌ | The page size. Defaults to `20`. |
+| `switchOptions` | `SwitchOrganizationUnitOptions` | ❌ | Passed to `switchOrganizationUnit(_:options:)`. Its `authorize` handler is how redirect mode switches, and what a backend switch falls back to when the backend needs the user. Defaults to `.init()`, which has no handler. |
+| `onSelect` | `((AccessibleOrganizationUnit) -> Void)?` | ❌ | Takes over the choice. The component calls it with the picked unit and does not switch itself. |
+| `onSwitched` | `((User) -> Void)?` | ❌ | Called with the user once the session belongs to the picked unit. |
+| `onSignInRequired` | `((AccessibleOrganizationUnit, EmbeddedFlowResponse) -> Void)?` | ❌ | App-native mode: called with the picked unit and the flow step when the sign-in bounded to that unit needs the user. Continue the step with `ThunderIDClient.signIn(payload:request:sessionId:)`, or show [`SignIn`](../sign-in) with the unit's ID as `organizationUnitId`, which starts that sign-in again. |
+| `content` | `(OrganizationUnitSwitcherState) -> Content` | ❌ | Renders custom UI in place of the default field and menu. See [Custom Rendering](#custom-rendering). |
+
+## Behavior
+
+- Renders a field with a small **Organization** label above the current unit's name, and a chevron. Tapping the field opens a menu of the units.
+- Each menu item shows the unit's name with its handle as secondary text, and a checkmark on the current unit. Picking the current unit only closes the menu.
+- Loads the session's unit with `getCurrentOrganizationUnit()` and the list with `getAccessibleOrganizationUnits(scope:limit:offset:)` when it appears. Until the list loads, the field names the session's unit.
+- While a switch runs, the field shows a progress indicator in place of the chevron and is disabled.
+- When there are more units than `limit`, the menu ends with **Previous** and **Next** buttons that page the list.
+- After a successful switch, it refreshes `ThunderIDState`, calls `onSwitched`, and reloads the list.
+- Every message comes from the translation bundle. The component never shows the server's own error text.
+
+The field and the messages use these default English strings:
+
+| State | Default text |
+| :--- | :--- |
+| No current unit known | Select an organization |
+| Loading the list | Loading organization units… |
+| Switching | Switching to `{name}`… |
+| No accessible units | No organization units |
+| The list fails to load | Could not load your organization units. Please try again. |
+| The unit is unavailable (`.organizationUnitUnavailable`) | This organization unit is not available to this application. |
+| Any other failed switch | Could not switch to this organization unit. Please try again. |
+| The switch returns `.signInRequired` | Sign in again to switch to `{name}`. |
+
+## Custom Rendering
+
+Both `OrganizationUnitSwitcher` and `BaseOrganizationUnitSwitcher` accept a `content` closure. Passing it replaces the default field and menu. `OrganizationUnitSwitcher` still loads the units and runs the switch, and passes the current state to the closure as an `OrganizationUnitSwitcherState`.
+
+```swift
+import SwiftUI
+import ThunderIDSwiftUI
+
+struct OrganizationList: View {
+    var body: some View {
+        OrganizationUnitSwitcher(scope: .siblings) { state in
+            VStack(alignment: .leading, spacing: 8) {
+                if let error = state.error {
+                    Text(error).foregroundStyle(.red)
+                }
+
+                ForEach(state.units) { unit in
+                    Button {
+                        state.onSwitch(unit)
+                    } label: {
+                        Label(
+                            unit.name,
+                            systemImage: unit.id == state.currentId ? "checkmark.circle.fill" : "circle"
+                        )
+                    }
+                    .disabled(state.isLoading || state.switchingId != nil)
+                }
+            }
+        }
+    }
+}
+```
+
+### `OrganizationUnitSwitcherState` Properties
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `units` | `[AccessibleOrganizationUnit]` | The units on the current page. |
+| `currentId` | `String?` | The ID of the unit the session is issued for, when known. |
+| `currentName` | `String?` | The current unit's name, from the page or the session. `nil` when it is not known. |
+| `current` | `AccessibleOrganizationUnit?` | The current unit, when it is on this page. |
+| `isLoading` | `Bool` | `true` while the units load. |
+| `switchingId` | `String?` | The ID of the unit a switch is in flight to, if any. |
+| `error` | `String?` | A translated message, or `nil` when there is nothing to report. |
+| `limit` | `Int` | The page size. |
+| `offset` | `Int` | The offset of the current page. |
+| `totalResults` | `Int` | The total number of units on the server, or the number of units given when the total is unknown. |
+| `onPageChange` | `((Int) -> Void)?` | Shows the page that starts at the given offset. `nil` when the list is not paginated. |
+| `onSwitch` | `(AccessibleOrganizationUnit) -> Void` | Switches to a unit, or hands it to `onSelect` when your application set one. |
+
+## `BaseOrganizationUnitSwitcher`
+
+`BaseOrganizationUnitSwitcher` renders the same field and menu from data you pass in, with no SDK state. It neither loads the units nor switches: your application supplies the units and handles `onSwitch`. It reads its strings from the translation bundle, so it also requires `.thunderIDProvider(config:)` in its ancestor view hierarchy.
+
+```swift
+import SwiftUI
+import ThunderIDSwiftUI
+
+struct TeamPicker: View {
+    let units: [AccessibleOrganizationUnit]
+    let currentId: String?
+    let onPick: (AccessibleOrganizationUnit) -> Void
+
+    var body: some View {
+        BaseOrganizationUnitSwitcher(units: units, currentId: currentId, onSwitch: onPick)
+    }
+}
+```
+
+### `BaseOrganizationUnitSwitcher` Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `units` | `[AccessibleOrganizationUnit]` | ✅ | The units on the current page. |
+| `currentId` | `String?` | ✅ | The ID of the current unit, or `nil` when it is not known. |
+| `currentName` | `String?` | ❌ | Names the current unit when `units` does not list it, such as the session's unit. |
+| `isLoading` | `Bool` | ❌ | Shows the loading state. Defaults to `false`. |
+| `switchingId` | `String?` | ❌ | The ID of the unit a switch is in flight to. While set, the field shows progress and is disabled. |
+| `error` | `String?` | ❌ | A message to show below the field. |
+| `limit` | `Int` | ❌ | The page size. Defaults to `20`. |
+| `offset` | `Int` | ❌ | The offset of the current page. Defaults to `0`. |
+| `totalResults` | `Int?` | ❌ | The total number of units. Defaults to the number of `units`. |
+| `onPageChange` | `((Int) -> Void)?` | ❌ | Called with the offset of the page to show. The menu shows **Previous** and **Next** only when you set it and `totalResults` exceeds `limit`. |
+| `onSwitch` | `(AccessibleOrganizationUnit) -> Void` | ✅ | Called with the unit the user picks from the default menu, unless it is the current unit. |
+| `content` | `(OrganizationUnitSwitcherState) -> Content` | ❌ | Renders custom UI in place of the default field and menu. |

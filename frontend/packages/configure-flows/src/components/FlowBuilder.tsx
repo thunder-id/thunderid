@@ -1,12 +1,20 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {GradientBorderButton, QueryErrorNotice} from '@thunderid/components';
+import {
+  GradientBorderButton,
+  PageLoadingAnimation,
+  QueryErrorNotice,
+  ResourceDeployStatus,
+} from '@thunderid/components';
 import {useEmailProviders, useIdentityProviders, useSMSProviders} from '@thunderid/configure-connections';
+import {useOrganizationAccess} from '@thunderid/configure-resource-sharing';
+import {isRecordLocked, useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
+import {getErrorMessage} from '@thunderid/utils';
 import {Alert, Box, Snackbar, Stack} from '@wso2/oxygen-ui';
 import type {Edge, Node, NodeChange} from '@xyflow/react';
 import {useEdgesState, useNodesState, useUpdateNodeInternals} from '@xyflow/react';
-import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {type SetStateAction, useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useLocation, useNavigate, useParams} from 'react-router';
 import '@xyflow/react/dist/style.css';
@@ -14,7 +22,12 @@ import '@xyflow/react/dist/style.css';
 import FlowCanvas from './FlowCanvas';
 import useGetFlowBuilderResources from '../api/useGetFlowBuilderResources';
 import useGetFlowById from '../api/useGetFlowById';
-import {EXECUTOR_TO_IDP_TYPE_MAP} from '../components/resource-property-panel/extended-properties/execution-properties/constants';
+import {
+  declaredVariablesOf,
+  editsVariableRule,
+  hasInvalidUnitDefaults,
+  hasTermsForRemovedVariable,
+} from '../components/flow-sharing/variableRules';
 import SsoDisableConfirmDialog from '../components/SsoDisableConfirmDialog';
 import SsoToggle from '../components/SsoToggle';
 import FlowConstants from '../constants/FlowConstants';
@@ -36,32 +49,46 @@ import useTemplateAndWidgetLoading from '../hooks/useTemplateAndWidgetLoading';
 import useValidationStatus from '../hooks/useValidationStatus';
 import {FlowType} from '../models/flows';
 import type {CreateFlowRequest, FlowDefinitionResponse} from '../models/responses';
-import {ExecutionTypes, StepTypes, type StepData} from '../models/steps';
+import {StepTypes, type StepData} from '../models/steps';
 import {hasUnpositionedNodes} from '../utils/applyAutoLayout';
 import collapseExecutorChains, {getExecutionStackHeadId} from '../utils/compactGraphTransforms';
 import {mutateComponents} from '../utils/componentMutations';
+import getConditionSkipEdges from '../utils/getConditionSkipEdges';
+import {resolveConnectionProperty} from '../utils/resolveConnectionPlaceholders';
 import {
   COMMON_GRAPH_VALIDATION_RULES,
   GRAPH_VALIDATION_RULES,
+  REGISTRATION_GRAPH_VALIDATION_RULES,
   SIGN_OUT_GRAPH_VALIDATION_RULES,
 } from '../validation/validation-rules';
-
-const SMS_EXECUTORS = new Set<string>([ExecutionTypes.SMSExecutor]);
 
 function FlowBuilder() {
   const {flowId: routeFlowId} = useParams<{flowId: string}>();
   const location = useLocation();
   const navigate = useNavigate();
   const flowRoutes = useFlowRoutes();
+  const {can} = useCapabilitiesContext();
   const draftFlow = (location.state as {draftFlow?: CreateFlowRequest} | null)?.draftFlow;
   const isDraftFlow = routeFlowId === 'new' && Boolean(draftFlow);
   const flowId = isDraftFlow ? undefined : routeFlowId;
   const initialFlowData = useMemo<FlowDefinitionResponse | undefined>(() => {
     if (!isDraftFlow || !draftFlow) return undefined;
-    return {...draftFlow, id: '', activeVersion: 0, createdAt: '', updatedAt: ''};
+    // A draft in a project has no organization unit yet: the API places it in the system one on create.
+    return {...draftFlow, ouId: draftFlow.ouId ?? '', id: '', activeVersion: 0, createdAt: '', updatedAt: ''};
   }, [draftFlow, isDraftFlow]);
   const [nodes, setNodes, defaultOnNodesChange] = useNodesState<Node>([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const [edges, setStateEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  // getEdges() returns the display-only skip edges too; keep them out of the edges that are saved.
+  const setEdges = useCallback(
+    (update: SetStateAction<Edge[]>): void =>
+      setStateEdges((current) => {
+        const next = typeof update === 'function' ? update(current) : update;
+        return next.some((edge) => edge.data?.['conditionSkip'] === true)
+          ? next.filter((edge) => edge.data?.['conditionSkip'] !== true)
+          : next;
+      }),
+    [setStateEdges],
+  );
   const {t} = useTranslation();
 
   const {data: resources} = useGetFlowBuilderResources();
@@ -83,9 +110,18 @@ function FlowBuilder() {
     error: flowLoadError,
     refetch: refetchFlow,
   } = useGetFlowById(flowId);
+  const isSharedFlow = existingFlowData?.isOwnedByOU === false;
+  const isReadOnlyFlow = isRecordLocked(existingFlowData) || !(flowId ? can('flow', 'update') : can('flow', 'create'));
 
   // Determine if we're editing an existing flow
   const isEditingExistingFlow = Boolean(flowId && existingFlowData);
+
+  // Inside a project, a flow of another project is not shown: the builder returns to the list.
+  const {projectId} = useProjectScope();
+  const isOtherProject = Boolean(projectId && existingFlowData && existingFlowData.projectId !== projectId);
+  useEffect(() => {
+    if (isOtherProject) void navigate(flowRoutes.flows.list(), {replace: true});
+  }, [isOtherProject, navigate, flowRoutes]);
 
   // Resolves an error through the `flows` catalog. `t` defaults to the `common` namespace, so
   // this forwards explicit `ns:` prefixes unchanged and prefixes bare keys with `flows:`, per
@@ -169,60 +205,19 @@ function FlowBuilder() {
         const executorName = (stepData?.action as {executor?: {name?: string}} | undefined)?.executor?.name;
         if (!executorName) return node;
 
-        const {senderId: currentSenderId = '', idpId: currentIdpId = ''} =
-          (stepData?.properties as Record<string, string> | undefined) ?? {};
-
-        // Handle the Email executor - an email step is unusable without a provider, so it takes
-        // the first one even when several exist; the user can switch it in the resource panel.
-        if (executorName === ExecutionTypes.EmailExecutor) {
-          if ((currentSenderId === '{{SENDER_ID}}' || currentSenderId === '') && emailProviders?.length) {
-            changed = true;
-            return {
-              ...node,
-              data: {
-                ...node.data,
-                properties: {...(stepData?.properties ?? {}), senderId: emailProviders[0].id},
-              },
-            };
-          }
-          return node;
-        }
-
-        // Handle SMS executors - auto-assign senderId
-        if (SMS_EXECUTORS.has(executorName) && smsProviders) {
-          if (currentSenderId === '{{SENDER_ID}}' || currentSenderId === '') {
-            if (smsProviders.length === 1) {
-              changed = true;
-              return {
-                ...node,
-                data: {
-                  ...node.data,
-                  properties: {
-                    ...(stepData?.properties ?? {}),
-                    senderId: smsProviders[0].id,
-                  },
-                },
-              };
-            }
-          }
-          return node;
-        }
-
-        // Handle IDP executors - auto-assign idpId
-        const idpType = EXECUTOR_TO_IDP_TYPE_MAP[executorName];
-        if (!idpType || !identityProviders) return node;
-
-        if (currentIdpId !== '{{IDP_ID}}' && currentIdpId !== '') return node;
-
-        const matching = identityProviders.filter((idp) => idp.type === idpType);
-        if (matching.length !== 1) return node;
+        const resolved = resolveConnectionProperty(executorName, stepData?.properties, {
+          identityProviders,
+          smsProviders,
+          emailProviders,
+        });
+        if (!resolved) return node;
 
         changed = true;
         return {
           ...node,
           data: {
             ...node.data,
-            properties: {...(stepData?.properties ?? {}), idpId: matching[0].id},
+            properties: {...(stepData?.properties ?? {}), ...resolved},
           },
         };
       });
@@ -275,11 +270,16 @@ function FlowBuilder() {
     initialFlowData?.flowType ??
     FlowType.AUTHENTICATION;
 
-  // SSO pairing is AUTHENTICATION-only and the confirm-action rule SIGNOUT-only.
-  // Every flow type still gets the common rules.
+  // SSO pairing is AUTHENTICATION-only, the role assignment rule REGISTRATION-only and the confirm-action rule
+  // SIGNOUT-only. Every flow type still gets the common rules.
   useEffect(() => {
     if (flowType === FlowType.AUTHENTICATION) {
       setGraphValidationRules(GRAPH_VALIDATION_RULES);
+      return;
+    }
+
+    if (flowType === FlowType.REGISTRATION) {
+      setGraphValidationRules(REGISTRATION_GRAPH_VALIDATION_RULES);
       return;
     }
 
@@ -347,8 +347,13 @@ function FlowBuilder() {
   }, [isLoadingExistingFlow, isIdentityProvidersPending, isSMSProvidersPending, isEmailProvidersPending, nodes]);
 
   const hasInteractedRef = useRef<boolean>(false);
+  // How many interactions there have been, and how many there were when the last save was sent, so an
+  // edit made while a save is in flight is never taken into the saved baseline.
+  const interactionsRef = useRef<number>(0);
+  const interactionsAtSaveRef = useRef<number>(0);
   useEffect(() => {
     const freezeBaseline = (): void => {
+      interactionsRef.current += 1;
       // A real interaction cancels any pending view-mode rebase, so an edit
       // made while a relayout is still settling is never absorbed into the
       // clean baseline.
@@ -372,14 +377,105 @@ function FlowBuilder() {
     };
   }, []);
 
+  // Only a flow that is saved, and so has an owner, can be shared.
+  const sharedFlow = useMemo(
+    () =>
+      flowId && existingFlowData?.ouId
+        ? {
+            id: flowId,
+            isReadOnly: isReadOnlyFlow,
+            name: existingFlowData.name,
+            ouId: existingFlowData.ouId,
+          }
+        : undefined,
+    [flowId, isReadOnlyFlow, existingFlowData?.name, existingFlowData?.ouId],
+  );
+
+  // The flow's organization access is held here, not in the Share view, so the flow's own Save saves it too, after the
+  // flow: the server checks the terms against the stored flow, which has to hold the variables they name first.
+  const sharingAccess = useOrganizationAccess({
+    resourcePath: `flows/${sharedFlow?.id ?? ''}`,
+    enabled: sharedFlow !== undefined,
+    editsRule: editsVariableRule,
+  });
+  // The server refuses a default a unit starts with when it breaks the rules of its variable, so the editor does not
+  // save over it. Saving the flow is held back too, as the sharing is saved with it.
+  const hasInvalidSharing: boolean = useMemo(
+    () =>
+      sharingAccess.hasChanges &&
+      !sharingAccess.isDeclared &&
+      hasInvalidUnitDefaults(sharingAccess.draft, declaredVariablesOf(nodes)),
+    [sharingAccess.draft, sharingAccess.hasChanges, sharingAccess.isDeclared, nodes],
+  );
+  const saveBlockedReason: string | undefined = hasInvalidSharing
+    ? t(
+        'flows:core.headerPanel.sharingInvalidTooltip',
+        'Fix the organization unit defaults marked in Share before saving',
+      )
+    : undefined;
+  const sharingAccessRef = useRef(sharingAccess);
+  useEffect(() => {
+    sharingAccessRef.current = sharingAccess;
+  }, [sharingAccess]);
+
+  const saveSharing = useCallback((): void => {
+    sharingAccessRef.current
+      .save()
+      .then(() => showSuccess(t('flows:core.sharing.dialog.saved', 'Sharing updated.')))
+      .catch((err: Error) =>
+        showError(
+          getErrorMessage(
+            err,
+            tForErrors,
+            'core.sharing.dialog.saveError',
+            'Failed to update how the flow is shared. Please try again.',
+          ),
+        ),
+      );
+  }, [showError, showSuccess, t, tForErrors]);
+
   // Rebase the clean baseline on the canvas snapshot that was actually
   // persisted — the user may have kept editing while the save request was in
   // flight, and those edits must stay dirty. History is intentionally NOT
   // reset here: undoing past a save point simply makes the flow dirty again.
-  const handleSaved = useCallback((savedCanvas: {nodes: Node[]; edges: Edge[]}) => {
-    hasInteractedRef.current = true;
-    setSavedSignature(computeGraphSignature(savedCanvas.nodes, savedCanvas.edges));
-  }, []);
+  // A save is read back, which settles the graph once more (normalized fields, node internals); that
+  // settle is taken as the clean baseline too, unless the user interacted after the save was sent or
+  // interacts before it settles.
+  const handleSaved = useCallback(
+    (savedCanvas: {nodes: Node[]; edges: Edge[]}) => {
+      hasInteractedRef.current = true;
+      setSavedSignature(computeGraphSignature(savedCanvas.nodes, savedCanvas.edges));
+      if (interactionsRef.current === interactionsAtSaveRef.current) setIsBaselineRebasePending(true);
+
+      // The flow is stored now, so the sharing changes made beside it can be saved against it.
+      const shared = sharingAccessRef.current;
+
+      // A variable the flow no longer declares took its sharing terms with it on the server, so the policy held here is
+      // out of date, with or without changes of its own. It is read again, and a draft built on it is dropped rather
+      // than saved over the server's version.
+      if (hasTermsForRemovedVariable(shared.savedPolicy, savedCanvas.nodes)) {
+        const hadChanges: boolean = shared.hasChanges;
+
+        shared.reset();
+
+        if (hadChanges) {
+          showError(
+            t(
+              'flows:core.sharing.dialog.termsDropped',
+              'A variable you removed took its sharing terms with it, so your sharing changes were discarded. Share the flow again.',
+            ),
+          );
+        }
+
+        return;
+      }
+
+      if (shared.hasChanges) {
+        saveSharing();
+      }
+    },
+    [saveSharing, showError, t],
+  );
 
   // Flow save hook
   const {handleSave} = useFlowSave({
@@ -390,6 +486,7 @@ function FlowBuilder() {
     flowHandle,
     flowType,
     ouId: existingFlowData?.ouId ?? initialFlowData?.ouId,
+    projectId: initialFlowData?.projectId,
     showError,
     showSuccess,
     setOpenValidationPanel,
@@ -398,6 +495,30 @@ function FlowBuilder() {
       void navigate(flowRoutes.flows.detail(createdFlowId), {replace: true, state: null});
     },
   });
+  const saveFlow = useCallback(
+    (canvasData: Parameters<typeof handleSave>[0]): void => {
+      interactionsAtSaveRef.current = interactionsRef.current;
+
+      if (saveBlockedReason) {
+        showError(saveBlockedReason);
+        return;
+      }
+
+      // Only how the flow is shared changed, so there is nothing of the flow itself to save.
+      if (!isDirty && sharingAccess.hasChanges) {
+        saveSharing();
+        return;
+      }
+
+      handleSave(canvasData);
+    },
+    [handleSave, isDirty, saveBlockedReason, saveSharing, sharingAccess.hasChanges, showError],
+  );
+  // Kept the same while the flow is, so the resource panel is not drawn again on every edit.
+  const flowStatus = useMemo(
+    () => (flowId ? <ResourceDeployStatus resourceType="flow" id={flowId} /> : undefined),
+    [flowId],
+  );
 
   // SSO toggle orchestration (enable/disable transformations, placement mode)
   const sso = useSsoToggle({
@@ -495,9 +616,14 @@ function FlowBuilder() {
     [handleCollapseStack, handleExpandStack, expandedStackIds],
   );
 
+  const canvasEdges = useMemo(() => {
+    const skipEdges = getConditionSkipEdges(nodes, t('flows:core.canvas.edges.onSkip', 'On skip'), edgeStyle);
+    return skipEdges.length > 0 ? [...edges, ...skipEdges] : edges;
+  }, [nodes, edges, t, edgeStyle]);
+
   const compactGraph = useMemo(
-    () => (isVerboseMode ? null : collapseExecutorChains(nodes, edges, expandedStackIds)),
-    [nodes, edges, isVerboseMode, expandedStackIds],
+    () => (isVerboseMode ? null : collapseExecutorChains(nodes, canvasEdges, expandedStackIds)),
+    [nodes, canvasEdges, isVerboseMode, expandedStackIds],
   );
   const displayNodes = useMemo(() => {
     if (!compactGraph) {
@@ -508,7 +634,7 @@ function FlowBuilder() {
       return dimensions ? {...node, measured: dimensions} : node;
     });
   }, [compactGraph, nodes, stackDimensions]);
-  const baseDisplayEdges = compactGraph?.edges ?? edges;
+  const baseDisplayEdges = compactGraph?.edges ?? canvasEdges;
 
   const stackMembersRef = useRef<Map<string, string[]>>(new Map<string, string[]>());
   useEffect(() => {
@@ -660,8 +786,6 @@ function FlowBuilder() {
     }));
   }, [baseDisplayEdges, sso.placement]);
 
-  const isReadOnlyFlow = Boolean(existingFlowData?.isReadOnly);
-
   // Memoized so the resource panel (which renders this as its footer and is
   // itself memoized) is not re-rendered on unrelated graph changes like drags.
   const ssoToggleFooter = useMemo(
@@ -690,6 +814,10 @@ function FlowBuilder() {
       sso.handleDisableRequest,
     ],
   );
+
+  if (isOtherProject) {
+    return <PageLoadingAnimation />;
+  }
 
   if (flowLoadError) {
     return (
@@ -720,10 +848,19 @@ function FlowBuilder() {
         },
       })}
     >
-      {existingFlowData?.isReadOnly && (
+      {isSharedFlow ? (
         <Alert severity="info" sx={{mb: 2}}>
-          {t('common:messages.readOnlyResource', 'This resource is read-only and cannot be modified.')}
+          {t(
+            'flows:core.sharing.sharedIntoUnit',
+            "This flow is shared into this organization unit. Its steps aren't shown here and can't be changed here.",
+          )}
         </Alert>
+      ) : (
+        existingFlowData?.isReadOnly && (
+          <Alert severity="info" sx={{mb: 2}}>
+            {t('common:messages.readOnlyResource', 'This resource is read-only and cannot be modified.')}
+          </Alert>
+        )
       )}
       <FlowTypeContext.Provider value={flowType}>
         <CompactStacksContext.Provider value={compactStacksContextValue}>
@@ -736,10 +873,11 @@ function FlowBuilder() {
             onWidgetLoad={handleWidgetLoad}
             onStepLoad={handleStepLoad}
             onResourceAdd={handleResourceAdd}
-            onSave={existingFlowData?.isReadOnly ? undefined : handleSave}
+            onSave={isReadOnlyFlow ? undefined : saveFlow}
             nodes={displayNodes}
             sourceNodes={nodes}
             sourceEdges={edges}
+            onDeleteRefused={showError}
             edges={displayEdges}
             setNodes={setNodes}
             setEdges={setEdges}
@@ -747,6 +885,7 @@ function FlowBuilder() {
             onEdgesChange={onEdgesChange}
             onEdgeClick={sso.handleEdgeClick}
             flowTitle={flowName}
+            flowStatus={flowStatus}
             flowHandle={flowHandle}
             onFlowTitleChange={handleFlowNameChange}
             triggerAutoLayoutOnLoad={needsAutoLayout}
@@ -755,7 +894,10 @@ function FlowBuilder() {
             onRedo={redo}
             canUndo={canUndo}
             canRedo={canRedo}
-            isDirty={isDirty}
+            isDirty={isDirty || sharingAccess.hasChanges}
+            sharing={sharedFlow}
+            sharingAccess={sharingAccess}
+            saveBlockedReason={saveBlockedReason}
           />
         </CompactStacksContext.Provider>
       </FlowTypeContext.Provider>

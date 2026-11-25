@@ -5,6 +5,8 @@
 package importer
 
 import (
+	"errors"
+
 	"github.com/thunder-id/thunderid/internal/agent"
 	"github.com/thunder-id/thunderid/internal/application"
 	authzdetailmgt "github.com/thunder-id/thunderid/internal/authzdetail/mgt"
@@ -132,4 +134,38 @@ var (
 			DefaultValue: "A secret reference may only stand in a field that holds a credential",
 		},
 	}
+
+	// ErrorManagedImportNotAllowed refuses the managed import to any caller but the management API
+	// key, which is how a control plane deploys to this data plane.
+	ErrorManagedImportNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "IMP-1008",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.import.managedImportNotAllowed",
+			DefaultValue: "Managed import not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.import.managedImportNotAllowed.description",
+			DefaultValue: "Only the management API key may deploy resources through the managed import",
+		},
+	}
+
+	// ErrorUnmanagedHandleMatch refuses a managed import taking over a resource that already holds the
+	// handle on this data plane and was not deployed by a control plane.
+	ErrorUnmanagedHandleMatch = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "IMP-1009",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.import.unmanagedHandleMatch",
+			DefaultValue: "Handle already in use",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.import.unmanagedHandleMatch.description",
+			DefaultValue: "A resource with this handle exists on this data plane and the control plane did not " +
+				"deploy it. Rename or remove it here",
+		},
+	}
+
+	// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+	errNilEventBus = errors.New("the import service needs an event bus")
 )

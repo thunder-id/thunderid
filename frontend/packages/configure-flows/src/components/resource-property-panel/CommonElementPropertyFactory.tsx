@@ -1,7 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {parseStackItems} from '@thunderid/design';
+import {loadOxygenIcons, OxygenIcon, parseStackItems, type OxygenIconSet} from '@thunderid/design';
 import {useLogger} from '@thunderid/logger/react';
 import {
   Autocomplete,
@@ -14,9 +14,10 @@ import {
   TextField,
 } from '@wso2/oxygen-ui';
 import startCase from 'lodash-es/startCase';
-import {type ComponentType, type ReactElement, useState, useCallback} from 'react';
+import {type ReactElement, useState, useCallback} from 'react';
 import {useTranslation} from 'react-i18next';
 import CheckboxPropertyField from './CheckboxPropertyField';
+import IconPickerListbox from './IconPickerListbox';
 import RichTextActionFields from './rich-text/RichTextActionFields';
 import RichTextWithTranslation from './rich-text/RichTextWithTranslation';
 import TextPropertyField from './TextPropertyField';
@@ -58,38 +59,6 @@ function getLayoutSuggestions(resource: Resource, propertyKey: string): string[]
 }
 
 // ---------------------------------------------------------------------------
-// Lazy icon loading — loaded once on first picker open, then cached.
-// Using a type-only import avoids pulling the entire icons bundle into every
-// module that imports CommonElementPropertyFactory.
-// ---------------------------------------------------------------------------
-
-type IconModule = typeof import('@wso2/oxygen-ui-icons-react');
-
-let cachedModule: IconModule | null = null;
-let cachedNames: string[] | null = null;
-
-function buildIconNames(mod: IconModule): string[] {
-  cachedNames ??= Object.keys(mod).filter((k) => {
-    if (!/^[A-Z]/.test(k)) return false;
-    const v = mod[k as keyof IconModule] as unknown;
-    // Lucide icons are forwardRef exotic objects with a displayName.
-    // The base Icon export is excluded (no displayName).
-    return (
-      typeof v === 'object' &&
-      v !== null &&
-      '$$typeof' in v &&
-      typeof (v as Record<string, unknown>)['displayName'] === 'string'
-    );
-  });
-  return cachedNames;
-}
-
-async function loadIconModule(): Promise<{module: IconModule; names: string[]}> {
-  cachedModule ??= await import('@wso2/oxygen-ui-icons-react');
-  return {module: cachedModule, names: buildIconNames(cachedModule)};
-}
-
-// ---------------------------------------------------------------------------
 // IconPickerField — extracted so hooks are always called at the top level.
 // ---------------------------------------------------------------------------
 
@@ -102,11 +71,12 @@ interface IconPickerFieldProps {
 
 function IconPickerField({resource, propertyKey, propertyValue, onChange}: IconPickerFieldProps): ReactElement {
   const logger = useLogger('ConfigureDetails');
-  const [loaded, setLoaded] = useState<{module: IconModule; names: string[]} | null>(null);
+  // The icon set is loaded on the first open of the picker; loadOxygenIcons caches it.
+  const [loaded, setLoaded] = useState<OxygenIconSet | null>(null);
 
   const handleOpen = useCallback(() => {
     if (!loaded) {
-      loadIconModule()
+      loadOxygenIcons()
         .then(setLoaded)
         .catch((error) => {
           logger.error('Failed to load icon module', {error});
@@ -117,29 +87,30 @@ function IconPickerField({resource, propertyKey, propertyValue, onChange}: IconP
   const iconNames = loaded?.names ?? [];
   const totalCount = iconNames.length;
 
-  // Only resolve the preview icon once the module is loaded.
-  const IconPreview: ComponentType<{size?: number}> | undefined =
-    loaded && typeof propertyValue === 'string' && propertyValue
-      ? (loaded.module[propertyValue as keyof IconModule] as ComponentType<{size?: number}> | undefined)
-      : undefined;
+  // Only resolve the preview icon once the icon set is loaded.
+  const previewIcon = loaded && typeof propertyValue === 'string' ? loaded.get(propertyValue) : undefined;
 
   return (
     <Box>
       <Autocomplete
         options={iconNames}
-        value={typeof propertyValue === 'string' ? propertyValue : null}
+        // The picker lists one name per icon; a value saved under another name of an icon, such as
+        // UserIcon, shows as the name the icon is listed under.
+        value={typeof propertyValue === 'string' ? (loaded?.resolveName(propertyValue) ?? propertyValue) : null}
         loading={!loaded}
         onOpen={handleOpen}
         onChange={(_event: React.SyntheticEvent, newValue: string | null) => {
           onChange(propertyKey, newValue ?? '', resource);
         }}
-        // Cap rendered DOM nodes: show first 100 when browsing, first 100
-        // matches when searching. This avoids rendering 1000+ list items.
         filterOptions={(options, {inputValue}) => {
           const query = inputValue.trim().toLowerCase();
           const filtered = query ? options.filter((n) => n.toLowerCase().includes(query)) : options;
-          return filtered.slice(0, 100);
+          return filtered;
         }}
+        // The listbox renders only the options in view (see IconPickerListbox), so every icon can be
+        // listed. The keyboard only reaches rendered options, so it does not wrap around the list.
+        slotProps={{listbox: {component: IconPickerListbox}}}
+        disableListWrap
         noOptionsText={loaded ? 'No icons found' : 'Loading icons…'}
         renderInput={(params: AutocompleteRenderInputParams) => {
           const {InputProps: acInputProps, inputProps: acHtmlInputProps, InputLabelProps, ...restParams} = params;
@@ -152,9 +123,9 @@ function IconPickerField({resource, propertyKey, propertyValue, onChange}: IconP
               slotProps={{
                 input: {
                   ...acInputProps,
-                  startAdornment: IconPreview ? (
+                  startAdornment: previewIcon ? (
                     <Box sx={{display: 'flex', alignItems: 'center', pl: 0.5, pr: 0.5}}>
-                      <IconPreview size={16} />
+                      <OxygenIcon icon={previewIcon} size={16} />
                     </Box>
                   ) : (
                     acInputProps?.startAdornment
@@ -167,12 +138,11 @@ function IconPickerField({resource, propertyKey, propertyValue, onChange}: IconP
           );
         }}
         renderOption={({key, ...props}: React.HTMLAttributes<HTMLLIElement> & {key: string}, option: string) => {
-          const Icon =
-            loaded && (loaded.module[option as keyof IconModule] as ComponentType<{size?: number}> | undefined);
+          const icon = loaded?.get(option);
           return (
             <li key={key} {...props}>
               <Box display="flex" alignItems="center" gap={1}>
-                {Icon && <Icon size={16} />}
+                {icon && <OxygenIcon icon={icon} size={16} />}
                 {option}
               </Box>
             </li>

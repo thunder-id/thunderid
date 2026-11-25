@@ -14,12 +14,17 @@ import (
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/sharing"
+	"github.com/thunder-id/thunderid/internal/system/config"
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/rolemock"
 	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
 // UserSharingTestSuite covers how a user participates in sharing: what it declares to the framework,
@@ -35,7 +40,7 @@ func TestUserSharingTestSuite(t *testing.T) {
 // A user declares the roles a share mandates, a reference set no policy names by default, and the framework finds the
 // capabilities that check and apply them.
 func (s *UserSharingTestSuite) TestRolesFieldIsDeclared() {
-	decl := newUserSharingDeclaration(NewUserServiceInterfaceMock(s.T()), nil)
+	decl := newUserSharingDeclaration(NewUserServiceInterfaceMock(s.T()), nil, nil)
 
 	s.Equal(UserSharingType, decl.ResourceType())
 	s.Equal([]sharing.FieldDeclaration{{Key: RolesFieldKey, Kind: sharing.FieldReferenceSet}}, decl.Fields())
@@ -50,7 +55,7 @@ func (s *UserSharingTestSuite) TestOwnerIsResolvedWithoutAnAccessCheck() {
 	userService.On("GetUser", mock.MatchedBy(security.IsRuntimeContext), svcTestUserID1, false).
 		Return(&providers.User{ID: svcTestUserID1, OUID: shareOwnerOU}, (*tidcommon.ServiceError)(nil)).Once()
 
-	owner, svcErr := newUserSharingDeclaration(userService, nil).OwningOUID(context.Background(), svcTestUserID1)
+	owner, svcErr := newUserSharingDeclaration(userService, nil, nil).OwningOUID(context.Background(), svcTestUserID1)
 
 	s.Require().Nil(svcErr)
 	s.Equal(shareOwnerOU, owner)
@@ -63,7 +68,7 @@ func (s *UserSharingTestSuite) TestOwnerResolutionCarriesTheServiceError() {
 	userService.On("GetUser", mock.Anything, svcTestUserID1, false).
 		Return((*providers.User)(nil), &tidcommon.InternalServerError).Once()
 
-	owner, svcErr := newUserSharingDeclaration(userService, nil).OwningOUID(context.Background(), svcTestUserID1)
+	owner, svcErr := newUserSharingDeclaration(userService, nil, nil).OwningOUID(context.Background(), svcTestUserID1)
 
 	s.Require().NotNil(svcErr)
 	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
@@ -150,7 +155,7 @@ func (s *UserSharingTestSuite) newUnwiredMandatesFixture() *mandatesFixture {
 		assignments: rolemock.NewRoleAssignmentServiceInterfaceMock(s.T()),
 		sharing:     sharingmock.NewSharingServiceInterfaceMock(s.T()),
 	}
-	f.decl = newUserSharingDeclaration(NewUserServiceInterfaceMock(s.T()), f.sharing)
+	f.decl = newUserSharingDeclaration(NewUserServiceInterfaceMock(s.T()), f.sharing, nil)
 	return f
 }
 
@@ -449,6 +454,64 @@ func (s *UserSharingTestSuite) TestDeclaredMandatesThatFailStopStartup() {
 			s.Require().Error(err)
 			s.Contains(err.Error(), sharePolicyID)
 			s.Contains(err.Error(), tc.code)
+		})
+	}
+}
+
+// shareIntoTarget is the organization unit a flow shares users into in the authorization tests.
+const shareIntoTarget = "ou-target"
+
+// shareAuthorizationDeclaration returns a declaration over a user service whose authorization allows creating users in
+// the target when allowed, and whose user is declared when declared.
+func (s *UserSharingTestSuite) shareAuthorizationDeclaration(allowed, declared bool) *userSharingDeclaration {
+	authz := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+	authz.On("IsActionAllowed", mock.Anything, security.ActionCreateUser,
+		mock.MatchedBy(func(c *sysauthz.ActionContext) bool { return c.OUID == shareIntoTarget })).
+		Return(allowed, (*tidcommon.ServiceError)(nil)).Maybe()
+	entities := entitymock.NewEntityServiceInterfaceMock(s.T())
+	entities.On("IsEntityDeclarative", mock.Anything, svcTestUserID1).Return(declared, nil).Maybe()
+	us := &userService{authzService: authz, entityService: entities,
+		logger: log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))}
+	return newUserSharingDeclaration(us, nil, us.authorizeShareInto)
+}
+
+func (s *UserSharingTestSuite) TestAuthorizeShareInto() {
+	cases := []struct {
+		name        string
+		allowed     bool
+		declared    bool
+		declarative bool
+		userID      string
+		expected    string
+	}{
+		{name: "NotAllowedInTheTarget", allowed: false, userID: svcTestUserID1,
+			expected: tidcommon.ErrorUnauthorized.Code},
+		{name: "DeclarativeMode", allowed: true, declarative: true, userID: svcTestUserID1,
+			expected: ErrorCannotModifyDeclarativeResource.Code},
+		{name: "DeclaredUser", allowed: true, declared: true, userID: svcTestUserID1,
+			expected: ErrorCannotModifyDeclarativeResource.Code},
+		{name: "NewUser", allowed: true},
+		{name: "ExistingUser", allowed: true, userID: svcTestUserID1},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			mode := serverconst.StoreModeMutable
+			if tc.declarative {
+				mode = serverconst.StoreModeDeclarative
+			}
+			s.Require().NoError(config.InitializeServerRuntime("test",
+				&config.Config{User: config.UserConfig{Store: string(mode)}}))
+			defer config.ResetServerRuntime()
+			decl := s.shareAuthorizationDeclaration(tc.allowed, tc.declared)
+
+			svcErr := decl.AuthorizeShareInto(context.Background(), tc.userID, shareIntoTarget)
+
+			if tc.expected == "" {
+				s.Nil(svcErr)
+				return
+			}
+			s.Require().NotNil(svcErr)
+			s.Equal(tc.expected, svcErr.Code)
 		})
 	}
 }

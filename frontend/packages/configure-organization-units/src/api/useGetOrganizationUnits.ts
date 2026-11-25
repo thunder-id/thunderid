@@ -19,6 +19,9 @@ import type {OrganizationUnitListResponse} from '../models/responses';
  * @param params - Optional pagination parameters
  * @param params.limit - Maximum number of records to return (default: 30)
  * @param params.offset - Number of records to skip for pagination (default: 0)
+ * @param params.projectId - List only the organization units of this project
+ * @param params.placement - With a project, list the system organization unit first, then the project's
+ * @param params.within - With `placement`, keep only the placements in this organization unit's subtree
  * @returns TanStack Query result object containing organization units list data, loading state, and error information
  *
  * @example
@@ -45,12 +48,21 @@ export default function useGetOrganizationUnits(
 ): UseQueryResult<OrganizationUnitListResponse> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
-  const {limit = 30, offset = 0} = params ?? {};
+  const {limit = 30, offset = 0, projectId, placement, within} = params ?? {};
 
   return useQuery<OrganizationUnitListResponse>({
-    queryKey: [OrganizationUnitQueryKeys.ORGANIZATION_UNITS, {limit, offset}],
+    queryKey: [
+      OrganizationUnitQueryKeys.ORGANIZATION_UNITS,
+      {
+        limit,
+        offset,
+        ...(projectId ? {projectId} : {}),
+        ...(placement ? {placement} : {}),
+        ...(within ? {within} : {}),
+      },
+    ],
     queryFn: async (): Promise<OrganizationUnitListResponse> =>
-      fetchOrganizationUnits(http, getServerUrl(), {limit, offset}),
+      fetchOrganizationUnits(http, getServerUrl(), {limit, offset, projectId, placement, within}),
     enabled,
   });
 }

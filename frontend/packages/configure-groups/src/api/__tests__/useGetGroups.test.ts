@@ -211,4 +211,41 @@ describe('useGetGroups', () => {
       expect(result.current.data).toEqual(otherOUData);
     });
   });
+
+  it('should list only the groups of the given project', async () => {
+    mockHttpRequest.mockResolvedValue({data: mockGroupsData});
+
+    renderHook(() => useGetGroups({projectId: 'project-1'}));
+
+    await waitFor(() => {
+      expect(mockHttpRequest).toHaveBeenCalled();
+    });
+    expect((mockHttpRequest.mock.calls[0][0] as {url: string}).url).toContain('projectId=project-1');
+  });
+
+  it('should list every group without a project', async () => {
+    mockHttpRequest.mockResolvedValue({data: mockGroupsData});
+
+    renderHook(() => useGetGroups());
+
+    await waitFor(() => {
+      expect(mockHttpRequest).toHaveBeenCalled();
+    });
+    expect((mockHttpRequest.mock.calls[0][0] as {url: string}).url).not.toContain('projectId');
+  });
+
+  it("should not show one project's groups as another's", async () => {
+    mockHttpRequest.mockResolvedValueOnce({data: mockGroupsData}).mockReturnValueOnce(new Promise(() => null));
+
+    const {result, rerender} = renderHook(({projectId}: {projectId: string}) => useGetGroups({projectId}), {
+      initialProps: {projectId: 'project-1'},
+    });
+    await waitFor(() => {
+      expect(result.current.data).toEqual(mockGroupsData);
+    });
+
+    rerender({projectId: 'project-2'});
+
+    expect(result.current.data).toBeUndefined();
+  });
 });

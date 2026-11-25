@@ -80,6 +80,21 @@ const sidebar: SidebarsConfig = {
               id: 'sdks-and-tools/android/apis/components/change-credential',
               label: 'ChangeCredential',
             },
+            {
+              type: 'doc',
+              id: 'sdks-and-tools/android/apis/components/organization-unit-switcher',
+              label: 'OrganizationUnitSwitcher',
+            },
+            {
+              type: 'doc',
+              id: 'sdks-and-tools/android/apis/components/flow-variables-form',
+              label: 'FlowVariablesForm',
+            },
+            {
+              type: 'doc',
+              id: 'sdks-and-tools/android/apis/components/shared-flow-list',
+              label: 'SharedFlowList',
+            },
           ],
         },
       ],

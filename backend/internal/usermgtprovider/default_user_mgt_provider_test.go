@@ -5,6 +5,7 @@ package usermgtprovider
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -136,9 +137,8 @@ func (suite *DefaultUserMgtProviderTestSuite) TestCreateUserPreservesServerError
 	suite.Equal(tidcommon.ServerErrorType, svcErr.Type)
 }
 
-// The user service must see a runtime-marked context that still carries the caller's values, so
-// authorization is elevated without losing request-scoped data such as the trace ID.
-func (suite *DefaultUserMgtProviderTestSuite) TestCreateUserElevatesCallerContext() {
+// The user service authorizes the caller, so it must see the caller's own context, not a runtime one.
+func (suite *DefaultUserMgtProviderTestSuite) TestCreateUserPassesTheCallerContext() {
 	type ctxKey string
 	const traceKey ctxKey = "trace-id"
 
@@ -154,8 +154,8 @@ func (suite *DefaultUserMgtProviderTestSuite) TestCreateUserElevatesCallerContex
 	_, svcErr := suite.provider.CreateUser(callerCtx, newTestRequest())
 
 	suite.Nil(svcErr)
-	suite.True(security.IsRuntimeContext(observed))
-	suite.Equal("trace-789", observed.Value(traceKey))
+	suite.False(security.IsRuntimeContext(observed))
+	suite.Equal(callerCtx, observed)
 }
 
 // A service that returns neither a user nor an error must not be turned into a fabricated success.
@@ -167,4 +167,59 @@ func (suite *DefaultUserMgtProviderTestSuite) TestCreateUserHandlesEmptyServiceR
 
 	suite.Nil(svcErr)
 	suite.Nil(resp)
+}
+
+// The update reaches the user service with the caller's context, which the flow's type decides, and the service's
+// answer is returned unchanged.
+func (suite *DefaultUserMgtProviderTestSuite) TestUpdateUserCredentialsDelegatesWithTheCallersContext() {
+	credentials := json.RawMessage(`{"password":"Rotated@123"}`)
+	for name, svcErr := range map[string]*tidcommon.ServiceError{
+		"success": nil,
+		"refusal": &user.ErrorInvalidCredentialValue,
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			suite.mockService.On("UpdateUserCredentials",
+				mock.MatchedBy(func(ctx context.Context) bool { return !security.IsRuntimeContext(ctx) }),
+				testUserID, credentials).Return(svcErr).Once()
+
+			suite.Equal(svcErr, suite.provider.UpdateUserCredentials(context.Background(), testUserID, credentials))
+		})
+	}
+}
+
+// The invalidation, its check and the check that the reset is current reach the user service with the caller's
+// context, and the service's answer is returned unchanged.
+func (suite *DefaultUserMgtProviderTestSuite) TestCredentialInvalidationDelegatesWithTheCallersContext() {
+	type ctxKey string
+	callerCtx := context.WithValue(context.Background(), ctxKey("caller"), "admin-1")
+	callers := mock.MatchedBy(func(ctx context.Context) bool {
+		return !security.IsRuntimeContext(ctx) && ctx.Value(ctxKey("caller")) == "admin-1"
+	})
+	for name, test := range map[string]struct {
+		marker string
+		svcErr *tidcommon.ServiceError
+	}{
+		"success": {marker: "2026-11-12T10:00:00.5Z"},
+		"refusal": {svcErr: &user.ErrorInvalidCredential},
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			suite.mockService.On("ValidateRemoveUserCredential", callers, testUserID, "password").
+				Return(test.svcErr).Once()
+			suite.mockService.On("RemoveUserCredential", callers, testUserID, "password").
+				Return(test.marker, test.svcErr).Once()
+			suite.mockService.On("IsUserCredentialUnchangedSince", callers, testUserID, "m").
+				Return(test.svcErr == nil, test.svcErr).Once()
+
+			suite.Equal(test.svcErr,
+				suite.provider.ValidateRemoveUserCredential(callerCtx, testUserID, "password"))
+			marker, svcErr := suite.provider.RemoveUserCredential(callerCtx, testUserID, "password")
+			suite.Equal(test.marker, marker)
+			suite.Equal(test.svcErr, svcErr)
+			current, svcErr := suite.provider.IsUserCredentialUnchangedSince(callerCtx, testUserID, "m")
+			suite.Equal(test.svcErr == nil, current)
+			suite.Equal(test.svcErr, svcErr)
+		})
+	}
 }

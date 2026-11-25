@@ -48,6 +48,8 @@ type googleConnectionResponse struct {
 	TokenExchangeEnabled *bool  `json:"tokenExchangeEnabled,omitempty"`
 
 	AttributeConfiguration *providers.AttributeConfiguration `json:"attributeConfiguration,omitempty"`
+
+	connectionOwnership
 }
 
 func googleToIDPDTO(req googleConnectionRequest) (*providers.IDPDTO, error) {

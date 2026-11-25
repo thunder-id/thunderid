@@ -1,9 +1,9 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import type {KeyValueFormat} from '@thunderid/components';
 import {EMAIL_REGEX} from '@thunderid/utils';
 import {type ConnectionType, ConnectionTypes} from '../models/connection';
-import type {KeyValueFormat} from '../utils/keyValuePairs';
 
 export type ConnectionFieldKind =
   | 'text'
@@ -23,6 +23,8 @@ export type ConnectionFieldVisibility = 'create' | 'edit' | 'both';
 export interface ConnectionFieldOption {
   value: string;
   label: string;
+  /** Values other fields take when this option is chosen on create, unless the user set a custom value there. */
+  fieldDefaults?: Record<string, string>;
 }
 
 export interface ConnectionFieldDef {
@@ -72,6 +74,10 @@ export interface ConnectionFieldDef {
   /** Which form mode renders this field (default 'both'). Optional fields are edit-only to keep create simple. */
   visibility?: ConnectionFieldVisibility;
 }
+
+/** SMTP ports matching each transport security mode. */
+const SMTP_STARTTLS_PORT = '587';
+const SMTP_IMPLICIT_TLS_PORT = '465';
 
 const NAME_FIELD = (placeholder: string): ConnectionFieldDef => ({
   name: 'name',
@@ -574,8 +580,8 @@ export const CONNECTION_FORM_FIELDS: Record<ConnectionType, ConnectionFieldDef[]
       hintKey: 'connections:form.fields.smtpPort.hint',
       kind: 'number',
       required: true,
-      defaultValue: '587',
-      placeholder: '587',
+      defaultValue: SMTP_STARTTLS_PORT,
+      placeholder: SMTP_STARTTLS_PORT,
     },
     {
       name: 'fromAddress',
@@ -602,8 +608,8 @@ export const CONNECTION_FORM_FIELDS: Record<ConnectionType, ConnectionFieldDef[]
       required: true,
       defaultValue: 'starttls',
       options: [
-        {value: 'starttls', label: 'STARTTLS'},
-        {value: 'implicit', label: 'Implicit TLS (SMTPS)'},
+        {value: 'starttls', label: 'STARTTLS', fieldDefaults: {port: SMTP_STARTTLS_PORT}},
+        {value: 'implicit', label: 'Implicit TLS (SMTPS)', fieldDefaults: {port: SMTP_IMPLICIT_TLS_PORT}},
         {value: 'none', label: 'None'},
       ],
     },

@@ -35,6 +35,36 @@ packages:
           structname: '{{.InterfaceName}}Mock'
           pkgname: gateway
           filename: "{{.InterfaceName}}_mock_test.go"
+      valueStoreClient:
+        config:
+          dir: internal/gateway
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: gateway
+          filename: "{{.InterfaceName}}_mock_test.go"
+      configurationExporter:
+        config:
+          dir: internal/gateway
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: gateway
+          filename: "{{.InterfaceName}}_mock_test.go"
+      unusedValueSweeperInterface:
+        config:
+          dir: internal/gateway
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: gateway
+          filename: "{{.InterfaceName}}_mock_test.go"
+      sweepRunner:
+        config:
+          dir: internal/gateway
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: gateway
+          filename: "{{.InterfaceName}}_mock_test.go"
+      versionStoreInterface:
+        config:
+          dir: internal/gateway
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: gateway
+          filename: "{{.InterfaceName}}_mock_test.go"
 
   github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice:
     interfaces:
@@ -193,6 +223,15 @@ packages:
       pkgname: eventlistener
       filename: "{{.InterfaceName}}_mock_test.go"
 
+  github.com/thunder-id/thunderid/internal/system/eventbus:
+    config:
+      dir: internal/system/eventbus
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: eventbus
+      filename: "{{.InterfaceName}}_mock_test.go"
+    interfaces:
+      Subscriber:
+
   github.com/thunder-id/thunderid/internal/flow/session:
     config:
       # Every interface except TerminationHook, which is only ever the real eventlistener hook.
@@ -217,6 +256,14 @@ packages:
       dir: internal/flow/executor
       structname: '{{.InterfaceName}}Mock'
       pkgname: executor
+      filename: "{{.InterfaceName}}_mock_test.go"
+
+  github.com/thunder-id/thunderid/internal/flow/config:
+    config:
+      all: true
+      dir: internal/flow/config
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: flowconfig
       filename: "{{.InterfaceName}}_mock_test.go"
 
   github.com/thunder-id/thunderid/internal/flow/flowmeta:
@@ -579,6 +626,7 @@ packages:
       NotificationTemplateServiceInterface:
       translationResolver:
       designResolver:
+      projectOUValidator:
 
   github.com/thunder-id/thunderid/internal/system/importer:
     config:
@@ -592,6 +640,9 @@ packages:
       httpConnectionAdapter:
       notificationTemplateAdapter:
       senderAdapter:
+      translationAdapter:
+      groupAdapter:
+      userAdapter:
 
   github.com/thunder-id/thunderid/internal/system/resourcedependency:
     config:

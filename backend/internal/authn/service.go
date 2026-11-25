@@ -336,7 +336,7 @@ func (as *authenticationService) StartIDPAuthentication(
 ) (
 	*IDPAuthInitData, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, svcLoggerComponentName))
-	logger.Debug(ctx, "Starting IDP authentication", log.String("idpId", idpID))
+	logger.Debug(ctx, "Starting IDP authentication", log.String(log.LoggerKeyIDPID, idpID))
 
 	if strings.TrimSpace(idpID) == "" {
 		return nil, &common.ErrorInvalidIDPID
@@ -365,7 +365,7 @@ func (as *authenticationService) StartIDPAuthentication(
 	case providers.IDPTypeGitHub:
 		redirectURL, _, buildURLErr = as.githubService.BuildAuthorizeURL(ctx, idpID)
 	default:
-		logger.Error(ctx, "Unsupported IDP type", log.String("idpId", idpID),
+		logger.Error(ctx, "Unsupported IDP type", log.String(log.LoggerKeyIDPID, idpID),
 			log.String("type", string(identityProvider.Type)))
 		return nil, &tidcommon.InternalServerError
 	}
@@ -381,7 +381,7 @@ func (as *authenticationService) StartIDPAuthentication(
 	}
 	sessionToken, err := as.createSessionToken(ctx, idpID, identityProvider.Type, nonce)
 	if err != nil {
-		logger.Error(ctx, "Failed to create session token", log.String("idpId", idpID),
+		logger.Error(ctx, "Failed to create session token", log.String(log.LoggerKeyIDPID, idpID),
 			log.String("error", err.Error.DefaultValue))
 		return nil, &tidcommon.InternalServerError
 	}
@@ -676,6 +676,8 @@ func (as *authenticationService) mapFederatedAuthnError(ctx context.Context, svc
 		return &common.ErrorAccountLocked
 	case authnprovidermgr.ErrorAccountSuspended.Code:
 		return &common.ErrorAccountSuspended
+	case authnprovidermgr.ErrorFederatedSyncFailed.Code:
+		return &ErrorFederatedSyncFailed
 	// Ambiguity here means more than one user holds a recorded link to the same federated subject.
 	case authnprovidermgr.ErrorAuthenticationFailed.Code, authnprovidermgr.ErrorUserNotFound.Code,
 		authnprovidermgr.ErrorAmbiguousUser.Code, authnprovidermgr.ErrorInvalidRequest.Code,
@@ -741,7 +743,7 @@ func (as *authenticationService) handleIDPServiceError(
 	}
 
 	logger.Error(ctx, "Error occurred while retrieving IDP",
-		log.String("idpId", idpID), log.Any("error", svcErr))
+		log.String(log.LoggerKeyIDPID, idpID), log.Any("error", svcErr))
 	return &tidcommon.InternalServerError
 }
 

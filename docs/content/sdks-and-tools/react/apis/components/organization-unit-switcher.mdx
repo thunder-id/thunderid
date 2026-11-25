@@ -1,0 +1,160 @@
+---
+displayed_sidebar: null
+title: <OrganizationUnitSwitcher />
+docType: reference
+description: Dropdown that lists the organization units a signed-in user can access and switches the session to the one they pick, in React apps.
+---
+
+# `<OrganizationUnitSwitcher />`
+
+The `OrganizationUnitSwitcher` component shows the organization unit the session is in, in a field that opens a menu of the units the signed-in user can access. It reads the units from `GET /users/me/ous`, or from `endpoints.usersMeOrganizationUnits` on `ThunderIDProvider` when set. Picking a unit calls [`switchOrganizationUnit`](../../hooks/use-thunderid#switch-organization-units), which signs in again bounded to that unit. A failed switch keeps the session as it was and shows a translated message under the field. For the scenario this component serves, see [Switch Organizations](../../../../../use-cases/b2b/journeys/switch-organizations).
+
+The component loads the list once the user is signed in. After a switch that completes in place, it calls `onSwitch` and loads the list again.
+
+## Usage
+
+### Basic Usage
+
+```jsx title="src/Header.jsx" showLineNumbers
+import { OrganizationUnitSwitcher, SignedIn } from '@thunderid/react'
+
+function Header() {
+  return (
+    <header>
+      <SignedIn>
+        <OrganizationUnitSwitcher scope="siblings" />
+      </SignedIn>
+    </header>
+  )
+}
+
+export default Header
+```
+
+### Handling the Pick Yourself
+
+Pass `onSelect` to take over a pick. The component calls it with the unit instead of switching, so your application decides what happens:
+
+```jsx title="src/OrganizationPicker.jsx" showLineNumbers
+import { OrganizationUnitSwitcher } from '@thunderid/react'
+import { useNavigate } from 'react-router-dom'
+
+function OrganizationPicker() {
+  const navigate = useNavigate()
+
+  return <OrganizationUnitSwitcher onSelect={(unit) => navigate(`/orgs/${unit.handle}`)} />
+}
+
+export default OrganizationPicker
+```
+
+### Custom Rendering
+
+Pass a function as `children` to replace the built-in UI. It receives the [render props](#render-props), and the component keeps the loading, paging, and switching:
+
+```jsx title="src/OrganizationSelect.jsx" showLineNumbers
+import { OrganizationUnitSwitcher } from '@thunderid/react'
+
+function OrganizationSelect() {
+  return (
+    <OrganizationUnitSwitcher>
+      {({ organizationUnits, current, onSwitch, switchingId, error }) => (
+        <>
+          <select
+            value={current ?? ''}
+            disabled={switchingId !== null}
+            onChange={(event) => onSwitch(organizationUnits.find((unit) => unit.id === event.target.value))}
+          >
+            {organizationUnits.map((unit) => (
+              <option key={unit.id} value={unit.id}>
+                {unit.name}
+              </option>
+            ))}
+          </select>
+          {error && <p role="alert">{error}</p>}
+        </>
+      )}
+    </OrganizationUnitSwitcher>
+  )
+}
+
+export default OrganizationSelect
+```
+
+## Built-in UI
+
+The built-in UI is a field that shows a small label, **Organization** by default, above the name of the current unit. Clicking the field opens a menu that lists each unit by name and handle, with a check mark on the current unit. The arrow keys move through the menu, and Escape closes it. When the listing has more units than `limit`, the menu shows **Previous** and **Next** buttons. While a switch runs, the field shows a spinner and cannot be opened. Picking the current unit does nothing.
+
+The text comes from these translation keys, which `preferences.i18n` can override:
+
+| Key | Default (`en-US`) |
+| :--- | :--- |
+| `organization_unit.switcher.label` | `Organization` |
+| `organization_unit.switcher.placeholder` | `Select an organization` |
+| `organization_unit.switcher.switching` | `Switching to {name}…` |
+| `organization_unit.switcher.loading` | `Loading organization units…` |
+| `organization_unit.switcher.empty` | `No organization units are available.` |
+| `organization_unit.switcher.previous` | `Previous` |
+| `organization_unit.switcher.next` | `Next` |
+| `organization_unit.switcher.error.load` | `The organization units could not be loaded.` |
+| `organization_unit.switcher.error.switch` | `Could not switch to {name}. Please try again.` |
+| `organization_unit.switcher.error.unauthorized` | `This application cannot be used from {name}.` |
+| `organization_unit.switcher.error.interaction_required` | `Sign in again to switch to {name}.` |
+
+A failed switch shows the `unauthorized` message for `UnauthorizedClient`, the `interaction_required` message for `InteractionRequired`, and the `switch` message for any other code.
+
+## Props
+
+| Prop | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `scope` | `AccessibleOrganizationUnitScope` | ❌ | `'siblings'` lists the accessible units that share the parent of the current unit. Omit it to list every accessible unit. |
+| `limit` | `number` | ❌ | The page size. Defaults to `10`. |
+| `onSwitch` | `(unit: AccessibleOrganizationUnit, user: User) => void` | ❌ | Called with the unit and the refreshed user after a switch that completes in place. A switch that leaves the page completes on the callback instead. |
+| `onSelect` | `(unit: AccessibleOrganizationUnit) => void` | ❌ | Takes over a pick: called with the unit instead of switching. |
+| `onError` | `(error: unknown) => void` | ❌ | Called with the SDK error when a switch or a load fails. The component shows its message either way. |
+| `switchOptions` | `SwitchOrganizationUnitOptions` | ❌ | Options passed to `switchOrganizationUnit`, such as `{ redirect: false }`. |
+| `title` | `string` | ❌ | Overrides the small label above the current unit. Pass an empty string to omit it. |
+| `className` | `string` | ❌ | Additional CSS class names. |
+| `preferences` | `Preferences` | ❌ | Component-level preference overrides, including i18n. |
+| `children` | `(props: OrganizationUnitSwitcherRenderProps) => ReactNode` | ❌ | Render function that replaces the built-in UI. |
+
+## Render Props
+
+| Prop | Type | Description |
+| :--- | :--- | :--- |
+| `organizationUnits` | `AccessibleOrganizationUnit[]` | The units of the current page, each with `id`, `handle`, `name`, and an optional `logoUrl`. |
+| `current` | `string \| null` | The ID of the unit the session is in, or `null` when it is not known. |
+| `currentName` | `string \| null` | The name of the current unit, from the page or the session, or `null` when it is not known. |
+| `onSwitch` | `(unit: AccessibleOrganizationUnit) => void` | Switches to the unit, or hands it to `onSelect`. |
+| `switchingId` | `string \| null` | The ID of the unit a switch is in progress to, or `null`. |
+| `isLoading` | `boolean` | Whether the units are loading. |
+| `error` | `string \| null` | A translated message for the last failure, or `null`. |
+| `limit` | `number` | The page size. |
+| `offset` | `number` | The zero-based offset of the page. |
+| `totalResults` | `number` | The number of units the listing matches. |
+| `onPageChange` | `(offset: number) => void` | Moves to the page that starts at `offset`. |
+
+## `<BaseOrganizationUnitSwitcher />`
+
+`BaseOrganizationUnitSwitcher` is the presentational picker that `OrganizationUnitSwitcher` renders. It holds no SDK state and makes no request, so pass it the units and the callbacks. It takes every render prop above as an optional prop, plus `children`, `className`, `preferences`, and `title`. `totalResults` defaults to the number of `organizationUnits`, and `limit` defaults to `10`.
+
+```jsx title="src/StaticSwitcher.jsx" showLineNumbers
+import { BaseOrganizationUnitSwitcher } from '@thunderid/react'
+
+function StaticSwitcher({ units, currentId, onPick }) {
+  return (
+    <BaseOrganizationUnitSwitcher
+      organizationUnits={units}
+      current={currentId}
+      onSwitch={(unit) => onPick(unit.id)}
+    />
+  )
+}
+
+export default StaticSwitcher
+```
+
+## Related
+
+- [`useThunderID()`](../../hooks/use-thunderid#switch-organization-units) documents `switchOrganizationUnit`, its paths, and its error codes.
+- [Switch Organizations](../../../../../use-cases/b2b/journeys/switch-organizations) explains organization switching end to end.

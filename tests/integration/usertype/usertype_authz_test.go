@@ -18,17 +18,17 @@ import (
 
 // UserTypeAuthzTestSuite validates the user type authorization model end-to-end.
 //
-// The product ships only the root "system" scope by default. This suite creates a custom
-// resource server that declares the following hierarchical permission structure, simulating an
-// operator configuring fine-grained scopes:
+// This suite creates a custom resource server that declares the Data Plane's hierarchical
+// permission structure:
 //
 //	Authz Test RS (usertype)
-//	└── Resource  "system"           → permission "system"
-//	    └── Resource  "usertype"   → permission "system:usertype"
-//	        └── Action "view"        → permission "system:usertype:view"
+//	├── Resource  "system"           → permission "system"
+//	└── Resource  "org"              → permission "org"
+//	    └── Resource  "usertype"   → permission "org:usertype"
+//	        └── Action "view"        → permission "org:usertype:view"
 //
 // The suite creates an OU hierarchy (OU1 → OU12, OU2 as sibling), a test
-// user scoped to OU12, and a role carrying system:usertype permission.
+// user scoped to OU12, and a role carrying org:usertype permission.
 // It then obtains a scoped access token and verifies:
 //
 //   - READ operations on OU1's schema are allowed (OU inheritance: OU12 is a
@@ -46,6 +46,10 @@ import (
 //	OU2  (handle: schema-authz-ou2)   ← separate user type created here
 type UserTypeAuthzTestSuite struct {
 	suite.Suite
+
+	// Users here live outside the default OU, and a sign-in is bounded to its application's OU, so each
+	// signs in through an application in its own OU rather than the Console.
+	signIn testutils.OUSignInApps
 
 	// Admin-created fixture IDs
 	ou1ID  string
@@ -75,8 +79,6 @@ const (
 
 	schemaAdminUsername = "schema-authz-admin"
 	schemaAdminPassword = "SchemaAdmin@123"
-
-	schemaAuthzDevelopClientID = "CONSOLE"
 
 	// Unique role name to avoid collisions across test runs.
 	schemaAdminRoleName = "User Type Admin (authz-test)"
@@ -167,23 +169,23 @@ func (ts *UserTypeAuthzTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "create schema-admin user in OU12")
 	ts.schemaAdminUserID = userID
 
-	// ---- 4. Create a custom resource server declaring the fine-grained system scopes ----
-	// The product ships only the root "system" scope; this reproduces "system:usertype" so the
+	// ---- 4. Create a custom resource server declaring the fine-grained org scopes ----
+	// This reproduces the Data Plane permissions "org:usertype" so the
 	// suite can verify resource-level enforcement when configured.
 	const scopedRSIdentifier = "https://authz-test.example.com/usertype"
-	systemRSID, err := testutils.CreateSystemScopedResourceServer(
+	systemRSID, err := testutils.CreateOrgScopedResourceServer(
 		ts.ou12ID, "Authz Test RS (usertype)", scopedRSIdentifier, "usertype")
 	ts.Require().NoError(err, "create scoped resource server")
 	ts.scopedRSID = systemRSID
 
-	// ---- 5. Create a role with system:usertype permission ----
+	// ---- 5. Create a role with org:usertype permission ----
 	role := testutils.Role{
 		Name: schemaAdminRoleName,
 		OUID: ts.ou12ID,
 		Permissions: []testutils.ResourcePermissions{
 			{
 				ResourceServerID: systemRSID,
-				Permissions:      []string{"system:usertype"},
+				Permissions:      []string{"org:usertype"},
 			},
 		},
 		Assignments: []testutils.Assignment{
@@ -195,20 +197,12 @@ func (ts *UserTypeAuthzTestSuite) SetupSuite() {
 	ts.schemaAdminRoleID = roleID
 
 	// ---- 6. Obtain a scoped access token for the test user ----
-	tokenResp, err := testutils.ObtainAccessTokenWithPassword(
-		schemaAuthzDevelopClientID,
-		schemaAuthzDevelopRedirectURI,
-		"system system:usertype",
-		schemaAdminUsername,
-		schemaAdminPassword,
-		true,
-		"",
-		scopedRSIdentifier,
-	)
+	tokenResp, err := ts.signIn.ObtainAccessToken(ts.ou12ID,
+		"system org:usertype", schemaAdminUsername, schemaAdminPassword, scopedRSIdentifier)
 	ts.Require().NoError(err, "obtain schema-admin scoped token")
 	ts.Require().NotEmpty(tokenResp.AccessToken, "schema-admin token must be non-empty")
 	grantedScopes := strings.Fields(tokenResp.Scope)
-	ts.Require().Contains(grantedScopes, "system:usertype", "token must carry usertype scope")
+	ts.Require().Contains(grantedScopes, "org:usertype", "token must carry usertype scope")
 	ts.schemaClient = testutils.GetHTTPClientWithToken(tokenResp.AccessToken)
 }
 
@@ -217,6 +211,9 @@ func (ts *UserTypeAuthzTestSuite) SetupSuite() {
 // ---------------------------------------------------------------------------
 
 func (ts *UserTypeAuthzTestSuite) TearDownSuite() {
+	if err := ts.signIn.DeleteAll(); err != nil {
+		ts.T().Logf("teardown: delete sign-in applications: %v", err)
+	}
 	// Delete role first (has assignment to user).
 	if ts.schemaAdminRoleID != "" {
 		if err := testutils.DeleteRole(ts.schemaAdminRoleID); err != nil {

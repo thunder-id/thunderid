@@ -18,8 +18,12 @@ import (
 type SubjectTypeConstraints struct {
 	// AllowedUserTypes are the user type handles accepted as a subject
 	AllowedUserTypes []string
-	// AllowedAgentTypes are the agent type handles accepted as a subject. Empty accepts no agent.
+	// AllowedAgentTypes are the agent type handles accepted as a subject. Empty accepts no agent, and
+	// providers.AnyAgentType as the only entry accepts an agent of any agent type.
 	AllowedAgentTypes []string
+	// RequiredSubjectID, when set, is the entity ID of the only subject accepted, whatever its category:
+	// a personal agent accepts only its owner. Empty leaves the subject to the type constraints.
+	RequiredSubjectID string
 }
 
 // PermitsSubject reports whether an entity of the given category and type may authenticate under
@@ -27,9 +31,16 @@ type SubjectTypeConstraints struct {
 // Constraints on user types can be enforced after ongoing discussions are complete on the topic.
 func (c SubjectTypeConstraints) PermitsSubject(category providers.EntityCategory, entityType string) bool {
 	if category == providers.EntityCategoryAgent {
-		return slices.Contains(c.AllowedAgentTypes, entityType)
+		return slices.Equal(c.AllowedAgentTypes, []string{providers.AnyAgentType}) ||
+			slices.Contains(c.AllowedAgentTypes, entityType)
 	}
 	return true
+}
+
+// PermitsSubjectID reports whether the entity with the given ID may authenticate under these constraints:
+// any entity when no subject is required, otherwise only the required one.
+func (c SubjectTypeConstraints) PermitsSubjectID(entityID string) bool {
+	return c.RequiredSubjectID == "" || c.RequiredSubjectID == entityID
 }
 
 type subjectTypeConstraintsContextKey struct{}
@@ -47,4 +58,12 @@ func WithSubjectTypeConstraints(ctx context.Context, c SubjectTypeConstraints) c
 func SubjectTypeConstraintsFrom(ctx context.Context) (SubjectTypeConstraints, bool) {
 	c, ok := ctx.Value(subjectTypeConstraintsContextKey{}).(SubjectTypeConstraints)
 	return c, ok
+}
+
+// SubjectAllowed reports whether the subject type constraints carried on the context accept the entity.
+// A context without constraints, or no entity, accepts.
+func SubjectAllowed(ctx context.Context, entityRef *providers.EntityReference) bool {
+	constraints, ok := SubjectTypeConstraintsFrom(ctx)
+	return !ok || entityRef == nil || constraints.PermitsSubjectID(entityRef.EntityID) &&
+		constraints.PermitsSubject(providers.EntityCategory(entityRef.EntityCategory), entityRef.EntityType)
 }

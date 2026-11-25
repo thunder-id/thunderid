@@ -22,6 +22,18 @@ import type {AssertionConfig} from './token';
 export type ApplicationType = 'browser' | 'fullstack' | 'mobile' | 'm2m' | 'mcp' | 'custom';
 
 /**
+ * Login consent configuration.
+ *
+ * @public
+ */
+export interface LoginConsentConfig {
+  /**
+   * How long a user's consent lasts, in seconds. 0 or unset means consent does not expire.
+   */
+  validityPeriod?: number;
+}
+
+/**
  * Application Response Model (Basic)
  *
  * Basic application information returned in list operations.
@@ -64,6 +76,7 @@ export type BasicApplication = Pick<
   | 'type'
   | 'template'
   | 'isReadOnly'
+  | 'isOwnedByOU'
   | 'status'
 > & {
   /**
@@ -150,6 +163,11 @@ export interface Application {
    * @example '550e8400-e29b-41d4-a716-446655440000'
    */
   id: string;
+
+  /**
+   * The project the application belongs to, if it is in one.
+   */
+  projectId?: string;
 
   /**
    * Application name
@@ -329,6 +347,12 @@ export interface Application {
   assertion?: AssertionConfig;
 
   /**
+   * Login consent configuration
+   * Defines how long a user's consent to this application lasts.
+   */
+  loginConsent?: LoginConsentConfig;
+
+  /**
    * Platform attestation configuration used to verify the binary identity of a mobile client
    * when it initiates a flow directly, independent of the OAuth2 protocol. The service account
    * credentials are write-only and never returned in GET responses. null or undefined means no
@@ -347,6 +371,10 @@ export interface Application {
    * Whether this application is read-only (declarative/immutable)
    */
   isReadOnly?: boolean;
+  /**
+   * False for an application shared into the organization unit it is read in, which that unit cannot change
+   */
+  isOwnedByOU?: boolean;
 
   /**
    * Effective access status, derived by the server at read time. Read-only; never LOCKED, and never

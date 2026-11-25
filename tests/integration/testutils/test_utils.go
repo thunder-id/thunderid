@@ -732,6 +732,13 @@ func initSQLiteDB(name, schemaPath, dbPath string) error {
 	return nil
 }
 
+// ServerLogPath is the file a server started by a test subprocess writes its standard output and
+// standard error to. It is only ever appended to, so a reader records an offset before the action it
+// checks.
+func ServerLogPath() string {
+	return filepath.Join(GetExtractedProductHome(), "thunderid-restart.log")
+}
+
 // pidFilePath returns the path to the well-known PID file that always reflects the
 // PID of the currently running the server process, even after subprocess restarts.
 // Returns an empty string when extractedProductHome is not yet set, so callers
@@ -809,7 +816,7 @@ func startServerInternal(port string, extraArgs ...string) error {
 		// drain before declaring the test done, and the long-lived server process
 		// would keep those pipes open indefinitely, causing a 60s WaitDelay timeout.
 		// Redirect to a log file in the extracted product home so output is not lost.
-		logPath := filepath.Join(extractedProductHome, "thunderid-restart.log")
+		logPath := ServerLogPath()
 		var openErr error
 		logFile, openErr = os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if openErr != nil {
@@ -1220,6 +1227,34 @@ func copyConfigSection(section interface{}) map[string]interface{} {
 	return copied
 }
 
+// PatchServerConfig sets one key of the server section in the live deployment.yaml, keeping the rest
+// of the section. A nil value removes the key. Restart the server for the change to take effect.
+func PatchServerConfig(key string, value interface{}) error {
+	current, err := ReadDeploymentConfigKey("server")
+	if err != nil {
+		return err
+	}
+	server := copyConfigSection(current)
+	if value == nil {
+		delete(server, key)
+	} else {
+		server[key] = value
+	}
+	return PatchDeploymentConfig(map[string]interface{}{"server": server})
+}
+
+// ReadServerLog returns the output of the servers started from this test package. Servers started
+// before the package ran write elsewhere, so call it after RestartServer or StartServerExpectingExit.
+func ReadServerLog() (string, error) {
+	ensureInitialized()
+
+	data, err := os.ReadFile(ServerLogPath())
+	if err != nil {
+		return "", fmt.Errorf("failed to read the server log: %w", err)
+	}
+	return string(data), nil
+}
+
 // ensureDirectAuthSecretInDeploymentConfig guarantees server.security.direct_auth_secret is set to the
 // fixture value in the extracted product's deployment.yaml. The server is secure by default (an empty
 // secret blocks the Direct API endpoints), and suites that rewrite deployment.yaml via UpdateDeploymentConfig
@@ -1437,9 +1472,19 @@ func QueryConfigDB(sqlQuery string) (string, error) {
 func QueryRuntimeDB(sqlQuery string) (string, error) {
 	ensureInitialized()
 	if dbType == "postgres" {
-		return queryPostgresRuntimeDB(sqlQuery)
+		return queryPostgresDB("runtime_persistent", sqlQuery)
 	}
 	return querySQLiteDB("runtime_persistent.db", sqlQuery)
+}
+
+// QueryEntityDB runs one SQL statement against the entity database and returns the trimmed CLI
+// output, for tests that must see what the server stores outside its APIs, as QueryRuntimeDB does.
+func QueryEntityDB(sqlQuery string) (string, error) {
+	ensureInitialized()
+	if dbType == "postgres" {
+		return queryPostgresDB("entity", sqlQuery)
+	}
+	return querySQLiteDB("entitydb.db", sqlQuery)
 }
 
 // DeleteRuntimeRow removes an entity's runtime row, so the entity reads as one governance has never
@@ -1468,18 +1513,18 @@ func querySQLiteDB(fileName, sqlQuery string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// queryPostgresRuntimeDB runs one SQL statement with psql against the runtime persistent database the
-// deployment's database.runtime_persistent.postgres section names, and returns the trimmed output.
-func queryPostgresRuntimeDB(sqlQuery string) (string, error) {
+// queryPostgresDB runs one SQL statement with psql against the database the deployment's
+// database.<name>.postgres section names, and returns the trimmed output.
+func queryPostgresDB(name, sqlQuery string) (string, error) {
 	section, err := ReadDeploymentConfigKey("database")
 	if err != nil {
 		return "", err
 	}
 	database, _ := section.(map[string]interface{})
-	persistent, _ := database["runtime_persistent"].(map[string]interface{})
-	conn, _ := persistent["postgres"].(map[string]interface{})
+	named, _ := database[name].(map[string]interface{})
+	conn, _ := named["postgres"].(map[string]interface{})
 	if conn == nil {
-		return "", fmt.Errorf("deployment.yaml has no database.runtime_persistent.postgres section")
+		return "", fmt.Errorf("deployment.yaml has no database.%s.postgres section", name)
 	}
 	return runPsql(conn, fmt.Sprint(conn["name"]), "-c", sqlQuery)
 }

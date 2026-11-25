@@ -114,6 +114,8 @@ spec:
     #   declarativeResourcesEnabled: true  # false: services default to database-backed stores
     #   gate:
     #     clientBase: "/gate"
+    #     # JSON: a string, an object or an array of objects
+    #     slogan: '[{"title": "Title", "description": "Description.", "icon": "assets/images/icon.svg"}]'
     #   console:
     #     clientBase: "/console"
     #     clientId: "CONSOLE"
@@ -656,6 +658,7 @@ spec:
           executor:
             name: CredentialSetter
           onSuccess: release_account_locks
+          onIncomplete: prompt_new_password
         - id: release_account_locks
           type: TASK_EXECUTION
           executor:
@@ -833,6 +836,7 @@ spec:
           executor:
             name: CredentialSetter
           onSuccess: release_account_locks
+          onIncomplete: prompt_new_password
         - id: release_account_locks
           type: TASK_EXECUTION
           layout:
@@ -1205,7 +1209,7 @@ spec:
               x: 305
               y: 515
           properties:
-            requiredScopes: ["system:user"]
+            requiredScopes: ["system", "org"]
           executor:
             name: PermissionValidator
           onSuccess: user_type_resolver
@@ -1766,12 +1770,12 @@ spec:
           complete.title: Welcome Aboard!
           errors.failed.title: Error
           signIn: Sign In
-          errors.invalid.description: This invite link is invalid or has expired.
+          errors.invalid.description: It is invalid or has expired. Ask for a new one.
           complete.description: Your account has been successfully set up. You can now sign in.
           complete.description.withApp: Your account has been successfully set up for {{appName}}. You can now sign in.
           goToSignIn: Go to Sign In
-          errors.invalid.title: Unable to verify invite
-          validating: Validating your invite link...
+          errors.invalid.title: This link can't be used
+          validating: Checking your link...
         onboarding:
           forms.add_user.subtitle: Provide the new user details to create the account immediately.
           forms.phone.title: Phone Number

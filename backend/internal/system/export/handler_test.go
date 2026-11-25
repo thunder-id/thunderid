@@ -54,12 +54,13 @@ func (suite *HandlerTestSuite) SetupTest() {
 	suite.mockNotificationService = notificationmock.NewNotificationSenderMgtSvcInterfaceMock(suite.T())
 	suite.mockEntityTypeService = entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
 	exporters := []declarativeresource.ResourceExporter{
-		application.NewApplicationExporterForTest(suite.mockAppService, sharingWithNoPolicies(suite.T())),
+		application.NewApplicationExporterForTest(suite.mockAppService, entitiesWithNoFlowSecrets(suite.T()),
+			sharingWithNoPolicies(suite.T())),
 		connection.NewConnectionExporterForTest(suite.mockIDPService, suite.mockNotificationService, nil, nil),
 		entitytype.NewEntityTypeExporterForTest(suite.mockEntityTypeService, entitytype.TypeCategoryUser),
 	}
 	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	suite.exportService = newExportService(exporters, parameterizer)
+	suite.exportService = newExportService(exporters, parameterizer, discardingBus{})
 	suite.handler = newExportHandler(suite.exportService)
 }
 
@@ -78,12 +79,13 @@ func TestNewExportHandler(t *testing.T) {
 	mockNotificationService := notificationmock.NewNotificationSenderMgtSvcInterfaceMock(t)
 	mockEntityTypeService := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
 	exporters := []declarativeresource.ResourceExporter{
-		application.NewApplicationExporterForTest(mockAppService, sharingWithNoPolicies(t)),
+		application.NewApplicationExporterForTest(mockAppService, entitiesWithNoFlowSecrets(t),
+			sharingWithNoPolicies(t)),
 		connection.NewConnectionExporterForTest(mockIDPService, mockNotificationService, nil, nil),
 		entitytype.NewEntityTypeExporterForTest(mockEntityTypeService, entitytype.TypeCategoryUser),
 	}
 	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	exportService := newExportService(exporters, parameterizer)
+	exportService := newExportService(exporters, parameterizer, discardingBus{})
 
 	handler := newExportHandler(exportService)
 
@@ -434,12 +436,13 @@ func setupBenchmarkTest(b *testing.B) (*exportHandler, []byte) {
 	mockNotificationService := notificationmock.NewNotificationSenderMgtSvcInterfaceMock(b)
 	mockEntityTypeService := entitytypemock.NewEntityTypeServiceInterfaceMock(b)
 	exporters := []declarativeresource.ResourceExporter{
-		application.NewApplicationExporterForTest(mockAppService, sharingWithNoPolicies(b)),
+		application.NewApplicationExporterForTest(mockAppService, entitiesWithNoFlowSecrets(b),
+			sharingWithNoPolicies(b)),
 		connection.NewConnectionExporterForTest(mockIDPService, mockNotificationService, nil, nil),
 		entitytype.NewEntityTypeExporterForTest(mockEntityTypeService, entitytype.TypeCategoryUser),
 	}
 	parameterizer := newParameterizer(templatingRules{}, TemplatePlaceholders)
-	exportService := newExportService(exporters, parameterizer)
+	exportService := newExportService(exporters, parameterizer, discardingBus{})
 	handler := newExportHandler(exportService)
 
 	// Setup mock expectation

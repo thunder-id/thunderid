@@ -31,12 +31,15 @@ paths:
         - Roles
       summary: List roles
       description: |
-        Lists every role in the deployment. A `filter` naming an organization unit lists the roles that
-        unit owns, followed by the roles shared with it. Each role says whether the listed unit owns it.
+        Lists every role in the deployment. A `filter` naming an organization unit lists the roles that unit
+        owns, followed by the roles shared with it. A caller whose permission is limited to an organization
+        unit lists that unit the same way without the filter. Each role says whether the listed unit owns it. A
+        filter naming a unit whose roles the caller may not list returns an empty list.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
         - $ref: '#/components/parameters/roleFilterQueryParam'
+        - $ref: '#/components/parameters/roleProjectIdQueryParam'
       responses:
         "200":
           description: List of roles
@@ -235,6 +238,26 @@ paths:
                     description:
                       key: "error.roleservice.organization_unit_not_found_description"
                       defaultValue: "Organization unit not found"
+                invalid-project:
+                  summary: The project does not exist
+                  value:
+                    code: "ROL-1040"
+                    message:
+                      key: "error.roleservice.invalid_project"
+                      defaultValue: "Invalid project"
+                    description:
+                      key: "error.roleservice.invalid_project_description"
+                      defaultValue: "No project exists with the given project ID"
+                ou-not-in-project:
+                  summary: The organization unit is outside the project
+                  value:
+                    code: "ROL-1041"
+                    message:
+                      key: "error.roleservice.ou_not_in_project"
+                      defaultValue: "Organization unit not in project"
+                    description:
+                      key: "error.roleservice.ou_not_in_project_description"
+                      defaultValue: "A role in a project must be in the system organization unit or in an organization unit of the project"
                 invalid-permissions:
                   summary: Invalid permissions
                   value:
@@ -307,6 +330,11 @@ paths:
         Returns role metadata with permissions list. With `ouId`, returns the role as that organization
         unit sees it: the role itself when the unit owns it, and the shared role, read under the unit,
         when the role is shared with it. A role not shared with the unit is not found.
+
+        Without `ouId`, a caller confined to one organization unit reads the role as that unit sees it:
+        a role the unit owns has `isOwnedByOU` set to true, and a role shared into the unit is read under
+        it, with the unit's `ouId` and `isOwnedByOU` set to false. A role the unit neither owns nor has
+        shared with it is forbidden. Any other caller reads the role in the organization unit that owns it.
       parameters:
         - in: path
           name: id
@@ -352,6 +380,8 @@ paths:
                 description:
                   key: "error.roleservice.missing_role_id_description"
                   defaultValue: "Role ID is required"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Role not found, or not shared with the organization unit named in ouId
           content:
@@ -407,6 +437,13 @@ paths:
         A shared organization unit manages its own assignments of the role through
         `/roles/{id}/assignments`. Any other organization unit is somewhere to move the role to, which
         is refused while the role has sharing policies or assignments.
+
+        A caller confined to an organization unit the role is shared into cannot update the role at all:
+        such an update is refused with ROL-1045 and status 403.
+
+        An update that drops a permission revokes it from the role's holders' tokens first. When the
+        server reads roles from both files and the database and the role has more assignments than it
+        can read in that mode, such an update is refused with ROL-1017 and the role is left as it was.
       parameters:
         - in: path
           name: id
@@ -502,6 +539,26 @@ paths:
                     description:
                       key: "error.roleservice.organization_unit_not_found_description"
                       defaultValue: "Organization unit not found"
+                invalid-project:
+                  summary: The project does not exist
+                  value:
+                    code: "ROL-1040"
+                    message:
+                      key: "error.roleservice.invalid_project"
+                      defaultValue: "Invalid project"
+                    description:
+                      key: "error.roleservice.invalid_project_description"
+                      defaultValue: "No project exists with the given project ID"
+                ou-not-in-project:
+                  summary: The organization unit is outside the project
+                  value:
+                    code: "ROL-1041"
+                    message:
+                      key: "error.roleservice.ou_not_in_project"
+                      defaultValue: "Organization unit not in project"
+                    description:
+                      key: "error.roleservice.ou_not_in_project_description"
+                      defaultValue: "A role in a project must be in the system organization unit or in an organization unit of the project"
                 invalid-permissions:
                   summary: Invalid permissions
                   value:
@@ -523,7 +580,7 @@ paths:
                       key: "error.roleservice.cannot_modify_declarative_role_description"
                       defaultValue: "The role is defined in declarative configuration and cannot be modified"
                 shared-role-moved:
-                  summary: Role with sharing policies moved to another organization unit
+                  summary: Role with sharing policies moved to another organization unit or project
                   value:
                     code: "ROL-1029"
                     message:
@@ -531,7 +588,7 @@ paths:
                       defaultValue: "Role with sharing policies cannot be moved"
                     description:
                       key: "error.roleservice.shared_role_cannot_move_description"
-                      defaultValue: "The role is shared into other organization units. Delete its sharing policies before moving it to another organization unit"
+                      defaultValue: "The role is shared into other organization units. Delete its sharing policies before moving it to another organization unit or project"
                 assigned-role-moved:
                   summary: Role with assignments moved to another organization unit
                   value:
@@ -552,20 +609,43 @@ paths:
                     description:
                       key: "error.roleservice.shared_role_not_editable_description"
                       defaultValue: "A role's name, description and permissions can be changed only in the organization unit that owns it, not in one it is shared with"
+                composite-limit-exceeded:
+                  summary: Permission dropped from a role with more assignments than composite mode can read
+                  value:
+                    code: "ROL-1017"
+                    message:
+                      key: "error.roleservice.result_limit_exceeded_in_composite_mode"
+                      defaultValue: "Result limit exceeded in composite mode"
+                    description:
+                      key: "error.roleservice.result_limit_exceeded_in_composite_mode_description"
+                      defaultValue: "The total number of records exceeds the maximum limit in composite mode"
         "403":
           description: Forbidden
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                code: "SAZ-4030"
-                message:
-                  key: "error.sysauthz.grant_not_permitted"
-                  defaultValue: "Insufficient privileges to grant these permissions"
-                description:
-                  key: "error.sysauthz.grant_not_permitted_description"
-                  defaultValue: "The operation would grant permissions that the caller does not hold"
+              examples:
+                grant-not-permitted:
+                  summary: Update grants permissions the caller does not hold
+                  value:
+                    code: "SAZ-4030"
+                    message:
+                      key: "error.sysauthz.grant_not_permitted"
+                      defaultValue: "Insufficient privileges to grant these permissions"
+                    description:
+                      key: "error.sysauthz.grant_not_permitted_description"
+                      defaultValue: "The operation would grant permissions that the caller does not hold"
+                shared-role-read-only:
+                  summary: Role updated by a caller confined to an organization unit it is shared into
+                  value:
+                    code: "ROL-1045"
+                    message:
+                      key: "error.roleservice.shared_role_read_only"
+                      defaultValue: "Shared role is read only"
+                    description:
+                      key: "error.roleservice.shared_role_read_only_description"
+                      defaultValue: "Only the organization unit that owns the role can change or delete it. Manage its assignments in this organization unit instead"
         "404":
           description: Role not found
           content:
@@ -613,6 +693,9 @@ paths:
       tags:
         - Roles
       summary: Delete a role by id
+      description: |
+        Deletes the role with its assignments and sharing policies. A caller confined to an organization
+        unit the role is shared into cannot delete it: such a delete is refused with ROL-1045 and status 403.
       parameters:
         - in: path
           name: id
@@ -650,6 +733,63 @@ paths:
                     description:
                       key: "error.roleservice.cannot_modify_declarative_role_description"
                       defaultValue: "The role is defined in declarative configuration and cannot be modified"
+                revocation-entry-limit-exceeded:
+                  summary: Revoking the role's scopes from its holders needs more entries than one change may record
+                  value:
+                    code: "RVS-1001"
+                    message:
+                      key: "error.revocationservice.entry_limit_exceeded"
+                      defaultValue: "Too many revocation entries"
+                    description:
+                      key: "error.revocationservice.entry_limit_exceeded_description"
+                      defaultValue: "The change would record 12000 revocation entries, more than the 10000 allowed for one change"
+                group-nesting-too-deep:
+                  summary: A holder reaches the role through a group nested too deep to expand
+                  value:
+                    code: "GRP-1017"
+                    message:
+                      key: "error.groupservice.group_nesting_too_deep"
+                      defaultValue: "Group nesting is too deep"
+                    description:
+                      key: "error.groupservice.group_nesting_too_deep_description"
+                      defaultValue: "The group's members are nested more than 32 levels deep, which cannot be expanded"
+                result-limit-exceeded-in-composite-mode:
+                  summary: The role has more assignments than composite mode can read
+                  value:
+                    code: "ROL-1017"
+                    message:
+                      key: "error.roleservice.result_limit_exceeded_in_composite_mode"
+                      defaultValue: "Result limit exceeded in composite mode"
+                    description:
+                      key: "error.roleservice.result_limit_exceeded_in_composite_mode_description"
+                      defaultValue: "The total number of records exceeds the maximum limit in composite mode"
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                unauthorized:
+                  summary: The caller may not delete roles in the role's organization unit
+                  value:
+                    code: "SSE-4030"
+                    message:
+                      key: "error.unauthorized"
+                      defaultValue: "Unauthorized"
+                    description:
+                      key: "error.unauthorized_description"
+                      defaultValue: "The caller is not authorized to perform this operation"
+                shared-role-read-only:
+                  summary: Role deleted by a caller confined to an organization unit it is shared into
+                  value:
+                    code: "ROL-1045"
+                    message:
+                      key: "error.roleservice.shared_role_read_only"
+                      defaultValue: "Shared role is read only"
+                    description:
+                      key: "error.roleservice.shared_role_read_only_description"
+                      defaultValue: "Only the organization unit that owns the role can change or delete it. Manage its assignments in this organization unit instead"
         "404":
           description: Role not found
           content:
@@ -797,6 +937,8 @@ paths:
                     description:
                       key: "error.roleservice.invalid_offset_parameter_description"
                       defaultValue: "The offset parameter must be a non-negative integer"
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           description: Role not found
           content:
@@ -979,7 +1121,8 @@ paths:
         - Roles
       summary: Remove assignments from a role
       description: |
-        Removes one or more user or group assignments from the specified role.
+        Removes one or more user or group assignments from the specified role. A request can
+        name at most 100 assignments.
 
         An assignment that a user share mandates goes only when the user share stops naming the
         role. A direct assignment of the same role to the same user in the same organization unit
@@ -1033,6 +1176,16 @@ paths:
                     description:
                       key: "error.roleservice.empty_assignments_list_description"
                       defaultValue: "At least one assignment must be provided"
+                too-many-assignments:
+                  summary: More assignments than one request can remove
+                  value:
+                    code: "ROL-1042"
+                    message:
+                      key: "error.roleservice.too_many_assignments"
+                      defaultValue: "Too many assignments"
+                    description:
+                      key: "error.roleservice.too_many_assignments_description"
+                      defaultValue: "A request can remove at most 100 assignments"
                 assignment-mandated:
                   summary: The assignment exists only because a user share mandates it
                   value:
@@ -1195,6 +1348,8 @@ paths:
                   excludedOuIds: ["acme-trial-customers"]
         "400":
           $ref: '#/components/responses/RoleSharingPolicyCreateBadRequest'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/RoleNotFound'
         "409":
@@ -1254,6 +1409,8 @@ paths:
                 links: []
         "400":
           $ref: '#/components/responses/RoleSharingPolicyListBadRequest'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/RoleNotFound'
         "500":
@@ -1284,6 +1441,8 @@ paths:
                 childUnits:
                   mode: all
                   excludedOuIds: ["acme-trial-customers"]
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/RoleSharingPolicyNotFound'
         "500":
@@ -1352,6 +1511,8 @@ paths:
                   excludedOuIds: ["acme-trial-customers"]
         "400":
           $ref: '#/components/responses/RoleSharingPolicyUpdateBadRequest'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/RoleSharingPolicyNotFound'
         "409":
@@ -1375,6 +1536,8 @@ paths:
             Sharing policy deleted, or the role holds no policy under that id.
         "400":
           $ref: '#/components/responses/RoleSharingPolicyDeleteBadRequest'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/RoleNotFound'
         "409":
@@ -1434,6 +1597,8 @@ paths:
                         editable: true
         "400":
           $ref: '#/components/responses/RoleOverlayRulesBadRequest'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "404":
           $ref: '#/components/responses/RoleOverlayNotResolvable'
         "500":
@@ -1495,11 +1660,21 @@ components:
       name: filter
       required: false
       description: |
-        Lists the roles one organization unit owns, followed by the roles shared with it. The only
-        supported filter is `ouId eq "<organization unit ID>"`.
+        Lists the roles one organization unit owns, followed by the roles shared with it. With
+        `projectId`, lists only the project's roles that organization unit owns. The only supported
+        filter is `ouId eq "<organization unit ID>"`.
       schema:
         type: string
       example: 'ouId eq "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"'
+    roleProjectIdQueryParam:
+      in: query
+      name: projectId
+      required: false
+      description: |
+        Lists the roles of the project. A project that does not exist has no roles.
+      schema:
+        type: string
+      example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
     assignmentFilterQueryParam:
       in: query
       name: filter
@@ -1548,6 +1723,20 @@ components:
       example: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
 
   responses:
+    Forbidden:
+      description: The caller may not perform the operation in the organization unit of the resource
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "SSE-4030"
+            message:
+              key: "error.unauthorized"
+              defaultValue: "Unauthorized"
+            description:
+              key: "error.unauthorized_description"
+              defaultValue: "The caller is not authorized to perform this operation"
     RoleSharingPolicyCreateBadRequest:
       description: |
         The policy is not one the issuing organization unit may write. The code says which kind of
@@ -1978,6 +2167,9 @@ components:
           type: string
           readOnly: true
           description: "Handle of the organization unit this role belongs to"
+        projectId:
+          type: string
+          description: "ID of the project this role belongs to. Absent when it belongs to no project."
         isReadOnly:
           type: boolean
           readOnly: true
@@ -1991,6 +2183,13 @@ components:
       type: object
       required: [id, name, ouId, permissions]
       properties:
+        isReadOnly:
+          type: boolean
+          readOnly: true
+          description: |
+            Whether the role is read only: declared in a resource file, or deployed by a control
+            plane, which only a later deploy from the control plane changes.
+          example: false
         id:
           type: string
           format: uuid
@@ -2010,6 +2209,9 @@ components:
           type: string
           readOnly: true
           description: "Handle of the organization unit this role belongs to"
+        projectId:
+          type: string
+          description: "ID of the project this role belongs to. Absent when it belongs to no project."
         isOwnedByOU:
           type: boolean
           readOnly: true
@@ -2033,7 +2235,7 @@ components:
 
     CreateRoleRequest:
       type: object
-      required: [name, ouId]
+      required: [name]
       properties:
         name:
           type: string
@@ -2044,7 +2246,12 @@ components:
         ouId:
           type: string
           format: uuid
-          description: "ID of the organization unit this role belongs to"
+          description: "ID of the organization unit this role belongs to. Defaults to the system organization unit."
+        projectId:
+          type: string
+          description: |
+            ID of the project this role belongs to. A role in a project must be in the system
+            organization unit. Without `projectId`, the role belongs to no project.
         permissions:
           type: array
           items:
@@ -2058,7 +2265,7 @@ components:
 
     UpdateRoleRequest:
       type: object
-      required: [name, ouId, permissions]
+      required: [name, permissions]
       properties:
         name:
           type: string
@@ -2069,7 +2276,12 @@ components:
         ouId:
           type: string
           format: uuid
-          description: "The organization unit the update is made as: the owner, an organization unit the role is shared with, or one to move the role to"
+          description: "The organization unit the update is made as: the owner, an organization unit the role is shared with, or one to move the role to. When omitted, the role stays in its organization unit."
+        projectId:
+          type: string
+          description: |
+            ID of the project this role belongs to. Leaving it out keeps the role in its current
+            project, and a different project moves it, unless the role is shared.
         permissions:
           type: array
           items:

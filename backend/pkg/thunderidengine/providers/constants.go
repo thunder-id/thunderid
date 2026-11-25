@@ -41,12 +41,19 @@ const (
 	FlowTypeRegistration FlowType = "REGISTRATION"
 	// FlowTypeUserOnboarding represents an admin-initiated user onboarding flow.
 	FlowTypeUserOnboarding FlowType = "USER_ONBOARDING"
+	// FlowTypeSelf represents a flow a signed-in user runs on their own account.
+	FlowTypeSelf FlowType = "SELF"
+	// FlowTypeAdminInitiated represents a flow an administrator starts for a user, which the user
+	// finishes.
+	FlowTypeAdminInitiated FlowType = "ADMIN_INITIATED"
 	// FlowTypeRecovery represents a flow execution for account recovery (e.g., password reset).
 	FlowTypeRecovery FlowType = "RECOVERY"
 	// FlowTypeSignOut represents a flow execution for terminating an SSO session.
 	FlowTypeSignOut FlowType = "SIGNOUT"
 	// FlowTypeAdministration represents an administrator-designed operational flow.
 	FlowTypeAdministration FlowType = "ADMINISTRATION"
+	// FlowTypeInvitation represents a flow that brings a user into the caller's organization unit by invite.
+	FlowTypeInvitation FlowType = "INVITATION"
 	// FlowTypeSystem represents a flow a service runs in process, such as revoking what a change
 	// invalidates. It is left out of ValidFlowTypes, so no API creates or starts one.
 	FlowTypeSystem FlowType = "SYSTEM"
@@ -59,9 +66,12 @@ var ValidFlowTypes = []FlowType{
 	FlowTypeAuthentication,
 	FlowTypeRegistration,
 	FlowTypeUserOnboarding,
+	FlowTypeSelf,
+	FlowTypeAdminInitiated,
 	FlowTypeRecovery,
 	FlowTypeSignOut,
 	FlowTypeAdministration,
+	FlowTypeInvitation,
 	FlowTypeDeviceGrant,
 }
 
@@ -263,6 +273,22 @@ func (ec EntityCategory) String() string {
 	return string(ec)
 }
 
+// AnyAgentType is the allowed agent types entry that admits an agent of any agent type. It is valid
+// only as the sole entry of the list.
+const AnyAgentType = "*"
+
+// AgentKind is the kind of an agent, fixed once the agent is created. The empty kind is an ordinary agent.
+type AgentKind string
+
+// AgentKindPersonalAssistant is the kind of a personal assistant agent: an agent owned by a user and acting
+// only on that user's behalf.
+const AgentKindPersonalAssistant AgentKind = "personal-assistant"
+
+// IsValid reports whether the kind is a known one. The empty kind, an ordinary agent, is valid.
+func (k AgentKind) IsValid() bool {
+	return k == "" || k == AgentKindPersonalAssistant
+}
+
 // IDTokenResponseType is the response format of the ID token.
 type IDTokenResponseType string
 
@@ -363,6 +389,28 @@ const (
 
 	// AccessHoldReasonLifespanEnded is a lifespan that has reached its end.
 	AccessHoldReasonLifespanEnded AccessHoldReason = "LIFESPAN_ENDED"
+
+	// AccessHoldReasonOwnerSuspension is a suspension the owner of the identity placed, such as the owner of a
+	// personal agent.
+	AccessHoldReasonOwnerSuspension AccessHoldReason = "OWNER_SUSPENSION"
+
+	// AccessHoldReasonCascadedSuspension is a suspension carried from the identity it depends on, such as a personal
+	// agent suspended together with its owner.
+	AccessHoldReasonCascadedSuspension AccessHoldReason = "CASCADED_SUSPENSION"
+)
+
+// SuspensionAppliedBy says who placed a suspension.
+type SuspensionAppliedBy string
+
+const (
+	// SuspensionAppliedByOrganization is a suspension an administrator of the organization placed.
+	SuspensionAppliedByOrganization SuspensionAppliedBy = "organization"
+
+	// SuspensionAppliedByOwner is a suspension the owner of the identity placed.
+	SuspensionAppliedByOwner SuspensionAppliedBy = "owner"
+
+	// SuspensionAppliedByCascade is a suspension carried from the identity it depends on, such as its owner's.
+	SuspensionAppliedByCascade SuspensionAppliedBy = "cascade"
 )
 
 // String returns the string representation of the hold reason.
@@ -388,6 +436,10 @@ const (
 	// gives way, since recovery is how a locked account is released, except for a method whose
 	// secret can be guessed, such as a password.
 	AccessPlaneRecovery AccessPlane = "recovery"
+
+	// AccessPlaneVerification is a contact attribute being verified. A suspension applies here. An
+	// automatic lock neither holds nor counts.
+	AccessPlaneVerification AccessPlane = "verification"
 
 	// AccessPlaneSession is a subject being resolved at the grant, from a session or a flow.
 	AccessPlaneSession AccessPlane = "session"
@@ -441,6 +493,17 @@ const (
 
 	// AccessRefusalReasonExpired says the account's lifespan has ended. It never states when.
 	AccessRefusalReasonExpired AccessRefusalReason = "expired"
+)
+
+// VerificationChannel is the channel a verification challenge for a contact attribute is sent on.
+type VerificationChannel string
+
+const (
+	// VerificationChannelEmail sends the challenge to an email address.
+	VerificationChannelEmail VerificationChannel = "email"
+
+	// VerificationChannelSMS sends the challenge to a mobile number.
+	VerificationChannelSMS VerificationChannel = "sms"
 )
 
 // ConsentStatus defines the possible statuses for a consent record.
@@ -548,10 +611,15 @@ const (
 	// InputTypeUserTypeSelect represents a user type selection input type. As with USER_SELECT the
 	// client sources the candidates, and the value submitted is a user type handle.
 	InputTypeUserTypeSelect = "USER_TYPE_SELECT"
+	// InputTypeRoleSelect represents a role selection input type. The server supplies the candidates as role
+	// identifiers, and the value submitted is one or more of them, separated by spaces.
+	InputTypeRoleSelect = "ROLE_SELECT"
 	// InputTypeNumber represents a numeric input type.
 	InputTypeNumber = "NUMBER_INPUT"
 	// InputTypeDate represents a date input type.
 	InputTypeDate = "DATE_INPUT"
+	// InputTypeDateTime represents a date and time input type.
+	InputTypeDateTime = "DATE_TIME_INPUT"
 	// InputTypeBoolean represents a boolean (checkbox) input type.
 	InputTypeBoolean = "BOOLEAN_INPUT"
 	// InputTypeConnectionSelect is the type of a flow variable whose value is the identifier of a connection. It is
@@ -579,8 +647,10 @@ var ValidInputTypes = map[string]bool{
 	InputTypeUserSelect:     true,
 	InputTypeAuthFlowSelect: true,
 	InputTypeUserTypeSelect: true,
+	InputTypeRoleSelect:     true,
 	InputTypeNumber:         true,
 	InputTypeDate:           true,
+	InputTypeDateTime:       true,
 	InputTypeBoolean:        true,
 }
 

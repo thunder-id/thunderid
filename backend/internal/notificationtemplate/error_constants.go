@@ -23,6 +23,13 @@ var (
 	// surfaces ErrorTemplateReadOnly.
 	errDeclarativeTemplate = errors.New("a notification template declared in a file cannot be changed through the API")
 
+	// errProjectRefused rolls back an update whose new project is refused; the service returns the refusal.
+	errProjectRefused = errors.New("the project of the notification template was refused")
+
+	// errTemplateAccessDenied rolls back a transaction when the caller may not act on the template; the
+	// service surfaces the authorization error.
+	errTemplateAccessDenied = errors.New("the caller may not act on the notification template")
+
 	// errResultLimitExceededInCompositeMode is returned when composite store results exceed the configured limit.
 	errResultLimitExceededInCompositeMode = errors.New("result limit exceeded in composite mode")
 )
@@ -433,4 +440,73 @@ var (
 			DefaultValue: "The template body exceeds the maximum allowed length of {{param(maxLength)}} characters",
 		},
 	}
+
+	// ErrorInvalidProject is returned when a template names a project that does not exist.
+	ErrorInvalidProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "NTM-1029",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.notificationtemplateservice.invalid_project",
+			DefaultValue: "Invalid project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.notificationtemplateservice.invalid_project_description",
+			DefaultValue: "No project exists with the given project ID",
+		},
+	}
+
+	// ErrorOUNotInProject is returned when a template names an organization unit outside its project.
+	ErrorOUNotInProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "NTM-1030",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.notificationtemplateservice.ou_not_in_project",
+			DefaultValue: "Organization unit not in project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.notificationtemplateservice.ou_not_in_project_description",
+			DefaultValue: "The organization unit must belong to the project",
+		},
+	}
+
+	// ErrorProjectRequired is returned when a template is created without a project on a deployment that
+	// requires one.
+	ErrorProjectRequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "NTM-1031",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.notificationtemplateservice.project_required",
+			DefaultValue: "Project required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.notificationtemplateservice.project_required_description",
+			DefaultValue: "A notification template must belong to a project. " +
+				"Set projectId to the project it belongs to",
+		},
+	}
+
+	// ErrorManagedTemplate is the error returned when attempting to change a template a control plane
+	// deployed. Only a deploy from the control plane changes or removes it.
+	ErrorManagedTemplate = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "NTM-1032",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.notificationtemplateservice.managed_template",
+			DefaultValue: "Cannot modify a template deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.notificationtemplateservice.managed_template_description",
+			DefaultValue: "The template was deployed by the control plane and can only be changed there",
+		},
+	}
 )
+
+// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+var errNilEventBus = errors.New("the notification template service needs an event bus")
+
+// errTemplateNotFoundNoop is returned by deleteTemplate when the template does not exist. DeleteTemplate
+// turns it into a success, so it never reaches a caller.
+var errTemplateNotFoundNoop = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: ErrorTemplateNotFound.Code,
+}

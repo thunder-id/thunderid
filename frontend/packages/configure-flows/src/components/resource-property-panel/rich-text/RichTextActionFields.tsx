@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {Box, FormControl, FormControlLabel, FormLabel, Stack, Switch, TextField, Typography} from '@wso2/oxygen-ui';
+import {Box, FormControlLabel, Stack, Switch, TextField, Typography} from '@wso2/oxygen-ui';
 import {useEdges, useReactFlow} from '@xyflow/react';
 import {useEffect, useMemo, useState, type ReactElement} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -136,23 +136,17 @@ function RichTextActionFields({resource, onChange}: RichTextActionFieldsPropsInt
         />
       </Box>
       {isEnabled && (
-        <FormControl fullWidth size="small">
-          <FormLabel htmlFor="rich-text-action-ref">
-            {t('flows:core.elements.richText.action.ref.label', 'Connected step')}
-          </FormLabel>
-          <TextField
-            id="rich-text-action-ref"
-            data-testid="rich-text-action-ref"
-            value={connectedTarget}
-            placeholder={t(
-              'flows:core.elements.richText.action.ref.placeholder',
-              'Draw an edge from the link to a step',
-            )}
-            size="small"
-            fullWidth
-            slotProps={{input: {readOnly: true}}}
-          />
-        </FormControl>
+        <TextField
+          labelPlacement="top"
+          label={t('flows:core.elements.richText.action.ref.label', 'Connected step')}
+          id="rich-text-action-ref"
+          data-testid="rich-text-action-ref"
+          value={connectedTarget}
+          placeholder={t('flows:core.elements.richText.action.ref.placeholder', 'Draw an edge from the link to a step')}
+          size="small"
+          fullWidth
+          slotProps={{input: {readOnly: true}}}
+        />
       )}
     </Stack>
   );

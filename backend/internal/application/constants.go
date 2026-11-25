@@ -32,9 +32,19 @@ const (
 // projectIDQueryParam is the query parameter that lists the applications of one project.
 const projectIDQueryParam = "projectId"
 
-// Error codes the project service returns when it resolves the organization unit of a project. They
-// are matched by value, since the Data Plane must not link the Control Plane only project package.
+// clientSecretNotice is what the regenerate_application_secret tool says about the secret it returns.
+const clientSecretNotice = "This is the only time this client secret is shown, and no tool can return it again. " +
+	"Hand it to the administrator to keep in a secret manager, and don't repeat it in the conversation."
+
+// clientSecretDisposition is what an update does with the application's client secret.
+type clientSecretDisposition int
+
 const (
-	projectNotFoundErrorCode = "PRJ-1002"
-	ouNotInProjectErrorCode  = "PRJ-1013"
+	// clientSecretUnchanged: no secret was supplied, the client has no use for one, or the one
+	// supplied is the one the application already has.
+	clientSecretUnchanged clientSecretDisposition = iota
+	// clientSecretSet: the application had no secret and gets one, so nothing was issued under one.
+	clientSecretSet
+	// clientSecretRotated: the supplied secret replaces the one the application has.
+	clientSecretRotated
 )

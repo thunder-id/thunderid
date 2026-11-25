@@ -33,6 +33,7 @@ type TemplateDesign struct {
 type Template struct {
 	ID          string          `json:"id"`
 	OUID        string          `json:"ouId"`
+	ProjectID   string          `json:"projectId,omitempty"`
 	Handle      string          `json:"handle"`
 	IsReadOnly  bool            `json:"isReadOnly"`
 	DisplayName string          `json:"displayName"`
@@ -47,17 +48,20 @@ type TemplateSummary struct {
 	Handle      string `json:"handle"`
 	DisplayName string `json:"displayName"`
 	Description string `json:"description,omitempty"`
+	ProjectID   string `json:"projectId,omitempty"`
 	Self        string `json:"self"`
 }
 
 // CreateTemplateRequest is the request body for creating a template. The channel is taken from the
-// path, not the body. The handle and ouId are immutable, set only at creation.
+// path, not the body. The handle and ouId are immutable, set only at creation. A template in a project
+// may leave ouId out to be placed in the system organization unit.
 type CreateTemplateRequest struct {
 	// ID is optional and set only by an import, so a template keeps the id it has where it was
 	// authored. The API never reads it from the request body. An empty ID is generated.
 	ID          string          `json:"-"`
 	Handle      string          `json:"handle"`
 	OUID        string          `json:"ouId"`
+	ProjectID   string          `json:"projectId,omitempty"`
 	DisplayName string          `json:"displayName"`
 	Description string          `json:"description"`
 	Design      *TemplateDesign `json:"design,omitempty"`
@@ -65,8 +69,10 @@ type CreateTemplateRequest struct {
 }
 
 // UpdateTemplateRequest is the request body for updating a template. The handle is immutable and is
-// not part of the body; the template is identified by the id in the path.
+// not part of the body; the template is identified by the id in the path. Without a projectId, the
+// template keeps its project.
 type UpdateTemplateRequest struct {
+	ProjectID   string          `json:"projectId,omitempty"`
 	DisplayName string          `json:"displayName"`
 	Description string          `json:"description"`
 	Design      *TemplateDesign `json:"design,omitempty"`
@@ -126,6 +132,7 @@ type templateDAO struct {
 	Channel     ChannelType
 	Handle      string
 	OUID        string
+	ProjectID   string
 	DisplayName string
 	Description string
 	Content     TemplateContent

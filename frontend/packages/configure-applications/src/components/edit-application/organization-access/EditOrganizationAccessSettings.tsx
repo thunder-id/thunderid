@@ -18,6 +18,10 @@ interface EditOrganizationAccessSettingsProps {
    * The application's Organization Access state, held by the edit page so it survives tab switches
    */
   access: OrganizationAccessState;
+  /**
+   * Whether the application can't be edited here
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -31,6 +35,7 @@ interface EditOrganizationAccessSettingsProps {
 export default function EditOrganizationAccessSettings({
   application,
   access,
+  readOnly = false,
 }: EditOrganizationAccessSettingsProps): JSX.Element | null {
   if (!application.ouId) {
     return null;
@@ -41,7 +46,7 @@ export default function EditOrganizationAccessSettings({
       access={access}
       ownerOuId={application.ouId}
       resourceName={application.name}
-      readOnly={application.isReadOnly === true}
+      readOnly={readOnly}
       errorNamespace="applications"
       resolveErrorMessage={getApplicationErrorMessage}
     />

@@ -331,7 +331,8 @@ var fedStrictAuthApp = testutils.Application{
 	RedirectURIs:     []string{"http://localhost:3000/callback"},
 	AllowedUserTypes: []string{fedPersonType.Handle},
 	AssertionConfig: map[string]interface{}{
-		"userAttributes": []string{"userTypeHandle", "ouId", "ouName", "ouHandle"},
+		"userAttributes": []string{
+			"userTypeHandle", "ouId", "ouName", "ouHandle", "firstName", "lastName", "city"},
 	},
 }
 
@@ -368,6 +369,8 @@ type FederatedMappingSuite struct {
 	githubIDPID     string
 	perTestAppIDs   []string
 	perTestFlowIDs  []string
+	syncClientID    string
+	syncResource    string
 
 	// Authorization mapping fixtures: an application whose auth flow runs an AuthorizationExecutor
 	// after the federated login, two resource servers (to prove a mapped permission stays scoped to
@@ -457,7 +460,7 @@ func (s *FederatedMappingSuite) SetupSuite() {
 	})
 
 	oauthIDPID, err := testutils.CreateIDP(testutils.IDP{
-		Name: "Federated Mapping OAuth Connection", Type: "OAUTH",
+		Name: "Federated Mapping OAuth Connection", Type: "OAUTH", OUID: s.ouID,
 		Properties: []testutils.IDPProperty{
 			{Name: "client_id", Value: oidcClientID},
 			{Name: "client_secret", Value: oidcClientSecret, IsSecret: true},
@@ -486,7 +489,7 @@ func (s *FederatedMappingSuite) SetupSuite() {
 	// No endpoints are set: a GitHub connection has none to set, and supplying them would bypass the
 	// base-URL override that points the defaults at the mock.
 	githubIDPID, err := testutils.CreateIDP(testutils.IDP{
-		Name: "Federated Mapping GitHub Connection", Type: "GITHUB",
+		Name: "Federated Mapping GitHub Connection", Type: "GITHUB", OUID: s.ouID,
 		Properties: []testutils.IDPProperty{
 			{Name: "client_id", Value: oidcClientID},
 			{Name: "client_secret", Value: oidcClientSecret, IsSecret: true},
@@ -760,6 +763,7 @@ func (s *FederatedMappingSuite) idpFixture(config *testutils.AttributeConfigurat
 	return testutils.IDP{
 		Name:        "Federated Mapping OIDC Connection",
 		Description: "Generic OIDC connection for federated attribute mapping tests",
+		OUID:        s.ouID,
 		Type:        "OIDC",
 		Properties: []testutils.IDPProperty{
 			{Name: "client_id", Value: oidcClientID},
@@ -876,6 +880,13 @@ func (s *FederatedMappingSuite) registerEntity(
 	config *testutils.AttributeConfiguration, user *testutils.OIDCUserInfo) *testutils.User {
 	s.T().Helper()
 	s.applyConfig(config)
+	return s.registerWithAppliedConfig(user)
+}
+
+// registerWithAppliedConfig drives the registration flow like registerEntity, under the configuration
+// already applied to the connection.
+func (s *FederatedMappingSuite) registerWithAppliedConfig(user *testutils.OIDCUserInfo) *testutils.User {
+	s.T().Helper()
 	s.mockOIDC.AddUser(user)
 	s.activeSub = user.Sub
 

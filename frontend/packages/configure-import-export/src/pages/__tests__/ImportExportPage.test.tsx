@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {render, screen, waitFor, userEvent, fireEvent} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import ImportExportPage from '../ImportExportPage';
@@ -26,9 +27,29 @@ vi.mock('@thunderid/logger/react', () => ({
   }),
 }));
 
+const mockConfig = vi.hoisted(() => ({productName: ''}));
+
+vi.mock('@thunderid/contexts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@thunderid/contexts')>();
+  return {
+    ...actual,
+    useConfig: () => {
+      const context = actual.useConfig();
+      if (!mockConfig.productName) {
+        return context;
+      }
+      return {
+        ...context,
+        config: {...context.config, brand: {...context.config.brand, product_name: mockConfig.productName}},
+      };
+    },
+  };
+});
+
 describe('ImportExportPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockConfig.productName = '';
   });
 
   it('renders the page with title and subtitle', () => {
@@ -53,11 +74,29 @@ describe('ImportExportPage', () => {
     expect(screen.getByText('Export')).toBeInTheDocument();
   });
 
+  it('offers only what the admin may do', () => {
+    render(
+      <CapabilitiesProvider capabilities={{can: (resource) => resource === 'export', isLoading: false}}>
+        <ImportExportPage />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.queryByText('Import')).not.toBeInTheDocument();
+    expect(screen.getByText('Export')).toBeInTheDocument();
+  });
+
   it('renders option descriptions', () => {
     render(<ImportExportPage />);
 
     expect(screen.getByText('Bring in an existing ThunderID configuration file.')).toBeInTheDocument();
     expect(screen.getByText('Download your current configuration as a file.')).toBeInTheDocument();
+  });
+
+  it('names the configured product in the import description', () => {
+    mockConfig.productName = 'Acme IAM';
+    render(<ImportExportPage />);
+
+    expect(screen.getByText('Bring in an existing Acme IAM configuration file.')).toBeInTheDocument();
   });
 
   it('renders the close button with proper aria-label', () => {

@@ -104,6 +104,8 @@ func (e *inviteExecutor) executeGenerate(ctx *providers.NodeContext) (*providers
 		"appName":    ctx.Application.Name,
 	}
 
+	// The onboarding admin sees the link, for a screen that shows it when no email can be sent. An invitation's admin
+	// does not: with it they could accept for an existing user, so the email step surfaces it only when sending fails.
 	if ctx.FlowType == providers.FlowTypeUserOnboarding {
 		execResp.AdditionalData[common.DataInviteLink] = inviteLink
 	}
@@ -122,6 +124,11 @@ func (e *inviteExecutor) executeVerify(ctx *providers.NodeContext) (*providers.E
 		RuntimeData:    make(map[string]string),
 	}
 
+	proof, err := pinnedVerificationEvidence(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	// If the user has not yet provided the invite token, request it
 	if !e.HasRequiredInputs(ctx, execResp) {
 		execResp.Status = providers.ExecUserInputRequired
@@ -132,7 +139,7 @@ func (e *inviteExecutor) executeVerify(ctx *providers.NodeContext) (*providers.E
 	inviteTokenInput := ctx.UserInputs[userInputInviteToken]
 	storedToken, hasStoredToken := ctx.RuntimeData[common.RuntimeKeyStoredInviteToken]
 
-	if !hasStoredToken {
+	if !hasStoredToken || storedToken == "" {
 		logger.Debug(ctx.Context, "No invite token found in runtime data")
 		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrInvalidInviteToken
@@ -145,6 +152,16 @@ func (e *inviteExecutor) executeVerify(ctx *providers.NodeContext) (*providers.E
 		execResp.Status = providers.ExecFailure
 		execResp.Error = &ErrInvalidInviteToken
 		return execResp, nil
+	}
+
+	if proof != nil {
+		proof.Passed = true
+		shared, err := sharedVerificationEvidence(*proof)
+		if err != nil {
+			return nil, err
+		}
+
+		execResp.SharedRuntimeData = shared
 	}
 
 	logger.Debug(ctx.Context, "Invite token validated successfully")

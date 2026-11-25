@@ -32,6 +32,15 @@ func TestServerConfigExporter_GetAllResourceIDs(t *testing.T) {
 	assert.Equal(t, []string{"cors"}, ids)
 }
 
+func TestServerConfigExporter_GetAllResourceIDs_LeavesOutGateway(t *testing.T) {
+	service := NewServerConfigServiceMock(t)
+	service.EXPECT().ListConfigNames(mock.Anything).Return([]ConfigName{ConfigNameCORS, ConfigNameGateway}, nil)
+
+	ids, svcErr := newServerConfigExporter(service, nil).GetAllResourceIDs(context.Background())
+	assert.Nil(t, svcErr)
+	assert.Equal(t, []string{"cors"}, ids)
+}
+
 func TestServerConfigExporter_GetAllResourceIDs_Error(t *testing.T) {
 	service := NewServerConfigServiceMock(t)
 	service.EXPECT().ListConfigNames(mock.Anything).Return(nil, &common.InternalServerError)
@@ -63,6 +72,14 @@ func TestServerConfigExporter_GetResourceByID_Error(t *testing.T) {
 
 	_, _, svcErr := newServerConfigExporter(service, nil).GetResourceByID(context.Background(), "cors")
 	assert.Same(t, &common.InternalServerError, svcErr)
+}
+
+// An export that names the gateway section is refused as one that does not name a section, the same
+// as an export of everything leaves it out; the mock fails the test if the section is read.
+func TestServerConfigExporter_GetResourceByID_RefusesGateway(t *testing.T) {
+	_, _, svcErr := newServerConfigExporter(NewServerConfigServiceMock(t), nil).
+		GetResourceByID(context.Background(), string(ConfigNameGateway))
+	assert.Same(t, &ErrorUnsupportedConfigName, svcErr)
 }
 
 func TestServerConfigExporter_ValidateResource(t *testing.T) {

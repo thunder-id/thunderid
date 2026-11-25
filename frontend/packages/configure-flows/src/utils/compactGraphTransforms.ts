@@ -115,7 +115,9 @@ export default function collapseExecutorChains(
       return false;
     }
     const outgoing = outgoingByNode.get(node.id) ?? [];
-    return outgoing.length === 1 && isSuccessHandle(outgoing[0].sourceHandle);
+    return (
+      outgoing.length === 1 && outgoing[0].data?.['conditionSkip'] !== true && isSuccessHandle(outgoing[0].sourceHandle)
+    );
   };
 
   // A chain link A -> B holds when both ends are stackable executors and B's

@@ -1,8 +1,8 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {Box, Card, CardContent, Stack, Typography} from '@wso2/oxygen-ui';
-import {KeyRound, Lock, LogOut, UserCog, UserPlus} from '@wso2/oxygen-ui-icons-react';
+import {KeyRound, Lock, LogOut, Send, ShieldCheck, UserCheck, UserCog, UserPlus} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {FlowType} from '../../models/flows';
@@ -67,12 +67,36 @@ export default function SelectFlowType({selectedType, onTypeChange, onReadyChang
       icon: <UserCog size={28} />,
     },
     {
+      type: FlowType.INVITATION,
+      labelKey: 'flows:create.type.invitation.label',
+      labelDefault: 'Invitation',
+      descriptionKey: 'flows:create.type.invitation.description',
+      descriptionDefault: 'Invite an existing or new user into your organization unit, with roles',
+      icon: <Send size={28} />,
+    },
+    {
       type: FlowType.DEVICE_GRANT,
       labelKey: 'flows:create.type.deviceGrant.label',
       labelDefault: 'Device authorization',
       descriptionKey: 'flows:create.type.deviceGrant.description',
       descriptionDefault: 'Authorize input-constrained devices through a browser sign-in flow',
       icon: <KeyRound size={28} />,
+    },
+    {
+      type: FlowType.SELF,
+      labelKey: 'flows:create.type.self.label',
+      labelDefault: 'Self',
+      descriptionKey: 'flows:create.type.self.description',
+      descriptionDefault: 'Let signed-in users manage their own account, such as verifying an email address',
+      icon: <UserCheck size={28} />,
+    },
+    {
+      type: FlowType.ADMIN_INITIATED,
+      labelKey: 'flows:create.type.adminInitiated.label',
+      labelDefault: 'Administrator-initiated',
+      descriptionKey: 'flows:create.type.adminInitiated.description',
+      descriptionDefault: 'Let administrators start an action for a user, such as verifying their email address',
+      icon: <ShieldCheck size={28} />,
     },
   ];
 

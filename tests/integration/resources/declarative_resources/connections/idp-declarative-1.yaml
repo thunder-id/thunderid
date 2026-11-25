@@ -25,3 +25,15 @@ attributeConfiguration:
   accountLinking:
     attributes:
       - email
+  # The rule targets a role and a group decl-ou-1 owns, so the loader's organization unit check accepts it.
+  authorizationMapping:
+    rules:
+      - claim: groups
+        values:
+          - operator: equals
+            value: admins
+            targets:
+              - type: role
+                id: decl-role-1
+              - type: group
+                id: decl-group-1

@@ -1,8 +1,8 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {getInitials} from '@thunderid/components';
-import {useConfig} from '@thunderid/contexts';
+import {BotCogIcon, ForbiddenNotice, getInitials} from '@thunderid/components';
+import {useCapabilitiesContext, useConfig} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {SignOutButton, User, useThunderID} from '@thunderid/react';
 import {
@@ -27,6 +27,7 @@ import {
   Languages,
   Layers,
   LayoutGrid,
+  ListChecks,
   LogOut,
   Mail,
   MessageSquare,
@@ -68,6 +69,8 @@ interface NavRoute {
   text: string;
   icon: JSX.Element;
   path?: string;
+  /** The catalog resource the page shows; the entry is hidden from admins who can't view it. */
+  resource?: string;
   children?: NavRoute[];
 }
 
@@ -80,6 +83,11 @@ function SidebarFooterButtons(): ReactNode {
   const {t} = useTranslation();
   const navigate = useNavigate();
   const {collapsed} = useSidebar();
+  const {can, isLoading} = useCapabilitiesContext();
+
+  if (!isLoading && !can('import', 'create') && !can('export', 'create')) {
+    return null;
+  }
 
   const buttonSx = collapsed ? ICON_BUTTON_SX : FULL_BUTTON_SX;
 
@@ -144,13 +152,17 @@ function SidebarPreference({collapsed}: {collapsed: boolean}): null {
 
 export default function DashboardLayout({collapseSidebar = false}: DashboardLayoutProps): ReactNode {
   const {clearSession, discovery} = useThunderID();
-  const {isTrustedIssuerGenericOidc, getTrustedIssuerClientId, getClientUrl} = useConfig();
+  const {isTrustedIssuerGenericOidc, getTrustedIssuerClientId, getClientUrl, config} = useConfig();
   const {t} = useTranslation();
   const logger = useLogger();
-  const navigate = useNavigate();
+  // When sign-in runs on a backend (BFF), the backend holds the session and its sign-out endpoint
+  // ends it at the IdP, so signOut() must go there instead of the IdP directly.
+  const signsOutThroughBackend = Boolean(
+    (config.sdk?.endpoints as {backend?: {signOut?: string}} | undefined)?.backend?.signOut,
+  );
 
   const handleSignOut = (signOut: () => Promise<void>): void => {
-    if (isTrustedIssuerGenericOidc()) {
+    if (isTrustedIssuerGenericOidc() && !signsOutThroughBackend) {
       try {
         clearSession();
       } catch (error: unknown) {
@@ -200,15 +212,24 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
         routes: [
           {
             id: 'applications',
+            resource: 'app',
             text: t('navigation:pages.applications'),
             icon: <LayoutGrid />,
             path: RouteConfig.applications.list(),
           },
           {
             id: 'resource-servers',
+            resource: 'rs',
             text: t('navigation:pages.resourceServers', 'Resource servers'),
             icon: <Server />,
             path: RouteConfig.resourceServers.list(),
+          },
+          {
+            id: 'authorization-detail-types',
+            resource: 'authzdetail',
+            text: t('navigation:pages.authorizationDetailTypes', 'Intents'),
+            icon: <ListChecks />,
+            path: RouteConfig.authorizationDetailTypes.list(),
           },
         ],
       },
@@ -217,33 +238,45 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
         routes: [
           {
             id: 'users',
+            resource: 'user',
             text: t('navigation:pages.users'),
             icon: <UsersRound />,
             path: RouteConfig.users.list(),
           },
           {
             id: 'agents',
+            resource: 'agent',
             text: t('navigation:pages.agents', 'Agents'),
             icon: <Bot />,
             path: RouteConfig.agents.list(),
           },
           {
             id: 'groups',
+            resource: 'group',
             text: t('navigation:pages.groups'),
             icon: <Group />,
             path: RouteConfig.groups.list(),
           },
           {
             id: 'roles',
+            resource: 'role',
             text: t('navigation:pages.roles'),
             icon: <ShieldCheck />,
             path: RouteConfig.roles.list(),
           },
           {
             id: 'user-types',
+            resource: 'usertype',
             text: t('navigation:pages.userTypes'),
             icon: <UserRoundCog />,
             path: RouteConfig.userTypes.list(),
+          },
+          {
+            id: 'agent-types',
+            resource: 'agenttype',
+            text: t('navigation:pages.agentTypes', 'Agent types'),
+            icon: <BotCogIcon />,
+            path: RouteConfig.agentTypes.list(),
           },
         ],
       },
@@ -252,18 +285,21 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
         routes: [
           {
             id: 'organization-units',
+            resource: 'ou',
             text: t('navigation:pages.organizationUnits'),
             icon: <Building />,
             path: RouteConfig.organizationUnits.list(),
           },
           {
             id: 'flows',
+            resource: 'flow',
             text: t('navigation:pages.flows'),
             icon: <Workflow />,
             path: RouteConfig.flows.list(),
           },
           {
             id: 'connections',
+            resource: 'connection',
             text: t('navigation:pages.connections'),
             icon: <Layers />,
             path: RouteConfig.connections.list(),
@@ -275,12 +311,14 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
             children: [
               {
                 id: 'credentials',
+                resource: 'vc',
                 text: t('navigation:pages.credentials'),
                 icon: <IdCard />,
                 path: RouteConfig.verifiableCredentials.list(),
               },
               {
                 id: 'presentations',
+                resource: 'vc',
                 text: t('navigation:pages.presentations'),
                 icon: <ShieldCheck />,
                 path: RouteConfig.verifiablePresentations.list(),
@@ -294,6 +332,7 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
         routes: [
           {
             id: 'design',
+            resource: 'design',
             text: t('navigation:pages.design', 'Design'),
             icon: <Palette />,
             path: RouteConfig.design.list(),
@@ -305,12 +344,14 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
             children: [
               {
                 id: 'email-templates',
+                resource: 'notificationtemplate',
                 text: t('navigation:pages.emailTemplates', 'Email templates'),
                 icon: <Mail />,
                 path: RouteConfig.notificationTemplates.channel('email'),
               },
               {
                 id: 'sms-templates',
+                resource: 'notificationtemplate',
                 text: t('navigation:pages.smsTemplates', 'SMS templates'),
                 icon: <MessageSquare />,
                 path: RouteConfig.notificationTemplates.channel('sms'),
@@ -319,6 +360,7 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
           },
           {
             id: 'translations',
+            resource: 'i18n',
             text: t('navigation:pages.translations'),
             icon: <Languages />,
             path: RouteConfig.translations.list(),
@@ -330,6 +372,7 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
         routes: [
           {
             id: 'settings',
+            resource: 'serverconfig',
             text: t('navigation:pages.settings'),
             icon: <Settings />,
             path: RouteConfig.settings.list(),
@@ -339,6 +382,21 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
     ],
     [t],
   );
+
+  const {can, isLoading: isLoadingCapabilities, error: capabilitiesError} = useCapabilitiesContext();
+
+  // The navigation the admin may see: entries for pages they can't view, and groups left empty, are hidden.
+  const visibleRoutes: NavCategory[] = useMemo(() => {
+    const isVisible = (route: NavRoute): boolean => isLoadingCapabilities || !route.resource || can(route.resource);
+    return appRoutes
+      .map((group) => ({
+        ...group,
+        routes: group.routes
+          .map((route) => (route.children ? {...route, children: route.children.filter(isVisible)} : route))
+          .filter((route) => (route.children ? route.children.length > 0 : isVisible(route))),
+      }))
+      .filter((group) => group.routes.length > 0);
+  }, [appRoutes, can, isLoadingCapabilities]);
 
   const {pathname} = useLocation();
 
@@ -354,6 +412,17 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
       .sort((a, b) => b.path.length - a.path.length)[0];
     return match?.id;
   }, [appRoutes, pathname]);
+
+  const activeResource = useMemo(
+    () =>
+      appRoutes
+        .flatMap((group) => group.routes.flatMap((route) => route.children ?? [route]))
+        .find((route) => route.id === activeItem)?.resource,
+    [appRoutes, activeItem],
+  );
+  // A failed read forbids nothing here: the page stays, and a guarded page offers the retry itself.
+  const isPageForbidden =
+    !isLoadingCapabilities && !capabilitiesError && activeResource !== undefined && !can(activeResource);
 
   const [expandedMenus, setExpandedMenus] = useState<Record<string, boolean>>({});
   const handleToggleExpand = (id: string): void => {
@@ -414,13 +483,6 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
                       avatar={avatar}
                     />
                     <UserMenu.Divider />
-                    <UserMenu.Item
-                      label={t('common:userMenu.welcome')}
-                      onClick={() => {
-                        void navigate(RouteConfig.welcome.root());
-                      }}
-                    />
-                    <UserMenu.Divider />
                     <SignOutButton>
                       {({signOut}) => (
                         <UserMenu.Logout
@@ -441,7 +503,7 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
       <AppShell.Sidebar>
         <Sidebar activeItem={activeItem} expandedMenus={expandedMenus} onToggleExpand={handleToggleExpand}>
           <Sidebar.Nav>
-            {appRoutes.map((categoryGroup) => (
+            {visibleRoutes.map((categoryGroup) => (
               <Sidebar.Category key={categoryGroup.category}>
                 {categoryGroup.category && <Sidebar.CategoryLabel>{categoryGroup.category}</Sidebar.CategoryLabel>}
                 {categoryGroup.routes.map((route) =>
@@ -472,9 +534,7 @@ export default function DashboardLayout({collapseSidebar = false}: DashboardLayo
         </Sidebar>
       </AppShell.Sidebar>
 
-      <AppShell.Main>
-        <Outlet />
-      </AppShell.Main>
+      <AppShell.Main>{isPageForbidden ? <ForbiddenNotice /> : <Outlet />}</AppShell.Main>
 
       <AppShell.Footer>
         <Footer>

@@ -22,6 +22,8 @@ vi.mock('react-i18next', () => ({
           'This action cannot be undone. All role assignments and permissions will be permanently removed.',
         'delete.error': 'Failed to delete role. Please try again.',
         'errors.ROL-1013': 'This role is managed declaratively and cannot be edited or deleted.',
+        'errors.ROL-1039':
+          'A user share still mandates this role. Remove the role from the user shares that mandate it, then delete it again.',
         'common:actions.cancel': 'Cancel',
         'common:actions.delete': 'Delete',
         'common:status.deleting': 'Deleting...',
@@ -203,6 +205,31 @@ describe('RoleDeleteDialog', () => {
         expect(screen.getByText('Failed to delete role. Please try again.')).toBeInTheDocument();
       });
 
+      expect(mockOnClose).not.toHaveBeenCalled();
+    });
+
+    it('should tell the user to remove a role from the shares that mandate it', async () => {
+      const user = userEvent.setup();
+
+      mockMutate.mockImplementation(
+        (_roleId: string, options: {onSuccess?: () => void; onError?: (error: Error) => void}) => {
+          const error = new Error('Request failed') as Error & {response?: {data?: {code: string}}};
+          error.response = {data: {code: 'ROL-1039'}};
+          options?.onError?.(error);
+        },
+      );
+
+      renderWithProviders();
+
+      await user.click(screen.getByRole('button', {name: 'Delete'}));
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(
+            'A user share still mandates this role. Remove the role from the user shares that mandate it, then delete it again.',
+          ),
+        ).toBeInTheDocument();
+      });
       expect(mockOnClose).not.toHaveBeenCalled();
     });
 

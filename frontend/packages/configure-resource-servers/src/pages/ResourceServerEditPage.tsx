@@ -8,7 +8,13 @@ import {
   SettingsCard,
   UnsavedChangesBar,
 } from '@thunderid/components';
-import {useToast} from '@thunderid/contexts';
+import {
+  useCapabilitiesContext,
+  useHiddenResources,
+  useProjectScope,
+  useRecordAccess,
+  useToast,
+} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage, isEqualIgnoringEmpty} from '@thunderid/utils';
 import {
@@ -27,7 +33,7 @@ import {
   Typography,
 } from '@wso2/oxygen-ui';
 import {ArrowLeft, Edit} from '@wso2/oxygen-ui-icons-react';
-import {useCallback, useMemo, useState, type JSX, type SyntheticEvent} from 'react';
+import {useCallback, useEffect, useMemo, useState, type JSX, type SyntheticEvent} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Link, useNavigate, useParams, useSearchParams} from 'react-router';
 import useGetDefaultResourceServer from '../api/useGetDefaultResourceServer';
@@ -77,12 +83,23 @@ export default function ResourceServerEditPage(): JSX.Element {
   const navigate = useNavigate();
   const routes = useResourceServerRoutes();
   const {t} = useTranslation();
+  const {can} = useCapabilitiesContext();
   const {showToast} = useToast();
   const logger = useLogger('ResourceServerEditPage');
 
   const {data: resourceServer, isLoading, error, refetch} = useGetResourceServer(resourceServerId ?? '');
+  const {readOnly: isReadOnly, canDelete} = useRecordAccess('rs', resourceServer);
   const {data: defaultConfig, isLoading: isDefaultLoading, error: defaultError} = useGetDefaultResourceServer();
   const updateRs = useUpdateResourceServer();
+  const {projectId} = useProjectScope();
+  // Inside a project, a resource server of another project is not shown: the page returns to the list.
+  const isOtherProject = Boolean(projectId && resourceServer && resourceServer.projectId !== projectId);
+  // A hidden resource server is not shown either: a deep link goes to the list instead.
+  const {isHiddenResourceServer} = useHiddenResources();
+  const isHidden = isHiddenResourceServer(resourceServer?.identifier);
+  useEffect(() => {
+    if (isOtherProject || isHidden) void navigate(routes.list(), {replace: true});
+  }, [isOtherProject, isHidden, navigate, routes]);
 
   // Resolves an error through the `resourceServers` catalog. `t` defaults to the `common`
   // namespace, so this forwards explicit `ns:` prefixes unchanged and prefixes bare keys with
@@ -192,7 +209,7 @@ export default function ResourceServerEditPage(): JSX.Element {
 
   const resourceTypeTitle = t('resourceServers:listing.title', 'Resource servers');
 
-  if (isLoading) {
+  if (isLoading || isOtherProject || isHidden) {
     return (
       <>
         <DocumentTitle title={resourceTypeTitle} />
@@ -304,7 +321,7 @@ export default function ResourceServerEditPage(): JSX.Element {
             ) : (
               <>
                 <Typography variant="h3">{editedFields.name ?? resourceServer.name}</Typography>
-                {!resourceServer.isReadOnly && (
+                {!isReadOnly && (
                   <IconButton
                     size="small"
                     onClick={() => {
@@ -334,7 +351,7 @@ export default function ResourceServerEditPage(): JSX.Element {
                 />
               </Tooltip>
             )}
-            {isDefaultReady && !isDefault && !isDefaultLocked && isDefaultEligible && (
+            {isDefaultReady && !isDefault && !isDefaultLocked && isDefaultEligible && can('serverconfig', 'update') && (
               <Button variant="contained" size="small" onClick={() => setDefaultDialogOpen(true)}>
                 {t('resourceServers:actions.setAsDefault', 'Set as default')}
               </Button>
@@ -373,7 +390,7 @@ export default function ResourceServerEditPage(): JSX.Element {
                     resourceServer.description ??
                     t('resourceServers:edit.noDescription', 'No description')}
                 </Typography>
-                {!resourceServer.isReadOnly && (
+                {!isReadOnly && (
                   <IconButton
                     size="small"
                     onClick={() => {
@@ -454,7 +471,7 @@ export default function ResourceServerEditPage(): JSX.Element {
           onPDPConnectionChange={(v) => handleFieldChange('pdpConnectionId', v)}
         />
 
-        {!resourceServer.isReadOnly && (
+        {canDelete && (
           <SettingsCard
             title={t('resourceServers:edit.dangerZone.title', 'Danger zone')}
             description={
@@ -509,7 +526,7 @@ export default function ResourceServerEditPage(): JSX.Element {
           saveLabel={t('common:save', 'Save')}
           savingLabel={t('common:saving', 'Saving…')}
           isSaving={updateRs.isPending}
-          saveDisabled={Boolean(resourceServer.isReadOnly) || isIdentifierInvalid}
+          saveDisabled={isReadOnly || isIdentifierInvalid}
           error={
             updateRs.error
               ? getErrorMessage(updateRs.error, tForErrors, 'edit.saveError', 'Failed to save changes.')

@@ -404,7 +404,9 @@ type GatewayConfig struct {
 	//   - If DeclarativeResources.Enabled = false: behaves as "mutable"
 	Store string `yaml:"store" json:"store"`
 	// AutoApply controls whether a write on this control plane automatically captures and applies
-	// the resulting configuration to the default gateway. Off by default: Capture and Apply are
+	// the resulting configuration to the first gateway of Pipeline, or to the default gateway when no
+	// pipeline is configured. The gateway server-config section overrides it at runtime; while that
+	// section is unset or cannot be read, this value decides. Off by default: Capture and Apply are
 	// otherwise a deliberate, operator-driven action, and a control plane administering several
 	// gateways generally wants to keep reviewing and applying a version itself rather than having
 	// every write push one out immediately.
@@ -413,6 +415,38 @@ type GatewayConfig struct {
 	// may take to answer, in place of the server's write timeout. It covers waiting for an apply
 	// already running on that gateway and the gateway's own import.
 	ApplyTimeoutSeconds int `yaml:"apply_timeout_seconds" json:"apply_timeout_seconds"`
+	// Pipeline lists the registered gateways a version is deployed and promoted through, in that
+	// order, each a stage of the pipeline. Empty, the default gateway is the only stage.
+	Pipeline []GatewayPipelineStage `yaml:"pipeline" json:"pipeline"`
+	// UnusedValueGraceSeconds is how long a variable or secret this plane named for a resource is
+	// kept on a gateway after it was last set, even when nothing refers to it: one last set longer ago
+	// than this, that nothing refers to, is removed. After each apply, the
+	// values past it that no kept version, no kept master and nothing in the configuration as it
+	// stands refers to are removed from the gateway's store. A resource that exists protects its
+	// values whatever the grace, so the grace only covers a value set for a resource while a sweep
+	// runs, before the resource is written. The gateway measures the age on its own clock when it
+	// removes a value, so it needs a real age: a number below MinUnusedValueGraceSeconds, such as 0,
+	// is raised to it. A negative number turns the removal off. A pointer so that an explicit zero is
+	// told from an omitted field.
+	UnusedValueGraceSeconds *int `yaml:"unused_value_grace_seconds" json:"unused_value_grace_seconds"`
+	// UnusedValueSweepIntervalSeconds is the least time between two removals of unused values from
+	// the same gateway by one control plane node. Each removal exports the whole configuration, so
+	// applies in quick succession run one and skip the rest until it has passed. The time is kept in
+	// the node's memory, so each node keeps its own and a restart starts afresh. Zero sweeps after
+	// every apply. A pointer so that
+	// an explicit zero is told from an omitted field.
+	UnusedValueSweepIntervalSeconds *int `yaml:"unused_value_sweep_interval_seconds" json:"unused_value_sweep_interval_seconds"` //nolint:lll
+}
+
+// GatewayPipelineStage is one stage of the deploy pipeline: a registered gateway, named.
+type GatewayPipelineStage struct {
+	// Gateway is the name the gateway is registered under.
+	Gateway string `yaml:"gateway" json:"gateway"`
+	// Name is what the stage is called, such as Development. Empty, the gateway's name.
+	Name string `yaml:"name" json:"name"`
+	// AdminConsoleURL is where the gateway's own console is reached, to manage its users and
+	// sessions. Empty, the console the gateway serves under its base URL.
+	AdminConsoleURL string `yaml:"admin_console_url" json:"admin_console_url"`
 }
 
 // ApplyTimeout reports how long an apply or revert request may take to answer; zero leaves the
@@ -458,6 +492,49 @@ func (c GatewayConfig) RemovalConfirmationLimit() int {
 	return derefInt(c.RemovalConfirmationThreshold, 5)
 }
 
+// defaultUnusedValueGraceSeconds is how long an unused value is kept when nothing configures it:
+// one hour.
+const defaultUnusedValueGraceSeconds = 60 * 60
+
+// defaultUnusedValueSweepIntervalSeconds is the least time between two sweeps of a gateway's store
+// when nothing configures it: five minutes.
+const defaultUnusedValueSweepIntervalSeconds = 5 * 60
+
+// MinUnusedValueGraceSeconds is the least grace an unused value is kept for. The gateway removes
+// only a value last set longer ago than the grace by its own clock, so one second is enough to keep
+// a value set while a sweep runs, but no grace at all would leave nothing to compare.
+const MinUnusedValueGraceSeconds = 1
+
+// UnusedValueGrace reports how long a value nothing refers to is kept on a gateway after it was last
+// set, and whether such values are removed at all. Unset, it is one hour (an explicit default lives
+// in default.json); below MinUnusedValueGraceSeconds it is raised to it; a negative number turns the
+// removal off.
+func (c GatewayConfig) UnusedValueGrace() (time.Duration, bool) {
+	seconds := derefInt(c.UnusedValueGraceSeconds, defaultUnusedValueGraceSeconds)
+	if seconds < 0 {
+		return 0, false
+	}
+	seconds = max(seconds, MinUnusedValueGraceSeconds)
+	if int64(seconds) > int64(math.MaxInt64/time.Second) {
+		return time.Duration(math.MaxInt64), true
+	}
+	return time.Duration(seconds) * time.Second, true
+}
+
+// UnusedValueGraceRaised reports whether the configured grace was below MinUnusedValueGraceSeconds
+// without turning the removal off, so UnusedValueGrace raised it.
+func (c GatewayConfig) UnusedValueGraceRaised() bool {
+	seconds := derefInt(c.UnusedValueGraceSeconds, defaultUnusedValueGraceSeconds)
+	return seconds >= 0 && seconds < MinUnusedValueGraceSeconds
+}
+
+// UnusedValueSweepInterval reports the least time between two sweeps of the same gateway's store for
+// unused values. Unset, it is five minutes (an explicit default lives in default.json); zero or a
+// negative number sweeps after every apply.
+func (c GatewayConfig) UnusedValueSweepInterval() time.Duration {
+	return secondsWithin(derefInt(c.UnusedValueSweepIntervalSeconds, defaultUnusedValueSweepIntervalSeconds))
+}
+
 // MaxVersionCount reports how many captured configuration versions a deployment keeps. It is never
 // below one, because a capture that kept nothing could not be applied.
 func (c GatewayConfig) MaxVersionCount() int {
@@ -465,7 +542,7 @@ func (c GatewayConfig) MaxVersionCount() int {
 }
 
 // IsAutoApplyEnabled reports whether a written resource should be automatically captured and
-// applied to the default gateway, defaulting to off when unset.
+// applied to the first gateway of the pipeline, defaulting to off when unset.
 func (c GatewayConfig) IsAutoApplyEnabled() bool {
 	return derefBool(c.AutoApply)
 }
@@ -627,6 +704,17 @@ type LogConfig struct {
 	Access LogAccessConfig `yaml:"access" json:"access"`
 }
 
+// AuditConfig holds the audit event settings.
+type AuditConfig struct {
+	// Enabled writes audit events to stdout. With audit off, events are still validated, then dropped.
+	Enabled *bool `yaml:"enabled" json:"enabled"`
+}
+
+// IsEnabled reports whether audit events are written.
+func (c AuditConfig) IsEnabled() bool {
+	return derefBool(c.Enabled)
+}
+
 // LogAccessConfig holds the access log settings.
 type LogAccessConfig struct {
 	// ExcludePaths lists extra path prefixes whose requests are served without an access log line.
@@ -782,7 +870,6 @@ type OAuthConfig struct {
 	DeviceGrant              engineconfig.DeviceGrantConfig          `yaml:"device_grant" json:"device_grant"`
 	ClientAssertion          engineconfig.ClientAssertionConfig      `yaml:"client_assertion" json:"client_assertion"`
 	Revocation               engineconfig.RevocationConfig           `yaml:"revocation" json:"revocation"`
-	TokenExchange            engineconfig.TokenExchangeConfig        `yaml:"token_exchange" json:"token_exchange"`
 	AllowWildcardRedirectURI bool                                    `yaml:"allow_wildcard_redirect_uri" json:"allow_wildcard_redirect_uri"`   //nolint:lll
 	AllowedGrantTypes        []string                                `yaml:"allowed_grant_types" json:"allowed_grant_types"`                   //nolint:lll
 	AllowedResponseTypes     []string                                `yaml:"allowed_response_types" json:"allowed_response_types"`             //nolint:lll
@@ -810,7 +897,6 @@ func (c OAuthConfig) ToEngineConfig() engineconfig.OAuthConfig {
 		DeviceGrant:              c.DeviceGrant,
 		ClientAssertion:          c.ClientAssertion,
 		Revocation:               c.Revocation,
-		TokenExchange:            c.TokenExchange,
 		AllowWildcardRedirectURI: c.AllowWildcardRedirectURI,
 		AllowedGrantTypes:        c.AllowedGrantTypes,
 		AllowedResponseTypes:     c.AllowedResponseTypes,
@@ -855,6 +941,7 @@ type Config struct {
 	AuthZENPDP                 AuthZENPDPConfig                  `yaml:"authzen_pdp"           json:"authzen_pdp"`
 	HTTPConnection             HTTPConnectionConfig              `yaml:"http_connection"       json:"http_connection"`
 	Log                        LogConfig                         `yaml:"log"                   json:"log"`
+	Audit                      AuditConfig                       `yaml:"audit"                 json:"audit"`
 	GateClient                 engineconfig.GateClientConfig     `yaml:"gate_client"           json:"gate_client"`
 	TLS                        TLSConfig                         `yaml:"tls"                   json:"tls"`
 	Database                   DatabaseConfig                    `yaml:"database"              json:"database"`
@@ -1030,7 +1117,7 @@ func LoadConfig(configPath string, defaultPath string, serverHome string) (*Conf
 		cfg.JWT.Issuer = engineconfig.GetServerURL(&cfg.Server)
 	}
 
-	if err := cfg.Server.SecurityConfig.Validate(); err != nil {
+	if err := cfg.Server.Validate(); err != nil {
 		return nil, err
 	}
 
@@ -1042,9 +1129,6 @@ func LoadConfig(configPath string, defaultPath string, serverHome string) (*Conf
 		return nil, err
 	}
 	if err := cfg.OAuth.ClientAssertion.Validate(); err != nil {
-		return nil, err
-	}
-	if err := cfg.OAuth.TokenExchange.Validate(); err != nil {
 		return nil, err
 	}
 	if err := cfg.OAuth.Logout.Backchannel.Validate(); err != nil {

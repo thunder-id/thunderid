@@ -87,6 +87,44 @@ func (s *CompositeStoreTestSuite) TestStore() {
 	s.True(isDeclarative)
 }
 
+// A project's types are counted and paged from both stores, a type both hold once.
+func (s *CompositeStoreTestSuite) TestByProject() {
+	fileType := paymentType()
+	fileType.ProjectID = testProjectID
+	dbType := flightType()
+	dbType.ProjectID = testProjectID
+	dbStore := newTypeStoreInterfaceMock(s.T())
+	composite := newCompositeTypeStore(newTestFileStore(s.T(), fileType), dbStore)
+	// The database answers only for the project, so however many other types the deployment holds, they are never
+	// read or counted towards the limit of composite mode.
+	dbStore.EXPECT().CountTypesByProject(mock.Anything, testProjectID).Return(1, nil)
+	dbStore.EXPECT().ListTypePageByProject(mock.Anything, testProjectID, 1, 0).
+		Return([]providers.AuthorizationDetailType{dbType}, nil)
+
+	count, err := composite.CountTypesByProject(s.ctx, testProjectID)
+	s.NoError(err)
+	s.Equal(2, count)
+	page, err := composite.ListTypePageByProject(s.ctx, testProjectID, 1, 1)
+	s.Require().NoError(err)
+	s.Equal([]string{testPaymentType}, []string{page[0].Type})
+
+	dbStore.EXPECT().CountTypesByProject(mock.Anything, testOtherProjectID).Return(0, nil)
+	page, err = composite.ListTypePageByProject(s.ctx, testOtherProjectID, 10, 0)
+	s.Require().NoError(err)
+	s.Empty(page)
+}
+
+// The limit of composite mode applies to the project's own types.
+func (s *CompositeStoreTestSuite) TestByProjectOverTheLimit() {
+	dbStore := newTypeStoreInterfaceMock(s.T())
+	composite := newCompositeTypeStore(newTestFileStore(s.T()), dbStore)
+	dbStore.EXPECT().CountTypesByProject(mock.Anything, testProjectID).
+		Return(serverconst.MaxCompositeStoreRecords+1, nil)
+
+	_, err := composite.ListTypePageByProject(s.ctx, testProjectID, 10, 0)
+	s.ErrorIs(err, errResultLimitExceededInCompositeMode)
+}
+
 func (s *CompositeStoreTestSuite) TestDatabaseErrors() {
 	dbStore := newTypeStoreInterfaceMock(s.T())
 	composite := newCompositeTypeStore(newTestFileStore(s.T()), dbStore)

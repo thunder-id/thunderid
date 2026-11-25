@@ -1,11 +1,21 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {render, screen} from '@testing-library/react';
+import {render as rtlRender, screen, type RenderOptions, type RenderResult} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider} from '@thunderid/contexts';
+import type {JSX, ReactElement, ReactNode} from 'react';
 import {describe, it, expect, vi} from 'vitest';
 import type {OAuthAgentConfig} from '../../../../models/agent';
 import ClientSecretSection from '../ClientSecretSection';
+
+// The admin may do everything, so the component's actions show; a test nests its own provider to restrict them.
+function AllowAll({children}: {children: ReactNode}): JSX.Element {
+  return <CapabilitiesProvider capabilities={{can: () => true, isLoading: false}}>{children}</CapabilitiesProvider>;
+}
+
+const render = (ui: ReactElement, options?: RenderOptions): RenderResult =>
+  rtlRender(ui, {wrapper: AllowAll, ...options});
 
 vi.mock('react-i18next', async (importOriginal) => ({
   ...(await importOriginal<typeof import('react-i18next')>()),
@@ -36,6 +46,11 @@ vi.mock('../../../ClientSecretSuccessDialog', () => ({
       </div>
     ) : null,
 }));
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  isLoading: false,
+};
 
 describe('ClientSecretSection', () => {
   it('shows the regenerate button for confidential clients', () => {
@@ -96,6 +111,20 @@ describe('ClientSecretSection', () => {
     await user.click(screen.getByRole('button', {name: /close/i}));
 
     expect(screen.queryByTestId('secret-success-dialog')).not.toBeInTheDocument();
+  });
+
+  it('disables the regenerate button when the admin may not update agents', () => {
+    const oauth2Config = {
+      clientId: 'client-123',
+      tokenEndpointAuthMethod: 'client_secret_basic',
+    } as OAuthAgentConfig;
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <ClientSecretSection agentId="agent-1" oauth2Config={oauth2Config} />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.getByRole('button', {name: /regenerate client secret/i})).toBeDisabled();
   });
 
   it('disables the regenerate button when disabled', () => {

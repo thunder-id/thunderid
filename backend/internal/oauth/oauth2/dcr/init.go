@@ -11,7 +11,6 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/application"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
-	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -23,7 +22,6 @@ import (
 func Initialize(
 	mux *http.ServeMux,
 	appService application.ApplicationServiceInterface,
-	ouService ou.OrganizationUnitServiceInterface,
 	i18nService i18nmgt.I18nServiceInterface,
 	authnProvider providers.AuthnProviderManager,
 	cfg oauthconfig.Config,
@@ -37,7 +35,7 @@ func Initialize(
 			"Failed to initialize DCR service", log.Error(wrappedErr))
 		return wrappedErr
 	}
-	dcrService := newDCRService(appService, ouService, i18nService, authnProvider, transactioner)
+	dcrService := newDCRService(appService, i18nService, authnProvider, transactioner)
 	dcrHandler := newDCRHandler(dcrService, cfg)
 	registerRoutes(mux, dcrHandler)
 	return nil

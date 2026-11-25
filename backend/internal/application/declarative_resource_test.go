@@ -20,7 +20,10 @@ import (
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/applicationmock"
+	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
+
+	"gopkg.in/yaml.v3"
 )
 
 // ApplicationExporterTestSuite tests the applicationExporter.
@@ -28,6 +31,7 @@ type ApplicationExporterTestSuite struct {
 	suite.Suite
 	mockService *applicationmock.ApplicationServiceInterfaceMock
 	sharingMock *sharingmock.SharingServiceInterfaceMock
+	entityMock  *entitymock.EntityServiceInterfaceMock
 	exporter    declarativeresource.ResourceExporter
 	logger      *log.Logger
 }
@@ -39,8 +43,14 @@ func TestApplicationExporterTestSuite(t *testing.T) {
 func (s *ApplicationExporterTestSuite) SetupTest() {
 	s.mockService = applicationmock.NewApplicationServiceInterfaceMock(s.T())
 	s.sharingMock = sharingmock.NewSharingServiceInterfaceMock(s.T())
-	s.exporter = application.NewApplicationExporterForTest(s.mockService, s.sharingMock)
+	s.entityMock = entitymock.NewEntityServiceInterfaceMock(s.T())
+	s.exporter = application.NewApplicationExporterForTest(s.mockService, s.entityMock, s.sharingMock)
 	s.logger = log.GetLogger()
+}
+
+// expectNoFlowSecretHeld answers, once, that the application holds no Flow Secret.
+func (s *ApplicationExporterTestSuite) expectNoFlowSecretHeld(appID string) {
+	s.entityMock.EXPECT().GetCredentialsByType(mock.Anything, appID, "flowSecret").Return(nil, nil).Once()
 }
 
 func (s *ApplicationExporterTestSuite) TestNewApplicationExporter() {
@@ -109,12 +119,29 @@ func (s *ApplicationExporterTestSuite) TestGetResourceByID_Success() {
 	s.mockService.EXPECT().GetApplication(mock.Anything, "app1").Return(expectedApp, nil)
 	s.sharingMock.EXPECT().ExportPolicies(mock.Anything, application.ApplicationSharingType, "app1").
 		Return(nil, nil)
+	s.expectNoFlowSecretHeld("app1")
 
 	resource, name, err := s.exporter.GetResourceByID(context.Background(), "app1")
 
 	assert.Nil(s.T(), err)
 	assert.Equal(s.T(), "Test App", name)
 	assert.NotNil(s.T(), resource)
+}
+
+// An exported application keeps its project, so an import places it in the same project.
+func (s *ApplicationExporterTestSuite) TestGetResourceByID_ExportsProject() {
+	s.mockService.EXPECT().GetApplication(mock.Anything, "app1").Return(
+		&providers.Application{ID: "app1", Name: "Test App", ProjectID: "project-1"}, nil)
+	s.sharingMock.EXPECT().ExportPolicies(mock.Anything, application.ApplicationSharingType, "app1").
+		Return(nil, nil)
+	s.expectNoFlowSecretHeld("app1")
+
+	resource, _, err := s.exporter.GetResourceByID(context.Background(), "app1")
+	s.Require().Nil(err)
+
+	document, marshalErr := yaml.Marshal(resource)
+	s.Require().NoError(marshalErr)
+	assert.Contains(s.T(), string(document), "projectId: project-1")
 }
 
 // A failure to read the policies fails the export rather than writing a document that silently
@@ -238,6 +265,38 @@ func (s *ApplicationExporterTestSuite) TestGetResourceRulesForResource_Confident
 	assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientID")
 	assert.Contains(s.T(), rules.SecretVariables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
 	assert.Contains(s.T(), rules.ArrayVariables, "InboundAuthConfig[].OAuthConfig.RedirectURIs")
+}
+
+func (s *ApplicationExporterTestSuite) TestGetResourceRulesForResource_ClientWithoutSecret() {
+	pr, ok := s.exporter.(declarativeresource.PerResourceRuler)
+	assert.True(s.T(), ok, "exporter should implement PerResourceRuler")
+
+	for _, method := range []providers.TokenEndpointAuthMethod{
+		providers.TokenEndpointAuthMethodPrivateKeyJWT,
+		providers.TokenEndpointAuthMethodNone,
+	} {
+		s.Run(string(method), func() {
+			app := &providers.Application{
+				ID:   "app3",
+				Name: "Secretless App",
+				InboundAuthConfig: []providers.InboundAuthConfigWithSecret{
+					{
+						OAuthConfig: &providers.OAuthConfigWithSecret{
+							ClientID:                "client-id-3",
+							TokenEndpointAuthMethod: method,
+						},
+					},
+				},
+			}
+
+			rules := pr.GetResourceRulesForResource(app)
+
+			assert.NotNil(s.T(), rules)
+			assert.Contains(s.T(), rules.Variables, "InboundAuthConfig[].OAuthConfig.ClientID")
+			assert.NotContains(s.T(), rules.SecretVariables, "InboundAuthConfig[].OAuthConfig.ClientSecret")
+			assert.Contains(s.T(), rules.ArrayVariables, "InboundAuthConfig[].OAuthConfig.RedirectURIs")
+		})
+	}
 }
 
 func (s *ApplicationExporterTestSuite) TestGetResourceRulesForResource_NonApplicationType() {

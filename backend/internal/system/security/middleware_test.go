@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
+	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -456,6 +457,30 @@ func TestWriteSecurityError(t *testing.T) {
 			assert.Equal(t, tc.expectedErrResp.Description.DefaultValue, response.Description.DefaultValue)
 		})
 	}
+}
+
+// An unauthenticated browser redirect to the organization-unit-scoped authorize endpoint passes the real
+// security middleware as a public request; a path beside it under the same prefix is still refused.
+func (suite *MiddlewareTestSuite) TestMiddleware_OUScopedAuthorizeIsPublic() {
+	securityMiddleware, err := Initialize(jwtmock.NewJWTServiceInterfaceMock(suite.T()),
+		NewRevocationEnforcerInterfaceMock(suite.T()), "", "")
+	suite.Require().NoError(err)
+	handler := securityMiddleware(suite.testHandler)
+
+	authorize := httptest.NewRecorder()
+	handler.ServeHTTP(authorize, httptest.NewRequest(http.MethodGet,
+		"/ou/customer-a/oauth2/authorize?client_id=test-client&response_type=code", nil))
+
+	suite.Equal(http.StatusOK, authorize.Code)
+	suite.Require().NotNil(suite.testCtx)
+	suite.True(IsRuntimeContext(suite.testCtx), "the request continues as a public, unauthenticated one")
+
+	suite.testCtx = nil
+	introspect := httptest.NewRecorder()
+	handler.ServeHTTP(introspect, httptest.NewRequest(http.MethodPost, "/ou/customer-a/oauth2/introspect", nil))
+
+	suite.Equal(http.StatusUnauthorized, introspect.Code)
+	suite.Nil(suite.testCtx, "a non-public path never reaches the handler")
 }
 
 // Test middleware creation with nil service (edge case)

@@ -2,10 +2,15 @@
 
 name: 🔧 Release Tools
 
-# The bump type is not an input. It follows from the branch: a maintenance branch owns
-# a released line and can only patch it, and main is ahead of every released line so it
-# can only publish prereleases. Prereleases are gated by ALLOW_PRERELEASES below, which
-# is currently off, so today only the maintenance branches can release anything.
+# Tools are versioned on their own, apart from the product: npx thunderid installs whichever product
+# release the manifest offers, so one line of the CLI serves every product line. Tools release from
+# main only, on one of two channels:
+#
+#   stable  publishes a patch, minor or major under the 'latest' dist-tag.
+#   next    publishes a prerelease under the 'next' dist-tag (1.1.0-next.0, then -next.1, ...).
+#           The bump picks which release the prereleases lead up to; once a next line is open,
+#           every next release advances it. A CLI with a prerelease version installs product
+#           prereleases too, so `npx thunderid@next` is how milestones are tried.
 
 on:
   workflow_dispatch:
@@ -15,6 +20,23 @@ on:
         required: false
         type: boolean
         default: false
+      channel:
+        description: 'stable publishes to latest; next publishes a prerelease to next'
+        required: true
+        type: choice
+        options:
+          - stable
+          - next
+        default: stable
+      bump:
+        description: 'Release to publish (stable), or to lead up to when opening a next line'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
 
 permissions:
   contents: write
@@ -26,11 +48,6 @@ env:
   RELEASE_GIT_USER_EMAIL: "thunderid-bot@thunderid.dev"
   NODE_VERSION: "lts/*"
   PNPM_VERSION: "latest"
-  # Master switch for prereleases, which are the only thing main can publish. While
-  # this is "false" a release from main is refused outright, so the only branches that
-  # can release are the maintenance branches. Flip it to "true" when main is genuinely
-  # ready to start publishing a development line under the 'next' dist-tag.
-  ALLOW_PRERELEASES: "false"
 
 jobs:
   release-npx-thunderid:
@@ -47,31 +64,38 @@ jobs:
         id: channel
         env:
           BRANCH: ${{ github.ref_name }}
-          ALLOW_PRERELEASES: ${{ env.ALLOW_PRERELEASES }}
+          CHANNEL: ${{ github.event.inputs.channel }}
+          BUMP: ${{ github.event.inputs.bump }}
         run: |
           set -euo pipefail
-          if [ "$BRANCH" = "main" ]; then
-            if [ "$ALLOW_PRERELEASES" != "true" ]; then
-              echo "❌ Releases from main are disabled (ALLOW_PRERELEASES is '$ALLOW_PRERELEASES')."
-              echo "   main can only publish prereleases, and prereleases are switched off."
-              echo "   To release a patch of an already-released line, dispatch this workflow"
-              echo "   from that line's N.M.x maintenance branch instead."
-              echo "   To open a development line on main, set ALLOW_PRERELEASES to 'true' in"
-              echo "   .github/workflows/release-tools.yml."
-              exit 1
-            fi
-            BUMP=prerelease
-            DIST_TAG=next
-          elif [[ "$BRANCH" =~ ^[0-9]+\.[0-9]+\.x$ ]]; then
-            BUMP=patch
-            DIST_TAG=latest
-          else
-            echo "❌ Tool releases run from main or an N.M.x maintenance branch only, not '$BRANCH'."
+          if [ "$BRANCH" != "main" ]; then
+            echo "❌ Tools release from main only, not '$BRANCH'."
             exit 1
           fi
+          CURRENT=$(node -p "require('./tools/npx/package.json').version")
+          case "$CHANNEL" in
+            stable)
+              DIST_TAG=latest
+              PREID=""
+              ;;
+            next)
+              DIST_TAG=next
+              PREID=next
+              if [[ "$CURRENT" == *-next.* ]]; then
+                BUMP=prerelease
+              else
+                BUMP="pre$BUMP"
+              fi
+              ;;
+            *)
+              echo "❌ Unknown channel '$CHANNEL'."
+              exit 1
+              ;;
+          esac
           echo "bump=$BUMP" >> "$GITHUB_OUTPUT"
+          echo "preid=$PREID" >> "$GITHUB_OUTPUT"
           echo "dist-tag=$DIST_TAG" >> "$GITHUB_OUTPUT"
-          echo "✅ $BRANCH publishes a $BUMP under the '$DIST_TAG' dist-tag."
+          echo "✅ $CURRENT gets a $BUMP bump, published under the '$DIST_TAG' dist-tag."
 
       - name: 🚀 Release
         uses: ./.github/actions/release-npm
@@ -79,6 +103,7 @@ jobs:
           package-dir: tools/npx
           tag-convention: 'tool/{name}/v{version}'
           bump-type: ${{ steps.channel.outputs.bump }}
+          preid: ${{ steps.channel.outputs.preid }}
           dist-tag: ${{ steps.channel.outputs.dist-tag }}
           git-user-name: ${{ env.RELEASE_GIT_USER_NAME }}
           git-user-email: ${{ env.RELEASE_GIT_USER_EMAIL }}

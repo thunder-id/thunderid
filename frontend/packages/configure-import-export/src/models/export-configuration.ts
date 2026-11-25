@@ -56,6 +56,10 @@ export interface ExportRequest {
    */
   resourceServers?: string[];
   /**
+   * List of authorization details type (intent) IDs to export. Use `["*"]` to export all.
+   */
+  authorizationDetailTypes?: string[];
+  /**
    * List of role IDs to export. Use `["*"]` to export all.
    */
   roles?: string[];

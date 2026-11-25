@@ -12,6 +12,7 @@ vi.mock('@thunderid/contexts', () => ({
 }));
 
 vi.mock('@thunderid/components', () => ({
+  DocumentTitle: () => <title>Default Title</title>,
   Helmet: ({children = undefined}: {children?: ReactNode}) => children,
 }));
 
@@ -34,6 +35,11 @@ describe('Head', () => {
   afterEach(() => {
     cleanup();
     document.head.querySelectorAll('link[rel="icon"]').forEach((el) => el.remove());
+  });
+
+  it('renders the default document title', () => {
+    render(<Head />);
+    expect(document.title).toBe('Default Title');
   });
 
   it('renders a light and a dark favicon link, each scoped to a prefers-color-scheme media query', () => {

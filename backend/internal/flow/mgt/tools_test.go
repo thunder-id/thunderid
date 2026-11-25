@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/mcp/tool"
+	"github.com/thunder-id/thunderid/internal/system/security"
 )
 
 type FlowToolsTestSuite struct {
@@ -490,6 +491,36 @@ func (suite *FlowToolsTestSuite) TestRegisterMCPTools() {
 	assert.NotNil(suite.T(), server)
 }
 
+// TestRegisteredToolsRequireFlowPermissions verifies that every flow MCP tool is mapped to a flow
+// catalog permission, so none falls back to root by accident.
+func (suite *FlowToolsTestSuite) TestRegisteredToolsRequireFlowPermissions() {
+	server := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "1.0.0"}, nil)
+	registerMCPTools(server, NewFlowMgtServiceInterfaceMock(suite.T()))
+
+	ctx := context.Background()
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	_, err := server.Connect(ctx, serverTransport, nil)
+	suite.Require().NoError(err)
+	session, err := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "1.0.0"}, nil).
+		Connect(ctx, clientTransport, nil)
+	suite.Require().NoError(err)
+	defer func() { _ = session.Close() }()
+	tools, err := session.ListTools(ctx, nil)
+	suite.Require().NoError(err)
+
+	suite.Require().NotEmpty(tools.Tools)
+	security.ForEachPermissionPlaneForTest(func(plane string) {
+		suite.Run(plane, func() {
+			p := security.GetSystemPermissions()
+			for _, registered := range tools.Tools {
+				assert.Contains(suite.T(), []string{p.FlowView, p.FlowCreate, p.FlowUpdate, p.FlowDelete},
+					security.ResolveMCPToolPermission(registered.Name),
+					"tool %q must require a flow permission", registered.Name)
+			}
+		})
+	})
+}
+
 func (suite *FlowToolsTestSuite) TestGetListFlowsSchema() {
 	schema := getListFlowsSchema()
 
@@ -512,11 +543,71 @@ func (suite *FlowToolsTestSuite) TestGetCreateFlowSchema() {
 	schema := getCreateFlowSchema()
 
 	assert.NotNil(suite.T(), schema)
-	assert.Contains(suite.T(), schema.Required, "ouId")
+	assert.NotContains(suite.T(), schema.Required, "ouId")
+	assert.Contains(suite.T(), schema.Properties, "projectId")
 }
 
 func (suite *FlowToolsTestSuite) TestGetUpdateFlowSchema() {
 	schema := getUpdateFlowSchema()
 
 	assert.NotNil(suite.T(), schema)
+}
+
+func (suite *FlowToolsTestSuite) TestListFlows_ForAProject() {
+	mockService := NewFlowMgtServiceInterfaceMock(suite.T())
+	tools := &flowTools{flowService: mockService}
+
+	expectedFlows := []BasicFlowDefinition{{ID: "flow1", ProjectID: "project-1"}}
+	mockService.EXPECT().ListFlowsByProject(mock.Anything, "project-1", "",
+		providers.FlowTypeAuthentication, 30, 0).Return(&FlowListResponse{TotalResults: 1, Flows: expectedFlows}, nil)
+
+	result, output, err := tools.listFlows(context.Background(), &mcp.CallToolRequest{}, listFlowsInput{
+		FlowType:  string(providers.FlowTypeAuthentication),
+		ProjectID: "project-1",
+	})
+
+	assert.NoError(suite.T(), err)
+	assert.Nil(suite.T(), result)
+	assert.Equal(suite.T(), 1, output.TotalCount)
+	assert.Equal(suite.T(), expectedFlows, output.Flows)
+}
+
+func (suite *FlowToolsTestSuite) TestListFlows_ForAProjectError() {
+	mockService := NewFlowMgtServiceInterfaceMock(suite.T())
+	tools := &flowTools{flowService: mockService}
+
+	mockService.EXPECT().ListFlowsByProject(mock.Anything, "project-1", "", providers.FlowType(""), 30, 0).
+		Return(nil, &tidcommon.InternalServerError)
+
+	_, _, err := tools.listFlows(context.Background(), &mcp.CallToolRequest{}, listFlowsInput{ProjectID: "project-1"})
+
+	assert.Error(suite.T(), err)
+	assert.Contains(suite.T(), err.Error(), "failed to list flows")
+}
+
+func (suite *FlowToolsTestSuite) TestCreateFlow_WithProject() {
+	mockService := NewFlowMgtServiceInterfaceMock(suite.T())
+	tools := &flowTools{flowService: mockService}
+
+	input := FlowDefinition{
+		Handle:    "basic-login",
+		Name:      "Basic Login",
+		FlowType:  providers.FlowTypeAuthentication,
+		ProjectID: "project-1",
+	}
+	mockService.EXPECT().CreateFlow(mock.Anything, &input).Return(&providers.CompleteFlowDefinition{
+		ID:        "flow1",
+		ProjectID: "project-1",
+	}, nil)
+
+	_, output, err := tools.createFlow(context.Background(), &mcp.CallToolRequest{}, input)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), "project-1", output.ProjectID)
+}
+
+func (suite *FlowToolsTestSuite) TestGetListFlowsSchema_HasProjectID() {
+	schema := getListFlowsSchema()
+
+	assert.Contains(suite.T(), schema.Properties, "project_id")
 }

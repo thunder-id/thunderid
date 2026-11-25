@@ -4,6 +4,8 @@
 package serverconfig
 
 import (
+	"errors"
+
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -37,6 +39,35 @@ var (
 		},
 	}
 
+	// ErrorConfigWriteConflict is the error returned when a section kept changing under an update, so
+	// it could not be written without losing another write.
+	ErrorConfigWriteConflict = common.ServiceError{
+		Type: common.ClientErrorType,
+		Code: "SCF-1005",
+		Error: common.I18nMessage{
+			Key:          "error.serverconfigservice.config_write_conflict",
+			DefaultValue: "The server configuration changed while it was updated",
+		},
+		ErrorDescription: common.I18nMessage{
+			Key:          "error.serverconfigservice.config_write_conflict_description",
+			DefaultValue: "Other writes kept changing the section. Try again.",
+		},
+	}
+	// ErrorManagedConfig is the error returned when the API attempts to change a configuration section a
+	// control plane deployed. Only a deploy from the control plane changes it.
+	ErrorManagedConfig = common.ServiceError{
+		Type: common.ClientErrorType,
+		Code: "SCF-1006",
+		Error: common.I18nMessage{
+			Key:          "error.serverconfigservice.managed_config",
+			DefaultValue: "Cannot modify a configuration section deployed by the control plane",
+		},
+		ErrorDescription: common.I18nMessage{
+			Key:          "error.serverconfigservice.managed_config_description",
+			DefaultValue: "The section was deployed by the control plane and can only be changed there",
+		},
+	}
+
 	// ErrorInvalidRequestFormat is the error returned when the request body is malformed.
 	ErrorInvalidRequestFormat = common.ServiceError{
 		Type: common.ClientErrorType,
@@ -51,3 +82,6 @@ var (
 		},
 	}
 )
+
+// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+var errNilEventBus = errors.New("the server config service needs an event bus")

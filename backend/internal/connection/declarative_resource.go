@@ -245,7 +245,7 @@ func (e *connectionExporter) ValidateResource(ctx context.Context,
 	); err != nil {
 		return "", err
 	}
-	if reason := unexportableCredentialNames(model.Name, model.Authentication); reason != "" {
+	if reason := unexportableCredentialNames(model.ID, model.Authentication); reason != "" {
 		return "", &declarativeresource.ExportError{
 			ResourceType: resourceTypeConnection,
 			ResourceID:   id,
@@ -255,6 +255,14 @@ func (e *connectionExporter) ValidateResource(ctx context.Context,
 	}
 
 	return model.Name, nil
+}
+
+// GetResourceID returns the ID of an exported connection.
+func (e *connectionExporter) GetResourceID(resource interface{}) string {
+	if model, ok := resource.(*connectionExportModel); ok {
+		return model.ID
+	}
+	return ""
 }
 
 // GetResourceRules returns the default (no-secret) parameterization rules for connections.
@@ -320,7 +328,7 @@ func authenticationResourceRules(
 // as API-key headers, cannot each be exported as a parameter of their own, or "" when they can. The
 // parameterizer reads a dot as a path separator, and two names deriving one parameter would share a
 // value, so either would leave a secret in the YAML or lose one.
-func unexportableCredentialNames(connectionName string, auth *outboundauth.Authentication) string {
+func unexportableCredentialNames(connectionID string, auth *outboundauth.Authentication) string {
 	if auth == nil {
 		return ""
 	}
@@ -337,7 +345,7 @@ func unexportableCredentialNames(connectionName string, auth *outboundauth.Authe
 		if strings.Contains(name, ".") {
 			return fmt.Sprintf("the API-key header '%s' contains a dot", name)
 		}
-		parameter := varname.DeriveVariableName(paramTypeConnection, connectionName, name)
+		parameter := varname.DeriveVariableName(paramTypeConnection, connectionID, name)
 		if other, taken := derivedFrom[parameter]; taken {
 			return fmt.Sprintf("the API-key headers '%s' and '%s' map to the same parameter %s", other, name,
 				parameter)
@@ -397,6 +405,11 @@ func connectionModelFromIDPDTO(dto providers.IDPDTO) (connectionExportModel, err
 	if raw, ok := values[idp.PropTokenExchangeEnabled]; ok {
 		if enabled, parseErr := strconv.ParseBool(raw); parseErr == nil {
 			model.TokenExchangeEnabled = &enabled
+		}
+	}
+	if raw, ok := values[idp.PropIDJagEnabled]; ok {
+		if enabled, parseErr := strconv.ParseBool(raw); parseErr == nil {
+			model.IDJagEnabled = &enabled
 		}
 	}
 	return model, nil
@@ -538,7 +551,8 @@ func connectionModelToDTO(model connectionExportModel) (*providers.IDPDTO, *ncom
 			UserInfoEndpoint: model.UserInfoEndpoint, JwksEndpoint: model.JwksEndpoint,
 			Issuer: model.Issuer, Scopes: model.Scopes,
 			Prompt: model.Prompt, TokenExchangeEnabled: model.TokenExchangeEnabled,
-			TrustedTokenAudience: model.TrustedTokenAudience, AttributeConfiguration: model.AttributeConfiguration,
+			TrustedTokenAudience: model.TrustedTokenAudience, IDJagEnabled: model.IDJagEnabled,
+			AttributeConfiguration: model.AttributeConfiguration,
 		})
 		if err != nil {
 			return nil, nil, err
@@ -733,6 +747,14 @@ func validateConnectionDTOWrapper(dto interface{}, idpService idp.IDPServiceInte
 			if svcErr := idpService.ResolveIdentityProviderOU(declarativeOwnerContext(), d); svcErr != nil {
 				return ownerError(d.ID, d.OUHandle, svcErr)
 			}
+			if err := requireOwner(d.ID, d.OUID); err != nil {
+				return err
+			}
+			svcErr := idpService.ValidateAuthorizationRuleMappingTargets(declarativeOwnerContext(), d)
+			if svcErr != nil {
+				return fmt.Errorf("connection resource %q has an invalid authorization mapping: %s",
+					d.ID, svcErr.ErrorDescription.String())
+			}
 			// Declarative resources load at startup with no authenticated subject, so the
 			// entity-type reads the seeding performs would otherwise be authorized against nothing
 			// and return nothing. Elevate here, where the absence of a subject is a fact about the
@@ -895,7 +917,7 @@ func (e *connectionExporter) ViewResource(_ context.Context, document *yaml.Node
 	case *providers.IDPDTO:
 		return viewIDPConnection(*dto)
 	case *ncommon.NotificationSenderDTO:
-		return viewSMSConnection(*dto)
+		return viewSenderConnection(*dto)
 	default:
 		return nil, fmt.Errorf("unsupported connection resource type: %T", resource)
 	}
@@ -917,8 +939,8 @@ func viewIDPConnection(dto providers.IDPDTO) (interface{}, error) {
 	}
 }
 
-// viewSMSConnection maps a notification-sender DTO with the mapper its vendor's read uses.
-func viewSMSConnection(dto ncommon.NotificationSenderDTO) (interface{}, error) {
+// viewSenderConnection maps a notification-sender DTO with the mapper its vendor's read uses.
+func viewSenderConnection(dto ncommon.NotificationSenderDTO) (interface{}, error) {
 	switch dto.Provider {
 	case ncommon.NotificationProviderTypeTwilio:
 		return twilioFromSenderDTO(dto)
@@ -926,7 +948,9 @@ func viewSMSConnection(dto ncommon.NotificationSenderDTO) (interface{}, error) {
 		return vonageFromSenderDTO(dto)
 	case ncommon.NotificationProviderTypeCustom:
 		return smsGatewayFromSenderDTO(dto)
+	case ncommon.NotificationProviderTypeSMTP:
+		return emailSMTPFromSenderDTO(dto)
 	default:
-		return nil, fmt.Errorf("unsupported message provider for connection view: %s", dto.Provider)
+		return nil, fmt.Errorf("unsupported notification provider for connection view: %s", dto.Provider)
 	}
 }

@@ -14,6 +14,10 @@ vi.mock('../../components/cors/CorsSection', () => ({
   ),
 }));
 
+vi.mock('../../components/csp/CspSection', () => ({
+  default: () => <div data-testid="csp-section" />,
+}));
+
 vi.mock('../../components/accountSecurity/AccountSecuritySection', () => ({
   default: () => <div data-testid="account-security-section" />,
 }));
@@ -24,15 +28,25 @@ describe('SettingsPage', () => {
   it('renders the title, subtitle, the CORS tab, and the CORS panel', () => {
     renderWithProviders(<SettingsPage />);
 
-    expect(screen.getByText('Settings')).toBeInTheDocument();
-    expect(screen.getByText('Settings that apply across your entire ThunderID deployment.')).toBeInTheDocument();
+    expect(screen.getByText('Configurations')).toBeInTheDocument();
+    expect(screen.getByText('Configurations that apply across your system.')).toBeInTheDocument();
     expect(screen.getByRole('tab', {name: 'CORS'})).toBeInTheDocument();
     expect(screen.getByTestId('cors-section')).toBeInTheDocument();
   });
 
+  it('shows the CSP panel when its tab is clicked', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<SettingsPage />);
+
+    expect(screen.getByTestId('csp-section')).not.toBeVisible();
+    await user.click(screen.getByRole('tab', {name: 'Content security policy'}));
+    expect(screen.getByTestId('csp-section')).toBeVisible();
+    expect(screen.getByTestId('cors-section')).not.toBeVisible();
+  });
+
   it('sets the document title', async () => {
     renderWithProviders(<SettingsPage />);
-    await waitFor(() => expect(document.title).toBe('Settings | ThunderID'));
+    await waitFor(() => expect(document.title).toBe('Configurations | ThunderID'));
   });
 
   it('keeps the CORS panel active when its tab is clicked', async () => {

@@ -181,14 +181,24 @@ func PrintBanner() {
 
 // StatusBoxString returns a bordered box showing the backend and console URLs
 // for a running server, styled to match the rest of the intro/banner chrome.
-func StatusBoxString(baseURL string) string {
+// dataPlaneURL is the quickstart's Data Plane, whose Admin Console is listed too;
+// pass "" for an install that runs a single server.
+func StatusBoxString(baseURL, dataPlaneURL string) string {
 	dot := greenStyle.Render("●")
-	label := lipgloss.NewStyle().Foreground(lipgloss.Color(colorGrey)).Width(9)
+	width := 9
+	if dataPlaneURL != "" {
+		width = 12
+	}
+	label := lipgloss.NewStyle().Foreground(lipgloss.Color(colorGrey)).Width(width)
 
-	rows := lipgloss.JoinVertical(lipgloss.Left,
-		dot+" "+label.Render("Backend")+CyanStyle.Render(baseURL),
-		dot+" "+label.Render("Console")+CyanStyle.Render(baseURL+"/console"),
-	)
+	lines := []string{
+		dot + " " + label.Render("Backend") + CyanStyle.Render(baseURL),
+		dot + " " + label.Render("Console") + CyanStyle.Render(baseURL+"/console"),
+	}
+	if dataPlaneURL != "" {
+		lines = append(lines, dot+" "+label.Render("Data Plane")+CyanStyle.Render(dataPlaneURL+"/console"))
+	}
+	rows := lipgloss.JoinVertical(lipgloss.Left, lines...)
 
 	return lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -454,14 +464,44 @@ func PromptAdminCredentials(defaultUsername, generatedPassword string) (username
 // does not regenerate the password on a later run, so this is the last chance to
 // surface it. No-op when no credentials were generated.
 func PrintCredentialsFallback(creds *setup.AdminCredentials) {
-	if creds == nil {
-		return
+	for _, account := range credentialAccounts(creds) {
+		fmt.Println("  " + Bold(account.title))
+		fmt.Println("    Username: " + Cyan(account.creds.Username))
+		fmt.Println("    Password: " + Cyan(account.creds.Password))
+		fmt.Println("    " + Dim(account.hint+" once it is running."))
+		fmt.Println()
 	}
-	fmt.Println("  " + Bold("Admin credentials"))
-	fmt.Println("    Username: " + Cyan(creds.Username))
-	fmt.Println("    Password: " + Cyan(creds.Password))
-	fmt.Println("    " + Dim("Sign in to the Console with these credentials once it is running."))
-	fmt.Println()
+}
+
+// credentialAccount is one generated account to show, with what it signs into.
+type credentialAccount struct {
+	title string
+	hint  string
+	creds *setup.AdminCredentials
+}
+
+// credentialAccounts lists the generated accounts in creds. The quickstart has two, and either
+// can be left out when its password was supplied rather than generated.
+func credentialAccounts(creds *setup.AdminCredentials) []credentialAccount {
+	if creds == nil {
+		return nil
+	}
+	var accounts []credentialAccount
+	if creds.Password != "" {
+		hint := "Sign in to the Console with these credentials"
+		if creds.ServiceDesk != nil {
+			hint = "Sign in to the Control Plane console with these credentials"
+		}
+		accounts = append(accounts, credentialAccount{title: "Admin credentials", hint: hint, creds: creds})
+	}
+	if creds.ServiceDesk != nil {
+		accounts = append(accounts, credentialAccount{
+			title: "Service Desk Admin credentials",
+			hint:  "Sign in to the Data Plane Admin Console with these credentials",
+			creds: creds.ServiceDesk,
+		})
+	}
+	return accounts
 }
 
 // PromptUpgrade shows the "new version available" banner and asks the user what to do.

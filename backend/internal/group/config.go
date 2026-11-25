@@ -57,3 +57,9 @@ func isGroupDeclarativeModeEnabled() bool {
 	}
 	return mode == serverconst.StoreModeDeclarative
 }
+
+// IsDeclarativeOnly reports whether groups are kept only in declarative files, which hold no writable
+// memberships.
+func IsDeclarativeOnly() bool {
+	return isGroupDeclarativeModeEnabled()
+}

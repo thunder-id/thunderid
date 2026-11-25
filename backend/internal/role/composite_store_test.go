@@ -6,10 +6,13 @@ package role
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+
+	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 )
 
 // CompositeRoleStoreTestSuite contains tests for the composite role store.
@@ -106,6 +109,18 @@ func (suite *CompositeRoleStoreTestSuite) TestGetRoleListByOUID_DBStoreError() {
 
 	suite.Error(err)
 	suite.Nil(roles)
+}
+
+// Only database assignments can be removed, so the removed set comes from the database store alone.
+func (suite *CompositeRoleStoreTestSuite) TestDeleteAssignmentsByRoleID_RemovesFromTheDBStoreOnly() {
+	removed := []RoleAssignment{{ID: "user1", Type: assigneeTypeEntity}}
+	suite.mockDBStore.On("DeleteAssignmentsByRoleID", mock.Anything, "role1").Return(removed, nil).Once()
+
+	got, err := suite.store.DeleteAssignmentsByRoleID(context.Background(), "role1")
+
+	suite.NoError(err)
+	suite.Equal(removed, got)
+	suite.mockFileStore.AssertNotCalled(suite.T(), "DeleteAssignmentsByRoleID", mock.Anything, mock.Anything)
 }
 
 func (suite *CompositeRoleStoreTestSuite) TestGetRoleAssignmentsCount_Deduplicates() {
@@ -393,4 +408,216 @@ func (suite *CompositeRoleStoreTestSuite) TestCascadeHooks_UseDatabaseStoreOnly(
 	suite.mockFileStore.AssertNotCalled(suite.T(), "GetReferencedPermissions", mock.Anything)
 	suite.mockFileStore.AssertNotCalled(suite.T(), "DeleteRolePermission",
 		mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *CompositeRoleStoreTestSuite) TestGetRolesByPermission_MergesBothStores() {
+	suite.mockDBStore.On("GetRolesByPermission", mock.Anything, "rs1", "orders:read").
+		Return([]Role{{ID: "db-role", Name: "DB"}}, nil).Once()
+	suite.mockFileStore.On("GetRolesByPermission", mock.Anything, "rs1", "orders:read").
+		Return([]Role{{ID: "file-role", Name: "File"}}, nil).Once()
+
+	roles, err := suite.store.GetRolesByPermission(context.Background(), "rs1", "orders:read")
+
+	suite.NoError(err)
+	suite.Len(roles, 2)
+	for _, role := range roles {
+		suite.Equal(role.ID == "file-role", role.IsReadOnly, role.ID)
+	}
+}
+
+func (suite *CompositeRoleStoreTestSuite) TestGetRoleListByProject_MergesStores() {
+	dbRoles := []Role{{ID: "role1", ProjectID: "proj1"}, {ID: "role2", ProjectID: "proj1"}}
+	fileRoles := []Role{{ID: "role3", ProjectID: "proj1"}}
+
+	suite.mockDBStore.On("GetRoleListCountByProject", mock.Anything, "proj1", "").Return(2, nil)
+	suite.mockFileStore.On("GetRoleListCountByProject", mock.Anything, "proj1", "").Return(1, nil)
+	suite.mockDBStore.On("GetRoleListByProject", mock.Anything, "proj1", "", 2, 0).Return(dbRoles, nil)
+	suite.mockFileStore.On("GetRoleListByProject", mock.Anything, "proj1", "", 1, 0).Return(fileRoles, nil)
+
+	roles, err := suite.store.GetRoleListByProject(context.Background(), "proj1", "", 2, 1)
+	suite.NoError(err)
+	suite.Len(roles, 2)
+
+	count, err := suite.store.GetRoleListCountByProject(context.Background(), "proj1", "")
+	suite.NoError(err)
+	suite.Equal(3, count)
+}
+
+func (suite *CompositeRoleStoreTestSuite) TestGetRoleListByProject_Errors() {
+	storeErr := errors.New("db error")
+	suite.mockDBStore.On("GetRoleListCountByProject", mock.Anything, "proj1", "").Return(0, storeErr)
+
+	_, err := suite.store.GetRoleListCountByProject(context.Background(), "proj1", "")
+	suite.ErrorIs(err, storeErr)
+
+	roles, err := suite.store.GetRoleListByProject(context.Background(), "proj1", "", 5, 0)
+	suite.Error(err)
+	suite.Nil(roles)
+}
+
+func (suite *CompositeRoleStoreTestSuite) TestGetRoleListCountByProject_FileErrorAndLimit() {
+	storeErr := errors.New("file error")
+	suite.mockDBStore.On("GetRoleListCountByProject", mock.Anything, "proj1", "").Return(1, nil)
+	suite.mockFileStore.On("GetRoleListCountByProject", mock.Anything, "proj1", "").Return(0, storeErr)
+	_, err := suite.store.GetRoleListCountByProject(context.Background(), "proj1", "")
+	suite.ErrorIs(err, storeErr)
+
+	suite.mockDBStore.On("GetRoleListCountByProject", mock.Anything, "big", "").
+		Return(serverconst.MaxCompositeStoreRecords, nil)
+	suite.mockFileStore.On("GetRoleListCountByProject", mock.Anything, "big", "").Return(1, nil)
+	_, err = suite.store.GetRoleListCountByProject(context.Background(), "big", "")
+	suite.ErrorIs(err, errResultLimitExceededInCompositeMode)
+	_, err = suite.store.GetRoleListByProject(context.Background(), "big", "", 5, 0)
+	suite.ErrorIs(err, errResultLimitExceededInCompositeMode)
+}
+
+func (suite *CompositeRoleStoreTestSuite) TestGetDirectAssignments_MergesBothStores() {
+	named := []string{"user1", "user2", "user3"}
+	user := func(id string) RoleAssignment { return RoleAssignment{ID: id, Type: assigneeTypeEntity, OUID: "ou1"} }
+	suite.mockDBStore.On("GetDirectAssignments", mock.Anything, "role1", "ou1", named).
+		Return([]RoleAssignment{user("user1"), user("user2")}, nil).Once()
+	suite.mockFileStore.On("GetDirectAssignments", mock.Anything, "role1", "ou1", named).
+		Return([]RoleAssignment{user("user2"), user("user3")}, nil).Once()
+
+	assignments, err := suite.store.GetDirectAssignments(context.Background(), "role1", "ou1", named)
+
+	suite.NoError(err)
+	suite.Equal([]RoleAssignment{user("user1"), user("user2"), user("user3")}, assignments)
+}
+
+func (suite *CompositeRoleStoreTestSuite) TestGetDirectAssignments_StoreErrors() {
+	named := []string{"user1"}
+	suite.mockDBStore.On("GetDirectAssignments", mock.Anything, "role1", "ou1", named).
+		Return(nil, errors.New("db error")).Once()
+
+	_, err := suite.store.GetDirectAssignments(context.Background(), "role1", "ou1", named)
+	suite.Error(err)
+
+	suite.mockDBStore.On("GetDirectAssignments", mock.Anything, "role2", "ou1", named).
+		Return([]RoleAssignment{}, nil).Once()
+	suite.mockFileStore.On("GetDirectAssignments", mock.Anything, "role2", "ou1", named).
+		Return(nil, errors.New("file error")).Once()
+
+	_, err = suite.store.GetDirectAssignments(context.Background(), "role2", "ou1", named)
+	suite.Error(err)
+}
+
+func (suite *CompositeRoleStoreTestSuite) TestGetHeldPermissionsByResourceServer_MergesCrossStoreAssignments() {
+	suite.mockDBStore.On("GetHeldPermissionsByResourceServer", mock.Anything, "user-1", []string{"group-1"},
+		[]string{"mapped-role"}, "ou-1", "booking-api").Return([]string{"reservations:view"}, nil).Once()
+	suite.mockDBStore.On("GetEntityRoleIDs", mock.Anything, "user-1", []string{"group-1"}, "ou-1").
+		Return([]string{"yaml-role"}, nil).Once()
+	suite.mockFileStore.On("GetHeldPermissionsByResourceServer", mock.Anything, "user-1", []string{"group-1"},
+		[]string{"mapped-role", "yaml-role"}, "ou-1", "booking-api").
+		Return([]string{"reservations:create", "reservations:view"}, nil).Once()
+	permissions, err := suite.store.GetHeldPermissionsByResourceServer(
+		context.Background(), "user-1", []string{"group-1"}, []string{"mapped-role"}, "ou-1", "booking-api")
+	suite.NoError(err)
+	suite.ElementsMatch([]string{"reservations:create", "reservations:view"}, permissions)
+	suite.mockDBStore.AssertNotCalled(suite.T(), "GetRole", mock.Anything, mock.Anything)
+	suite.mockFileStore.AssertNotCalled(suite.T(), "GetRole", mock.Anything, mock.Anything)
+}
+
+func (suite *CompositeRoleStoreTestSuite) TestGetHeldPermissionsByResourceServer_MappedRolesWithoutSubject() {
+	suite.mockDBStore.On("GetHeldPermissionsByResourceServer", mock.Anything, "", []string(nil),
+		[]string{"mapped-role"}, "", "booking-api").Return([]string{}, nil).Once()
+	suite.mockFileStore.On("GetHeldPermissionsByResourceServer", mock.Anything, "", []string(nil),
+		[]string{"mapped-role"}, "", "booking-api").Return([]string{"reservations:view"}, nil).Once()
+	permissions, err := suite.store.GetHeldPermissionsByResourceServer(
+		context.Background(), "", nil, []string{"mapped-role"}, "", "booking-api")
+	suite.NoError(err)
+	suite.Equal([]string{"reservations:view"}, permissions)
+	suite.mockDBStore.AssertNotCalled(suite.T(), "GetEntityRoleIDs",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (suite *CompositeRoleStoreTestSuite) TestGetHeldPermissionsByResourceServer_PropagatesErrors() {
+	for _, failing := range []string{"database", "assignments", "file"} {
+		suite.Run(failing, func() {
+			suite.SetupTest()
+			readErr := errors.New("read failed")
+			var dbErr, assignmentErr, fileErr error
+			switch failing {
+			case "database":
+				dbErr = readErr
+			case "assignments":
+				assignmentErr = readErr
+			case "file":
+				fileErr = readErr
+			}
+			suite.mockDBStore.On("GetHeldPermissionsByResourceServer", mock.Anything, "user-1", []string(nil),
+				[]string(nil), "ou-1", "booking-api").Return([]string{}, dbErr).Once()
+			if dbErr == nil {
+				suite.mockDBStore.On("GetEntityRoleIDs", mock.Anything, "user-1", []string(nil), "ou-1").
+					Return([]string{}, assignmentErr).Once()
+			}
+			if dbErr == nil && assignmentErr == nil {
+				suite.mockFileStore.On("GetHeldPermissionsByResourceServer", mock.Anything, "user-1", []string(nil),
+					[]string(nil), "ou-1", "booking-api").Return([]string{}, fileErr).Once()
+			}
+			permissions, err := suite.store.GetHeldPermissionsByResourceServer(context.Background(), "user-1", nil, nil,
+				"ou-1", "booking-api")
+			suite.ErrorIs(err, readErr)
+			suite.Nil(permissions)
+		})
+	}
+}
+
+// The composite store reads removable direct roles from the database store only.
+func (suite *CompositeRoleStoreTestSuite) TestGetDirectEntityRoleIDs_DatabaseOnly() {
+	suite.mockDBStore.On("GetDirectEntityRoleIDs", mock.Anything, "user-1", "ou-1").
+		Return([]string{"role-db"}, nil).Once()
+
+	roleIDs, err := suite.store.GetDirectEntityRoleIDs(context.Background(), "user-1", "ou-1")
+
+	suite.NoError(err)
+	suite.Equal([]string{"role-db"}, roleIDs)
+	suite.mockFileStore.AssertNotCalled(suite.T(), "GetDirectEntityRoleIDs", mock.Anything, mock.Anything,
+		mock.Anything)
+}
+
+// Counting or listing the assignments of a role whose database store alone holds more than the composite
+// limit is refused, not read as if it held only the limit.
+func (suite *CompositeRoleStoreTestSuite) TestAssignmentReads_OneStoreOverTheLimit() {
+	reads := map[string]func() error{
+		"count": func() error {
+			_, err := suite.store.GetRoleAssignmentsCount(context.Background(), "role1", "")
+			return err
+		},
+		"list": func() error {
+			_, err := suite.store.GetRoleAssignments(context.Background(), "role1", "", 10, 0)
+			return err
+		},
+	}
+	for name, read := range reads {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			suite.mockDBStore.On("GetRoleAssignmentsCount", mock.Anything, "role1", mock.Anything).
+				Return(serverconst.MaxCompositeStoreRecords+500, nil).Once()
+			suite.mockFileStore.On("GetRoleAssignmentsCount", mock.Anything, "role1", mock.Anything).
+				Return(0, nil).Once()
+
+			suite.ErrorIs(read(), errResultLimitExceededInCompositeMode)
+		})
+	}
+}
+
+// A role with exactly the limit in one store is still counted.
+func (suite *CompositeRoleStoreTestSuite) TestGetRoleAssignmentsCount_OneStoreAtTheLimit() {
+	assignments := make([]RoleAssignment, serverconst.MaxCompositeStoreRecords)
+	for i := range assignments {
+		assignments[i] = RoleAssignment{ID: fmt.Sprintf("user%d", i), Type: assigneeTypeEntity}
+	}
+	suite.mockDBStore.On("GetRoleAssignmentsCount", mock.Anything, "role1", mock.Anything).
+		Return(serverconst.MaxCompositeStoreRecords, nil).Once()
+	suite.mockFileStore.On("GetRoleAssignmentsCount", mock.Anything, "role1", mock.Anything).Return(0, nil).Once()
+	suite.mockDBStore.On("GetRoleAssignments", mock.Anything, "role1", mock.Anything,
+		serverconst.MaxCompositeStoreRecords, 0).Return(assignments, nil).Once()
+	suite.mockFileStore.On("GetRoleAssignments", mock.Anything, "role1", mock.Anything, 0, 0).
+		Return([]RoleAssignment{}, nil).Once()
+
+	count, err := suite.store.GetRoleAssignmentsCount(context.Background(), "role1", "")
+
+	suite.NoError(err)
+	suite.Equal(serverconst.MaxCompositeStoreRecords, count)
 }

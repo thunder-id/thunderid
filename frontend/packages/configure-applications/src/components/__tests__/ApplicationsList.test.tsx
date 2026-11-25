@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {DeployStatusProvider} from '@thunderid/components';
+import {CapabilitiesProvider, HiddenResourcesProvider} from '@thunderid/contexts';
 import {render, screen, waitFor} from '@thunderid/test-utils';
 import type {NavigateFunction} from 'react-router';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
@@ -131,6 +133,11 @@ vi.mock('@thunderid/logger/react', async (importOriginal) => ({
 const {default: useGetApplications} = await import('../../api/useGetApplications');
 const {useNavigate} = await import('react-router');
 const {useDataGridLocaleText} = await import('@thunderid/hooks');
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  isLoading: false,
+};
 
 describe('ApplicationsList', () => {
   let mockNavigate: ReturnType<typeof vi.fn>;
@@ -304,6 +311,24 @@ describe('ApplicationsList', () => {
 
     const dashElements = screen.getAllByText('-');
     expect(dashElements.length).toBeGreaterThan(0);
+  });
+
+  it('hides the edit and delete row actions when the admin may only view applications', () => {
+    vi.mocked(useGetApplications).mockReturnValue({
+      data: mockApplicationsData,
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useGetApplications>);
+
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <ApplicationsList />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.getByText('Test App 1')).toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: /delete/i})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: /edit/i})).not.toBeInTheDocument();
   });
 
   it('should open delete dialog when clicking Delete action', async () => {
@@ -599,5 +624,60 @@ describe('ApplicationsList', () => {
         }),
       );
     });
+  });
+
+  it('shows where each application is along the deploy path only where the app says so, in the grid focus', () => {
+    vi.mocked(useGetApplications).mockReturnValue({
+      data: mockApplicationsData,
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useGetApplications>);
+    const {unmount} = renderComponent();
+    // Without the app saying where resources are, the list has no deployment column.
+    const cellsWithout = screen.getAllByRole('row')[0].children.length;
+    unmount();
+
+    render(
+      <DeployStatusProvider value={{statusOf: () => ({state: 'notPromoted', target: 'Prod'}), openDeploy: vi.fn()}}>
+        <ApplicationsList />
+      </DeployStatusProvider>,
+    );
+    expect(screen.getAllByRole('row')[0].children.length).toBe(cellsWithout + 1);
+    const chips = screen.getAllByTestId('resource-deploy-status');
+    expect(chips[0]).toHaveTextContent('Not in Prod');
+    chips.forEach((chip) => expect(chip).toHaveAttribute('tabindex', '-1'));
+  });
+  it('leaves a hidden application out of the list, matching its client id', () => {
+    vi.mocked(useGetApplications).mockReturnValue({
+      data: mockApplicationsData,
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useGetApplications>);
+
+    render(
+      <HiddenResourcesProvider hidden={{applicationClientIds: ['CLIENT_ID_2']}}>
+        <ApplicationsList />
+      </HiddenResourcesProvider>,
+    );
+
+    expect(screen.getByText('Test App 1')).toBeInTheDocument();
+    expect(screen.queryByText('Test App 2')).not.toBeInTheDocument();
+  });
+
+  it('lists every application when none is hidden', () => {
+    vi.mocked(useGetApplications).mockReturnValue({
+      data: mockApplicationsData,
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useGetApplications>);
+
+    render(
+      <HiddenResourcesProvider hidden={{resourceServerIdentifiers: ['client_id_2']}}>
+        <ApplicationsList />
+      </HiddenResourcesProvider>,
+    );
+
+    expect(screen.getByText('Test App 1')).toBeInTheDocument();
+    expect(screen.getByText('Test App 2')).toBeInTheDocument();
   });
 });

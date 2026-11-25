@@ -76,24 +76,50 @@ func (c *compositeDefinitionStore) ListPresentationDefinitionSummaries(
 	if err != nil {
 		return nil, err
 	}
-	seen := make(map[string]bool, len(dbSummaries))
-	result := make([]PresentationDefinitionList, 0, len(dbSummaries)+len(fileSummaries))
-	for _, s := range dbSummaries {
-		if !seen[s.ID] {
-			seen[s.ID] = true
-			result = append(result, s)
-		}
+	return mergeSummaries(dbSummaries, fileSummaries)
+}
+
+// ListPresentationDefinitionSummariesByOUID retrieves minimal listing data for the presentation definitions an
+// organization unit owns from both stores and merges the results.
+func (c *compositeDefinitionStore) ListPresentationDefinitionSummariesByOUID(
+	ctx context.Context, ouID string,
+) ([]PresentationDefinitionList, error) {
+	dbSummaries, err := c.dbStore.ListPresentationDefinitionSummariesByOUID(ctx, ouID)
+	if err != nil {
+		return nil, err
 	}
-	for _, s := range fileSummaries {
-		if !seen[s.ID] {
-			seen[s.ID] = true
-			result = append(result, s)
-		}
+	fileSummaries, err := c.fileStore.ListPresentationDefinitionSummariesByOUID(ctx, ouID)
+	if err != nil {
+		return nil, err
 	}
-	if len(result) > serverconst.MaxCompositeStoreRecords {
-		return nil, ErrResultLimitExceededInCompositeMode
+	return mergeSummaries(dbSummaries, fileSummaries)
+}
+
+// ListPresentationDefinitionSummariesByProject retrieves minimal listing data for the presentation definitions of
+// a project from both stores and merges the results.
+func (c *compositeDefinitionStore) ListPresentationDefinitionSummariesByProject(
+	ctx context.Context, projectID string,
+) ([]PresentationDefinitionList, error) {
+	dbSummaries, err := c.dbStore.ListPresentationDefinitionSummariesByProject(ctx, projectID)
+	if err != nil {
+		return nil, err
 	}
-	return result, nil
+	fileSummaries, err := c.fileStore.ListPresentationDefinitionSummariesByProject(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	return mergeSummaries(dbSummaries, fileSummaries)
+}
+
+// CountPresentationDefinitionsByProject returns the number of presentation definitions of a project in both stores.
+// An ID is unique across the stores, so the counts add up exactly.
+func (c *compositeDefinitionStore) CountPresentationDefinitionsByProject(
+	ctx context.Context, projectID string,
+) (int, error) {
+	return declarativeresource.CompositeMergeCountHelper(
+		func() (int, error) { return c.dbStore.CountPresentationDefinitionsByProject(ctx, projectID) },
+		func() (int, error) { return c.fileStore.CountPresentationDefinitionsByProject(ctx, projectID) },
+	)
 }
 
 // List retrieves presentation definitions from both stores and merges the results.
@@ -169,6 +195,29 @@ func (c *compositeDefinitionStore) existsInFileStore(ctx context.Context, id str
 		return false, nil
 	}
 	return false, err
+}
+
+// mergeSummaries merges database and file summaries, deduplicated by ID with the database entry
+// winning, and rejects a merged list over the composite cap.
+func mergeSummaries(dbSummaries, fileSummaries []PresentationDefinitionList) ([]PresentationDefinitionList, error) {
+	seen := make(map[string]bool, len(dbSummaries))
+	result := make([]PresentationDefinitionList, 0, len(dbSummaries)+len(fileSummaries))
+	for _, s := range dbSummaries {
+		if !seen[s.ID] {
+			seen[s.ID] = true
+			result = append(result, s)
+		}
+	}
+	for _, s := range fileSummaries {
+		if !seen[s.ID] {
+			seen[s.ID] = true
+			result = append(result, s)
+		}
+	}
+	if len(result) > serverconst.MaxCompositeStoreRecords {
+		return nil, ErrResultLimitExceededInCompositeMode
+	}
+	return result, nil
 }
 
 // mergeAndDeduplicate merges definitions from both stores and removes duplicates by ID.

@@ -112,7 +112,7 @@ function getSimulationOptions(nodeId: string, nodes: Node[], edges: Edge[]): Sim
   };
 
   return edges
-    .filter((edge: Edge) => edge.source === nodeId && nodeIds.has(edge.target))
+    .filter((edge: Edge) => edge.source === nodeId && nodeIds.has(edge.target) && edge.data?.['conditionSkip'] !== true)
     .map((edge: Edge) => ({
       edgeId: edge.id,
       targetNodeId: edge.target,

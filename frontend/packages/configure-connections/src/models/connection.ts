@@ -1,6 +1,7 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import type {OutboundAuthentication} from '@thunderid/components';
 import type {ServerConfigLayers} from '@thunderid/utils';
 import type {JSX} from 'react';
 
@@ -63,6 +64,8 @@ export interface ConnectionInstance {
   type: ConnectionType;
   /** The organization unit the connection belongs to. */
   ouId?: string;
+  /** False for a connection shared into the organization unit it is listed in, which that unit cannot change. */
+  isOwnedByOU?: boolean;
   categories: ConnectionInstanceCategory[];
   /**
    * Present only for trust-only OIDC instances (trusted issuers); absent for plain federation
@@ -257,6 +260,20 @@ export interface AttributeConfiguration {
   userTypeAttributeMappings?: UserTypeAttributeMapping[];
   accountLinking?: AccountLinking;
   authorizationMapping?: AuthorizationMapping;
+  sync?: SyncConfiguration;
+}
+
+/**
+ * How a federated sign-in keeps the local account in line with the provider.
+ */
+export type SyncMode = 'no_sync' | 'session_only' | 'override_received' | 'override_all';
+
+/**
+ * A connection's sync modes. An unset mode takes its server default.
+ */
+export interface SyncConfiguration {
+  attributes?: Exclude<SyncMode, 'override_all'>;
+  groupsAndRoles?: Exclude<SyncMode, 'override_received'>;
 }
 
 /**
@@ -326,17 +343,10 @@ export interface VonageConnectionRequest {
 }
 
 /**
- * How ThunderID authenticates itself on an outbound call. `type` selects the method and
- * `properties` carries that method's field values, so a method the console was not built
- * against still round-trips. The fields each method takes come from GET /connections/meta.
- *
- * A field the method marks as a credential is write-only: returned masked as "******", and
- * omitted on update to keep the stored value.
+ * How ThunderID authenticates itself on an outbound call. The fields each method takes come from
+ * GET /connections/meta.
  */
-export interface OutboundAuthConfig {
-  type: string;
-  properties?: Record<string, string>;
-}
+export type OutboundAuthConfig = OutboundAuthentication;
 
 /**
  * Request payload for an SMTP email connection.
@@ -382,7 +392,7 @@ export interface AuthZENPDPConnectionRequest {
   subjectAttributeMappings?: AuthZENPDPSubjectAttributeMapping[];
 }
 
-export type OutboundAuthentication = OutboundAuthConfig;
+export type {OutboundAuthentication};
 export type OutboundAuthenticationResponse = OutboundAuthConfig;
 
 /**
@@ -450,6 +460,8 @@ export interface ConnectionResponse extends Partial<OIDCConnectionRequest> {
   name: string;
   /** The organization unit the connection belongs to. */
   ouId: string;
+  /** False for a connection shared into the organization unit it is read in, which that unit cannot change. */
+  isOwnedByOU?: boolean;
   /** SMS (Twilio) fields. */
   accountSid?: string;
   authToken?: string;
@@ -509,7 +521,7 @@ export interface ConnectionVendorMeta {
   supportsAttributeMapping?: boolean;
   /** Whether this connection exposes outbound service authentication settings. */
   supportsAuthentication?: boolean;
-  /** Changing the `url` origin requires the stored credentials to be entered again. */
+  /** Changing the `url` origin, or an SMTP host or port, requires the stored credentials to be entered again. */
   reentersCredentialsOnOriginChange?: boolean;
   /** Whether the detail page lists the resources that use this connection. */
   showsUsages?: boolean;

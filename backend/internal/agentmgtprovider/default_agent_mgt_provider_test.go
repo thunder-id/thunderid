@@ -19,9 +19,16 @@ import (
 )
 
 const (
-	testAgentID    = "agent-id-123"
-	testAgentOwner = "owner-id-456"
+	testAgentID      = "agent-id-123"
+	testAgentOwnerID = "owner-id-456"
 )
+
+// testAgentOwner returns the local owner the tests provision agents with.
+func testAgentOwner() *providers.AgentOwner {
+	return &providers.AgentOwner{
+		ID: testAgentOwnerID, IDType: providers.AgentOwnerIDTypeUUID, IsLocal: providers.AgentOwnerLocal,
+	}
+}
 
 type DefaultAgentMgtProviderTestSuite struct {
 	suite.Suite
@@ -42,7 +49,7 @@ func newTestAgent() *providers.Agent {
 	return &providers.Agent{
 		OUID:       "ou-id-abc",
 		Type:       "default",
-		Owner:      testAgentOwner,
+		Owner:      testAgentOwner(),
 		Attributes: []byte(`{"name":"test-agent"}`),
 	}
 }
@@ -65,7 +72,7 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentPassesEntityDataTh
 		Type:        "default",
 		Description: "handles invoices",
 		LogoURL:     "https://example.com/logo.png",
-		Owner:       testAgentOwner,
+		Owner:       testAgentOwner(),
 		Attributes:  []byte(`{"name":"billing-agent","model":"claude"}`),
 	}
 
@@ -118,14 +125,14 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentForwardsTheAgentUn
 // is forwarded rather than rejected here.
 func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentWithoutOwnerIsForwarded() {
 	req := newTestAgent()
-	req.Owner = ""
+	req.Owner = nil
 
 	captured := suite.captureCreatedAgent()
 
 	_, svcErr := suite.provider.CreateAgent(context.Background(), req)
 
 	suite.Nil(svcErr)
-	suite.Empty((*captured).Owner)
+	suite.Nil((*captured).Owner)
 }
 
 // A supplied owner reaches the agent service unchanged, which routes it through the service's owner
@@ -136,7 +143,7 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentPassesOwnerExplici
 	_, svcErr := suite.provider.CreateAgent(context.Background(), newTestAgent())
 
 	suite.Nil(svcErr)
-	suite.Equal(testAgentOwner, (*captured).Owner)
+	suite.Equal(testAgentOwner(), (*captured).Owner)
 }
 
 func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentWithNilRequestIsRejectedBeforeDelegation() {
@@ -187,6 +194,11 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentPreservesServiceEr
 			scenario: "the agent type is missing",
 			svcErr:   &agent.ErrorInvalidAgentType,
 		},
+		{
+			name:     "OrganizationUnitMismatch",
+			scenario: "the organization unit is outside the agent type's organization unit tree",
+			svcErr:   &agent.ErrorOrganizationUnitMismatch,
+		},
 	}
 
 	for _, tt := range tests {
@@ -220,9 +232,8 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentPreservesServerErr
 	suite.Equal(tidcommon.ServerErrorType, svcErr.Type)
 }
 
-// The agent service must see a runtime-marked context that still carries the caller's values, so
-// authorization is elevated without losing request-scoped data such as the trace ID.
-func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentElevatesCallerContext() {
+// The agent service authorizes the caller, so it must see the caller's own context, not a runtime one.
+func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentPassesTheCallerContext() {
 	type ctxKey string
 	const traceKey ctxKey = "trace-id"
 
@@ -238,8 +249,8 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentElevatesCallerCont
 	_, svcErr := suite.provider.CreateAgent(callerCtx, newTestAgent())
 
 	suite.Nil(svcErr)
-	suite.True(security.IsRuntimeContext(observed))
-	suite.Equal("trace-789", observed.Value(traceKey))
+	suite.False(security.IsRuntimeContext(observed))
+	suite.Equal(callerCtx, observed)
 }
 
 // The generated client secret is the reason a runtime capability provisions an agent at all. It
@@ -293,7 +304,7 @@ func (suite *DefaultAgentMgtProviderTestSuite) TestCreateAgentMapsEveryResponseF
 		Type:        "default",
 		Description: "an agent",
 		LogoURL:     "avatar:shape=circle",
-		Owner:       testAgentOwner,
+		Owner:       testAgentOwner(),
 		Attributes:  []byte(`{"k":"v"}`),
 	}
 	full.ValidUntil = "2030-01-01T00:00:00Z"

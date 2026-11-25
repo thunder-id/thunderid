@@ -44,7 +44,7 @@ export const ORGANIZATION_ACCESS_WORDING_FALLBACKS: Record<
   },
   ownerOnly: {
     key: 'resourceSharing:scope.owner.description',
-    defaultValue: 'No child unit and no other tree can use it.',
+    defaultValue: 'No child organization unit and no other tree can use it.',
   },
   stopSharingTitle: {key: 'resourceSharing:switch.titleOwner', defaultValue: 'Stop sharing {{resource}}?'},
   stopSharingIntro: {

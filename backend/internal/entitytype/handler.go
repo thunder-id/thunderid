@@ -222,9 +222,11 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.S
 		switch svcErr.Code {
 		case ErrorEntityTypeNotFound.Code:
 			statusCode = http.StatusNotFound
-		case ErrorEntityTypeHandleConflict.Code:
+		case ErrorEntityTypeHandleConflict.Code,
+			ErrorAgentTypeAlreadyExistsInOU.Code,
+			ErrorAgentTypeInUse.Code:
 			statusCode = http.StatusConflict
-		case ErrorCannotModifyDeclarativeResource.Code:
+		case ErrorCannotModifyDeclarativeResource.Code, ErrorManagedEntityType.Code:
 			statusCode = http.StatusForbidden
 		case tidcommon.ErrorUnauthorized.Code:
 			statusCode = http.StatusForbidden

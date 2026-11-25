@@ -4,12 +4,27 @@
 // Components
 export {default as CopyableField} from './CopyableField/CopyableField';
 export type {CopyableFieldProps} from './CopyableField/CopyableField';
+export {default as CredentialFieldInput} from './CredentialFieldInput/CredentialFieldInput';
+export {default as CredentialResetDialog} from './CredentialReset/CredentialResetDialog';
+export type {
+  CredentialResetDialogProps,
+  CredentialResetField,
+  CredentialResetLinkOption,
+} from './CredentialReset/CredentialResetDialog';
+export {default as CredentialResetSection} from './CredentialReset/CredentialResetSection';
+export type {CredentialResetSectionProps} from './CredentialReset/CredentialResetSection';
 export {default as CspOriginHint} from './CspOriginHint/CspOriginHint';
 export type {CspOriginHintProps} from './CspOriginHint/CspOriginHint';
 export {resolveCspHint} from './CspOriginHint/resolveCspHint';
 export type {CspResourceType, CspHint} from './CspOriginHint/resolveCspHint';
+export {default as DiscardChangesDialog} from './DiscardChangesDialog/DiscardChangesDialog';
+export type {DiscardChangesDialogProps} from './DiscardChangesDialog/DiscardChangesDialog';
 export {default as DocumentTitle} from './DocumentTitle/DocumentTitle';
 export type {DocumentTitleProps} from './DocumentTitle/DocumentTitle';
+export {default as DurationField} from './DurationField/DurationField';
+export type {DurationFieldProps} from './DurationField/DurationField';
+export {DurationUnitSeconds, toDurationParts, toSeconds} from './DurationField/duration';
+export type {DurationParts, DurationUnit} from './DurationField/duration';
 export {default as ExternalLinkConfirmDialog} from './ExternalLinkConfirm/ExternalLinkConfirmDialog';
 export type {ExternalLinkConfirmDialogProps} from './ExternalLinkConfirm/ExternalLinkConfirmDialog';
 export {default as useExternalLinkConfirmation} from './ExternalLinkConfirm/useExternalLinkConfirmation';
@@ -19,24 +34,76 @@ export {default as Helmet} from './Helmet/Helmet';
 export type {HelmetProps} from './Helmet/Helmet';
 export {default as FullScreenCreationWizardLayout} from './FullScreenCreationWizardLayout/FullScreenCreationWizardLayout';
 export type {FullScreenCreationWizardLayoutProps} from './FullScreenCreationWizardLayout/FullScreenCreationWizardLayout';
+export {default as IdMultiSelect} from './IdMultiSelect/IdMultiSelect';
+export type {IdMultiSelectOption, IdMultiSelectProps} from './IdMultiSelect/IdMultiSelect';
 export {default as I18nTextInput} from './I18nTextInput/I18nTextInput';
 export type {I18nTextInputLabels, I18nTextInputProps} from './I18nTextInput/I18nTextInput';
 export {default as ExternalLink} from './ExternalLink/ExternalLink';
 export type {ExternalLinkProps} from './ExternalLink/ExternalLink';
 export {default as useFlowListColumns} from './FlowList/useFlowListColumns';
 export type {FlowListColumnsOptions, FlowListRow} from './FlowList/useFlowListColumns';
+export {default as KeyValuePairsField} from './KeyValuePairsField/KeyValuePairsField';
+export type {KeyValuePairsFieldProps} from './KeyValuePairsField/KeyValuePairsField';
+export {
+  decodeKeyValuePairs,
+  encodeKeyValuePairs,
+  isCompleteKeyValuePair,
+  parseKeyValuePairs,
+  sanitizeKeyValuePart,
+  serializeKeyValuePairs,
+} from './KeyValuePairsField/keyValuePairs';
+export type {KeyValueFormat, KeyValuePair} from './KeyValuePairsField/keyValuePairs';
+export {default as MaskedSecretField} from './MaskedSecretField/MaskedSecretField';
+export type {MaskedSecretFieldProps} from './MaskedSecretField/MaskedSecretField';
 export {default as OrganizationUnitSummaryChip} from './OrganizationUnitSummaryChip/OrganizationUnitSummaryChip';
 export type {OrganizationUnitSummaryChipProps} from './OrganizationUnitSummaryChip/OrganizationUnitSummaryChip';
+export {default as CapabilityGuard} from './CapabilityGuard/CapabilityGuard';
+export type {CapabilityGuardProps} from './CapabilityGuard/CapabilityGuard';
+export {default as ForbiddenNotice} from './CapabilityGuard/ForbiddenNotice';
+export {default as CapabilitiesErrorNotice} from './CapabilityGuard/CapabilitiesErrorNotice';
+export {default as EditOrViewAction} from './EditOrViewAction/EditOrViewAction';
+export type {EditOrViewActionProps} from './EditOrViewAction/EditOrViewAction';
+export {default as ReadOnlyFieldset} from './ReadOnlyFieldset/ReadOnlyFieldset';
+export type {ReadOnlyFieldsetProps} from './ReadOnlyFieldset/ReadOnlyFieldset';
+export {default as ServerCapabilitiesProvider} from './CapabilityGuard/ServerCapabilitiesProvider';
 export {default as PageLoader} from './PageLoader/PageLoader';
+export {default as ResourceDeployStatus} from './ResourceDeployStatus/ResourceDeployStatus';
+export type {ResourceDeployStatusProps} from './ResourceDeployStatus/ResourceDeployStatus';
+export {DeployStatusProvider, useDeployStatusSource} from './ResourceDeployStatus/DeployStatusContext';
+export type {DeployState, DeployStatus, DeployStatusSource} from './ResourceDeployStatus/DeployStatusContext';
 export {default as QueryErrorNotice} from './QueryErrorNotice/QueryErrorNotice';
 export type {QueryErrorNoticeProps, QueryErrorMessageResolver} from './QueryErrorNotice/QueryErrorNotice';
+export {default as ServiceAuthenticationMethods} from './ServiceAuthenticationMethods/ServiceAuthenticationMethods';
+export type {ServiceAuthenticationMethodsProps} from './ServiceAuthenticationMethods/ServiceAuthenticationMethods';
+export {
+  AUTHENTICATION_METHOD_FIELD_NAMES,
+  AuthenticationMethods,
+} from './ServiceAuthenticationMethods/authentication-methods';
+export type {AuthenticationMethod} from './ServiceAuthenticationMethods/authentication-methods';
+export {
+  getServiceAuthenticationState,
+  MASKED_SECRET,
+  outboundAuthenticationFromFormValues,
+  outboundAuthenticationToFormValues,
+} from './ServiceAuthenticationMethods/outboundAuthentication';
+export type {
+  OutboundAuthentication,
+  ServiceAuthenticationErrors,
+  ServiceAuthenticationFormValues,
+  ServiceAuthenticationState,
+  ServiceAuthenticationStateOptions,
+} from './ServiceAuthenticationMethods/outboundAuthentication';
 export {default as StackblitzQuickstartCard} from './StackblitzQuickstartCard/StackblitzQuickstartCard';
 export type {StackblitzQuickstartCardProps} from './StackblitzQuickstartCard/StackblitzQuickstartCard';
+export {default as GuideOptionMenu} from './GuideOptionMenu/GuideOptionMenu';
+export type {GuideOption, GuideOptionMenuProps} from './GuideOptionMenu/GuideOptionMenu';
+export {default as SEGMENTED_CONTROL_SX} from './SegmentedControl/segmentedControlSx';
 export {default as ToggleCard} from './ToggleCard/ToggleCard';
 export type {ToggleCardProps} from './ToggleCard/ToggleCard';
 
 /* -------------------------- ICONS -------------------------- */
 
+export {default as BotCogIcon} from './icons/BotCogIcon';
 export {default as GithubIcon} from './icons/logos/vendor/GithubIcon';
 export {default as GoogleIcon} from './icons/logos/vendor/GoogleIcon';
 export {default as HeidiIcon} from './icons/logos/vendor/HeidiIcon';
@@ -53,10 +120,16 @@ export {default as ExpressIcon} from './icons/logos/vendor/ExpressIcon';
 export {default as NodeIcon} from './icons/logos/vendor/NodeIcon';
 export {default as JavaScriptIcon} from './icons/logos/vendor/JavaScriptIcon';
 export {default as PythonLogo} from './icons/logos/vendor/PythonLogo';
+export {default as TypeScriptLogo} from './icons/logos/vendor/TypeScriptLogo';
 export {default as LangChainLogo} from './icons/logos/vendor/LangChainLogo';
 export {default as JsonLogo} from './icons/logos/vendor/JsonLogo';
 export {default as JwtLogo} from './icons/logos/vendor/JwtLogo';
 export {default as OAuth2Logo} from './icons/logos/vendor/OAuth2Logo';
+export {default as NpmIcon} from './icons/logos/vendor/NpmIcon';
+export {default as YarnIcon} from './icons/logos/vendor/YarnIcon';
+export {default as PnpmIcon} from './icons/logos/vendor/PnpmIcon';
+export {default as BunIcon} from './icons/logos/vendor/BunIcon';
+export {default as DenoIcon} from './icons/logos/vendor/DenoIcon';
 
 /* -------------------------- LAB -------------------------- */
 
@@ -74,6 +147,7 @@ export {default as NameSuggestion} from './lab/components/NameSuggestion';
 export type {NameSuggestionProps} from './lab/components/NameSuggestion';
 export {default as PageLoadingAnimation} from './lab/components/PageLoadingAnimation';
 export {default as ResourceAvatar} from './lab/components/ResourceAvatar';
+export {default as SdkTheme} from './SdkTheme/SdkTheme';
 export {default as SettingsCard} from './lab/components/SettingsCard';
 export {default as UnsavedChangesBar} from './lab/components/UnsavedChangesBar';
 

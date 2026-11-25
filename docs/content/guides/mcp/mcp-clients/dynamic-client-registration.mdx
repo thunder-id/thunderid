@@ -38,7 +38,7 @@ oauth:
 :::warning
 `insecure: true` lets anyone who can reach the server register OAuth clients without authentication. Use it for local development only.
 
-Without `insecure: true`, <ProductName /> requires the registration request to carry a valid access token whose permissions include the root `system` permission, the same requirement other <ProductName /> management APIs enforce. A request without one gets a `401`.
+Without `insecure: true`, <ProductName /> requires the registration request to carry a valid access token whose permissions include the root `system` permission, `system:app`, or `system:app:create`, the same requirement the application management APIs enforce for creating an application. A request without one gets a `401`.
 :::
 
 ## Restart <ProductName />

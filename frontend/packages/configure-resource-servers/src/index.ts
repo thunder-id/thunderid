@@ -73,6 +73,11 @@ export type {SelectionState} from './utils/permissionSelection';
 export {default as ResourceServersListPage} from './pages/ResourceServersListPage';
 export {default as ResourceServerEditPage} from './pages/ResourceServerEditPage';
 export {default as CreateResourceServerPage} from './pages/CreateResourceServerPage';
+export {default as AuthorizationDetailTypesListPage} from './pages/AuthorizationDetailTypesListPage';
+export type {AuthorizationDetailTypesListPageProps} from './pages/AuthorizationDetailTypesListPage';
+export {default as AuthorizationDetailTypeEditPage} from './pages/AuthorizationDetailTypeEditPage';
+export {default as CreateAuthorizationDetailTypePage} from './pages/CreateAuthorizationDetailTypePage';
+export type {CreateAuthorizationDetailTypePageProps} from './pages/CreateAuthorizationDetailTypePage';
 
 // Routes
 export type {ResourceServerRoutePaths} from './hooks/useResourceServerRoutes';
@@ -81,3 +86,8 @@ export {
   useResourceServerConnectionRoutes,
   default as useResourceServerRoutes,
 } from './hooks/useResourceServerRoutes';
+export type {AuthorizationDetailTypeRoutePaths} from './hooks/useAuthorizationDetailTypeRoutes';
+export {
+  defaultAuthorizationDetailTypeRoutePaths,
+  default as useAuthorizationDetailTypeRoutes,
+} from './hooks/useAuthorizationDetailTypeRoutes';

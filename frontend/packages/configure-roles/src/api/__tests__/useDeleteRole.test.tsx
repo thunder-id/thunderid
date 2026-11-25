@@ -3,8 +3,7 @@
 
 import {AdministrationModes} from '@thunderid/contexts';
 import {waitFor, renderHook} from '@thunderid/test-utils';
-import {AdministrationFlowConfigKey, AdministrationFlowInput} from '@thunderid/utils';
-import {describe, it, expect, beforeEach, afterEach, vi, type Mock} from 'vitest';
+import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
 import RoleQueryKeys from '../../constants/role-query-keys';
 import useDeleteRole from '../useDeleteRole';
 
@@ -23,8 +22,7 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   };
 });
 
-// How the console says this operation runs. Defaults to the flow, which is what a console that
-// declares nothing gets.
+// How the console says this operation runs. A console that declares nothing gets the flow mode.
 let administrationOperation: unknown = AdministrationModes.FLOW;
 
 const {useThunderID} = await import('@thunderid/react');
@@ -273,16 +271,15 @@ describe('useDeleteRole', () => {
       expect(result.current.isSuccess).toBe(true);
     });
 
-    expect(mockHttpRequest).toHaveBeenCalledTimes(4);
-    // Calls 1 and 3 read the flow configuration; the deletions are calls 2 and 4.
+    expect(mockHttpRequest).toHaveBeenCalledTimes(2);
     expect(mockHttpRequest).toHaveBeenNthCalledWith(
-      2,
+      1,
       expect.objectContaining({
         url: 'https://api.test.com/roles/role-1',
       }),
     );
     expect(mockHttpRequest).toHaveBeenNthCalledWith(
-      4,
+      2,
       expect.objectContaining({
         url: 'https://api.test.com/roles/role-2',
       }),
@@ -328,8 +325,7 @@ describe('useDeleteRole', () => {
     });
 
     expect(result.current.error).toBeNull();
-    // The failed attempt and the retry each read the flow configuration first.
-    expect(mockHttpRequest).toHaveBeenCalledTimes(3);
+    expect(mockHttpRequest).toHaveBeenCalledTimes(2);
   });
 
   it('should use mutateAsync for promise-based deletion', async () => {
@@ -346,32 +342,12 @@ describe('useDeleteRole', () => {
     });
   });
 
-  describe('when a role deletion flow is configured', () => {
-    const routeRequests = (execute: () => Promise<unknown>): void => {
-      (mockHttpRequest as Mock<(config: {url: string}) => Promise<unknown>>).mockImplementation((config) => {
-        if (config.url.endsWith('/server-config/flow')) {
-          return Promise.resolve({
-            data: {merged: {[AdministrationFlowConfigKey.ROLE_DELETION]: {defaultHandle: 'delete-role'}}},
-          });
-        }
-        if (config.url.includes('/flows?')) {
-          return Promise.resolve({data: {flows: [{id: 'flow-1', handle: 'delete-role', flowType: 'ADMINISTRATION'}]}});
-        }
-        if (config.url.endsWith('/flow/execute')) {
-          return execute();
-        }
-        if (config.url.endsWith('/roles/role-1')) {
-          return Promise.resolve({});
-        }
-
-        return Promise.reject(new Error(`unexpected request ${config.url}`));
-      });
-    };
-
-    const requestedUrls = (): string[] => mockHttpRequest.mock.calls.map(([config]) => (config as {url: string}).url);
-
-    it('should delete the role through the flow and never call the native endpoint', async () => {
-      routeRequests(() => Promise.resolve({data: {flowStatus: 'COMPLETE'}}));
+  // The server revokes what the role granted, so native and flow modes both use the endpoint.
+  it.each([AdministrationModes.FLOW, AdministrationModes.NATIVE])(
+    'deletes through the endpoint alone when the console says %s',
+    async (mode) => {
+      administrationOperation = mode;
+      mockHttpRequest.mockResolvedValueOnce(undefined);
       const {result} = renderHook(() => useDeleteRole());
 
       result.current.mutate('role-1');
@@ -380,59 +356,29 @@ describe('useDeleteRole', () => {
         expect(result.current.isSuccess).toBe(true);
       });
 
-      expect(requestedUrls().filter((url) => url.endsWith('/flow/execute'))).toHaveLength(1);
-      expect(requestedUrls().some((url) => url.endsWith('/roles/role-1'))).toBe(false);
+      expect(mockHttpRequest).toHaveBeenCalledTimes(1);
       expect(mockHttpRequest).toHaveBeenCalledWith(
-        expect.objectContaining({
-          url: 'https://api.test.com/flow/execute',
-          data: {flowId: 'flow-1', inputs: {[AdministrationFlowInput.ROLE]: 'role-1'}},
-        }),
+        expect.objectContaining({url: 'https://api.test.com/roles/role-1', method: 'DELETE'}),
       );
+    },
+  );
+
+  // A distributor can replace one operation without forking this package.
+  it('calls the function the console supplied', async () => {
+    const deleted: string[] = [];
+    administrationOperation = (roleId: string): Promise<void> => {
+      deleted.push(roleId);
+      return Promise.resolve();
+    };
+    const {result} = renderHook(() => useDeleteRole());
+
+    result.current.mutate('role-1');
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
     });
 
-    it('should report a flow refusal without falling back to the native endpoint', async () => {
-      routeRequests(() => Promise.resolve({data: {flowStatus: 'ERROR', error: {}}}));
-      const {result} = renderHook(() => useDeleteRole());
-
-      result.current.mutate('role-1');
-
-      await waitFor(() => {
-        expect(result.current.isError).toBe(true);
-      });
-
-      expect(requestedUrls().some((url) => url.endsWith('/roles/role-1'))).toBe(false);
-    });
-
-    it('deletes through the endpoint when the console says native', async () => {
-      administrationOperation = AdministrationModes.NATIVE;
-      routeRequests(() => Promise.resolve({data: {flowStatus: 'COMPLETE'}}));
-      const {result} = renderHook(() => useDeleteRole());
-
-      result.current.mutate('role-1');
-
-      await waitFor(() => {
-        expect(result.current.isSuccess).toBe(true);
-      });
-
-      expect(requestedUrls()).toEqual(['https://api.test.com/roles/role-1']);
-    });
-
-    it('calls the function the console supplied', async () => {
-      const deleted: string[] = [];
-      administrationOperation = (roleId: string): Promise<void> => {
-        deleted.push(roleId);
-        return Promise.resolve();
-      };
-      const {result} = renderHook(() => useDeleteRole());
-
-      result.current.mutate('role-1');
-
-      await waitFor(() => {
-        expect(result.current.isSuccess).toBe(true);
-      });
-
-      expect(deleted).toEqual(['role-1']);
-      expect(mockHttpRequest).not.toHaveBeenCalled();
-    });
+    expect(deleted).toEqual(['role-1']);
+    expect(mockHttpRequest).not.toHaveBeenCalled();
   });
 });

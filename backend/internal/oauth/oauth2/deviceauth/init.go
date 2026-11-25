@@ -12,13 +12,15 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// Initialize initializes the Device Authorization Grant handler and registers its routes.
+// Initialize initializes the Device Authorization Grant handler and registers its routes. Every
+// refused client authentication is audited on bus.
 func Initialize(
 	mux *http.ServeMux,
 	jwtService jwt.JWTServiceInterface,
@@ -30,12 +32,13 @@ func Initialize(
 	jtiStore jti.JTIStoreInterface,
 	governance providers.IdentityGovernanceProvider,
 	cfg oauthconfig.Config,
+	bus eventbus.EventBusInterface,
 ) DeviceAuthServiceInterface {
 	deviceAuthStore := newDeviceAuthStore(runtimeStore)
 	deviceAuthService := newDeviceAuthService(deviceAuthStore, resourceService, jwtService, cfg, actorProvider)
 	deviceAuthHandler := newHandler(deviceAuthService)
 	registerRoutes(mux, deviceAuthHandler, actorProvider, authnProvider, jwtService, discoveryService,
-		jtiStore, governance, cfg.OAuth.ClientAssertion, cfg.JWT.Leeway)
+		jtiStore, governance, cfg.OAuth.ClientAssertion, cfg.JWT.Leeway, bus)
 	return deviceAuthService
 }
 
@@ -51,6 +54,7 @@ func registerRoutes(
 	governance providers.IdentityGovernanceProvider,
 	assertionCfg engineconfig.ClientAssertionConfig,
 	leeway int64,
+	bus eventbus.EventBusInterface,
 ) {
 	corsOpts := middleware.CORSOptions{
 		AllowedMethods:   []string{"POST"},
@@ -61,7 +65,7 @@ func registerRoutes(
 
 	issuer := discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background()).Issuer
 	clientAuthMiddleware := clientauth.ClientAuthMiddleware(actorProvider, authnProvider, governance, jwtService,
-		jtiStore, issuer, assertionCfg, leeway)
+		jtiStore, issuer, assertionCfg, leeway, bus)
 	authHandler := clientAuthMiddleware(http.HandlerFunc(deviceAuthHandler.HandleDeviceAuthorizationRequest))
 
 	authPattern, wrappedAuthHandler := middleware.WithCORS(

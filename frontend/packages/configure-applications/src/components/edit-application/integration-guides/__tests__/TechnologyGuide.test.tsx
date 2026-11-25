@@ -20,11 +20,13 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
       },
       getDocumentationLink: () => undefined,
     }),
+    useRuntimeUrl: () => 'https://auth.example.com',
   };
 });
 
 const REDIRECT_BASED_PROMPT_URL = 'https://thunderid.dev/prompts/react/redirect-based.txt';
 const EMBEDDED_PROMPT_URL = 'https://thunderid.dev/prompts/react/embedded.txt';
+const ANDROID_PROMPT_URL = 'https://thunderid.dev/prompts/android/redirect-based.txt';
 
 const mockIntegrationGuides: IntegrationGuides = {
   REDIRECT_BASED: {
@@ -42,6 +44,7 @@ const mockIntegrationGuides: IntegrationGuides = {
 const promptFixtures: Record<string, string> = {
   [REDIRECT_BASED_PROMPT_URL]: 'Integrate with clientId: {{clientId}} and applicationId: {{applicationId}}',
   [EMBEDDED_PROMPT_URL]: 'Embedded integration prompt',
+  [ANDROID_PROMPT_URL]: 'Base URL: {{baseUrl}}, again {{baseUrl}}',
 };
 
 const mockWriteText = vi.fn();
@@ -212,6 +215,20 @@ describe('TechnologyGuide', () => {
       await waitFor(() => {
         expect(mockWriteText).toHaveBeenCalledWith(
           'Integrate with clientId: {{clientId}} and applicationId: {{applicationId}}',
+        );
+      });
+    });
+
+    it('should replace every {{baseUrl}} placeholder with the runtime URL', async () => {
+      renderWithProviders(
+        <TechnologyGuide guides={{REDIRECT_BASED: {llm_prompt: {docsUrl: ANDROID_PROMPT_URL}}}} templateId="android" />,
+      );
+
+      fireEvent.click(screen.getByTestId('copy-prompt-button'));
+
+      await waitFor(() => {
+        expect(mockWriteText).toHaveBeenCalledWith(
+          'Base URL: https://auth.example.com, again https://auth.example.com',
         );
       });
     });

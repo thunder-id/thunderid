@@ -1,6 +1,10 @@
 server:
   hostname: "localhost"
   port: 8090
+  # The organization unit that applications and agents created without one go to, such as clients
+  # registered through dynamic client registration. It is the organization unit the bootstrap creates.
+  # This server serves no projects, so it does not check a resource's project against it.
+  system_ou_id: "01900000-0000-7000-8000-000000000001"
   security:
     # Gates the Direct API endpoints. The secret is generated into config/secrets/direct_auth_secret
     # by setup.sh and read from there at load time. Callers present it in the Direct-Auth-Secret header.

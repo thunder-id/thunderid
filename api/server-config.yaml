@@ -137,6 +137,22 @@ paths:
                       defaultValue: "The request body is malformed or contains invalid data"
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: |
+            The caller may not write server configuration. On a data plane, no token writes it, whatever its
+            permissions: only an import with the management API key does.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "SSE-4030"
+                message:
+                  key: "error.unauthorized"
+                  defaultValue: "Unauthorized"
+                description:
+                  key: "error.unauthorized_description"
+                  defaultValue: "The caller is not authorized to perform this operation"
         "500":
           $ref: '#/components/responses/InternalServerError'
 
@@ -223,7 +239,48 @@ components:
       description: >
         The value of a configuration section. Its concrete shape is section-specific and may be any
         valid JSON value (object, array, or scalar). See `AccountAccessConfig` for the shape of the
-        `accountAccess` section and `NotificationConfig` for the `notification` section.
+        `accountAccess` section, `NotificationConfig` for the `notification` section and
+        `GatewaySettingsConfig` for the `gateway` section.
+
+    GatewaySettingsConfig:
+      type: object
+      description: |
+        The value of the `gateway` section: how a control plane deploys to its gateways, changed
+        without a restart.
+
+        `autoApply` makes each change captured on the control plane deploy to the first gateway
+        of the pipeline (`GET /gateways/pipeline`). Unset, `gateway.auto_apply` in the deployment
+        configuration decides. A declarative `gateway` resource, when present, makes the section
+        read-only, so a `PUT` is rejected with `SCF-1003`.
+
+        `projects` sets, by project id, how each project is synced after a capture. While it holds
+        any entry, each project is synced on its own: a project whose `autoSync` is on (or, unset,
+        inherits `autoApply`) gets the changes the capture made to its own resources, what they need
+        that the gateway lacks, and every shared change the capture made, deployed to its
+        `firstGateway` (unset, the first stage of the pipeline). Shared changes ride with any project's
+        sync, except a change to what only one project's resources need, which goes with that
+        project's sync alone. Without entries, `autoApply` deploys the whole version as before. A `PUT` replaces the
+        whole section; to change one project's entry without losing another written at the same
+        moment, use `PUT /projects/{projectId}/auto-sync` instead.
+
+        The section stays on the control plane: it is not exported, captured into a configuration
+        version or imported, so a gateway never receives it.
+      additionalProperties: false
+      properties:
+        autoApply:
+          type: boolean
+        projects:
+          type: object
+          additionalProperties:
+            type: object
+            additionalProperties: false
+            properties:
+              autoSync:
+                type: boolean
+                description: Deploys the project's changes after a capture. Unset, `autoApply` decides.
+              firstGateway:
+                type: string
+                description: The id of the gateway the project's pipeline starts at.
 
     AccountAccessConfig:
       type: object

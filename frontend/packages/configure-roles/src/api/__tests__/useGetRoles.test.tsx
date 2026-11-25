@@ -394,4 +394,26 @@ describe('useGetRoles', () => {
       expect(result.current.data).toEqual(nextPageData);
     });
   });
+
+  it('should list only the roles of the given project', async () => {
+    mockHttpRequest.mockResolvedValue({data: mockRoleListResponse});
+
+    renderHook(() => useGetRoles({projectId: 'project-1'}));
+
+    await waitFor(() => {
+      expect(mockHttpRequest).toHaveBeenCalled();
+    });
+    expect((mockHttpRequest.mock.calls[0][0] as {url: string}).url).toContain('projectId=project-1');
+  });
+
+  it('should list every role without a project', async () => {
+    mockHttpRequest.mockResolvedValue({data: mockRoleListResponse});
+
+    renderHook(() => useGetRoles());
+
+    await waitFor(() => {
+      expect(mockHttpRequest).toHaveBeenCalled();
+    });
+    expect((mockHttpRequest.mock.calls[0][0] as {url: string}).url).not.toContain('projectId');
+  });
 });

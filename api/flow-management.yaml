@@ -13,6 +13,8 @@ info:
     ## Flow Types
     - **AUTHENTICATION**: User login flows
     - **REGISTRATION**: User registration/signup flows
+    - **SELF**: Flows a signed-in user runs on their own account
+    - **ADMIN_INITIATED**: Flows an administrator starts for a user, which the user finishes from a link
     
     ## Node Types
     - **START**: Initial node indicating the starting point of the flow. Must be present in all flows.
@@ -72,7 +74,10 @@ paths:
       tags:
         - Flow Management
       summary: List all flows
-      description: Retrieves a paginated list of all flow definitions
+      description: |
+        Retrieves a paginated list of all flow definitions. A caller whose permission is limited to an
+        organization unit lists what that unit sees instead: the flows it owns, followed by the flows
+        shared into it, as a `filter` naming the organization unit does.
       operationId: listFlows
       parameters:
         - name: flowType
@@ -84,6 +89,13 @@ paths:
             enum:
               - AUTHENTICATION
               - REGISTRATION
+              - USER_ONBOARDING
+              - SELF
+              - ADMIN_INITIATED
+              - RECOVERY
+              - SIGNOUT
+              - ADMINISTRATION
+              - INVITATION
               - DEVICE_GRANT
         - name: limit
           in: query
@@ -103,6 +115,7 @@ paths:
             minimum: 0
             default: 0
         - $ref: '#/components/parameters/FlowFilter'
+        - $ref: '#/components/parameters/ProjectId'
       responses:
         '200':
           description: List of flows retrieved successfully
@@ -270,6 +283,24 @@ paths:
                       onSuccess: end
                     - id: end
                       type: END
+              projectLogin:
+                summary: A login flow in a project, as the Control Plane requires
+                value:
+                  handle: shop-login
+                  name: Shop Login Flow
+                  flowType: AUTHENTICATION
+                  projectId: 01900000-0000-7000-8000-000000000002
+                  nodes:
+                    - id: start
+                      type: START
+                      onSuccess: auth_assert
+                    - id: auth_assert
+                      type: TASK_EXECUTION
+                      executor:
+                        name: AuthAssertExecutor
+                      onSuccess: end
+                    - id: end
+                      type: END
       responses:
         '201':
           description: Flow created successfully
@@ -278,7 +309,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/FlowDefinitionResponse'
         '400':
-          description: Invalid flow definition
+          description: Invalid flow definition, a missing project (FLM-1047), a project that does not exist (FLM-1045), or an organization unit outside the project (FLM-1046)
           content:
             application/json:
               schema:
@@ -307,7 +338,10 @@ paths:
       tags:
         - Flow Management
       summary: Get flow by ID
-      description: Retrieves a specific flow definition by its unique identifier
+      description: |
+        Retrieves a specific flow definition by its unique identifier.
+
+        Without `ouId`, a flow comes back whole with `isOwnedByOU: true` when the caller may read the flows of the organization unit that owns it. A caller whose token is confined to another organization unit the flow was shared with gets the flow as that unit sees it (`SharedFlowResponse`), the same as with `ouId` naming that unit. A flow neither owned by nor shared with that unit is refused with 403.
       operationId: getFlow
       parameters:
         - name: flowId
@@ -319,7 +353,7 @@ paths:
         - name: ouId
           in: query
           required: false
-          description: The organization unit to see the flow as. A flow it owns comes back whole, one shared with it comes back as its variables only. Leave it out for the whole definition.
+          description: The organization unit to see the flow as. A flow it owns comes back whole, one shared with it comes back as its variables only. Leave it out for the whole definition, or, for a caller confined to an organization unit the flow was shared with, the flow as that unit sees it.
           schema:
             type: string
           example: 0193b0a1-2001-7000-8000-000000000002
@@ -444,7 +478,11 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          $ref: '#/components/responses/Forbidden'
+          description: The caller may not read the flow in the organization unit that owns it, and, without `ouId`, the flow was not shared with the organization unit the caller is confined to
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '500':
           description: Internal server error
           content:
@@ -510,7 +548,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          description: The caller does not act for the organization unit that owns the flow, as is the case for a flow that was only shared with it, so it cannot be changed (FLM-1039)
+          description: The caller may not change the flow. A flow shared with the organization unit the caller is confined to, or the one the request body's `ouId` names, is read only to it (FLM-1039) and is configured through `PUT /flows/{flowId}/variables`. Any other flow of another organization unit answers with the generic forbidden error.
           content:
             application/json:
               schema:
@@ -604,7 +642,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
-          description: The caller may not delete the flow. With `ouId` naming an organization unit the flow was only shared with, FLM-1039.
+          description: The caller may not delete the flow. A flow shared with the organization unit the caller is confined to, or with the one `ouId` names, answers FLM-1039 (shared flow is read only). Any other flow of another organization unit answers with the generic forbidden error.
           content:
             application/json:
               schema:
@@ -1317,6 +1355,14 @@ components:
         organization-unit:
           summary: Flows owned by or shared with an organization unit
           value: 'ouId eq "0193b0a1-2001-7000-8000-000000000002"'
+    ProjectId:
+      name: projectId
+      in: query
+      required: false
+      description: 'Lists the flows of the project. With an `ouId` filter, lists only the project''s flows that organization unit owns. A project that does not exist has no flows.'
+      schema:
+        type: string
+      example: 7c9e6679-7425-40de-944b-e07fc1f90ae7
     OptionalOuId:
       name: ouId
       in: query
@@ -1599,6 +1645,13 @@ components:
           enum:
             - AUTHENTICATION
             - REGISTRATION
+            - USER_ONBOARDING
+            - SELF
+            - ADMIN_INITIATED
+            - RECOVERY
+            - SIGNOUT
+            - ADMINISTRATION
+            - INVITATION
             - DEVICE_GRANT
         name:
           type: string
@@ -1621,13 +1674,21 @@ components:
           example: false
         isOwnedByOU:
           type: boolean
-          description: With an `ouId` filter or query parameter, whether that organization unit owns the flow. `false` means it was shared with it. An unfiltered list says `true`.
+          description: |
+            In a list or read made for an organization unit, named by an `ouId` filter or query parameter or by the
+            token of a caller confined to one organization unit, whether that unit owns the flow. `false` means it was
+            shared with it. Any other list or read says `true`.
         ouId:
           type: string
           description: |
             ID of the organization unit that owns the flow. In a list or read made for an organization unit the flow
-            was shared with, the ID of that organization unit instead.
+            was shared with, named by an `ouId` filter or query parameter or by the token of a caller confined to it,
+            the ID of that organization unit instead.
           example: "01900000-0000-7000-8000-000000000001"
+        projectId:
+          type: string
+          description: ID of the project the flow belongs to. Absent when the flow is in no project.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         createdAt:
           type: string
           format: date-time
@@ -1662,6 +1723,13 @@ components:
           enum:
             - AUTHENTICATION
             - REGISTRATION
+            - USER_ONBOARDING
+            - SELF
+            - ADMIN_INITIATED
+            - RECOVERY
+            - SIGNOUT
+            - ADMINISTRATION
+            - INVITATION
             - DEVICE_GRANT
           description: |
             Type of flow
@@ -1675,10 +1743,19 @@ components:
         ouId:
           type: string
           description: |
-            ID of the organization unit that owns the flow. Required on create, and the organization unit has to
-            exist. It cannot change afterwards: an update can leave it out to keep the current owner, or send the id
-            the flow already has.
+            ID of the organization unit that owns the flow. Required on create unless `projectId` is given, and the
+            organization unit has to exist. It cannot change afterwards: an update can leave it out to keep the current
+            owner, or send the id the flow already has.
           example: "01900000-0000-7000-8000-000000000001"
+        projectId:
+          type: string
+          description: |
+            ID of the project the flow belongs to. On a deployment that serves projects, such as the Control Plane,
+            creating a flow without one is refused (`FLM-1047`). Without `ouId`, the flow is created in the system
+            organization unit.
+            With `ouId`, that organization unit must belong to the project. An update that leaves it out keeps the
+            flow in its current project.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
       example:
         name: Basic Authentication Flow
         handle: default-flow
@@ -1881,9 +1958,11 @@ components:
     FlowDefinitionCreateRequest:
       allOf:
         - $ref: '#/components/schemas/FlowDefinitionUpdateRequest'
-        - type: object
-          required:
-            - ouId
+        - anyOf:
+            - required:
+                - ouId
+            - required:
+                - projectId
       example:
         name: Basic Authentication Flow
         handle: default-flow
@@ -1918,6 +1997,13 @@ components:
           enum:
             - AUTHENTICATION
             - REGISTRATION
+            - USER_ONBOARDING
+            - SELF
+            - ADMIN_INITIATED
+            - RECOVERY
+            - SIGNOUT
+            - ADMINISTRATION
+            - INVITATION
             - DEVICE_GRANT
           description: |
             Type of flow
@@ -1941,12 +2027,16 @@ components:
           type: boolean
           enum:
             - true
-          description: With `ouId` in the request, always `true`, as the organization unit owns the flow.
+          description: On a read, always `true`, as the flow is read in the organization unit that owns it.
         ouId:
           type: string
           description: |
             ID of the organization unit that owns the flow.
           example: "01900000-0000-7000-8000-000000000001"
+        projectId:
+          type: string
+          description: ID of the project the flow belongs to. Absent when the flow is in no project.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         nodes:
           type: array
           minItems: 2
@@ -1999,6 +2089,13 @@ components:
           enum:
             - AUTHENTICATION
             - REGISTRATION
+            - USER_ONBOARDING
+            - SELF
+            - ADMIN_INITIATED
+            - RECOVERY
+            - SIGNOUT
+            - ADMINISTRATION
+            - INVITATION
             - DEVICE_GRANT
           description: |
             Type of flow
@@ -2113,7 +2210,7 @@ components:
           example: node_003
         onFailure:
           type: string
-          description: Next node ID on failed execution (TASK_EXECUTION nodes)
+          description: Next node ID on failed execution (TASK_EXECUTION, CALL and VARIABLES nodes)
           example: node_007
         onIncomplete:
           type: string
@@ -2512,16 +2609,17 @@ components:
           enum:
             - AUTHENTICATION
             - REGISTRATION
+            - INVITATION
           example: AUTHENTICATION
         ouId:
           type: string
-          description: ID of the organization unit the flow is shown for, the one in the request's `ouId`, not the one that owns the flow.
+          description: ID of the organization unit the flow is shown for, the one in the request's `ouId` or, without one, the one the caller is confined to, not the one that owns the flow.
           example: 0193b0a1-2001-7000-8000-000000000001
         isOwnedByOU:
           type: boolean
           enum:
             - false
-          description: Always `false`, as the flow is owned by another organization unit and was shared with the organization unit in the request's `ouId`.
+          description: Always `false`, as the flow is owned by another organization unit and was shared with the organization unit it is shown for.
         isReadOnly:
           type: boolean
           enum:

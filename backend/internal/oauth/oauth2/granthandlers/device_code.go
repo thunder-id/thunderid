@@ -29,7 +29,9 @@ type deviceCodeGrantHandler struct {
 	attributeCache     attributecache.AttributeCacheServiceInterface
 	resourceService    providers.ResourceServerProvider
 	enforcementService revocation.EnforcementServiceInterface
-	logger             *log.Logger
+	// deviceSecretValidity is how long a device secret stays usable, as long as an SSO session can last.
+	deviceSecretValidity time.Duration
+	logger               *log.Logger
 }
 
 // newDeviceCodeGrantHandler creates a Device Code grant handler with its token dependencies.
@@ -39,13 +41,15 @@ func newDeviceCodeGrantHandler(
 	attributeCache attributecache.AttributeCacheServiceInterface,
 	resourceService providers.ResourceServerProvider,
 	enforcementService revocation.EnforcementServiceInterface,
+	deviceSecretValidity time.Duration,
 ) GrantHandlerInterface {
 	return &deviceCodeGrantHandler{
-		deviceService:      deviceService,
-		tokenBuilder:       tokenBuilder,
-		attributeCache:     attributeCache,
-		resourceService:    resourceService,
-		enforcementService: enforcementService,
+		deviceService:        deviceService,
+		tokenBuilder:         tokenBuilder,
+		attributeCache:       attributeCache,
+		resourceService:      resourceService,
+		enforcementService:   enforcementService,
+		deviceSecretValidity: deviceSecretValidity,
 		logger: log.GetLogger().With(
 			log.String(log.LoggerKeyComponentName, "DeviceCodeGrantHandler")),
 	}
@@ -171,7 +175,7 @@ func (h *deviceCodeGrantHandler) issueTokens(
 	if scopeStr == "" {
 		scopeStr = record.StandardScopes
 	}
-	audiences, oidcScopes, permissionScopes, bindErr :=
+	audiences, oidcScopes, permissionScopes, targetRS, bindErr :=
 		h.resolveIssuedAudiencesAndScopes(ctx, record, oauthApp, scopeStr)
 	if bindErr != nil {
 		return nil, bindErr
@@ -186,6 +190,7 @@ func (h *deviceCodeGrantHandler) issueTokens(
 	if revocationErr != nil {
 		return nil, revocationErr
 	}
+	scopes = compactPermissionScopes(scopes, oidcScopes, targetRS)
 
 	attrs := make(map[string]interface{})
 	if record.AttributeCacheID != "" {
@@ -239,19 +244,21 @@ func (h *deviceCodeGrantHandler) issueTokens(
 	if !consumed {
 		return nil, invalidDeviceCodeError()
 	}
+	tokenResponse.DeviceSecret = buildDeviceSecret(ctx, h.tokenBuilder, h.deviceSecretValidity, oauthApp,
+		record.SubjectID, record.SessionData, h.logger)
 	return tokenResponse, nil
 }
 
 // resolveIssuedAudiencesAndScopes determines the audiences and scopes bound to issued tokens.
 func (h *deviceCodeGrantHandler) resolveIssuedAudiencesAndScopes(
 	ctx context.Context, record *deviceauth.DeviceAuthRequest, oauthApp *providers.OAuthClient, scopeStr string,
-) ([]string, []string, []string, *model.ErrorResponse) {
+) ([]string, []string, []string, *providers.ResourceServer, *model.ErrorResponse) {
 	oidcScopes, permissionScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(scopeStr, oauthApp.ScopeClaims)
 	if len(record.Resources) == 0 {
 		if len(permissionScopes) > 0 {
-			return nil, nil, nil, invalidDeviceCodeError()
+			return nil, nil, nil, nil, invalidDeviceCodeError()
 		}
-		return []string{oauthApp.ResolveDefaultAudience(oauthApp.ClientID)}, oidcScopes, nil, nil
+		return []string{oauthApp.ResolveDefaultAudience(oauthApp.ClientID)}, oidcScopes, nil, nil, nil
 	}
 
 	resourceIdentifier := record.Resources[0]
@@ -259,14 +266,14 @@ func (h *deviceCodeGrantHandler) resolveIssuedAudiencesAndScopes(
 	if svcErr != nil {
 		h.logger.Error(ctx, "Failed to resolve stored Device Grant resource server",
 			log.String("error", svcErr.ErrorDescription.DefaultValue))
-		return nil, nil, nil, tokenProcessingError()
+		return nil, nil, nil, nil, tokenProcessingError()
 	}
 	downscoped, downscopeErr := resourceindicators.DownscopeToResourceServer(
 		ctx, h.resourceService, rs.ID, permissionScopes)
 	if downscopeErr != nil {
-		return nil, nil, nil, downscopeErr
+		return nil, nil, nil, nil, downscopeErr
 	}
-	return []string{resourceIdentifier}, oidcScopes, downscoped, nil
+	return []string{resourceIdentifier}, oidcScopes, downscoped, rs, nil
 }
 
 // invalidDeviceCodeError returns the token endpoint error for an invalid device code.

@@ -38,12 +38,17 @@ Controls the <ProductName /> server's network settings and identity.
 | `server.timeouts.write_seconds` | `10` | Seconds a request may take from the end of its headers until its response is written. A request still running at that point loses its connection, though the server finishes the work. It applies to every route except those with a timeout of their own, so it can stay short: applying and reverting a version (`gateway.apply_timeout_seconds`), the import (`import.timeout_seconds`), and the MCP server (`/mcp`), which gets the longer of the two because a tool can run either. |
 | `server.timeouts.idle_seconds` | `120` | Seconds a kept-alive connection waits for its next request before it is closed. |
 | `server.identifier` | `default-deployment` | Unique identifier for this deployment instance. Every stored resource is scoped by it, so changing it on a server that already holds data hides that data rather than renaming it. |
+| `server.product_name` | `{{ProductName}}` | Product name the server presents to clients. |
+| `server.system_ou_id` | _(empty)_ | The ID of the system organization unit: the one resources in a project are placed in when they name no organization unit, and that applications and agents created without an `ouId` go to. The shipped `deployment.yaml` sets it to the organization unit the bootstrap creates. The organization unit it names cannot be deleted. Don't change it once resources are placed in it. When empty, creating an application or agent without an `ouId` is rejected. |
 | `gateway.max_gateways` | `1` | Guards how many gateways this deployment administers, through the Gateway API (`POST /gateways`) or a gateway declared in a file. A standalone deployment pairs with one; raise it only where something else manages the fleet, or set it to `0` for a deployment that administers none. A registration beyond the number is refused with `409`. This is a guard rather than a guarantee: two registrations arriving at the same moment can leave one more gateway than configured, so do not rely on it as a licensing or security boundary. |
-| `gateway.max_versions` | `3` | How many captured configuration versions this deployment keeps (`POST /configuration-versions`). Capturing one beyond the number removes the oldest, except a version some gateway holds or could be reverted to. Those are kept even when that leaves more versions than the number, so applying and reverting keep working whatever it is. It also bounds the masters kept for each gateway (`GET /gateways/{id}/master/history`): recording one beyond the number removes that gateway's oldest, with no exception for a master the gateway holds, since the newest is always the one it holds. The number is never less than one. |
-| `gateway.auto_apply` | `false` | Whether a control plane applies its latest configuration version to the default gateway each time it captures one after a change, so a write reaches that gateway without a deploy. Off by default, because a control plane that administers several gateways usually keeps applying a version a deliberate step. The apply is refused like any other, for example when the gateway lacks a value the version refers to; the control plane logs it and the next change tries again. |
+| `gateway.max_versions` | `3` | How many captured configuration versions this deployment keeps (`POST /configuration-versions`). Capturing one beyond the number removes the oldest, except a version some gateway holds or could be reverted to. Those are kept even when that leaves more versions than the number, so applying and reverting keep working whatever it is. It also bounds the masters kept for each gateway (`GET /gateways/{id}/master/history`): recording one beyond the number removes that gateway's oldest, except the master the gateway's revert returns to and, for each project, the masters its rollback needs. The number is never less than one. |
+| `gateway.auto_apply` | `false` | Whether a control plane applies its latest configuration version to the first gateway of the pipeline each time it captures one after a change, so a write reaches that gateway without a deploy. Off by default, because a control plane that administers several gateways usually keeps applying a version a deliberate step. The `gateway` server configuration section overrides it at runtime. See [Deploy Pipeline and Auto Apply](#deploy-pipeline-and-auto-apply). |
+| `gateway.pipeline` | *(empty)* | The registered gateways a version is deployed and promoted through, in order. Empty, the default gateway is the only stage. See [Deploy Pipeline and Auto Apply](#deploy-pipeline-and-auto-apply). |
 | `gateway.allow_private_addresses` | `false` | Whether a gateway may be registered at, and reached on, a loopback, link-local or private address such as `localhost`, `10.0.0.5` or `169.254.169.254`. Off, a base URL naming one is refused with `400` (`GTW-1027`), and a hostname that resolves to one is refused when the gateway is called, so this deployment's calls, which carry the gateway's key, cannot be pointed at something inside its own network. Turn it on for a local or single-host setup whose gateways sit on such addresses. A base URL must be `https` and carry no credentials whatever this is set to. |
 | `gateway.removal_confirmation_threshold` | `5` | How many resources an apply or revert may remove from a gateway without being confirmed. One that would remove more is refused with `409` (`GTW-1030`) unless the request sets `confirmRemovals`; a dry run shows the removals first. A rollback to a much smaller version is the usual case. `0` turns the check off. |
 | `gateway.apply_timeout_seconds` | `300` | Seconds a request to apply a configuration version to a gateway, or to revert one, may take to answer, in place of `server.timeouts.write_seconds`. An MCP request (`/mcp`) gets this or `import.timeout_seconds`, whichever is longer, since a tool can deploy or import. It covers waiting for an apply already running on that gateway and the gateway's import. Raise it, together with `import.timeout_seconds` on the gateway and any proxy or ingress timeout in front of either, when large applies time out. |
+| `gateway.unused_value_grace_seconds` | `3600` | A variable or secret the control plane named for a resource is removed from a gateway when it was last set longer ago than this many seconds, and nothing refers to it. After each apply, the control plane removes from that gateway's store the values with such a name that no resource that still exists, no version this deployment keeps and no master the gateway keeps refers to, and that were last set longer ago than this. The time counts from when the value was last set, so an old value goes at the first removal after its resource is deleted. A resource that exists keeps its values however long its deploy waits, so this only covers a value set for a resource while a removal runs. A value you named yourself is never removed. The gateway measures the age on its own clock when it removes a value, so a value below `1`, such as `0`, is raised to `1` with a warning at startup; a negative number turns the removal off. A gateway too old to remove values by age has nothing removed. See [Unused Values Are Removed](../guides/declarative-configurations/configuration-versions.mdx#unused-values-are-removed). |
+| `gateway.unused_value_sweep_interval_seconds` | `300` | The least number of seconds between two removals of unused values from the same gateway by one control plane node. Each removal reads the whole configuration, so applies in quick succession run one and skip the rest until this has passed; the next apply after it removes what the skipped ones would have. The time is kept in each node's memory, so with several nodes each removes on its own schedule, and a restart starts afresh. `0` removes after every apply. |
 | `import.timeout_seconds` | `120` | Seconds an import request (`POST /import`) may take to answer, in place of `server.timeouts.write_seconds`. An MCP request (`/mcp`) gets this or `gateway.apply_timeout_seconds`, whichever is longer. A control plane applies a configuration version to a gateway through this API, so raise it on the gateway when large applies time out. |
 | `gateway.store` | `composite` | Where gateways are read from. `mutable` is the database alone, and gateways declared in files are not read. `declarative` is files alone, and registration through the API is refused. `composite` is both: listings merge the two, registration writes to the database, and a gateway declared in a file cannot be changed or removed through the API, because the file is read again on every start and would undo it. |
 | `notification.template.store` | `composite` | Where notification templates are read from. `mutable` is the database alone, and templates are editable through the Console and API. `declarative` is files alone, and writes through the API are refused with `403`. `composite` is both: file-declared templates are read-only and are merged with editable database templates. |
@@ -59,6 +64,40 @@ versions apart by that identifier, so none sees another's.
 One registered gateway is the default gateway, marked `isDefault` in the Gateway API. The first gateway registered through `POST /gateways` becomes the default. Registering another with `isDefault: true` moves the default to it, so no more than one gateway is the default at a time. The Console shows the default gateway's `baseUrl` in the runtime endpoints it lists for applications and agents. With no default gateway, it shows the server's own URL. A gateway declared in a file is never the default.
 
 When `server.public_url` is set, the `gate_client` settings below default to the corresponding hostname, port, and protocol from that URL. Most deployments only need to configure the server section.
+
+### Trusted Proxies
+
+Behind a reverse proxy, the connecting address of every request is the proxy's. To record the real client IP on SSO sessions and in the access log, list the proxies that report it under `server.trusted_proxies`. The list is empty by default, so the client IP is the connecting address.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `server.trusted_proxies[].cidr` | _(required)_ | The range the proxy connects from, such as `10.0.1.0/24`. Use `/32` (IPv4) or `/128` (IPv6) for a single address |
+| `server.trusted_proxies[].header` | `x-forwarded-for` | The header the proxy sets the client IP in, such as `x-real-ip` or `cf-connecting-ip`. Header names are case-insensitive |
+
+```yaml
+server:
+  trusted_proxies:
+    - cidr: "10.0.1.0/24" # internal NGINX
+      header: "x-real-ip"
+    - cidr: "172.28.0.10/32" # header omitted, reads x-forwarded-for
+```
+
+<ProductName /> reads a header only when the connecting address is in a listed range, since any other caller could set it. The first entry whose range contains the connecting address decides the header, so list narrower ranges before broader ones that contain them.
+
+- `x-forwarded-for` is read from right to left, skipping addresses in any listed range. The first address outside them is the client IP, and addresses to its left are never read. If every address is in a listed range, the leftmost one is used.
+- Any other header is read as one IP. Configure the proxy to set it itself, not to pass on a value sent by the client.
+- When the header is missing, or an address <ProductName /> reads from it is not a valid IP, the client IP is the connecting address. With `log.level` set to `debug`, <ProductName /> logs each fallback, which helps find a proxy that doesn't set the header.
+- `forwarded` (RFC 7239) is not supported. <ProductName /> does not start with it, so use `x-forwarded-for` instead.
+
+Keep the ranges as narrow as possible. A range such as `172.16.0.0/12` covers every Docker network on a host, so any container on it could report any client IP.
+
+**Multi-hop setups:** list every proxy in the chain, not only the nearest one, or the address of a proxy further out is recorded. Only the entry matching the connecting address decides the header, so the other entries only need a `cidr`.
+
+**Load balancers that rewrite the source address:** an L4 load balancer that replaces the source address, such as a Kubernetes Service with `externalTrafficPolicy: Cluster`, removes the client IP before the request reaches <ProductName />, and no setting here can recover it. Preserve it in front of <ProductName />, for example with an L7 load balancer that adds `X-Forwarded-For`, the PROXY protocol at the ingress, or `externalTrafficPolicy: Local`.
+
+**CDN headers:** `cf-connecting-ip` and `true-client-ip` are only safe when the origin accepts traffic only from the CDN. Otherwise, use `x-forwarded-for` with the CDN's ranges listed.
+
+The client IP is for display and logging. Do not rely on it for security decisions.
 
 ## Gate Client Configuration
 
@@ -159,6 +198,12 @@ This is the <ProductName /> **application log** (the `INFO`/`WARN`/`ERROR` lines
 ### Access Log
 
 <ProductName /> writes an access log line for every HTTP request. The Gate and Console frontend paths (`/gate/` and `/console/`) are always excluded.
+
+Each access log record is an `INFO` record in the configured log format. Its message starts with the connecting address and ends with the correlation ID and the client IP, resolved from the [trusted proxies](#trusted-proxies):
+
+```text
+10.0.0.5 - - [09/Oct/2026:10:15:02 +0530] POST /flow/execute HTTP/1.1 200 512 34 3f2a... 203.0.113.10
+```
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -510,7 +555,6 @@ OAuth 2.0 and OpenID Connect settings.
 | `oauth.revocation.token_family.on_explicit_revoke` | `true` | If `true`, revoking a token through `/oauth2/revoke` also revokes every other token of the same authorization grant |
 | `oauth.revocation.token_family.on_refresh_replay` | `true` | If `true`, presenting a refresh token that has already been rotated out revokes every token of that grant. Requires `oauth.refresh_token.renew_on_grant`, since a refresh token can only be replayed once it has been rotated |
 | `oauth.revocation.token_family.on_code_replay` | `true` | If `true`, redeeming an authorization code a second time revokes every token issued from that code |
-| `oauth.token_exchange.token_family` | `none` | Whether an exchanged token joins the subject token's authorization grant. `none` issues an independent token; `inherit` copies the subject token's token family, so revoking the grant also revokes the exchanged token |
 | `oauth.authorization_code.validity_period` | `600` | Authorization code validity period in seconds (10 minutes) |
 | `oauth.authorization_request.validity_period` | `3600` | How long the authorization request context stays valid while the user completes the login flow, in seconds (60 minutes). A non-positive value falls back to the default |
 | `oauth.dcr.enabled` | `true` | If `true`, enables the Dynamic Client Registration endpoint |
@@ -520,8 +564,8 @@ OAuth 2.0 and OpenID Connect settings.
 | `oauth.cimd.enabled` | `true` | If `true`, advertises `client_id_metadata_document_supported` in the authorization server metadata, so MCP clients that support Client ID Metadata Documents identify themselves with one. Set it to `false` if MCP clients should register through Dynamic Client Registration instead. It doesn't affect registering clients from a document in the Console. See [Register an MCP Client from Its Metadata Document](../../guides/mcp/mcp-clients/client-id-metadata-document) |
 | `oauth.id_jag.issuance.enabled` | `true` | A deployment-wide switch over the ID-JAG setting on each application and agent. If `false`, a token exchange request for an ID-JAG (`requested_token_type=urn:ietf:params:oauth:token-type:id-jag`) fails with `invalid_target`, whatever the client's setting. Ordinary token exchange keeps working. It does not block enabling ID-JAG on an application or agent. Issuance also needs `urn:ietf:params:oauth:grant-type:token-exchange` in `oauth.allowed_grant_types`. See [Issue Identity Assertions (ID-JAG)](../../guides/protocols/oauth-oidc/identity-assertion-grant/issue-identity-assertions) |
 | `oauth.id_jag.acceptance.enabled` | `true` | A deployment-wide switch over the ID-JAG setting on each trusted issuer connection. If `false`, the JWT bearer grant is not served, because it accepts only ID-JAGs: a token request with that grant fails with `unsupported_grant_type`, and the discovery documents omit the grant and the ID-JAG grant profile. Acceptance also needs `urn:ietf:params:oauth:grant-type:jwt-bearer` in `oauth.allowed_grant_types`. See [Accept Identity Assertions from an External IdP](../../guides/protocols/oauth-oidc/identity-assertion-grant/accept-identity-assertions) |
-| `oauth.authorization_details.processor_timeout` | `5` | Timeout of one call to an authorization details type's processor, in seconds. The value must be from 1 to 30 |
-| `oauth.authorization_details.type_metadata_enabled` | `true` | If `true`, serves the authorization details type metadata endpoint and advertises it as `authorization_details_types_endpoint` in the authorization server metadata. `authorization_details_types_supported` is advertised either way |
+| `oauth.authorization_details.processor_timeout` | `5` | Timeout of one call to an authorization details type's [processor](../../guides/integrations/authorization-details-processor), in seconds. The value must be from 1 to 30 |
+| `oauth.authorization_details.type_metadata_enabled` | `true` | If `true`, serves the authorization details type metadata endpoint and advertises it as `authorization_details_types_endpoint` in the authorization server metadata. `authorization_details_types_supported` is advertised either way. See [Rich Authorization Requests](../../guides/protocols/oauth-oidc/rich-authorization-requests#discover-supported-types) |
 | `oauth.allowed_auth_methods` | `["client_secret_basic", "client_secret_post", "private_key_jwt", "none"]` | Client token endpoint authentication methods allowed during client registration |
 | `oauth.allowed_response_types` | `["code"]` | OAuth response types allowed during client registration |
 | `oauth.allowed_grant_types` | `["client_credentials", "authorization_code", "refresh_token", "urn:ietf:params:oauth:grant-type:token-exchange", "urn:openid:params:grant-type:ciba", "urn:ietf:params:oauth:grant-type:jwt-bearer"]` | OAuth grant types allowed during client registration |
@@ -536,6 +580,10 @@ Set `oauth.client_assertion.max_lifetime` and `oauth.client_assertion.max_iat_ag
 Enabling `oauth.allow_wildcard_redirect_uri` affects all applications in the deployment. See [Use Wildcard Redirect URIs](../../guides/applications/application-settings#use-wildcard-redirect-uris) for pattern syntax and matching rules.
 :::
 
+:::warning
+If you are upgrading from an earlier release, remove the `oauth.token_exchange` block from `deployment.yaml`. The server does not start while `deployment.yaml` has it. Tokens exchanged before the upgrade under the earlier default, `none`, carry no token family, so revoking the grant they came from does not revoke them. See [Where `tfid` Comes From](../../guides/protocols/oauth-oidc/token-revocation#where-tfid-comes-from).
+:::
+
 ## Flow Configuration
 
 Authentication and registration flow settings.
@@ -544,7 +592,7 @@ Authentication and registration flow settings.
 |---------|---------|-------------|
 | `flow.max_version_history` | `10` | Maximum number of flow versions to retain |
 | `flow.auto_infer_registration` | `true` | If `true`, automatically infers registration from authentication flows |
-| `flow.executors` | *(all built-in executors)* | Whitelist of built-in executor names to register at startup. Omit the key or leave the list empty to register every built-in executor. When set, only the listed executors are available; flows that reference other executors fail validation at startup. Unknown names cause startup to fail. Duplicate names are ignored. The system flows built into the server need `AccessChangeValidator`, `ApplicationActionValidator`, `CriteriaRevocationExecutor`, `PreDeleteExecutor`, and `SessionRevocationExecutor`; the server does not start without them. |
+| `flow.executors` | *(all built-in executors)* | Whitelist of built-in executor names to register at startup. Omit the key or leave the list empty to register every built-in executor. When set, only the listed executors are available; flows that reference other executors fail validation at startup. Unknown names cause startup to fail. Duplicate names are ignored. The system flows built into the server need `AccessChangeValidator`, `CriteriaRevocationExecutor`, `PreRevocationExecutor`, and `SessionRevocationExecutor`; the server does not start without them. |
 
 ### Built-in Executors
 
@@ -563,7 +611,7 @@ flow:
 
 **Register a subset:**
 
-List only the executor names you need, together with the five the system flows need. Built-in executors not in the list are excluded:
+List only the executor names you need, together with the four the system flows need. Built-in executors not in the list are excluded:
 
 ```yaml
 flow:
@@ -571,9 +619,8 @@ flow:
     - CredentialsAuthExecutor
     - InviteExecutor
     - AccessChangeValidator
-    - ApplicationActionValidator
     - CriteriaRevocationExecutor
-    - PreDeleteExecutor
+    - PreRevocationExecutor
     - SessionRevocationExecutor
 ```
 
@@ -606,6 +653,18 @@ Controls declarative configuration support.
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `declarative_resources.enabled` | `false` | If `true`, enables declarative resource configuration |
+
+### Store Modes
+
+Each resource type sets its own store mode in `<type>.store`, for example `group.store` and `role.store`.
+
+| Mode | Behavior |
+|------|----------|
+| `mutable` | Resources live in the database and are managed through the Console or API. |
+| `declarative` | Resources come only from declarative files and are read-only. Nothing is written to the database, including group and role memberships. |
+| `composite` | Declarative resources can't be changed or removed, and database resources are managed through the Console or API. Memberships added through the Console or API are stored in the database for both kinds of group or role, so they stay writable. Memberships a declaration file lists are fixed and can't be removed. |
+
+If `group.store` or `role.store` isn't set, that type behaves as `declarative` when `declarative_resources.enabled` is `true`, and as `mutable` otherwise.
 
 ### Resource Loading Precedence
 
@@ -754,7 +813,7 @@ Settings for the registry of RFC 9396 authorization details types.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `authorization_detail_type.store` | `composite` | Where authorization details types are read from. `mutable` is the database alone. `declarative` is files alone, and registration through the API is refused. `composite` is both: listings merge the two, registration writes to the database, and a type declared in a file is read-only through the API. If unset, `declarative_resources.enabled` decides between `declarative` and `mutable` |
+| `authorization_detail_type.store` | `composite` | Where [authorization details types](../../guides/intents) are read from. `mutable` is the database alone. `declarative` is files alone, and registration through the API is refused. `composite` is both: listings merge the two, registration writes to the database, and a type declared in a file is read-only through the API. If unset, `declarative_resources.enabled` decides between `declarative` and `mutable` |
 
 ## Resource Sharing Configuration
 
@@ -813,7 +872,7 @@ Exports events as OpenTelemetry spans to an OTLP-compatible backend such as Jaeg
 | `observability.output.opentelemetry.enabled` | `false` | If `true`, exports observability events as OpenTelemetry spans |
 | `observability.output.opentelemetry.exporter_type` | `otlp` | Exporter type: `otlp` (gRPC, for production) or `stdout` (for debugging) |
 | `observability.output.opentelemetry.otlp_endpoint` | `""` | OTLP gRPC endpoint, for example `localhost:4317`. Required when `exporter_type` is `otlp`. |
-| `observability.output.opentelemetry.service_name` | `""` | Service name included in all emitted spans, for example `thunderid-iam` |
+| `observability.output.opentelemetry.service_name` | `""` | Service name included in all emitted spans. When empty, it is derived from `server.product_name`: lowercased, with each run of characters other than letters and digits replaced by a hyphen, and an `-iam` suffix. For example, `Acme Identity` gives `acme-identity-iam`. |
 | `observability.output.opentelemetry.service_version` | `""` | Service version included in span resource attributes, for example `1.0.0` |
 | `observability.output.opentelemetry.environment` | `""` | Deployment environment included in span resource attributes, for example `production` |
 | `observability.output.opentelemetry.sample_rate` | `1.0` | Fraction of traces to sample. `1.0` samples all traces; `0.5` samples half. |
@@ -830,7 +889,7 @@ Use these values in any `categories` list to filter which events a subscriber re
 | `observability.authentication` | Token issuance and revocation events, back-channel logout delivery, revocation store outages, automatic account locks, and unlocks by a recovery flow |
 | `observability.authorization` | Authorization-related events |
 | `observability.flows` | Authentication and registration flow execution events |
-| `observability.administration` | Suspend, unsuspend, and unlock operations by an administrator, agent lifespan changes, and server configuration writes |
+| `observability.administration` | Suspend, unsuspend, and unlock operations by an administrator, agent lifespan changes, server configuration writes, and email address and mobile number verification |
 
 ### Example
 
@@ -873,10 +932,31 @@ Cryptographic settings for encryption and signing.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `crypto.password_hashing.algorithm` | `PBKDF2` | Password hashing algorithm |
-| `crypto.password_hashing.parameters.iterations` | `600000` | Number of hashing iterations |
-| `crypto.password_hashing.parameters.key_size` | `32` | Derived key size in bytes |
-| `crypto.password_hashing.parameters.salt_size` | `16` | Salt size in bytes |
+| `crypto.password_hashing.algorithm` | `PBKDF2` | Password hashing algorithm: `PBKDF2`, `ARGON2ID`, or `SHA256` |
+
+**`crypto.password_hashing.pbkdf2.*`** applies only when `crypto.password_hashing.algorithm` is `PBKDF2`:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `crypto.password_hashing.pbkdf2.iterations` | `600000` | Number of iterations |
+| `crypto.password_hashing.pbkdf2.key_size` | `32` | Derived key size in bytes |
+| `crypto.password_hashing.pbkdf2.salt_size` | `16` | Salt size in bytes |
+
+**`crypto.password_hashing.argon2id.*`** applies only when `crypto.password_hashing.algorithm` is `ARGON2ID`:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `crypto.password_hashing.argon2id.iterations` | `2` | Number of passes over memory |
+| `crypto.password_hashing.argon2id.memory` | `19456` | Memory cost in KiB |
+| `crypto.password_hashing.argon2id.parallelism` | `1` | Number of parallel lanes |
+| `crypto.password_hashing.argon2id.key_size` | `32` | Derived key size in bytes |
+| `crypto.password_hashing.argon2id.salt_size` | `16` | Salt size in bytes |
+
+**`crypto.password_hashing.sha256.*`** applies only when `crypto.password_hashing.algorithm` is `SHA256`:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `crypto.password_hashing.sha256.salt_size` | `16` | Salt size in bytes |
 
 ### Signing Keys
 
@@ -975,6 +1055,30 @@ Controls notification delivery behaviour, including OTP generation parameters an
 | `notification.template.max_email_body_length` | `50000` | Maximum email template body length, in characters. `0` uses the default; a negative value fails startup. |
 | `notification.template.max_sms_body_length` | `4096` | Maximum SMS template body length, in characters. `0` uses the default; a negative value fails startup. |
 
+## Runtime Management Providers
+
+User and agent management providers connect the runtime to the services that manage those identities. The default implementations call <ProductName />'s own user and agent management services. A custom implementation can connect the runtime to your own management services through the same interfaces.
+
+The runtime currently uses these providers for user and agent creation in flows. The interfaces keep runtime code independent of which management services handle those operations.
+
+| Setting | Default behavior | Supported values |
+|---|---|---|
+| `user_mgt_provider.type` | Calls the user management service | `default`, `disabled` |
+| `agent_mgt_provider.type` | Calls the agent management service | `default`, `disabled` |
+
+Configure the built-in providers in `deployment.yaml`. Setting a provider to `disabled` makes runtime creation of users or agents, respectively, fail. A disabled user management provider also fails a credential set in a flow, such as a password reset in a recovery flow. It does not disable the direct management API.
+
+```yaml
+user_mgt_provider:
+  type: default
+agent_mgt_provider:
+  type: default
+```
+
+For an embedded runtime, implement `providers.UserMgtProvider` or `providers.AgentMgtProvider` and pass the implementation through `thunderidengine.WithUserMgtProvider` or `thunderidengine.WithAgentMgtProvider`. The user provider implements `CreateUser` and `UpdateUserCredentials`, and the agent provider implements `CreateAgent`. Custom implementations are supplied through these Go options, not through a custom `type` value in `deployment.yaml`.
+
+`providers.Agent` carries schema values in its `Attributes` JSON, including `name`. The default agent type requires a unique name. A custom provider receives these values through `Attributes`, not a separate `Name` field. The Console label is resolved from the [agent type's display setting](../../guides/agents/agent-schema#display-attribute).
+
 ## Authentication Provider Configuration
 
 External authentication provider settings.
@@ -1069,7 +1173,7 @@ base-uri 'none';
 form-action 'self'
 ```
 
-A resource type without a matching directive (for example `font-src`) falls back to `default-src 'none'` and is blocked. On HTML responses, <ProductName /> Gate gets a fresh per-request nonce to the `script-src` and `style-src-elem` directives so its own inline scripts and styles load.
+A resource type without a matching directive (for example `font-src`) falls back to `default-src 'none'` and is blocked. On every Console and Gate response, <ProductName /> appends a fresh per-request nonce to `script-src`, and to `style-src-elem` when the policy sets that directive, so the UIs' own inline scripts and styles load. A directive that allows `'unsafe-inline'` gets no nonce, since browsers ignore `'unsafe-inline'` in a directive that has one.
 
 :::warning Overrides replace, not extend
 Listing a directive replaces its baseline value completely. Include `'self'` in your list when you still need same-origin resources. For example, `img-src: ["https://cdn.example.com"]` blocks same-origin images until you add `'self'`.
@@ -1077,8 +1181,9 @@ Listing a directive replaces its baseline value completely. Include `'self'` in 
 
 ### Configure the Policy
 
-Set the policy in either of these ways:
+Set the policy in any of these ways:
 
+- **Console** - go to **Settings** and open the **Content security policy** tab. Turn **Report only** on or off, and edit the sources of any directive, pressing Enter after each new source. **Shared** holds the top-level `directives`, which apply to both the Console and Gate. Each path already in the policy, such as `/console/`, has its own section listing every directive that applies to it, including the baseline. To add a path, use the declarative or runtime method below. Changing a directive overrides its default value, and **Reset to default** removes the override. Each section ends with a preview of the header it sends, without the per-request nonce described in [Deny-First Baseline](#deny-first-baseline). Select **Save changes** to apply the policy immediately.
 - **Declarative** - create `config/resources/server_configs/csp.yaml`, then restart.
   ```yaml
   name: csp
@@ -1115,7 +1220,7 @@ Set the policy in either of these ways:
 
 Directives at the top level of `directives` apply to every CSP path, while a `paths` entry applies only to requests under its `location` and overrides the top-level value for that directive.
 
-A `PUT` replaces the entire runtime layer, so include every runtime value you want to keep. <ProductName /> then merges that layer with the declarative `csp.yaml` per directive and path, and any directive you configure in neither layer stays at the deny-first baseline.
+A `PUT` replaces the entire runtime layer, so include every runtime value you want to keep. <ProductName /> then merges that layer with the declarative `csp.yaml` per directive, including within each `paths` entry: a runtime directive replaces only the declarative directive of the same name for the same `location`. Any directive you configure in neither layer stays at the deny-first baseline.
 
 :::note
 Directive names must match the pattern `^[a-z][a-z0-9-]*$`, and no source may contain whitespace, a semicolon, or a comma. An invalid value is rejected with `SCF-1003` ("Invalid server configuration value").
@@ -1151,20 +1256,29 @@ A declarative default takes precedence and locks the setting: while `defaultReso
 
 ## Flow Defaults
 
-Controls server-wide default flows and context expiry times for each flow type. These settings are stored in the server-config `flow` section, not in `deployment.yaml`.
+Controls server-wide default flows, context expiry times for each flow type, and where the sign-in page sends the user when it has no flow to continue. These settings are stored in the server-config `flow` section, not in `deployment.yaml`.
 
-Each flow type has two fields:
+Flow configuration uses the following fields. `selfFlow` uses only `expirySeconds`.
 
 | Field | Description |
 |-------|-------------|
 | `<type>.defaultHandle` | Handle of the flow to use when the application and the organization unit do not pin a specific flow. Empty string means no server default, and the flow type is treated as not configured at the server level. |
 | `<type>.expirySeconds` | How long (in seconds) a started flow context remains valid before it expires. Must be a positive integer. |
+| `defaultReturnUrl` | Where the sign-in page sends the user when it has no flow to continue and no application URL to return to, such as a bookmarked sign-in page. Must be an absolute `http` or `https` URL without credentials, otherwise the update is rejected with `SCF-1003`. It can't be the sign-in page itself, which ignores such a URL to avoid a redirect loop. When no value is in effect, the page asks the user to return to the application. A writable value overrides the one in `flow.yaml`, so clearing the writable value keeps a `flow.yaml` value in effect. |
 
-Supported flow types are `authFlow`, `registrationFlow`, `userOnboardingFlow`, `recoveryFlow`, `signOutFlow`, and `userDeletionFlow`.
+Flow configuration keys include `authFlow`, `registrationFlow`, `userOnboardingFlow`, `recoveryFlow`, `signOutFlow`, `selfFlow`, `adminInitiatedFlow`, `agentOnboardingFlow`, `adminAttributeVerificationFlow`, and `adminUserCredentialResetFlow`.
 
-`userDeletionFlow` is resolved differently from the others: it names an administration flow that runs when a user is deleted from the Console, rather than a flow an inbound request starts. Its shipped default revokes the user's tokens and terminates their sessions before the record is removed. Deleting a user through the `DELETE /users/{id}` API removes the record only and does not run this flow. See [Token Revocation](../../guides/protocols/oauth-oidc/token-revocation#user-deletion).
+`selfFlow` sets the execution expiry of every `SELF` flow, 30 minutes by default. It has no `defaultHandle`: each start request names its flow by `handle`, such as the shipped `default-self-attribute-verification-flow` or the handle of a custom `SELF` flow. A start without a `handle`, or with one that names no `SELF` flow, is refused before any node runs.
 
-The account lifecycle administration flows have their own types: `userSuspendFlow`, `userUnsuspendFlow`, `userUnlockFlow`, `agentSuspendFlow`, `agentUnsuspendFlow`, `agentUnlockFlow`, `applicationSuspendFlow`, and `applicationUnsuspendFlow`. Like `userDeletionFlow`, each names an administration flow run against an existing identity, not a flow an inbound request starts. See [Customize the Lifecycle Flows](../../guides/account-protection/suspend-and-restore-accounts#customize-the-lifecycle-flows).
+`adminInitiatedFlow` sets the execution expiry of every `ADMIN_INITIATED` flow, 6 hours by default, which is how long the user has to finish the flow from the link it sends. Like `selfFlow`, it has no `defaultHandle`: each start request names its flow by `handle`, such as the shipped `default-admin-attribute-verification-flow`.
+
+`adminAttributeVerificationFlow.defaultHandle` names the `ADMIN_INITIATED` flow the Console starts when an administrator sends a user a verification link. Bootstrap sets it to `default-admin-attribute-verification-flow`. Set it to any saved `ADMIN_INITIATED` flow to send links through a custom flow; a handle that names no such flow is refused. With no handle set, the Console does not offer the action. See [Email Address and Mobile Number Verification](../../guides/users/manage-users#email-address-and-mobile-number-verification).
+
+`adminUserCredentialResetFlow.defaultHandle` names the `ADMIN_INITIATED` flow the Console starts when an administrator sends a user a credential reset link. Bootstrap sets it to `default-admin-user-credential-reset-flow`. Set it to any saved `ADMIN_INITIATED` flow to reset credentials through a custom flow; a handle that names no such flow is refused. With no handle set, the Console reset dialog does not offer the link. See [Ask a User to Reset a Credential](../../guides/users/manage-users#ask-a-user-to-reset-a-credential).
+
+`agentOnboardingFlow.defaultHandle` selects the Administration flow used when creating an agent in the Console. Bootstrap sets it to `default-agent-onboarding-flow`, which creates agents using their own identity. Set it to any saved agent onboarding Administration flow, including a custom flow, using the runtime API described below. For OBO creation, that flow collects delegation inputs and sets `delegated` through the Provisioning node or an administrator's selection. This Console action reads the server setting directly; it does not use the application and organization-unit fallback below. Direct `POST /agents` requests do not run the onboarding flow. See [Configure agent onboarding](../../guides/agents/manage-agents#configure-agent-onboarding).
+
+The account lifecycle administration flows have their own types: `userSuspendFlow`, `userUnsuspendFlow`, `userUnlockFlow`, `agentSuspendFlow`, `agentUnsuspendFlow`, `agentUnlockFlow`, `applicationSuspendFlow`, and `applicationUnsuspendFlow`. Each names an administration flow run against an existing identity. An administrator starts it with `POST /flow/execute` and the flow's ID, so the resolution order below does not apply to it. Deleting a user, an agent, an application, or an action, and replacing a credential or a client secret, are different: their revocation runs as built-in system flows that no request starts and no server configuration key names. See [Customize the Lifecycle Flows](../../guides/account-protection/suspend-and-restore-accounts#customize-the-lifecycle-flows), [Deletion](../../guides/protocols/oauth-oidc/token-revocation#deletion), and [Action Deletion](../../guides/protocols/oauth-oidc/token-revocation#action-deletion).
 
 **Resolution order:** When an inbound request starts a flow, the effective flow is resolved as follows:
 
@@ -1190,21 +1304,31 @@ Configure flow defaults in either of these ways:
     signOutFlow:
       expirySeconds: 1800
   ```
-- **Runtime** - send the new value to `PUT /server-config/flow`; it is applied immediately and merged with any declarative file. A `PUT` replaces the entire runtime layer, and the server's shipped defaults are stored in that layer, so any flow type the request leaves out loses its default handle. Read `GET /server-config/flow` first, change the types you need in its `writable` value, and send the whole value back:
+- **Runtime** - send the new value to `PUT /server-config/flow`; it is applied immediately. The request replaces the entire writable `flow` section. A key you leave out loses its default handle, and its expiry falls back to the built-in value. Read the current section with `GET /server-config/flow`, change the keys you need in its `writable` object, and send that object back. This example changes only `agentOnboardingFlow.defaultHandle`. Set `CA_CERT` to the certificate that curl should trust for the server. A local setup uses its self-signed `<THUNDERID_HOME>/config/certs/server.cert`.
   ```bash
-  curl -fks https://localhost:8090/server-config/flow \
-    -H "Authorization: Bearer $TOKEN" \
-    | jq '.writable | .authFlow.expirySeconds = 7200' > flow.json
-
-  curl -k -X PUT https://localhost:8090/server-config/flow \
-    -H "Authorization: Bearer $TOKEN" \
-    -H "Content-Type: application/json" \
-    -d @flow.json
+  curl -s --cacert "$CA_CERT" -H "Authorization: Bearer $TOKEN" https://localhost:8090/server-config/flow \
+    | jq '.writable | .agentOnboardingFlow.defaultHandle = "<your-flow-handle>"' \
+    | curl -s --cacert "$CA_CERT" -X PUT https://localhost:8090/server-config/flow \
+        -H "Authorization: Bearer $TOKEN" \
+        -H "Content-Type: application/json" \
+        -d @-
   ```
+
+Where a value takes effect depends on `server_config.store` in `deployment.yaml`:
+
+| Store mode | Behavior |
+|---|---|
+| `composite` (default) | Bootstrap stores the shipped defaults in the writable section. A writable value takes precedence over the same key in `flow.yaml`, so a file value takes effect only for keys the writable section leaves empty. To change a default that bootstrap already set, such as `agentOnboardingFlow.defaultHandle`, use the runtime request. |
+| `mutable` | The server reads only the writable section and ignores `flow.yaml`. Use the runtime request. |
+| `declarative` | The section is read-only, so `PUT /server-config/flow` is rejected. Set the values in `flow.yaml` and restart. |
+
+The `merged` object in the `GET /server-config/flow` response shows the value in effect.
 
 :::note
 Set `defaultHandle` only for flow types that have a corresponding flow in your deployment. The handle is validated when the configuration is written. An unknown handle or a handle belonging to a different flow type is rejected with `SCF-1003`. For optional types (registration, recovery, user-onboarding, sign-out), omit `defaultHandle` to leave the server-level default empty.
 :::
+
+If the agent onboarding default is absent, or its flow cannot be found, the Console cannot start agent creation. Restore a valid Administration flow handle in this section.
 
 ## Notification Defaults
 
@@ -1237,6 +1361,76 @@ Set it in either of these ways:
 
 :::note
 A declarative sender takes precedence and locks the setting: while `notification.yaml` names a sender, runtime `PUT /server-config/notification` requests are rejected. Remove the declarative value to manage the sender at runtime.
+:::
+
+## Deploy Pipeline and Auto Apply
+
+A control plane deploys a version to the gateways it administers. The pipeline orders them: a deploy enters at the first gateway, and each later gateway is reached by promoting from the one before it. Set it in `deployment.yaml` with `gateway.pipeline`, one entry for each stage:
+
+| Field | Description |
+|-------|-------------|
+| `gateway` | The name a gateway is registered under. |
+| `name` | What the stage is called, for example `Development`. The gateway's name when omitted. |
+| `admin_console_url` | Where the gateway's own console is reached, to manage its users and sessions. `/console` under the gateway's base URL when omitted. |
+
+```yaml
+gateway:
+  pipeline:
+    - gateway: dev-gateway
+      name: Development
+    - gateway: prod-gateway
+      name: Production
+      admin_console_url: "https://console.prod.example.com"
+```
+
+Without `gateway.pipeline`, the default gateway is the only stage. `GET /gateways/pipeline` returns the stages. An entry is left out of them when nothing can be deployed to it for certain: its gateway is not registered, as right after startup before gateways are registered through the API, or two gateways have that name, as a gateway declared in a file and one registered through the API can.
+
+The first stage is where auto apply deploys and where a control plane writes the values its references name. While the first entry's gateway is left out, both wait rather than going to the next stage.
+
+The Console gives each stage's gateway a page of its own, at `/deploy/gateways/{id}`, and at `/projects/{projectId}/deploy/gateways/{id}` within a project. To place these pages elsewhere, set `deploy.gateway_path` in the Console's runtime configuration (`apps/console/config.js`):
+
+```javascript
+window.__THUNDERID_RUNTIME_CONFIG__ = {
+  // ...
+  deploy: {
+    gateway_path: 'environments',
+  },
+};
+```
+
+With this value, a gateway's page is at `/environments/{id}`. The explorer and values pages of a gateway stay under `/deploy/gateways/{id}`.
+
+### Auto Apply
+
+Auto apply makes each change captured on the control plane deploy to the first gateway. `gateway.auto_apply` sets it for the deployment, and the server-config `gateway` section turns it on or off without a restart:
+
+| Field | Description |
+|-------|-------------|
+| `autoApply` | Whether a captured change deploys to the first gateway. Unset, `gateway.auto_apply` decides, as it does when the section cannot be read. |
+
+The section stays on the control plane: it sets how this control plane deploys, so it is not exported, captured into a version or imported. Set it in either of these ways:
+
+- **Declarative** - create `config/resources/server_configs/gateway.yaml`, then restart:
+  ```yaml
+  name: gateway
+  value:
+    autoApply: true
+  ```
+- **Runtime** - send the new value to `PUT /server-config/gateway`:
+  ```http
+  PUT /server-config/gateway
+  Authorization: Bearer <admin-access-token>
+  Content-Type: application/json
+
+  { "autoApply": true }
+  ```
+
+An auto apply is refused like any other apply, for example when the gateway lacks a value the version refers to; the control plane logs it and the next change tries again.
+
+The section is read on every capture. The node that takes the update applies it at once. With the default in-memory [cache](#cache-configuration), another node sees it once its cached copy of the section expires.
+
+:::note
+A declarative value takes precedence and locks the setting: while `gateway.yaml` sets `autoApply`, runtime `PUT /server-config/gateway` requests are rejected. Remove the declarative value to manage it at runtime.
 :::
 
 ## Account Access
@@ -1471,7 +1665,7 @@ Controls server-wide security behavior that is not specific to any single authen
 | `server.security.system_permission_prefix` | `""` (empty) | Prefix for system permission strings used in API authorization. When empty, permissions use their base names (for example, `system`). When set, the prefix is prepended to every system permission (for example, `mgmt:system`). If you set a prefix, update the Console scopes to match. Changes require a server restart |
 | `server.security.direct_auth_secret` | `""` (empty) | Secret that gates the Direct API authentication endpoints (`/auth/**` and `/register/passkey/**`) and protected AuthZEN access endpoints (`/access/**`). AuthZEN discovery (`/.well-known/authzen-configuration`) remains public. The protected endpoints are **secure by default**. While this is empty they are blocked with `401`. When set, callers must send the value in the `Direct-Auth-Secret` header; a missing or incorrect value is rejected with `401`. See [Integration Models](../../key-concepts/authentication/integration-models#direct-api) |
 | `server.security.rest.audience` | `""` (unset) | Audience ([RFC 8707](https://datatracker.ietf.org/doc/html/rfc8707) resource indicator) a self-issued token must carry to be accepted by the REST API gate, normally the identifier of the resource server your management tokens are bound to. While unset the audience is **not** checked and REST authorizes by scope alone, so this is opt-in. When set, it must be an absolute URI without a fragment; an explicitly empty value fails startup rather than silently disabling the check |
-| `server.security.mcp.audience` | `""` (derived) | The MCP resource identifier: both the audience an MCP token must carry and the `resource` value published in the [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) protected resource metadata. Unlike the REST audience this check is **mandatory** and cannot be disabled. Leaving it unset derives `<server public URL>/mcp` rather than turning it off. Set it only when your registered resource server uses a different identifier; it must then match that identifier, or MCP clients following the published metadata will be rejected |
+| `server.security.mcp.audience` | `""` (derived) | The MCP resource identifier: both the audience an MCP token must carry, whether this server or the trusted issuer issued it, and the `resource` value published in the [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) protected resource metadata. A token issued for any other audience is not accepted on `/mcp`. The REST API checks its own audiences, `server.security.rest.audience` above and [`trusted_issuer.audience`](#trusted-issuer-configuration). Unlike the REST audience this check is **mandatory** and cannot be disabled. Leaving it unset derives `<server public URL>/mcp` rather than turning it off. Set it only when your registered resource server uses a different identifier; it must then match that identifier, or MCP clients following the published metadata will be rejected |
 | `server.security.management_api_key_hash` | `""` (empty) | SHA-256 hex digest of the management API key that authenticates calls to this deployment's import API (`/import`, `/import/**`) and variable store (`/variables`, `/variables/**`, `/secrets`, `/secrets/**`), so a deployment pipeline can push configuration without first obtaining OAuth client credentials. The key is presented in its own header, `API-Key: <key>`, never in `Authorization`. **This setting holds the digest, not the key**: the deployment only needs to recognize the key, so a leaked configuration file yields nothing a caller can present. Generate the pair with any SHA-256 tool, for example `printf '%s' "$KEY" | sha256sum`. A caller authenticates as a principal holding the **root system permission**, and is trusted **only on those paths**; every other API stays behind OAuth. An `API-Key` value that does not match is passed to the normal OAuth check, so OAuth tokens keep working on the same paths. Empty **disables it**, which is the default. Because it is a single long-lived key it cannot be scoped per caller or revoked without a restart, so treat it as a deployment credential, give it to as few callers as possible, and prefer an OAuth client wherever one can be obtained |
 | `server.security.token_revocation.enabled` | `true` | If `true`, revoked tokens are rejected on requests to protected APIs. See [Token Revocation](../../guides/protocols/oauth-oidc/token-revocation) |
 | `server.security.token_revocation.source` | `db` | Where the revocation snapshot is read from. `db` is the only supported value; any other value fails startup validation |

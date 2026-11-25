@@ -29,13 +29,49 @@ function activeHint(category: LifecycleCategory, t: TFunction): string {
   }
 }
 
-function suspendedHint(category: LifecycleCategory, t: TFunction): string {
+/**
+ * Whether the organization holds a suspension, so an administrator can lift it. A read that names no
+ * party is the organization's, as it is for users and applications.
+ */
+export function isSuspendedByOrganization(status: AccessStatusReport | undefined): boolean {
+  const appliedBy = status?.details?.appliedBy;
+
+  return !appliedBy || appliedBy.length === 0 || appliedBy.includes('organization');
+}
+
+function suspendedHint(category: LifecycleCategory, status: AccessStatusReport | undefined, t: TFunction): string {
   switch (category) {
-    case 'agent':
-      return t(
-        'common:accountStatus.suspended.hint.agent',
-        'The agent is suspended and cannot authenticate until an administrator unsuspends it.',
-      );
+    case 'agent': {
+      const appliedBy = status?.details?.appliedBy ?? [];
+      const lines: string[] = [
+        isSuspendedByOrganization(status)
+          ? t(
+              'common:accountStatus.suspended.hint.agent',
+              'The agent is suspended and cannot authenticate until an administrator unsuspends it.',
+            )
+          : t(
+              'common:accountStatus.suspended.hint.agentNotByOrganization',
+              'The agent is suspended and cannot authenticate.',
+            ),
+      ];
+      if (appliedBy.includes('owner')) {
+        lines.push(
+          t(
+            'common:accountStatus.suspended.hint.agentOwner',
+            'Its owner suspended it, and only the owner can lift that suspension.',
+          ),
+        );
+      }
+      if (appliedBy.includes('cascade')) {
+        lines.push(
+          t(
+            'common:accountStatus.suspended.hint.agentCascade',
+            "Its owner's account is suspended, and the agent stays suspended until that account is unsuspended.",
+          ),
+        );
+      }
+      return lines.join(' ');
+    }
     case 'application':
       return t(
         'common:accountStatus.suspended.hint.application',
@@ -194,7 +230,7 @@ export default function describeAccessStatus(
     const label = t('common:accountStatus.suspended.label', 'Suspended');
 
     return {
-      hint: suspendedHint(category, t),
+      hint: suspendedHint(category, status, t),
       label,
       title: label,
       operatorNote: details?.operatorNote

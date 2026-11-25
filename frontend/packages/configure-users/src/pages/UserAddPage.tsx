@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {zodResolver} from '@hookform/resolvers/zod';
-import {DocumentTitle, FullScreenCreationWizardLayout, PageLoadingAnimation} from '@thunderid/components';
+import {
+  CredentialFieldInput,
+  DocumentTitle,
+  FullScreenCreationWizardLayout,
+  PageLoadingAnimation,
+} from '@thunderid/components';
 import {OrganizationUnitTreePicker} from '@thunderid/configure-organization-units';
 import {CopyableTextAdapter, type FlowComponent, mapEmbeddedFlowTextColor} from '@thunderid/design';
 import {useLogger} from '@thunderid/logger/react';
@@ -40,7 +45,6 @@ import {useForm, Controller} from 'react-hook-form';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
 import {z} from 'zod';
-import CredentialFieldInput from '../components/CredentialFieldInput';
 import useFlowTextResolver from '../hooks/useFlowTextResolver';
 import getUserErrorMessage from '../utils/getUserErrorMessage';
 
@@ -277,109 +281,109 @@ function InviteUserStepContent({
       type === 'NUMBER_INPUT'
     ) {
       return (
-        <FormControl key={component.id ?? index} required={required}>
-          <FormLabel htmlFor={ref}>{resolve(labelText) ?? labelText}</FormLabel>
-          <Controller
-            name={ref}
-            control={formControl}
-            rules={{required: required ? `${resolve(labelText) ?? labelText} is required` : false}}
-            render={({field}) => (
-              <TextField
-                {...field}
-                fullWidth
-                size="small"
-                id={ref}
-                type={type === 'NUMBER_INPUT' ? 'number' : 'text'}
-                placeholder={resolve(placeholderText) ?? placeholderText}
-                autoComplete="off"
-                required={required}
-                variant="outlined"
-                disabled={isFormLoading}
-                error={!!formErrors[ref]}
-                helperText={formErrors[ref]?.message as string}
-                color={formErrors[ref] ? 'error' : 'primary'}
-                onChange={(e) => {
-                  field.onChange(e);
-                  handleInputChangeFn(ref, e.target.value);
-                }}
-              />
-            )}
-          />
-        </FormControl>
+        <Controller
+          name={ref}
+          control={formControl}
+          rules={{required: required ? `${resolve(labelText) ?? labelText} is required` : false}}
+          render={({field}) => (
+            <TextField
+              labelPlacement="top"
+              label={resolve(labelText) ?? labelText}
+              key={component.id ?? index}
+              {...field}
+              fullWidth
+              size="small"
+              id={ref}
+              type={type === 'NUMBER_INPUT' ? 'number' : 'text'}
+              placeholder={resolve(placeholderText) ?? placeholderText}
+              autoComplete="off"
+              required={required}
+              variant="outlined"
+              disabled={isFormLoading}
+              error={!!formErrors[ref]}
+              helperText={formErrors[ref]?.message as string}
+              color={formErrors[ref] ? 'error' : 'primary'}
+              onChange={(e) => {
+                field.onChange(e);
+                handleInputChangeFn(ref, e.target.value);
+              }}
+            />
+          )}
+        />
       );
     }
 
     if (type === 'EMAIL_INPUT') {
       return (
-        <FormControl key={component.id ?? index} required={required}>
-          <FormLabel htmlFor={ref}>{resolve(labelText) ?? labelText}</FormLabel>
-          <Controller
-            name={ref}
-            control={formControl}
-            rules={{
-              required: required ? `${resolve(labelText) ?? labelText} is required` : false,
-              pattern: {
-                value: EMAIL_REGEX,
-                message: t('validations:field.email.invalid', 'Please enter a valid email address.'),
-              },
-            }}
-            render={({field}) => (
-              <TextField
-                {...field}
-                fullWidth
-                size="small"
-                id={ref}
-                type="email"
-                placeholder={resolve(placeholderText) ?? placeholderText}
-                autoComplete="email"
-                required={required}
-                variant="outlined"
-                disabled={isFormLoading}
-                error={!!formErrors[ref]}
-                helperText={formErrors[ref]?.message as string}
-                color={formErrors[ref] ? 'error' : 'primary'}
-                onChange={(e) => {
-                  field.onChange(e);
-                  handleInputChangeFn(ref, e.target.value);
-                }}
-              />
-            )}
-          />
-        </FormControl>
+        <Controller
+          name={ref}
+          control={formControl}
+          rules={{
+            required: required ? `${resolve(labelText) ?? labelText} is required` : false,
+            pattern: {
+              value: EMAIL_REGEX,
+              message: t('validations:field.email.invalid', 'Please enter a valid email address.'),
+            },
+          }}
+          render={({field}) => (
+            <TextField
+              labelPlacement="top"
+              label={resolve(labelText) ?? labelText}
+              key={component.id ?? index}
+              {...field}
+              fullWidth
+              size="small"
+              id={ref}
+              type="email"
+              placeholder={resolve(placeholderText) ?? placeholderText}
+              autoComplete="email"
+              required={required}
+              variant="outlined"
+              disabled={isFormLoading}
+              error={!!formErrors[ref]}
+              helperText={formErrors[ref]?.message as string}
+              color={formErrors[ref] ? 'error' : 'primary'}
+              onChange={(e) => {
+                field.onChange(e);
+                handleInputChangeFn(ref, e.target.value);
+              }}
+            />
+          )}
+        />
       );
     }
 
     if (type === 'PHONE_INPUT') {
       return (
-        <FormControl key={component.id ?? index} required={required}>
-          <FormLabel htmlFor={ref}>{resolve(labelText) ?? labelText}</FormLabel>
-          <Controller
-            name={ref}
-            control={formControl}
-            rules={{required: required ? `${resolve(labelText) ?? labelText} is required` : false}}
-            render={({field}) => (
-              <TextField
-                {...field}
-                fullWidth
-                size="small"
-                id={ref}
-                type="tel"
-                placeholder={resolve(placeholderText) ?? placeholderText}
-                autoComplete="tel"
-                required={required}
-                variant="outlined"
-                disabled={isFormLoading}
-                error={!!formErrors[ref]}
-                helperText={formErrors[ref]?.message as string}
-                color={formErrors[ref] ? 'error' : 'primary'}
-                onChange={(e) => {
-                  field.onChange(e);
-                  handleInputChangeFn(ref, e.target.value);
-                }}
-              />
-            )}
-          />
-        </FormControl>
+        <Controller
+          name={ref}
+          control={formControl}
+          rules={{required: required ? `${resolve(labelText) ?? labelText} is required` : false}}
+          render={({field}) => (
+            <TextField
+              labelPlacement="top"
+              label={resolve(labelText) ?? labelText}
+              key={component.id ?? index}
+              {...field}
+              fullWidth
+              size="small"
+              id={ref}
+              type="tel"
+              placeholder={resolve(placeholderText) ?? placeholderText}
+              autoComplete="tel"
+              required={required}
+              variant="outlined"
+              disabled={isFormLoading}
+              error={!!formErrors[ref]}
+              helperText={formErrors[ref]?.message as string}
+              color={formErrors[ref] ? 'error' : 'primary'}
+              onChange={(e) => {
+                field.onChange(e);
+                handleInputChangeFn(ref, e.target.value);
+              }}
+            />
+          )}
+        />
       );
     }
 

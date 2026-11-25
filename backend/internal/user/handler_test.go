@@ -516,6 +516,41 @@ func TestHandleUserListRequest_Success(t *testing.T) {
 	require.Equal(t, expectedResp.TotalResults, resp.TotalResults)
 }
 
+func TestHandleUserListRequest_ByProject(t *testing.T) {
+	mockSvc := NewUserServiceInterfaceMock(t)
+	expectedResp := &UserListResponse{
+		TotalResults: 1,
+		Users:        []providers.User{{ID: "user-1", ProjectID: "project-1"}},
+	}
+	mockSvc.On("GetUserListByProject", mock.Anything, "project-1", 10, 0, mock.Anything, false).
+		Return(expectedResp, nil).Once()
+
+	handler := newUserHandler(mockSvc)
+	req := httptest.NewRequest(http.MethodGet, "/users?limit=10&offset=0&projectId=project-1", nil)
+	rr := httptest.NewRecorder()
+
+	handler.HandleUserListRequest(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	var resp UserListResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+	require.Equal(t, "project-1", resp.Users[0].ProjectID)
+}
+
+func TestHandleUserListRequest_ByProjectError(t *testing.T) {
+	mockSvc := NewUserServiceInterfaceMock(t)
+	mockSvc.On("GetUserListByProject", mock.Anything, "project-1", 10, 0, mock.Anything, false).
+		Return(nil, &ErrorInvalidFilter).Once()
+
+	handler := newUserHandler(mockSvc)
+	req := httptest.NewRequest(http.MethodGet, "/users?limit=10&offset=0&projectId=project-1", nil)
+	rr := httptest.NewRecorder()
+
+	handler.HandleUserListRequest(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+}
+
 func TestHandleUserListRequest_WithIncludeDisplay(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
 	expectedResp := &UserListResponse{
@@ -617,6 +652,53 @@ func TestHandleUserGetRequest_IncludeDisplay(t *testing.T) {
 	mockSvc.AssertExpectations(t)
 }
 
+func TestHandleUserGetRequest_InOU(t *testing.T) {
+	mockSvc := NewUserServiceInterfaceMock(t)
+	userID := testUserID123
+	ouID := "ou-1"
+	mockSvc.On("GetUserInOU", mock.Anything, userID, ouID, true).
+		Return(&providers.User{ID: userID, OUID: ouID, IsOwnedByOU: new(false)}, nil).Once()
+
+	handler := newUserHandler(mockSvc)
+	req := httptest.NewRequest(http.MethodGet, "/users/"+userID+"?ouId="+ouID+"&include=display", nil)
+	req.SetPathValue("id", userID)
+	rr := httptest.NewRecorder()
+
+	handler.HandleUserGetRequest(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	var resp providers.User
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+	require.Equal(t, ouID, resp.OUID)
+	require.NotNil(t, resp.IsOwnedByOU)
+	require.False(t, *resp.IsOwnedByOU)
+}
+
+func TestHandleUserGetRequest_InOUErrors(t *testing.T) {
+	tests := []struct {
+		name   string
+		svcErr *tidcommon.ServiceError
+		status int
+	}{
+		{name: "NotInOU", svcErr: &ErrorUserNotFound, status: http.StatusNotFound},
+		{name: "NoAccessInOU", svcErr: &tidcommon.ErrorUnauthorized, status: http.StatusForbidden},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mockSvc := NewUserServiceInterfaceMock(t)
+			mockSvc.On("GetUserInOU", mock.Anything, "u1", "ou-1", false).Return(nil, tc.svcErr).Once()
+			handler := newUserHandler(mockSvc)
+			req := httptest.NewRequest(http.MethodGet, "/users/u1?ouId=ou-1", nil)
+			req.SetPathValue("id", "u1")
+			rr := httptest.NewRecorder()
+
+			handler.HandleUserGetRequest(rr, req)
+
+			require.Equal(t, tc.status, rr.Code)
+		})
+	}
+}
+
 func TestHandleUserPutRequest_Success(t *testing.T) {
 	mockSvc := NewUserServiceInterfaceMock(t)
 	userID := testUserID123
@@ -651,6 +733,51 @@ func TestHandleUserDeleteRequest_Success(t *testing.T) {
 	handler.HandleUserDeleteRequest(rr, req)
 
 	require.Equal(t, http.StatusNoContent, rr.Code)
+}
+
+// A user in no project must name its organization unit, so a create without ouId or projectId is refused
+// before it reaches the service.
+func TestHandleUserPostRequest_WithoutOUOrProject(t *testing.T) {
+	mockSvc := NewUserServiceInterfaceMock(t)
+	handler := newUserHandler(mockSvc)
+	for name, projectID := range map[string]string{"no project": "", "blank project": "   "} {
+		t.Run(name, func(t *testing.T) {
+			body, _ := json.Marshal(&CreateUserRequest{ProjectID: projectID, Type: "employee",
+				Attributes: json.RawMessage(`{"username":"bob"}`)})
+			req := httptest.NewRequest(http.MethodPost, "/users", bytes.NewBuffer(body))
+			rr := httptest.NewRecorder()
+
+			handler.HandleUserPostRequest(rr, req)
+
+			require.Equal(t, http.StatusBadRequest, rr.Code)
+			var resp map[string]interface{}
+			require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+			require.Equal(t, "Validation Failed", resp["message"])
+			require.Contains(t, resp["errors"], "ouId")
+		})
+	}
+	mockSvc.AssertNotCalled(t, "CreateUser", mock.Anything, mock.Anything)
+}
+
+func TestHandleUserPostRequest_InProject(t *testing.T) {
+	mockSvc := NewUserServiceInterfaceMock(t)
+	mockSvc.On("CreateUser", mock.Anything, mock.MatchedBy(func(u *providers.User) bool {
+		return u.ProjectID == "project-1" && u.OUID == "ou-system"
+	})).Return(&providers.User{ID: "user-bob", OUID: "ou-system", ProjectID: "project-1", Type: "employee"}, nil).
+		Once()
+
+	handler := newUserHandler(mockSvc)
+	body, _ := json.Marshal(&CreateUserRequest{OUID: "ou-system", ProjectID: "project-1", Type: "employee",
+		Attributes: json.RawMessage(`{"username":"bob"}`)})
+	req := httptest.NewRequest(http.MethodPost, "/users", bytes.NewBuffer(body))
+	rr := httptest.NewRecorder()
+
+	handler.HandleUserPostRequest(rr, req)
+
+	require.Equal(t, http.StatusCreated, rr.Code)
+	var resp providers.User
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+	require.Equal(t, "project-1", resp.ProjectID)
 }
 
 func TestHandleUserListByPathRequest_Success(t *testing.T) {
@@ -1090,6 +1217,26 @@ func TestHandleSelfUserCredentialUpdateRequest_Unauthorized(t *testing.T) {
 	var errResp apierror.ErrorResponse
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&errResp))
 	require.Equal(t, ErrorAuthenticationFailed.Code, errResp.Code)
+}
+
+// A delegated token, such as an agent's token for its owner, cannot change the owner's credentials.
+func TestHandleSelfUserCredentialUpdateRequest_DelegatedToken(t *testing.T) {
+	authCtx := security.NewSecurityContextForTest(testUserID789, "", "", nil,
+		map[string]any{"act": map[string]any{"sub": "agent-1"}})
+	mockSvc := NewUserServiceInterfaceMock(t)
+	handler := newUserHandler(mockSvc)
+	req := httptest.NewRequest(http.MethodPost, "/users/me/update-credentials",
+		bytes.NewBufferString(`{"attributes":{"password":"Secret123!"}}`))
+	req = req.WithContext(security.WithSecurityContextTest(req.Context(), authCtx))
+	rr := httptest.NewRecorder()
+
+	handler.HandleSelfUserCredentialUpdateRequest(rr, req)
+
+	require.Equal(t, http.StatusForbidden, rr.Code)
+
+	var errResp apierror.ErrorResponse
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&errResp))
+	require.Equal(t, ErrorDelegatedTokenNotAllowed.Code, errResp.Code)
 }
 
 func TestHandleSelfUserCredentialUpdateRequest_InvalidBody(t *testing.T) {

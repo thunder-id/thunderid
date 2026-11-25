@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {decodeKeyValuePairs, encodeKeyValuePairs} from '@thunderid/components';
 import {fireEvent, render, screen} from '@thunderid/test-utils';
 import {type ComponentProps, useState} from 'react';
 import {getI18n} from 'react-i18next';
@@ -12,7 +13,6 @@ import {
   authPropertyField,
   MASKED_SECRET,
 } from '../../utils/connectionFormMapping';
-import {decodeKeyValuePairs, encodeKeyValuePairs} from '../../utils/keyValuePairs';
 import AuthenticationSection from '../AuthenticationSection';
 
 vi.mock('@thunderid/contexts', async (importOriginal) => ({
@@ -158,9 +158,9 @@ describe('AuthenticationSection', () => {
   it('renders the selected method fields in the order the server gave them', () => {
     renderSection({values: {[AUTH_TYPE_FIELD]: 'basic'}});
 
-    const rendered = Array.from(document.querySelectorAll('[id^="connection-field-authentication.properties."]')).map(
-      (element) => element.id,
-    );
+    const rendered = Array.from(
+      document.querySelectorAll('input[id^="connection-field-authentication.properties."]'),
+    ).map((element) => element.id);
     expect(rendered).toEqual([
       `connection-field-${authPropertyField('username')}`,
       `connection-field-${authPropertyField('password')}`,

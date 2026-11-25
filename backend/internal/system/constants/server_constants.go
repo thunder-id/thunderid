@@ -4,6 +4,12 @@
 // Package constants defines global constants used across the system module.
 package constants
 
+// SystemResourceServerID identifies the built-in resource server seeded by bootstrap.
+const SystemResourceServerID = "01900000-0000-7000-8000-000000000020"
+
+// ValidPermissionDelimiters defines the supported permission separators.
+const ValidPermissionDelimiters = "._:-/"
+
 // DefaultLogLevel is the default log level used if not specified.
 const DefaultLogLevel = "info"
 
@@ -33,9 +39,15 @@ const RetryAfterHeaderName = "Retry-After"
 // the request's trace ID across service boundaries.
 const CorrelationIDHeaderName = "X-Correlation-ID"
 
+// XForwardedForHeaderName is the name of the header a reverse proxy reports the client IP in.
+const XForwardedForHeaderName = "X-Forwarded-For"
+
 // HostHeaderName is the name of the Host header. Go carries the inbound host on http.Request.Host
 // rather than in http.Request.Header, so it is surfaced under this key when capturing request data.
 const HostHeaderName = "Host"
+
+// OriginHeaderName is the name of the Origin header a browser sends to identify where a request came from.
+const OriginHeaderName = "Origin"
 
 // FlowSecretHeaderName is the name of the header used to present a Flow Secret when initiating
 // a flow directly over HTTP.
@@ -61,6 +73,15 @@ const ClientAssertionTypeParamName = "client_assertion_type"
 
 // AuthorizationDetailsParamName is the RFC 9396 authorization_details request parameter.
 const AuthorizationDetailsParamName = "authorization_details"
+
+// SubClaimName, ActClaimName and SubTypeClaimName are the token claims that name the subject, the actor
+// it delegated to (RFC 8693) and the subject's identity class. Defined here (not in oauth2 constants)
+// because the audit package, which the Control Plane links, reads them and must not import OAuth.
+const (
+	SubClaimName     = "sub"
+	ActClaimName     = "act"
+	SubTypeClaimName = "sub_type"
+)
 
 // CRLF is the carriage return and line feed sequence that ends a line in text-based wire protocols
 // such as SMTP and HTTP.

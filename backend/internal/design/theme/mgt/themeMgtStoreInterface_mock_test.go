@@ -306,6 +306,86 @@ func (_c *themeMgtStoreInterfaceMock_GetThemeList_Call) RunAndReturn(run func(ct
 	return _c
 }
 
+// GetThemeListByProject provides a mock function for the type themeMgtStoreInterfaceMock
+func (_mock *themeMgtStoreInterfaceMock) GetThemeListByProject(ctx context.Context, projectID string, limit int, offset int) ([]Theme, error) {
+	ret := _mock.Called(ctx, projectID, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetThemeListByProject")
+	}
+
+	var r0 []Theme
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) ([]Theme, error)); ok {
+		return returnFunc(ctx, projectID, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) []Theme); ok {
+		r0 = returnFunc(ctx, projectID, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]Theme)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) error); ok {
+		r1 = returnFunc(ctx, projectID, limit, offset)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// themeMgtStoreInterfaceMock_GetThemeListByProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetThemeListByProject'
+type themeMgtStoreInterfaceMock_GetThemeListByProject_Call struct {
+	*mock.Call
+}
+
+// GetThemeListByProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+//   - limit int
+//   - offset int
+func (_e *themeMgtStoreInterfaceMock_Expecter) GetThemeListByProject(ctx any, projectID any, limit any, offset any) *themeMgtStoreInterfaceMock_GetThemeListByProject_Call {
+	return &themeMgtStoreInterfaceMock_GetThemeListByProject_Call{Call: _e.mock.On("GetThemeListByProject", ctx, projectID, limit, offset)}
+}
+
+func (_c *themeMgtStoreInterfaceMock_GetThemeListByProject_Call) Run(run func(ctx context.Context, projectID string, limit int, offset int)) *themeMgtStoreInterfaceMock_GetThemeListByProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *themeMgtStoreInterfaceMock_GetThemeListByProject_Call) Return(themes []Theme, err error) *themeMgtStoreInterfaceMock_GetThemeListByProject_Call {
+	_c.Call.Return(themes, err)
+	return _c
+}
+
+func (_c *themeMgtStoreInterfaceMock_GetThemeListByProject_Call) RunAndReturn(run func(ctx context.Context, projectID string, limit int, offset int) ([]Theme, error)) *themeMgtStoreInterfaceMock_GetThemeListByProject_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetThemeListCount provides a mock function for the type themeMgtStoreInterfaceMock
 func (_mock *themeMgtStoreInterfaceMock) GetThemeListCount(ctx context.Context) (int, error) {
 	ret := _mock.Called(ctx)
@@ -362,6 +442,72 @@ func (_c *themeMgtStoreInterfaceMock_GetThemeListCount_Call) Return(n int, err e
 }
 
 func (_c *themeMgtStoreInterfaceMock_GetThemeListCount_Call) RunAndReturn(run func(ctx context.Context) (int, error)) *themeMgtStoreInterfaceMock_GetThemeListCount_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetThemeListCountByProject provides a mock function for the type themeMgtStoreInterfaceMock
+func (_mock *themeMgtStoreInterfaceMock) GetThemeListCountByProject(ctx context.Context, projectID string) (int, error) {
+	ret := _mock.Called(ctx, projectID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetThemeListCountByProject")
+	}
+
+	var r0 int
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (int, error)); ok {
+		return returnFunc(ctx, projectID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) int); ok {
+		r0 = returnFunc(ctx, projectID)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, projectID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// themeMgtStoreInterfaceMock_GetThemeListCountByProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetThemeListCountByProject'
+type themeMgtStoreInterfaceMock_GetThemeListCountByProject_Call struct {
+	*mock.Call
+}
+
+// GetThemeListCountByProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+func (_e *themeMgtStoreInterfaceMock_Expecter) GetThemeListCountByProject(ctx any, projectID any) *themeMgtStoreInterfaceMock_GetThemeListCountByProject_Call {
+	return &themeMgtStoreInterfaceMock_GetThemeListCountByProject_Call{Call: _e.mock.On("GetThemeListCountByProject", ctx, projectID)}
+}
+
+func (_c *themeMgtStoreInterfaceMock_GetThemeListCountByProject_Call) Run(run func(ctx context.Context, projectID string)) *themeMgtStoreInterfaceMock_GetThemeListCountByProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *themeMgtStoreInterfaceMock_GetThemeListCountByProject_Call) Return(n int, err error) *themeMgtStoreInterfaceMock_GetThemeListCountByProject_Call {
+	_c.Call.Return(n, err)
+	return _c
+}
+
+func (_c *themeMgtStoreInterfaceMock_GetThemeListCountByProject_Call) RunAndReturn(run func(ctx context.Context, projectID string) (int, error)) *themeMgtStoreInterfaceMock_GetThemeListCountByProject_Call {
 	_c.Call.Return(run)
 	return _c
 }

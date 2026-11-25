@@ -85,6 +85,7 @@ func newCapturingUserService(t *testing.T, capturer declarativeresource.ValueCap
 		authzService:      newAllowAllAuthz(t),
 		uuidGenerator:     utils.GenerateUUIDv7,
 		valueCapturer:     capturer,
+		bus:               discardingBus{},
 	}
 }
 
@@ -125,8 +126,8 @@ func TestCreateUser_WithoutCredentialsCapturesNothing(t *testing.T) {
 	assert.Empty(t, capturer.resources)
 }
 
-// Credentials are named after the username, so a user without one has nothing captured.
-func TestCreateUser_WithoutAUsernameCapturesNothing(t *testing.T) {
+// Credentials are named after the user ID, so a user whose type has no username is captured too.
+func TestCreateUser_WithoutAUsernameCapturesTheSubmittedCredentials(t *testing.T) {
 	entities := entitymock.NewEntityServiceInterfaceMock(t)
 	entities.On("CreateEntity", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(&providers.Entity{Attributes: json.RawMessage(`{"email":"a@x.test"}`)}, nil)
@@ -139,7 +140,9 @@ func TestCreateUser_WithoutAUsernameCapturesNothing(t *testing.T) {
 	})
 	require.Nil(t, svcErr)
 
-	assert.Empty(t, capturer.resources)
+	user := capturer.captured(t)
+	assert.Equal(t, map[string]interface{}{"email": "a@x.test"}, user.Attributes)
+	assert.Equal(t, map[string]interface{}{"password": "s3cret"}, user.Credentials)
 }
 
 // A rotated credential is captured, so the store does not keep serving the one from creation.
@@ -185,8 +188,9 @@ func TestACapturedCredentialIsNamedAsTheExportNamesIt(t *testing.T) {
 	(&userService{valueCapturer: capturer}).captureCredentials(context.Background(),
 		&providers.User{ID: "user-1", Type: "person"}, json.RawMessage(`{"username":"alice"}`),
 		map[string]string{"password": "s3cret"})
-	values := export.Initialize(http.NewServeMux(), []declarativeresource.ResourceExporter{c.exporter},
-		export.ValueReferences)
+	values, err := export.Initialize(http.NewServeMux(), []declarativeresource.ResourceExporter{c.exporter},
+		export.ValueReferences, discardingBus{})
+	require.NoError(t, err)
 
 	variables, secrets, err := values.PlaceholderValues(context.Background(), resourceTypeUser,
 		capturer.captured(t))

@@ -181,6 +181,7 @@ func (ts *TfidTestSuite) SetupSuite() {
 }
 
 func (ts *TfidTestSuite) createTestApplication(name, clientID, clientSecret, redirectURI string) string {
+	grantTypes := []string{"authorization_code", "refresh_token", "urn:ietf:params:oauth:grant-type:token-exchange"}
 	app := map[string]interface{}{
 		"name":                      name,
 		"description":               "Application for tfid integration tests",
@@ -196,7 +197,7 @@ func (ts *TfidTestSuite) createTestApplication(name, clientID, clientSecret, red
 					"clientId":                clientID,
 					"clientSecret":            clientSecret,
 					"redirectUris":            []string{redirectURI},
-					"grantTypes":              []string{"authorization_code", "refresh_token"},
+					"grantTypes":              grantTypes,
 					"responseTypes":           []string{"code"},
 					"tokenEndpointAuthMethod": "client_secret_basic",
 				},
@@ -322,10 +323,11 @@ func (ts *TfidTestSuite) introspectActive(token string) bool {
 	ts.Require().Equal(http.StatusOK, resp.StatusCode, "Introspection should return 200")
 
 	var result struct {
-		Active bool `json:"active"`
+		Active *bool `json:"active"`
 	}
 	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&result), "Failed to parse introspection response")
-	return result.Active
+	ts.Require().NotNil(result.Active, "Introspection response must include the active field")
+	return *result.Active
 }
 
 // revokeRefreshToken revokes a refresh token via the RFC 7009 endpoint under the owning client.
@@ -448,4 +450,72 @@ func (ts *TfidTestSuite) TestIndependentGrantsAreIsolated() {
 	ts.False(ts.introspectActive(first.AccessToken), "The revoked login's access token is inactive")
 	ts.True(ts.introspectActive(second.AccessToken),
 		"An independent login must be unaffected by another login's revocation")
+}
+
+// exchangeAccessToken sends the token exchange form under the test client, as a backend or an agent acting
+// for the user would, and returns the exchanged access token.
+func (ts *TfidTestSuite) exchangeAccessToken(form url.Values) string {
+	form.Set("resource", tfidTestResource)
+	req, err := http.NewRequest("POST", testutils.TestServerURL+"/oauth2/token",
+		strings.NewReader(form.Encode()))
+	ts.Require().NoError(err, "Failed to build token exchange request")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth(tfidTestClientID, tfidTestClientSecret)
+
+	resp, err := ts.client.Do(req)
+	ts.Require().NoError(err, "Token exchange request failed")
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, "Token exchange should succeed: %s", string(body))
+
+	var result struct {
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+	}
+	ts.Require().NoError(json.Unmarshal(body, &result), "Failed to parse token exchange response")
+	ts.Require().NotEmpty(result.AccessToken, "Token exchange should return an access token")
+	ts.Require().NotEqual(form.Get("subject_token"), result.AccessToken, "Token exchange should issue a new token")
+	ts.Empty(result.RefreshToken, "Token exchange should not return a refresh token")
+	return result.AccessToken
+}
+
+// An exchanged token joins the subject token's token family, so revoking the grant it came from also
+// drops the exchanged token.
+func (ts *TfidTestSuite) TestExchangedTokenInheritsTfidAndIsRevokedWithTheGrant() {
+	tokens := ts.obtainTokens()
+	grantTfid := ts.tfidClaim(tokens.AccessToken)
+	ts.Require().NotEmpty(grantTfid)
+
+	exchanged := ts.exchangeAccessToken(exchangeParams(tokens.AccessToken))
+	ts.Equal(grantTfid, ts.tfidClaim(exchanged), "The exchanged token carries the subject token's tfid")
+	ts.Require().True(ts.introspectActive(exchanged), "The exchanged token should start active")
+
+	ts.revokeRefreshToken(tokens.RefreshToken)
+
+	ts.False(ts.introspectActive(exchanged),
+		"Revoking the grant must drop the token exchanged from it")
+}
+
+// An actor token from another login carries its own token family. The exchanged token must still take the
+// subject token's family, so revoking the subject's grant drops it and revoking the actor's grant does not.
+func (ts *TfidTestSuite) TestExchangeWithActorTokenKeepsSubjectTfid() {
+	subject := ts.obtainTokens()
+	actor := ts.obtainTokens()
+	subjectTfid := ts.tfidClaim(subject.AccessToken)
+	ts.Require().NotEqual(subjectTfid, ts.tfidClaim(actor.AccessToken), "The two logins have different families")
+
+	form := exchangeParams(subject.AccessToken)
+	form.Set("actor_token", actor.AccessToken)
+	form.Set("actor_token_type", "urn:ietf:params:oauth:token-type:access_token")
+	exchanged := ts.exchangeAccessToken(form)
+	ts.Equal(subjectTfid, ts.tfidClaim(exchanged), "The exchanged token carries the subject token's tfid")
+
+	ts.Require().True(ts.introspectActive(actor.AccessToken), "The actor's access token should start active")
+	ts.revokeRefreshToken(actor.RefreshToken)
+	ts.Require().False(ts.introspectActive(actor.AccessToken), "Revoking the actor's grant drops its own access token")
+	ts.True(ts.introspectActive(exchanged), "Revoking the actor's grant must not drop the exchanged token")
+
+	ts.revokeRefreshToken(subject.RefreshToken)
+	ts.False(ts.introspectActive(exchanged), "Revoking the subject's grant must drop the exchanged token")
 }

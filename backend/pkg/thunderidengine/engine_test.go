@@ -11,8 +11,10 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"io"
 	"math/big"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -39,6 +41,7 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/attestationprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/attributeverificationprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/providermock"
 	"github.com/thunder-id/thunderid/tests/mocks/authzmock"
 	"github.com/thunder-id/thunderid/tests/mocks/captchamock"
@@ -53,6 +56,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/idpprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/observabilityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/ouprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/permissionprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourceserverprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/runtimestoreprovidermock"
 )
@@ -489,6 +493,15 @@ func (suite *EngineTestSuite) TestWithAuthorizationDetailProvider() {
 	suite.Equal(provider, ctx.authzDetailProvider)
 }
 
+func (suite *EngineTestSuite) TestWithPermissionProvider() {
+	provider := permissionprovidermock.NewPermissionProviderMock(suite.T())
+	ctx := &engineContext{}
+
+	WithPermissionProvider(provider)(ctx)
+
+	suite.Equal(provider, ctx.permissionProvider)
+}
+
 // TestNew_InitializesRuntimeStoreWhenNotInjected drives New() without WithRuntimeStoreProvider,
 // exercising the branch that falls back to runtimestore.Initialize() when no provider was
 // supplied by the caller. A SQLite-backed runtime transient datasource is seeded so the real
@@ -741,6 +754,12 @@ func (suite *EngineTestSuite) TestNew_ResetsDynamicMatcherWhenOriginConfigEmpty(
 // applied last, so they override those.
 func newTestEngine(t *testing.T, opts ...Option) *Engine {
 	t.Helper()
+	return newTestEngineOn(t, http.NewServeMux(), opts...)
+}
+
+// newTestEngineOn starts the engine newTestEngine starts, serving its routes on mux.
+func newTestEngineOn(t *testing.T, mux *http.ServeMux, opts ...Option) *Engine {
+	t.Helper()
 	tempDir := t.TempDir()
 	keyID := testKeyID
 	certPEM := generateSelfSignedCertFiles(t, tempDir, "cert.pem", "key.pem")
@@ -785,7 +804,7 @@ func newTestEngine(t *testing.T, opts ...Option) *Engine {
 			identitygovernanceprovidermock.NewIdentityGovernanceProviderMock(t)),
 		WithFlowConfig(engineconfig.FlowConfig{Executors: []string{"InviteExecutor", "PermissionValidator"}}),
 	}
-	return New(http.NewServeMux(), slices.Concat(baseOpts, opts)...)
+	return New(mux, slices.Concat(baseOpts, opts)...)
 }
 
 func (suite *EngineTestSuite) TestNew_PassesIdentityGovernanceToTheExecutors() {
@@ -817,4 +836,87 @@ func (suite *EngineTestSuite) TestIdentityGovernanceOption() {
 	suite.Same(provider, ctx.identityGovernance)
 	WithIdentityGovernanceProvider(nil)(&ctx)
 	suite.Nil(ctx.identityGovernance)
+}
+
+// selfVerificationContext is a prepare node of a self flow bound to u1, asking for its email.
+func selfVerificationContext() *providers.NodeContext {
+	ctx := &providers.NodeContext{
+		Context:           context.Background(),
+		FlowType:          providers.FlowTypeSelf,
+		ExecutorMode:      executor.ExecutorModePrepare,
+		UserInputs:        map[string]string{"attribute": "email"},
+		RuntimeData:       map[string]string{},
+		SharedRuntimeData: map[string]string{},
+	}
+	ctx.SetBoundSubject("u1")
+	return ctx
+}
+
+// The supplied provider pins the contact, and verification runs without a governance provider.
+func (suite *EngineTestSuite) TestNew_PassesAttributeVerificationToTheExecutors() {
+	t := suite.T()
+	verification := attributeverificationprovidermock.NewAttributeVerificationProviderMock(t)
+	verification.EXPECT().PrepareAttributeVerification(mock.Anything,
+		providers.AttributeVerificationRequest{EntityID: "u1", Attribute: "email"}).
+		Return(&providers.AttributeVerificationPin{Subject: "u1", Attribute: "email", Value: "u1@example.com",
+			Channel: providers.VerificationChannelEmail}, nil).Once()
+
+	eng := newTestEngine(t, WithAttributeVerificationProvider(verification), WithIdentityGovernanceProvider(nil),
+		WithFlowConfig(engineconfig.FlowConfig{Executors: []string{executor.ExecutorNameAttributeVerification}}))
+	require.NotNil(t, eng)
+	verificationExecutor, err := eng.engineCtx.execRegistry.GetExecutor(executor.ExecutorNameAttributeVerification)
+	require.NoError(t, err)
+
+	execResp, err := verificationExecutor.Execute(selfVerificationContext())
+
+	require.NoError(t, err)
+	assert.Equal(t, providers.ExecComplete, execResp.Status)
+}
+
+// Without the provider, a verification node is misconfigured.
+func (suite *EngineTestSuite) TestNew_WithoutAttributeVerificationTheExecutorFails() {
+	t := suite.T()
+	eng := newTestEngine(t,
+		WithFlowConfig(engineconfig.FlowConfig{Executors: []string{executor.ExecutorNameAttributeVerification}}))
+	require.NotNil(t, eng)
+	verificationExecutor, err := eng.engineCtx.execRegistry.GetExecutor(executor.ExecutorNameAttributeVerification)
+	require.NoError(t, err)
+
+	execResp, err := verificationExecutor.Execute(selfVerificationContext())
+
+	require.Error(t, err)
+	assert.Nil(t, execResp)
+}
+
+func (suite *EngineTestSuite) TestAttributeVerificationOption() {
+	provider := attributeverificationprovidermock.NewAttributeVerificationProviderMock(suite.T())
+	var ctx engineContext
+	WithAttributeVerificationProvider(provider)(&ctx)
+	suite.Same(provider, ctx.attributeVerification)
+	WithAttributeVerificationProvider(nil)(&ctx)
+	suite.Nil(ctx.attributeVerification)
+}
+
+// The embedded engine subscribes nothing to its event bus, so a request its OAuth services audit, here a
+// token request whose client never authenticates, is answered as before and writes no audit line.
+func (suite *EngineTestSuite) TestNew_WritesNoAuditLine() {
+	t := suite.T()
+	reader, writer, err := os.Pipe()
+	require.NoError(t, err)
+	original := os.Stdout
+	os.Stdout = writer
+	t.Cleanup(func() { os.Stdout = original })
+
+	mux := http.NewServeMux()
+	require.NotNil(t, newTestEngineOn(t, mux))
+	recorder := httptest.NewRecorder()
+	mux.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/oauth2/token",
+		strings.NewReader("grant_type=client_credentials")))
+
+	os.Stdout = original
+	require.NoError(t, writer.Close())
+	written, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, recorder.Code)
+	assert.NotContains(t, string(written), `"log_type":"AUDIT"`)
 }

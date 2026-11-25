@@ -377,6 +377,33 @@ func (s *DispatcherTestSuite) TestSkipsParticipantWithoutURIAndRecordsMissingCli
 	assert.Equal(s.T(), string(event.EventTypeBackchannelLogoutDelivered), byApp["app-1"].Type)
 }
 
+// An application signed in under several organization units is one participant per unit, and gets one
+// logout token.
+func (s *DispatcherTestSuite) TestNotifiesAnApplicationOnceForAllItsOrganizationUnits() {
+	srv, calls := s.statusServer(http.StatusOK)
+	s.build(testConfig())
+	s.withClient("app-1", srv.URL)
+	s.withClient("app-2", srv.URL)
+	s.start()
+
+	ended := terminated()
+	ended.Participants = []session.Participant{
+		{SessionID: "session-1", AppID: "app-1", OUID: "ou-x", TokenFamilyID: "tfid-x"},
+		{SessionID: "session-1", AppID: "app-2", OUID: "ou-x", TokenFamilyID: "tfid-z"},
+		{SessionID: "session-1", AppID: "app-1", OUID: "ou-y", TokenFamilyID: "tfid-y"},
+	}
+	s.d.OnEvent(context.Background(), ended)
+	s.waitFor(2)
+	s.d.Stop()
+
+	assert.Equal(s.T(), int32(2), calls.Load())
+	delivered := map[string]int{}
+	for _, evt := range s.snapshot() {
+		delivered[evt.Data[event.DataKey.EntityID].(string)]++
+	}
+	assert.Equal(s.T(), map[string]int{"app-1": 1, "app-2": 1}, delivered)
+}
+
 func (s *DispatcherTestSuite) TestClientReadFailureIsRetried() {
 	srv, calls := s.statusServer(http.StatusOK)
 	s.build(testConfig())

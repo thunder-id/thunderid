@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {useGetAgentTypes} from '@thunderid/configure-agent-types';
+import {useGetAllAgentTypes} from '@thunderid/configure-agent-types';
 import {useMemo} from 'react';
 import {
   createAgentLabelResolver,
@@ -22,8 +22,7 @@ export default function useAgentLabels(
     [agents, localTypes],
   );
 
-  const {data} = useGetAgentTypes(undefined, {enabled: hasMissingTypes});
-  const serverTypes = data?.types;
+  const {data: serverTypes} = useGetAllAgentTypes({enabled: hasMissingTypes});
 
   return useMemo(() => createAgentLabelResolver(localTypes, serverTypes ?? []), [localTypes, serverTypes]);
 }

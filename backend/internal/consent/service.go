@@ -10,7 +10,10 @@ import (
 	"time"
 
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -42,13 +45,15 @@ type consentService struct {
 	consentStore          consentStoreInterface
 	transactioner         providers.Transactioner
 	inboundClientProvider InboundClientProvider
+	bus                   eventbus.EventBusInterface
 	logger                *log.Logger
 }
 
 // newConsentService creates a new consent service backed by the database store. The inbound client
-// provider supplies the persisted inbound client data from which consent purposes are derived.
+// provider supplies the persisted inbound client data from which consent purposes are derived, and the
+// bus carries the audit events of the consents it writes.
 func newConsentService(
-	inboundClientProvider InboundClientProvider,
+	inboundClientProvider InboundClientProvider, bus eventbus.EventBusInterface,
 ) (ConsentServiceInterface, error) {
 	consentStore, transactioner, err := newConsentStore()
 	if err != nil {
@@ -59,6 +64,7 @@ func newConsentService(
 		consentStore:          consentStore,
 		transactioner:         transactioner,
 		inboundClientProvider: inboundClientProvider,
+		bus:                   bus,
 		logger:                log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ConsentService")),
 	}, nil
 }
@@ -158,87 +164,22 @@ func attributesToPurposeElements(attributes []string) []PurposeElement {
 func (c *consentService) CreateConsent(
 	ctx context.Context, consent *ConsentRequest,
 ) (*Consent, *tidcommon.ServiceError) {
-	if svcErr := validateConsentRequest(consent); svcErr != nil {
-		return nil, svcErr
+	created, svcErr := c.createConsent(ctx, consent)
+	var consentID string
+	if svcErr == nil {
+		consentID = created.ID
 	}
-
-	id, err := utils.GenerateUUIDv7()
-	if err != nil {
-		c.logger.Error(ctx, "Failed to generate consent ID", log.Error(err))
-		return nil, &tidcommon.InternalServerError
-	}
-
-	authorizations, err := buildAuthorizations(consent.Authorizations)
-	if err != nil {
-		c.logger.Error(ctx, "Failed to generate consent authorization ID", log.Error(err))
-		return nil, &tidcommon.InternalServerError
-	}
-
-	newConsent := &Consent{
-		ID:             id,
-		GroupID:        consent.GroupID,
-		Status:         ConsentStatusActive,
-		ValidityTime:   consent.ValidityTime,
-		Purposes:       consent.Purposes,
-		Authorizations: authorizations,
-	}
-
-	err = c.transactioner.Transact(ctx, func(txCtx context.Context) error {
-		return c.consentStore.CreateConsent(txCtx, newConsent)
-	})
-	if err != nil {
-		c.logger.Error(ctx, "Failed to create consent", log.Error(err))
-		return nil, &tidcommon.InternalServerError
-	}
-
-	c.logger.Debug(ctx, "Successfully created consent", log.String("id", id))
-	return newConsent, nil
+	c.publishConsentEvent(ctx, consentCreate, consentID, consent, svcErr)
+	return created, svcErr
 }
 
 // UpdateConsent updates an existing consent record and replaces its authorization records.
 func (c *consentService) UpdateConsent(
 	ctx context.Context, consentID string, consent *ConsentRequest,
 ) (*Consent, *tidcommon.ServiceError) {
-	if consentID == "" {
-		return nil, &ErrorMissingConsentID
-	}
-	if svcErr := validateConsentRequest(consent); svcErr != nil {
-		return nil, svcErr
-	}
-
-	var updatedConsent *Consent
-	err := c.transactioner.Transact(ctx, func(txCtx context.Context) error {
-		existing, err := c.consentStore.GetConsent(txCtx, consentID)
-		if err != nil {
-			return err
-		}
-
-		authorizations, err := buildAuthorizations(consent.Authorizations)
-		if err != nil {
-			return err
-		}
-
-		updatedConsent = &Consent{
-			ID:             consentID,
-			GroupID:        existing.GroupID,
-			Status:         existing.Status,
-			ValidityTime:   consent.ValidityTime,
-			Purposes:       consent.Purposes,
-			Authorizations: authorizations,
-		}
-		return c.consentStore.UpdateConsent(txCtx, updatedConsent)
-	})
-	if err != nil {
-		if errors.Is(err, errConsentNotFound) {
-			c.logger.Debug(ctx, "Consent not found", log.String("id", consentID))
-			return nil, &ErrorConsentNotFound
-		}
-		c.logger.Error(ctx, "Failed to update consent", log.String("id", consentID), log.Error(err))
-		return nil, &tidcommon.InternalServerError
-	}
-
-	c.logger.Debug(ctx, "Successfully updated consent", log.String("id", consentID))
-	return updatedConsent, nil
+	updated, svcErr := c.updateConsent(ctx, consentID, consent)
+	c.publishConsentEvent(ctx, consentUpdate, consentID, consent, svcErr)
+	return updated, svcErr
 }
 
 // SearchConsents retrieves the consent records matching the given filters.
@@ -272,6 +213,123 @@ func (c *consentService) SearchConsents(
 	}
 
 	return filtered, nil
+}
+
+// createConsent creates a consent record without publishing its audit event.
+func (c *consentService) createConsent(
+	ctx context.Context, consent *ConsentRequest,
+) (*Consent, *tidcommon.ServiceError) {
+	if svcErr := validateConsentRequest(consent); svcErr != nil {
+		return nil, svcErr
+	}
+
+	id, err := utils.GenerateUUIDv7()
+	if err != nil {
+		c.logger.Error(ctx, "Failed to generate consent ID", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	authorizations, err := buildAuthorizations(consent.Authorizations)
+	if err != nil {
+		c.logger.Error(ctx, "Failed to generate consent authorization ID", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	newConsent := &Consent{
+		ID:             id,
+		GroupID:        consent.GroupID,
+		Status:         ConsentStatusActive,
+		ValidityTime:   consent.ValidityTime,
+		Purposes:       consent.Purposes,
+		Properties:     consent.Properties,
+		Authorizations: authorizations,
+	}
+
+	err = c.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		return c.consentStore.CreateConsent(txCtx, newConsent)
+	})
+	if err != nil {
+		c.logger.Error(ctx, "Failed to create consent", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	c.logger.Debug(ctx, "Successfully created consent", log.String("id", id))
+	return newConsent, nil
+}
+
+// updateConsent updates a consent record without publishing its audit event.
+func (c *consentService) updateConsent(
+	ctx context.Context, consentID string, consent *ConsentRequest,
+) (*Consent, *tidcommon.ServiceError) {
+	if consentID == "" {
+		return nil, &ErrorMissingConsentID
+	}
+	if svcErr := validateConsentRequest(consent); svcErr != nil {
+		return nil, svcErr
+	}
+
+	var updatedConsent *Consent
+	err := c.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		existing, err := c.consentStore.GetConsent(txCtx, consentID)
+		if err != nil {
+			return err
+		}
+
+		authorizations, err := buildAuthorizations(consent.Authorizations)
+		if err != nil {
+			return err
+		}
+
+		updatedConsent = &Consent{
+			ID:             consentID,
+			GroupID:        existing.GroupID,
+			Status:         existing.Status,
+			ValidityTime:   consent.ValidityTime,
+			Purposes:       consent.Purposes,
+			Properties:     consent.Properties,
+			Authorizations: authorizations,
+		}
+		return c.consentStore.UpdateConsent(txCtx, updatedConsent)
+	})
+	if err != nil {
+		if errors.Is(err, errConsentNotFound) {
+			c.logger.Debug(ctx, "Consent not found", log.String("id", consentID))
+			return nil, &ErrorConsentNotFound
+		}
+		c.logger.Error(ctx, "Failed to update consent", log.String("id", consentID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	c.logger.Debug(ctx, "Successfully updated consent", log.String("id", consentID))
+	return updatedConsent, nil
+}
+
+// publishConsentEvent publishes the audit event of an attempt on the consent with consentID, after its
+// transaction returned. The subject of a succeeded attempt is the user the request holds decisions for,
+// if it names one; a failed attempt has none. The purposes and elements are never recorded.
+//
+// A runtime flow, such as sign-in, runs with the subject of the request it came in on, which a public
+// path lets anyone's bearer token be. Its actor is therefore set explicitly: the user who gave the
+// consent, or anonymous when it was not recorded.
+func (c *consentService) publishConsentEvent(ctx context.Context, change auditedChange, consentID string,
+	consent *ConsentRequest, svcErr *tidcommon.ServiceError) {
+	// A failed create has no ID, and a failed update keeps the one it was called with, even one that
+	// matches no consent, as forensic evidence of what was probed.
+	target := audit.Ref{Type: audit.TargetTypeConsent, ID: consentID}
+	var subject audit.Ref
+	if svcErr == nil && len(consent.Authorizations) > 0 {
+		// The consent enforcer sends one authorization per consent today.
+		subject = audit.Ref{Type: audit.TargetTypeUser, ID: consent.Authorizations[0].UserID}
+	}
+	payload := audit.ChangePayloadWithSubject(ctx, target, subject, change.action, svcErr)
+	if security.IsRuntimeContext(ctx) {
+		actor := audit.Actor{Type: audit.ActorTypeAnonymous}
+		if subject.ID != "" {
+			actor = audit.Actor{Type: audit.ActorTypeUser, ID: subject.ID}
+		}
+		payload = payload.WithActor(actor)
+	}
+	eventbus.TryPublish(ctx, c.bus, eventbus.NewEvent(ctx, change.event).With(payload))
 }
 
 // effectiveStatus returns the status a consent presents at the given Unix time. A consent whose

@@ -34,6 +34,7 @@ export {default as SchemaPropertyEditor} from './components/shared/SchemaPropert
 export type {SchemaPropertyEditorProps} from './components/shared/SchemaPropertyEditor';
 
 // Constants
+export {default as UserTypeConstraints} from './constants/user-type-constraints';
 export {default as UserTypeQueryKeys} from './constants/userTypeQueryKeys';
 
 // Contexts
@@ -73,10 +74,13 @@ export {default as UserTypesListPage} from './pages/UserTypesListPage';
 export {default as ViewUserTypePage} from './pages/ViewUserTypePage';
 
 // Routes
+export {default as useMoveRows} from './hooks/useMoveRows';
+export type {UseMoveRowsResult} from './hooks/useMoveRows';
 export type {UserTypeRoutePaths} from './hooks/useUserTypeRoutes';
 export {defaultUserTypeRoutePaths, default as useUserTypeRoutes} from './hooks/useUserTypeRoutes';
 
 // Utils
+export {default as convertPropertiesToSchema} from './utils/convertPropertiesToSchema';
 export {default as getBreakingSchemaChanges} from './utils/getBreakingSchemaChanges';
 export {default as flattenSchemaAttributes} from './utils/flattenSchemaAttributes';
 export type {FlattenedAttribute} from './utils/flattenSchemaAttributes';

@@ -54,6 +54,11 @@ const sidebar: SidebarsConfig = {
                       id: 'sdks-and-tools/nextjs/apis/components/change-credential',
                       label: '<ChangeCredential />',
                     },
+                    {
+                      type: 'doc',
+                      id: 'sdks-and-tools/nextjs/apis/components/organization-unit-switcher',
+                      label: '<OrganizationUnitSwitcher />',
+                    },
                   ],
                 },
               ],

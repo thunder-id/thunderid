@@ -24,6 +24,16 @@ vi.mock('@thunderid/components', async (importOriginal) => ({
       {children}
     </section>
   ),
+  QueryErrorNotice: ({error, onRetry = undefined}: {error: Error; onRetry?: () => void}) => (
+    <div>
+      <p role="alert">{error.message}</p>
+      {onRetry && (
+        <button type="button" onClick={onRetry}>
+          Retry
+        </button>
+      )}
+    </div>
+  ),
 }));
 
 vi.mock('react-i18next', async (importOriginal) => ({
@@ -45,10 +55,15 @@ describe('DeviceGrantFlowSection', () => {
       ...overrides,
     }) as Application;
 
-  const renderSection = (app = application(), editedApp: Partial<Application> = {}) =>
+  const renderSection = (app = application(), editedApp: Partial<Application> = {}, readOnly = false) =>
     render(
       <MemoryRouter>
-        <DeviceGrantFlowSection application={app} editedApp={editedApp} onFieldChange={onFieldChange} />
+        <DeviceGrantFlowSection
+          application={app}
+          readOnly={readOnly}
+          editedApp={editedApp}
+          onFieldChange={onFieldChange}
+        />
       </MemoryRouter>,
     );
 
@@ -61,7 +76,43 @@ describe('DeviceGrantFlowSection', () => {
     renderSection(application({inboundAuthConfig: []}));
 
     expect(screen.queryByText('Device authorization flow')).not.toBeInTheDocument();
-    expect(useGetFlows).toHaveBeenCalledWith({flowType: 'DEVICE_GRANT'});
+    expect(useGetFlows).toHaveBeenCalledWith({flowType: 'DEVICE_GRANT', limit: 100, fetchAllPages: true});
+  });
+
+  it('shows the query error and retries loading the flow list', async () => {
+    const refetch = vi.fn();
+    vi.mocked(useGetFlows).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: new Error('Failed to load flows'),
+      refetch,
+    } as unknown as ReturnType<typeof useGetFlows>);
+
+    renderSection();
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Failed to load flows');
+    expect(screen.queryByPlaceholderText('Select a Device Grant flow')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', {name: 'Retry'}));
+    expect(refetch).toHaveBeenCalledOnce();
+  });
+
+  it('uses the Device Grant query error and retry handler passed from the agent page', async () => {
+    const retry = vi.fn();
+    render(
+      <MemoryRouter>
+        <DeviceGrantFlowSection
+          application={application()}
+          editedApp={{}}
+          onFieldChange={onFieldChange}
+          deviceGrantFlowQueryError={new Error('Agent flow query failed')}
+          onRetryDeviceGrantFlowQuery={retry}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Agent flow query failed');
+    await userEvent.click(screen.getByRole('button', {name: 'Retry'}));
+    expect(retry).toHaveBeenCalledOnce();
   });
 
   it('renders the selector and default flow notice for the saved selection', () => {
@@ -105,7 +156,7 @@ describe('DeviceGrantFlowSection', () => {
   });
 
   it('disables the selector for a readonly application', () => {
-    renderSection(application({isReadOnly: true}));
+    renderSection(application(), {}, true);
 
     expect(screen.getByPlaceholderText('Select a Device Grant flow')).toBeDisabled();
   });

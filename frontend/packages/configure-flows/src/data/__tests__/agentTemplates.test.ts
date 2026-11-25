@@ -104,17 +104,39 @@ describe('agent onboarding templates', () => {
   it('should keep own identity free of on-behalf-of prompts', () => {
     expect(ownIdentity.has('prompt_obo_details')).toBe(false);
     expect(ownIdentity.has('prompt_agent_delegation')).toBe(false);
-    expect(ownIdentity.get('owner_resolution')?.onSuccess).toBe('prompt_agent_details');
   });
 
-  // Every template asks for the agent details before provisioning, so the choices on that prompt are
-  // fixed in the flow and the details are checked for uniqueness before anything is created.
-  it('should collect and check the agent details before provisioning', () => {
-    expect(ownIdentity.get('owner_resolution')?.onSuccess).toBe('prompt_agent_details');
+  // Provisioning asks for the details on a dynamic prompt, then uniqueness is checked, then it runs again.
+  it('should collect the agent details on a dynamic prompt that provisioning asks for', () => {
+    expect(ownIdentity.get('owner_resolution')?.onSuccess).toBe('provisioning');
+    expect(ownIdentity.get('provisioning')?.onIncomplete).toBe('prompt_agent_details');
     expect(ownIdentity.get('prompt_agent_details')?.prompts?.[0]?.action?.nextNode).toBe('agent_attribute_uniqueness');
     expect(ownIdentity.get('agent_attribute_uniqueness')?.onSuccess).toBe('provisioning');
+    expect(ownIdentity.get('agent_attribute_uniqueness')?.onIncomplete).toBe('prompt_agent_details');
   });
 
+  it('should leave the inputs of the own identity details prompt to the agent type', () => {
+    const prompt = ownIdentity.get('prompt_agent_details')!;
+
+    expect(flatten(prompt.meta?.components).some((component) => component.type === 'DYNAMIC_INPUT_PLACEHOLDER')).toBe(
+      true,
+    );
+    expect(promptFields(prompt)).toEqual([]);
+    expect(prompt.prompts?.[0]?.inputs).toEqual([]);
+  });
+
+  // The prompt does not load optional credential attributes.
+  it('should not load optional credential attributes on the own identity details prompt', () => {
+    expect(ownIdentity.get('provisioning')?.properties?.includeOptional).toBe(true);
+    expect(ownIdentity.get('provisioning')?.properties?.includeOptionalCredentials).toBeUndefined();
+  });
+
+  // The OBO and Choose Mode templates keep a static Agent Details prompt on purpose. Each one has two prompts, one for
+  // the agent details and one for the delegation details. With a dynamic details prompt we would have to ask for
+  // everything on one screen, or show the delegation screen before the details screen, and neither is a good fit.
+  // So these two stay matched to the default schema (name and model provider) for now. Only the default onboarding
+  // flow and the own-identity template that mirrors it are dynamic.
+  //
   // Owner, agent details (which include the name), the uniqueness check, then the prompt that decides or details the
   // mode, then provisioning. Anything provisioning still needs is requested on a dynamic prompt that
   // renders whatever inputs the executor forwards and returns to provisioning.
@@ -149,37 +171,32 @@ describe('agent onboarding templates', () => {
   // The choices come from the default agent type's schema, whose values the agent service validates at
   // creation. They are written into the flow so the prompt shows them without the executor
   // supplying them, and an author edits them in the flow definition.
-  it('should fix the model provider and function choices on the details prompt', () => {
-    [ownIdentity, obo, generic].forEach((nodes) => {
+  it('should fix the model provider choices on the details prompt', () => {
+    [obo, generic].forEach((nodes) => {
       const selects = promptFields(nodes.get('prompt_agent_details')!).filter(
         (component) => component.type === 'SELECT',
       );
       const options = Object.fromEntries(selects.map((component) => [component.ref ?? '', component.options ?? []]));
 
       expect(options.modelProvider).toEqual(['openai', 'anthropic', 'gemini', 'mistral', 'custom']);
-      expect(options.function).toEqual([
-        'task-automation',
-        'rag-retrieval',
-        'code-gen',
-        'data-analysis',
-        'orchestrator',
-        'sub-agent',
-        'assistant',
-        'custom',
-      ]);
     });
   });
 
   // The name is a schema attribute collected on the details prompt, and the agent service validates it
-  // at creation, so a provisioning failure returns to that prompt in every template.
-  it('should route a provisioning failure to the details prompt in every template', () => {
-    [ownIdentity, obo, generic].forEach((nodes) => {
+  // at creation, so a provisioning failure returns to that prompt in the templates whose prompt is static.
+  it('should route a provisioning failure to the details prompt in the templates with a static one', () => {
+    [obo, generic].forEach((nodes) => {
       expect(nodes.get('provisioning')?.onFailure).toBe('prompt_agent_details');
     });
   });
 
+  // The dynamic prompt cannot offer a rejected value again, so the run ends with the error.
+  it('should end the own identity run on a provisioning failure', () => {
+    expect(ownIdentity.get('provisioning')?.onFailure).toBeUndefined();
+  });
+
   it('should collect the name on the details prompt, with no prompt of its own', () => {
-    [ownIdentity, obo, generic].forEach((nodes) => {
+    [obo, generic].forEach((nodes) => {
       expect(nodes.has('prompt_agent_name')).toBe(false);
 
       const name = promptFields(nodes.get('prompt_agent_details')!).find((component) => component.ref === 'name');
@@ -191,12 +208,19 @@ describe('agent onboarding templates', () => {
     });
   });
 
-  it('should keep the details prompt as the incomplete path in own identity', () => {
-    expect(ownIdentity.get('provisioning')?.onIncomplete).toBe('prompt_agent_details');
-  });
-
   it('should resolve the agent type in every template', () => {
     [ownIdentity, obo, generic].forEach((nodes) => expect(nodes.get('agent_type_resolution')).toBeDefined());
+  });
+
+  // An absent allowed list imposes no type restriction. The type is still resolved before the
+  // organization unit.
+  it('should not restrict the agent types the resolver offers', () => {
+    [ownIdentity, obo, generic].forEach((nodes) => {
+      const resolver = nodes.get('agent_type_resolution');
+
+      expect(resolver?.properties?.['allowedAgentTypes']).toBeUndefined();
+      expect(resolver?.onSuccess).toBe('ou_selection');
+    });
   });
 
   it('should point every connection at a node that exists', () => {
@@ -210,7 +234,7 @@ describe('agent onboarding templates', () => {
   });
 
   it('should not stack two nodes on the same spot after inserting the prompt', () => {
-    [obo, generic].forEach((nodes) => {
+    [ownIdentity, obo, generic].forEach((nodes) => {
       const positions = [...nodes.values()].map((node) => `${node.layout?.position?.x},${node.layout?.position?.y}`);
 
       expect(new Set(positions).size).toBe(positions.length);

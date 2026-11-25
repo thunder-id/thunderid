@@ -95,6 +95,12 @@ test_integration:
 test_integration_cp:
 	INTEGRATION_PLANE=control ./build.sh test_integration "$(OS)" "$(ARCH)" "$(RUN)" "$(PACKAGE)"
 
+# Runs tests/integration/pack against the quickstart pack (build_quickstart): auth-dp, the Data
+# Plane and the Control Plane, as shipped. Needs ports 8090, 8091 and 8095, so it does not run
+# beside test_integration_cp.
+test_integration_pack:
+	INTEGRATION_PLANE=pack ./build.sh test_integration "$(OS)" "$(ARCH)" "$(RUN)" "$(PACKAGE)"
+
 build_with_coverage:
 	@echo "================================================================"
 	@echo "Building with coverage for unit and integration tests..."
@@ -264,6 +270,7 @@ help:
 	@echo "  test_unit                     - Run unit tests."
 	@echo "  test_integration              - Run integration tests. Use RUN= for test filter, PACKAGE= for package filter."
 	@echo "  test_integration_cp           - Run the Control Plane integration tests. Needs build_backend and build_cp_backend first."
+	@echo "  test_integration_pack         - Run the quickstart pack integration tests. Needs the quickstart pack (build_quickstart) first."
 	@echo "  build_with_coverage  		   - Build with coverage flags, run unit and integration tests, and generate combined coverage report."
 	@echo "  build_with_coverage_only      - Build with coverage instrumentation (unit tests only, no integration tests)."
 	@echo "  test                          - Run all tests (unit and integration)."
@@ -310,7 +317,7 @@ help:
 .PHONY: all prepare clean build build_backend build_cp_backend build_quickstart build_frontend build_docs package_samples package_cp package_quickstart run
 .PHONY: docker-build docker-build-latest docker-build-cp docker-build-cp-latest docker-build-multiarch
 .PHONY: docker-build-multiarch-latest docker-build-multiarch-push
-.PHONY: test_unit test_integration test_integration_cp build_with_coverage build_with_coverage_only test
+.PHONY: test_unit test_integration test_integration_cp test_integration_pack build_with_coverage build_with_coverage_only test
 .PHONY: help go_install_tool
 .PHONY: lint lint_backend lint_frontend lint_docs golangci-lint mockery install-mockery
 .PHONY: tools_build tools_test tools_lint tools_build_cli tools_test_cli tools_lint_cli

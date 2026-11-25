@@ -10,11 +10,7 @@ import type {
   NotificationTemplateListResponse,
   NotificationTemplateSummary,
 } from '../models/notification-templates';
-
-// Server-side max page size; the backend caps limit at this value (MaxPageSize in
-// backend/internal/system/constants), so the picker pages through with offset to load every
-// template of the channel.
-const TEMPLATE_PAGE_SIZE = 100;
+import fetchAllPages from '../utils/fetchAllPages';
 
 /**
  * Fetches all notification templates of a channel, used to populate the Email/SMS executor
@@ -37,43 +33,24 @@ export default function useGetNotificationTemplates(
 
   return useQuery<NotificationTemplateSummary[]>({
     queryKey: [FlowQueryKeys.NOTIFICATION_TEMPLATES, channel],
-    queryFn: async (): Promise<NotificationTemplateSummary[]> => {
-      const serverUrl: string = getServerUrl();
-      const templates: NotificationTemplateSummary[] = [];
-
-      for (let offset = 0; ; offset += TEMPLATE_PAGE_SIZE) {
+    queryFn: (): Promise<NotificationTemplateSummary[]> =>
+      fetchAllPages<NotificationTemplateSummary>(async (limit, offset) => {
         const queryParams: URLSearchParams = new URLSearchParams({
-          limit: TEMPLATE_PAGE_SIZE.toString(),
+          limit: limit.toString(),
           offset: offset.toString(),
         });
 
         const response: {
           data: NotificationTemplateListResponse;
         } = await http.request({
-          url: `${serverUrl}/notification-templates/${channel}/templates?${queryParams.toString()}`,
+          url: `${getServerUrl()}/notification-templates/${channel}/templates?${queryParams.toString()}`,
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
           },
         } as unknown as Parameters<typeof http.request>[0]);
 
-        const page: NotificationTemplateSummary[] = response.data.templates;
-        templates.push(...page);
-
-        // A short page is always the last; it also ends the loop when totalResults is absent.
-        if (page.length < TEMPLATE_PAGE_SIZE) {
-          break;
-        }
-
-        // With a full page, only the reported total can tell us we are done; without it, keep
-        // paging until a short/empty page arrives.
-        const total: number | undefined = response.data.totalResults;
-        if (total !== undefined && templates.length >= total) {
-          break;
-        }
-      }
-
-      return templates;
-    },
+        return {items: response.data.templates, totalResults: response.data.totalResults};
+      }),
   });
 }

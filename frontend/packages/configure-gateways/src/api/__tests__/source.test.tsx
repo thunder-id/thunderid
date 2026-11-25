@@ -17,9 +17,10 @@ vi.mock('react-router', async (importOriginal) => {
   return {...actual, useNavigate: () => vi.fn(), useParams: () => ({gatewayId: 'env-stage'})};
 });
 
-const values = vi.fn((_targetId: string, kind: string) =>
-  Promise.resolve(kind === 'variable' ? [{name: 'APP_ORDERS_CLIENT_ID', value: 'orders-stage'}] : []),
-);
+const listValues = vi.fn((_targetId: string, kind: string) => {
+  const values = kind === 'variable' ? [{name: 'APP_ORDERS_CLIENT_ID', value: 'orders-stage'}] : [];
+  return Promise.resolve({values, totalResults: values.length});
+});
 const setValue = vi.fn((_targetId: string, _kind: string, name: string) => Promise.resolve({name}));
 
 /** A source standing for somewhere other than a control plane's gateways, such as environments. */
@@ -31,12 +32,21 @@ function environments(): DeploySource {
     version: unused,
     appliedVersion: unused,
     appliedConfiguration: unused,
+    master: unused,
+    masterHistory: unused,
+    resourceHistory: unused,
     applyCheck: unused,
     apply: unused,
     revert: unused,
-    values,
+    listValues,
     setValue,
     deleteValue: unused,
+    pipeline: unused,
+    projects: unused,
+    autoApply: unused,
+    setAutoApply: unused,
+    setProjectAutoSync: unused,
+    projectStatus: unused,
     runningReferences: () =>
       Promise.resolve([
         {
@@ -77,7 +87,12 @@ describe('DeploySourceProvider', () => {
         description: undefined,
       }),
     );
-    expect(values).toHaveBeenCalledWith('env-stage', 'variable');
+    expect(listValues).toHaveBeenCalledWith('env-stage', 'variable', {
+      names: ['APP_ORDERS_CLIENT_ID'],
+      limit: 100,
+      offset: 0,
+    });
+    expect(listValues).toHaveBeenCalledWith('env-stage', 'variable', {limit: 10, offset: 0});
     expect(within(screen.getByTestId('values-secret')).getByText('Applications: Orders')).toBeInTheDocument();
     expect(request).not.toHaveBeenCalled();
   });

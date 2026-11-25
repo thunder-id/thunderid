@@ -9,11 +9,11 @@ import (
 	"net/http"
 	"strings"
 
-	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/graphbuilder"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
@@ -23,16 +23,16 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 )
 
-// serverConfigProvider is the minimal subset of serverconfig.ServerConfigService consumed by flowmgt.
-type serverConfigProvider interface {
-	GetMergedConfig(ctx context.Context, name string) (any, *tidcommon.ServiceError)
-}
-
 // Initialize initializes the flow management service and registers HTTP routes. withSystemFlows loads
-// the system flows, for a server that executes flows.
+// the system flows, for a server that executes flows. bus is required: the service publishes the audit
+// event of every flow it creates, updates, deletes or restores on it. projectValidator is nil on a
+// deployment that serves no projects, where a project ID is kept unchecked.
 func Initialize(
 	mux *http.ServeMux,
 	mcpServer *mcp.Server,
@@ -41,17 +41,25 @@ func Initialize(
 	executorRegistry core.ExecutorMetadataProvider,
 	interceptorRegistry interceptor.InterceptorRegistryInterface,
 	graphBuilder graphbuilder.GraphBuilderInterface,
-	serverConfigSvc serverConfigProvider,
+	serverConfigSvc flowconfig.ServerConfigReader,
 	ouSvc ouProvider,
 	templateResolver notificationTemplateProvider,
 	connectionProvider httpConnectionProvider,
 	configHandler *FlowConfigHandler,
 	idpProvider idpProvider,
+	groupProvider groupProvider,
+	roleProvider roleProvider,
 	withSystemFlows bool,
 	sharingSvc sharing.SharingServiceInterface,
+	bus eventbus.EventBusInterface,
+	projectValidator projectOUValidator,
+	authzService sysauthz.SystemAuthorizationServiceInterface,
 ) (FlowMgtServiceInterface, declarativeresource.ResourceExporter, error) {
-	flowValidator := newFlowValidator(
-		executorRegistry, interceptorRegistry, graphBuilder, connectionProvider, idpProvider)
+	if bus == nil {
+		return nil, nil, errNilEventBus
+	}
+	flowValidator := newFlowValidator(executorRegistry, interceptorRegistry, graphBuilder, connectionProvider,
+		idpProvider, groupProvider, roleProvider)
 	store, compositeStore, transactioner, err := initializeStore(cacheManager, flowValidator, ouSvc)
 	if err != nil {
 		return nil, nil, err
@@ -74,8 +82,9 @@ func Initialize(
 	service := newFlowMgtService(
 		store, inferenceService, graphBuilder, executorRegistry,
 		interceptorRegistry, flowValidator, compositeStore, transactioner, serverConfigSvc, ouSvc,
-		templateResolver, systemFlows, sharingSvc, idpProvider,
+		templateResolver, systemFlows, sharingSvc, idpProvider, bus, projectValidator, authzService,
 	)
+	service.managed = managedresource.GetStore()
 	if err := service.loadDeclarativeSharing(); err != nil {
 		return nil, nil, err
 	}
@@ -83,7 +92,7 @@ func Initialize(
 	// TODO: Check whether this can be improved to avoid injecting configHandler to flow mgt service
 	if configHandler != nil {
 		configHandler.SetHandleValidator(func(ctx context.Context, handle string, flowType providers.FlowType) bool {
-			_, svcErr := service.GetFlowByHandle(ctx, handle, flowType)
+			_, svcErr := service.getFlowByHandle(ctx, handle, flowType)
 			return svcErr == nil
 		})
 	}

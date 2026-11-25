@@ -5,6 +5,8 @@ package connection
 
 import (
 	ncommon "github.com/thunder-id/thunderid/internal/notification/common"
+	"github.com/thunder-id/thunderid/internal/system/filter"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -50,4 +52,16 @@ func isIDPBackedVendorName(name string) bool {
 		}
 	}
 	return false
+}
+
+// emptyInstancesPage answers a list the caller may see nothing of.
+func emptyInstancesPage(category connectionCategory, ouID string, limit, offset int) *connectionListResponse {
+	extraQuery := ""
+	if ouID != "" {
+		extraQuery = sysutils.FilterQueryParam(map[string]interface{}{filter.AttributeOUID: ouID})
+	}
+	if category != "" {
+		extraQuery += "&category=" + string(category)
+	}
+	return pageOfInstances([]connectionInstance{}, limit, offset, extraQuery)
 }

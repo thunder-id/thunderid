@@ -4,6 +4,8 @@
 package sysauthz
 
 import (
+	"errors"
+
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -25,3 +27,7 @@ var (
 		},
 	}
 )
+
+// errMultipleListOUs is returned by AccessibleResources.listOU when a list would span several
+// organization units.
+var errMultipleListOUs = errors.New("the list spans more than one organization unit")

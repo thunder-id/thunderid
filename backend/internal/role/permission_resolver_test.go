@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -18,13 +19,14 @@ import (
 
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/groupmock"
+	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 )
 
 func TestResolveForEntity(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("EmptyEntityIDYieldsEmptySet", func(t *testing.T) {
-		resolver := NewEffectivePermissionResolver(nil, nil, nil)
+		resolver := NewEffectivePermissionResolver(nil, nil, nil, nil)
 
 		result, err := resolver.ResolveForEntity(ctx, "")
 
@@ -39,7 +41,7 @@ func TestResolveForEntity(t *testing.T) {
 			Return([]providers.EntityGroup{{ID: "grpA"}, {ID: "grpB"}}, nil).Once()
 		roleSvc.EXPECT().GetAllPermissions(ctx, "david", []string{"grpA", "grpB"}).
 			Return(security.PermissionSet{testRSSystem: {"system:group"}}, nil).Once()
-		resolver := NewEffectivePermissionResolver(roleSvc, nil, entitySvc)
+		resolver := NewEffectivePermissionResolver(roleSvc, nil, entitySvc, nil)
 
 		result, err := resolver.ResolveForEntity(ctx, "david")
 
@@ -54,7 +56,7 @@ func TestResolveForEntity(t *testing.T) {
 			Return([]providers.EntityGroup{}, nil).Once()
 		roleSvc.EXPECT().GetAllPermissions(ctx, "loner", []string{}).
 			Return(security.PermissionSet{}, nil).Once()
-		resolver := NewEffectivePermissionResolver(roleSvc, nil, entitySvc)
+		resolver := NewEffectivePermissionResolver(roleSvc, nil, entitySvc, nil)
 
 		result, err := resolver.ResolveForEntity(ctx, "loner")
 
@@ -68,7 +70,7 @@ func TestResolveForEntity(t *testing.T) {
 		entitySvc := entitymock.NewEntityServiceInterfaceMock(t)
 		entitySvc.EXPECT().GetTransitiveEntityGroups(ctx, "david").
 			Return(nil, errors.New("entity store down")).Once()
-		resolver := NewEffectivePermissionResolver(nil, nil, entitySvc)
+		resolver := NewEffectivePermissionResolver(nil, nil, entitySvc, nil)
 
 		result, err := resolver.ResolveForEntity(ctx, "david")
 
@@ -83,7 +85,7 @@ func TestResolveForEntity(t *testing.T) {
 			Return([]providers.EntityGroup{}, nil).Once()
 		roleSvc.EXPECT().GetAllPermissions(ctx, "david", []string{}).
 			Return(nil, &tidcommon.InternalServerError).Once()
-		resolver := NewEffectivePermissionResolver(roleSvc, nil, entitySvc)
+		resolver := NewEffectivePermissionResolver(roleSvc, nil, entitySvc, nil)
 
 		result, err := resolver.ResolveForEntity(ctx, "david")
 
@@ -92,11 +94,27 @@ func TestResolveForEntity(t *testing.T) {
 	})
 }
 
+func TestGetEntityPermissions(t *testing.T) {
+	ctx := context.Background()
+	entitySvc := entitymock.NewEntityServiceInterfaceMock(t)
+	roleSvc := NewRoleServiceInterfaceMock(t)
+	entitySvc.EXPECT().GetTransitiveEntityGroups(ctx, "david").
+		Return([]providers.EntityGroup{{ID: "grpA"}}, nil).Once()
+	roleSvc.EXPECT().GetAllPermissions(ctx, "david", []string{"grpA"}).
+		Return(security.PermissionSet{testRSSystem: {"system:group"}}, nil).Once()
+	var provider providers.PermissionProvider = NewEffectivePermissionResolver(roleSvc, nil, entitySvc, nil)
+
+	result, err := provider.GetEntityPermissions(ctx, "david")
+
+	require.NoError(t, err)
+	assert.Equal(t, map[string][]string{testRSSystem: {"system:group"}}, result)
+}
+
 func TestResolveForGroup(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("EmptyGroupIDYieldsEmptySet", func(t *testing.T) {
-		resolver := NewEffectivePermissionResolver(nil, nil, nil)
+		resolver := NewEffectivePermissionResolver(nil, nil, nil, nil)
 
 		result, err := resolver.ResolveForGroup(ctx, "")
 
@@ -114,7 +132,7 @@ func TestResolveForGroup(t *testing.T) {
 		roleSvc.EXPECT().GetAllPermissions(ctx, "",
 			[]string{"innerGroup", "middleGroup", "librarianGroup"}).
 			Return(security.PermissionSet{testRSSystem: {"system:user"}}, nil).Once()
-		resolver := NewEffectivePermissionResolver(roleSvc, groupSvc, nil)
+		resolver := NewEffectivePermissionResolver(roleSvc, groupSvc, nil, nil)
 
 		result, err := resolver.ResolveForGroup(ctx, "innerGroup")
 
@@ -130,7 +148,7 @@ func TestResolveForGroup(t *testing.T) {
 			Return([]string{}, nil).Once()
 		roleSvc.EXPECT().GetAllPermissions(ctx, "", []string{"topGroup"}).
 			Return(security.PermissionSet{testRSSystem: {"system"}}, nil).Once()
-		resolver := NewEffectivePermissionResolver(roleSvc, groupSvc, nil)
+		resolver := NewEffectivePermissionResolver(roleSvc, groupSvc, nil, nil)
 
 		result, err := resolver.ResolveForGroup(ctx, "topGroup")
 
@@ -145,7 +163,7 @@ func TestResolveForGroup(t *testing.T) {
 		groupSvc.EXPECT().GetTransitiveAncestorGroups(ctx, "grp1").Return([]string{}, nil).Once()
 		roleSvc.EXPECT().GetAllPermissions(ctx, "", []string{"grp1"}).
 			Return(security.PermissionSet{}, nil).Once()
-		resolver := NewEffectivePermissionResolver(roleSvc, groupSvc, nil)
+		resolver := NewEffectivePermissionResolver(roleSvc, groupSvc, nil, nil)
 
 		_, err := resolver.ResolveForGroup(ctx, "grp1")
 
@@ -158,7 +176,7 @@ func TestResolveForGroup(t *testing.T) {
 		groupSvc := groupmock.NewGroupServiceInterfaceMock(t)
 		groupSvc.EXPECT().GetTransitiveAncestorGroups(ctx, "grp1").
 			Return(nil, &tidcommon.InternalServerError).Once()
-		resolver := NewEffectivePermissionResolver(nil, groupSvc, nil)
+		resolver := NewEffectivePermissionResolver(nil, groupSvc, nil, nil)
 
 		result, err := resolver.ResolveForGroup(ctx, "grp1")
 
@@ -172,7 +190,7 @@ func TestResolveForGroup(t *testing.T) {
 		groupSvc.EXPECT().GetTransitiveAncestorGroups(ctx, "grp1").Return([]string{}, nil).Once()
 		roleSvc.EXPECT().GetAllPermissions(ctx, "", []string{"grp1"}).
 			Return(nil, &tidcommon.InternalServerError).Once()
-		resolver := NewEffectivePermissionResolver(roleSvc, groupSvc, nil)
+		resolver := NewEffectivePermissionResolver(roleSvc, groupSvc, nil, nil)
 
 		result, err := resolver.ResolveForGroup(ctx, "grp1")
 
@@ -181,11 +199,14 @@ func TestResolveForGroup(t *testing.T) {
 	})
 }
 
+// inRuntimeContext matches a context marked as the server's own runtime caller.
+var inRuntimeContext = mock.MatchedBy(security.IsRuntimeContext)
+
 func TestResolveForRole(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("EmptyRoleIDYieldsEmptySet", func(t *testing.T) {
-		resolver := NewEffectivePermissionResolver(nil, nil, nil)
+		resolver := NewEffectivePermissionResolver(nil, nil, nil, nil)
 
 		result, err := resolver.ResolveForRole(ctx, "")
 
@@ -195,14 +216,14 @@ func TestResolveForRole(t *testing.T) {
 
 	t.Run("GroupsPermissionsByResourceServer", func(t *testing.T) {
 		roleSvc := NewRoleServiceInterfaceMock(t)
-		roleSvc.EXPECT().GetRoleWithPermissions(ctx, "librarian").Return(&RoleWithPermissions{
+		roleSvc.EXPECT().GetRoleWithPermissions(inRuntimeContext, "librarian").Return(&RoleWithPermissions{
 			ID: "librarian",
 			Permissions: []ResourcePermissions{
 				{ResourceServerID: testRSSystem, Permissions: []string{"system:user", "system:group"}},
 				{ResourceServerID: testRSPayroll, Permissions: []string{"payroll:read"}},
 			},
 		}, nil).Once()
-		resolver := NewEffectivePermissionResolver(roleSvc, nil, nil)
+		resolver := NewEffectivePermissionResolver(roleSvc, nil, nil, nil)
 
 		result, err := resolver.ResolveForRole(ctx, "librarian")
 
@@ -213,11 +234,11 @@ func TestResolveForRole(t *testing.T) {
 
 	t.Run("RoleWithNoPermissions", func(t *testing.T) {
 		roleSvc := NewRoleServiceInterfaceMock(t)
-		roleSvc.EXPECT().GetRoleWithPermissions(ctx, "empty").Return(&RoleWithPermissions{
+		roleSvc.EXPECT().GetRoleWithPermissions(inRuntimeContext, "empty").Return(&RoleWithPermissions{
 			ID:          "empty",
 			Permissions: []ResourcePermissions{},
 		}, nil).Once()
-		resolver := NewEffectivePermissionResolver(roleSvc, nil, nil)
+		resolver := NewEffectivePermissionResolver(roleSvc, nil, nil, nil)
 
 		result, err := resolver.ResolveForRole(ctx, "empty")
 
@@ -228,13 +249,60 @@ func TestResolveForRole(t *testing.T) {
 	// A missing role must not read as "confers nothing", which would permit assigning it.
 	t.Run("LookupErrorPropagates", func(t *testing.T) {
 		roleSvc := NewRoleServiceInterfaceMock(t)
-		roleSvc.EXPECT().GetRoleWithPermissions(ctx, "gone").
+		roleSvc.EXPECT().GetRoleWithPermissions(inRuntimeContext, "gone").
 			Return(nil, &ErrorRoleNotFound).Once()
-		resolver := NewEffectivePermissionResolver(roleSvc, nil, nil)
+		resolver := NewEffectivePermissionResolver(roleSvc, nil, nil, nil)
 
 		result, err := resolver.ResolveForRole(ctx, "gone")
 
 		require.Error(t, err)
 		assert.Nil(t, result)
 	})
+}
+
+func TestResolveDelimiters(t *testing.T) {
+	cases := []struct {
+		name       string
+		server     *providers.ResourceServer
+		svcErr     *tidcommon.ServiceError
+		permission string
+		allowed    bool
+	}{
+		{
+			name: "disabled retains legacy colon", server: &providers.ResourceServer{Delimiter: ":"},
+			permission: "reservations:create", allowed: true,
+		},
+		{
+			name: "disabled does not use the catalog delimiter", server: &providers.ResourceServer{Delimiter: "/"},
+			permission: "reservations/create", allowed: false,
+		},
+		{
+			name: "enabled uses its delimiter", permission: "reservations/create", allowed: true,
+			server: &providers.ResourceServer{HierarchicalPermissions: true, Delimiter: "/"},
+		},
+		{
+			name: "enabled does not also accept colon", permission: "reservations:create", allowed: false,
+			server: &providers.ResourceServer{HierarchicalPermissions: true, Delimiter: "/"},
+		},
+		{
+			name: "lookup failure cannot enable legacy coverage", svcErr: &tidcommon.InternalServerError,
+			permission: "reservations:create", allowed: false,
+		},
+		{
+			name: "missing metadata cannot enable legacy coverage", permission: "reservations:create", allowed: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			resources := resourcemock.NewResourceServiceInterfaceMock(t)
+			resources.EXPECT().GetResourceServer(mock.MatchedBy(security.IsRuntimeContext), "api").
+				Return(tc.server, tc.svcErr).Once()
+			resolver := NewEffectivePermissionResolver(nil, nil, nil, resources)
+			delimiters := resolver.ResolveDelimiters(ctx, []string{"api"})
+			allowed := security.Covers(security.PermissionSet{"api": {"reservations"}},
+				security.PermissionSet{"api": {tc.permission}}, delimiters)
+			assert.Equal(t, tc.allowed, allowed)
+		})
+	}
 }

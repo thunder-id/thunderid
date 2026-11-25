@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /* eslint-disable @typescript-eslint/no-unsafe-return */
-import {render, screen, userEvent, waitFor} from '@thunderid/test-utils';
+import {render, screen, userEvent, waitFor, within} from '@thunderid/test-utils';
 import type {User} from '@thunderid/types';
 import {isEqualIgnoringEmpty} from '@thunderid/utils';
-import {useCallback, useState, type JSX} from 'react';
+import {useCallback, useState, type JSX, type ReactNode} from 'react';
 import {Controller, type Control} from 'react-hook-form';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import EditUserAttributes from '../EditUserAttributes';
@@ -21,9 +21,22 @@ vi.mock('@/api/useGetUserType', () => ({
   default: (id?: string) => mockUseGetUserType(id),
 }));
 
+vi.mock('@/api/useGetAdministrationFlowHandle', () => ({
+  default: () => ({data: 'default-admin-attribute-verification-flow'}),
+}));
+
 vi.mock('@/utils/renderSchemaField', () => ({
-  default: (fieldName: string, _fieldDef: unknown, control: Control<Record<string, unknown>>) => (
+  default: (
+    fieldName: string,
+    _fieldDef: unknown,
+    control: Control<Record<string, unknown>>,
+    _errors: unknown,
+    _resolveDisplayName: unknown,
+    labelSuffix?: ReactNode,
+    endAdornment?: ReactNode,
+  ) => (
     <div key={fieldName} data-testid={`field-${fieldName}`}>
+      {labelSuffix}
       <Controller
         name={fieldName}
         control={control}
@@ -35,6 +48,7 @@ vi.mock('@/utils/renderSchemaField', () => ({
           />
         )}
       />
+      {endAdornment}
     </div>
   ),
 }));
@@ -210,13 +224,175 @@ describe('EditUserAttributes', () => {
 
   describe('read-only users', () => {
     it('shows the read-only attribute summary instead of the edit form', () => {
-      render(
-        <EditUserAttributes user={{...baseUser, isReadOnly: true}} editedUser={{}} onFieldChange={mockOnFieldChange} />,
-      );
+      render(<EditUserAttributes user={baseUser} readOnly editedUser={{}} onFieldChange={mockOnFieldChange} />);
 
       expect(screen.getByText('email')).toBeInTheDocument();
       expect(screen.getByText('a@b.com')).toBeInTheDocument();
       expect(screen.queryByTestId('field-email')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('contact verification', () => {
+    const VERIFIED_AT = '2026-10-16T08:30:00Z';
+    const contactUser: User = {
+      id: 'user-1',
+      ouId: 'ou-1',
+      type: 'employee',
+      attributes: {
+        email: 'alex@example.com',
+        workEmail: 'alex@work.example.com',
+        mobile: '+94771234567',
+        username: 'alex',
+      },
+      verifiedAttributes: {email: {verifiedAt: VERIFIED_AT}},
+    };
+
+    beforeEach(() => {
+      mockUseGetUserType.mockReturnValue({
+        data: {
+          id: 'schema-1',
+          handle: 'employee',
+          displayName: 'Employee',
+          schema: {
+            email: {type: 'email'},
+            workEmail: {type: 'email', displayName: 'Work Email'},
+            mobile: {type: 'mobile'},
+            username: {type: 'string'},
+          },
+        },
+        isLoading: false,
+      });
+    });
+
+    const field = (name: string): HTMLElement => screen.getByTestId(`field-${name}`);
+
+    it('shows each stored contact as Verified or Unverified and no status on other attributes', () => {
+      render(<EditUserAttributes user={contactUser} editedUser={{}} onFieldChange={mockOnFieldChange} />);
+
+      expect(within(field('email')).getByText('Verified')).toBeInTheDocument();
+      expect(within(field('workEmail')).getByText('Unverified')).toBeInTheDocument();
+      expect(within(field('mobile')).getByText('Unverified')).toBeInTheDocument();
+      expect(within(field('username')).queryByText(/Verified|Unverified/)).not.toBeInTheDocument();
+    });
+
+    it('offers a verification link beside the unverified email only', () => {
+      render(<EditUserAttributes user={contactUser} editedUser={{}} onFieldChange={mockOnFieldChange} />);
+
+      expect(
+        within(field('workEmail')).getByRole('button', {name: 'Send verification link for Work Email'}),
+      ).toBeInTheDocument();
+      expect(screen.getAllByRole('button', {name: /^Send verification link/})).toHaveLength(1);
+    });
+
+    it('disables the verification link for a suspended user', () => {
+      render(
+        <EditUserAttributes
+          user={{...contactUser, status: {value: 'SUSPENDED'}}}
+          editedUser={{}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(
+        within(field('workEmail')).getByRole('button', {name: 'Send verification link for Work Email'}),
+      ).toBeDisabled();
+    });
+
+    it('hides the verification link while the email holds an edited value', async () => {
+      const user = userEvent.setup();
+      render(<EditUserAttributes user={contactUser} editedUser={{}} onFieldChange={mockOnFieldChange} />);
+
+      await user.type(screen.getByLabelText('workEmail-input'), 'x');
+
+      expect(screen.queryByRole('button', {name: /^Send verification link/})).not.toBeInTheDocument();
+      expect(within(field('workEmail')).getByText('Save to verify')).toBeInTheDocument();
+    });
+
+    it('asks to save an edited verified email before verifying it', async () => {
+      const user = userEvent.setup();
+      render(<EditUserAttributes user={contactUser} editedUser={{}} onFieldChange={mockOnFieldChange} />);
+
+      expect(within(field('email')).queryByText('Save to verify')).not.toBeInTheDocument();
+      await user.type(screen.getByLabelText('email-input'), 'x');
+
+      expect(within(field('email')).getByText('Save to verify')).toBeInTheDocument();
+    });
+
+    it('shows no save hint for a cleared email, an edited mobile or a suspended user', async () => {
+      const user = userEvent.setup();
+      const {unmount} = render(
+        <EditUserAttributes user={contactUser} editedUser={{}} onFieldChange={mockOnFieldChange} />,
+      );
+
+      await user.clear(screen.getByLabelText('workEmail-input'));
+      await user.type(screen.getByLabelText('mobile-input'), '1');
+
+      expect(screen.queryByText('Save to verify')).not.toBeInTheDocument();
+      unmount();
+
+      render(
+        <EditUserAttributes
+          user={{...contactUser, status: {value: 'SUSPENDED'}}}
+          editedUser={{}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+      await user.type(screen.getByLabelText('workEmail-input'), 'x');
+
+      expect(screen.queryByText('Save to verify')).not.toBeInTheDocument();
+    });
+
+    it('hides the status while a contact holds an edited value, keeps the input, and restores it on revert', async () => {
+      const user = userEvent.setup();
+      render(<EditUserAttributes user={contactUser} editedUser={{}} onFieldChange={mockOnFieldChange} />);
+
+      const input = screen.getByLabelText('workEmail-input');
+      await user.clear(input);
+      await user.type(input, 'new@example.com');
+
+      expect(input).toHaveValue('new@example.com');
+      expect(within(field('workEmail')).queryByText('Unverified')).not.toBeInTheDocument();
+      expect(within(field('mobile')).getByText('Unverified')).toBeInTheDocument();
+
+      await user.clear(input);
+      await user.type(input, 'alex@work.example.com');
+
+      expect(within(field('workEmail')).getByText('Unverified')).toBeInTheDocument();
+    });
+
+    it('hides the status of a verified contact once its value is edited', async () => {
+      const user = userEvent.setup();
+      render(<EditUserAttributes user={contactUser} editedUser={{}} onFieldChange={mockOnFieldChange} />);
+
+      await user.type(screen.getByLabelText('email-input'), 'x');
+
+      expect(within(field('email')).queryByText('Verified')).not.toBeInTheDocument();
+    });
+
+    it('shows no status for a contact without a stored value', () => {
+      render(
+        <EditUserAttributes
+          user={{...contactUser, attributes: {username: 'alex', email: ''}}}
+          editedUser={{}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(screen.queryByText(/Verified|Unverified/)).not.toBeInTheDocument();
+    });
+
+    it('shows no verification for a read-only user', () => {
+      render(
+        <EditUserAttributes
+          user={{...contactUser, isReadOnly: true}}
+          readOnly
+          editedUser={{}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(screen.getByText('alex@work.example.com')).toBeInTheDocument();
+      expect(screen.queryByText(/Verified|Unverified/)).not.toBeInTheDocument();
     });
   });
 });

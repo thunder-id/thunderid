@@ -3,8 +3,9 @@
 
 import {
   type Application,
-  SettingsLockNotice,
   AuthenticationFlowSection,
+  DeviceGrantFlowSection,
+  SettingsLockNotice,
   RegistrationFlowSection,
   hasUserAccess,
 } from '@thunderid/configure-applications';
@@ -19,6 +20,9 @@ interface EditFlowsSettingsProps {
   editedAgent: Partial<Agent>;
   oauth2Config?: OAuthAgentConfig;
   onFieldChange: (field: keyof Agent, value: unknown) => void;
+  deviceGrantFlowQueryError?: Error | null;
+  onRetryDeviceGrantFlowQuery?: () => void;
+  readOnly?: boolean;
 }
 
 export default function EditFlowsSettings({
@@ -26,18 +30,21 @@ export default function EditFlowsSettings({
   editedAgent,
   oauth2Config = undefined,
   onFieldChange,
+  deviceGrantFlowQueryError = undefined,
+  onRetryDeviceGrantFlowQuery = undefined,
+  readOnly = false,
 }: EditFlowsSettingsProps): JSX.Element {
   const {t} = useTranslation();
-  // Only the authorization code and CIBA grants run this agent's sign-in flows. Token exchange and
+  // Authorization code, CIBA, and Device Code use this agent's sign-in flows. Token exchange and
   // JWT bearer redeem an existing token or assertion, so they never run a sign-in flow.
   const isUnlocked = hasUserAccess(oauth2Config?.grantTypes);
   const isDelegated = hasDelegationGrant(oauth2Config?.grantTypes);
 
   // Agents share the inbound-client shape with applications (auth_flow_id, registration flow
-  // config), so the same components are reused with an entity-label override. Forcing
-  // isReadOnly disables every input via their existing disabled={application.isReadOnly} wiring
-  // when the flows do not apply, without needing new props on the shared components.
-  const appLikeAgent = {...agent, isReadOnly: (agent.isReadOnly ?? false) || !isUnlocked} as unknown as Application;
+  // config), so the same components are reused with an entity-label override. Every input is
+  // disabled when the flows do not apply.
+  const appLikeAgent = agent as unknown as Application;
+  const flowsReadOnly = readOnly || !isUnlocked;
   const appLikeEditedAgent = editedAgent as unknown as Partial<Application>;
   const appHandleFieldChange = onFieldChange as unknown as (field: keyof Application, value: unknown) => void;
 
@@ -60,15 +67,26 @@ export default function EditFlowsSettings({
         <Stack spacing={3}>
           <AuthenticationFlowSection
             application={appLikeAgent}
+            readOnly={flowsReadOnly}
             editedApp={appLikeEditedAgent}
             onFieldChange={appHandleFieldChange}
             entityLabel="agent"
           />
           <RegistrationFlowSection
             application={appLikeAgent}
+            readOnly={flowsReadOnly}
             editedApp={appLikeEditedAgent}
             onFieldChange={appHandleFieldChange}
             entityLabel="agent"
+          />
+          <DeviceGrantFlowSection
+            application={appLikeAgent}
+            readOnly={flowsReadOnly}
+            editedApp={appLikeEditedAgent}
+            onFieldChange={appHandleFieldChange}
+            entityLabel="agent"
+            deviceGrantFlowQueryError={deviceGrantFlowQueryError}
+            onRetryDeviceGrantFlowQuery={onRetryDeviceGrantFlowQuery}
           />
         </Stack>
       </SettingsLockNotice>

@@ -27,7 +27,7 @@ func BuildApplication(
 		return nil, &ErrorActorNotFound
 	}
 
-	entity, entityErr := provider.GetActor(actorID)
+	entity, entityErr := provider.GetActor(ctx, actorID)
 	if entityErr != nil && entityErr.Code != ErrorEntityNotFound.Code {
 		return nil, &tidcommon.InternalServerError
 	}

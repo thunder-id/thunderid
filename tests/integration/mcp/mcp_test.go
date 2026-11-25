@@ -37,6 +37,11 @@ const (
 	adminGroupOUID = "01900000-0000-7000-8000-000000000001"
 
 	systemActionHandle = "system"
+	orgActionHandle    = "org"
+
+	// declarativeCORSOrigin is the origin the declarative CORS fixture allows
+	// (tests/integration/resources/declarative_resources/server_configs/cors.yaml).
+	declarativeCORSOrigin = "https://declarative.example.com"
 )
 
 var revokeEndpoint = testServerURL + "/oauth2/revoke"
@@ -82,6 +87,8 @@ func TestMCPTestSuite(t *testing.T) {
 
 func (ts *MCPTestSuite) SetupSuite() {
 	ts.client = testutils.GetRawHTTPClient()
+	// The timeout fails a request the server never answers, instead of leaving it to the go test timeout.
+	ts.client.Timeout = 30 * time.Second
 
 	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
 		Handle:      "mcp-auth-test-ou",
@@ -93,17 +100,11 @@ func (ts *MCPTestSuite) SetupSuite() {
 	ts.ouID = ouID
 
 	// Registers the resource server whose identifier matches this server's real mcpURL, so a token
-	// requested with resource=mcpResourceIdentifier carries a matching "aud" claim. The "system"
-	// action mirrors the handle the bootstrapped System resource server defines, so a role can
-	// grant the same "system" permission string against this resource server too.
-	resourceServerID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
-		Name:        "MCP Auth Test Resource Server",
-		Description: "Resource server matching this server's own MCP endpoint identifier",
-		Identifier:  mcpResourceIdentifier,
-		OUID:        ts.ouID,
-	}, []testutils.Action{
-		{Name: "System", Handle: systemActionHandle, Description: "System resource"},
-	})
+	// requested with resource=mcpResourceIdentifier carries a matching "aud" claim. Declares the
+	// "system" and "org" root resources and the "org:user:view" permission, reproducing the
+	// fine-grained scopes used to verify MCP tool permission enforcement.
+	resourceServerID, err := testutils.CreateOrgScopedResourceServer(
+		ts.ouID, "MCP Auth Test Resource Server", mcpResourceIdentifier, "user")
 	ts.Require().NoError(err, "failed to create resource server")
 	ts.resourceServerID = resourceServerID
 
@@ -233,6 +234,12 @@ func (ts *MCPTestSuite) TestInitialize_ValidMCPScopedToken_Succeeds() {
 // _meta instead of a prior "initialize" handshake, and the Streamable HTTP transport mirrors the
 // method into the required Mcp-Method header (see mcp.Initialize's Stateless: true wiring).
 func (ts *MCPTestSuite) discoverMCP(token string) *http.Response {
+	return ts.discoverMCPFromOrigin(token, "")
+}
+
+// discoverMCPFromOrigin sends the request discoverMCP sends, with origin as its Origin header when
+// origin is not empty.
+func (ts *MCPTestSuite) discoverMCPFromOrigin(token, origin string) *http.Response {
 	body := `{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{` +
 		`"_meta":{` +
 		`"io.modelcontextprotocol/protocolVersion":"` + mcpProtocolVersion20260728 + `",` +
@@ -248,6 +255,9 @@ func (ts *MCPTestSuite) discoverMCP(token string) *http.Response {
 	req.Header.Set("Mcp-Method", "server/discover")
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if origin != "" {
+		req.Header.Set("Origin", origin)
 	}
 
 	resp, err := ts.client.Do(req)
@@ -271,6 +281,43 @@ func (ts *MCPTestSuite) TestDiscover_ValidMCPScopedToken_StatelessSucceeds() {
 		"server/discover should advertise support for the requested protocol version")
 	ts.Assert().Empty(resp.Header.Get("Mcp-Session-Id"),
 		"a stateless server must not establish a session")
+}
+
+// MCP Streamable HTTP requires a request whose Origin header is present and untrusted to be refused
+// with 403, to prevent DNS rebinding. The check runs before authentication, so it holds with or
+// without a valid token.
+func (ts *MCPTestSuite) TestDiscover_UntrustedOrigin_Forbidden() {
+	cases := []struct {
+		name  string
+		token string
+	}{
+		{name: "valid token", token: ts.mcpScopedAdminToken()},
+		{name: "no token"},
+	}
+	for _, tc := range cases {
+		ts.Run(tc.name, func() {
+			resp := ts.discoverMCPFromOrigin(tc.token, "https://evil.example")
+			defer resp.Body.Close()
+
+			body, _ := io.ReadAll(resp.Body)
+			ts.Assert().Equalf(http.StatusForbidden, resp.StatusCode, "response: %s", string(body))
+		})
+	}
+}
+
+// The server's own origin and an origin the CORS configuration allows are trusted.
+func (ts *MCPTestSuite) TestDiscover_TrustedOrigin_Succeeds() {
+	token := ts.mcpScopedAdminToken()
+
+	for _, origin := range []string{testServerURL, declarativeCORSOrigin} {
+		ts.Run(origin, func() {
+			resp := ts.discoverMCPFromOrigin(token, origin)
+			defer resp.Body.Close()
+
+			body, _ := io.ReadAll(resp.Body)
+			ts.Assert().Equalf(http.StatusOK, resp.StatusCode, "server/discover failed: %s", string(body))
+		})
+	}
 }
 
 // A required standard header (Mcp-Method) missing from an otherwise well-formed 2026-07-28 request
@@ -323,30 +370,37 @@ func (ts *MCPTestSuite) TestInitialize_RevokedToken_Rejected() {
 		"a revoked token must be rejected once the revocation cache has synced")
 }
 
-// A suspended operator's MCP token is rejected once the revocation copy syncs: suspension revokes by
-// entity ID, which the MCP gate checks as the REST gate does. The operator is this test's own, so the
-// shared admin is never suspended.
-func (ts *MCPTestSuite) TestInitialize_SuspendedOperatorToken_Rejected() {
-	const (
-		typeHandle = "mcp-suspend-operator"
-		username   = "mcp-suspend-operator"
-		password   = "McpSuspend@123"
-	)
+// createOperator creates a user who signs in with username and password, under a user type of its
+// own in the suite's organization unit, and removes both when the test ends. The user holds no
+// permission until a role grants one.
+func (ts *MCPTestSuite) createOperator(username, password string) string {
 	typeID, err := testutils.CreateUserType(testutils.UserType{
-		Handle: typeHandle, DisplayName: typeHandle, OUID: ts.ouID,
+		Handle: username, DisplayName: username, OUID: ts.ouID,
 		Schema: map[string]interface{}{
 			"username": map[string]interface{}{"type": "string"},
 			"password": map[string]interface{}{"type": "string", "credential": true},
 		},
 	})
 	ts.Require().NoError(err, "failed to create the operator user type")
-	defer func() { _ = testutils.DeleteUserType(typeID) }()
+	ts.T().Cleanup(func() { _ = testutils.DeleteUserType(typeID) })
 	userID, err := testutils.CreateUser(testutils.User{
-		Type: typeHandle, OUID: ts.ouID,
+		Type: username, OUID: ts.ouID,
 		Attributes: []byte(`{"username": "` + username + `", "password": "` + password + `"}`),
 	})
 	ts.Require().NoError(err, "failed to create the operator")
-	defer func() { _ = testutils.DeleteUser(userID) }()
+	ts.T().Cleanup(func() { _ = testutils.DeleteUser(userID) })
+	return userID
+}
+
+// A suspended operator's MCP token is rejected once the revocation copy syncs: suspension revokes by
+// entity ID, which the MCP gate checks as the REST gate does. The operator is this test's own, so the
+// shared admin is never suspended.
+func (ts *MCPTestSuite) TestInitialize_SuspendedOperatorToken_Rejected() {
+	const (
+		username = "mcp-suspend-operator"
+		password = "McpSuspend@123"
+	)
+	userID := ts.createOperator(username, password)
 	roleID, err := testutils.CreateRole(testutils.Role{
 		Name: "MCP Suspended Operator Role", OUID: ts.ouID,
 		Permissions: []testutils.ResourcePermissions{
@@ -357,8 +411,11 @@ func (ts *MCPTestSuite) TestInitialize_SuspendedOperatorToken_Rejected() {
 	ts.Require().NoError(err, "failed to grant the operator the system permission")
 	defer func() { _ = testutils.DeleteRole(roleID) }()
 
-	tokenResp, err := testutils.ObtainAccessTokenWithPassword("CONSOLE", testServerURL+"/console", "system",
-		username, password, true, "", mcpResourceIdentifier)
+	// The operator lives in the suite's OU, and a sign-in is bounded to its application's OU, so it signs in
+	// through an application there rather than the Console.
+	var signIn testutils.OUSignInApps
+	defer func() { _ = signIn.DeleteAll() }()
+	tokenResp, err := signIn.ObtainAccessToken(ts.ouID, "system", username, password, mcpResourceIdentifier)
 	ts.Require().NoError(err, "the operator must sign in")
 	resp := ts.initializeMCPSession(tokenResp.AccessToken)
 	resp.Body.Close()
@@ -418,22 +475,232 @@ func (ts *MCPTestSuite) TestInitialize_NoToken_Rejected() {
 	ts.Assert().Equal(http.StatusUnauthorized, resp.StatusCode)
 }
 
+// A token that is not a JWT, or one whose signature does not verify, is rejected.
+func (ts *MCPTestSuite) TestInitialize_MalformedToken_Rejected() {
+	parts := strings.Split(ts.mcpScopedAdminToken(), ".")
+	ts.Require().Len(parts, 3, "an access token is a JWS in compact serialization")
+	// The first character of the signature carries signature bits; the last may carry padding only.
+	signature := []byte(parts[2])
+	if signature[0] == 'A' {
+		signature[0] = 'B'
+	} else {
+		signature[0] = 'A'
+	}
+
+	cases := []struct {
+		name  string
+		token string
+	}{
+		{name: "not a JWT", token: "not-a-jwt"},
+		{name: "tampered signature", token: parts[0] + "." + parts[1] + "." + string(signature)},
+	}
+	for _, tc := range cases {
+		ts.Run(tc.name, func() {
+			resp := ts.initializeMCPSession(tc.token)
+			defer resp.Body.Close()
+
+			ts.Assert().Equal(http.StatusUnauthorized, resp.StatusCode)
+		})
+	}
+}
+
+const (
+	shortLivedClientID    = "mcp-short-lived-client"
+	shortLivedRedirectURI = "https://localhost:3000/mcp-short-lived/callback"
+	// shortLivedTokenSeconds is the access token lifetime registered for shortLivedClientID: long
+	// enough to use the token once before it expires, short enough to wait out.
+	shortLivedTokenSeconds = 10
+	// jwtLeewaySeconds mirrors the server's jwt.leeway default (backend/cmd/server/config/default.json).
+	jwtLeewaySeconds = 30
+)
+
+// An expired token is rejected. The token is a real one, issued through an application whose access
+// tokens live for a few seconds, and it is accepted before it expires, so expiry is the only reason
+// left to reject it.
+func (ts *MCPTestSuite) TestInitialize_ExpiredToken_Rejected() {
+	// The administrator signs in, and a sign-in is bounded to its application's OU, so the application lives
+	// in the administrator's OU.
+	adminOUID, err := testutils.DefaultOUID()
+	ts.Require().NoError(err, "failed to find the administrator's organization unit")
+	appID, err := testutils.CreateApplication(testutils.Application{
+		Name:        "MCP Short-Lived Token Test App",
+		Description: "Application whose access tokens expire seconds after they are issued",
+		OUID:        adminOUID,
+		Type:        "fullstack",
+		InboundAuthConfig: []map[string]interface{}{
+			{
+				"type": "oauth2",
+				"config": map[string]interface{}{
+					"clientId":                shortLivedClientID,
+					"redirectUris":            []string{shortLivedRedirectURI},
+					"grantTypes":              []string{"authorization_code"},
+					"responseTypes":           []string{"code"},
+					"tokenEndpointAuthMethod": "none",
+					"publicClient":            true,
+					"pkceRequired":            true,
+					"token": map[string]interface{}{
+						"accessToken": map[string]interface{}{
+							"userConfig": map[string]interface{}{"validityPeriod": shortLivedTokenSeconds},
+						},
+					},
+				},
+			},
+		},
+	})
+	ts.Require().NoError(err, "failed to create application")
+	defer func() { _ = testutils.DeleteApplication(appID) }()
+
+	tokenResp, err := testutils.ObtainAccessTokenWithPassword(shortLivedClientID, shortLivedRedirectURI,
+		"system", testutils.AdminUsername, testutils.AdminPassword, true, "", mcpResourceIdentifier)
+	ts.Require().NoError(err, "failed to obtain a token through the application")
+	claims, err := testutils.DecodeJWTPayloadMap(tokenResp.AccessToken)
+	ts.Require().NoError(err, "failed to decode the token payload")
+	exp, ok := claims["exp"].(float64)
+	ts.Require().True(ok, "the token must carry a numeric exp claim")
+	iat, ok := claims["iat"].(float64)
+	ts.Require().True(ok, "the token must carry a numeric iat claim")
+	ts.Require().EqualValues(shortLivedTokenSeconds, int64(exp)-int64(iat),
+		"the registered access token lifetime was not applied")
+	resp := ts.initializeMCPSession(tokenResp.AccessToken)
+	_ = resp.Body.Close()
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, "the token must work before it expires")
+
+	// The guard may refuse the token from exp on, or only past the server's leeway; by the deadline
+	// both apply.
+	deadline := time.Until(time.Unix(int64(exp)+jwtLeewaySeconds+5, 0))
+	ts.Require().Eventually(func() bool {
+		resp, err := ts.tryInitializeMCPSession(tokenResp.AccessToken)
+		if err != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode == http.StatusUnauthorized
+	}, deadline, 500*time.Millisecond, "an expired token must be rejected")
+}
+
+// foreignIssuerClientID names this suite's own mock issuer on the shared OIDC mock service.
+const foreignIssuerClientID = "mcp-foreign-issuer-client"
+
+// A well-formed token signed by an issuer this server does not trust is rejected, even though it
+// names the MCP resource as its audience and carries the "system" scope.
+func (ts *MCPTestSuite) TestInitialize_TokenFromAnotherIssuer_Rejected() {
+	issuer, err := testutils.NewMockOIDCServer(foreignIssuerClientID, "unused-secret")
+	ts.Require().NoError(err, "failed to start the foreign issuer")
+	defer func() { _ = issuer.Stop() }()
+
+	now := time.Now()
+	token, err := issuer.SignJWT(map[string]interface{}{"typ": "at+jwt"}, map[string]interface{}{
+		"iss":   issuer.GetURL(),
+		"sub":   "mcp-foreign-subject",
+		"aud":   mcpResourceIdentifier,
+		"scope": systemActionHandle,
+		"iat":   now.Unix(),
+		"exp":   now.Add(time.Hour).Unix(),
+	})
+	ts.Require().NoError(err, "failed to sign the foreign token")
+
+	resp := ts.initializeMCPSession(token)
+	defer resp.Body.Close()
+
+	ts.Assert().Equal(http.StatusUnauthorized, resp.StatusCode)
+}
+
+// A valid token for the MCP resource whose holder holds no system permission is refused with 403. Any
+// system permission admits the caller, so the insufficient_scope challenge names no single scope.
+func (ts *MCPTestSuite) TestInitialize_TokenWithoutSystemPermission_Forbidden() {
+	const (
+		username = "mcp-unprivileged-operator"
+		password = "McpUnprivileged@123"
+	)
+	ts.createOperator(username, password)
+
+	// The operator lives in the suite's OU, and a sign-in is bounded to its application's OU, so it signs in
+	// through an application there rather than the Console.
+	var signIn testutils.OUSignInApps
+	defer func() { _ = signIn.DeleteAll() }()
+	tokenResp, err := signIn.ObtainAccessToken(ts.ouID, "system", username, password, mcpResourceIdentifier)
+	ts.Require().NoError(err, "the operator must sign in")
+
+	resp := ts.initializeMCPSession(tokenResp.AccessToken)
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	ts.Assert().Equalf(http.StatusForbidden, resp.StatusCode, "response: %s", string(body))
+	challenge := resp.Header.Get("WWW-Authenticate")
+	ts.Assert().Equal("insufficient_scope", challengeParam(challenge, "error"))
+	ts.Assert().Empty(challengeParam(challenge, "scope"))
+	ts.Assert().Equal(testServerURL+"/.well-known/oauth-protected-resource",
+		challengeParam(challenge, "resource_metadata"))
+}
+
+// A client that follows the challenge finds protected resource metadata naming the resource tokens are
+// checked against, the scope a full administrator requests, and an authorization server that publishes
+// metadata for that same issuer.
+func (ts *MCPTestSuite) TestProtectedResourceMetadata_MatchesTheChallengeAndTheAudience() {
+	resp := ts.initializeMCPSession("")
+	_ = resp.Body.Close()
+	ts.Require().Equal(http.StatusUnauthorized, resp.StatusCode)
+	challenge := resp.Header.Get("WWW-Authenticate")
+	metadataURL := challengeParam(challenge, "resource_metadata")
+	ts.Require().Equal(testServerURL+"/.well-known/oauth-protected-resource", metadataURL)
+
+	var metadata struct {
+		Resource             string   `json:"resource"`
+		AuthorizationServers []string `json:"authorization_servers"`
+		ScopesSupported      []string `json:"scopes_supported"`
+	}
+	ts.getJSON(metadataURL, &metadata)
+	ts.Equal(mcpResourceIdentifier, metadata.Resource,
+		"the advertised resource must be the audience the guard accepts")
+	ts.Equal([]string{systemActionHandle, orgActionHandle}, metadata.ScopesSupported,
+		"a data plane admits the organization root as well as the system root")
+	ts.Require().Len(metadata.AuthorizationServers, 1)
+
+	var server struct {
+		Issuer string `json:"issuer"`
+	}
+	ts.getJSON(metadata.AuthorizationServers[0]+"/.well-known/oauth-authorization-server", &server)
+	ts.Equal(metadata.AuthorizationServers[0], server.Issuer)
+}
+
+// challengeParam returns the value of the named quoted parameter in a WWW-Authenticate challenge.
+func challengeParam(challenge, name string) string {
+	_, rest, found := strings.Cut(challenge, name+`="`)
+	if !found {
+		return ""
+	}
+	value, _, _ := strings.Cut(rest, `"`)
+	return value
+}
+
+// getJSON fetches url without credentials and decodes its JSON body into out.
+func (ts *MCPTestSuite) getJSON(url string, out any) {
+	resp, err := ts.client.Get(url)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	ts.Require().Equalf(http.StatusOK, resp.StatusCode, "GET %s: %s", url, string(body))
+	ts.Require().NoErrorf(json.Unmarshal(body, out), "GET %s: %s", url, string(body))
+}
+
 const (
 	appRevocationClientID    = "mcp-app-revocation-client"
 	appRevocationRedirectURI = "https://localhost:3000/mcp-app-revocation/callback"
-
-	applicationDeletionFlowHandle = "default-application-deletion-flow"
-	administrationFlowType        = "ADMINISTRATION"
 )
 
 // A token issued through an application is rejected at /mcp once that application is deleted, as it is
 // at the REST gate. Deletion revokes the application's OAuth client, so the token's subject is still
 // valid and only the client check refuses it.
 func (ts *MCPTestSuite) TestInitialize_DeletedApplicationToken_Rejected() {
+	// The administrator signs in, and a sign-in is bounded to its application's OU, so the application lives
+	// in the administrator's OU.
+	adminOUID, err := testutils.DefaultOUID()
+	ts.Require().NoError(err, "failed to find the administrator's organization unit")
 	appID, err := testutils.CreateApplication(testutils.Application{
 		Name:        "MCP App Revocation Test App",
 		Description: "Application whose token is used at /mcp before and after deletion",
-		OUID:        ts.ouID,
+		OUID:        adminOUID,
 		Type:        "fullstack",
 		InboundAuthConfig: []map[string]interface{}{
 			{
@@ -469,7 +736,7 @@ func (ts *MCPTestSuite) TestInitialize_DeletedApplicationToken_Rejected() {
 	ts.Require().Equalf(http.StatusOK, resp.StatusCode, "the token must work before deletion: %s", string(body))
 	ts.Require().Equal(http.StatusOK, ts.restStatus(token), "the token must work at REST before deletion")
 
-	ts.runApplicationDeletionFlow(appID)
+	ts.Require().NoError(testutils.DeleteApplication(appID), "failed to delete the application")
 	deleted = true
 
 	ts.Require().Eventually(func() bool {
@@ -493,29 +760,6 @@ func (ts *MCPTestSuite) restStatus(token string) int {
 	defer resp.Body.Close()
 	_, _ = io.Copy(io.Discard, resp.Body)
 	return resp.StatusCode
-}
-
-// runApplicationDeletionFlow deletes the application through the shipped deletion flow, which revokes
-// its OAuth client before removing the record.
-func (ts *MCPTestSuite) runApplicationDeletionFlow(appID string) {
-	flowID, err := testutils.GetFlowIDByHandle(applicationDeletionFlowHandle, administrationFlowType)
-	ts.Require().NoError(err, "failed to resolve the application deletion flow")
-
-	adminToken, err := testutils.GetAccessToken()
-	ts.Require().NoError(err, "failed to obtain the admin token")
-
-	reqBody := `{"flowId":"` + flowID + `","inputs":{"targetApplicationId":"` + appID + `"}}`
-	req, err := http.NewRequest(http.MethodPost, testServerURL+"/flow/execute", bytes.NewBufferString(reqBody))
-	ts.Require().NoError(err)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+adminToken)
-
-	resp, err := ts.client.Do(req)
-	ts.Require().NoError(err)
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	ts.Require().Equalf(http.StatusOK, resp.StatusCode, "deletion flow failed: %s", string(body))
-	ts.Require().Containsf(string(body), `"COMPLETE"`, "deletion flow must complete: %s", string(body))
 }
 
 // mcpToolResult is the part of a tools/call response the tool tests read.
@@ -700,6 +944,50 @@ func (ts *MCPTestSuite) TestHTTPConnectionTools_MaskedPasswordReadBackIsRefused(
 	})
 	ts.Falsef(kept.Result.IsError, "the stored password must survive the refused update: %s", raw)
 	ts.NotContains(raw, password)
+}
+
+// A caller holding only org:user:view connects to the MCP server and can call list_users, but cannot
+// call create_user or an unmapped tool that requires root.
+func (ts *MCPTestSuite) TestUserTools_EnforceFineGrainedPermissions() {
+	const (
+		username = "mcp-user-viewer-operator"
+		password = "McpUserViewer@123"
+	)
+	operatorID := ts.createOperator(username, password)
+
+	operatorRoleID, err := testutils.CreateRole(testutils.Role{
+		Name:        "MCP Auth Test Operator User View Role",
+		Description: "Grants org:user:view permission on the MCP auth test resource server",
+		OUID:        ts.ouID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: ts.resourceServerID, Permissions: []string{"org:user:view"}},
+		},
+		Assignments: []testutils.Assignment{
+			{ID: operatorID, Type: "user"},
+		},
+	})
+	ts.Require().NoError(err, "failed to create operator role")
+	ts.T().Cleanup(func() { _ = testutils.DeleteRole(operatorRoleID) })
+
+	var signIn testutils.OUSignInApps
+	defer func() { _ = signIn.DeleteAll() }()
+	tokenResp, err := signIn.ObtainAccessToken(ts.ouID, "org:user:view", username, password, mcpResourceIdentifier)
+	ts.Require().NoError(err, "the operator must sign in")
+	token := tokenResp.AccessToken
+
+	// Calling a tool mapped to the permission the caller holds succeeds.
+	listResult, rawList := ts.callMCPTool(token, "list_users", map[string]any{})
+	ts.Require().Falsef(listResult.Result.IsError, "list_users failed: %s", rawList)
+
+	// Calling a tool requiring a different user permission is refused by toolPermissionMiddleware.
+	createResult, rawCreate := ts.callMCPTool(token, "create_user", map[string]any{"type": "person"})
+	ts.Require().Truef(createResult.Result.IsError, "create_user should be refused: %s", rawCreate)
+	ts.Contains(rawCreate, "The caller is not authorized to call this tool")
+
+	// Calling an unmapped tool requiring root system permission is refused.
+	unmappedResult, rawUnmapped := ts.callMCPTool(token, "export_configuration", map[string]any{})
+	ts.Require().Truef(unmappedResult.Result.IsError, "export_configuration should be refused: %s", rawUnmapped)
+	ts.Contains(rawUnmapped, "The caller is not authorized to call this tool")
 }
 
 func (ts *MCPTestSuite) deleteHTTPConnection(id string) {

@@ -26,6 +26,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -459,7 +460,7 @@ func (suite *HandlerTestSuite) TestHandleApplicationListRequest_WithProject() {
 	mockService := NewApplicationServiceInterfaceMock(suite.T())
 	handler := newApplicationHandler(mockService)
 
-	mockService.On("GetApplicationListByProject", mock.Anything, "project-1", mock.Anything).
+	mockService.On("GetApplicationListByProject", mock.Anything, testProjectID, mock.Anything).
 		Return(&model.ApplicationListResponse{Applications: []model.BasicApplicationResponse{}}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/applications?projectId=project-1", nil)
@@ -475,7 +476,7 @@ func (suite *HandlerTestSuite) TestHandleApplicationListRequest_ProjectWithFilte
 	mockService := NewApplicationServiceInterfaceMock(suite.T())
 	handler := newApplicationHandler(mockService)
 
-	mockService.On("GetApplicationListByProject", mock.Anything, "project-1",
+	mockService.On("GetApplicationListByProject", mock.Anything, testProjectID,
 		map[string]interface{}{"ouId": "ou-1"}).
 		Return(&model.ApplicationListResponse{Applications: []model.BasicApplicationResponse{}}, nil)
 
@@ -494,10 +495,10 @@ func (suite *HandlerTestSuite) TestHandleApplicationPostRequest_PassesTheProject
 	handler := newApplicationHandler(mockService)
 
 	mockService.On("CreateApplication", mock.Anything, mock.MatchedBy(func(app *model.ApplicationDTO) bool {
-		return app.ProjectID == "project-1" && app.OUID == ""
+		return app.ProjectID == testProjectID && app.OUID == ""
 	})).Return(nil, &ErrorInvalidProject)
 
-	body, _ := json.Marshal(model.ApplicationRequest{ProjectID: "project-1", Name: "TestApp"})
+	body, _ := json.Marshal(model.ApplicationRequest{ProjectID: testProjectID, Name: "TestApp"})
 	req := httptest.NewRequest(http.MethodPost, "/applications", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -517,10 +518,10 @@ func (suite *HandlerTestSuite) TestHandleApplicationPutRequest_PassesTheProject(
 
 	mockService.On("UpdateApplication", mock.Anything, "test-app-id",
 		mock.MatchedBy(func(app *model.ApplicationDTO) bool {
-			return app.ProjectID == "project-1" && app.OUID == ""
+			return app.ProjectID == testProjectID && app.OUID == ""
 		})).Return(nil, &ErrorInvalidProject)
 
-	body, _ := json.Marshal(model.ApplicationRequest{ProjectID: "project-1", Name: "UpdatedApp"})
+	body, _ := json.Marshal(model.ApplicationRequest{ProjectID: testProjectID, Name: "UpdatedApp"})
 	req := httptest.NewRequest(http.MethodPut, "/applications/test-app-id", bytes.NewBuffer(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.SetPathValue("id", "test-app-id")
@@ -1214,6 +1215,77 @@ func (suite *HandlerTestSuite) TestHandleApplicationDeleteRequest_ServiceError()
 	mockService.AssertExpectations(suite.T())
 }
 
+// The new secret is returned once, in the body, and the response is not cached.
+func (suite *HandlerTestSuite) TestHandleClientSecretRegenerateRequest_Success() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+	mockService.On("RegenerateClientSecret", mock.Anything, "test-app-id").
+		Return(&model.ClientSecretResponse{ClientSecret: "new-secret"}, nil).Once()
+
+	req := httptest.NewRequest(http.MethodPost, "/applications/test-app-id/client-secret/regenerate", nil)
+	req.SetPathValue("id", "test-app-id")
+	w := httptest.NewRecorder()
+
+	handler.HandleClientSecretRegenerateRequest(w, req)
+
+	assert.Equal(suite.T(), http.StatusOK, w.Code)
+	assert.Equal(suite.T(), "no-store", w.Header().Get("Cache-Control"))
+	var resp model.ClientSecretResponse
+	suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(suite.T(), "new-secret", resp.ClientSecret)
+	assert.NotContains(suite.T(), w.Body.String(), "revocationIncomplete", "a complete revocation is not flagged")
+}
+
+func (suite *HandlerTestSuite) TestHandleClientSecretRegenerateRequest_InvalidID() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+
+	req := httptest.NewRequest(http.MethodPost, "/applications//client-secret/regenerate", nil)
+	req.SetPathValue("id", "")
+	w := httptest.NewRecorder()
+
+	handler.HandleClientSecretRegenerateRequest(w, req)
+
+	assert.Equal(suite.T(), http.StatusBadRequest, w.Code)
+	var errResp apierror.ErrorResponse
+	suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &errResp))
+	assert.Equal(suite.T(), ErrorInvalidApplicationID.Code, errResp.Code)
+}
+
+// Each refusal of the service is answered with the status its kind calls for, and no secret.
+func (suite *HandlerTestSuite) TestHandleClientSecretRegenerateRequest_Errors() {
+	tests := []struct {
+		name   string
+		err    *tidcommon.ServiceError
+		status int
+	}{
+		{"not found", &ErrorApplicationNotFound, http.StatusNotFound},
+		{"no client secret", &ErrorApplicationHasNoClientSecret, http.StatusBadRequest},
+		{"declarative", &ErrorCannotModifyDeclarativeResource, http.StatusBadRequest},
+		{"not permitted", &sysauthz.ErrorGrantNotPermitted, http.StatusForbidden},
+		{"unauthorized", &tidcommon.ErrorUnauthorized, http.StatusForbidden},
+		{"server error", &tidcommon.InternalServerError, http.StatusInternalServerError},
+	}
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			mockService := NewApplicationServiceInterfaceMock(suite.T())
+			handler := newApplicationHandler(mockService)
+			mockService.On("RegenerateClientSecret", mock.Anything, "test-app-id").Return(nil, tt.err).Once()
+
+			req := httptest.NewRequest(http.MethodPost, "/applications/test-app-id/client-secret/regenerate", nil)
+			req.SetPathValue("id", "test-app-id")
+			w := httptest.NewRecorder()
+
+			handler.HandleClientSecretRegenerateRequest(w, req)
+
+			assert.Equal(suite.T(), tt.status, w.Code)
+			var errResp apierror.ErrorResponse
+			suite.Require().NoError(json.Unmarshal(w.Body.Bytes(), &errResp))
+			assert.Equal(suite.T(), tt.err.Code, errResp.Code)
+		})
+	}
+}
+
 func (suite *HandlerTestSuite) TestProcessInboundAuthConfig_Success() {
 	mockService := NewApplicationServiceInterfaceMock(suite.T())
 	handler := newApplicationHandler(mockService)
@@ -1411,6 +1483,41 @@ func (suite *HandlerTestSuite) TestHandleError_ClientError() {
 	err := json.Unmarshal(w.Body.Bytes(), &errResp)
 	assert.NoError(suite.T(), err)
 	assert.Equal(suite.T(), ErrorInvalidApplicationName.Code, errResp.Code)
+}
+
+func (suite *HandlerTestSuite) TestHandleError_SharedApplicationReadOnly() {
+	handler := newApplicationHandler(NewApplicationServiceInterfaceMock(suite.T()))
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest(http.MethodPut, "/applications/app-1", nil)
+
+	handler.handleError(context.Background(), w, r, &ErrorSharedApplicationReadOnly)
+
+	assert.Equal(suite.T(), http.StatusForbidden, w.Code)
+	var errResp apierror.ErrorResponse
+	assert.NoError(suite.T(), json.Unmarshal(w.Body.Bytes(), &errResp))
+	assert.Equal(suite.T(), ErrorSharedApplicationReadOnly.Code, errResp.Code)
+}
+
+func (suite *HandlerTestSuite) TestHandleApplicationGetRequest_SharedApplication() {
+	mockService := NewApplicationServiceInterfaceMock(suite.T())
+	handler := newApplicationHandler(mockService)
+	mockService.On("GetApplication", mock.Anything, "app-1").Return(&providers.Application{
+		ID: "app-1", OUID: "ou-1", Name: "TestApp", IsOwnedByOU: new(false), IsReadOnly: true,
+	}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/applications/app-1", nil)
+	req.SetPathValue("id", "app-1")
+	w := httptest.NewRecorder()
+
+	handler.HandleApplicationGetRequest(w, req)
+
+	assert.Equal(suite.T(), http.StatusOK, w.Code)
+	var response map[string]interface{}
+	assert.NoError(suite.T(), json.Unmarshal(w.Body.Bytes(), &response))
+	assert.Equal(suite.T(), "ou-1", response["ouId"])
+	assert.Equal(suite.T(), false, response["isOwnedByOU"])
+	assert.Equal(suite.T(), true, response["isReadOnly"])
 }
 
 func (suite *HandlerTestSuite) TestHandleError_NotFoundError() {

@@ -7,9 +7,18 @@ import type {SchemaPropertyInput} from '../../../../models/property-definition';
 import EditSchemaSettings from '../EditSchemaSettings';
 
 // I18nTextInput renders a complex i18n-aware widget; replace it with a simple text input.
-vi.mock('@thunderid/components', () => ({
-  I18nTextInput: ({value, onChange}: {value: string; onChange: (val: string) => void}) => (
-    <input data-testid="i18n-text-input" value={value} onChange={(e) => onChange(e.target.value)} />
+vi.mock('@thunderid/components', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/components')>()),
+  I18nTextInput: ({
+    value,
+    onChange,
+    disabled = false,
+  }: {
+    value: string;
+    onChange: (val: string) => void;
+    disabled?: boolean;
+  }) => (
+    <input data-testid="i18n-text-input" value={value} disabled={disabled} onChange={(e) => onChange(e.target.value)} />
   ),
 }));
 
@@ -265,6 +274,69 @@ describe('EditSchemaSettings (agent-type)', () => {
     });
   });
 
+  it.each([
+    [true, true],
+    [false, false],
+  ])('warns about existing hashed values only for an existing agent type (edit mode %s)', async (isEditMode, warns) => {
+    const user = userEvent.setup();
+    render(
+      <EditSchemaSettings
+        properties={[{...baseProperties[0], credential: true}]}
+        onPropertiesChange={mockOnPropertiesChange}
+        agentTypeHandle="test"
+        isEditMode={isEditMode}
+      />,
+    );
+
+    await user.click(screen.getByRole('checkbox', {name: /values will be hashed/i}));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/removing the credential flag/i)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/existing hashed values may become inaccessible/i) !== null).toBe(warns);
+  });
+
+  it('moves a property and sets whether an optional one is asked for on create', async () => {
+    const user = userEvent.setup();
+    render(
+      <EditSchemaSettings
+        properties={baseProperties}
+        onPropertiesChange={mockOnPropertiesChange}
+        agentTypeHandle="test"
+      />,
+    );
+
+    await user.click(screen.getAllByRole('button', {name: 'Move down'})[0]);
+    expect(mockOnPropertiesChange).toHaveBeenLastCalledWith([baseProperties[1], baseProperties[0]]);
+
+    // Only the optional property offers the choice.
+    const [askOnCreate] = screen.getAllByLabelText(/ask when created/i);
+    expect(screen.getAllByLabelText(/ask when created/i)).toHaveLength(1);
+    expect(askOnCreate).toBeChecked();
+    await user.click(askOnCreate);
+    expect(mockOnPropertiesChange).toHaveBeenLastCalledWith([
+      baseProperties[0],
+      {...baseProperties[1], hiddenOnCreate: true},
+    ]);
+  });
+
+  it('shows the remove button when it gets keyboard focus', async () => {
+    const user = userEvent.setup();
+    render(
+      <EditSchemaSettings
+        properties={baseProperties}
+        onPropertiesChange={mockOnPropertiesChange}
+        agentTypeHandle="test"
+      />,
+    );
+
+    // Move down comes first in tab order; Move up is disabled on the first property.
+    await user.tab();
+    await user.tab();
+    const [firstRemove] = screen.getAllByRole('button', {name: 'Remove property'});
+    expect(firstRemove).toHaveFocus();
+    await waitFor(() => expect(getComputedStyle(firstRemove).opacity).toBe('1'));
+  });
+
   it('confirms credential removal via the dialog', async () => {
     const user = userEvent.setup();
     const props = {
@@ -458,5 +530,24 @@ describe('EditSchemaSettings (agent-type)', () => {
     await user.click(addButton);
 
     expect(mockOnPropertiesChange).not.toHaveBeenCalled();
+  });
+
+  it('offers no editing when disabled', () => {
+    render(
+      <EditSchemaSettings
+        properties={[...baseProperties, {...baseProperties[1], id: '2', name: 'tier', type: 'enum', enum: ['gold']}]}
+        onPropertiesChange={mockOnPropertiesChange}
+        agentTypeHandle="test"
+        disabled
+      />,
+    );
+
+    expect(screen.getByDisplayValue('email')).toBeDisabled();
+    screen.getAllByTestId('i18n-text-input').forEach((input) => expect(input).toBeDisabled());
+    screen.getAllByRole('checkbox').forEach((checkbox) => expect(checkbox).toBeDisabled());
+    expect(screen.getByRole('button', {name: /^add$/i})).toBeDisabled();
+    expect(screen.queryByRole('button', {name: 'Add property'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'Remove property'})).not.toBeInTheDocument();
+    expect(screen.getByText('gold').closest('.MuiChip-root')?.querySelector('.MuiChip-deleteIcon')).toBeNull();
   });
 });

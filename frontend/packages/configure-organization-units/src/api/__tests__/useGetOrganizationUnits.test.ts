@@ -82,6 +82,58 @@ describe('useGetOrganizationUnits', () => {
     });
   });
 
+  it("lists only a project's organization units when a project is given", async () => {
+    mockHttpRequest.mockResolvedValue({data: mockOrganizationUnitList});
+
+    renderHook(() => useGetOrganizationUnits({projectId: 'project-1'}));
+
+    await waitFor(() => {
+      expect(mockHttpRequest).toHaveBeenCalledWith(
+        expect.objectContaining({url: expect.stringContaining('projectId=project-1'), method: 'GET'}),
+      );
+    });
+  });
+
+  it('lists where a project resource can be placed when placement is asked for', async () => {
+    mockHttpRequest.mockResolvedValue({data: mockOrganizationUnitList});
+
+    renderHook(() => useGetOrganizationUnits({projectId: 'project-1', placement: true}));
+
+    await waitFor(() => {
+      expect(mockHttpRequest).toHaveBeenCalledWith(
+        expect.objectContaining({url: expect.stringContaining('projectId=project-1&placement=true'), method: 'GET'}),
+      );
+    });
+  });
+
+  it('keeps only the placements within an organization unit when asked to', async () => {
+    mockHttpRequest.mockResolvedValue({data: mockOrganizationUnitList});
+
+    renderHook(() => useGetOrganizationUnits({projectId: 'project-1', placement: true, within: 'ou-type'}));
+
+    await waitFor(() => {
+      expect(mockHttpRequest).toHaveBeenCalledWith(
+        expect.objectContaining({
+          url: expect.stringContaining('projectId=project-1&placement=true&within=ou-type'),
+          method: 'GET',
+        }),
+      );
+    });
+  });
+
+  it('lists every root organization unit without a project', async () => {
+    mockHttpRequest.mockResolvedValue({data: mockOrganizationUnitList});
+
+    renderHook(() => useGetOrganizationUnits());
+
+    await waitFor(() => {
+      expect(mockHttpRequest).toHaveBeenCalled();
+    });
+    expect(mockHttpRequest).not.toHaveBeenCalledWith(
+      expect.objectContaining({url: expect.stringContaining('projectId')}),
+    );
+  });
+
   it('should fetch organization units with offset parameter', async () => {
     mockHttpRequest.mockResolvedValue({data: mockOrganizationUnitList});
 

@@ -15,14 +15,21 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
+	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
+	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
+	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/internal/system/valueref"
 )
@@ -30,21 +37,19 @@ import (
 const (
 	loggerComponentName = "ResourceMgtService"
 
-	// ValidPermissionDelimiters defines the allowed delimiter characters in permission strings.
-	// Exported so callers parsing permission strings (e.g. consent enforcer rollup) can share the
-	// single source of truth.
-	ValidPermissionDelimiters = "._:-/"
-
 	// validPermissionCharacters defines the allowed characters for permission strings.
 	// Allowed: a-z A-Z 0-9 and delimiter characters (. _ : - /)
 	validPermissionCharacters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" +
-		ValidPermissionDelimiters
+		serverconst.ValidPermissionDelimiters
 )
 
+// projectIDQueryParam is the query parameter that lists the resource servers of one project.
+const projectIDQueryParam = "projectId"
+
 // IsPermissionDelimiter reports whether r is one of the allowed delimiter characters in a
-// permission string (see ValidPermissionDelimiters).
+// permission string (see serverconst.ValidPermissionDelimiters).
 func IsPermissionDelimiter(r rune) bool {
-	return strings.ContainsRune(ValidPermissionDelimiters, r)
+	return strings.ContainsRune(serverconst.ValidPermissionDelimiters, r)
 }
 
 // ResourceServiceInterface defines the interface for the resource service.
@@ -56,6 +61,15 @@ type ResourceServiceInterface interface {
 	) (*providers.ResourceServer, *tidcommon.ServiceError)
 	GetResourceServer(ctx context.Context, id string) (*providers.ResourceServer, *tidcommon.ServiceError)
 	GetResourceServerList(ctx context.Context, limit, offset int) (*ResourceServerList, *tidcommon.ServiceError)
+	GetResourceServerListByOUID(
+		ctx context.Context, ouID string, limit, offset int,
+	) (*ResourceServerList, *tidcommon.ServiceError)
+	GetResourceServerListByProject(
+		ctx context.Context, projectID, ouID string, limit, offset int,
+	) (*ResourceServerList, *tidcommon.ServiceError)
+	// ProjectHasResourceServers reports whether any resource server, runtime or declared, belongs to the
+	// project.
+	ProjectHasResourceServers(ctx context.Context, projectID string) (bool, *tidcommon.ServiceError)
 	UpdateResourceServer(
 		ctx context.Context, id string, rs providers.ResourceServer,
 	) (*providers.ResourceServer, *tidcommon.ServiceError)
@@ -75,6 +89,8 @@ type ResourceServiceInterface interface {
 	GetAllResourceList(
 		ctx context.Context, resourceServerID string,
 	) ([]providers.Resource, *tidcommon.ServiceError)
+	GetDeclaredPermissions(ctx context.Context, resourceServerID string, roots []string) (
+		[]string, *tidcommon.ServiceError)
 	UpdateResource(
 		ctx context.Context, resourceServerID, id string, res providers.Resource,
 	) (*providers.Resource, *tidcommon.ServiceError)
@@ -124,8 +140,28 @@ type resourceService struct {
 	transactioner      providers.Transactioner
 	dependencyRegistry resourcedependency.Registry
 	valueCapturer      declarativeresource.ValueCapturer
+	// projectValidator is nil on a deployment that serves no projects.
+	projectValidator projectOUValidator
 	// keepsReferences is set on a control plane, which keeps a value reference where a value belongs.
 	keepsReferences bool
+	bus             eventbus.EventBusInterface
+	authzService    sysauthz.SystemAuthorizationServiceInterface
+	// systemFlows is nil where system flows are off.
+	systemFlows systemFlowProvider
+	// managed says which resource servers a control plane deployed, which stay read only here with their
+	// resources and actions. Nil where nothing is deployed from one.
+	managed managedresource.StoreInterface
+}
+
+// projectOUValidator checks that the organization unit of a resource scoped to a project belongs to it.
+type projectOUValidator interface {
+	ValidateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError
+}
+
+// systemFlowProvider runs a system flow to completion. The flow engine implements it.
+type systemFlowProvider interface {
+	ExecuteSystemFlow(ctx context.Context, sysCtx *flowcommon.SystemFlowContext) (*flowcommon.SystemFlowResult,
+		*tidcommon.ServiceError)
 }
 
 // authZENPDPConnectionLookup retrieves AuthZEN PDP connections for resource-server validation.
@@ -195,12 +231,15 @@ func (rs *resourceService) cascadeDeleteDependents(ctx context.Context, resource
 // deletion while it still has resources or resource-server-level actions; a resource is blocked while
 // it still has sub-resources or actions. These dependents live in the same store, so their existence
 // is resolved directly and reported as a single restrict usage. Other resource types have no
-// dependencies here.
+// dependencies here, except an organization unit, which is blocked from deletion while it owns resource
+// servers.
 func (rs *resourceService) GetResourceDependencies(
 	ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error) {
 	var hasDeps bool
 	var err error
 	switch resourceType {
+	case resourcedependency.ResourceTypeOU:
+		return rs.organizationUnitUsages(ctx, id)
 	case resourcedependency.ResourceTypeResourceServer:
 		hasDeps, err = rs.resourceStore.CheckResourceServerHasDependencies(ctx, id)
 	case resourcedependency.ResourceTypeResource:
@@ -222,6 +261,26 @@ func (rs *resourceService) GetResourceDependencies(
 	}}, nil
 }
 
+// organizationUnitUsages reports the resource servers an organization unit owns. The number scanned is bounded
+// by MaxCompositeStoreRecords.
+func (rs *resourceService) organizationUnitUsages(
+	ctx context.Context, ouID string) ([]resourcedependency.ResourceDependency, error) {
+	servers, err := rs.resourceStore.GetResourceServerListByOUID(ctx, ouID, serverconst.MaxCompositeStoreRecords, 0)
+	if err != nil {
+		return nil, err
+	}
+	deps := make([]resourcedependency.ResourceDependency, 0, len(servers))
+	for _, server := range servers {
+		deps = append(deps, resourcedependency.ResourceDependency{
+			ResourceType:     resourcedependency.ResourceTypeResourceServer,
+			ID:               server.ID,
+			DisplayName:      server.Name,
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		})
+	}
+	return deps, nil
+}
+
 // newResourceService creates a new instance of ResourceService.
 func newResourceService(
 	ouService oupkg.OrganizationUnitServiceInterface,
@@ -229,6 +288,9 @@ func newResourceService(
 	transactionerInstance providers.Transactioner,
 	authZENPDPService authZENPDPConnectionLookup,
 	valueCapturer declarativeresource.ValueCapturer,
+	projectValidator projectOUValidator,
+	bus eventbus.EventBusInterface,
+	authzService sysauthz.SystemAuthorizationServiceInterface,
 	options ...Option,
 ) (ResourceServiceInterface, error) {
 	// Load default delimiter from config
@@ -245,6 +307,9 @@ func newResourceService(
 		defaultDelimiter:  defaultDelimiter,
 		transactioner:     transactionerInstance,
 		valueCapturer:     valueCapturer,
+		projectValidator:  projectValidator,
+		bus:               bus,
+		authzService:      authzService,
 	}
 	for _, option := range options {
 		option(service)
@@ -252,10 +317,68 @@ func newResourceService(
 	return service, nil
 }
 
+// refuseManaged refuses a change to a resource server a control plane deployed, or to its resources or
+// actions, unless the change is the managed import's: only a deploy from the control plane changes them.
+func (rs *resourceService) refuseManaged(ctx context.Context, resourceServerID string) *tidcommon.ServiceError {
+	managed, err := managedresource.IsReadOnly(ctx, rs.managed, resourceServerID,
+		managedresource.TypeResourceServer)
+	if err != nil {
+		rs.logger.Error(ctx, "Failed to read whether a control plane deployed the resource server",
+			log.String("resourceServerID", resourceServerID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if managed {
+		return ErrorManagedResourceServer.WithParams(map[string]string{"id": resourceServerID})
+	}
+	return nil
+}
+
+// withManaged reports a resource server a control plane deployed as read only. A failed read of that is
+// logged and taken as not: every write to such a server is refused whatever the read says.
+func (rs *resourceService) withManaged(ctx context.Context, resourceServer *providers.ResourceServer) (
+	*providers.ResourceServer, *tidcommon.ServiceError) {
+	deployed, err := managedresource.IsDeployed(ctx, rs.managed, resourceServer.ID,
+		managedresource.TypeResourceServer)
+	if err != nil {
+		rs.logger.Error(ctx, "Failed to read whether a control plane deployed the resource server",
+			log.String("resourceServerID", resourceServer.ID), log.Error(err))
+	}
+	if deployed {
+		resourceServer.IsReadOnly = true
+	}
+	return resourceServer, nil
+}
+
+// markManaged reports the listed resource servers a control plane deployed as read only.
+func (rs *resourceService) markManaged(ctx context.Context, resourceServers []providers.ResourceServer) {
+	if err := managedresource.MarkDeployed(ctx, rs.managed, resourceServers,
+		func(r *providers.ResourceServer) string { return r.ID },
+		func(r *providers.ResourceServer) { r.IsReadOnly = true },
+		managedresource.TypeResourceServer); err != nil {
+		// Every write to such a server is refused whatever the list says, so it is served without the flag.
+		rs.logger.Error(ctx, "Failed to read which resource servers a control plane deployed", log.Error(err))
+	}
+}
+
 // Resource Server Methods
 
 // CreateResourceServer creates a new resource server.
 func (rs *resourceService) CreateResourceServer(
+	ctx context.Context,
+	resourceServer providers.ResourceServer,
+) (*providers.ResourceServer, *tidcommon.ServiceError) {
+	created, svcErr := rs.createResourceServer(ctx, resourceServer)
+	var id string
+	if svcErr == nil {
+		id = created.ID
+	}
+	rs.publishEvent(ctx, audit.EventResourceServerCreate, audit.TargetTypeResourceServer, audit.ActionCreate, id,
+		svcErr)
+	return created, svcErr
+}
+
+// createResourceServer creates a new resource server without publishing its audit event.
+func (rs *resourceService) createResourceServer(
 	ctx context.Context,
 	resourceServer providers.ResourceServer,
 ) (*providers.ResourceServer, *tidcommon.ServiceError) {
@@ -269,6 +392,24 @@ func (rs *resourceService) CreateResourceServer(
 	}
 	if err := rs.validateResourceServerCreate(resourceServer); err != nil {
 		return nil, err
+	}
+	// A resource server that names no organization unit goes to the system organization unit.
+	if resourceServer.OUID == "" {
+		systemOUID, svcErr := rs.ouService.GetSystemOUID(ctx)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		resourceServer.OUID = systemOUID
+	}
+	if svcErr := rs.checkResourceServerAccess(ctx, security.ActionCreateResourceServer,
+		resourceServer.OUID); svcErr != nil {
+		return nil, svcErr
+	}
+	// A project checks that the resource server's organization unit belongs to it.
+	if resourceServer.ProjectID != "" {
+		if svcErr := rs.validateProjectOU(ctx, resourceServer.ProjectID, resourceServer.OUID); svcErr != nil {
+			return nil, svcErr
+		}
 	}
 
 	// Validate organization unit exists
@@ -324,7 +465,7 @@ func (rs *resourceService) CreateResourceServer(
 			return nil, &tidcommon.InternalServerError
 		}
 	} else {
-		_, svcErr := rs.GetResourceServer(ctx, id)
+		_, svcErr := rs.getResourceServer(ctx, id)
 		if svcErr != nil && svcErr.Code != ErrorResourceServerNotFound.Code {
 			return nil, svcErr
 		}
@@ -343,14 +484,16 @@ func (rs *resourceService) CreateResourceServer(
 		}
 
 		createdRS = &providers.ResourceServer{
-			ID:                  id,
-			Name:                resourceServer.Name,
-			Description:         resourceServer.Description,
-			Identifier:          resourceServer.Identifier,
-			Type:                resourceServer.Type,
-			OUID:                resourceServer.OUID,
-			Delimiter:           resourceServer.Delimiter,
-			AuthorizationEngine: resourceServer.AuthorizationEngine,
+			ID:                      id,
+			Name:                    resourceServer.Name,
+			Description:             resourceServer.Description,
+			Identifier:              resourceServer.Identifier,
+			Type:                    resourceServer.Type,
+			OUID:                    resourceServer.OUID,
+			ProjectID:               resourceServer.ProjectID,
+			Delimiter:               resourceServer.Delimiter,
+			HierarchicalPermissions: resourceServer.HierarchicalPermissions,
+			AuthorizationEngine:     resourceServer.AuthorizationEngine,
 		}
 		return nil
 	}); err != nil {
@@ -364,6 +507,21 @@ func (rs *resourceService) CreateResourceServer(
 
 // GetResourceServer retrieves a resource server by ID.
 func (rs *resourceService) GetResourceServer(
+	ctx context.Context, id string,
+) (*providers.ResourceServer, *tidcommon.ServiceError) {
+	resourceServer, svcErr := rs.getResourceServer(ctx, id)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := rs.checkResourceServerAccess(ctx, security.ActionReadResourceServer,
+		resourceServer.OUID); svcErr != nil {
+		return nil, svcErr
+	}
+	return resourceServer, nil
+}
+
+// getResourceServer retrieves a resource server by its id without checking the caller.
+func (rs *resourceService) getResourceServer(
 	ctx context.Context, id string,
 ) (*providers.ResourceServer, *tidcommon.ServiceError) {
 	if id == "" {
@@ -380,7 +538,7 @@ func (rs *resourceService) GetResourceServer(
 		return nil, &tidcommon.InternalServerError
 	}
 
-	return &resourceServer, nil
+	return rs.withManaged(ctx, &resourceServer)
 }
 
 // GetResourceServerByIdentifier retrieves a resource server by its identifier.
@@ -402,7 +560,7 @@ func (rs *resourceService) GetResourceServerByIdentifier(
 		return nil, &tidcommon.InternalServerError
 	}
 
-	return &resourceServer, nil
+	return rs.withManaged(ctx, &resourceServer)
 }
 
 // GetResourceServerList retrieves a paginated list of resource servers.
@@ -411,6 +569,14 @@ func (rs *resourceService) GetResourceServerList(
 ) (*ResourceServerList, *tidcommon.ServiceError) {
 	if err := validatePaginationParams(limit, offset); err != nil {
 		return nil, err
+	}
+	ouIDs, all, svcErr := sysauthz.ResolveListOUs(ctx, rs.authzService, &rs.logger,
+		security.ActionListResourceServers, "")
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if !all {
+		return rs.listResourceServersByOUIDs(ctx, ouIDs, limit, offset)
 	}
 
 	totalCount, err := rs.resourceStore.GetResourceServerListCount(ctx)
@@ -431,19 +597,250 @@ func (rs *resourceService) GetResourceServerList(
 		return nil, &tidcommon.InternalServerError
 	}
 
+	rs.markManaged(ctx, resourceServers)
 	response := &ResourceServerList{
 		TotalResults:    totalCount,
 		ResourceServers: resourceServers,
 		StartIndex:      offset + 1,
 		Count:           len(resourceServers),
-		Links:           buildPaginationLinks("/resource-servers", limit, offset, totalCount),
+		Links:           utils.BuildPaginationLinks("/resource-servers", limit, offset, totalCount, ""),
 	}
 
 	return response, nil
 }
 
+// listResourceServersByOUIDs lists the resource servers of the organization units, one unit after the
+// other in the given order, for a caller already allowed to list them.
+func (rs *resourceService) listResourceServersByOUIDs(
+	ctx context.Context, ouIDs []string, limit, offset int,
+) (*ResourceServerList, *tidcommon.ServiceError) {
+	counts := make([]int, len(ouIDs))
+	totalCount := 0
+	for i, ouID := range ouIDs {
+		count, err := rs.resourceStore.GetResourceServerListCountByOUID(ctx, ouID)
+		if err != nil {
+			return nil, rs.ouResourceServerListError(ctx, ouID, err)
+		}
+		counts[i] = count
+		totalCount += count
+	}
+
+	resourceServers := make([]providers.ResourceServer, 0)
+	skip := offset
+	for i, ouID := range ouIDs {
+		if len(resourceServers) == limit {
+			break
+		}
+		if skip >= counts[i] {
+			skip -= counts[i]
+			continue
+		}
+		page, err := rs.resourceStore.GetResourceServerListByOUID(ctx, ouID, limit-len(resourceServers), skip)
+		if err != nil {
+			return nil, rs.ouResourceServerListError(ctx, ouID, err)
+		}
+		resourceServers = append(resourceServers, page...)
+		skip = 0
+	}
+
+	return &ResourceServerList{
+		TotalResults:    totalCount,
+		ResourceServers: resourceServers,
+		StartIndex:      offset + 1,
+		Count:           len(resourceServers),
+		Links:           utils.BuildPaginationLinks("/resource-servers", limit, offset, totalCount, ""),
+	}, nil
+}
+
+// ouResourceServerListError answers a failure to list the resource servers of an organization unit.
+func (rs *resourceService) ouResourceServerListError(ctx context.Context, ouID string,
+	err error) *tidcommon.ServiceError {
+	if errors.Is(err, errResultLimitExceededInCompositeMode) {
+		return &ErrResultLimitExceededInCompositeMode
+	}
+	rs.logger.Error(ctx, "Failed to list resource servers in organization unit",
+		log.String("ouID", ouID), log.Error(err))
+	return &tidcommon.InternalServerError
+}
+
+// GetResourceServerListByOUID retrieves a paginated list of the resource servers an organization unit owns.
+func (rs *resourceService) GetResourceServerListByOUID(
+	ctx context.Context, ouID string, limit, offset int,
+) (*ResourceServerList, *tidcommon.ServiceError) {
+	if ouID == "" {
+		return nil, &ErrorInvalidRequestFormat
+	}
+	if err := validatePaginationParams(limit, offset); err != nil {
+		return nil, err
+	}
+	_, visible, svcErr := sysauthz.ResolveListOU(ctx, rs.authzService, &rs.logger, security.ActionListResourceServers,
+		ouID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if !visible {
+		return emptyResourceServerList(limit, offset,
+			utils.FilterQueryParam(map[string]any{filter.AttributeOUID: ouID})), nil
+	}
+	return rs.listResourceServersByOUID(ctx, ouID, limit, offset)
+}
+
+// listResourceServersByOUID lists the resource servers of an organization unit for a caller already
+// allowed to list them.
+func (rs *resourceService) listResourceServersByOUID(
+	ctx context.Context, ouID string, limit, offset int,
+) (*ResourceServerList, *tidcommon.ServiceError) {
+	totalCount, err := rs.resourceStore.GetResourceServerListCountByOUID(ctx, ouID)
+	if err != nil {
+		if errors.Is(err, errResultLimitExceededInCompositeMode) {
+			return nil, &ErrResultLimitExceededInCompositeMode
+		}
+		rs.logger.Error(ctx, "Failed to get resource server count in organization unit",
+			log.String("ouID", ouID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	resourceServers, err := rs.resourceStore.GetResourceServerListByOUID(ctx, ouID, limit, offset)
+	if err != nil {
+		if errors.Is(err, errResultLimitExceededInCompositeMode) {
+			return nil, &ErrResultLimitExceededInCompositeMode
+		}
+		rs.logger.Error(ctx, "Failed to list resource servers in organization unit",
+			log.String("ouID", ouID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	rs.markManaged(ctx, resourceServers)
+	return &ResourceServerList{
+		TotalResults:    totalCount,
+		ResourceServers: resourceServers,
+		StartIndex:      offset + 1,
+		Count:           len(resourceServers),
+		Links: utils.BuildPaginationLinks("/resource-servers", limit, offset, totalCount,
+			utils.FilterQueryParam(map[string]any{filter.AttributeOUID: ouID})),
+	}, nil
+}
+
+// GetResourceServerListByProject retrieves a paginated list of the resource servers of a project, narrowed
+// to the ones an organization unit owns when ouID is set. A project that does not exist has none.
+func (rs *resourceService) GetResourceServerListByProject(
+	ctx context.Context, projectID, ouID string, limit, offset int,
+) (*ResourceServerList, *tidcommon.ServiceError) {
+	if err := validatePaginationParams(limit, offset); err != nil {
+		return nil, err
+	}
+
+	extraQuery := "&" + projectIDQueryParam + "=" + url.QueryEscape(projectID)
+	if ouID != "" {
+		extraQuery += utils.FilterQueryParam(map[string]any{filter.AttributeOUID: ouID})
+	}
+	ouID, visible, svcErr := sysauthz.ResolveListOU(ctx, rs.authzService, &rs.logger,
+		security.ActionListResourceServers, ouID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if projectID == "" || !visible {
+		return &ResourceServerList{
+			ResourceServers: []providers.ResourceServer{},
+			StartIndex:      offset + 1,
+			Links:           utils.BuildPaginationLinks("/resource-servers", limit, offset, 0, extraQuery),
+		}, nil
+	}
+
+	totalCount, err := rs.resourceStore.GetResourceServerListCountByProject(ctx, projectID, ouID)
+	if err != nil {
+		if errors.Is(err, errResultLimitExceededInCompositeMode) {
+			return nil, &ErrResultLimitExceededInCompositeMode
+		}
+		rs.logger.Error(ctx, "Failed to get resource server count in project",
+			log.String("projectID", projectID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	resourceServers, err := rs.resourceStore.GetResourceServerListByProject(ctx, projectID, ouID, limit, offset)
+	if err != nil {
+		if errors.Is(err, errResultLimitExceededInCompositeMode) {
+			return nil, &ErrResultLimitExceededInCompositeMode
+		}
+		rs.logger.Error(ctx, "Failed to list resource servers in project",
+			log.String("projectID", projectID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	rs.markManaged(ctx, resourceServers)
+	return &ResourceServerList{
+		TotalResults:    totalCount,
+		ResourceServers: resourceServers,
+		StartIndex:      offset + 1,
+		Count:           len(resourceServers),
+		Links:           utils.BuildPaginationLinks("/resource-servers", limit, offset, totalCount, extraQuery),
+	}, nil
+}
+
+// ProjectHasResourceServers reports whether any resource server, runtime or declared, belongs to the project.
+// A project with more resource servers than the composite store can count has resource servers.
+func (rs *resourceService) ProjectHasResourceServers(ctx context.Context, projectID string) (bool,
+	*tidcommon.ServiceError) {
+	count, err := rs.resourceStore.GetResourceServerListCountByProject(ctx, projectID, "")
+	if errors.Is(err, errResultLimitExceededInCompositeMode) {
+		return true, nil
+	}
+	if err != nil {
+		rs.logger.Error(ctx, "Failed to count the resource servers of a project",
+			log.String("projectID", projectID), log.Error(err))
+		return false, &tidcommon.InternalServerError
+	}
+	return count > 0, nil
+}
+
+// validateProjectOU checks that a resource server's organization unit belongs to its project. It returns
+// ErrorInvalidProject when no such project exists, and ErrorOUNotInProject when the organization unit is
+// outside the project.
+//
+// A deployment that serves no projects, such as a Data Plane, cannot check the project. It keeps the
+// project ID and organization unit as given so that imported configuration retains them.
+func (rs *resourceService) validateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError {
+	if rs.projectValidator == nil {
+		return nil
+	}
+	svcErr := rs.projectValidator.ValidateProjectOU(ctx, projectID, ouID)
+	switch {
+	case svcErr == nil:
+		return nil
+	case svcErr.Code == projectscope.ProjectNotFoundErrorCode:
+		return &ErrorInvalidProject
+	case svcErr.Code == projectscope.OUNotInProjectErrorCode:
+		return &ErrorOUNotInProject
+	default:
+		return &tidcommon.InternalServerError
+	}
+}
+
 // UpdateResourceServer updates a resource server.
 func (rs *resourceService) UpdateResourceServer(
+	ctx context.Context,
+	id string, resourceServer providers.ResourceServer,
+) (*providers.ResourceServer, *tidcommon.ServiceError) {
+	updated, svcErr := rs.updateResourceServer(ctx, id, resourceServer)
+	rs.publishEvent(ctx, audit.EventResourceServerUpdate, audit.TargetTypeResourceServer, audit.ActionUpdate, id,
+		svcErr)
+	return updated, svcErr
+}
+
+// refuseImmutable refuses a change to a resource server deployed by a control plane, or declared in a file.
+func (rs *resourceService) refuseImmutable(ctx context.Context, id string) *tidcommon.ServiceError {
+	if svcErr := rs.refuseManaged(ctx, id); svcErr != nil {
+		return svcErr
+	}
+	if rs.IsResourceServerDeclarative(id) {
+		rs.logger.Debug(ctx, "Cannot modify declarative resource server", log.String("id", id))
+		return ErrorImmutableResourceServer.WithParams(map[string]string{"id": id})
+	}
+	return nil
+}
+
+// updateResourceServer updates a resource server without publishing its audit event.
+func (rs *resourceService) updateResourceServer(
 	ctx context.Context,
 	id string, resourceServer providers.ResourceServer,
 ) (*providers.ResourceServer, *tidcommon.ServiceError) {
@@ -464,15 +861,34 @@ func (rs *resourceService) UpdateResourceServer(
 		rs.logger.Error(ctx, "Failed to check resource server existence", log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
+	if svcErr := rs.checkResourceServerAccess(ctx, security.ActionUpdateResourceServer,
+		existingResServer.OUID); svcErr != nil {
+		return nil, svcErr
+	}
 
-	// Check if resource server is declarative (immutable)
-	if rs.IsResourceServerDeclarative(id) {
-		rs.logger.Debug(ctx, "Cannot modify declarative resource server", log.String("id", id))
-		return nil, ErrorImmutableResourceServer.WithParams(map[string]string{"id": id})
+	if svcErr := rs.refuseImmutable(ctx, id); svcErr != nil {
+		return nil, svcErr
+	}
+
+	// An update that names no organization unit keeps the resource server in its own, and one that names no
+	// project keeps it in its project. The project is checked only when the update changes the project or the
+	// organization unit, so a resource server whose project is gone can still be edited.
+	if svcErr := rs.resolveUpdateOU(ctx, existingResServer.OUID, &resourceServer); svcErr != nil {
+		return nil, svcErr
+	}
+	if resourceServer.ProjectID == "" {
+		resourceServer.ProjectID = existingResServer.ProjectID
+	}
+	if resourceServer.ProjectID != "" && (resourceServer.ProjectID != existingResServer.ProjectID ||
+		resourceServer.OUID != existingResServer.OUID) {
+		if svcErr := rs.validateProjectOU(ctx, resourceServer.ProjectID, resourceServer.OUID); svcErr != nil {
+			return nil, svcErr
+		}
 	}
 
 	// Delimiter is always preserved from the existing record
 	resourceServer.Delimiter = existingResServer.Delimiter
+	resourceServer.HierarchicalPermissions = existingResServer.HierarchicalPermissions
 
 	// Type is immutable and always preserved from the existing record
 	resourceServer.Type = existingResServer.Type
@@ -494,7 +910,20 @@ func (rs *resourceService) UpdateResourceServer(
 		if hasInvalidMCPIdentifier(resourceServer.Type, resourceServer.Identifier, rs.keepsReferences) {
 			return nil, &ErrorInvalidMCPIdentifier
 		}
-		identifierExists, err := rs.resourceStore.CheckResourceServerIdentifierExists(ctx, resourceServer.Identifier)
+		var identifierExists bool
+		var err error
+		// An equivalent spelling of the current identifier only conflicts with a server that has it exactly.
+		if normalizeResourceIdentifier(resourceServer.Identifier) ==
+			normalizeResourceIdentifier(existingResServer.Identifier) {
+			_, err = rs.resourceStore.GetResourceServerByIdentifier(ctx, resourceServer.Identifier)
+			identifierExists = err == nil
+			if errors.Is(err, errResourceServerNotFound) {
+				err = nil
+			}
+		} else {
+			identifierExists, err = rs.resourceStore.CheckResourceServerIdentifierExists(
+				ctx, resourceServer.Identifier)
+		}
 		if err != nil {
 			rs.logger.Error(ctx, "Failed to check resource server identifier", log.Error(err))
 			return nil, &tidcommon.InternalServerError
@@ -535,14 +964,16 @@ func (rs *resourceService) UpdateResourceServer(
 		}
 
 		updatedRS = &providers.ResourceServer{
-			ID:                  id,
-			Name:                resourceServer.Name,
-			Description:         resourceServer.Description,
-			Identifier:          resourceServer.Identifier,
-			Type:                resourceServer.Type,
-			OUID:                resourceServer.OUID,
-			Delimiter:           resourceServer.Delimiter,
-			AuthorizationEngine: resourceServer.AuthorizationEngine,
+			ID:                      id,
+			Name:                    resourceServer.Name,
+			Description:             resourceServer.Description,
+			Identifier:              resourceServer.Identifier,
+			Type:                    resourceServer.Type,
+			OUID:                    resourceServer.OUID,
+			ProjectID:               resourceServer.ProjectID,
+			Delimiter:               resourceServer.Delimiter,
+			HierarchicalPermissions: resourceServer.HierarchicalPermissions,
+			AuthorizationEngine:     resourceServer.AuthorizationEngine,
 		}
 		return nil
 	}); err != nil {
@@ -555,6 +986,19 @@ func (rs *resourceService) UpdateResourceServer(
 
 // DeleteResourceServer deletes a resource server.
 func (rs *resourceService) DeleteResourceServer(ctx context.Context, id string) *tidcommon.ServiceError {
+	svcErr := rs.deleteResourceServer(ctx, id)
+	// A delete that found nothing to remove succeeds without an event, so no caller can record a
+	// deletion of an ID it made up.
+	if svcErr == errResourceServerNotFoundNoop {
+		return nil
+	}
+	rs.publishEvent(ctx, audit.EventResourceServerDelete, audit.TargetTypeResourceServer, audit.ActionDelete, id,
+		svcErr)
+	return svcErr
+}
+
+// deleteResourceServer deletes a resource server without publishing its audit event.
+func (rs *resourceService) deleteResourceServer(ctx context.Context, id string) *tidcommon.ServiceError {
 	if id == "" {
 		return &ErrorMissingID
 	}
@@ -565,13 +1009,20 @@ func (rs *resourceService) DeleteResourceServer(ctx context.Context, id string) 
 		return ErrorImmutableResourceServer.WithParams(map[string]string{"id": id})
 	}
 
-	_, err := rs.resourceStore.GetResourceServer(ctx, id)
+	existing, err := rs.resourceStore.GetResourceServer(ctx, id)
 	if err != nil {
 		if errors.Is(err, errResourceServerNotFound) {
-			return nil // Idempotent delete
+			return errResourceServerNotFoundNoop // Idempotent delete
 		}
 		rs.logger.Error(ctx, "Failed to check resource server existence", log.Error(err))
 		return &tidcommon.InternalServerError
+	}
+	if svcErr := rs.checkResourceServerAccess(ctx, security.ActionDeleteResourceServer,
+		existing.OUID); svcErr != nil {
+		return svcErr
+	}
+	if svcErr := rs.refuseManaged(ctx, id); svcErr != nil {
+		return svcErr
 	}
 
 	// Refuse deletion when resources or actions still depend on this resource server. Dependencies
@@ -607,9 +1058,28 @@ func (rs *resourceService) CreateResource(
 	ctx context.Context,
 	resourceServerID string, resource providers.Resource,
 ) (*providers.Resource, *tidcommon.ServiceError) {
+	created, svcErr := rs.createResource(ctx, resourceServerID, resource)
+	var id string
+	if svcErr == nil {
+		id = created.ID
+	}
+	rs.publishEvent(ctx, audit.EventResourceServerResourceCreate, audit.TargetTypeResource, audit.ActionCreate, id,
+		svcErr)
+	return created, svcErr
+}
+
+// createResource creates a new resource under a resource server without publishing its audit event.
+func (rs *resourceService) createResource(
+	ctx context.Context,
+	resourceServerID string, resource providers.Resource,
+) (*providers.Resource, *tidcommon.ServiceError) {
 	// Validate resource server exists
-	resourceServer, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
+	resourceServer, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID,
+		security.ActionUpdateResourceServer)
 	if svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := rs.refuseManaged(ctx, resourceServerID); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -702,7 +1172,7 @@ func (rs *resourceService) GetResource(
 	}
 
 	// Validate resource server exists
-	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
+	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID, security.ActionReadResourceServer)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -731,7 +1201,7 @@ func (rs *resourceService) GetResourceList(
 		return nil, &ErrorMissingID
 	}
 	// Validate resource server exists
-	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
+	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID, security.ActionReadResourceServer)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -772,7 +1242,7 @@ func (rs *resourceService) GetResourceList(
 		Resources:    resources,
 		StartIndex:   offset + 1,
 		Count:        len(resources),
-		Links:        buildPaginationLinks(baseURL, limit, offset, totalCount),
+		Links:        utils.BuildPaginationLinks(baseURL, limit, offset, totalCount, ""),
 	}
 
 	return response, nil
@@ -785,7 +1255,8 @@ func (rs *resourceService) GetAllResourceList(
 	if resourceServerID == "" {
 		return nil, &ErrorMissingID
 	}
-	if _, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID); svcErr != nil {
+	if _, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID,
+		security.ActionReadResourceServer); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -814,6 +1285,17 @@ func (rs *resourceService) UpdateResource(
 	ctx context.Context,
 	resourceServerID, id string, resource providers.Resource,
 ) (*providers.Resource, *tidcommon.ServiceError) {
+	updated, svcErr := rs.updateResource(ctx, resourceServerID, id, resource)
+	rs.publishEvent(ctx, audit.EventResourceServerResourceUpdate, audit.TargetTypeResource, audit.ActionUpdate, id,
+		svcErr)
+	return updated, svcErr
+}
+
+// updateResource updates a resource without publishing its audit event.
+func (rs *resourceService) updateResource(
+	ctx context.Context,
+	resourceServerID, id string, resource providers.Resource,
+) (*providers.Resource, *tidcommon.ServiceError) {
 	if id == "" || resourceServerID == "" {
 		return nil, &ErrorMissingID
 	}
@@ -822,14 +1304,17 @@ func (rs *resourceService) UpdateResource(
 	if rs.IsResourceServerDeclarative(resourceServerID) {
 		rs.logger.Debug(ctx,
 			"Cannot modify resource in declarative resource server",
-			log.String("resource_server_id", resourceServerID),
+			log.String("resourceServerID", resourceServerID),
 		)
 		return nil, ErrorImmutableResource.WithParams(map[string]string{"id": id})
 	}
 
 	// Validate resource server exists
-	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
+	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID, security.ActionUpdateResourceServer)
 	if svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := rs.refuseManaged(ctx, resourceServerID); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -878,6 +1363,20 @@ func (rs *resourceService) UpdateResource(
 // DeleteResource deletes a resource.
 func (rs *resourceService) DeleteResource(
 	ctx context.Context, resourceServerID, id string) *tidcommon.ServiceError {
+	svcErr := rs.deleteResource(ctx, resourceServerID, id)
+	// A delete that found nothing to remove succeeds without an event, so no caller can record a
+	// deletion of an ID it made up.
+	if svcErr == errResourceNotFoundNoop {
+		return nil
+	}
+	rs.publishEvent(ctx, audit.EventResourceServerResourceDelete, audit.TargetTypeResource, audit.ActionDelete, id,
+		svcErr)
+	return svcErr
+}
+
+// deleteResource deletes a resource without publishing its audit event.
+func (rs *resourceService) deleteResource(
+	ctx context.Context, resourceServerID, id string) *tidcommon.ServiceError {
 	if id == "" || resourceServerID == "" {
 		return &ErrorMissingID
 	}
@@ -886,25 +1385,32 @@ func (rs *resourceService) DeleteResource(
 	if rs.IsResourceServerDeclarative(resourceServerID) {
 		rs.logger.Debug(ctx,
 			"Cannot delete resource in declarative resource server",
-			log.String("resource_server_id", resourceServerID),
+			log.String("resourceServerID", resourceServerID),
 		)
 		return ErrorImmutableResource.WithParams(map[string]string{"id": id})
 	}
 
 	// Validate resource server exists
-	_, err := rs.resourceStore.GetResourceServer(ctx, resourceServerID)
+	resourceServer, err := rs.resourceStore.GetResourceServer(ctx, resourceServerID)
 	if err != nil {
 		if errors.Is(err, errResourceServerNotFound) {
-			return nil // Idempotent delete
+			return errResourceNotFoundNoop // Idempotent delete
 		}
 		rs.logger.Error(ctx, "Failed to check resource server", log.Error(err))
 		return &tidcommon.InternalServerError
+	}
+	if svcErr := rs.checkResourceServerAccess(ctx, security.ActionUpdateResourceServer,
+		resourceServer.OUID); svcErr != nil {
+		return svcErr
+	}
+	if svcErr := rs.refuseManaged(ctx, resourceServerID); svcErr != nil {
+		return svcErr
 	}
 
 	// Check resource exists
 	if _, err := rs.resourceStore.GetResource(ctx, id, resourceServerID); err != nil {
 		if errors.Is(err, errResourceNotFound) {
-			return nil // Idempotent delete
+			return errResourceNotFoundNoop // Idempotent delete
 		}
 		rs.logger.Error(ctx, "Failed to check resource existence", log.Error(err))
 		return &tidcommon.InternalServerError
@@ -939,9 +1445,28 @@ func (rs *resourceService) CreateAction(
 	ctx context.Context,
 	resourceServerID string, resourceID *string, action providers.Action,
 ) (*providers.Action, *tidcommon.ServiceError) {
+	created, svcErr := rs.createAction(ctx, resourceServerID, resourceID, action)
+	var id string
+	if svcErr == nil {
+		id = created.ID
+	}
+	rs.publishEvent(ctx, audit.EventResourceServerActionCreate, audit.TargetTypeAction, audit.ActionCreate, id,
+		svcErr)
+	return created, svcErr
+}
+
+// createAction creates an action without publishing its audit event.
+func (rs *resourceService) createAction(
+	ctx context.Context,
+	resourceServerID string, resourceID *string, action providers.Action,
+) (*providers.Action, *tidcommon.ServiceError) {
 	// Validate resource server exists
-	resourceServer, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
+	resourceServer, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID,
+		security.ActionUpdateResourceServer)
 	if svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := rs.refuseManaged(ctx, resourceServerID); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -1042,11 +1567,18 @@ func (rs *resourceService) GetAction(
 	}
 
 	// Validate resource server exists
-	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
+	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID, security.ActionReadResourceServer)
 	if svcErr != nil {
 		return nil, svcErr
 	}
+	return rs.getAction(ctx, resourceServerID, resourceID, id)
+}
 
+// getAction reads an action of a resource server without checking the caller may read the server.
+func (rs *resourceService) getAction(
+	ctx context.Context,
+	resourceServerID string, resourceID *string, id string,
+) (*providers.Action, *tidcommon.ServiceError) {
 	// Validate resource if provided
 	var resID *string
 	if resourceID != nil {
@@ -1089,7 +1621,7 @@ func (rs *resourceService) GetActionList(
 	}
 
 	// Validate resource server exists
-	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
+	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID, security.ActionReadResourceServer)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -1135,7 +1667,7 @@ func (rs *resourceService) GetActionList(
 		Actions:      actions,
 		StartIndex:   offset + 1,
 		Count:        len(actions),
-		Links:        buildPaginationLinks(baseURL, limit, offset, totalCount),
+		Links:        utils.BuildPaginationLinks(baseURL, limit, offset, totalCount, ""),
 	}
 
 	return response, nil
@@ -1145,6 +1677,17 @@ func (rs *resourceService) GetActionList(
 // If resourceID is nil, updates action at resource server level.
 // If resourceID is provided, updates action at resource level.
 func (rs *resourceService) UpdateAction(
+	ctx context.Context,
+	resourceServerID string, resourceID *string, id string, action providers.Action,
+) (*providers.Action, *tidcommon.ServiceError) {
+	updated, svcErr := rs.updateAction(ctx, resourceServerID, resourceID, id, action)
+	rs.publishEvent(ctx, audit.EventResourceServerActionUpdate, audit.TargetTypeAction, audit.ActionUpdate, id,
+		svcErr)
+	return updated, svcErr
+}
+
+// updateAction updates an action without publishing its audit event.
+func (rs *resourceService) updateAction(
 	ctx context.Context,
 	resourceServerID string, resourceID *string, id string, action providers.Action,
 ) (*providers.Action, *tidcommon.ServiceError) {
@@ -1161,8 +1704,11 @@ func (rs *resourceService) UpdateAction(
 		return nil, ErrorImmutableAction.WithParams(map[string]string{"id": id})
 	}
 	// Validate resource server exists
-	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
+	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID, security.ActionUpdateResourceServer)
 	if svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := rs.refuseManaged(ctx, resourceServerID); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -1231,17 +1777,44 @@ func (rs *resourceService) DeleteAction(
 	ctx context.Context,
 	resourceServerID string, resourceID *string, id string,
 ) *tidcommon.ServiceError {
-	if svcErr := rs.validateActionDelete(ctx, resourceServerID, resourceID, id); svcErr != nil {
+	inputs, shared, svcErr := rs.deleteAction(ctx, resourceServerID, resourceID, id)
+	// A delete that found nothing to remove succeeds without an event, so no caller can record a
+	// deletion of an ID it made up.
+	if svcErr == errActionNotFoundNoop {
+		return nil
+	}
+	rs.publishEvent(ctx, audit.EventResourceServerActionDelete, audit.TargetTypeAction, audit.ActionDelete, id,
+		svcErr)
+	if svcErr != nil {
 		return svcErr
 	}
 
+	// The cutoff moves once the removal is committed, so a token issued before the action was gone for
+	// every request is revoked too. A failure here is reported, but the action is already removed.
+	_, svcErr = rs.runSystemFlow(ctx, systemFlowRevocationPost, inputs, shared)
+	return svcErr
+}
+
+// deleteAction deletes an action without publishing its audit event or running the revocation post flow.
+// It returns the post flow's inputs and what the pre flow shared.
+func (rs *resourceService) deleteAction(
+	ctx context.Context,
+	resourceServerID string, resourceID *string, id string,
+) (map[string]string, map[string]string, *tidcommon.ServiceError) {
+	if svcErr := rs.validateActionDelete(ctx, resourceServerID, resourceID, id); svcErr != nil {
+		return nil, nil, svcErr
+	}
+
 	// Validate resource server exists
-	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID)
+	_, svcErr := rs.validateAndGetResourceServer(ctx, resourceServerID, security.ActionUpdateResourceServer)
 	if svcErr != nil {
 		if svcErr.Code == ErrorResourceServerNotFound.Code {
-			return nil // Idempotent delete
+			return nil, nil, errActionNotFoundNoop // Idempotent delete
 		}
-		return svcErr
+		return nil, nil, svcErr
+	}
+	if svcErr := rs.refuseManaged(ctx, resourceServerID); svcErr != nil {
+		return nil, nil, svcErr
 	}
 
 	// Validate resource if provided
@@ -1250,9 +1823,9 @@ func (rs *resourceService) DeleteAction(
 		_, svcErr := rs.validateAndGetResourceByID(ctx, *resourceID, resourceServerID)
 		if svcErr != nil {
 			if svcErr.Code == ErrorResourceNotFound.Code {
-				return nil // Idempotent delete
+				return nil, nil, errActionNotFoundNoop // Idempotent delete
 			}
-			return svcErr
+			return nil, nil, svcErr
 		}
 		resID = resourceID
 	}
@@ -1261,10 +1834,20 @@ func (rs *resourceService) DeleteAction(
 	exists, err := rs.resourceStore.IsActionExist(ctx, id, resourceServerID, resID)
 	if err != nil {
 		rs.logger.Error(ctx, "Failed to check action existence", log.Error(err))
-		return &tidcommon.InternalServerError
+		return nil, nil, &tidcommon.InternalServerError
 	}
 	if !exists {
-		return nil // Idempotent delete
+		return nil, nil, errActionNotFoundNoop // Idempotent delete
+	}
+
+	// Revokes every token carrying the action's scope before the action is removed.
+	inputs := map[string]string{systemFlowInputResourceServer: resourceServerID, systemFlowInputAction: id}
+	if resID != nil {
+		inputs[systemFlowInputResource] = *resID
+	}
+	shared, svcErr := rs.runSystemFlow(ctx, systemFlowActionDeletePre, inputs, nil)
+	if svcErr != nil {
+		return nil, nil, svcErr
 	}
 
 	// Use transaction for write operation
@@ -1275,10 +1858,23 @@ func (rs *resourceService) DeleteAction(
 		}
 		return rs.cascadeDeleteDependents(txCtx, resourcedependency.ResourceTypeAction, id)
 	}); err != nil {
-		return &tidcommon.InternalServerError
+		return nil, nil, &tidcommon.InternalServerError
 	}
 
-	return nil
+	return inputs, shared, nil
+}
+
+// publishEvent publishes the audit event of an attempt on the resource server, resource or action with id,
+// after the change committed or was refused. Names, identifiers, handles and permission strings are never
+// recorded. A delete removes the permissions roles hold on what it deletes without an event of their
+// own: a known limitation.
+func (rs *resourceService) publishEvent(ctx context.Context, name, targetType string, action audit.Action,
+	id string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the ID the caller asked for, even one that matches nothing, as forensic
+	// evidence of what was probed; the payload caps it and the sink escapes it.
+	target := audit.Ref{Type: targetType, ID: id}
+	eventbus.TryPublish(ctx, rs.bus,
+		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
 }
 
 // ValidateDeleteAction runs DeleteAction's checks and returns the action's scope, revoked deployment-wide.
@@ -1290,11 +1886,18 @@ func (rs *resourceService) ValidateDeleteAction(
 		return nil, svcErr
 	}
 
-	resourceServer, svcErr := rs.GetResourceServer(ctx, resourceServerID)
+	resourceServer, svcErr := rs.getResourceServer(ctx, resourceServerID)
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	action, svcErr := rs.GetAction(ctx, resourceServerID, resourceID, id)
+	if svcErr := rs.checkResourceServerAccess(ctx, security.ActionUpdateResourceServer,
+		resourceServer.OUID); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := rs.refuseManaged(ctx, resourceServerID); svcErr != nil {
+		return nil, svcErr
+	}
+	action, svcErr := rs.getAction(ctx, resourceServerID, resourceID, id)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -1316,7 +1919,7 @@ func (rs *resourceService) ValidatePermissions(
 	permissions []string,
 ) ([]string, *tidcommon.ServiceError) {
 	rs.logger.Debug(ctx, "Validating permissions",
-		log.String("resourceServerId", resourceServerID),
+		log.String("resourceServerID", resourceServerID),
 		log.Int("permissionCount", len(permissions)))
 
 	if len(permissions) == 0 {
@@ -1328,12 +1931,12 @@ func (rs *resourceService) ValidatePermissions(
 	if err != nil {
 		if !errors.Is(err, errResourceServerNotFound) {
 			rs.logger.Error(ctx, "Failed to validate resource server existence",
-				log.String("resourceServerId", resourceServerID),
+				log.String("resourceServerID", resourceServerID),
 				log.Error(err))
 			return nil, &tidcommon.InternalServerError
 		}
 		rs.logger.Debug(ctx, "Resource server not found",
-			log.String("resourceServerId", resourceServerID))
+			log.String("resourceServerID", resourceServerID))
 		// Return all permissions as invalid if resource server doesn't exist
 		return permissions, nil
 	}
@@ -1342,7 +1945,7 @@ func (rs *resourceService) ValidatePermissions(
 	invalidPermissions, storeErr := rs.resourceStore.ValidatePermissions(ctx, resourceServerID, permissions)
 	if storeErr != nil {
 		rs.logger.Error(ctx, "Failed to validate permissions in store",
-			log.String("resourceServerId", resourceServerID),
+			log.String("resourceServerID", resourceServerID),
 			log.Error(storeErr))
 		return nil, &tidcommon.InternalServerError
 	}
@@ -1375,12 +1978,28 @@ func (rs *resourceService) ResolveResourceServerOUHandle(
 	return nil
 }
 
+// runSystemFlow runs a system flow with the given inputs, starting from what an earlier run shared, and
+// returns what this run shared. With system flows off it runs nothing.
+func (rs *resourceService) runSystemFlow(ctx context.Context, handle string,
+	inputs, runtimeData map[string]string) (map[string]string, *tidcommon.ServiceError) {
+	if rs.systemFlows == nil {
+		return nil, nil
+	}
+	result, svcErr := rs.systemFlows.ExecuteSystemFlow(ctx, &flowcommon.SystemFlowContext{
+		Handle: handle, Inputs: inputs, RuntimeData: runtimeData})
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return result.RuntimeData, nil
+}
+
 // Validation helper methods
 
 // validateAndGetResourceServer validates resource server exists and returns it.
 func (rs *resourceService) validateAndGetResourceServer(
 	ctx context.Context,
 	resourceServerID string,
+	action security.Action,
 ) (providers.ResourceServer, *tidcommon.ServiceError) {
 	resourceServer, err := rs.resourceStore.GetResourceServer(ctx, resourceServerID)
 	if err != nil {
@@ -1389,6 +2008,10 @@ func (rs *resourceService) validateAndGetResourceServer(
 		}
 		rs.logger.Error(ctx, "Failed to check resource server", log.Error(err))
 		return providers.ResourceServer{}, &tidcommon.InternalServerError
+	}
+	// Resources and actions belong to their resource server's organization unit.
+	if svcErr := rs.checkResourceServerAccess(ctx, action, resourceServer.OUID); svcErr != nil {
+		return providers.ResourceServer{}, svcErr
 	}
 	return resourceServer, nil
 }
@@ -1415,9 +2038,6 @@ func (rs *resourceService) validateResourceServerCreate(
 	resourceServer providers.ResourceServer,
 ) *tidcommon.ServiceError {
 	if resourceServer.Name == "" {
-		return &ErrorInvalidRequestFormat
-	}
-	if resourceServer.OUID == "" {
 		return &ErrorInvalidRequestFormat
 	}
 	if resourceServer.Identifier == "" {
@@ -1447,9 +2067,6 @@ func (rs *resourceService) validateResourceServerUpdate(
 	resourceServer providers.ResourceServer,
 ) *tidcommon.ServiceError {
 	if resourceServer.Name == "" {
-		return &ErrorInvalidRequestFormat
-	}
-	if resourceServer.OUID == "" {
 		return &ErrorInvalidRequestFormat
 	}
 	if resourceServer.AuthorizationEngine.Type != "" &&
@@ -1559,7 +2176,7 @@ func (rs *resourceService) validateActionDelete(
 	if rs.IsResourceServerDeclarative(resourceServerID) {
 		rs.logger.Debug(ctx,
 			"Cannot delete action in declarative resource server",
-			log.String("resource_server_id", resourceServerID),
+			log.String("resourceServerID", resourceServerID),
 		)
 		return ErrorImmutableAction.WithParams(map[string]string{"id": id})
 	}
@@ -1578,45 +2195,6 @@ func validatePaginationParams(limit, offset int) *tidcommon.ServiceError {
 	return nil
 }
 
-// buildPaginationLinks constructs pagination links for a paginated response.
-func buildPaginationLinks(base string, limit, offset, totalCount int) []Link {
-	links := make([]Link, 0)
-
-	if offset > 0 {
-		links = append(links, Link{
-			Href: fmt.Sprintf("%s?offset=0&limit=%d", base, limit),
-			Rel:  "first",
-		})
-
-		prevOffset := offset - limit
-		if prevOffset < 0 {
-			prevOffset = 0
-		}
-		links = append(links, Link{
-			Href: fmt.Sprintf("%s?offset=%d&limit=%d", base, prevOffset, limit),
-			Rel:  "prev",
-		})
-	}
-
-	if offset+limit < totalCount {
-		nextOffset := offset + limit
-		links = append(links, Link{
-			Href: fmt.Sprintf("%s?offset=%d&limit=%d", base, nextOffset, limit),
-			Rel:  "next",
-		})
-	}
-
-	lastPageOffset := ((totalCount - 1) / limit) * limit
-	if offset < lastPageOffset {
-		links = append(links, Link{
-			Href: fmt.Sprintf("%s?offset=%d&limit=%d", base, lastPageOffset, limit),
-			Rel:  "last",
-		})
-	}
-
-	return links
-}
-
 // isValidPermissionCharacter checks if a character is valid for permission strings.
 // Allowed characters: a-z A-Z 0-9 . _ : - /
 func isValidPermissionCharacter(c rune) bool {
@@ -1628,7 +2206,7 @@ func validateDelimiter(delimiter string) *tidcommon.ServiceError {
 	if len(delimiter) != 1 {
 		return &ErrorInvalidDelimiter
 	}
-	if !strings.ContainsRune(ValidPermissionDelimiters, rune(delimiter[0])) {
+	if !strings.ContainsRune(serverconst.ValidPermissionDelimiters, rune(delimiter[0])) {
 		return &ErrorInvalidDelimiter
 	}
 	return nil
@@ -1648,6 +2226,24 @@ func validateHandle(handle string, delimiter string) *tidcommon.ServiceError {
 		}
 	}
 	return nil
+}
+
+// normalizeResourceIdentifier returns the RFC 3986 normal form used to compare resource server identifiers
+// for equivalence. A URL with a host and no user info has its scheme and host lowercased, and an http or https
+// URL that ends at the host gets "/". Every other character, and any other value, is kept as given.
+func normalizeResourceIdentifier(identifier string) string {
+	parsed, err := url.Parse(identifier)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil {
+		return identifier
+	}
+
+	authority, rest := identifier[len(parsed.Scheme)+len("://"):], ""
+	if i := strings.IndexAny(authority, "/?#"); i >= 0 {
+		authority, rest = authority[:i], authority[i:]
+	} else if parsed.Scheme == "http" || parsed.Scheme == "https" {
+		rest = "/"
+	}
+	return parsed.Scheme + "://" + strings.ToLower(authority) + rest
 }
 
 // hasInvalidMCPIdentifier reports whether an MCP resource server identifier is not an http or https
@@ -1692,4 +2288,35 @@ func derivePermission(
 		return parentResource.Permission + resourceServer.Delimiter + handle
 	}
 	return handle
+}
+
+// checkResourceServerAccess checks the caller may perform the action on a resource server of the
+// organization unit.
+func (rs *resourceService) checkResourceServerAccess(ctx context.Context, action security.Action,
+	ouID string) *tidcommon.ServiceError {
+	allowed, svcErr := rs.authzService.IsActionAllowed(ctx, action,
+		&sysauthz.ActionContext{ResourceType: security.ResourceTypeResourceServer, OUID: ouID})
+	if svcErr != nil {
+		rs.logger.Error(ctx, "Failed to check authorization for action",
+			log.String("action", string(action)), log.Any("error", svcErr))
+		return &tidcommon.InternalServerError
+	}
+	if !allowed {
+		return &tidcommon.ErrorUnauthorized
+	}
+	return nil
+}
+
+// resolveUpdateOU keeps an updated resource server in its organization unit when the update names none.
+// Moving it places it in another organization unit, which the caller must be allowed to act for too.
+func (rs *resourceService) resolveUpdateOU(ctx context.Context, existingOUID string,
+	resourceServer *providers.ResourceServer) *tidcommon.ServiceError {
+	if resourceServer.OUID == "" {
+		resourceServer.OUID = existingOUID
+		return nil
+	}
+	if resourceServer.OUID == existingOUID {
+		return nil
+	}
+	return rs.checkResourceServerAccess(ctx, security.ActionUpdateResourceServer, resourceServer.OUID)
 }

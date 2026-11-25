@@ -95,6 +95,7 @@ func (ts *AgentOAuthFlowsTestSuite) SetupSuite() {
 		Schema: map[string]interface{}{
 			"name":        map[string]interface{}{"type": "string", "required": true, "unique": true},
 			"description": map[string]interface{}{"type": "string"},
+			"password":    map[string]interface{}{"type": "string", "credential": true},
 		},
 	})
 	ts.Require().NoError(err, "Failed to create agent schema")
@@ -190,6 +191,197 @@ func (ts *AgentOAuthFlowsTestSuite) TestAgentCC_TokenIssuance() {
 	ts.Require().NotNil(tokenResult.Token)
 	ts.Assert().NotEmpty(tokenResult.Token.AccessToken)
 	ts.Assert().Equal("Bearer", tokenResult.Token.TokenType)
+}
+
+// revocationAgent is a client_credentials agent with a token issued to it, and an application that introspects the
+// token. Introspection reads the deny list directly, so its answer is immediate, and it is asked by an application
+// because an agent whose client is gone can no longer authenticate.
+type revocationAgent struct {
+	id             string
+	clientID       string
+	clientSecret   string
+	observerID     string
+	observerSecret string
+	token          string
+}
+
+func (ts *AgentOAuthFlowsTestSuite) newRevocationAgent(prefix string) *revocationAgent {
+	ts.T().Helper()
+	a := &revocationAgent{
+		clientID:       prefix + "_agent_client",
+		clientSecret:   prefix + "_agent_secret",
+		observerID:     prefix + "_observer_client",
+		observerSecret: prefix + "_observer_secret",
+	}
+	agentID, err := createAgent(Agent{
+		OUID:              ts.ouID,
+		Type:              "default",
+		Attributes:        agentAttrs(prefix+"-agent", nil),
+		AuthFlowID:        ts.authFlowID,
+		InboundAuthConfig: []InboundAuthConfig{{Type: "oauth2", Config: a.oauthConfig(a.clientSecret)}},
+	})
+	ts.Require().NoError(err)
+	a.id = agentID
+	ts.T().Cleanup(func() { _ = deleteAgent(agentID) })
+
+	observerAppID, err := testutils.CreateApplication(testutils.Application{
+		Name: prefix + "_observer",
+		OUID: ts.ouID,
+		Type: "fullstack",
+		InboundAuthConfig: []map[string]interface{}{{"type": "oauth2", "config": map[string]interface{}{
+			"clientId":                a.observerID,
+			"clientSecret":            a.observerSecret,
+			"redirectUris":            []string{"https://localhost:3000"},
+			"grantTypes":              []string{"client_credentials"},
+			"tokenEndpointAuthMethod": "client_secret_basic",
+		}}},
+	})
+	ts.Require().NoError(err)
+	ts.T().Cleanup(func() { _ = testutils.DeleteApplication(observerAppID) })
+
+	a.token = ts.issueToken(a.clientID, a.clientSecret)
+	ts.Require().True(ts.active(a, a.token), "the token should be active before the change")
+	return a
+}
+
+func (a *revocationAgent) oauthConfig(secret string) *OAuthAgentConfig {
+	return &OAuthAgentConfig{
+		ClientID:                a.clientID,
+		ClientSecret:            secret,
+		GrantTypes:              []string{"client_credentials"},
+		TokenEndpointAuthMethod: "client_secret_basic",
+	}
+}
+
+// issueToken obtains a client_credentials token for the agent's client.
+func (ts *AgentOAuthFlowsTestSuite) issueToken(clientID, clientSecret string) string {
+	ts.T().Helper()
+	issued, err := testutils.RequestTokenWithResource(clientID, clientSecret, "", "", "client_credentials",
+		agentOAuthDefaultRSIdentifier)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, issued.StatusCode, "Token request failed: %s", string(issued.Body))
+	return issued.Token.AccessToken
+}
+
+func (ts *AgentOAuthFlowsTestSuite) active(a *revocationAgent, token string) bool {
+	ts.T().Helper()
+	active, err := testutils.IntrospectToken(token, a.observerID, a.observerSecret)
+	ts.Require().NoError(err)
+	return active
+}
+
+// updateAgent replaces the agent's configuration, with the OAuth configuration given, or with no inbound client
+// settings at all, which removes its client.
+func (ts *AgentOAuthFlowsTestSuite) updateAgent(a *revocationAgent, prefix string, oauth *OAuthAgentConfig) {
+	ts.T().Helper()
+	body := map[string]interface{}{
+		"ouId":       ts.ouID,
+		"type":       "default",
+		"attributes": json.RawMessage(agentAttrs(prefix+"-agent", nil)),
+	}
+	if oauth != nil {
+		body["authFlowId"] = ts.authFlowID
+		body["inboundAuthConfig"] = []InboundAuthConfig{{Type: "oauth2", Config: oauth}}
+	}
+	resp, err := putAgentRaw(a.id, body)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, readBody(resp))
+}
+
+// Deleting an agent revokes the tokens issued to it, as deleting an application does.
+func (ts *AgentOAuthFlowsTestSuite) TestDeleteAgent_RevokesItsTokens() {
+	a := ts.newRevocationAgent("delete_revokes")
+
+	ts.Require().NoError(deleteAgent(a.id))
+
+	ts.False(ts.active(a, a.token), "A token issued to a deleted agent was still active")
+	getResp, err := doGet(testServerURL + agentBasePath + "/" + a.id)
+	ts.Require().NoError(err)
+	defer getResp.Body.Close()
+	ts.Equal(http.StatusNotFound, getResp.StatusCode)
+}
+
+// An update with a different client secret replaces the agent's secret, so the tokens the old one issued are
+// revoked, and the new one issues tokens.
+func (ts *AgentOAuthFlowsTestSuite) TestUpdateAgent_ADifferentSecretRevokesItsTokens() {
+	const prefix = "update_secret_revokes"
+	a := ts.newRevocationAgent(prefix)
+
+	ts.updateAgent(a, prefix, a.oauthConfig(prefix+"_rotated_secret"))
+
+	ts.False(ts.active(a, a.token), "A token the replaced secret issued was still active")
+	ts.NotEmpty(ts.issueToken(a.clientID, prefix+"_rotated_secret"), "The new secret did not issue tokens")
+}
+
+// An update that carries the secret the agent already has, as every apply of a configuration does, replaces
+// nothing, so nothing is revoked.
+func (ts *AgentOAuthFlowsTestSuite) TestUpdateAgent_TheSameSecretRevokesNothing() {
+	const prefix = "update_same_secret"
+	a := ts.newRevocationAgent(prefix)
+
+	ts.updateAgent(a, prefix, a.oauthConfig(a.clientSecret))
+
+	ts.True(ts.active(a, a.token), "An update with the same secret revoked the agent's token")
+}
+
+// An update that carries the secret the agent already has leaves the refresh tokens issued through its client
+// usable: rewriting the secret would make the refresh grant refuse every refresh token issued before it.
+func (ts *AgentOAuthFlowsTestSuite) TestUpdateAgent_TheSameSecretKeepsItsRefreshTokens() {
+	const clientID, secret = "same_secret_refresh_agent_client", "same_secret_refresh_agent_secret"
+	oauth := &OAuthAgentConfig{
+		ClientID:                clientID,
+		ClientSecret:            secret,
+		RedirectURIs:            []string{oauthFlowsRedirectURI},
+		GrantTypes:              []string{"authorization_code", "refresh_token"},
+		ResponseTypes:           []string{"code"},
+		TokenEndpointAuthMethod: "client_secret_post",
+	}
+	agent := Agent{
+		OUID:              ts.ouID,
+		Type:              "default",
+		Attributes:        agentAttrs("same-secret-refresh-agent", nil),
+		AuthFlowID:        ts.authFlowID,
+		AllowedUserTypes:  []string{"agent-oauth-flow-person"},
+		InboundAuthConfig: []InboundAuthConfig{{Type: "oauth2", Config: oauth}},
+	}
+	agentID, err := createAgent(agent)
+	ts.Require().NoError(err)
+	ts.T().Cleanup(func() { _ = deleteAgent(agentID) })
+
+	token, err := obtainAgentAccessTokenWithResource(clientID, oauthFlowsRedirectURI, "openid",
+		oauthFlowsTestUsername, oauthFlowsTestPassword, false, secret, agentOAuthDefaultRSIdentifier)
+	ts.Require().NoError(err)
+	ts.Require().NotEmpty(token.RefreshToken)
+	// The refresh grant compares whole seconds, so the update lands in a later second than the token.
+	time.Sleep(1100 * time.Millisecond)
+
+	resp, err := putAgentRaw(agentID, map[string]interface{}{
+		"ouId":              agent.OUID,
+		"type":              agent.Type,
+		"attributes":        agent.Attributes,
+		"authFlowId":        agent.AuthFlowID,
+		"allowedUserTypes":  agent.AllowedUserTypes,
+		"inboundAuthConfig": agent.InboundAuthConfig,
+	})
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, readBody(resp))
+
+	refreshed, err := testutils.RefreshAccessTokenWithClientCredentialsInBody(clientID, secret, token.RefreshToken)
+	ts.Require().NoError(err, "The refresh token was refused after an update with the same secret")
+	ts.NotEmpty(refreshed.AccessToken)
+}
+
+// An update that leaves the agent no inbound client settings removes its client, which revokes what the client
+// issued.
+func (ts *AgentOAuthFlowsTestSuite) TestUpdateAgent_RemovingItsClientRevokesItsTokens() {
+	const prefix = "update_removes_client"
+	a := ts.newRevocationAgent(prefix)
+
+	ts.updateAgent(a, prefix, nil)
+
+	ts.False(ts.active(a, a.token), "A token the removed client issued was still active")
 }
 
 // TestAgentCC_ClientSecretPost verifies a CC token can be obtained when credentials
@@ -370,6 +562,124 @@ func (ts *AgentOAuthFlowsTestSuite) TestAgentAuthCode_RefreshToken() {
 	)
 	ts.Require().NoError(err, "Refresh token request must succeed")
 	ts.Assert().NotEmpty(refreshed.AccessToken)
+}
+
+// TestAgentAuthCode_ReachableOnlyFromItsOwnOU verifies that an agent signing users in with the authorization
+// code grant is used from its own OU only: a user of a child OU is not found, the child OU's authorize route
+// refuses the agent, and its own OU's route signs its own user in.
+func (ts *AgentOAuthFlowsTestSuite) TestAgentAuthCode_ReachableOnlyFromItsOwnOU() {
+	const agentClientID = "authcode_own_ou_agent_client"
+	childOUID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "agent-oauth-flows-child", Name: "Agent OAuth Flows Child", Parent: &ts.ouID,
+	})
+	ts.Require().NoError(err, "Failed to create the child OU")
+	defer func() {
+		if err := testutils.DeleteOrganizationUnit(childOUID); err != nil {
+			ts.T().Logf("teardown: delete the child OU: %v", err)
+		}
+	}()
+	childUserAttributes, err := json.Marshal(map[string]interface{}{
+		"username": "agent-oauth-flow-child-user",
+		"password": oauthFlowsTestPassword,
+	})
+	ts.Require().NoError(err)
+	childUserID, err := testutils.CreateUser(testutils.User{
+		Type: "agent-oauth-flow-person", OUID: childOUID, Attributes: childUserAttributes,
+	})
+	ts.Require().NoError(err, "Failed to create the child OU's user")
+	defer func() {
+		if err := testutils.DeleteUser(childUserID); err != nil {
+			ts.T().Logf("teardown: delete the child OU's user: %v", err)
+		}
+	}()
+
+	agentID, err := createAgent(Agent{
+		OUID:             ts.ouID,
+		Type:             "default",
+		Attributes:       agentAttrs("authcode-own-ou-agent", nil),
+		AuthFlowID:       ts.authFlowID,
+		AllowedUserTypes: []string{"agent-oauth-flow-person"},
+		InboundAuthConfig: []InboundAuthConfig{
+			{
+				Type: "oauth2",
+				Config: &OAuthAgentConfig{
+					ClientID:                agentClientID,
+					ClientSecret:            "authcode_own_ou_agent_secret",
+					RedirectURIs:            []string{oauthFlowsRedirectURI},
+					GrantTypes:              []string{"authorization_code"},
+					ResponseTypes:           []string{"code"},
+					TokenEndpointAuthMethod: "client_secret_post",
+				},
+			},
+		},
+	})
+	ts.Require().NoError(err)
+	defer func() {
+		if err := deleteAgent(agentID); err != nil {
+			ts.T().Logf("teardown: delete the agent: %v", err)
+		}
+	}()
+
+	ts.Run("a user of a child OU is not found", func() {
+		step := ts.agentCredentialSignIn(ts.agentAuthorize("", agentClientID), "agent-oauth-flow-child-user")
+		ts.Empty(step.Assertion, "a user outside the agent's OU gets no assertion")
+		ts.Require().NotNil(step.Error, "the sign-in is refused: %+v", step)
+		ts.Equal("FET-1001", step.Error.Code, "a user outside the agent's OU is not found")
+	})
+	ts.Run("the child OU's route refuses the agent", func() {
+		resp := ts.agentAuthorize(childOUID, agentClientID)
+		defer resp.Body.Close()
+		ts.Require().Equal(http.StatusFound, resp.StatusCode)
+		redirect, err := url.Parse(resp.Header.Get("Location"))
+		ts.Require().NoError(err)
+		ts.Equal(oauthFlowsRedirectURI, redirect.Scheme+"://"+redirect.Host+redirect.Path,
+			"the refusal goes back to the client")
+		ts.Equal("unauthorized_client", redirect.Query().Get("error"))
+	})
+	ts.Run("its own OU's route signs its user in", func() {
+		step := ts.agentCredentialSignIn(ts.agentAuthorize(ts.ouID, agentClientID), oauthFlowsTestUsername)
+		ts.Require().Equal("COMPLETE", step.FlowStatus, "%+v", step.Error)
+		claims, err := testutils.DecodeJWT(step.Assertion)
+		ts.Require().NoError(err)
+		ts.Equal(ts.userID, claims.Sub)
+	})
+}
+
+// agentAuthorize sends an authorization request as the agent client, to the OU path when ouID is set.
+func (ts *AgentOAuthFlowsTestSuite) agentAuthorize(ouID, clientID string) *http.Response {
+	params := url.Values{}
+	params.Set("client_id", clientID)
+	params.Set("redirect_uri", oauthFlowsRedirectURI)
+	params.Set("response_type", "code")
+	params.Set("scope", "openid")
+	params.Set("state", "agent-own-ou-state")
+	path := "/oauth2/authorize"
+	if ouID != "" {
+		path = "/ou/" + ouID + path
+	}
+	req, err := http.NewRequest(http.MethodGet, testutils.TestServerURL+path+"?"+params.Encode(), nil)
+	ts.Require().NoError(err)
+	client, err := testutils.NewSessionClient()
+	ts.Require().NoError(err)
+	resp, err := client.Do(req)
+	ts.Require().NoError(err)
+	return resp
+}
+
+// agentCredentialSignIn follows the authorize redirect to the sign-in and submits the user's credentials.
+func (ts *AgentOAuthFlowsTestSuite) agentCredentialSignIn(resp *http.Response, username string) *testutils.FlowStep {
+	defer resp.Body.Close()
+	ts.Require().Equal(http.StatusFound, resp.StatusCode)
+	_, executionID, err := testutils.ExtractAuthData(resp.Header.Get("Location"))
+	ts.Require().NoError(err, "authorize redirects to the sign-in: %s", resp.Header.Get("Location"))
+	prompt, err := testutils.ExecuteAuthenticationFlow(executionID, nil, "")
+	ts.Require().NoError(err)
+	step, err := testutils.ExecuteAuthenticationFlow(executionID, map[string]string{
+		"username": username,
+		"password": oauthFlowsTestPassword,
+	}, "action_001", prompt.ChallengeToken)
+	ts.Require().NoError(err)
+	return step
 }
 
 // --- duplicate clientID ---

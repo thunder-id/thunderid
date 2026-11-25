@@ -33,4 +33,8 @@ export interface AgentTypeListItem {
   ouId: string;
   ouHandle?: string;
   systemAttributes?: SystemAttributes;
+  /**
+   * Whether the agent type is declarative and cannot be modified or deleted.
+   */
+  isReadOnly?: boolean;
 }

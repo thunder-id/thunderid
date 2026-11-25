@@ -161,14 +161,22 @@ func (s *authZENPDPStore) UpdateAuthZENPDP(
 	return err
 }
 
-// DeleteAuthZENPDP removes an AuthZEN PDP connection by ID.
+// DeleteAuthZENPDP removes an AuthZEN PDP connection by ID, returning errConnectionNotFound when no row
+// matches.
 func (s *authZENPDPStore) DeleteAuthZENPDP(ctx context.Context, id string) error {
 	dbClient, err := s.dbProvider.GetConfigDBClient()
 	if err != nil {
 		return fmt.Errorf("failed to get database client: %w", err)
 	}
-	_, err = dbClient.ExecuteContext(ctx, queryDeleteAuthZENPDPConnection, id, authZENPDPConnectionType, s.scope(ctx))
-	return err
+	affected, err := dbClient.ExecuteContext(ctx, queryDeleteAuthZENPDPConnection, id, authZENPDPConnectionType,
+		s.scope(ctx))
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return errConnectionNotFound
+	}
+	return nil
 }
 
 // authZENPDPProperties holds the connection settings stored as JSON.

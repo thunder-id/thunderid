@@ -476,6 +476,10 @@ func (suite *GroupTreeAPITestSuite) TestGroupTreeEndpointsWithNestedPaths() {
 
 // createOUForGroupTests creates an organization unit for group testing
 func createOUForGroupTests(suite *GroupTreeAPITestSuite, ouRequest CreateOURequest) (string, error) {
+	if ouRequest.Parent == nil {
+		return testutils.ImportRootOrganizationUnit(ouRequest)
+	}
+
 	jsonData, err := json.Marshal(ouRequest)
 	if err != nil {
 		return "", err

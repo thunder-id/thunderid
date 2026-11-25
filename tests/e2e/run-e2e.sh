@@ -8,8 +8,9 @@
 # setup.sh once, then starts its three deployments (auth-dp, the managed Data Plane and the Control
 # Plane). The suite exercises the Data Plane (https://localhost:8090): its Admin Console and the
 # applications it authenticates. The Data Plane's resources are imported directly through its
-# import API (authenticated with OAuth2 as the Service Desk Admin), and the Playwright test suite
-# runs against it.
+# import API, authenticated with the management API key this script hands setup.sh (a Data Plane
+# takes deployment-wide resources such as server configuration only from that key), and the
+# Playwright test suite runs against it.
 #
 # Runs in two phases against two independently provisioned packs:
 #   1. Everything tagged @wayfinder excluded, against a pack with the sample apps imported.
@@ -105,7 +106,10 @@ DIST_ZIP="$PROJECT_ROOT/target/dist/${DIST_FOLDER}.zip"
 # The Service Desk Admin: the account that signs into the Data Plane's Admin Console.
 ADMIN_USER="${ADMIN_USERNAME:-admin}"
 ADMIN_PASS="${ADMIN_PASSWORD:-admin}"
-ADMIN_TOKEN=""
+
+# The Data Plane's management API key. The pack's setup.sh keeps a key already in
+# QUICKSTART_GATEWAY_KEY instead of generating one, so the Data Plane trusts this key.
+MANAGEMENT_API_KEY=$(openssl rand -hex 32)
 
 kill_port() {
     lsof -ti tcp:"$1" | xargs kill -9 2>/dev/null || true
@@ -183,7 +187,8 @@ EOF
     # not drive.
     echo "Running setup..."
     (cd "$DIST_HOME" && ADMIN_USERNAME=admin ADMIN_PASSWORD=admin \
-        SERVICE_DESK_USERNAME="$ADMIN_USER" SERVICE_DESK_PASSWORD="$ADMIN_PASS" ./setup.sh)
+        SERVICE_DESK_USERNAME="$ADMIN_USER" SERVICE_DESK_PASSWORD="$ADMIN_PASS" \
+        QUICKSTART_GATEWAY_KEY="$MANAGEMENT_API_KEY" ./setup.sh)
 
     echo "Starting the quickstart pack..."
     (cd "$DIST_HOME" && ./start.sh) &
@@ -206,105 +211,6 @@ stop_server() {
         return 1
     fi
     rm -rf "$DIST_HOME"
-}
-
-# Obtains an admin token via OAuth2 auth code + PKCE (ADMIN_CONSOLE app, Service Desk Admin credentials) and sets the
-# global ADMIN_TOKEN. Must be called plainly (never `ADMIN_TOKEN=$(mint_admin_token)` and never
-# inside an `if`/`||`) - its `exit 1` calls only abort the right way when the function's own exit
-# status is what `set -e` sees.
-mint_admin_token() {
-    echo "Obtaining admin token..."
-    local CONSOLE_REDIRECT_URI="$SERVER_URL/console"
-    local CODE_VERIFIER CODE_CHALLENGE
-    CODE_VERIFIER=$(openssl rand -hex 32 | cut -c1-43)
-    CODE_CHALLENGE=$(printf '%s' "$CODE_VERIFIER" | openssl dgst -sha256 -binary | openssl base64 -A | tr '+/' '-_' | tr -d '=')
-
-    local headers_file
-    headers_file=$(mktemp)
-    curl -sk -o /dev/null -D "$headers_file" \
-        -G "$SERVER_URL/oauth2/authorize" \
-        --data-urlencode "client_id=ADMIN_CONSOLE" \
-        --data-urlencode "redirect_uri=$CONSOLE_REDIRECT_URI" \
-        --data-urlencode "scope=system" \
-        --data-urlencode "resource=$SERVER_URL/mcp" \
-        --data-urlencode "response_type=code" \
-        --data-urlencode "code_challenge=$CODE_CHALLENGE" \
-        --data-urlencode "code_challenge_method=S256"
-
-    local LOCATION AUTH_ID EXEC_ID
-    LOCATION=$(grep -i "^location:" "$headers_file" | tr -d '\r' | sed 's/^[Ll]ocation: //' || echo "")
-    rm -f "$headers_file"
-    AUTH_ID=$(echo "$LOCATION" | sed -n 's/.*[?&]authId=\([^&]*\).*/\1/p')
-    EXEC_ID=$(echo "$LOCATION" | sed -n 's/.*[?&]executionId=\([^&]*\).*/\1/p')
-
-    if [ -z "$AUTH_ID" ] || [ -z "$EXEC_ID" ]; then
-        echo "ERROR: Failed to parse authId/executionId from authorize redirect."
-        echo "Location header: $LOCATION"
-        exit 1
-    fi
-
-    # The console login flow runs an SSO check before the credentials prompt. This bootstrap is a
-    # fresh, cookie-less login (no SSO session), so the first execute advances the flow past the
-    # SSO check to the credentials prompt and mints a challenge token; the second submits the
-    # admin credentials with that token.
-    local PROMPT_RESP CHALLENGE_TOKEN
-    PROMPT_RESP=$(curl -sk -X POST "$SERVER_URL/flow/execute" \
-        -H "Content-Type: application/json" \
-        -d "{\"executionId\": \"$EXEC_ID\"}")
-    CHALLENGE_TOKEN=$(echo "$PROMPT_RESP" | jq -r '.challengeToken // empty' || echo "")
-
-    if [ -z "$CHALLENGE_TOKEN" ]; then
-        echo "ERROR: Flow execution did not return a challenge token."
-        echo "Response: $PROMPT_RESP"
-        exit 1
-    fi
-
-    local FLOW_RESP ASSERTION
-    FLOW_RESP=$(curl -sk -X POST "$SERVER_URL/flow/execute" \
-        -H "Content-Type: application/json" \
-        -d "$(jq -n \
-            --arg executionId "$EXEC_ID" \
-            --arg challengeToken "$CHALLENGE_TOKEN" \
-            --arg username "$ADMIN_USER" \
-            --arg password "$ADMIN_PASS" \
-            --arg action "action_001" \
-            '{executionId: $executionId, challengeToken: $challengeToken, inputs: {username: $username, password: $password}, action: $action}')")
-    ASSERTION=$(echo "$FLOW_RESP" | jq -r '.assertion // empty' || echo "")
-
-    if [ -z "$ASSERTION" ]; then
-        echo "ERROR: Flow execution did not return an assertion."
-        echo "Response: $FLOW_RESP"
-        exit 1
-    fi
-
-    local CALLBACK_RESP AUTH_CODE
-    CALLBACK_RESP=$(curl -sk -X POST "$SERVER_URL/oauth2/auth/callback" \
-        -H "Content-Type: application/json" \
-        -d "{\"authId\": \"$AUTH_ID\", \"assertion\": \"$ASSERTION\"}")
-    AUTH_CODE=$(echo "$CALLBACK_RESP" | jq -r '.redirect_uri // empty' | sed -n 's/.*[?&]code=\([^&]*\).*/\1/p' || echo "")
-
-    if [ -z "$AUTH_CODE" ]; then
-        echo "ERROR: OAuth2 callback did not return an authorization code."
-        echo "Response: $CALLBACK_RESP"
-        exit 1
-    fi
-
-    local TOKEN_RESP
-    TOKEN_RESP=$(curl -sk -X POST "$SERVER_URL/oauth2/token" \
-        -H "Content-Type: application/x-www-form-urlencoded" \
-        --data-urlencode "grant_type=authorization_code" \
-        --data-urlencode "code=$AUTH_CODE" \
-        --data-urlencode "redirect_uri=$CONSOLE_REDIRECT_URI" \
-        --data-urlencode "client_id=ADMIN_CONSOLE" \
-        --data-urlencode "resource=$SERVER_URL/mcp" \
-        --data-urlencode "code_verifier=$CODE_VERIFIER")
-    ADMIN_TOKEN=$(echo "$TOKEN_RESP" | jq -r '.access_token // empty' || echo "")
-
-    if [ -z "$ADMIN_TOKEN" ]; then
-        echo "ERROR: Failed to obtain admin access token."
-        echo "Response: $TOKEN_RESP"
-        exit 1
-    fi
 }
 
 # Converts a KEY=VALUE .env-style file into a JSON object on stdout, or "{}" if the file is absent.
@@ -330,8 +236,8 @@ PYEOF
 }
 
 # Imports one declarative config file via POST /import, upsert enabled. `vars_file`, if given, is
-# converted to the request's `variables` map. Must be called plainly, same reasoning as
-# mint_admin_token: its `exit 1` calls need to reach `set -e` directly.
+# converted to the request's `variables` map. Must be called plainly (never inside an `if`/`||`):
+# its `exit 1` calls need to reach `set -e` directly.
 import_config() {
     local config="$1" vars_file="${2:-}" label="${3:-$1}"
     local vars_json="{}"
@@ -345,7 +251,7 @@ import_config() {
     http_status=$(curl -sk -o "$response_file" -w "%{http_code}" \
         -X POST "$SERVER_URL/import" \
         -H "Content-Type: application/json" \
-        -H "Authorization: Bearer $ADMIN_TOKEN" \
+        -H "API-Key: $MANAGEMENT_API_KEY" \
         -d "{\"content\": $content, \"variables\": $vars_json, \"options\": {\"upsert\": true}}")
 
     if [ "$http_status" != "200" ]; then
@@ -416,6 +322,7 @@ setup_env() {
     export ADMIN_PASSWORD="$ADMIN_PASS"
     export SAMPLE_APP_URL="$SAMPLE_URL"
     export WAYFINDER_APP_URL="$WAYFINDER_URL"
+    export MANAGEMENT_API_KEY
 }
 
 # Runs "$@" without tripping `set -e` on a non-zero exit, returning its exit code instead. A
@@ -447,7 +354,6 @@ rc2=0
 if [ -z "$PHASE" ] || [ "$PHASE" = "1" ]; then
     # Phase 1: everything except @wayfinder, against a server with the sample apps imported.
     start_fresh_server --with-mock-social
-    mint_admin_token
 
     echo "Importing declarative resources..."
     for sample in vanilla-sample react-sdk-sample; do
@@ -483,7 +389,6 @@ if [ -z "$PHASE" ] || [ "$PHASE" = "2" ]; then
         stop_server
     fi
     start_fresh_server
-    mint_admin_token
     import_config "$SCRIPT_DIR/thunderid-config.yaml" "" "E2E admin app"
     wayfinder_config="$PROJECT_ROOT/samples/apps/wayfinder-sample/thunderid-config/redirect"
     import_config "$wayfinder_config/thunderid-config.yaml" "$wayfinder_config/thunderid.env" "Wayfinder bundle"

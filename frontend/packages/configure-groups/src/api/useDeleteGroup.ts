@@ -2,14 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
-import {AdministrationModes, useAdministrationOperation, useConfig, useToast} from '@thunderid/contexts';
+import {useAdministrationOperation, useConfig, useToast} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
 import {useTranslation} from 'react-i18next';
 import GroupQueryKeys from '../constants/group-query-keys';
-import {deleteGroupNatively, deleteGroupViaFlow, type HttpLike} from '../utils/groupAdministrationFlow';
+import {deleteGroupNatively, type HttpLike} from '../utils/groupAdministrationFlow';
 
 /**
  * Custom React hook to delete a group.
+ *
+ * The deletion calls `DELETE /groups/{id}`; the server revokes what the group passed to its members
+ * before the group is removed. A console that declares its own operation runs that instead.
  *
  * @returns TanStack Query mutation object for deleting groups
  */
@@ -29,11 +32,7 @@ export default function useDeleteGroup(): UseMutationResult<void, Error, string>
         await mode(groupId);
         return;
       }
-      if (mode === AdministrationModes.NATIVE) {
-        await deleteGroupNatively(client, getServerUrl(), groupId);
-        return;
-      }
-      await deleteGroupViaFlow(client, getServerUrl(), groupId);
+      await deleteGroupNatively(client, getServerUrl(), groupId);
     },
     onSuccess: (_data, groupId) => {
       queryClient.removeQueries({queryKey: [GroupQueryKeys.GROUP, groupId]});

@@ -53,22 +53,15 @@ export const IDENTIFYING_MODES = [
 ] as const;
 
 /**
- * Available revocation modes for the Administrative Flow Pre executor.
- *
- * Must stay in step with the executor's SupportedModes in the backend
- * (backend/internal/flow/executor/administrative_flow_pre_executor.go). Offering a mode the backend
- * does not support would let the builder save a flow that fails validation.
+ * Values of the Provisioning executor's provisioningOU property: create in the resolved organization unit, or in
+ * the one the flow's user type belongs to. Must stay in step with the executor in the backend.
  */
-export const REVOCATION_MODES = [
-  {
-    value: 'revoke_all',
-    translationKey: 'flows:core.executions.preDelete.mode.revokeAll',
-    displayLabel: 'Validate and Plan Full Revocation',
-  },
-] as const;
+export const PROVISIONING_OU_RESOLVED = 'resolved';
+export const PROVISIONING_OU_USER_TYPE = 'userType';
 
 /**
- * Available modes for the Access Change Validator executor. Must match its SupportedModes in the backend.
+ * Available modes for the Access Change Validator executor. Must match its SupportedModes in the backend, less
+ * the ones only a system flow runs.
  */
 export const ACCESS_CHANGE_VALIDATOR_MODES = [
   {
@@ -80,11 +73,6 @@ export const ACCESS_CHANGE_VALIDATOR_MODES = [
     value: 'role_deletion',
     translationKey: 'flows:core.executions.accessChangeValidator.mode.roleDeletion',
     displayLabel: 'Validate and Plan Role Deletion',
-  },
-  {
-    value: 'role_permission_removal',
-    translationKey: 'flows:core.executions.accessChangeValidator.mode.rolePermissionRemoval',
-    displayLabel: 'Validate and Plan Permission Change',
   },
   {
     value: 'group_deletion',
@@ -108,35 +96,30 @@ export const ACCESS_CHANGE_VALIDATOR_MODES = [
  */
 export const ROLE_EXECUTOR_MODES = [
   {
-    value: 'role_assignment_removal',
-    translationKey: 'flows:core.executions.roleExecutor.mode.roleAssignmentRemoval',
-    displayLabel: 'Remove Role Assignment',
+    value: 'role_selection',
+    translationKey: 'flows:core.executions.roleExecutor.mode.roleSelection',
+    displayLabel: 'Select Roles',
   },
   {
-    value: 'role_deletion',
-    translationKey: 'flows:core.executions.roleExecutor.mode.roleDeletion',
-    displayLabel: 'Delete Role',
-  },
-  {
-    value: 'role_permission_removal',
-    translationKey: 'flows:core.executions.roleExecutor.mode.rolePermissionRemoval',
-    displayLabel: 'Change Role Permissions',
+    value: 'role_assignment',
+    translationKey: 'flows:core.executions.roleExecutor.mode.roleAssignment',
+    displayLabel: 'Assign Roles',
   },
 ] as const;
 
 /**
- * Available modes for the Group executor. Must match its SupportedModes in the backend.
+ * Available modes for the Sharing executor. Must match its SupportedModes in the backend.
  */
-export const GROUP_EXECUTOR_MODES = [
+export const SHARING_EXECUTOR_MODES = [
   {
-    value: 'group_deletion',
-    translationKey: 'flows:core.executions.groupExecutor.mode.groupDeletion',
-    displayLabel: 'Delete Group',
+    value: 'validate',
+    translationKey: 'flows:core.executions.sharing.mode.validate',
+    displayLabel: 'Validate Share',
   },
   {
-    value: 'group_membership_removal',
-    translationKey: 'flows:core.executions.groupExecutor.mode.groupMembershipRemoval',
-    displayLabel: 'Remove Group Member',
+    value: 'share',
+    translationKey: 'flows:core.executions.sharing.mode.share',
+    displayLabel: 'Share',
   },
 ] as const;
 
@@ -177,6 +160,28 @@ export const IDENTITY_GOVERNANCE_MODES = [
     translationKey: 'flows:core.executions.identityGovernance.mode.unlock',
     displayLabel: 'Unlock Identity',
     image: 'LockKeyholeOpen',
+  },
+] as const;
+
+/**
+ * Operations of the Credential Setter. Validate and remove run only in an administrator-initiated flow,
+ * where they bracket the reset link; set runs in any flow and is what a node without a mode does.
+ */
+export const CREDENTIAL_SETTER_MODES = [
+  {
+    value: 'set',
+    translationKey: 'flows:core.executions.credentialSetter.mode.set',
+    displayLabel: 'Set Credentials',
+  },
+  {
+    value: 'validate',
+    translationKey: 'flows:core.executions.credentialSetter.mode.validate',
+    displayLabel: 'Validate Credential Reset',
+  },
+  {
+    value: 'invalidate',
+    translationKey: 'flows:core.executions.credentialSetter.mode.invalidate',
+    displayLabel: 'Remove Credential',
   },
 ] as const;
 
@@ -259,12 +264,11 @@ export const EXECUTORS_WITH_FIXED_INPUTS = new Set<string>([
   ExecutionTypes.SSOCheck,
   ExecutionTypes.Session,
   ExecutionTypes.SessionSignOut,
-  ExecutionTypes.PreDelete,
   ExecutionTypes.CriteriaRevocation,
   ExecutionTypes.AccessChangeValidator,
   ExecutionTypes.RoleExecutor,
-  ExecutionTypes.GroupExecutor,
   ExecutionTypes.PreSuspend,
   ExecutionTypes.IdentityGovernance,
   ExecutionTypes.ExtensionExecutor,
+  ExecutionTypes.SharingExecutor,
 ]);

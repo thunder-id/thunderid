@@ -158,6 +158,24 @@ set(obj, 'a.b.c', 42)
 
 ## V2 Flow Utilities
 
+### `isFlowExpiredError(error)`
+
+Check whether a flow request failed because its execution no longer exists, i.e. it expired or already ended. The server refuses such a request with `FES-1004`, and the user has to start again from the application.
+
+```ts
+import { executeEmbeddedSignInFlow, isFlowExpiredError } from '@thunderid/javascript'
+
+try {
+  await executeEmbeddedSignInFlow({ baseUrl, payload: { executionId, action, inputs } })
+} catch (err) {
+  if (isFlowExpiredError(err)) {
+    // Send the user back to the application.
+  }
+}
+```
+
+**Returns:** `boolean`
+
 ### `isEmojiUri(uri)`
 
 Check whether a string is an emoji URI (scheme `emoji://`).

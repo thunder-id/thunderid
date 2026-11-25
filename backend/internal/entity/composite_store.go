@@ -87,6 +87,11 @@ func (c *entityCompositeStore) UpdateSystemAttributes(ctx context.Context, entit
 	return c.dbStore.UpdateSystemAttributes(ctx, entityID, attrs)
 }
 
+// UpdateOwnership updates the organization unit and project in the database store only.
+func (c *entityCompositeStore) UpdateOwnership(ctx context.Context, entityID, ouID, projectID string) error {
+	return c.dbStore.UpdateOwnership(ctx, entityID, ouID, projectID)
+}
+
 // UpdateCredentials updates credentials in the database store only.
 func (c *entityCompositeStore) UpdateCredentials(ctx context.Context, entityID string,
 	creds json.RawMessage) error {
@@ -107,6 +112,12 @@ func (c *entityCompositeStore) DeleteEntity(ctx context.Context, id string) erro
 // LockEntity locks an entity in the database store only.
 func (c *entityCompositeStore) LockEntity(ctx context.Context, id string) (providers.Entity, error) {
 	return c.dbStore.LockEntity(ctx, id)
+}
+
+// LockEntityWithCredentials locks an entity in the database store only and returns its credentials.
+func (c *entityCompositeStore) LockEntityWithCredentials(ctx context.Context,
+	id string) (*entityWithCredentials, error) {
+	return c.dbStore.LockEntityWithCredentials(ctx, id)
 }
 
 // ResolveLinkedAccounts returns the entities linked to a subject at a connection in both stores. An
@@ -303,6 +314,22 @@ func (c *entityCompositeStore) GetEntityListBySystemAttributesAndOUIDs(ctx conte
 	return entities, nil
 }
 
+// GetEntityListByType retrieves up to limit entities of a category that are of the given type from both
+// stores. It does not page, so it needs no count of either store: its caller lists the entities of a type up
+// to a bound, such as MaxCompositeStoreRecords, to report what depends on the type.
+func (c *entityCompositeStore) GetEntityListByType(ctx context.Context,
+	category, entityType string, limit int) ([]providers.Entity, error) {
+	dbEntities, err := c.dbStore.GetEntityListByType(ctx, category, entityType, limit)
+	if err != nil {
+		return nil, err
+	}
+	fileEntities, err := c.fileStore.GetEntityListByType(ctx, category, entityType, limit)
+	if err != nil {
+		return nil, err
+	}
+	return applyPagination(mergeAndDeduplicateEntities(dbEntities, fileEntities), limit, 0), nil
+}
+
 // GetEntityListCountByOUIDs retrieves the total count of entities by OU IDs from both stores.
 func (c *entityCompositeStore) GetEntityListCountByOUIDs(ctx context.Context, category string,
 	ouIDs []string, filters map[string]interface{}) (int, error) {
@@ -316,6 +343,58 @@ func (c *entityCompositeStore) GetEntityListCountByOUIDs(ctx context.Context, ca
 			return c.fileStore.GetEntityListByOUIDs(ctx, category, ouIDs, count, 0, filters)
 		},
 	)
+}
+
+// GetEntityListCountByProject retrieves the number of entities of a category in a project from both
+// stores, narrowed to the given organization units when ouIDs is not nil.
+func (c *entityCompositeStore) GetEntityListCountByProject(ctx context.Context, category, projectID string,
+	ouIDs []string) (int, error) {
+	return c.getDistinctEntityCount(
+		func() (int, error) { return c.dbStore.GetEntityListCountByProject(ctx, category, projectID, ouIDs) },
+		func() (int, error) { return c.fileStore.GetEntityListCountByProject(ctx, category, projectID, ouIDs) },
+		func(count int) ([]providers.Entity, error) {
+			return c.dbStore.GetEntityListByProject(ctx, category, projectID, ouIDs, count, 0)
+		},
+		func(count int) ([]providers.Entity, error) {
+			return c.fileStore.GetEntityListByProject(ctx, category, projectID, ouIDs, count, 0)
+		},
+	)
+}
+
+// GetEntityListByProject retrieves a page of the entities of a category in a project from both
+// stores, narrowed to the given organization units when ouIDs is not nil.
+func (c *entityCompositeStore) GetEntityListByProject(ctx context.Context, category, projectID string, ouIDs []string,
+	limit, offset int) ([]providers.Entity, error) {
+	entities, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
+		func() (int, error) { return c.dbStore.GetEntityListCountByProject(ctx, category, projectID, ouIDs) },
+		func() (int, error) { return c.fileStore.GetEntityListCountByProject(ctx, category, projectID, ouIDs) },
+		func(count int) ([]providers.Entity, error) {
+			return c.dbStore.GetEntityListByProject(ctx, category, projectID, ouIDs, count, 0)
+		},
+		func(count int) ([]providers.Entity, error) {
+			return c.fileStore.GetEntityListByProject(ctx, category, projectID, ouIDs, count, 0)
+		},
+		mergeAndDeduplicateEntities,
+		limit,
+		offset,
+		serverconst.MaxCompositeStoreRecords,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if limitExceeded {
+		return nil, errResultLimitExceededInCompositeMode
+	}
+	return entities, nil
+}
+
+// ProjectHasEntities reports whether any entity, of any category, is in a project in either store.
+func (c *entityCompositeStore) ProjectHasEntities(ctx context.Context, projectID string) (bool, error) {
+	found, err := c.dbStore.ProjectHasEntities(ctx, projectID)
+	if err != nil || found {
+		return found, err
+	}
+	return c.fileStore.ProjectHasEntities(ctx, projectID)
 }
 
 // GetEntityListByOUIDs retrieves entities scoped to OU IDs from both stores with pagination.

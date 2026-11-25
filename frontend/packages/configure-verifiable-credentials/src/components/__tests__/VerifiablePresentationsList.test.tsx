@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen} from '@thunderid/test-utils';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
 import type {VerifiablePresentationSummary} from '../../models/vp';
@@ -61,6 +62,11 @@ vi.mock('../VerifiablePresentationDeleteDialog', () => ({
 
 const {default: useGetVerifiablePresentations} = await import('../../api/useGetVerifiablePresentations');
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  isLoading: false,
+};
+
 describe('VerifiablePresentationsList', () => {
   const definitions: VerifiablePresentationSummary[] = [
     {id: 'vp-1', handle: 'skyline-lounge', ouId: 'ou-1', ouHandle: 'default', name: 'Skyline', vct: 'v', format: 'f'},
@@ -73,6 +79,27 @@ describe('VerifiablePresentationsList', () => {
       error: null,
       refetch: vi.fn(),
     } as unknown as ReturnType<typeof useGetVerifiablePresentations>);
+  });
+
+  it("lists only the selected project's presentation definitions", () => {
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <VerifiablePresentationsList />
+      </ProjectScopeProvider>,
+    );
+
+    expect(useGetVerifiablePresentations).toHaveBeenCalledWith('project-1');
+  });
+
+  it('hides the edit and delete row actions when the admin may only view', () => {
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <VerifiablePresentationsList />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.queryByRole('button', {name: 'Edit'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'Delete'})).not.toBeInTheDocument();
   });
 
   it('hides the verify action and does not mount the verification dialog by default', () => {

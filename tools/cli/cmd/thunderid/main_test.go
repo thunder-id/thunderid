@@ -8,6 +8,9 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/thunder-id/thunderid/tools/cli/internal/plane"
+	"github.com/thunder-id/thunderid/tools/cli/internal/services/release"
 )
 
 // captureStdout runs fn with os.Stdout redirected and returns what it printed.
@@ -87,5 +90,46 @@ func TestPrintUsageListsVersionFlag(t *testing.T) {
 
 	if !strings.Contains(usage, "--version, -V") {
 		t.Errorf("printUsage() output does not list the --version flag:\n%s", usage)
+	}
+}
+
+func TestConfigurePlane(t *testing.T) {
+	orig := release.Default
+	t.Cleanup(func() { release.Default = orig })
+
+	for _, args := range [][]string{{"--plane", "dp"}, {"--plane=dp"}} {
+		release.Default = &release.Client{}
+		if err := configurePlane(args); err != nil {
+			t.Fatalf("configurePlane(%q): %v", args, err)
+		}
+		if release.Default.Plane != plane.Data {
+			t.Fatalf("configurePlane(%q) selected %q, want %q", args, release.Default.Plane, plane.Data)
+		}
+	}
+
+	release.Default = &release.Client{}
+	if err := configurePlane(nil); err != nil || release.Default.Plane != plane.Auto {
+		t.Fatalf("no flag must leave the choice to the release, got %q, %v", release.Default.Plane, err)
+	}
+
+	for _, args := range [][]string{{"--plane", "everything"}, {"--plane", "dp", "--plane", "quickstart"}} {
+		if err := configurePlane(args); err == nil {
+			t.Fatalf("configurePlane(%q) succeeded, want an error", args)
+		}
+	}
+}
+
+// Only a CLI published on the next channel installs prereleases.
+func TestIsPrereleaseBuild(t *testing.T) {
+	for v, want := range map[string]bool{
+		"1.0.2":        false,
+		"1.1.0":        false,
+		"1.1.0-next.0": true,
+		"2.0.0-next.3": true,
+		devVersion:     false,
+	} {
+		if got := isPrereleaseBuild(v); got != want {
+			t.Errorf("isPrereleaseBuild(%q) = %v, want %v", v, got, want)
+		}
 	}
 }

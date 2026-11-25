@@ -140,6 +140,12 @@ configuration:
     # Logical deployment identifier. Every record is scoped to it, so give each
     # deployment sharing a database its own value. Defaults to "default-deployment".
     identifier: ""
+    # Product name the server presents to clients. Defaults to "ThunderID".
+    productName: ""
+    # The organization unit that resources in a project are placed in, and that applications and
+    # agents created without one go to. It is the organization unit the bootstrap creates. Don't
+    # change it once resources are placed in it.
+    systemOuId: "01900000-0000-7000-8000-000000000001"
     # The URL where users reach ThunderID in their browser.
     # ThunderID uses it to build the login and error redirect links.
     publicUrl: "https://thunderid.local"
@@ -150,6 +156,14 @@ configuration:
       readHeaderSeconds: 10
       writeSeconds: 10
       idleSeconds: 120
+    # Reverse proxies allowed to report the client IP recorded on SSO sessions and in the access log.
+    # Each entry is the range a proxy connects from and the header it sets the client IP in; header
+    # defaults to x-forwarded-for. Keep the ranges narrow: any caller inside one can report any IP.
+    # Empty by default, so the client IP is the connecting address.
+    # trustedProxies:
+    #   - cidr: "10.0.1.0/24"
+    #     header: "x-real-ip"
+    trustedProxies: []
     # Security configuration.
     # jwksCacheTtl controls how long fetched JWKS responses are cached in-process for
     # every JWKS consumer in the server (trusted issuer validation, federated OIDC
@@ -216,17 +230,33 @@ configuration:
   # productName: Display name shown in the browser tab and UI.
   # favicon: Path or URL to the favicon icons. Use an object with `light` and `dark`
   #          keys for color-scheme-aware icons (both keys are required).
+  # slogan: Content shown beside the Gate sign-in card when no application design applies
+  #         (for example a direct visit to the Gate page). Empty keeps the built-in ThunderID
+  #         items. A string is a single title, a map is a single item and a list is several
+  #         items. An item has `title`, an optional `description` and an optional `icon`, a
+  #         path under the Gate base path such as `assets/images/icon.svg`. The icon files
+  #         themselves must be present in the Gate assets of the image.
   brand:
     productName: "ThunderID"
     favicon:
       light: "assets/images/favicon.ico"
       dark: "assets/images/favicon-inverted.ico"
+    slogan: []
+    # slogan: "Sign in to Acme"
+    # slogan:
+    #   title: "Title"
+    #   description: "Description."
+    #   icon: "assets/images/icon.svg"
+    # slogan:
+    #   - title: "Title"
+    #     description: "Description."
+    #     icon: "assets/images/icon.svg"
 
   # Console client configuration
   consoleClient:
     path: "/console"
     clientId: "CONSOLE"
-    scopes: "['openid', 'profile', 'email', 'group', 'ou', 'system']"
+    scopes: "['openid', 'profile', 'email', 'group', 'ou', 'system', 'org']"
     # Resource indicator (audience) the console sends on token requests. Must match the
     # identifier of the System resource server seeded by the bootstrap defaults, which is
     # "<server.publicUrl>/mcp". Leave empty to derive it from server.publicUrl (default);
@@ -538,8 +568,15 @@ configuration:
   # applyTimeoutSeconds bounds a request to apply a configuration version to a gateway, or to revert
   # one, in place of server.timeouts.writeSeconds. It covers waiting for an apply already running on
   # that gateway and the gateway's import, so keep it above the gateway's import.timeoutSeconds.
+  # unusedValueGraceSeconds: after each apply, the values this plane named for a resource that nothing
+  # refers to any more are removed from the gateway's store once last set longer ago than this. Below 1
+  # it is raised to 1; a negative number turns the removal off.
+  # unusedValueSweepIntervalSeconds is the least time between two such removals from the same gateway;
+  # 0 removes after every apply.
   gateway:
     applyTimeoutSeconds: 300
+    unusedValueGraceSeconds: 3600
+    unusedValueSweepIntervalSeconds: 300
 
   # Flow configuration
   flow:
@@ -690,6 +727,11 @@ configuration:
     # access:
     #   excludePaths:
     #     - /health
+
+  # Audit events. Each is written to stdout as one JSON line that starts with "log_type":"AUDIT",
+  # whatever the log level or format. Omitted, audit stays on.
+  # audit:
+  #   enabled: true
 
   # Storage mode per resource type: "mutable", "declarative", or "composite".
   # Only set these when declarativeResources.enabled=true and the resource should be

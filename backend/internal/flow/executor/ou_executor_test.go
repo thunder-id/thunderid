@@ -76,6 +76,9 @@ func newMockExecutor(name string, executorType providers.ExecutorType, defaultIn
 	mockExec.On("HasRequiredInputs", mock.Anything, mock.Anything).Return(
 		func(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) bool {
 			requiredInputs := defaultInputs
+			if len(ctx.NodeInputs) > 0 {
+				requiredInputs = ctx.NodeInputs
+			}
 			if execResp.Inputs == nil {
 				execResp.Inputs = make([]providers.Input, 0)
 			}
@@ -381,6 +384,178 @@ func (suite *OUExecutorTestSuite) TestExecute_UserInputRequired() {
 			suite.mockOUService.AssertNotCalled(suite.T(), "CreateOrganizationUnit", mock.Anything)
 		})
 	}
+}
+
+func (suite *OUExecutorTestSuite) TestExecute_GenerateOUHandle() {
+	testCases := []struct {
+		name           string
+		userInputs     map[string]string
+		expectedHandle string
+	}{
+		{
+			name:           "Handle not provided",
+			userInputs:     map[string]string{userInputOuName: "Northstar Logistics"},
+			expectedHandle: "northstar-logistics",
+		},
+		{
+			name:           "Empty handle provided",
+			userInputs:     map[string]string{userInputOuName: "Café Société", userInputOuHandle: ""},
+			expectedHandle: "cafe-societe",
+		},
+		{
+			name:           "Whitespace handle provided",
+			userInputs:     map[string]string{userInputOuName: "Northstar Logistics", userInputOuHandle: "  "},
+			expectedHandle: "northstar-logistics",
+		},
+		{
+			name:           "Handle provided",
+			userInputs:     map[string]string{userInputOuName: "Northstar Logistics", userInputOuHandle: "nsl"},
+			expectedHandle: "nsl",
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+
+			ctx := &providers.NodeContext{
+				ExecutionID:    "flow-123",
+				FlowType:       providers.FlowTypeRegistration,
+				UserInputs:     tc.userInputs,
+				RuntimeData:    map[string]string{},
+				NodeProperties: map[string]interface{}{propertyKeyGenerateOUHandle: true},
+			}
+
+			expectedRequest := providers.OrganizationUnitRequestWithID{
+				Name:   tc.userInputs[userInputOuName],
+				Handle: tc.expectedHandle,
+			}
+			suite.mockOUService.On("CreateOrganizationUnit", mock.Anything, expectedRequest).
+				Return(providers.OrganizationUnit{ID: testOUID, Handle: tc.expectedHandle}, nil)
+
+			result, err := suite.executor.Execute(ctx)
+
+			suite.NoError(err)
+			suite.Equal(providers.ExecComplete, result.Status)
+			suite.Empty(result.Inputs)
+			suite.Equal(testOUID, result.RuntimeData[ouIDKey])
+		})
+	}
+}
+
+func (suite *OUExecutorTestSuite) TestExecute_GenerateOUHandle_UserInputRequired() {
+	testCases := []struct {
+		name               string
+		userInputs         map[string]string
+		expectedInputs     []string
+		expectedError      *tidcommon.ServiceError
+		createOUError      *tidcommon.ServiceError
+		expectCreateCalled bool
+	}{
+		{
+			name:           "Name not provided",
+			userInputs:     map[string]string{userInputOuHandle: "engineering"},
+			expectedInputs: []string{userInputOuName},
+		},
+		{
+			name:           "No inputs provided",
+			userInputs:     map[string]string{},
+			expectedInputs: []string{userInputOuName, userInputOuHandle},
+		},
+		{
+			name:           "Name has no characters a handle can carry",
+			userInputs:     map[string]string{userInputOuName: "株式会社 🚀"},
+			expectedInputs: []string{userInputOuName, userInputOuHandle},
+			expectedError:  &ErrOUHandleNotGenerated,
+		},
+		{
+			name:               "Generated handle already exists",
+			userInputs:         map[string]string{userInputOuName: "Engineering"},
+			expectedInputs:     []string{userInputOuName, userInputOuHandle},
+			expectedError:      &ErrOUHandleConflict,
+			createOUError:      &providers.ErrorOrganizationUnitHandleConflict,
+			expectCreateCalled: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+
+			ctx := &providers.NodeContext{
+				ExecutionID:    "flow-123",
+				FlowType:       providers.FlowTypeRegistration,
+				UserInputs:     tc.userInputs,
+				RuntimeData:    map[string]string{},
+				NodeProperties: map[string]interface{}{propertyKeyGenerateOUHandle: true},
+			}
+
+			if tc.expectCreateCalled {
+				suite.mockOUService.On("CreateOrganizationUnit", mock.Anything, mock.Anything).
+					Return(providers.OrganizationUnit{}, tc.createOUError)
+			}
+
+			result, err := suite.executor.Execute(ctx)
+
+			suite.NoError(err)
+			suite.Equal(providers.ExecUserInputRequired, result.Status)
+			identifiers := make([]string, 0, len(result.Inputs))
+			for _, input := range result.Inputs {
+				identifiers = append(identifiers, input.Identifier)
+			}
+			suite.Equal(tc.expectedInputs, identifiers)
+			if tc.expectedError != nil {
+				suite.Require().NotNil(result.Error)
+				suite.Equal(tc.expectedError.Code, result.Error.Code)
+			}
+			if !tc.expectCreateCalled {
+				suite.mockOUService.AssertNotCalled(suite.T(), "CreateOrganizationUnit", mock.Anything, mock.Anything)
+			}
+		})
+	}
+}
+
+func (suite *OUExecutorTestSuite) TestExecute_GenerateOUHandle_RequestsHandleAsOptional() {
+	ctx := &providers.NodeContext{
+		ExecutionID:    "flow-123",
+		FlowType:       providers.FlowTypeRegistration,
+		UserInputs:     map[string]string{},
+		RuntimeData:    map[string]string{},
+		NodeProperties: map[string]interface{}{propertyKeyGenerateOUHandle: true},
+	}
+
+	result, err := suite.executor.Execute(ctx)
+
+	suite.NoError(err)
+	suite.Equal(providers.ExecUserInputRequired, result.Status)
+	suite.Require().Len(result.Inputs, 2)
+	suite.Equal(userInputOuName, result.Inputs[0].Identifier)
+	suite.True(result.Inputs[0].Required)
+	suite.Equal(userInputOuHandle, result.Inputs[1].Identifier)
+	suite.False(result.Inputs[1].Required)
+}
+
+func (suite *OUExecutorTestSuite) TestExecute_GenerateOUHandle_OnlyHandleNodeInput() {
+	ctx := &providers.NodeContext{
+		ExecutionID:    "flow-123",
+		FlowType:       providers.FlowTypeRegistration,
+		UserInputs:     map[string]string{userInputOuName: "Northstar Logistics"},
+		RuntimeData:    map[string]string{},
+		NodeInputs:     []providers.Input{{Identifier: userInputOuHandle, Type: "string", Required: true}},
+		NodeProperties: map[string]interface{}{propertyKeyGenerateOUHandle: true},
+	}
+	expectedRequest := providers.OrganizationUnitRequestWithID{
+		Name:   "Northstar Logistics",
+		Handle: "northstar-logistics",
+	}
+	suite.mockOUService.On("CreateOrganizationUnit", mock.Anything, expectedRequest).
+		Return(providers.OrganizationUnit{ID: testOUID, Handle: expectedRequest.Handle}, nil)
+
+	result, err := suite.executor.Execute(ctx)
+
+	suite.NoError(err)
+	suite.Equal(providers.ExecComplete, result.Status)
+	suite.Empty(result.Inputs)
 }
 
 func (suite *OUExecutorTestSuite) TestExecute_ErrorScenarios() {
@@ -716,7 +891,7 @@ func (suite *OUExecutorTestSuite) TestExecutorHelperMethods() {
 					},
 				}
 
-				request, err := suite.executor.getOrganizationUnitRequest(ctx)
+				request, err := suite.executor.getOrganizationUnitRequest(ctx, "engineering")
 
 				assert.NoError(suite.T(), err)
 				assert.Equal(suite.T(), "Engineering", request.Name)

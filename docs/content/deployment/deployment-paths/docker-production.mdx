@@ -125,6 +125,40 @@ services:
       - ./config/resources/server_configs/csp.yaml:/opt/thunderid/config/resources/server_configs/csp.yaml:ro
 ```
 
+### Record the Client IP
+
+Behind NGINX, the connecting address of every request is the NGINX container's. To record the real client IP on SSO sessions and in the access log, give NGINX a fixed address on its own network and list only that address as a [trusted proxy](../../configuration#trusted-proxies). Add these lines to the Compose file:
+
+```yaml
+networks:
+  edge:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
+
+services:
+  nginx:
+    networks:
+      edge:
+        ipv4_address: 172.28.0.10
+  thunderid:
+    networks:
+      - default
+      - edge
+```
+
+Attach NGINX only to `edge`, so it always reaches <ProductName /> from the trusted address. <ProductName /> keeps the `default` network as well: listing `networks:` on a service removes it from the Compose default network, so without it <ProductName /> loses access to other services it reaches there, such as its database.
+
+Then trust the NGINX address in `deployment.yaml`. NGINX sends `X-Forwarded-For`, the default header:
+
+```yaml
+server:
+  trusted_proxies:
+    - cidr: "172.28.0.10/32"
+```
+
+Trust the exact address rather than a range. A range such as `172.16.0.0/12` covers every Docker network on the host, so any container could report any client IP.
+
 ## Set Resource Constraints
 
 Prevent a runaway container from exhausting host resources by setting CPU and memory limits:

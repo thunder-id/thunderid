@@ -107,6 +107,9 @@ func (ts *SSOLogoutTestSuite) TestBrowserFlow_AcceptsSessionDataInRequestBody() 
 	})
 
 	ts.Equal("COMPLETE", step.FlowStatus, "the session in the body should skip authentication via SSO")
+	ts.Require().Len(step.SessionData, 1, "the reused session is returned")
+	ts.Equal(*held, step.SessionData[0].FlowSessionData, "the session returned is the one presented")
+	ts.Empty(ts.ssoCookies(client), "a reused session sets no cookie")
 }
 
 // appNativeLogin drives a first-time app-native login to completion and returns the session data the

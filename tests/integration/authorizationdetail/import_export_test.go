@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/suite"
+
+	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
 const (
@@ -26,6 +28,10 @@ const (
 	codeImportUnresolvedReference = "IMP-1006"
 	// codeImportMisplacedSecret is returned for a secret referred to from a field that is not a credential.
 	codeImportMisplacedSecret = "IMP-1007"
+	// codeManagedType is returned for a change to a type a control plane deployed that is not its own import's.
+	codeManagedType = "RAR-1030"
+	// managedImportPath is the import a control plane deploys through, which marks what it writes as its own.
+	managedImportPath = "/import/managed"
 )
 
 type ImportExportTestSuite struct {
@@ -80,7 +86,7 @@ func (s *ImportExportTestSuite) TestExportedTypeImportsBack() {
 	s.Equal(codeTypeConflict, result["code"], "%v", result)
 
 	// An import can delete the type.
-	status, body = doJSON(s.T(), http.MethodPost, "/import", map[string]interface{}{
+	status, body = postImport(s.T(), testutils.GetManagementAPIKeyHTTPClient(), map[string]interface{}{
 		"deletions": []map[string]string{{"resourceType": resourceTypeAuthorizationDetailType, "id": original.ID}},
 		"options":   map[string]interface{}{"upsert": true, "continueOnError": true, "target": "runtime"},
 	})
@@ -240,6 +246,37 @@ func (s *ImportExportTestSuite) TestDryRunPredictsTheOutcome() {
 	s.Equal(http.StatusNotFound, status, "a refused import writes nothing")
 }
 
+// A dry run of an update to a type a control plane deployed predicts the update: the control plane's import
+// may change it and any other import is refused, while a type declared in a file is refused either way.
+func (s *ImportExportTestSuite) TestDryRunOfADeployedOrDeclaredTypePredictsTheUpdate() {
+	id := uniqueTypeID()
+	value := uniqueTypeValue("deployed")
+	s.Require().Equal("success", s.importManaged(typeDocument(id, value, ""), false, nil)["status"])
+	defer func() {
+		s.importManaged("", false, []map[string]interface{}{
+			{"resourceType": resourceTypeAuthorizationDetailType, "id": id}})
+	}()
+
+	result := s.importDocument(typeDocument(id, value, ""), true, true)
+	s.Equal("failed", result["status"], "%v", result)
+	s.Equal(codeManagedType, result["code"], "%v", result)
+
+	result = s.importManaged(typeDocument(id, value, ""), true, nil)
+	s.Equal("success", result["status"], "the control plane's own import was refused: %v", result)
+	s.Equal("update", result["operation"], "%v", result)
+
+	for _, managed := range []bool{false, true} {
+		document := typeDocument(declarativeTypeID, declarativeTypeValue, "")
+		if managed {
+			result = s.importManaged(document, true, nil)
+		} else {
+			result = s.importDocument(document, true, true)
+		}
+		s.Equal("failed", result["status"], "managed %v: %v", managed, result)
+		s.Equal(codeImmutableType, result["code"], "managed %v: %v", managed, result)
+	}
+}
+
 // A dry run of an upsert that moves a type's processor to another endpoint predicts that the credential must
 // be given again.
 func (s *ImportExportTestSuite) TestDryRunPredictsAProcessorCredentialIsRequiredAgain() {
@@ -340,6 +377,27 @@ func (s *ImportExportTestSuite) TestExportedNoneAuthenticationClearsTheStoredCre
 	s.Equal("bearer", storedAuthenticationType(), "a document without the block keeps the stored credential")
 }
 
+// A data plane takes a type only from an import with the management API key, so an import with a token is
+// refused and writes nothing.
+func (s *ImportExportTestSuite) TestImportWithTokenIsRefused() {
+	id := uniqueTypeID()
+	status, body := postImport(s.T(), testutils.GetHTTPClient(), map[string]interface{}{
+		"content": typeDocument(id, uniqueTypeValue("token-import"), ""),
+		"options": map[string]interface{}{"upsert": true, "continueOnError": true, "target": "runtime"},
+	})
+	s.Require().Equal(http.StatusOK, status, string(body))
+	var resp struct {
+		Results []map[string]interface{} `json:"results"`
+	}
+	s.Require().NoError(json.Unmarshal(body, &resp))
+	s.Require().Len(resp.Results, 1, string(body))
+	s.Equal("failed", resp.Results[0]["status"], "%v", resp.Results[0])
+	s.Equal(codeUnauthorized, resp.Results[0]["code"], "%v", resp.Results[0])
+
+	status, _ = doJSON(s.T(), http.MethodGet, typesPath+"/"+id, nil)
+	s.Equal(http.StatusNotFound, status, "a refused import writes nothing")
+}
+
 // Exporting every type exports the registered ones and leaves out those declared in files, which a deployment
 // already has.
 func (s *ImportExportTestSuite) TestExportOfAllTypesLeavesOutDeclaredTypes() {
@@ -396,11 +454,11 @@ func (s *ImportExportTestSuite) importDocument(content string, dryRun, upsert bo
 	return s.importDocumentWithVariables(content, nil, dryRun, upsert)
 }
 
-// importDocumentWithVariables imports the given content with the values of its template variables, and
-// returns the outcome of its single document.
+// importDocumentWithVariables imports the given content with the values of its template variables with the
+// management API key, the only way a data plane takes a type, and returns the outcome of its single document.
 func (s *ImportExportTestSuite) importDocumentWithVariables(content string, variables map[string]interface{},
 	dryRun, upsert bool) map[string]interface{} {
-	status, body := doJSON(s.T(), http.MethodPost, "/import", map[string]interface{}{
+	status, body := postImport(s.T(), testutils.GetManagementAPIKeyHTTPClient(), map[string]interface{}{
 		"content":   content,
 		"variables": variables,
 		"dryRun":    dryRun,
@@ -413,4 +471,36 @@ func (s *ImportExportTestSuite) importDocumentWithVariables(content string, vari
 	s.Require().NoError(json.Unmarshal(body, &resp))
 	s.Require().Len(resp.Results, 1, string(body))
 	return resp.Results[0]
+}
+
+// importManaged imports the given content, with upsert, and the given deletions through the control plane's
+// import, and returns the outcome of its single document or deletion.
+func (s *ImportExportTestSuite) importManaged(content string, dryRun bool,
+	deletions []map[string]interface{}) map[string]interface{} {
+	body, err := json.Marshal(map[string]interface{}{
+		"content":   content,
+		"dryRun":    dryRun,
+		"deletions": deletions,
+		"options":   map[string]interface{}{"upsert": true, "continueOnError": true, "target": "runtime"},
+	})
+	s.Require().NoError(err)
+	status, answer := doRawWith(s.T(), testutils.GetManagementAPIKeyHTTPClient(), http.MethodPost,
+		managedImportPath, body)
+	s.Require().Equal(http.StatusOK, status, string(answer))
+	var resp struct {
+		Results []map[string]interface{} `json:"results"`
+	}
+	s.Require().NoError(json.Unmarshal(answer, &resp))
+	s.Require().Len(resp.Results, 1, string(answer))
+	return resp.Results[0]
+}
+
+// postImport sends an import request with the given client and returns the status and body.
+func postImport(t *testing.T, client *http.Client, request map[string]interface{}) (int, []byte) {
+	t.Helper()
+	body, err := json.Marshal(request)
+	if err != nil {
+		t.Fatalf("encoding import request: %v", err)
+	}
+	return doRawWith(t, client, http.MethodPost, "/import", body)
 }

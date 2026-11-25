@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	testSystemFlowHandle = "system-application-delete-pre"
+	testSystemFlowHandle = "system-inbound-client-delete-pre"
 	testSystemFlowJSON   = `{"id": "019a1f40-6a1c-7000-8000-5e5713d0aaaa", "handle": "system-test", ` +
 		`"name": "Test", "flowType": "SYSTEM", "nodes": []}`
 )
@@ -55,22 +55,32 @@ func (s *SystemFlowTestSuite) TestBuiltInSystemFlowsAreValid() {
 	graphs := newGraphBuilderInterfaceMock(s.T())
 	graphs.EXPECT().ValidateGraph(mock.Anything, mock.Anything).Return(nil)
 	validator := newFlowValidator(
-		registry, interceptormock.NewInterceptorRegistryInterfaceMock(s.T()), graphs, nil, nil)
+		registry, interceptormock.NewInterceptorRegistryInterfaceMock(s.T()), graphs, nil, nil, nil, nil)
 
 	flows, err := loadSystemFlows(context.Background(), systemFlowFiles, validator)
 
 	s.Require().NoError(err)
-	// Each pre flow takes the steps its administration flow runs between the permission check and the
-	// write, and the one post flow takes the step those flows run after the write.
+	// Each pre flow plans what the change revokes and revokes it, and the shared post flow moves the cutoff past
+	// the write. An entity's and an inbound client's deletion and a credential update also end or detach the
+	// sessions the plan names, and a credential update's post flow ends the sessions started during the write.
 	expected := map[string][]string{
-		"system-application-delete-pre": {
-			"ApplicationActionValidator:revoke_all", "CriteriaRevocationExecutor:revoke", "SessionRevocationExecutor:",
+		"system-entity-delete-pre": {
+			"PreRevocationExecutor:identity_deletion", "CriteriaRevocationExecutor:revoke",
+			"SessionRevocationExecutor:",
 		},
-		"system-application-secret-rotate-pre": {
-			"ApplicationActionValidator:revoke_before_action", "CriteriaRevocationExecutor:revoke",
+		"system-inbound-client-delete-pre": {
+			"PreRevocationExecutor:client_removal", "CriteriaRevocationExecutor:revoke",
+			"SessionRevocationExecutor:",
 		},
-		"system-user-delete-pre": {
-			"PreDeleteExecutor:revoke_all", "CriteriaRevocationExecutor:revoke", "SessionRevocationExecutor:",
+		"system-entity-secret-rotate-pre": {
+			"PreRevocationExecutor:client_secret_rotation", "CriteriaRevocationExecutor:revoke",
+		},
+		"system-entity-credential-update-pre": {
+			"PreRevocationExecutor:credential_update", "CriteriaRevocationExecutor:revoke",
+			"SessionRevocationExecutor:",
+		},
+		"system-entity-credential-update-post": {
+			"CriteriaRevocationExecutor:advance_cutoff", "SessionRevocationExecutor:",
 		},
 		"system-role-delete-pre": {"AccessChangeValidator:role_deletion", "CriteriaRevocationExecutor:revoke"},
 		"system-role-assignment-removal-pre": {
@@ -161,7 +171,7 @@ func (s *SystemFlowTestSuite) TestGetSystemFlow() {
 	s.validator.EXPECT().ValidateSystemFlowDefinition(mock.Anything, mock.Anything).Return(nil)
 	flows, err := loadSystemFlows(context.Background(), systemFlowFiles, s.validator)
 	s.Require().NoError(err)
-	service := &flowMgtService{systemFlows: flows}
+	service := &flowMgtService{systemFlows: flows, bus: discardingBus{}}
 
 	flow, svcErr := service.GetSystemFlow(context.Background(), testSystemFlowHandle)
 	s.Require().Nil(svcErr)

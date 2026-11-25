@@ -137,6 +137,23 @@ describe('EditTokensSettings User audience', () => {
     expect(screen.queryByLabelText(/Access token validity/)).not.toBeInTheDocument();
   });
 
+  it('should offer the attributes of an allowed user type picked on the Advanced tab but not saved yet', async () => {
+    const user = userEvent.setup();
+    const config = configFor([AUTHORIZATION_CODE]);
+    render(
+      <EditTokensSettings
+        agent={{...agentFor(config), allowedUserTypes: []}}
+        editedAgent={{allowedUserTypes: ['person']}}
+        oauth2Config={config}
+        onFieldChange={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole('tab', {name: 'User'}));
+
+    await waitFor(() => expect(pickerAttributes()).toContain('given_name'));
+    expect(screen.queryByText(/No user attributes available/)).not.toBeInTheDocument();
+  });
+
   it('should show the access token attributes with the token exchange note for token exchange only', async () => {
     await renderUserAudience([TOKEN_EXCHANGE]);
 

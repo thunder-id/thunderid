@@ -3,6 +3,7 @@
 
 import {focusManager} from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {renderWithProviders, screen, waitFor, within} from '@thunderid/test-utils';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import {apiError, createHttpRouter, SERVER_URL, type HttpCall} from '../../__tests__/http';
@@ -46,6 +47,11 @@ beforeEach(() => {
   mockNavigate.mockResolvedValue(undefined);
 });
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  isLoading: false,
+};
+
 describe('GatewayDetailPage', () => {
   it('shows the gateway and its settings, and nothing about what it runs', async () => {
     mockHttpRequest.mockImplementation(createHttpRouter(routes));
@@ -72,6 +78,21 @@ describe('GatewayDetailPage', () => {
 
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/gateways'));
     expect(mockHttpRequest).toHaveBeenCalledWith(expect.objectContaining({method: 'DELETE'}));
+  });
+
+  it('offers no remove or key rotation, and locks the fields, when the admin may only view gateways', async () => {
+    mockHttpRequest.mockImplementation(createHttpRouter(routes));
+    renderWithProviders(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <GatewayDetailPage />
+      </CapabilitiesProvider>,
+    );
+
+    const baseUrl = await screen.findByLabelText(/Base URL/);
+    expect(screen.queryByRole('button', {name: 'Remove gateway'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'Rotate key'})).not.toBeInTheDocument();
+
+    expect(baseUrl).toBeDisabled();
   });
 
   it('saves only the fields that changed', async () => {

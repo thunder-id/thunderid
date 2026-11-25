@@ -49,6 +49,7 @@ func newAdministrationTestFactory(t *testing.T) core.FlowFactoryInterface {
 func administrationNodeContext(mode string, inputs map[string]string) *providers.NodeContext {
 	return &providers.NodeContext{
 		Context:           context.Background(),
+		FlowType:          providers.FlowTypeAdministration,
 		ExecutorMode:      mode,
 		UserInputs:        inputs,
 		RuntimeData:       map[string]string{},
@@ -367,6 +368,41 @@ func (s *AccessChangeValidatorTestSuite) TestRoleDeletion_PlansPerPrincipalCrite
 	s.Equal(testRoleID, plan.TargetID)
 	s.Len(plan.Criteria, 2)
 	s.Equal(revocation.CriterionTypeEntityScope, plan.Criteria[0].Type)
+}
+
+// A role deletion records the scopes its holders lose, even with no holder yet, so the post flow can
+// revoke a holder assigned after the plan was made.
+func (s *AccessChangeValidatorTestSuite) TestRoleDeletion_RecordsTheHolderScopes() {
+	for name, target := range map[string]*revocation.AccessRevocationTarget{
+		"with holders": oneCaliforniaScope(testAssigneeID),
+		"no holders":   oneCaliforniaScope(),
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			s.roles.On("ValidateDeleteRole", mock.Anything, testRoleID).Return(target, nil)
+
+			resp, err := s.validator().Execute(administrationNodeContext(
+				ExecutorModeRoleDeletion, map[string]string{revocationInputRole: testRoleID}))
+
+			s.Require().NoError(err)
+			s.Equal(target.Scopes, s.planFrom(resp).HolderScopes)
+		})
+	}
+}
+
+// A change whose holders cannot grow before it commits records no holder scopes.
+func (s *AccessChangeValidatorTestSuite) TestRolePermissionRemoval_RecordsNoHolderScopes() {
+	s.roles.On("ValidateUpdateRolePermissions", mock.Anything, testRoleID, mock.Anything).
+		Return(oneCaliforniaScope(testAssigneeID), nil)
+
+	resp, err := s.validator().Execute(administrationNodeContext(
+		ExecutorModeRolePermissionRemoval, map[string]string{
+			revocationInputRole:        testRoleID,
+			revocationInputPermissions: `[]`,
+		}))
+
+	s.Require().NoError(err)
+	s.Empty(s.planFrom(resp).HolderScopes)
 }
 
 func (s *AccessChangeValidatorTestSuite) TestRolePermissionRemoval_CarriesTheNewSet() {

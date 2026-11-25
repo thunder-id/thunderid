@@ -40,6 +40,9 @@ type apiErrorResponse struct {
 // APIAuthTestSuite validates both authentication and authorization behavior for protected APIs.
 type APIAuthTestSuite struct {
 	suite.Suite
+	// The regular user lives outside the default OU, and a sign-in is bounded to its application's OU, so it
+	// signs in through an application in its own OU rather than the Console.
+	signIn             testutils.OUSignInApps
 	adminClient        *http.Client
 	plainClient        *http.Client
 	invalidTokenClient *http.Client
@@ -107,12 +110,15 @@ func (suite *APIAuthTestSuite) SetupSuite() {
 	suite.Require().NoError(err)
 	suite.regularUserID = userID
 
-	userClient, err := testutils.GetHTTPClientForUser(username, password)
+	userClient, err := suite.signIn.HTTPClientForUser(suite.ouID, username, password)
 	suite.Require().NoError(err)
 	suite.userClient = userClient
 }
 
 func (suite *APIAuthTestSuite) TearDownSuite() {
+	if err := suite.signIn.DeleteAll(); err != nil {
+		suite.T().Logf("Failed to delete the sign-in application: %v", err)
+	}
 	if suite.regularUserID != "" {
 		if err := testutils.DeleteUser(suite.regularUserID); err != nil {
 			suite.T().Logf("Failed to delete regular user: %v", err)

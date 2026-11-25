@@ -5,6 +5,7 @@ package resource
 
 import (
 	"context"
+	"slices"
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
@@ -60,6 +61,26 @@ func (c *compositeResourceStore) GetResourceServer(ctx context.Context, id strin
 		errResourceServerNotFound,
 	)
 	return server, err
+}
+
+// GetDeclaredPermissions combines the covered permission names from both stores.
+func (c *compositeResourceStore) GetDeclaredPermissions(
+	ctx context.Context, resServerID string, roots []string, delimiter string,
+) ([]string, error) {
+	if len(roots) == 0 {
+		return nil, nil
+	}
+	dbPermissions, err := c.dbStore.GetDeclaredPermissions(ctx, resServerID, roots, delimiter)
+	if err != nil {
+		return nil, err
+	}
+	filePermissions, err := c.fileStore.GetDeclaredPermissions(ctx, resServerID, roots, delimiter)
+	if err != nil {
+		return nil, err
+	}
+	permissions := slices.Concat(dbPermissions, filePermissions)
+	slices.Sort(permissions)
+	return slices.Compact(permissions), nil
 }
 
 // GetResourceServerList returns a paginated, deduplicated list of resource servers from both stores.
@@ -141,6 +162,99 @@ func (c *compositeResourceStore) GetResourceServerListCount(ctx context.Context)
 		return 0, errResultLimitExceededInCompositeMode
 	}
 	return len(merged), nil
+}
+
+// GetResourceServerListByOUID returns a paginated, deduplicated list of the resource servers an
+// organization unit owns from both stores.
+func (c *compositeResourceStore) GetResourceServerListByOUID(
+	ctx context.Context, ouID string, limit, offset int,
+) ([]providers.ResourceServer, error) {
+	resourceServers, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
+		func() (int, error) { return c.dbStore.GetResourceServerListCountByOUID(ctx, ouID) },
+		func() (int, error) { return c.fileStore.GetResourceServerListCountByOUID(ctx, ouID) },
+		func(count int) ([]providers.ResourceServer, error) {
+			return c.dbStore.GetResourceServerListByOUID(ctx, ouID, count, 0)
+		},
+		func(count int) ([]providers.ResourceServer, error) {
+			return c.fileStore.GetResourceServerListByOUID(ctx, ouID, count, 0)
+		},
+		mergeAndDeduplicateResourceServers,
+		limit,
+		offset,
+		serverconst.MaxCompositeStoreRecords,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if limitExceeded {
+		return nil, errResultLimitExceededInCompositeMode
+	}
+	return resourceServers, nil
+}
+
+// GetResourceServerListCountByOUID returns the count of the resource servers an organization unit owns
+// across both stores. A resource server ID is unique across the stores, so the counts add up exactly.
+func (c *compositeResourceStore) GetResourceServerListCountByOUID(ctx context.Context, ouID string) (int, error) {
+	dbCount, err := c.dbStore.GetResourceServerListCountByOUID(ctx, ouID)
+	if err != nil {
+		return 0, err
+	}
+	fileCount, err := c.fileStore.GetResourceServerListCountByOUID(ctx, ouID)
+	if err != nil {
+		return 0, err
+	}
+	if dbCount+fileCount > serverconst.MaxCompositeStoreRecords {
+		return 0, errResultLimitExceededInCompositeMode
+	}
+	return dbCount + fileCount, nil
+}
+
+// GetResourceServerListByProject returns a paginated, deduplicated list of the resource servers of a
+// project from both stores, narrowed to the ones an organization unit owns when ouID is set.
+func (c *compositeResourceStore) GetResourceServerListByProject(
+	ctx context.Context, projectID, ouID string, limit, offset int,
+) ([]providers.ResourceServer, error) {
+	resourceServers, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
+		func() (int, error) { return c.dbStore.GetResourceServerListCountByProject(ctx, projectID, ouID) },
+		func() (int, error) { return c.fileStore.GetResourceServerListCountByProject(ctx, projectID, ouID) },
+		func(count int) ([]providers.ResourceServer, error) {
+			return c.dbStore.GetResourceServerListByProject(ctx, projectID, ouID, count, 0)
+		},
+		func(count int) ([]providers.ResourceServer, error) {
+			return c.fileStore.GetResourceServerListByProject(ctx, projectID, ouID, count, 0)
+		},
+		mergeAndDeduplicateResourceServers,
+		limit,
+		offset,
+		serverconst.MaxCompositeStoreRecords,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if limitExceeded {
+		return nil, errResultLimitExceededInCompositeMode
+	}
+	return resourceServers, nil
+}
+
+// GetResourceServerListCountByProject returns the count of the resource servers of a project across both
+// stores, narrowed to the ones an organization unit owns when ouID is set. A resource server ID is unique
+// across the stores, so the counts add up exactly.
+func (c *compositeResourceStore) GetResourceServerListCountByProject(
+	ctx context.Context, projectID, ouID string,
+) (int, error) {
+	dbCount, err := c.dbStore.GetResourceServerListCountByProject(ctx, projectID, ouID)
+	if err != nil {
+		return 0, err
+	}
+	fileCount, err := c.fileStore.GetResourceServerListCountByProject(ctx, projectID, ouID)
+	if err != nil {
+		return 0, err
+	}
+	if dbCount+fileCount > serverconst.MaxCompositeStoreRecords {
+		return 0, errResultLimitExceededInCompositeMode
+	}
+	return dbCount + fileCount, nil
 }
 
 // UpdateResourceServer updates a resource server in the database store.

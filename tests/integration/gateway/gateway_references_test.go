@@ -31,10 +31,19 @@ func (ts *GatewayVersionsTestSuite) referringUnit() (string, string, string) {
 	suffix := fmt.Sprint(time.Now().UnixNano())
 	name := "Referring Unit " + suffix
 	value := "REFERRING_UNIT_" + suffix
+	// A root unit is imported, and import resolves a reference, so the referring unit is a child
+	// created through the API, which stores the reference as written.
+	parentID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "referring-parent-" + suffix,
+		Name:   "Referring Parent " + suffix,
+	})
+	ts.Require().NoError(err)
+	ts.T().Cleanup(func() { _ = testutils.DeleteOrganizationUnit(parentID) })
 	id, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
 		Handle:      "referring-unit-" + suffix,
 		Name:        name,
 		Description: "var:" + value,
+		Parent:      &parentID,
 	})
 	ts.Require().NoError(err)
 	ts.T().Cleanup(func() { _ = testutils.DeleteOrganizationUnit(id) })

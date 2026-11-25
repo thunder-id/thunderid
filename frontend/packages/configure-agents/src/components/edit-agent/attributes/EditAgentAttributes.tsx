@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {QueryErrorNotice, SettingsCard} from '@thunderid/components';
-import {useGetAgentType, useGetAgentTypes} from '@thunderid/configure-agent-types';
+import {useGetAgentType, useGetAllAgentTypes} from '@thunderid/configure-agent-types';
 import {renderSchemaField} from '@thunderid/configure-users';
 import {useResolveDisplayName} from '@thunderid/hooks';
+import {orderAttributes} from '@thunderid/utils';
 import {Box, CircularProgress, Stack, Typography} from '@wso2/oxygen-ui';
 import {useCallback, useEffect, useRef, type JSX} from 'react';
 import {useForm, useWatch} from 'react-hook-form';
@@ -18,6 +19,7 @@ interface EditAgentAttributesProps {
   editedAgent: Partial<Agent>;
   onFieldChange: (field: keyof Agent, value: unknown) => void;
   onLifespanValidationChange?: (hasError: boolean) => void;
+  readOnly?: boolean;
 }
 
 type AttributeFormData = Record<string, unknown>;
@@ -46,12 +48,13 @@ export default function EditAgentAttributes({
   editedAgent,
   onFieldChange,
   onLifespanValidationChange = undefined,
+  readOnly = false,
 }: EditAgentAttributesProps): JSX.Element {
   const {t} = useTranslation();
   const {resolveDisplayName} = useResolveDisplayName({handlers: {t}});
 
-  const {data: agentTypesData} = useGetAgentTypes();
-  const matchedSchema = agentTypesData?.types?.find((s) => s.handle === agent.type);
+  const {data: agentTypes} = useGetAllAgentTypes();
+  const matchedSchema = agentTypes?.find((s) => s.handle === agent.type);
   const {data: schemaDetails, isLoading, error, refetch} = useGetAgentType(matchedSchema?.id);
 
   // Resolves an error through the `agents` catalog. `t` defaults to the `common` namespace, so
@@ -110,6 +113,7 @@ export default function EditAgentAttributes({
   const lifespanSection = (
     <LifespanSection
       agent={agent}
+      readOnly={readOnly}
       editedAgent={editedAgent}
       onFieldChange={onFieldChange}
       onValidationChange={onLifespanValidationChange}
@@ -118,7 +122,7 @@ export default function EditAgentAttributes({
 
   // A read-only agent can't be edited at all, so there's nothing for a form to do here — fall
   // back to the same summary shown on the General tab.
-  if (agent.isReadOnly) {
+  if (readOnly) {
     return (
       <Stack spacing={3}>
         <AttributesSummarySection agent={agent} />
@@ -128,7 +132,7 @@ export default function EditAgentAttributes({
   }
 
   const schemaFields = schemaDetails?.schema
-    ? Object.entries(schemaDetails.schema).filter(
+    ? orderAttributes(schemaDetails.schema).filter(
         ([, fieldDef]) => !((fieldDef.type === 'string' || fieldDef.type === 'number') && fieldDef.credential),
       )
     : [];

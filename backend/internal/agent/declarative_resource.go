@@ -21,6 +21,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -32,28 +33,33 @@ const (
 	paramTypeAgent    = "Agent"
 )
 
+// ownerVariables are the owner's values an export refers to by name.
+var ownerVariables = []string{"Owner.ID", "Owner.IDType", "Owner.IsLocal"}
+
 // agentExporter implements declarativeresource.ResourceExporter for agents.
 type agentExporter struct {
-	service       AgentServiceInterface
-	entityService entity.EntityServiceInterface
-	logger        *log.Logger
+	service        AgentServiceInterface
+	entityService  entity.EntityServiceInterface
+	sharingService sharing.SharingServiceInterface
+	logger         *log.Logger
 	// references writes a credential as a secret reference rather than a template placeholder, as a
 	// control plane's export does for every other credential.
 	references bool
 }
 
-func newAgentExporter(service AgentServiceInterface, entityService entity.EntityServiceInterface) *agentExporter {
-	return &agentExporter{service: service, entityService: entityService,
+func newAgentExporter(service AgentServiceInterface, entityService entity.EntityServiceInterface,
+	sharingService sharing.SharingServiceInterface) *agentExporter {
+	return &agentExporter{service: service, entityService: entityService, sharingService: sharingService,
 		logger: log.GetLogger().With(log.String(log.LoggerKeyComponentName, "AgentExporter"))}
 }
 
 // NewAgentExporterForTest exposes the exporter constructor for test packages.
 func NewAgentExporterForTest(service AgentServiceInterface,
-	entityService entity.EntityServiceInterface) *agentExporter {
+	entityService entity.EntityServiceInterface, sharingService sharing.SharingServiceInterface) *agentExporter {
 	if !testing.Testing() {
 		panic("only for tests!")
 	}
-	return newAgentExporter(service, entityService)
+	return newAgentExporter(service, entityService, sharingService)
 }
 
 // WriteValueReferences sets whether credentials are written as references or as placeholders.
@@ -131,9 +137,26 @@ func (e *agentExporter) GetResourceByID(
 		return nil, "", &tidcommon.InternalServerError
 	}
 	if len(held) > 0 {
-		a.Credentials = declarativeresource.CredentialPlaceholders(resourceTypeAgent, a.Display, held, e.references)
+		a.Credentials = declarativeresource.CredentialPlaceholders(resourceTypeAgent, a.ID, held, e.references)
+	}
+	// An export that silently lost the agent's sharing would declare an agent no other unit can use, so
+	// a failure to read it fails the export.
+	replayable, sharingErr := e.sharingService.ExportPolicies(ctx, agentSharingType, id)
+	if sharingErr != nil {
+		return nil, "", &tidcommon.InternalServerError
+	}
+	for _, r := range replayable {
+		a.SharingPolicies = append(a.SharingPolicies, r.Request)
 	}
 	return a, a.Display, nil
+}
+
+// GetResourceID returns the ID of an exported agent.
+func (e *agentExporter) GetResourceID(resource interface{}) string {
+	if a, ok := resource.(*model.AgentGetResponse); ok {
+		return a.ID
+	}
+	return ""
 }
 
 // ValidateResource validates an agent resource prior to export.
@@ -202,22 +225,25 @@ func (e *agentExporter) GetResourceRules() *declarativeresource.ResourceRules {
 }
 
 // GetResourceRulesForResource returns per-resource parameterization rules.
-// Public clients omit ClientSecret. RedirectURIs are only parameterized when present
-// (e.g. M2M agents using client_credentials have no redirect URIs).
+// Clients without a client secret (public, private_key_jwt or none) omit ClientSecret. RedirectURIs
+// are only parameterized when present (e.g. M2M agents using client_credentials have no redirect URIs).
+// A control plane's export refers to the owner, so that each gateway names its own, except a personal
+// agent's, which is the user the agent acts for. A template export writes the owner as it is: a template
+// is filled in as text, which an owner's ID, being free text, could break.
 func (e *agentExporter) GetResourceRulesForResource(resource interface{}) *declarativeresource.ResourceRules {
 	a, ok := resource.(*model.AgentGetResponse)
 	if !ok {
 		return e.GetResourceRules()
 	}
 
-	isPublicClient := false
+	hasNoClientSecret := false
 	hasRedirectURIs := false
 	for _, inbound := range a.InboundAuthConfig {
 		if inbound.OAuthConfig == nil {
 			continue
 		}
-		if inbound.OAuthConfig.PublicClient {
-			isPublicClient = true
+		if !inboundclient.UsesClientSecret(inbound.OAuthConfig) {
+			hasNoClientSecret = true
 		}
 		if len(inbound.OAuthConfig.RedirectURIs) > 0 {
 			hasRedirectURIs = true
@@ -225,8 +251,11 @@ func (e *agentExporter) GetResourceRulesForResource(resource interface{}) *decla
 	}
 
 	variables := []string{"InboundAuthConfig[].OAuthConfig.ClientID"}
+	if e.references && a.Owner != nil && a.Kind != providers.AgentKindPersonalAssistant {
+		variables = append(variables, ownerVariables...)
+	}
 	var secrets []string
-	if !isPublicClient {
+	if !hasNoClientSecret {
 		secrets = append(secrets, "InboundAuthConfig[].OAuthConfig.ClientSecret")
 	}
 
@@ -244,6 +273,54 @@ func makeAgentDeclarativeConfig(agentSvc AgentServiceInterface) entity.Declarati
 		Directory: "agents",
 		Category:  providers.EntityCategoryAgent,
 		Parser:    makeAgentEntityParser(agentSvc),
+	}
+}
+
+// makeAgentSharingConfig returns the loader configuration the sharing framework reads an agent's declared
+// policies with. A policy is carried inside the agent document that declares it.
+func makeAgentSharingConfig(agentSvc AgentServiceInterface) sharing.DeclarativeLoaderConfig {
+	return sharing.DeclarativeLoaderConfig{
+		ResourceType:  agentSharingType,
+		DirectoryName: "agents",
+		Parser:        makeAgentSharingParser(agentSvc),
+	}
+}
+
+// agentSharingDocument is the part of an agent document the sharing framework reads.
+type agentSharingDocument struct {
+	ID              string                  `yaml:"id"`
+	SharingPolicies []sharing.PolicyRequest `yaml:"sharingPolicies,omitempty"`
+}
+
+// makeAgentSharingParser returns a parser that reads the sharing half of one agent document. The policies
+// are declared against the unit the agent was loaded into, which the document may name by handle.
+func makeAgentSharingParser(
+	agentSvc AgentServiceInterface,
+) func([]byte) (*sharing.DeclaredResourcePolicies, error) {
+	return func(data []byte) (*sharing.DeclaredResourcePolicies, error) {
+		var doc agentSharingDocument
+		if err := yaml.Unmarshal(data, &doc); err != nil {
+			return nil, fmt.Errorf("failed to parse agent YAML: %w", err)
+		}
+		if len(doc.SharingPolicies) == 0 {
+			return &sharing.DeclaredResourcePolicies{ResourceID: doc.ID}, nil
+		}
+
+		a, svcErr := agentSvc.GetAgent(security.WithRuntimeContext(context.Background()), doc.ID, true)
+		if svcErr != nil {
+			return nil, fmt.Errorf("failed to read agent '%s' for its sharing policies: %s",
+				doc.ID, svcErr.Error.DefaultValue)
+		}
+		name := a.Display
+		if name == "" {
+			name = a.ID
+		}
+		return &sharing.DeclaredResourcePolicies{
+			ResourceID:   a.ID,
+			ResourceName: name,
+			OwningOUID:   a.OUID,
+			Policies:     doc.SharingPolicies,
+		}, nil
 	}
 }
 
@@ -274,14 +351,18 @@ func makeAgentEntityParser(
 			ID:          req.ID,
 			OUID:        req.OUID,
 			OUHandle:    req.OUHandle,
+			ProjectID:   req.ProjectID,
 			Type:        req.Type,
 			Description: req.Description,
 			LogoURL:     req.LogoURL,
 			Owner:       req.Owner,
 			Attributes:  attributesJSON,
+			Kind:        req.Kind,
 			InboundAuthProfile: providers.InboundAuthProfile{
 				AuthFlowID:                req.AuthFlowID,
 				AuthFlowHandle:            req.AuthFlowHandle,
+				DeviceGrantFlowID:         req.DeviceGrantFlowID,
+				DeviceGrantFlowHandle:     req.DeviceGrantFlowHandle,
 				RegistrationFlowID:        req.RegistrationFlowID,
 				RegistrationFlowHandle:    req.RegistrationFlowHandle,
 				IsRegistrationFlowEnabled: req.IsRegistrationFlowEnabled,
@@ -315,7 +396,13 @@ func makeAgentEntityParser(
 		// agent.OUID may have been resolved from OUHandle by ValidateAgent.
 		e, sysCredsJSON, buildErr := buildAgentEntity(
 			req.ID, req.Type, agent.OUID, attributesJSON,
-			req.Description, req.Owner, clientID, clientSecret, validUntil,
+			model.AgentSystemAttributes{
+				Description: req.Description,
+				Owner:       agent.Owner,
+				ClientID:    clientID,
+				Kind:        req.Kind,
+			},
+			clientSecret, validUntil,
 		)
 		if buildErr != nil {
 			return nil, nil, nil, fmt.Errorf("failed to build agent entity for '%s': %w", req.ID, buildErr)
@@ -324,6 +411,7 @@ func makeAgentEntityParser(
 		if buildErr != nil {
 			return nil, nil, nil, fmt.Errorf("failed to read the credentials of agent '%s': %w", req.ID, buildErr)
 		}
+		e.ProjectID = agent.ProjectID
 
 		return e, nil, sysCredsJSON, nil
 	}
@@ -389,9 +477,12 @@ func makeAgentInboundParser(agentSvc AgentServiceInterface) func([]byte) (*inbou
 			Description: req.Description,
 			LogoURL:     req.LogoURL,
 			Owner:       req.Owner,
+			Kind:        req.Kind,
 			InboundAuthProfile: providers.InboundAuthProfile{
 				AuthFlowID:                req.AuthFlowID,
 				AuthFlowHandle:            req.AuthFlowHandle,
+				DeviceGrantFlowID:         req.DeviceGrantFlowID,
+				DeviceGrantFlowHandle:     req.DeviceGrantFlowHandle,
 				RegistrationFlowID:        req.RegistrationFlowID,
 				RegistrationFlowHandle:    req.RegistrationFlowHandle,
 				IsRegistrationFlowEnabled: req.IsRegistrationFlowEnabled,
@@ -421,7 +512,8 @@ func makeAgentInboundParser(agentSvc AgentServiceInterface) func([]byte) (*inbou
 		resolvedClient.IsReadOnly = true
 		setLogoProperty(&resolvedClient, req.LogoURL)
 
-		oauthProfile := buildOAuthProfile(req.InboundAuthConfig)
+		// ValidateAgent may have completed the OAuth config (a personal agent's setup), so it is read back.
+		oauthProfile := buildOAuthProfile(agent.InboundAuthConfig)
 		if oauthProfile != nil {
 			if resolvedClient.Properties == nil {
 				resolvedClient.Properties = make(map[string]interface{})

@@ -424,6 +424,15 @@ export default function TokenUserAttributesSection({
             </Typography>
           )}
           {!isLoadingUserAttributes && (userAttributes.length > 0 || currentAttrs.length > 0) && (
+            <Alert severity="info" sx={{mb: 2}}>
+              {t(
+                'applications:edit.token.attributes_privacy_note',
+                'Attributes you add are shared with this {{entity}} and anyone it passes the token to. Add only what it needs, and avoid sensitive personal data unless it is required.',
+                {entity: entityLabel},
+              )}
+            </Alert>
+          )}
+          {!isLoadingUserAttributes && (userAttributes.length > 0 || currentAttrs.length > 0) && (
             <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
               {availableAttributes.sort().map((attr) => {
                 const isAdded = currentAttrs.includes(attr);

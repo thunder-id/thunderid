@@ -572,7 +572,313 @@ var (
 		},
 		ErrorDescription: tidcommon.I18nMessage{
 			Key:          "error.agentservice.ou_not_in_project_description",
-			DefaultValue: "The organization unit must be the project's root organization unit or one below it",
+			DefaultValue: "The organization unit must belong to the project",
+		},
+	}
+
+	// ErrorInvalidOwner is returned when an agent's owner has no ID, an ID that is too long or does not
+	// match its ID type, an unknown ID type, or is local but not identified by its entity ID.
+	ErrorInvalidOwner = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1049",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_owner",
+			DefaultValue: "Invalid owner",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_owner_description",
+			DefaultValue: "An owner needs an id of at most 256 characters matching its type, and a local owner a uuid",
+		},
+	}
+
+	// ErrorProjectRequired is returned when an agent is created without a project.
+	ErrorProjectRequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1050",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.project_required",
+			DefaultValue: "Project required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.project_required_description",
+			DefaultValue: "Set projectId to the project the agent belongs to",
+		},
+	}
+
+	// ErrorMissingClientID is returned when an agent is looked up by an empty client ID.
+	ErrorMissingClientID = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1051",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.missing_client_id",
+			DefaultValue: "Missing client ID",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.missing_client_id_description",
+			DefaultValue: "A client ID is required to find an agent by its OAuth client",
+		},
+	}
+
+	// ErrorClientSecretNotUsed is returned when a client secret is regenerated for an agent that does not
+	// authenticate with one.
+	ErrorClientSecretNotUsed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1052",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.client_secret_not_used",
+			DefaultValue: "Agent has no client secret",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.client_secret_not_used_description",
+			DefaultValue: "Only an agent that authenticates with a client secret can have its secret regenerated",
+		},
+	}
+
+	// ErrorOrganizationUnitMismatch is returned when an agent's organization unit is outside the
+	// organization unit tree of its agent type.
+	ErrorOrganizationUnitMismatch = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1053",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.organization_unit_mismatch",
+			DefaultValue: "Organization unit mismatch",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.agentservice.organization_unit_mismatch_description",
+			DefaultValue: "The organization unit does not match the agent type configuration: it must be " +
+				"the agent type's organization unit or one of its descendants",
+		},
+	}
+
+	// ErrorAgentTypeNotFound is returned when the agent's type does not exist, or the caller cannot read it. Both
+	// read the same, so the error reveals nothing about agent types out of the caller's reach.
+	ErrorAgentTypeNotFound = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1054",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.agent_type_not_found",
+			DefaultValue: "Agent type not found",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.agent_type_not_found_description",
+			DefaultValue: "No agent type with that handle exists, or the caller cannot view it",
+		},
+	}
+
+	// ErrorAnyAgentTypeNotAlone is returned when * is combined with other entries in allowedAgentTypes.
+	ErrorAnyAgentTypeNotAlone = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1055",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.any_agent_type_not_alone",
+			DefaultValue: "Invalid allowed agent types",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.any_agent_type_not_alone_description",
+			DefaultValue: "* must be the only entry in allowedAgentTypes",
+		},
+	}
+
+	// ErrorGrantTypeNotAllowedForPersonalAgent is returned when a personal agent is given a grant type
+	// outside the personal set.
+	ErrorGrantTypeNotAllowedForPersonalAgent = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1056",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.grant_type_not_allowed_for_personal_agent",
+			DefaultValue: "Grant type not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.grant_type_not_allowed_for_personal_agent_description",
+			DefaultValue: "A personal agent can only use the authorization code, CIBA, and refresh token grants",
+		},
+	}
+
+	// ErrorInvalidKind is returned when an agent names a kind that is not known.
+	ErrorInvalidKind = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1057",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_kind",
+			DefaultValue: "Invalid kind",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_kind_description",
+			DefaultValue: "The agent kind is not a known kind",
+		},
+	}
+
+	// ErrorInvalidPublicKey is returned when a personal agent's public key is not a JWKS document with at
+	// least one key.
+	ErrorInvalidPublicKey = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1058",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_public_key",
+			DefaultValue: "Invalid public key",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_public_key_description",
+			DefaultValue: "The public key must be a JWKS document with at least one key",
+		},
+	}
+
+	// ErrorPersonalAgentSecretNotRegenerable is returned when a client secret is regenerated for a personal agent.
+	ErrorPersonalAgentSecretNotRegenerable = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1059",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.personal_agent_secret_not_regenerable",
+			DefaultValue: "Secret cannot be regenerated",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.personal_agent_secret_not_regenerable_description",
+			DefaultValue: "A personal agent's client secret cannot be regenerated",
+		},
+	}
+
+	// ErrorAuthenticationRequired is returned when a self-service request carries no authenticated caller.
+	ErrorAuthenticationRequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1060",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.authentication_required",
+			DefaultValue: "Authentication required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.authentication_required_description",
+			DefaultValue: "The request needs a user access token",
+		},
+	}
+
+	// ErrorDelegatedTokenNotAllowed is returned when an owner's agents are managed with a delegated token, such as
+	// an agent's own token for its owner.
+	ErrorDelegatedTokenNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1061",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.delegated_token_not_allowed",
+			DefaultValue: "Delegated token not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.delegated_token_not_allowed_description",
+			DefaultValue: "A token issued to a client acting for the user cannot manage the user's agents",
+		},
+	}
+
+	// ErrorOwnerSuspended is returned when creating a personal agent for a user whose account is suspended.
+	ErrorOwnerSuspended = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1062",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.owner_suspended",
+			DefaultValue: "Owner suspended",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.owner_suspended_description",
+			DefaultValue: "A personal agent cannot be created for a user whose account is suspended",
+		},
+	}
+
+	// ErrorManagedAgent is the error returned when attempting to change an agent a control plane deployed.
+	// Only a deploy from the control plane changes or removes it.
+	ErrorManagedAgent = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1063",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.managed_agent",
+			DefaultValue: "Cannot modify an agent deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.managed_agent_description",
+			DefaultValue: "The agent was deployed by the control plane and can only be changed there",
+		},
+	}
+
+	// ErrorPersonalAgentOwnerImmutable is returned when an update names a different owner for a personal agent.
+	ErrorPersonalAgentOwnerImmutable = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1064",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.personal_agent_owner_immutable",
+			DefaultValue: "Owner cannot be changed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.personal_agent_owner_immutable_description",
+			DefaultValue: "A personal agent keeps the owner it was registered for",
+		},
+	}
+
+	// ErrorDeviceGrantFlowRequired is returned when Device Code is enabled without an assigned flow.
+	ErrorDeviceGrantFlowRequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1065",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.device_grant_flow_required",
+			DefaultValue: "Device Grant flow is required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.device_grant_flow_required_description",
+			DefaultValue: "Assign a Device Grant flow before enabling the Device Code grant type",
+		},
+	}
+
+	// ErrorInvalidDeviceGrantFlowID is returned when an invalid Device Grant flow is assigned.
+	ErrorInvalidDeviceGrantFlowID = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1066",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_device_grant_flow_id",
+			DefaultValue: "Invalid Device Grant flow ID",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_device_grant_flow_id_description",
+			DefaultValue: "The assigned flow must be a valid Device Grant flow",
+		},
+	}
+
+	// ErrorAgentFlowMismatch is returned when a flow reached from an agent's configured flow
+	// conflicts with the agent's flow assignment.
+	ErrorAgentFlowMismatch = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1067",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.agent_flow_mismatch",
+			DefaultValue: "Conflicting flow references",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.agentservice.agent_flow_mismatch_description",
+			DefaultValue: "The {{param(sourceFlowType)}} flow references a different " +
+				"{{param(flowType)}} flow than the one configured on the agent. " +
+				"Both must point to the same {{param(flowType)}} flow.",
+		},
+	}
+
+	// ErrorCredentialUpdateNotAllowed is returned when an update carries a credential attribute.
+	ErrorCredentialUpdateNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1068",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.credential_update_not_allowed",
+			DefaultValue: "Credential update not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.credential_update_not_allowed_description",
+			DefaultValue: "The credential updates through this endpoint are not allowed",
+		},
+	}
+
+	// ErrorPersonalAgentCredentialsNotUpdatable is returned when an administrator sets a personal agent's credentials.
+	ErrorPersonalAgentCredentialsNotUpdatable = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1069",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.personal_agent_credentials_not_updatable",
+			DefaultValue: "Credentials cannot be updated",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.personal_agent_credentials_not_updatable_description",
+			DefaultValue: "A personal agent's credentials can only be set by its owner",
 		},
 	}
 )
@@ -580,3 +886,6 @@ var (
 // errInvalidDeclarativeLifespan is returned when a declarative agent's validUntil is not an RFC 3339
 // date and time.
 var errInvalidDeclarativeLifespan = errors.New("validUntil must be an RFC 3339 date and time")
+
+// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+var errNilEventBus = errors.New("the agent service needs an event bus")

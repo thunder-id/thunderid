@@ -4,6 +4,7 @@
 import {
   EmbeddedFlowComponentType,
   EmbeddedFlowEventType,
+  getConsentValidityInput,
   isConsentApprovalBlocked,
   type ConsentPurpose,
 } from '@thunderid/react';
@@ -73,6 +74,7 @@ export default function FlowComponentRenderer({
   renderField,
   isSubmitDisabled,
   rendersInputsWithoutSubmit,
+  isAutoFocusDisabled,
 }: FlowComponentRendererProps): JSX.Element | null {
   const comp = component as FlowComponent;
 
@@ -113,6 +115,7 @@ export default function FlowComponentRenderer({
         renderField={renderField}
         isSubmitDisabled={isSubmitDisabled}
         rendersInputsWithoutSubmit={rendersInputsWithoutSubmit}
+        isAutoFocusDisabled={isAutoFocusDisabled}
       />
     );
   }
@@ -144,6 +147,7 @@ export default function FlowComponentRenderer({
 
     if (hasConsent) {
       const consentData = additionalData?.['consentPrompt'] as ConsentData;
+      const validityInput = getConsentValidityInput(additionalData);
       // While an approved authorization detail shows a value that cannot be granted, the approving action
       // is disabled; denying stays available.
       return (
@@ -155,6 +159,8 @@ export default function FlowComponentRenderer({
             clientIdHost={additionalData?.['clientIdHost'] as string | undefined}
             redirectUriHost={additionalData?.['redirectUriHost'] as string | undefined}
             redirectUriLoopback={additionalData?.['redirectUriLoopback'] === 'true'}
+            promptValidityPeriod={validityInput.enabled}
+            maxValidityPeriod={validityInput.maxValidityPeriod}
           />
           <BlockAdapter
             component={component}
@@ -173,6 +179,7 @@ export default function FlowComponentRenderer({
             renderField={renderField}
             isSubmitDisabled={isSubmitDisabled}
             rendersInputsWithoutSubmit={rendersInputsWithoutSubmit}
+            isAutoFocusDisabled={isAutoFocusDisabled}
           />
         </>
       );
@@ -195,6 +202,7 @@ export default function FlowComponentRenderer({
         renderField={renderField}
         isSubmitDisabled={isSubmitDisabled}
         rendersInputsWithoutSubmit={rendersInputsWithoutSubmit}
+        isAutoFocusDisabled={isAutoFocusDisabled}
       />
     );
   }

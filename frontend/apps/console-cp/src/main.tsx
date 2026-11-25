@@ -38,6 +38,11 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
       client_id: 'CP_CONSOLE',
     };
   }
+  // The dev server serves the source config.js, whose Administrator role the quickstart's Control
+  // Plane moves to another ID, so a dev role ID replaces it.
+  if (runtimeConfig && __DEV_ADMINISTRATOR_ROLE_ID__) {
+    runtimeConfig.administrators = {role_ids: [__DEV_ADMINISTRATOR_ROLE_ID__]};
+  }
 }
 
 const queryClient: QueryClient = new QueryClient({

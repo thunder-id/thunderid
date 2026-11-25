@@ -58,6 +58,7 @@ var DataKey = struct {
 
 	// Administration Keys. Records whether an operator note was given, never the note itself.
 	OperatorNoteRecorded string
+	AppliedBy            string
 	// ConfigName is the server-config section a change targets.
 	ConfigName string
 
@@ -70,6 +71,9 @@ var DataKey = struct {
 	// Lifespan Keys
 	ValidUntil         string
 	PreviousValidUntil string
+	// Attribute Verification Keys. Names the verified attribute, never its value.
+	Attribute          string
+	InvalidationReason string
 
 	// Session & Delivery Keys
 	SessionID  string
@@ -129,6 +133,7 @@ var DataKey = struct {
 
 	// Administration Keys
 	OperatorNoteRecorded: "operator_note_recorded",
+	AppliedBy:            "applied_by",
 	ConfigName:           "config_name",
 
 	// Account Lock Keys
@@ -140,6 +145,9 @@ var DataKey = struct {
 	// Lifespan Keys
 	ValidUntil:         "valid_until",
 	PreviousValidUntil: "previous_valid_until",
+	// Attribute Verification Keys
+	Attribute:          "attribute",
+	InvalidationReason: "invalidation_reason",
 
 	// Session & Delivery Keys
 	SessionID:  "session_id",

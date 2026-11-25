@@ -15,9 +15,12 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/export"
+	"github.com/thunder-id/thunderid/internal/system/outboundauth"
+	"github.com/thunder-id/thunderid/internal/system/varname"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/connection/httpconnectionmock"
+	"github.com/thunder-id/thunderid/tests/mocks/eventbusmock"
 )
 
 // recordingCapturer records every resource handed to it.
@@ -144,34 +147,39 @@ func (s *ServiceTestSuite) TestACapturedSecretIsNamedAsTheExportNamesIt() {
 	s.mockIDP.On("GetIdentityProvider", mock.Anything, "tw-1").
 		Return((*providers.IDPDTO)(nil), &idp.ErrorIDPNotFound)
 	exporter := newConnectionExporter(s.mockIDP, s.mockNotif, nil, nil)
-	values := export.Initialize(http.NewServeMux(), []declarativeresource.ResourceExporter{exporter},
-		export.ValueReferences)
+	values, initErr := export.Initialize(http.NewServeMux(), []declarativeresource.ResourceExporter{exporter},
+		export.ValueReferences, eventbusmock.NewEventBusInterfaceMock(s.T()))
+	s.Require().NoError(initErr)
 
 	variables, secrets, err := values.PlaceholderValues(context.Background(), resourceTypeConnection,
 		s.captured(capturer))
 	s.Require().NoError(err)
-	exported, svcErr := values.ExportResources(context.Background(),
+	exported, svcErr := values.ReadResources(context.Background(),
 		&export.ExportRequest{Connections: []string{"tw-1"}})
 	s.Require().Nil(svcErr)
 
 	s.Empty(variables)
-	s.Equal(map[string]string{"CONNECTION_MY_SENDER_AUTH_TOKEN": "the-token"}, secrets)
+	authTokenVar := varname.DeriveVariableName("connection", "tw-1", ncommon.TwilioPropKeyAuthToken)
+	s.Equal(map[string]string{authTokenVar: "the-token"}, secrets)
 	s.Require().Len(exported.Files, 1)
-	s.Contains(exported.Files[0].Content, "sec:CONNECTION_MY_SENDER_AUTH_TOKEN")
+	s.Contains(exported.Files[0].Content, "sec:"+authTokenVar)
 }
 
 const storedHTTPConnectionID = "http-1"
 
 // An HTTP connection is captured on create and on update, with each secret named as its export
-// names it; an update that keeps the stored password captures it again under the new name.
+// names it; an update that keeps the stored password captures it again, under the same name a rename
+// leaves unchanged.
 func (s *ServiceTestSuite) TestHTTPWritesCaptureTheConnectionAsTheExportNamesIt() {
 	mockHTTP := httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
-	s.svc = newService(s.mockIDP, s.mockNotif, &testResourceServerLister{}, newAuthZENPDPServiceMock(s.T()), mockHTTP)
+	s.svc = withAllowAllAuthz(s.T(), newService(s.mockIDP, s.mockNotif, &testResourceServerLister{},
+		newAuthZENPDPServiceMock(s.T()), mockHTTP, newDiscardingBus(s.T())))
 	capturer := &recordingCapturer{}
 	s.svc.valueCapturer = capturer
-	values := export.Initialize(http.NewServeMux(),
+	values, initErr := export.Initialize(http.NewServeMux(),
 		[]declarativeresource.ResourceExporter{newConnectionExporter(s.mockIDP, s.mockNotif, nil, mockHTTP)},
-		export.ValueReferences)
+		export.ValueReferences, eventbusmock.NewEventBusInterfaceMock(s.T()))
+	s.Require().NoError(initErr)
 	var stored *httpconnection.HTTPConnection
 	write := func(connection httpconnection.HTTPConnection) *httpconnection.HTTPConnection {
 		connection.ID = storedHTTPConnectionID
@@ -202,10 +210,9 @@ func (s *ServiceTestSuite) TestHTTPWritesCaptureTheConnectionAsTheExportNamesIt(
 	s.Require().Nil(svcErr)
 
 	s.Require().Len(capturer.resources, 2)
-	for i, want := range []map[string]string{
-		{"CONNECTION_RISK_ENGINE_PASSWORD": "the-password"},
-		{"CONNECTION_FRAUD_ENGINE_PASSWORD": "the-password"},
-	} {
+	want := map[string]string{varname.DeriveVariableName("connection", storedHTTPConnectionID,
+		outboundauth.FieldBasicPassword): "the-password"}
+	for i := range capturer.resources {
 		_, secrets, err := values.PlaceholderValues(context.Background(), capturer.resourceTypes[i],
 			capturer.resources[i])
 		s.Require().NoError(err)
@@ -216,7 +223,7 @@ func (s *ServiceTestSuite) TestHTTPWritesCaptureTheConnectionAsTheExportNamesIt(
 func (s *ServiceTestSuite) TestInitializeHandsTheHTTPConnectionWriter() {
 	_, _, synced, err := Initialize(http.NewServeMux(), nil, s.mockIDP, s.mockNotif, &testResourceServerLister{},
 		newAuthZENPDPServiceMock(s.T()), newHTTPConnectionServiceMock(s.T()), nil,
-		newSharingServiceMock(s.T()))
+		newSharingServiceMock(s.T()), allowAllAuthz(s.T()), newDiscardingBus(s.T()))
 	s.Require().NoError(err)
 	s.IsType(&httpConnectionWriter{}, synced)
 }

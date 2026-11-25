@@ -205,7 +205,60 @@ var (
 			DefaultValue: "The theme handle cannot be changed after creation",
 		},
 	}
+
+	// ErrorInvalidProject is returned when a theme names a project that does not exist.
+	ErrorInvalidProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "THM-1018",
+		Error: tidcommon.I18nMessage{
+			Key:          "theme.error.invalid_project",
+			DefaultValue: "Invalid project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "theme.error.invalid_project_description",
+			DefaultValue: "No project exists with the given project ID",
+		},
+	}
+
+	// ErrorProjectRequired is returned when a deployment that serves projects is asked for a theme in none.
+	ErrorProjectRequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "THM-1019",
+		Error: tidcommon.I18nMessage{
+			Key:          "theme.error.project_required",
+			DefaultValue: "Project required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "theme.error.project_required_description",
+			DefaultValue: "Set projectId to the project the theme belongs to",
+		},
+	}
+
+	// ErrorManagedTheme is the error returned when attempting to change a theme a control plane deployed.
+	// Only a deploy from the control plane changes or removes it.
+	ErrorManagedTheme = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "THM-1020",
+		Error: tidcommon.I18nMessage{
+			Key:          "theme.error.cannot_modify_managed",
+			DefaultValue: "Cannot modify a theme deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "theme.error.cannot_modify_managed_description",
+			DefaultValue: "The theme was deployed by the control plane and can only be changed there",
+		},
+	}
 )
+
+// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+var errNilEventBus = errors.New("the theme management service needs an event bus")
+
+// errThemeNotFoundNoop is returned by deleteTheme for a theme that does not exist. DeleteTheme turns it
+// into a success, so it never reaches a caller.
+var errThemeNotFoundNoop = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: ErrorThemeNotFound.Code,
+}
 
 // errCannotUpdateDeclarativeTheme is an internal error for composite store operations.
 var errCannotUpdateDeclarativeTheme = errors.New("cannot update declarative theme")

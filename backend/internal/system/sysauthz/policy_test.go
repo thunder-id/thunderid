@@ -486,6 +486,25 @@ func TestIsInheritanceEligible(t *testing.T) {
 		{"EntityType_Create_NotEligible", security.ActionCreateUserType, false},
 		{"EntityType_Update_NotEligible", security.ActionUpdateUserType, false},
 		{"EntityType_Delete_NotEligible", security.ActionDeleteUserType, false},
+		{"AgentType_Read_Eligible", security.ActionReadAgentType, true},
+		{"AgentType_List_Eligible", security.ActionListAgentTypes, true},
+		{"AgentType_Create_NotEligible", security.ActionCreateAgentType, false},
+		{"AgentType_Update_NotEligible", security.ActionUpdateAgentType, false},
+		{"AgentType_Delete_NotEligible", security.ActionDeleteAgentType, false},
+		{"NotificationTemplate_Read_Eligible", security.ActionReadNotificationTemplate, true},
+		{"NotificationTemplate_List_Eligible", security.ActionListNotificationTemplates, true},
+		{"NotificationTemplate_Create_NotEligible", security.ActionCreateNotificationTemplate, false},
+		{"NotificationTemplate_Update_NotEligible", security.ActionUpdateNotificationTemplate, false},
+		{"NotificationTemplate_Delete_NotEligible", security.ActionDeleteNotificationTemplate, false},
+		{"VC_Read_Eligible", security.ActionReadVC, true},
+		{"VC_List_Eligible", security.ActionListVCs, true},
+		{"VC_Create_NotEligible", security.ActionCreateVC, false},
+		{"VC_Update_NotEligible", security.ActionUpdateVC, false},
+		{"VC_Delete_NotEligible", security.ActionDeleteVC, false},
+		{"ResourceServer_Read_Eligible", security.ActionReadResourceServer, true},
+		{"ResourceServer_List_Eligible", security.ActionListResourceServers, true},
+		{"ResourceServer_Update_NotEligible", security.ActionUpdateResourceServer, false},
+		{"ResourceServer_Delete_NotEligible", security.ActionDeleteResourceServer, false},
 		{"OU_Read_NotEligible", security.ActionReadOU, false},
 		{"User_List_NotEligible", security.ActionListUsers, false},
 	}
@@ -539,4 +558,75 @@ func TestSelectPolicies_NonEligibleResourceType_UsesMembershipPolicy(t *testing.
 	chain := selectPolicies(security.ActionReadOU, p)
 	assert.Len(t, chain, 1)
 	assert.Equal(t, membership, chain[0])
+}
+
+// ---------------------------------------------------------------------------
+// ouChildPolicy
+// ---------------------------------------------------------------------------
+
+func TestOuChildPolicy_IsActionAllowed(t *testing.T) {
+	notFound := &tidcommon.ServiceError{Code: "OU-1003", Type: tidcommon.ClientErrorType}
+	tests := []struct {
+		name         string
+		includeSelf  bool
+		target       string
+		resolver     *stubOUHierarchyResolver
+		wantDecision policyDecision
+		wantErr      bool
+	}{
+		{name: "NoTarget_NotApplicable", target: "", resolver: &stubOUHierarchyResolver{},
+			wantDecision: policyDecisionNotApplicable},
+		{name: "DirectChild_Allowed", target: "child", resolver: &stubOUHierarchyResolver{
+			ancestorIDs: []string{"ou1", "root"}}, wantDecision: policyDecisionAllowed},
+		{name: "Grandchild_Denied", target: "grandchild", resolver: &stubOUHierarchyResolver{
+			ancestorIDs: []string{"child", "ou1", "root"}}, wantDecision: policyDecisionDenied},
+		{name: "Sibling_Denied", target: "sibling", resolver: &stubOUHierarchyResolver{
+			ancestorIDs: []string{"root"}}, wantDecision: policyDecisionDenied},
+		{name: "Root_Denied", target: "root", resolver: &stubOUHierarchyResolver{ancestorIDs: []string{}},
+			wantDecision: policyDecisionDenied},
+		{name: "OwnUnitForAWrite_Denied", target: "ou1", resolver: &stubOUHierarchyResolver{},
+			wantDecision: policyDecisionDenied},
+		{name: "OwnUnitForARead_Allowed", includeSelf: true, target: "ou1", resolver: &stubOUHierarchyResolver{},
+			wantDecision: policyDecisionAllowed},
+		{name: "UnknownUnit_Denied", target: "gone", resolver: &stubOUHierarchyResolver{ancestorIDsErr: notFound},
+			wantDecision: policyDecisionDenied},
+		{name: "ResolverFailure_DeniedWithError", target: "child", resolver: &stubOUHierarchyResolver{
+			ancestorIDsErr: &tidcommon.InternalServerError}, wantDecision: policyDecisionDenied, wantErr: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := &ouChildPolicy{resolver: tc.resolver, includeSelf: tc.includeSelf}
+			decision, err := p.isActionAllowed(buildCtxWithOU("", "ou1"), &ActionContext{OUID: tc.target})
+			assert.Equal(t, tc.wantDecision, decision)
+			assert.Equal(t, tc.wantErr, err != nil)
+		})
+	}
+
+	decision, err := (&ouChildPolicy{resolver: &stubOUHierarchyResolver{}, includeSelf: true}).isActionAllowed(
+		context.Background(), &ActionContext{OUID: "child"})
+	assert.Nil(t, err)
+	assert.Equal(t, policyDecisionDenied, decision, "a caller naming no unit reaches none")
+}
+
+func TestOuChildPolicy_GetAccessibleResources_NotApplicable(t *testing.T) {
+	applicable, result, err := (&ouChildPolicy{}).getAccessibleResources(
+		buildCtxWithOU("", "ou1"), security.ActionListChildOUs, security.ResourceTypeOU)
+	assert.False(t, applicable)
+	assert.Nil(t, result)
+	assert.Nil(t, err)
+}
+
+func TestSelectPolicies_OUManagementUsesTheChildPolicies(t *testing.T) {
+	read := &ouChildPolicy{includeSelf: true}
+	write := &ouChildPolicy{}
+	membership := &ouMembershipPolicy{}
+	p := &policies{membershipPolicy: membership, ouReadPolicy: read, ouWritePolicy: write}
+
+	assert.Equal(t, []authorizationPolicy{read}, selectPolicies(security.ActionReadOU, p))
+	assert.Equal(t, []authorizationPolicy{write}, selectPolicies(security.ActionUpdateOU, p))
+	assert.Equal(t, []authorizationPolicy{write}, selectPolicies(security.ActionDeleteOU, p))
+	assert.Equal(t, []authorizationPolicy{membership}, selectPolicies(security.ActionListChildOUs, p),
+		"children are listed only for the caller's own unit")
+	assert.Equal(t, []authorizationPolicy{membership}, selectPolicies(security.ActionCreateOU, p),
+		"a child is created only beneath the caller's own unit")
 }

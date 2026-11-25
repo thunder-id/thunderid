@@ -66,6 +66,26 @@ func GetNoRedirectHTTPClient() *http.Client {
 	}
 }
 
+// GetManagementAPIKeyHTTPClient returns an HTTP client that presents the management API key, as a
+// deployment pipeline does when it imports into a data plane.
+func GetManagementAPIKeyHTTPClient() *http.Client {
+	client := GetNoRedirectHTTPClient()
+	client.Transport = &managementAPIKeyTransport{base: client.Transport}
+	return client
+}
+
+// managementAPIKeyTransport adds the management API key to every request.
+type managementAPIKeyTransport struct {
+	base http.RoundTripper
+}
+
+// RoundTrip sends the request with the management API key in its header.
+func (t *managementAPIKeyTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req = req.Clone(req.Context())
+	req.Header.Set(ManagementAPIKeyHeader, ManagementAPIKey)
+	return t.base.RoundTrip(req)
+}
+
 // CreateUserType creates a user type via API and returns the schema ID
 func CreateUserType(schema UserType) (string, error) {
 	if !schema.AllowSelfRegistration {
@@ -112,11 +132,11 @@ func CreateUserType(schema UserType) (string, error) {
 	return schemaID, nil
 }
 
-// CreateAgentType ensures the single allowed `default` agent type exists with the given schema
-// and returns its ID. The server restricts agent types to one `default` schema and rejects
-// deletion, so suites share the singleton: this helper creates it on first call and updates
-// it (PUT) on subsequent calls so each suite's schema fixture takes effect. The caller's
-// `Handle` is ignored. It is always coerced to `default`.
+// CreateAgentType installs the given schema on the bootstrap `default` agent type and returns its ID.
+// Suites share that agent type: this helper creates it when it is absent and otherwise updates it
+// (PUT), which also moves it to the schema's organization unit, so each suite's schema fixture takes
+// effect. The caller's `Handle` is ignored. It is always coerced to `default`. A suite that needs an
+// agent type of its own creates one with CreateNewAgentType instead.
 func CreateAgentType(schema UserType) (string, error) {
 	schema.Handle = "default"
 
@@ -138,7 +158,35 @@ func CreateAgentType(schema UserType) (string, error) {
 	return existingID, nil
 }
 
-// AgentTypeSnapshot captures the singleton `default` agent type so a suite that mutates it can put
+// CreateNewAgentType creates an agent type with the schema's own handle in the schema's organization
+// unit and returns its ID. It neither coerces the handle nor updates an existing agent type, so the
+// caller owns the agent type and removes it with DeleteAgentType. An organization unit can have only one
+// agent type, so the schema's organization unit must not have one yet.
+func CreateNewAgentType(schema UserType) (string, error) {
+	return postAgentType(schema)
+}
+
+// DeleteAgentType deletes an agent type by ID.
+func DeleteAgentType(agentTypeID string) error {
+	req, err := http.NewRequest("DELETE", TestServerURL+"/agent-types/"+agentTypeID, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create delete request: %w", err)
+	}
+
+	resp, err := GetHTTPClient().Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to delete agent type: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		responseBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("expected status 204, got %d. Response: %s", resp.StatusCode, string(responseBody))
+	}
+	return nil
+}
+
+// AgentTypeSnapshot captures the shared `default` agent type so a suite that mutates it can put
 // it back. It holds every mutable field, not just the schema: an entity-type update replaces the
 // whole record, so any field left out of the restore payload is silently reset to its zero value.
 // The schema in particular cannot come from the list endpoint, which omits it.
@@ -152,8 +200,8 @@ type AgentTypeSnapshot struct {
 }
 
 // SnapshotAgentType reads the current `default` agent type from the detail endpoint. Suites that
-// call CreateAgentType mutate a singleton every other suite shares, so they must snapshot before
-// and RestoreAgentType after, otherwise the schema and OU they installed leak into later packages.
+// call CreateAgentType mutate the `default` agent type every other suite shares, so they must snapshot
+// before and RestoreAgentType after, otherwise the schema and OU they installed leak into later packages.
 func SnapshotAgentType() (*AgentTypeSnapshot, error) {
 	id, err := findDefaultAgentTypeID()
 	if err != nil {
@@ -203,7 +251,7 @@ func SnapshotAgentType() (*AgentTypeSnapshot, error) {
 }
 
 // RestoreAgentType puts a snapshot back, then re-reads the type to confirm its OU resolves. If the
-// snapshot's OU no longer exists, because a suite pointed the singleton at an OU it then deleted,
+// snapshot's OU no longer exists, because a suite pointed the `default` agent type at an OU it then deleted,
 // the type is restored against the bootstrap `default` OU instead so the PUT cannot fail on a
 // dangling reference.
 func RestoreAgentType(snapshot *AgentTypeSnapshot) error {
@@ -724,6 +772,14 @@ func CreateApplication(app Application) (string, error) {
 		appData["inboundAuthConfig"] = inboundAuthConfig
 	}
 
+	if app.SignOutFlowID != "" {
+		appData["signOutFlowId"] = app.SignOutFlowID
+	}
+
+	if app.ProjectID != "" {
+		appData["projectId"] = app.ProjectID
+	}
+
 	// Add allowed_user_types if provided
 	if len(app.AllowedUserTypes) > 0 {
 		appData["allowedUserTypes"] = app.AllowedUserTypes
@@ -825,8 +881,40 @@ func DeleteApplication(appID string) error {
 	return nil
 }
 
-// CreateOrganizationUnit creates an organization unit via API and returns the OU ID
+// ShareApplicationWithChildUnits shares an application with every organization unit beneath its owner.
+func ShareApplicationWithChildUnits(appID string) error {
+	body, err := json.Marshal(map[string]interface{}{"childUnits": map[string]interface{}{"mode": "all"}})
+	if err != nil {
+		return fmt.Errorf("failed to marshal sharing policy: %w", err)
+	}
+	req, err := http.NewRequest("POST", TestServerURL+"/applications/"+appID+"/sharing-policies",
+		bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("failed to create sharing request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := GetHTTPClient().Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to share application: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		responseBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("expected status 201, got %d. Response: %s", resp.StatusCode, string(responseBody))
+	}
+	return nil
+}
+
+// CreateOrganizationUnit creates an organization unit and returns the OU ID. A root OU reaches the
+// data plane only through import with the management API key, so it is imported there; every other
+// OU, and any OU on the Control Plane, is created via API.
 func CreateOrganizationUnit(ou OrganizationUnit) (string, error) {
+	if ou.Parent == nil && !IsControlPlaneRun() {
+		return ImportRootOrganizationUnit(ou)
+	}
+
 	ouJSON, err := json.Marshal(ou)
 	if err != nil {
 		return "", fmt.Errorf("failed to marshal OU request: %w", err)
@@ -865,6 +953,132 @@ func CreateOrganizationUnit(ou OrganizationUnit) (string, error) {
 		return "", fmt.Errorf("response does not contain id or id is not a string. Response: %s", string(bodyBytes))
 	}
 	return ouID, nil
+}
+
+// ImportRootOrganizationUnit imports a root organization unit with the management API key, as a
+// deployment pipeline does, and returns its ID. ou is any value that marshals to the organization
+// unit's JSON fields.
+func ImportRootOrganizationUnit(ou any) (string, error) {
+	return importOrganizationUnit(ou, false)
+}
+
+// MoveOrganizationUnitToRoot makes an existing organization unit a root. Only an import with the
+// management API key does that on a data plane.
+func MoveOrganizationUnitToRoot(id, handle, name string) error {
+	_, err := importOrganizationUnit(map[string]any{
+		"id": id, "handle": handle, "name": name, "parent": nil,
+	}, true)
+	return err
+}
+
+// importOrganizationUnit imports one organization unit with the management API key and returns its ID.
+func importOrganizationUnit(ou any, upsert bool) (string, error) {
+	return ImportResource("organization_unit", ou, upsert)
+}
+
+// ImportResource imports one resource of the given import resource type with the management API key,
+// as a deployment pipeline does, and returns its ID. document is any value that marshals to the
+// resource's JSON fields. Upsert updates the resource when it exists.
+func ImportResource(resourceType string, document any, upsert bool) (string, error) {
+	item, err := ImportResourceOutcome(resourceType, document, upsert)
+	if err != nil {
+		return "", err
+	}
+	if item.Status != "success" {
+		return "", fmt.Errorf("%s import failed with %s: %s", resourceType, item.Code, item.Message)
+	}
+	return item.ResourceID, nil
+}
+
+// ImportResourceOutcome imports one resource as ImportResource does and returns the outcome of its
+// item, whether it succeeded or not.
+func ImportResourceOutcome(resourceType string, document any, upsert bool) (ImportItem, error) {
+	documentJSON, err := json.Marshal(document)
+	if err != nil {
+		return ImportItem{}, fmt.Errorf("failed to marshal the %s: %w", resourceType, err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(documentJSON, &fields); err != nil {
+		return ImportItem{}, fmt.Errorf("failed to build the %s import document: %w", resourceType, err)
+	}
+	fields["resource_type"] = resourceType
+	content, err := json.Marshal(fields)
+	if err != nil {
+		return ImportItem{}, fmt.Errorf("failed to marshal the %s import document: %w", resourceType, err)
+	}
+	importResp, err := postManagementAPIKeyImport(ImportRequest{
+		Content: string(content), Options: ImportOptions{Upsert: upsert, Target: "runtime"},
+	})
+	if err != nil {
+		return ImportItem{}, err
+	}
+	if len(importResp.Results) != 1 {
+		return ImportItem{}, fmt.Errorf("expected one %s import result, got %d", resourceType, len(importResp.Results))
+	}
+	return importResp.Results[0], nil
+}
+
+// DeleteImportedResource removes one resource of the given import resource type through an import
+// with the management API key.
+func DeleteImportedResource(resourceType, id string) error {
+	item, err := DeleteImportedResourceOutcome(resourceType, id)
+	if err != nil {
+		return err
+	}
+	if item.Status != "success" {
+		return fmt.Errorf("%s %s deletion through import failed with %s: %s", resourceType, id, item.Code,
+			item.Message)
+	}
+	return nil
+}
+
+// DeleteImportedResourceOutcome removes a resource as DeleteImportedResource does and returns the
+// outcome of its deletion, whether it succeeded or not.
+func DeleteImportedResourceOutcome(resourceType, id string) (ImportItem, error) {
+	importResp, err := postManagementAPIKeyImport(ImportRequest{
+		Options:   ImportOptions{Target: "runtime"},
+		Deletions: []ResourceDeletion{{ResourceType: resourceType, ID: id}},
+	})
+	if err != nil {
+		return ImportItem{}, err
+	}
+	if len(importResp.Results) != 1 {
+		return ImportItem{}, fmt.Errorf("expected one %s deletion result, got %d", resourceType,
+			len(importResp.Results))
+	}
+	return importResp.Results[0], nil
+}
+
+// postManagementAPIKeyImport sends an import request with the management API key.
+func postManagementAPIKeyImport(request ImportRequest) (*ImportResponse, error) {
+	payload, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal the import request: %w", err)
+	}
+	req, err := http.NewRequest(http.MethodPost, TestServerURL+"/import", bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create the import request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := GetManagementAPIKeyHTTPClient().Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send the import request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read the import response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("expected status 200, got %d. Response: %s", resp.StatusCode, string(bodyBytes))
+	}
+	var importResp ImportResponse
+	if err := json.Unmarshal(bodyBytes, &importResp); err != nil {
+		return nil, fmt.Errorf("failed to parse the import response: %w. Response: %s", err, string(bodyBytes))
+	}
+	return &importResp, nil
 }
 
 // DeleteOrganizationUnit deletes an organization unit by ID
@@ -1837,33 +2051,15 @@ func DeleteAction(resourceServerID, actionID string) error {
 	return nil
 }
 
+// PutDefaultResourceServer makes the resource server the deployment's default.
 func PutDefaultResourceServer(resourceServerID string) error {
-	client := GetHTTPClient()
-
 	payload, err := json.Marshal(map[string]string{
 		"resourceServerId": resourceServerID,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to marshal default resource server config: %w", err)
 	}
-
-	req, err := http.NewRequest(http.MethodPut, TestServerURL+"/server-config/defaultResourceServer", bytes.NewReader(payload))
-	if err != nil {
-		return fmt.Errorf("failed to create default resource server config request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to update default resource server config: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("expected status 200, got %d. Response: %s", resp.StatusCode, string(bodyBytes))
-	}
-	return nil
+	return PutWritableServerConfig("defaultResourceServer", payload)
 }
 
 // GetWritableServerConfig returns the writable layer of the named server-config section, so a
@@ -1920,7 +2116,13 @@ func PutWritableServerConfig(section string, body []byte) error {
 
 // PutWritableServerConfigWithStatus is PutWritableServerConfig for a write the server may refuse: it
 // returns the status and body whatever they are, and an error only when no answer came back.
+//
+// A data plane takes server configuration only from an import with the management API key, so there
+// the section is imported, and the outcome is answered as the server configuration API answers it.
 func PutWritableServerConfigWithStatus(section string, body []byte) (int, []byte, error) {
+	if !IsControlPlaneRun() {
+		return importServerConfig(section, body)
+	}
 	url := fmt.Sprintf("%s/server-config/%s", TestServerURL, section)
 
 	req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(body))
@@ -1940,6 +2142,62 @@ func PutWritableServerConfigWithStatus(section string, body []byte) (int, []byte
 		return 0, nil, fmt.Errorf("failed to read %s server config response: %w", section, err)
 	}
 	return resp.StatusCode, respBody, nil
+}
+
+// importServerConfig imports the section with the management API key. A section it writes is answered
+// with 200 and the section's layers. A refusal is answered with the status the server configuration API
+// gives it and an error body in the API's shape carrying the import's code and message: 403 for an
+// unauthorized caller, 500 for a server error and 400 for any other.
+func importServerConfig(section string, body []byte) (int, []byte, error) {
+	item, err := ImportResourceOutcome("server_config",
+		map[string]any{"name": section, "value": json.RawMessage(body)}, true)
+	if err != nil {
+		return 0, nil, err
+	}
+	if item.Status == "success" {
+		layers, err := getServerConfigLayers(section)
+		if err != nil {
+			return 0, nil, err
+		}
+		return http.StatusOK, layers, nil
+	}
+
+	status := http.StatusBadRequest
+	switch item.Code {
+	case "SSE-4030":
+		status = http.StatusForbidden
+	case "SSE-5000":
+		status = http.StatusInternalServerError
+	}
+	message := map[string]string{"defaultValue": item.Message}
+	errBody, err := json.Marshal(map[string]any{"code": item.Code, "message": message, "description": message})
+	if err != nil {
+		return 0, nil, fmt.Errorf("failed to marshal the %s import refusal: %w", section, err)
+	}
+	return status, errBody, nil
+}
+
+// getServerConfigLayers returns the body GET /server-config/{section} answers with.
+func getServerConfigLayers(section string) ([]byte, error) {
+	req, err := http.NewRequest(http.MethodGet, fmt.Sprintf("%s/server-config/%s", TestServerURL, section), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create %s server config request: %w", section, err)
+	}
+	resp, err := GetHTTPClient().Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read %s server config: %w", section, err)
+	}
+	defer resp.Body.Close()
+
+	layers, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read %s server config response: %w", section, err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("expected status 200 reading %s server config, got %d. Response: %s",
+			section, resp.StatusCode, string(layers))
+	}
+	return layers, nil
 }
 
 // MergeWritableServerConfig applies the given top-level keys over the current writable layer of the
@@ -2084,16 +2342,15 @@ func createActionUnderResource(resourceServerID, resourceID string, action Actio
 	return created.ID, nil
 }
 
-// CreateSystemScopedResourceServer creates a custom resource server that reproduces the
-// hierarchical "system:<handle>:view" permission strings used by the built-in system management
-// APIs. The product ships only the root "system" scope by default; this helper simulates an
-// operator declaring fine-grained scopes, letting the authz suites verify that resource-level
-// permissions still enforce when configured. It builds a "system" root resource, then one child
-// resource per handle (each with a "view" action), yielding the permissions "system",
-// "system:<handle>" and "system:<handle>:view". Returns the resource server ID; delete it with
+// CreateOrgScopedResourceServer creates a custom resource server that reproduces the Data Plane's
+// permission strings, so the authz suites can grant a caller fine-grained scopes. It builds a
+// "system" root resource, which reaches every organization unit, and an "org" root resource bounded to
+// the organization unit the token names, with one child resource per handle under "org" (each with a
+// "view" action). That yields the permissions "system", "org", "org:<handle>" and
+// "org:<handle>:view". Returns the resource server ID; delete it with
 // DeleteResourceServerWithChildren during teardown — a plain DeleteResourceServer is refused with
 // RES-1006 while the resources and actions built here still exist.
-func CreateSystemScopedResourceServer(ouID, name, identifier string, childHandles ...string) (string, error) {
+func CreateOrgScopedResourceServer(ouID, name, identifier string, childHandles ...string) (string, error) {
 	rsID, err := createResourceServer(ResourceServer{
 		Name:       name,
 		Identifier: identifier,
@@ -2103,13 +2360,16 @@ func CreateSystemScopedResourceServer(ouID, name, identifier string, childHandle
 		return "", fmt.Errorf("failed to create resource server: %w", err)
 	}
 
-	systemID, err := CreateResource(rsID, "System", "system", "")
-	if err != nil {
+	if _, err := CreateResource(rsID, "System", "system", ""); err != nil {
 		return "", rollbackResourceServer(rsID, fmt.Errorf("failed to create system resource: %w", err))
+	}
+	orgID, err := CreateResource(rsID, "Organization", "org", "")
+	if err != nil {
+		return "", rollbackResourceServer(rsID, fmt.Errorf("failed to create org resource: %w", err))
 	}
 
 	for _, handle := range childHandles {
-		childID, err := CreateResource(rsID, handle, handle, systemID)
+		childID, err := CreateResource(rsID, handle, handle, orgID)
 		if err != nil {
 			return "", rollbackResourceServer(rsID, fmt.Errorf("failed to create %q resource: %w", handle, err))
 		}
@@ -2132,11 +2392,11 @@ func rollbackResourceServer(rsID string, cause error) error {
 
 // DeleteResourceServerWithChildren removes a resource server together with its resource tree and
 // every action it owns. A plain DELETE on a resource server that still has dependencies is refused
-// with RES-1006, so any server built by CreateSystemScopedResourceServer or
+// with RES-1006, so any server built by CreateOrgScopedResourceServer or
 // CreateResourceServerWithActions must be torn down through here or it survives in the shared
 // database.
 //
-// Actions live at two levels and both block deletion: CreateSystemScopedResourceServer attaches them
+// Actions live at two levels and both block deletion: CreateOrgScopedResourceServer attaches them
 // to resources, while CreateResourceServerWithActions attaches them directly to the server.
 func DeleteResourceServerWithChildren(rsID string) error {
 	// Collect the tree depth-first so children are always deleted before their parents. The list
@@ -2402,7 +2662,13 @@ func SetFlowNodeProperty(flow *Flow, nodeID, key string, value interface{}) erro
 // default registration and recovery flows. The handle is caller-supplied so tests can craft unique
 // values per suite and clean up deterministically.
 func CreateIsolatedAuthFlow(handle string) (string, error) {
-	return CreateFlow(Flow{
+	return CreateFlow(IsolatedAuthFlow(handle))
+}
+
+// IsolatedAuthFlow returns the flow CreateIsolatedAuthFlow creates, for a test that sets more of it
+// before creating it.
+func IsolatedAuthFlow(handle string) Flow {
+	return Flow{
 		Name:     "Isolated Auth Flow " + handle,
 		FlowType: "AUTHENTICATION",
 		Handle:   handle,
@@ -2423,7 +2689,7 @@ func CreateIsolatedAuthFlow(handle string) (string, error) {
 				"type": "END",
 			},
 		},
-	})
+	}
 }
 
 // ExtensionAuthFlow returns the smallest login flow with one extension step, placed after the user is
@@ -2584,6 +2850,65 @@ func GetFlowIDByHandle(handle string, flowType string) (string, error) {
 	}
 
 	return "", fmt.Errorf("flow with handle '%s' not found", handle)
+}
+
+// GetFlow reads a flow by ID as the definition an update takes.
+func GetFlow(flowID string) (Flow, error) {
+	var flow Flow
+	resp, err := GetHTTPClient().Get(TestServerURL + "/flows/" + flowID)
+	if err != nil {
+		return flow, fmt.Errorf("flow read request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return flow, fmt.Errorf("failed to read flow response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return flow, fmt.Errorf("failed to read flow, status %d: %s", resp.StatusCode, string(body))
+	}
+	if err := json.Unmarshal(body, &flow); err != nil {
+		return flow, fmt.Errorf("failed to decode flow: %w", err)
+	}
+	return flow, nil
+}
+
+// CopyFlowWithSenders creates a copy of a shipped flow under copyHandle, with each sender named on its
+// node as an operator must name one, since a flow sender node has no default sender. calls maps a CALL
+// node's ID to the flow the copy calls there instead. The shipped flow is left as it is; the caller
+// deletes the copy. It returns the copy's ID.
+func CopyFlowWithSenders(handle, flowType, copyHandle string, senders, calls map[string]string) (string, error) {
+	return CopyFlowWithSendersInOU(handle, flowType, copyHandle, "", senders, calls)
+}
+
+// CopyFlowWithSendersInOU is CopyFlowWithSenders with the copy owned by ouID; an empty ouID keeps the default unit.
+func CopyFlowWithSendersInOU(handle, flowType, copyHandle, ouID string, senders,
+	calls map[string]string) (string, error) {
+	shippedID, err := GetFlowIDByHandle(handle, flowType)
+	if err != nil {
+		return "", err
+	}
+	flow, err := GetFlow(shippedID)
+	if err != nil {
+		return "", err
+	}
+	for nodeID, senderID := range senders {
+		if err := SetFlowNodeProperty(&flow, nodeID, "senderId", senderID); err != nil {
+			return "", fmt.Errorf("flow %s must carry a %s node: %w", handle, nodeID, err)
+		}
+	}
+	for nodeID, calledFlowID := range calls {
+		if err := ModifyFlowNode(&flow, nodeID, func(node map[string]interface{}) {
+			node["flow"] = map[string]interface{}{"ref": calledFlowID}
+		}); err != nil {
+			return "", fmt.Errorf("flow %s must carry a %s node: %w", handle, nodeID, err)
+		}
+	}
+	flow.Name += " with a sender"
+	flow.Handle = copyHandle
+	flow.OUID = ouID
+	return CreateFlow(flow)
 }
 
 // senderVendorRegistryMu guards senderVendorRegistry.

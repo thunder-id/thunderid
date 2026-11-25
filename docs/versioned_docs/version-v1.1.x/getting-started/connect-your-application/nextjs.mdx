@@ -291,6 +291,33 @@ You should see the sign-in button. Click it, you'll land on your application's o
 
 </Stepper>
 
+## Run the Sample App
+
+The [Next.js sample](https://github.com/thunder-id/samples/tree/main/quickstarts/nextjs) is a working version of the app this guide builds. To run it instead of building the app yourself:
+
+1. Download the sample from its [releases](https://github.com/thunder-id/samples/releases?q=sample%2Fquickstarts%2Fnextjs&expanded=true) and open its folder.
+2. Create `.env` in the sample's folder with your application's values:
+
+   ```dotenv title=".env"
+   NEXT_PUBLIC_THUNDERID_BASE_URL=https://localhost:8090
+   NEXT_PUBLIC_THUNDERID_APPLICATION_ID=<your-application-id>
+   THUNDERID_FLOW_SECRET=<your-flow-secret>
+   THUNDERID_SECRET=<a-random-secret-for-session-signing>
+   NEXT_PUBLIC_THUNDERID_SIGN_IN_URL=/signin
+   NEXT_PUBLIC_THUNDERID_SIGN_UP_URL=/signup
+   # DANGER: Disables ALL TLS verification. Only for local development with self-signed certs. NEVER use in production.
+   NODE_TLS_REJECT_UNAUTHORIZED=0
+   ```
+
+3. Install the dependencies and start the app:
+
+   ```bash
+   npm install
+   npm run dev
+   ```
+
+4. Open [http://localhost:3000](http://localhost:3000) and sign in.
+
 ## What's Next
 
 <NextSteps>

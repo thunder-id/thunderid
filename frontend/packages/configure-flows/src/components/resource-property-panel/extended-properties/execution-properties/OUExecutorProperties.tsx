@@ -1,9 +1,10 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {FormHelperText, FormLabel, Stack, Typography} from '@wso2/oxygen-ui';
+import {Stack, Typography} from '@wso2/oxygen-ui';
 import {useMemo, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
+import CheckboxWithHint from './CheckboxWithHint';
 import DraftTextField from './DraftTextField';
 import type {CommonResourcePropertiesPropsInterface} from './types';
 import type {StepData} from '../../../../models/steps';
@@ -22,18 +23,24 @@ function OUExecutorProperties({resource, onChange}: CommonResourcePropertiesProp
         {t('flows:core.executions.ouExecutor.description')}
       </Typography>
 
-      <div>
-        <FormLabel htmlFor="parent-ou-id">{t('flows:core.executions.ouExecutor.parentOuId.label')}</FormLabel>
-        <DraftTextField
-          id="parent-ou-id"
-          value={(properties['parentOuId'] as string) || ''}
-          onCommit={(value) => onChange('data.properties.parentOuId', value, resource)}
-          placeholder={t('flows:core.executions.ouExecutor.parentOuId.placeholder')}
-          fullWidth
-          size="small"
-        />
-        <FormHelperText>{t('flows:core.executions.ouExecutor.parentOuId.hint')}</FormHelperText>
-      </div>
+      <DraftTextField
+        labelPlacement="top"
+        label={t('flows:core.executions.ouExecutor.parentOuId.label')}
+        helperText={t('flows:core.executions.ouExecutor.parentOuId.hint')}
+        id="parent-ou-id"
+        value={(properties['parentOuId'] as string) || ''}
+        onCommit={(value) => onChange('data.properties.parentOuId', value, resource)}
+        placeholder={t('flows:core.executions.ouExecutor.parentOuId.placeholder')}
+        fullWidth
+        size="small"
+      />
+
+      <CheckboxWithHint
+        checked={properties['generateOuHandle'] === true}
+        label={t('flows:core.executions.ouExecutor.generateOuHandle.label')}
+        hint={t('flows:core.executions.ouExecutor.generateOuHandle.hint')}
+        onChange={(checked) => onChange('data.properties.generateOuHandle', checked, resource)}
+      />
     </Stack>
   );
 }

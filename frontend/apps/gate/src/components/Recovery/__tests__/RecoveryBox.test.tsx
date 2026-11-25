@@ -61,6 +61,9 @@ interface MockRecoveryRenderProps {
   values: Record<string, string>;
   handleInputChange: () => void;
   handleSubmit: (action: unknown, inputs: unknown, isTrigger: boolean) => Promise<void>;
+  isFlowExpired?: boolean;
+  isFlowRestarted?: boolean;
+  flowExpiryRedirect?: null;
   meta: Record<string, unknown>;
 }
 
@@ -83,25 +86,31 @@ let mockRecoveryRenderProps: MockRecoveryRenderProps = createMockRecoveryRenderP
 let capturedOnFlowChange: ((response: unknown) => void) | undefined;
 let capturedOnError: ((error: Error) => void) | undefined;
 let capturedAfterRecoveryUrl: string | undefined;
+let capturedAfterFlowExpiredUrl: string | undefined;
+let mockMeta: {application?: {name?: string; url?: string}} | null = null;
 
 vi.mock('@thunderid/react', async () => {
   const actual = await vi.importActual('@thunderid/react');
   return {
     ...actual,
+    useThunderID: () => ({meta: mockMeta}),
     Recovery: ({
       children,
       afterRecoveryUrl = undefined,
+      afterFlowExpiredUrl = undefined,
       onError = undefined,
       onFlowChange = undefined,
     }: {
       children: (props: typeof mockRecoveryRenderProps) => React.ReactNode;
       afterRecoveryUrl?: string;
+      afterFlowExpiredUrl?: string;
       onError?: (error: Error) => void;
       onFlowChange?: (response: unknown) => void;
     }) => {
       capturedOnFlowChange = onFlowChange;
       capturedOnError = onError;
       capturedAfterRecoveryUrl = afterRecoveryUrl;
+      capturedAfterFlowExpiredUrl = afterFlowExpiredUrl;
       return <div data-testid="thunderid-recovery">{children(mockRecoveryRenderProps)}</div>;
     },
     EmbeddedFlowEventType: {
@@ -126,6 +135,15 @@ describe('RecoveryBox', () => {
     capturedOnFlowChange = undefined;
     capturedOnError = undefined;
     capturedAfterRecoveryUrl = undefined;
+    capturedAfterFlowExpiredUrl = undefined;
+    mockMeta = null;
+  });
+
+  it('sends the user back to the application once the flow expires', () => {
+    mockMeta = {application: {url: 'https://acme.example.com'}};
+    render(<RecoveryBox />);
+
+    expect(capturedAfterFlowExpiredUrl).toBe('https://acme.example.com');
   });
 
   it('renders without crashing', () => {
@@ -136,6 +154,27 @@ describe('RecoveryBox', () => {
   it('renders the ThunderID Recovery component', () => {
     render(<RecoveryBox />);
     expect(screen.getByTestId('thunderid-recovery')).toBeInTheDocument();
+  });
+
+  it('tells the user when the flow was started again', () => {
+    mockRecoveryRenderProps = createMockRecoveryRenderProps({isFlowRestarted: true});
+    render(<RecoveryBox />);
+
+    expect(screen.getByText('Your session expired, so we started again.')).toBeInTheDocument();
+  });
+
+  it('shows the expired state in place of the flow once it expires', () => {
+    mockRecoveryRenderProps = createMockRecoveryRenderProps({
+      isFlowExpired: true,
+      flowExpiryRedirect: null,
+      error: {message: 'Invalid request'},
+      meta: {application: {name: 'Acme Portal'}},
+    });
+    render(<RecoveryBox />);
+
+    expect(screen.getByTestId('flow-expired')).toBeInTheDocument();
+    expect(screen.getByText('Please go back to Acme Portal and try again.')).toBeInTheDocument();
+    expect(screen.queryByText('Invalid request')).not.toBeInTheDocument();
   });
 
   it('renders AuthCardLayout', () => {

@@ -6,31 +6,27 @@ import {useConfig, useToast} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
 import {useTranslation} from 'react-i18next';
 import AgentQueryKeys from '../constants/agent-query-keys';
-import type {Agent, AgentInboundAuthConfig} from '../models/agent';
-import isDelegatedAgent from '../utils/isDelegatedAgent';
 
 export interface RegenerateAgentSecretVariables {
   agentId: string;
 }
 
 export interface RegenerateAgentSecretResult {
-  agent: Agent;
+  /**
+   * The new client secret. This is the only time it can be read.
+   */
   clientSecret: string;
+  /**
+   * Set when the secret is stored but revoking the tokens issued while it was replaced failed.
+   * Regenerating again revokes them.
+   */
+  revocationIncomplete?: boolean;
 }
 
 /**
- * Generates a cryptographically secure OAuth 2 client secret matching the backend's
- * `GenerateOAuth2ClientSecret()` (32 random bytes encoded as base64url, no padding).
+ * Regenerates an agent's client secret through `POST /agents/{id}/client-secret/regenerate`. The server
+ * generates the new secret, revokes the tokens issued under the old one, and returns the new secret once.
  */
-function generateClientSecret(): string {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return btoa(String.fromCharCode(...bytes))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=/g, '');
-}
-
 export default function useRegenerateAgentSecret(): UseMutationResult<
   RegenerateAgentSecretResult,
   Error,
@@ -44,61 +40,27 @@ export default function useRegenerateAgentSecret(): UseMutationResult<
 
   return useMutation<RegenerateAgentSecretResult, Error, RegenerateAgentSecretVariables>({
     mutationFn: async ({agentId}: RegenerateAgentSecretVariables): Promise<RegenerateAgentSecretResult> => {
-      const serverUrl: string = getServerUrl();
-
-      // Step 1: Fetch the current agent
-      const getResponse: {data: Agent} = await http.request({
-        url: `${serverUrl}/agents/${agentId}`,
-        method: 'GET',
-        headers: {'Content-Type': 'application/json'},
+      const response: {data: RegenerateAgentSecretResult} = await http.request({
+        url: `${getServerUrl()}/agents/${encodeURIComponent(agentId)}/client-secret/regenerate`,
+        method: 'POST',
       } as unknown as Parameters<typeof http.request>[0]);
 
-      const currentAgent = getResponse.data;
-
-      // Step 2: Generate a new client secret
-      const newClientSecret = generateClientSecret();
-
-      // Step 3: Build the updated inbound auth config without mutating cached data
-      const existingInboundAuth = currentAgent.inboundAuthConfig ?? [];
-      const hasOAuth2 = existingInboundAuth.some((c: AgentInboundAuthConfig) => c.type === 'oauth2');
-
-      if (!hasOAuth2) {
-        throw new Error('Agent does not have an OAuth2 configuration. Cannot regenerate client secret.');
-      }
-
-      const updatedInboundAuth: AgentInboundAuthConfig[] = existingInboundAuth.map((c: AgentInboundAuthConfig) =>
-        c.type === 'oauth2'
-          ? {...c, config: {...(c.config ?? {grantTypes: [], responseTypes: []}), clientSecret: newClientSecret}}
-          : c,
-      );
-
-      // Step 4: Strip server-generated fields and PUT
-      const {id: _id, clientId: _clientId, ...rest} = currentAgent;
-      void _id;
-      void _clientId;
-      // The server does not store the delegated flag, so the full update says whether the agent has it.
-      const updateRequest = {
-        ...rest,
-        inboundAuthConfig: updatedInboundAuth,
-        delegated: isDelegatedAgent(updatedInboundAuth),
-      };
-
-      const updateResponse: {data: Agent} = await http.request({
-        url: `${serverUrl}/agents/${agentId}`,
-        method: 'PUT',
-        headers: {'Content-Type': 'application/json'},
-        data: updateRequest,
-      } as unknown as Parameters<typeof http.request>[0]);
-
-      return {
-        agent: updateResponse.data,
-        clientSecret: newClientSecret,
-      };
+      return response.data;
     },
-    onSuccess: (_data, variables) => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({queryKey: [AgentQueryKeys.AGENT, variables.agentId]}).catch(() => undefined);
       queryClient.invalidateQueries({queryKey: [AgentQueryKeys.AGENTS]}).catch(() => undefined);
-      showToast(t('regenerateSecret.snackbar.success', 'Client secret regenerated successfully'), 'success');
+      if (data.revocationIncomplete) {
+        showToast(
+          t(
+            'regenerateSecret.snackbar.revocationIncomplete',
+            'Client secret regenerated, but tokens issued while it was replaced may still be valid. Regenerate it again to revoke them.',
+          ),
+          'warning',
+        );
+      } else {
+        showToast(t('regenerateSecret.snackbar.success', 'Client secret regenerated successfully'), 'success');
+      }
     },
   });
 }

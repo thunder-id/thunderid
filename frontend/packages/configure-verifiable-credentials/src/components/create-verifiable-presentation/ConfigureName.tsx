@@ -4,7 +4,7 @@
 import {NameSuggestion, OrganizationUnitSummaryChip} from '@thunderid/components';
 import {OrganizationUnitTreeConstants} from '@thunderid/configure-organization-units';
 import {generateHandle} from '@thunderid/utils';
-import {Stack, TextField, FormControl, FormLabel, Typography} from '@wso2/oxygen-ui';
+import {Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import type {ChangeEvent, JSX} from 'react';
 import {useEffect} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -103,9 +103,11 @@ export default function ConfigureName({
         />
       )}
 
-      <FormControl fullWidth required>
-        <FormLabel htmlFor="vp-name-input">{t('form.name.label')}</FormLabel>
+      <Stack>
         <TextField
+          labelPlacement="top"
+          label={t('form.name.label')}
+          required
           fullWidth
           id="vp-name-input"
           value={name}
@@ -115,19 +117,19 @@ export default function ConfigureName({
         />
 
         <NameSuggestion onSelect={handleSuggestionSelect} />
-      </FormControl>
+      </Stack>
 
-      <FormControl fullWidth required>
-        <FormLabel htmlFor="vp-handle-input">{t('form.handle.label')}</FormLabel>
-        <TextField
-          fullWidth
-          id="vp-handle-input"
-          value={handle}
-          onChange={handleHandleChange}
-          placeholder="eudi-pid"
-          helperText={t('form.handle.hint')}
-        />
-      </FormControl>
+      <TextField
+        labelPlacement="top"
+        label={t('form.handle.label')}
+        required
+        fullWidth
+        id="vp-handle-input"
+        value={handle}
+        onChange={handleHandleChange}
+        placeholder="eudi-pid"
+        helperText={t('form.handle.hint')}
+      />
     </Stack>
   );
 }

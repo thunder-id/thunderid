@@ -99,7 +99,7 @@ func TestAwaitReady_ReportsFatalLogLineWithoutWaitingOut(t *testing.T) {
 	writeServerLog(t, dir, "starting up\nlisten tcp 127.0.0.1:19991: bind: address already in use\n")
 
 	start := time.Now()
-	err := awaitReady(dir, 19991, 30*time.Second)
+	err := awaitReady(dir, []int{19991}, 30*time.Second)
 
 	if err == nil {
 		t.Fatal("expected a failure when the log shows the bind was rejected")
@@ -116,7 +116,7 @@ func TestAwaitReady_TimeoutCarriesLogTailAndPath(t *testing.T) {
 	dir := t.TempDir()
 	writeServerLog(t, dir, "line one\nstill booting\n")
 
-	err := awaitReady(dir, 19992, 100*time.Millisecond)
+	err := awaitReady(dir, []int{19992}, 100*time.Millisecond)
 
 	if err == nil {
 		t.Fatal("expected a timeout failure")

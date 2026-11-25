@@ -27,6 +27,7 @@ vi.mock('@thunderid/contexts', () => ({
     isTrustedIssuerGenericOidc: mockIsTrustedIssuerGenericOidc,
     config: mockConfig,
   }),
+  HiddenResourcesProvider: ({children}: {children: ReactNode}) => children,
 }));
 
 // Mock ThunderIDProvider
@@ -37,6 +38,11 @@ interface MockThunderIDProviderProps {
   afterSignInUrl?: string | null;
   scopes?: string[];
 }
+
+vi.mock('@thunderid/components', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/components')>()),
+  ServerCapabilitiesProvider: ({children}: {children: ReactNode}) => children,
+}));
 
 vi.mock('@thunderid/react', () => ({
   ThunderIDProvider: ({

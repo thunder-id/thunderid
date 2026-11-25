@@ -16,10 +16,10 @@ const ApplicationConstants = {
   DUPLICATE_APP_NAME_ERROR_CODE: 'APP-1020',
 
   /**
-   * The only agent type the API accepts, written to `allowedAgentTypes` when agent sign-in is
-   * enabled for an application. Keep in sync with `backend/internal/entitytype/model.go`.
+   * The `allowedAgentTypes` entry that allows every agent type, written when agent sign-in is
+   * enabled for an application or an agent.
    */
-  DEFAULT_AGENT_TYPE_HANDLE: 'default',
+  ALL_AGENT_TYPES: '*',
 
   /**
    * Length rules the API enforces on the application name, mirrored here so the console can
@@ -28,6 +28,14 @@ const ApplicationConstants = {
    */
   NAME_MIN_LENGTH: 1,
   NAME_MAX_LENGTH: 100,
+
+  /**
+   * The system organization unit, where the API places an application created in a project when none
+   * of the project's organization units is picked. The sign-in flow generated for such an application
+   * is created there too. Keep in sync with
+   * `SystemOUID` in `backend/internal/ou/constants.go`.
+   */
+  SYSTEM_ORGANIZATION_UNIT_ID: '01900000-0000-7000-8000-000000000001',
 } as const;
 
 export default ApplicationConstants;

@@ -6,7 +6,7 @@ import type {AgentInboundAuthConfig} from '../models/agent';
 
 /**
  * Whether the grant types include one that lets an agent act on behalf of a user: authorization
- * code, CIBA, token exchange or JWT bearer. Delegated mode is on exactly then.
+ * code, CIBA, Device Code, token exchange or JWT bearer. Delegated mode is on exactly then.
  */
 export function hasDelegationGrant(grantTypes?: string[]): boolean {
   return (grantTypes ?? []).some((grant) => DELEGATION_GRANTS.includes(grant));

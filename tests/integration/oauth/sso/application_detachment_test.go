@@ -15,12 +15,6 @@ import (
 )
 
 const (
-	// The shipped administration flow that deletes an application, and the input its executors read
-	// the target from. The name is deliberately not "applicationId": that is already taken at the top
-	// level of the execution request, where it names the application the flow runs *for*.
-	applicationDeletionFlowHandle = "default-application-deletion-flow"
-	applicationTargetInput        = "targetApplicationId"
-
 	// Two further applications bound to the same SSO authentication flow as the suite's main one, so
 	// all three share a per-flow session and can participate in it together.
 	detachClientID     = "sso_detach_test_client"
@@ -32,23 +26,12 @@ const (
 	soleUsername   = "sso_sole_user"
 )
 
-// applicationDeletionFlowID resolves the shipped application deletion flow by handle. Resolving by
-// handle keeps the test independent of the seeded flow ids, which are a bootstrap detail.
-func (ts *SSOLogoutTestSuite) applicationDeletionFlowID() string {
-	ts.T().Helper()
-
-	flowID, err := testutils.GetFlowIDByHandle(applicationDeletionFlowHandle, administrationFlowType)
-	ts.Require().NoError(err, "failed to resolve the shipped application deletion flow")
-
-	return flowID
-}
-
 // createParticipantApplication registers a further OAuth application on the suite's SSO authentication
 // flow and returns its id. Sharing the flow is what puts it in the same per-flow SSO session as the
 // suite's main application, which is the arrangement these tests need.
 //
-// The application is registered for best-effort cleanup: the tests here expect the deletion flow to
-// remove it, so the cleanup only matters when a test fails before that happens.
+// The application is registered for best-effort cleanup: the tests here delete it themselves, so the
+// cleanup only matters when a test fails before that happens.
 func (ts *SSOLogoutTestSuite) createParticipantApplication(name, cID, cSecret string) string {
 	ts.T().Helper()
 
@@ -180,53 +163,12 @@ func (ts *SSOLogoutTestSuite) ssoSatisfies(client *http.Client, cID, state strin
 	return step.FlowStatus == "COMPLETE"
 }
 
-// deleteApplicationThroughFlow runs the shipped application deletion flow against the given application.
-//
-// The bearer token is set on a raw client because the shared test clients treat /flow/execute as a
-// public endpoint and skip token injection, which would make the request anonymous and be refused at
-// the administration entry point.
-func (ts *SSOLogoutTestSuite) deleteApplicationThroughFlow(flowID, appID string) {
-	ts.T().Helper()
-
-	token, err := testutils.GetAccessToken()
-	ts.Require().NoError(err, "failed to obtain admin access token")
-
-	reqBody, err := json.Marshal(map[string]interface{}{
-		"flowId": flowID,
-		"inputs": map[string]string{applicationTargetInput: appID},
-	})
-	ts.Require().NoError(err)
-
-	req, err := http.NewRequest(http.MethodPost, testutils.TestServerURL+"/flow/execute",
-		bytes.NewReader(reqBody))
-	ts.Require().NoError(err)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := testutils.GetRawHTTPClient().Do(req)
-	ts.Require().NoError(err, "failed to execute the application deletion flow")
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	ts.Require().NoError(err)
-	ts.Require().Equal(http.StatusOK, resp.StatusCode,
-		"application deletion flow should run: %s", string(body))
-
-	var step testutils.FlowStep
-	ts.Require().NoError(json.Unmarshal(body, &step))
-	ts.Require().Equal("COMPLETE", step.FlowStatus,
-		"application deletion flow should complete: %s", string(body))
-}
-
 // Deleting an application detaches it from the SSO sessions it participates in, and detaches nothing
 // else: a session shared with other applications survives, because it can still back SSO for them.
 //
 // The session is proven live for both applications before the deletion, so what is asserted afterwards
 // is a change in behavior for one and its absence for the other, rather than an absence on its own.
 func (ts *SSOLogoutTestSuite) TestApplicationDeletion_DetachesOnlyThatApplication() {
-	flowID := ts.applicationDeletionFlowID()
-	ts.Require().NotEmpty(flowID, "the shipped application deletion flow should be present")
-
 	ts.createUser(detachUsername)
 	appID := ts.createParticipantApplication("SSODetachTestApp", detachClientID, detachClientSecret)
 
@@ -239,7 +181,7 @@ func (ts *SSOLogoutTestSuite) TestApplicationDeletion_DetachesOnlyThatApplicatio
 	ts.Require().True(ts.ssoSatisfies(client, detachClientID, "detach_state_2"),
 		"the second application must join the session for this test to mean anything")
 
-	ts.deleteApplicationThroughFlow(flowID, appID)
+	ts.Require().NoError(testutils.DeleteApplication(appID), "failed to delete the application")
 
 	// The session outlives the deleted participant: the application that still exists keeps being
 	// served from it without a credential prompt.
@@ -251,9 +193,6 @@ func (ts *SSOLogoutTestSuite) TestApplicationDeletion_DetachesOnlyThatApplicatio
 // participant, nothing is left to participate, so the session goes with it rather than lingering as a
 // live credential that no application can use.
 func (ts *SSOLogoutTestSuite) TestApplicationDeletion_EndsTheSessionWhenItsLastParticipantGoes() {
-	flowID := ts.applicationDeletionFlowID()
-	ts.Require().NotEmpty(flowID, "the shipped application deletion flow should be present")
-
 	ts.createUser(soleUsername)
 	appID := ts.createParticipantApplication("SSOSoleParticipantApp", soleClientID, soleClientSecret)
 
@@ -264,7 +203,7 @@ func (ts *SSOLogoutTestSuite) TestApplicationDeletion_EndsTheSessionWhenItsLastP
 	ts.Require().True(ts.ssoSatisfies(client, soleClientID, "sole_state_2"),
 		"the session must be live before the deletion for this test to mean anything")
 
-	ts.deleteApplicationThroughFlow(flowID, appID)
+	ts.Require().NoError(testutils.DeleteApplication(appID), "failed to delete the application")
 
 	// The same cookie must no longer satisfy SSO on this flow, for any application on it.
 	ts.False(ts.ssoSatisfies(client, clientID, "sole_state_3"),

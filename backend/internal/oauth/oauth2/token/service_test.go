@@ -61,7 +61,7 @@ func (suite *TokenServiceTestSuite) SetupTest() {
 // newService builds a fresh tokenService using the suite's mocks.
 func (suite *TokenServiceTestSuite) newService() TokenServiceInterface {
 	return newTokenService(suite.mockGrantProvider, suite.mockScopeValidator, suite.mockObsSvc,
-		suite.mockDPoPVerifier, "https://example.test/oauth2/token", false)
+		suite.mockDPoPVerifier, "https://example.test/oauth2/token", false, discardingBus{})
 }
 
 // defaultApp returns an OAuthClient that allows the authorization_code grant.
@@ -546,7 +546,7 @@ func (suite *TokenServiceTestSuite) TestProcessTokenRequest_NoDPoPProof_GlobalRe
 	suite.mockScopeValidator.On("ValidateScopes", mock.Anything, "openid", "test-client-id").Return("openid", nil)
 
 	svc := newTokenService(suite.mockGrantProvider, suite.mockScopeValidator, suite.mockObsSvc,
-		suite.mockDPoPVerifier, "https://example.test/oauth2/token", true)
+		suite.mockDPoPVerifier, "https://example.test/oauth2/token", true, discardingBus{})
 	_, errResp := svc.ProcessTokenRequest(context.Background(), req, app)
 
 	assert.NotNil(suite.T(), errResp)
@@ -1030,7 +1030,7 @@ func (suite *TokenEventsTestSuite) SetupTest() {
 }
 
 func (suite *TokenEventsTestSuite) newService() *tokenService {
-	return &tokenService{observabilitySvc: suite.mockObsSvc}
+	return &tokenService{observabilitySvc: suite.mockObsSvc, bus: discardingBus{}}
 }
 
 func (suite *TokenEventsTestSuite) ctx() context.Context {

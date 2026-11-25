@@ -2,16 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, FullScreenCreationWizardLayout} from '@thunderid/components';
+import {useEmailProviders, useIdentityProviders, useSMSProviders} from '@thunderid/configure-connections';
 import {useHasMultipleOUs} from '@thunderid/configure-organization-units';
+import {useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage} from '@thunderid/utils';
 import {Alert, Box, Button, CircularProgress} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useCallback, useMemo, useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {useNavigate} from 'react-router';
+import {Navigate, useNavigate} from 'react-router';
 import useCreateFlow from '../api/useCreateFlow';
 import useGetFlowsMeta from '../api/useGetFlowsMeta';
+import useUpdateFlow from '../api/useUpdateFlow';
 import ConfigureFlowName from '../components/create-flow/ConfigureFlowName';
 import type {ConfigureFlowNameValue} from '../components/create-flow/ConfigureFlowName';
 import FlowOrganizationUnitStep from '../components/create-flow/FlowOrganizationUnitStep';
@@ -19,7 +22,10 @@ import SelectFlowTemplate from '../components/create-flow/SelectFlowTemplate';
 import SelectFlowType from '../components/create-flow/SelectFlowType';
 import useFlowRoutes from '../hooks/useFlowRoutes';
 import {FlowType} from '../models/flows';
+import type {FlowDefinitionResponse} from '../models/responses';
 import type {FlowTemplate} from '../models/templates';
+import {fillParentOrganizationUnit, PARENT_OU_ID_PLACEHOLDER} from '../utils/parentOrganizationUnit';
+import resolveConnectionPlaceholders from '../utils/resolveConnectionPlaceholders';
 
 const FlowCreateStep = {
   ORGANIZATION_UNIT: 'ORGANIZATION_UNIT',
@@ -30,14 +36,33 @@ const FlowCreateStep = {
 
 type FlowCreateStep = (typeof FlowCreateStep)[keyof typeof FlowCreateStep];
 
-export default function FlowCreatePage(): JSX.Element {
+/**
+ * Props for the {@link FlowCreatePage} component.
+ */
+export interface FlowCreatePageProps {
+  /**
+   * Whether a flow is created in a project only. When set, the page returns to the list outside a selected
+   * project, since a flow created there would be refused.
+   */
+  createInProjectsOnly?: boolean;
+}
+
+export default function FlowCreatePage({createInProjectsOnly = false}: FlowCreatePageProps): JSX.Element {
   const {t} = useTranslation();
   const navigate = useNavigate();
   const flowRoutes = useFlowRoutes();
   const logger = useLogger('FlowCreatePage');
   const createFlow = useCreateFlow();
+  const updateFlow = useUpdateFlow();
   const {data: deviceGrantMeta} = useGetFlowsMeta({flowType: FlowType.DEVICE_GRANT});
   const deviceGrantTemplate = deviceGrantMeta.templates.find((template) => template.type === 'DEVICE_GRANT') ?? null;
+
+  // A template names its connections with placeholders, which are filled in before the flow is saved.
+  const identityProviders = useIdentityProviders();
+  const smsProviders = useSMSProviders();
+  const emailProviders = useEmailProviders();
+  const isConnectionsPending: boolean =
+    identityProviders.isPending || smsProviders.isPending || emailProviders.isPending;
 
   const [requestedStep, setCurrentStep] = useState<FlowCreateStep>(FlowCreateStep.ORGANIZATION_UNIT);
   const [selectedType, setSelectedType] = useState<FlowType | null>(null);
@@ -49,9 +74,13 @@ export default function FlowCreatePage(): JSX.Element {
   const [selectedOuId, setSelectedOuId] = useState('');
 
   // The organization unit is the wizard's first step whenever there is a choice to make. A single-unit deployment
-  // uses its one unit, so once that is known the step is skipped.
-  const {hasMultipleOUs, isLoading: isOuLoading, ouList} = useHasMultipleOUs();
-  const ouId: string = hasMultipleOUs ? selectedOuId : (ouList[0]?.id ?? '');
+  // uses its one unit, so once that is known the step is skipped. Inside a project the flow goes to the system
+  // organization unit or one of the project's own, and the step is offered only when the project has organization
+  // units; without any, the API places the flow in the system organization unit.
+  const {projectId} = useProjectScope();
+  const isInProject = Boolean(projectId);
+  const {hasMultipleOUs, isLoading: isOuLoading, ouList} = useHasMultipleOUs(projectId);
+  const ouId: string = hasMultipleOUs ? selectedOuId : isInProject ? '' : (ouList[0]?.id ?? '');
 
   const currentStep: FlowCreateStep =
     requestedStep === FlowCreateStep.ORGANIZATION_UNIT && !isOuLoading && !hasMultipleOUs
@@ -102,6 +131,23 @@ export default function FlowCreatePage(): JSX.Element {
     }
   }, [createFlow]);
 
+  // Sets a parent OU the flow was created with the placeholder for to the organization unit the API placed the flow in.
+  // On failure the placeholder stays, which the builder reports as a missing parent OU, so the flow still opens.
+  const setParentOrganizationUnit = async (flow: FlowDefinitionResponse): Promise<void> => {
+    const nodes = fillParentOrganizationUnit(flow.nodes, flow.flowType, flow.ouId);
+    if (nodes === flow.nodes) {
+      return;
+    }
+    try {
+      await updateFlow.mutateAsync({
+        flowId: flow.id,
+        flowData: {name: flow.name, handle: flow.handle, flowType: flow.flowType, ouId: flow.ouId, nodes},
+      });
+    } catch (error: unknown) {
+      logger.warn('Failed to set the parent organization unit of the new flow', {error, flowId: flow.id});
+    }
+  };
+
   const handleNextStep = (): void => {
     if (currentStep === FlowCreateStep.ORGANIZATION_UNIT) {
       setCurrentStep(FlowCreateStep.TYPE);
@@ -123,7 +169,7 @@ export default function FlowCreatePage(): JSX.Element {
     }
     if (currentStep === FlowCreateStep.CONFIGURE) {
       if (!selectedType || !selectedTemplate) return;
-      if (!ouId) {
+      if (!isInProject && !ouId) {
         setError(t('flows:create.organizationUnit.required', 'Organization unit is required'));
         return;
       }
@@ -131,17 +177,30 @@ export default function FlowCreatePage(): JSX.Element {
         name: nameValue.name,
         handle: nameValue.handle,
         flowType: selectedType,
-        ouId,
-        nodes: selectedTemplate.config.nodes,
+        ...(isInProject ? {projectId} : {}),
+        ...(ouId ? {ouId} : {}),
+        // A Resolve OU step's parent OU defaults to the organization unit the flow is created in. A project without
+        // organization units has the API place the flow in the system organization unit, known only once the flow
+        // exists.
+        nodes: fillParentOrganizationUnit(
+          resolveConnectionPlaceholders(selectedTemplate.config.nodes, {
+            identityProviders: identityProviders.data,
+            smsProviders: smsProviders.data,
+            emailProviders: emailProviders.data,
+          }),
+          selectedType,
+          ouId || PARENT_OU_ID_PLACEHOLDER,
+        ),
       };
       setError(null);
-      if (selectedType === FlowType.DEVICE_GRANT) {
+      if (selectedType === FlowType.DEVICE_GRANT || selectedTemplate.configureBeforeSave) {
         void navigate(flowRoutes.flows.detail('new'), {state: {draftFlow: flowRequest}});
         return;
       }
       createFlow.mutate(flowRequest, {
         onSuccess: (savedFlow) => {
           (async () => {
+            await setParentOrganizationUnit(savedFlow);
             await navigate(flowRoutes.flows.detail(savedFlow.id));
           })().catch((_error: unknown) => {
             logger.error('Failed to navigate to flow builder', {error: _error, flowId: savedFlow.id});
@@ -192,7 +251,7 @@ export default function FlowCreatePage(): JSX.Element {
   const isContinueDisabled = (): boolean => {
     if (currentStep === FlowCreateStep.TYPE) return !typeReady;
     if (currentStep === FlowCreateStep.TEMPLATE) return !selectedTemplate;
-    if (currentStep === FlowCreateStep.CONFIGURE) return !nameReady || createFlow.isPending;
+    if (currentStep === FlowCreateStep.CONFIGURE) return !nameReady || createFlow.isPending || isConnectionsPending;
     return false;
   };
 
@@ -221,11 +280,16 @@ export default function FlowCreatePage(): JSX.Element {
     return null;
   };
 
+  if (createInProjectsOnly && !isInProject) {
+    return <Navigate to={flowRoutes.flows.list()} replace />;
+  }
+
   if (currentStep === FlowCreateStep.ORGANIZATION_UNIT) {
     return (
       <FlowOrganizationUnitStep
         isLoading={isOuLoading || !hasMultipleOUs}
         value={selectedOuId}
+        projectId={projectId}
         onChange={(value) => {
           clearCreateError();
           setSelectedOuId(value);

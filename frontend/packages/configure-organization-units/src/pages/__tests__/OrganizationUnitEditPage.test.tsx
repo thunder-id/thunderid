@@ -1,6 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {screen, fireEvent, waitFor, renderWithProviders, renderHook} from '@thunderid/test-utils';
 import type {ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -131,6 +132,7 @@ vi.mock('@thunderid/components', async (importOriginal) => {
         saveLabel,
         savingLabel,
         isSaving,
+        saveDisabled = false,
         error = undefined,
         onReset,
         onSave,
@@ -140,6 +142,7 @@ vi.mock('@thunderid/components', async (importOriginal) => {
         saveLabel: string;
         savingLabel: string;
         isSaving: boolean;
+        saveDisabled?: boolean;
         error?: string;
         onReset: () => void;
         onSave: () => void;
@@ -150,7 +153,7 @@ vi.mock('@thunderid/components', async (importOriginal) => {
           <button type="button" onClick={onReset}>
             {resetLabel}
           </button>
-          <button type="button" onClick={onSave} disabled={isSaving}>
+          <button type="button" onClick={onSave} disabled={isSaving || saveDisabled}>
             {isSaving ? savingLabel : saveLabel}
           </button>
         </div>
@@ -213,6 +216,11 @@ vi.mock('@thunderid/components', async (importOriginal) => {
   };
 });
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  isLoading: false,
+};
+
 describe('OrganizationUnitEditPage', () => {
   let t: (key: string) => string;
 
@@ -260,6 +268,42 @@ describe('OrganizationUnitEditPage', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Test Organization Unit')).toBeInTheDocument();
+    });
+  });
+
+  it("shows the selected project's organization unit", async () => {
+    mockUseGetOrganizationUnit.mockReturnValue({
+      data: {...mockOrganizationUnit, projectId: 'project-1'},
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+    renderWithProviders(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <OrganizationUnitEditPage />
+      </ProjectScopeProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText('Test Organization Unit')).toBeInTheDocument();
+    });
+  });
+
+  it("leaves another project's organization unit for the selected project's list", async () => {
+    mockUseGetOrganizationUnit.mockReturnValue({
+      data: {...mockOrganizationUnit, projectId: 'project-2'},
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+    renderWithProviders(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <OrganizationUnitEditPage />
+      </ProjectScopeProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByText('Test Organization Unit')).not.toBeInTheDocument();
     });
   });
 
@@ -1349,6 +1393,32 @@ describe('OrganizationUnitEditPage', () => {
       await waitFor(() => {
         expect(screen.getByText('Test Organization Unit')).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('Without write access', () => {
+    it('should offer the name and description edits when the admin may update organization units', async () => {
+      renderWithProviders(<OrganizationUnitEditPage />);
+
+      expect(await screen.findByRole('button', {name: 'Edit organization unit name'})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Edit description'})).toBeInTheDocument();
+    });
+
+    it('should lock the fields and hide delete when the admin may only view organization units', async () => {
+      renderWithProviders(
+        <CapabilitiesProvider capabilities={viewOnly}>
+          <OrganizationUnitEditPage />
+        </CapabilitiesProvider>,
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('Test Organization Unit')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByRole('button', {name: 'Edit organization unit name'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Edit description'})).not.toBeInTheDocument();
+
+      expect(screen.queryByRole('tab', {name: t('organizationUnits:edit.page.tabs.advanced')})).not.toBeInTheDocument();
     });
   });
 

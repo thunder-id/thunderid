@@ -117,7 +117,7 @@ func (s *sharingStore) CreatePolicy(ctx context.Context, p Policy) error {
 	}
 	_, err = dbClient.ExecuteContext(ctx, queryCreatePolicy,
 		p.ID, string(p.ResourceType), p.ResourceID, p.OwningOUID, p.InitiatingOUID,
-		string(p.Stage), nullableString(p.ParentPolicyID), sections, max(p.Version, 1),
+		string(p.Stage), utils.NullableString(p.ParentPolicyID), sections, max(p.Version, 1),
 		s.scope(ctx))
 	if err != nil {
 		return fmt.Errorf("failed to create sharing policy: %w", err)
@@ -249,7 +249,7 @@ func (s *sharingStore) writeRule(
 		return fmt.Errorf("failed to generate an overlay rule identifier: %w", err)
 	}
 	if _, err := dbClient.ExecuteContext(ctx, queryInsertRule,
-		ruleID, policyID, string(r.Grant.Section), nullableString(r.Grant.OUID), r.FieldKey,
+		ruleID, policyID, string(r.Grant.Section), utils.NullableString(r.Grant.OUID), r.FieldKey,
 		string(resolved), string(requested), s.scope(ctx)); err != nil {
 		return fmt.Errorf("failed to create overlay rule: %w", err)
 	}

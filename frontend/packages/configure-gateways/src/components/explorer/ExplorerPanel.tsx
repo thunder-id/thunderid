@@ -15,9 +15,14 @@ import {
   type Label,
   type LaneSummary,
 } from '../../explorer/model';
-import type {ValueReference} from '../../models/deploy';
+import useGatewayValueAccess from '../../hooks/useGatewayValueAccess';
+import type {MasterEntry, ResourceHistoryEntry, ValueReference} from '../../models/deploy';
 import type {Gateway} from '../../models/gateway';
+import {shortHash} from '../../utils/format';
+import {refusalText} from '../../utils/missingValues';
+import ActorName from '../ActorName';
 import CopyableUrl from '../CopyableUrl';
+import Timestamp from '../Timestamp';
 
 export interface ExplorerPanelProps {
   gateway: Gateway;
@@ -25,6 +30,10 @@ export interface ExplorerPanelProps {
   version?: string;
   counts?: string;
   selected: GraphNode | null;
+  /** How the selected resource got onto the gateway, as its master records it. */
+  entry?: MasterEntry;
+  /** The selected resource's entry across the gateway's masters, newest first. */
+  history?: ResourceHistoryEntry[];
   onSelect: (key: string | null) => void;
   labelFor: (label: Label) => string;
   /** What the gateway holds under each variable's name. */
@@ -55,6 +64,63 @@ const EDITABLE = {
     '&:hover fieldset': {borderColor: 'rgba(var(--oxygen-palette-text-primaryChannel) / 0.55)'},
   },
 } as const;
+
+/** How a resource got onto the gateway, and how it got there before. */
+function Deployment({entry, history = undefined}: {entry: MasterEntry; history?: ResourceHistoryEntry[]}): JSX.Element {
+  const {t} = useTranslation('deploy');
+  const states: Readonly<Record<MasterEntry['state'], string>> = {
+    deployed: t('explorer.panel.states.deployed', 'Deployed'),
+    failed: t('explorer.panel.states.failed', 'Refused'),
+    removed: t('explorer.panel.states.removed', 'Removed'),
+  };
+  const colors: Readonly<Record<MasterEntry['state'], string>> = {
+    deployed: 'success.main',
+    failed: 'error.main',
+    removed: 'text.secondary',
+  };
+  const earlier = (history ?? []).slice(1);
+  return (
+    <Box data-testid="explorer-deployment">
+      <Typography variant="subtitle2">{t('explorer.panel.deployment', 'Deployment')}</Typography>
+      <Stack spacing={0.5} sx={{mt: 0.75}}>
+        <Typography variant="body2" color={colors[entry.state]} data-testid="explorer-entry-state">
+          {states[entry.state]}
+          {entry.sourceVersion &&
+            ` · ${t('explorer.panel.fromVersion', 'from {{version}}', {version: shortHash(entry.sourceVersion)})}`}
+          {entry.origin && ` · ${entry.origin}`}
+        </Typography>
+        {entry.failure && refusalText(entry.failure) && (
+          <Typography variant="caption" color="error.main" data-testid="explorer-entry-refusal">
+            {refusalText(entry.failure)}
+          </Typography>
+        )}
+        {entry.at && <Timestamp value={entry.at} />}
+        {entry.by && <ActorName actor={entry.by} />}
+      </Stack>
+      {earlier.length > 0 && (
+        <Box sx={{mt: 1.5}}>
+          <Typography variant="caption" color="text.secondary" component="div" sx={{mb: 0.5}}>
+            {t('explorer.panel.history', 'Earlier')}
+          </Typography>
+          <Stack spacing={0.75} data-testid="explorer-history">
+            {earlier.map((item: ResourceHistoryEntry) => (
+              <Stack key={item.number} direction="row" spacing={1} alignItems="baseline">
+                <Typography variant="caption" color={colors[item.entry.state]} sx={{minWidth: 56}}>
+                  {states[item.entry.state]}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {item.entry.sourceVersion ? shortHash(item.entry.sourceVersion) : ''}
+                  {item.entry.origin ? ` · ${item.entry.origin}` : ''}
+                </Typography>
+                {item.entry.at && <Timestamp value={item.entry.at} />}
+              </Stack>
+            ))}
+          </Stack>
+        </Box>
+      )}
+    </Box>
+  );
+}
 
 /** URLs a resource or gateway is reached at on this gateway, each one copyable. */
 function Endpoints({
@@ -97,6 +163,8 @@ export default function ExplorerPanel({
   version = undefined,
   counts = undefined,
   selected,
+  entry = undefined,
+  history = undefined,
   onSelect,
   labelFor,
   variables,
@@ -111,6 +179,7 @@ export default function ExplorerPanel({
   onDiscard,
 }: ExplorerPanelProps): JSX.Element {
   const {t} = useTranslation('deploy');
+  const {canSetValues} = useGatewayValueAccess();
   const frame = {
     width: 360,
     flexShrink: 0,
@@ -128,7 +197,7 @@ export default function ExplorerPanel({
         <Stack spacing={2} sx={{p: 2.5}}>
           <Box>
             <Typography variant="overline" color="text.secondary">
-              {t('explorer.panel.environment', 'Gateway')}
+              {t('explorer.panel.gateway', 'Gateway')}
             </Typography>
             <Typography variant="h6" fontWeight={600}>
               {gateway.name}
@@ -230,6 +299,7 @@ export default function ExplorerPanel({
         </IconButton>
       </Stack>
       <Stack spacing={2.5} sx={{px: 2.5, pb: 2.5, flex: 1}}>
+        {entry && <Deployment entry={entry} history={history} />}
         {own.length === 0 && (
           <Typography variant="body2" color="text.secondary">
             {t(
@@ -305,7 +375,7 @@ export default function ExplorerPanel({
                             minRows={reference.list ? 2 : undefined}
                             value={value}
                             onChange={(event) => onDraft(reference.name, event.target.value)}
-                            disabled={isSaving}
+                            disabled={!canSetValues || isSaving}
                             sx={EDITABLE}
                             slotProps={{input: {sx: {fontFamily: 'monospace', fontSize: 13}}}}
                             helperText={reference.list ? t('explorer.panel.listHint', 'One per line.') : undefined}
@@ -357,7 +427,7 @@ export default function ExplorerPanel({
                             placeholder={t('explorer.panel.secretPlaceholder', 'Enter a new value to replace')}
                             value={drafts.get(reference.name) ?? ''}
                             onChange={(event) => onDraft(reference.name, event.target.value)}
-                            disabled={isSaving}
+                            disabled={!canSetValues || isSaving}
                             slotProps={{
                               input: {
                                 endAdornment: (
@@ -454,7 +524,7 @@ export default function ExplorerPanel({
           </Box>
         )}
       </Stack>
-      {own.length > 0 && (
+      {canSetValues && own.length > 0 && (
         <Stack
           direction="row"
           spacing={1}

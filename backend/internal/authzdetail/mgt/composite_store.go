@@ -83,6 +83,42 @@ func (c *compositeTypeStore) ListTypePage(ctx context.Context, limit, offset int
 	return pageOf(types, limit, offset), nil
 }
 
+// CountTypesByProject counts the types of a project in both stores. Each store counts only the project's types, so
+// the deployment's other types never reach the composite mode limit.
+func (c *compositeTypeStore) CountTypesByProject(ctx context.Context, projectID string) (int, error) {
+	return declarativeresource.CompositeMergeCountHelper(
+		func() (int, error) { return c.dbStore.CountTypesByProject(ctx, projectID) },
+		func() (int, error) { return c.fileStore.CountTypesByProject(ctx, projectID) },
+	)
+}
+
+// ListTypePageByProject lists one page of the types of a project in both stores. The limit of composite mode applies
+// to the project's types alone.
+func (c *compositeTypeStore) ListTypePageByProject(ctx context.Context, projectID string, limit, offset int) (
+	[]providers.AuthorizationDetailType, error) {
+	types, limitExceeded, err := declarativeresource.CompositeMergeListHelperWithLimit(
+		func() (int, error) { return c.dbStore.CountTypesByProject(ctx, projectID) },
+		func() (int, error) { return c.fileStore.CountTypesByProject(ctx, projectID) },
+		func(count int) ([]providers.AuthorizationDetailType, error) {
+			return c.dbStore.ListTypePageByProject(ctx, projectID, count, 0)
+		},
+		func(count int) ([]providers.AuthorizationDetailType, error) {
+			return c.fileStore.ListTypePageByProject(ctx, projectID, count, 0)
+		},
+		mergeTypes,
+		limit,
+		offset,
+		serverconst.MaxCompositeStoreRecords,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if limitExceeded {
+		return nil, errResultLimitExceededInCompositeMode
+	}
+	return types, nil
+}
+
 // listCappedTypes lists the types of both stores, refusing a merged list over the composite mode limit.
 func (c *compositeTypeStore) listCappedTypes(ctx context.Context) ([]providers.AuthorizationDetailType, error) {
 	types, err := c.ListTypes(ctx)

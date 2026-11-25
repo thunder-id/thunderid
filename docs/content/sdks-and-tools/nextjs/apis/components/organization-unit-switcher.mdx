@@ -1,0 +1,70 @@
+---
+title: <OrganizationUnitSwitcher />
+docType: reference
+description: Dropdown that lists the organization units a signed-in user can access and switches the session to the one they pick, in Next.js apps.
+---
+
+# `<OrganizationUnitSwitcher />`
+
+The `OrganizationUnitSwitcher` component shows the organization unit the session is in, in a field that opens a menu of the units the signed-in user can access. It reads the units from `/users/me/ous` through a server action, so the access token stays on the server. Picking a unit calls [`switchOrganizationUnit`](../../server-actions#switchorganizationunit) from `useThunderID()`, which signs in again bounded to that unit. A failed switch keeps the session as it was and shows a translated message under the field. For the scenario this component serves, see [Switch Organizations](../../../../../use-cases/b2b/journeys/switch-organizations).
+
+The component loads the list once the user is signed in. After a switch that completes in place, it calls `onSwitch` and loads the list again. It renders `BaseOrganizationUnitSwitcher` from `@thunderid/react`, so its built-in UI, translation keys, and render props match the [React SDK's `<OrganizationUnitSwitcher />`](../../../../react/apis/components/organization-unit-switcher).
+
+## Usage
+
+### Basic Usage
+
+```jsx title="app/components/Header.tsx" showLineNumbers
+'use client'
+import { OrganizationUnitSwitcher, SignedIn } from '@thunderid/nextjs'
+
+function Header() {
+  return (
+    <header>
+      <SignedIn>
+        <OrganizationUnitSwitcher scope="siblings" />
+      </SignedIn>
+    </header>
+  )
+}
+
+export default Header
+```
+
+### Handling the Pick Yourself
+
+Pass `onSelect` to take over a pick. The component calls it with the unit instead of switching, so your application decides what happens:
+
+```jsx title="app/components/OrganizationPicker.tsx" showLineNumbers
+'use client'
+import { useRouter } from 'next/navigation'
+import { OrganizationUnitSwitcher } from '@thunderid/nextjs'
+
+function OrganizationPicker() {
+  const router = useRouter()
+
+  return <OrganizationUnitSwitcher onSelect={(unit) => router.push(`/orgs/${unit.handle}`)} />
+}
+
+export default OrganizationPicker
+```
+
+## Props
+
+| Prop | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `scope` | `AccessibleOrganizationUnitScope` | ❌ | `'siblings'` lists the accessible units that share the parent of the current unit. Omit it to list every accessible unit. |
+| `limit` | `number` | ❌ | The page size. Defaults to `10`. |
+| `onSwitch` | `(unit: AccessibleOrganizationUnit, user: User) => void` | ❌ | Called with the unit and the refreshed user after a switch that completes in place. A switch that leaves the page completes on the callback instead. |
+| `onSelect` | `(unit: AccessibleOrganizationUnit) => void` | ❌ | Takes over a pick: called with the unit instead of switching. |
+| `onError` | `(error: unknown) => void` | ❌ | Called when a switch or a load fails: with the SDK error for a switch, or with the failed result `{ success: false, code, statusCode }` for a load. The component shows its message either way. |
+| `switchOptions` | `SwitchOrganizationUnitOptions` | ❌ | Options passed to `switchOrganizationUnit`. Only `redirect` applies. |
+| `title` | `string` | ❌ | Overrides the small label above the current unit. Pass an empty string to omit it. |
+| `className` | `string` | ❌ | Additional CSS class names. |
+| `preferences` | `Preferences` | ❌ | Component-level preference overrides, including i18n. |
+| `children` | `(props: OrganizationUnitSwitcherRenderProps) => ReactNode` | ❌ | Render function that replaces the built-in UI. See the [render props](../../../../react/apis/components/organization-unit-switcher#render-props). |
+
+## Related
+
+- [Organization Units](../../server-actions#organization-units) documents `switchOrganizationUnit`, its paths, and its error codes in Next.js.
+- [Switch Organizations](../../../../../use-cases/b2b/journeys/switch-organizations) explains organization switching end to end.

@@ -26,6 +26,14 @@ interface MockUseGetApplicationsResult {
 const mockUseGetApplications = vi.fn<(params: unknown) => MockUseGetApplicationsResult>();
 let mockDiscovery: {wellKnown?: {end_session_endpoint?: string}} | undefined;
 let mockIsTrustedIssuerGenericOidc = false;
+let mockSdkConfig: Record<string, unknown> | undefined;
+let mockCapabilities: {
+  can: (resource: string, action?: string) => boolean;
+  isLoading: boolean;
+  error?: Error | null;
+  retry?: () => void;
+};
+let mockPathname: string | undefined;
 
 vi.mock('@thunderid/configure-applications', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-applications')>()),
@@ -49,6 +57,7 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@thunderid/contexts')>();
   return {
     ...actual,
+    useCapabilitiesContext: () => mockCapabilities,
     useConfig: () => ({
       config: {
         brand: {
@@ -56,6 +65,7 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
           favicon: {light: 'assets/images/favicon.ico', dark: 'assets/images/favicon-inverted.ico'},
         },
         client: {client_id: 'CONSOLE'},
+        sdk: mockSdkConfig,
       },
       isTrustedIssuerGenericOidc: () => mockIsTrustedIssuerGenericOidc,
       getTrustedIssuerClientId: () => 'test-client-id',
@@ -93,6 +103,7 @@ vi.mock('react-router', async () => {
       </a>
     ),
     useNavigate: () => mockNavigate,
+    useLocation: () => (mockPathname ? {...actual.useLocation(), pathname: mockPathname} : actual.useLocation()),
   };
 });
 
@@ -103,6 +114,8 @@ describe('DashboardLayout', () => {
     mockUserData.mockReturnValue({name: 'Test User', email: 'test@example.com'});
     mockIsTrustedIssuerGenericOidc = false;
     mockDiscovery = undefined;
+    mockCapabilities = {can: () => true, isLoading: false};
+    mockPathname = undefined;
     mockUseGetApplications.mockReturnValue({
       data: {applications: []},
       isLoading: false,
@@ -151,6 +164,26 @@ describe('DashboardLayout', () => {
     expect(screen.getByText('navigation:pages.applications')).toBeInTheDocument();
     expect(screen.getByText('navigation:pages.connections')).toBeInTheDocument();
     expect(screen.getByText('navigation:pages.flows')).toBeInTheDocument();
+    expect(screen.getByText('navigation:pages.authorizationDetailTypes')).toBeInTheDocument();
+  });
+
+  it('should list Agent types under Identities directly after User types', () => {
+    render(<DashboardLayout />);
+
+    const userTypes = screen.getByRole('button', {name: 'navigation:pages.userTypes'});
+    const agentTypes = screen.getByRole('button', {name: 'navigation:pages.agentTypes'});
+    const items = screen.getAllByRole('button').filter((item) => item.textContent?.startsWith('navigation:pages.'));
+
+    expect(items.indexOf(agentTypes)).toBe(items.indexOf(userTypes) + 1);
+  });
+
+  // Agent types pair with Agents the way User types pair with Users: the bot with a cog, beside the plain bot.
+  it('should mark Agent types with the agent type icon', () => {
+    render(<DashboardLayout />);
+
+    expect(
+      screen.getByRole('button', {name: 'navigation:pages.agentTypes'}).querySelector('svg.lucide-bot-cog'),
+    ).toBeInTheDocument();
   });
 
   it.each([false, true])('keeps navigation icon sizes consistent when collapseSidebar is %s', (collapseSidebar) => {
@@ -164,6 +197,82 @@ describe('DashboardLayout', () => {
     navigationIcons.forEach((icon) => {
       expect(icon).toHaveAttribute('width', applicationIcon?.getAttribute('width'));
       expect(icon).toHaveAttribute('height', applicationIcon?.getAttribute('height'));
+    });
+  });
+
+  describe('capabilities', () => {
+    it('hides the pages the admin cannot view, and groups left empty', () => {
+      mockCapabilities = {can: (resource) => resource === 'user', isLoading: false};
+      render(<DashboardLayout />);
+
+      expect(screen.getByText('navigation:pages.users')).toBeInTheDocument();
+      expect(screen.getByText('navigation:pages.home')).toBeInTheDocument();
+      expect(screen.queryByText('navigation:pages.applications')).not.toBeInTheDocument();
+      expect(screen.queryByText('navigation:pages.flows')).not.toBeInTheDocument();
+      expect(screen.queryByText('navigation:categories.resources')).not.toBeInTheDocument();
+      expect(screen.queryByText('navigation:pages.notifications')).not.toBeInTheDocument();
+    });
+
+    it('hides Agent types from admins who cannot view agent types', () => {
+      mockCapabilities = {can: (resource) => resource !== 'agenttype', isLoading: false};
+      render(<DashboardLayout />);
+
+      expect(screen.getByRole('button', {name: 'navigation:pages.userTypes'})).toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'navigation:pages.agentTypes'})).not.toBeInTheDocument();
+    });
+
+    it('keeps a parent entry while one of its children is visible', () => {
+      mockCapabilities = {can: (resource) => resource === 'vc', isLoading: false};
+      render(<DashboardLayout />);
+
+      expect(screen.getByText('navigation:pages.verifiableCredentials')).toBeInTheDocument();
+    });
+
+    it('offers Import / Export only to admins who can import or export', () => {
+      mockCapabilities = {can: (resource) => resource !== 'import' && resource !== 'export', isLoading: false};
+      const {unmount} = render(<DashboardLayout />);
+
+      expect(screen.queryByRole('button', {name: 'navigation:pages.importExport'})).not.toBeInTheDocument();
+      unmount();
+
+      mockCapabilities = {can: (resource, action) => resource === 'export' && action === 'create', isLoading: false};
+      render(<DashboardLayout />);
+
+      expect(screen.getByRole('button', {name: 'navigation:pages.importExport'})).toBeInTheDocument();
+    });
+
+    it('shows a notice instead of a page the admin cannot view', () => {
+      mockCapabilities = {can: (resource) => resource !== 'app', isLoading: false};
+      mockPathname = '/applications';
+      render(<DashboardLayout />);
+
+      expect(screen.queryByTestId('outlet')).not.toBeInTheDocument();
+      expect(screen.getByText('navigation:forbidden.description')).toBeInTheDocument();
+    });
+
+    it('keeps the page when the capabilities could not be read', () => {
+      mockCapabilities = {can: () => false, isLoading: false, error: new Error('unavailable'), retry: vi.fn()};
+      mockPathname = '/applications';
+      render(<DashboardLayout />);
+
+      expect(screen.getByTestId('outlet')).toBeInTheDocument();
+      expect(screen.queryByText('navigation:forbidden.description')).not.toBeInTheDocument();
+    });
+
+    it('shows the page while the capabilities load', () => {
+      mockCapabilities = {can: () => false, isLoading: true};
+      mockPathname = '/applications';
+      render(<DashboardLayout />);
+
+      expect(screen.getByTestId('outlet')).toBeInTheDocument();
+    });
+
+    it('keeps the navigation and Import / Export while the capabilities load', () => {
+      mockCapabilities = {can: () => false, isLoading: true};
+      render(<DashboardLayout />);
+
+      expect(screen.getByText('navigation:pages.applications')).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'navigation:pages.importExport'})).toBeInTheDocument();
     });
   });
 
@@ -252,23 +361,12 @@ describe('DashboardLayout', () => {
     expect(screen.getByTestId('outlet')).toBeInTheDocument();
   });
 
-  it('navigates to welcome page when welcome menu item is clicked', async () => {
-    const user = userEvent.setup();
-    render(<DashboardLayout />);
-
-    const userMenuTrigger = screen.getByLabelText('Account');
-    await user.click(userMenuTrigger);
-
-    const welcomeItem = await screen.findByText('common:userMenu.welcome');
-    expect(welcomeItem).toBeInTheDocument();
-    await user.click(welcomeItem);
-  });
-
   describe('generic OIDC sign out', () => {
     let originalLocation: Location;
 
     beforeEach(() => {
       mockIsTrustedIssuerGenericOidc = true;
+      mockSdkConfig = undefined;
       originalLocation = window.location;
       Object.defineProperty(window, 'location', {
         value: {...originalLocation, href: ''},
@@ -338,6 +436,25 @@ describe('DashboardLayout', () => {
       expect(mockLoggerError).toHaveBeenCalledWith(expect.stringContaining('Failed to clear local session'), {
         error: sessionError,
       });
+    });
+
+    it('signs out through the backend when the SDK runs behind a BFF', async () => {
+      mockSdkConfig = {endpoints: {backend: {signOut: '/_auth/iam/logout'}}};
+      mockDiscovery = {wellKnown: {end_session_endpoint: 'https://console.example.com/oauth2/logout'}};
+      mockSignOut.mockResolvedValue(undefined);
+      const user = userEvent.setup();
+
+      render(<DashboardLayout />);
+
+      const userMenuTrigger = screen.getByLabelText('Account');
+      await user.click(userMenuTrigger);
+
+      const signOutButton = await screen.findByText('common:actions.signOut');
+      await user.click(signOutButton);
+
+      expect(mockSignOut).toHaveBeenCalled();
+      expect(mockClearSession).not.toHaveBeenCalled();
+      expect(window.location.href).toBe('');
     });
   });
 });

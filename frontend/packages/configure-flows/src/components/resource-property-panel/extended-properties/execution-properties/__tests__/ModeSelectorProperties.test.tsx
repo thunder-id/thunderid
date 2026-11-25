@@ -7,9 +7,8 @@ import type {ReactNode} from 'react';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import type {Resource} from '../../../../../models/resources';
 import AccessChangeValidatorProperties from '../AccessChangeValidatorProperties';
-import {ACCESS_CHANGE_VALIDATOR_MODES, GROUP_EXECUTOR_MODES, ROLE_EXECUTOR_MODES} from '../constants';
+import {ACCESS_CHANGE_VALIDATOR_MODES, ROLE_EXECUTOR_MODES} from '../constants';
 import CriteriaRevocationProperties from '../CriteriaRevocationProperties';
-import GroupExecutorProperties from '../GroupExecutorProperties';
 import ModeSelectorProperties from '../ModeSelectorProperties';
 import RoleExecutorProperties from '../RoleExecutorProperties';
 import type {CommonResourcePropertiesPropsInterface} from '../types';
@@ -19,6 +18,16 @@ vi.mock('react-i18next', async (importOriginal) => ({
   useTranslation: () => ({
     t: (key: string, defaultValue?: string) => defaultValue ?? key,
   }),
+}));
+
+// The flow has not loaded, so a flow-aware selector offers every mode.
+vi.mock('react-router', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-router')>()),
+  useParams: () => ({flowId: 'flow-1'}),
+}));
+
+vi.mock('../../../../../api/useGetFlowById', () => ({
+  default: (): unknown => ({data: undefined}),
 }));
 
 const MODES = [
@@ -176,23 +185,10 @@ describe.each<[string, (props: CommonResourcePropertiesPropsInterface) => ReactN
   [
     'AccessChangeValidator',
     AccessChangeValidatorProperties,
-    [
-      'role_assignment_removal',
-      'role_deletion',
-      'role_permission_removal',
-      'group_deletion',
-      'group_membership_removal',
-      'action_deletion',
-    ],
+    ['role_assignment_removal', 'role_deletion', 'group_deletion', 'group_membership_removal', 'action_deletion'],
     false,
   ],
-  [
-    'RoleExecutor',
-    RoleExecutorProperties,
-    ['role_assignment_removal', 'role_deletion', 'role_permission_removal'],
-    true,
-  ],
-  ['GroupExecutor', GroupExecutorProperties, ['group_deletion', 'group_membership_removal'], true],
+  ['RoleExecutor', RoleExecutorProperties, ['role_selection', 'role_assignment'], true],
   ['CriteriaRevocationExecutor', CriteriaRevocationProperties, ['revoke', 'advance_cutoff'], false],
 ])('%s properties', (name, Component, supportedModes, pairedWithValidator) => {
   it('should offer exactly the modes the executor supports', async () => {
@@ -214,7 +210,11 @@ describe('executor mode constants', () => {
   it('should use the same names for a validator mode and the executor mode it pairs with', () => {
     const validatorModes: string[] = ACCESS_CHANGE_VALIDATOR_MODES.map((mode) => mode.value);
 
-    for (const mode of [...ROLE_EXECUTOR_MODES, ...GROUP_EXECUTOR_MODES]) {
+    // Selecting and assigning roles serve invitation flows, which run no access change validator.
+    const invitationModes: string[] = ['role_selection', 'role_assignment'];
+    const pairedModes = ROLE_EXECUTOR_MODES.filter((mode) => !invitationModes.includes(mode.value));
+
+    for (const mode of pairedModes) {
       expect(validatorModes).toContain(mode.value);
     }
   });

@@ -23,13 +23,16 @@ type bundleResource struct {
 	Content string
 }
 
-// key identifies a resource across versions: its type with its id, or its name when it has no id.
-func (r bundleResource) key() string {
-	identity := r.ID
-	if identity == "" {
-		identity = r.Name
+// key identifies a resource across versions.
+func (r bundleResource) key() string { return resourceKey(r.Type, r.ID, r.Name) }
+
+// resourceKey identifies a resource across versions: its type with its id, or its name when it has
+// no id.
+func resourceKey(resourceType, id, name string) string {
+	if id == "" {
+		id = name
 	}
-	return r.Type + "/" + identity
+	return resourceType + "/" + id
 }
 
 var (
@@ -39,10 +42,11 @@ var (
 		return regexp.MustCompile(`(?m)^` + key + `:\s*(.+?)\s*$`)
 	}
 	resourceTypeField = topLevelScalar("resource_type")
-	// usernameField reads a user's username, which is nested under its attributes.
-	usernameField = regexp.MustCompile(`(?m)^\s+username:\s*(.+?)\s*$`)
-	idField       = topLevelScalar("id")
-	nameField     = topLevelScalar("name")
+	// displayNameField and handleField read the name a theme, a layout or a user type is shown by.
+	displayNameField = topLevelScalar("displayName")
+	handleField      = topLevelScalar("handle")
+	idField          = topLevelScalar("id")
+	nameField        = topLevelScalar("name")
 	// languageField names a translation, which has neither an id nor a name: one document holds one
 	// language's translations.
 	languageField = topLevelScalar("language")
@@ -59,10 +63,25 @@ var (
 		`)([A-Za-z_][A-Za-z0-9_]*)['"]?\s*$`)
 	// keyOnly reads a line that opens a mapping or a list under a key.
 	keyOnly = regexp.MustCompile(`^(\s*)(?:-\s+)?` + mappingKey + `\s*:\s*$`)
+	// keyedValue reads a mapping's key and the value after it. The groups are what is kept, the key
+	// and the value.
+	keyedValue = regexp.MustCompile(`^(\s*` + mappingKey + `\s*:\s+)(\S.*)$`)
 )
+
+// maskedValue is what a diff shows in place of a value it keeps to itself.
+const maskedValue = "********"
 
 // resourceTypeUser is the resource type an export writes a user under.
 const resourceTypeUser = "user"
+
+// resourceTypeRole and resourceTypeGroup are the resource types an export writes a role and a group under.
+const (
+	resourceTypeRole  = "role"
+	resourceTypeGroup = "group"
+)
+
+// usernameAttribute is the attribute a user is known by.
+const usernameAttribute = "username"
 
 // mappingKey reads a block mapping's key, quoted or plain, so a key such as `"a.b"` or `a.b` is read
 // as one. A plain key starts with no character that would open a list, flow style or a comment.
@@ -130,13 +149,13 @@ func diffBundles(held, applied []bundleResource) []Change {
 			}
 		}
 		change := changeOf(resource, kind)
-		change.Lines = lineDiff(previous.Content, resource.Content)
+		change.Lines = documentDiff(resource.Type, previous.Content, resource.Content)
 		changes = append(changes, change)
 	}
 	for _, resource := range held {
 		if _, ok := appliedByKey[resource.key()]; !ok {
 			change := changeOf(resource, ChangeDeleted)
-			change.Lines = lineDiff(resource.Content, "")
+			change.Lines = documentDiff(resource.Type, resource.Content, "")
 			changes = append(changes, change)
 		}
 	}
@@ -159,6 +178,73 @@ func sortChanges(changes []Change) {
 // left to compare is reported as its old lines removed and its new lines added: still a correct diff,
 // if not the smallest, so a large document that changed throughout cannot hold up a request.
 const maxDiffSteps = 1 << 22
+
+// documentDiff diffs a resource's documents line by line. A user's attribute values are personal
+// data, so a user's diff shows them masked: which attributes changed stays visible, not what they
+// hold. The lines are compared as they are, so a changed value still shows as removed and added.
+func documentDiff(resourceType, from, to string) []LineOp {
+	ops := lineDiff(from, to)
+	if resourceType != resourceTypeUser || ops == nil {
+		return ops
+	}
+	shownFrom, shownTo := maskAttributeValues(splitLines(from)), maskAttributeValues(splitLines(to))
+	i, j := 0, 0
+	for k := range ops {
+		switch ops[k].Kind {
+		case " ":
+			ops[k].Text = shownFrom[i]
+			i++
+			j++
+		case "-":
+			ops[k].Text = shownFrom[i]
+			i++
+		case "+":
+			ops[k].Text = shownTo[j]
+			j++
+		}
+	}
+	return ops
+}
+
+// maskAttributeValues returns a user's document lines with each value under its attributes masked.
+// Each attribute's key stays, and so does the username, since it is how the user is known. A line
+// nested deeper than the attributes is part of a value whatever its shape, so it is masked whole.
+func maskAttributeValues(lines []string) []string {
+	masked := make([]string, len(lines))
+	inside, indent := false, ""
+	for i, line := range lines {
+		masked[i] = line
+		trimmed := strings.TrimLeft(line, " \t")
+		if trimmed == "" {
+			continue
+		}
+		lineIndent := line[:len(line)-len(trimmed)]
+		if lineIndent == "" {
+			inside, indent = strings.TrimRight(line, " ") == "attributes:", ""
+			continue
+		}
+		if !inside {
+			continue
+		}
+		if indent == "" {
+			indent = lineIndent
+		}
+		if lineIndent != indent {
+			masked[i] = lineIndent + maskedValue
+			continue
+		}
+		if match := keyedValue.FindStringSubmatch(line); match != nil {
+			if unquoteKey(match[2]) != usernameAttribute {
+				masked[i] = match[1] + maskedValue
+			}
+			continue
+		}
+		if !keyOnly.MatchString(line) {
+			masked[i] = lineIndent + maskedValue
+		}
+	}
+	return masked
+}
 
 // lineDiff diffs two documents line by line, with the fewest lines removed and added. Identical
 // documents have no line diff.
@@ -349,16 +435,13 @@ func splitLines(document string) []string {
 }
 
 func changeOf(resource bundleResource, kind ChangeKind) Change {
-	return Change{Key: resource.key(), ResourceType: resource.Type, ID: resource.ID, Name: resource.Name,
+	return Change{Key: resource.key(), ResourceType: resource.Type, ID: resource.ID, Name: labelOf(resource),
 		Change: kind}
 }
 
 func summarize(changes []Change) DiffSummary {
 	var summary DiffSummary
 	for _, change := range changes {
-		if change.Excluded {
-			continue
-		}
 		switch change.Change {
 		case ChangeAdded:
 			summary.Added++
@@ -468,11 +551,62 @@ func unquoteKey(key string) string {
 	return key
 }
 
-// labelOf is how a resource is known to a person: its name, or a user's username. Only a user is
-// known by a username, since another resource may hold a nested username of its own.
+// labelOf is how a resource is known to a person: its name, or else its display name or handle, as a
+// theme, a layout or a user type has, or the name it holds among its attributes: a user's username,
+// email or name, an agent's name. Attributes are read only for a user and an agent, and only from their
+// own attributes block, since another resource may hold nested fields of the same names.
 func labelOf(resource bundleResource) string {
-	if resource.Name != "" || resource.Type != resourceTypeUser {
+	if resource.Name != "" {
 		return resource.Name
 	}
-	return firstMatch(usernameField, resource.Content)
+	if label := firstMatch(displayNameField, resource.Content); label != "" {
+		return label
+	}
+	if label := firstMatch(handleField, resource.Content); label != "" {
+		return label
+	}
+	var keys []string
+	switch resource.Type {
+	case resourceTypeUser:
+		keys = []string{usernameAttribute, "email", "name"}
+	case resourceTypeAgent:
+		keys = []string{"name", usernameAttribute, "email"}
+	}
+	for _, key := range keys {
+		if label := attributeOf(resource.Content, key); label != "" {
+			return label
+		}
+	}
+	return ""
+}
+
+// resourceTypeAgent is the resource type an export writes an agent under.
+const resourceTypeAgent = "agent"
+
+// attributeOf reads a scalar of a document's top-level attributes block, unquoted, or "" when it has
+// none.
+func attributeOf(document, key string) string {
+	inside, indent := false, ""
+	for _, line := range strings.Split(document, "\n") {
+		trimmed := strings.TrimLeft(line, " ")
+		if !inside {
+			inside = strings.TrimRight(line, " ") == "attributes:"
+			continue
+		}
+		if trimmed == "" {
+			continue
+		}
+		lineIndent := line[:len(line)-len(trimmed)]
+		if lineIndent == "" {
+			return ""
+		}
+		if indent == "" {
+			indent = lineIndent
+		}
+		if lineIndent != indent || !strings.HasPrefix(trimmed, key+":") {
+			continue
+		}
+		return strings.Trim(strings.TrimSpace(strings.TrimPrefix(trimmed, key+":")), `"'`)
+	}
+	return ""
 }

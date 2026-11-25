@@ -219,7 +219,60 @@ var (
 			DefaultValue: "The layout handle cannot be changed after creation",
 		},
 	}
+
+	// ErrorInvalidProject is returned when a layout names a project that does not exist.
+	ErrorInvalidProject = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "LAY-1019",
+		Error: tidcommon.I18nMessage{
+			Key:          "layout.error.invalid_project",
+			DefaultValue: "Invalid project",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "layout.error.invalid_project_description",
+			DefaultValue: "No project exists with the given project ID",
+		},
+	}
+
+	// ErrorProjectRequired is returned when a layout is created without a project on a deployment that
+	// serves projects.
+	ErrorProjectRequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "LAY-1020",
+		Error: tidcommon.I18nMessage{
+			Key:          "layout.error.project_required",
+			DefaultValue: "Project required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "layout.error.project_required_description",
+			DefaultValue: "A layout must belong to a project. Set projectId to the project it belongs to",
+		},
+	}
+	// ErrorManagedLayout is the error returned when attempting to change a layout a control plane deployed.
+	// Only a deploy from the control plane changes or removes it.
+	ErrorManagedLayout = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "LAY-1021",
+		Error: tidcommon.I18nMessage{
+			Key:          "layout.error.cannot_modify_managed",
+			DefaultValue: "Cannot modify a layout deployed by the control plane",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "layout.error.cannot_modify_managed_description",
+			DefaultValue: "The layout was deployed by the control plane and can only be changed there",
+		},
+	}
 )
+
+// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+var errNilEventBus = errors.New("the layout management service needs an event bus")
+
+// errLayoutNotFoundNoop is returned by deleteLayout for a layout that does not exist. DeleteLayout turns
+// it into a success, so it never reaches a caller.
+var errLayoutNotFoundNoop = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: ErrorLayoutNotFound.Code,
+}
 
 // errCannotUpdateDeclarativeLayout is an internal error for composite store operations.
 var errCannotUpdateDeclarativeLayout = errors.New("cannot update declarative layout")

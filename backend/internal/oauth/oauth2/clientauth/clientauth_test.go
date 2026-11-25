@@ -66,7 +66,7 @@ func TestClientAuthTestSuite(t *testing.T) {
 }
 
 func (suite *ClientAuthTestSuite) actorProvider() providers.ActorProvider {
-	return actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil)
+	return actorprovider.Initialize(suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil, nil)
 }
 
 func (suite *ClientAuthTestSuite) SetupTest() {

@@ -179,29 +179,23 @@ func (suite *DesignUsagesHandleAPITestSuite) TestLayoutUsagesInvalidPagination()
 // TestCreateThemeMissingHandleReturnsError pins THM-1016; the existing validation tests always
 // omit displayName too, and displayName is checked first, so this branch was never reached.
 func (suite *DesignUsagesHandleAPITestSuite) TestCreateThemeMissingHandleReturnsError() {
-	payload, err := json.Marshal(CreateThemeRequest{
+	item := suite.importOutcome("theme", CreateThemeRequest{
 		DisplayName: "Theme Without Handle",
 		Theme:       testTheme,
 	})
-	suite.Require().NoError(err)
 
-	status, body := suite.do(http.MethodPost, testServerURL+themeBasePath, payload)
-
-	suite.Equal(http.StatusBadRequest, status)
-	suite.Equal("THM-1016", suite.errorCode(body))
+	suite.Equal("failed", item.Status)
+	suite.Equal("THM-1016", item.Code)
 }
 
 func (suite *DesignUsagesHandleAPITestSuite) TestCreateLayoutMissingHandleReturnsError() {
-	payload, err := json.Marshal(CreateLayoutRequest{
+	item := suite.importOutcome("layout", CreateLayoutRequest{
 		DisplayName: "Layout Without Handle",
 		Layout:      testLayout,
 	})
-	suite.Require().NoError(err)
 
-	status, body := suite.do(http.MethodPost, testServerURL+layoutBasePath, payload)
-
-	suite.Equal(http.StatusBadRequest, status)
-	suite.Equal("LAY-1017", suite.errorCode(body))
+	suite.Equal("failed", item.Status)
+	suite.Equal("LAY-1017", item.Code)
 }
 
 func (suite *DesignUsagesHandleAPITestSuite) TestCreateThemeDuplicateHandleReturnsError() {
@@ -209,17 +203,14 @@ func (suite *DesignUsagesHandleAPITestSuite) TestCreateThemeDuplicateHandleRetur
 	themeID := suite.createTheme(handle)
 	defer suite.deleteResource(themeBasePath, themeID)
 
-	payload, err := json.Marshal(CreateThemeRequest{
+	item := suite.importOutcome("theme", CreateThemeRequest{
 		Handle:      handle,
 		DisplayName: "Duplicate Handle Theme",
 		Theme:       testTheme,
 	})
-	suite.Require().NoError(err)
 
-	status, body := suite.do(http.MethodPost, testServerURL+themeBasePath, payload)
-
-	suite.Equal(http.StatusBadRequest, status)
-	suite.Equal("THM-1015", suite.errorCode(body))
+	suite.Equal("failed", item.Status)
+	suite.Equal("THM-1015", item.Code)
 }
 
 func (suite *DesignUsagesHandleAPITestSuite) TestCreateLayoutDuplicateHandleReturnsError() {
@@ -227,36 +218,30 @@ func (suite *DesignUsagesHandleAPITestSuite) TestCreateLayoutDuplicateHandleRetu
 	layoutID := suite.createLayout(handle)
 	defer suite.deleteResource(layoutBasePath, layoutID)
 
-	payload, err := json.Marshal(CreateLayoutRequest{
+	item := suite.importOutcome("layout", CreateLayoutRequest{
 		Handle:      handle,
 		DisplayName: "Duplicate Handle Layout",
 		Layout:      testLayout,
 	})
-	suite.Require().NoError(err)
 
-	status, body := suite.do(http.MethodPost, testServerURL+layoutBasePath, payload)
-
-	suite.Equal(http.StatusBadRequest, status)
-	suite.Equal("LAY-1016", suite.errorCode(body))
+	suite.Equal("failed", item.Status)
+	suite.Equal("LAY-1016", item.Code)
 }
 
-// TestUpdateThemeHandleIsImmutable asserts a PUT that changes the handle is rejected; the existing
-// update tests always resend the same handle.
+// TestUpdateThemeHandleIsImmutable asserts an update that changes the handle is rejected; the
+// existing update tests always resend the same handle.
 func (suite *DesignUsagesHandleAPITestSuite) TestUpdateThemeHandleIsImmutable() {
 	themeID := suite.createTheme("immutable-theme-handle")
 	defer suite.deleteResource(themeBasePath, themeID)
 
-	payload, err := json.Marshal(UpdateThemeRequest{
+	item := suite.importOutcome("theme", themeImportDocument{ID: themeID, UpdateThemeRequest: UpdateThemeRequest{
 		Handle:      "immutable-theme-handle-changed",
 		DisplayName: "Renamed Handle Theme",
 		Theme:       testTheme,
-	})
-	suite.Require().NoError(err)
+	}})
 
-	status, body := suite.do(http.MethodPut, testServerURL+themeBasePath+"/"+themeID, payload)
-
-	suite.Equal(http.StatusBadRequest, status)
-	suite.Equal("THM-1017", suite.errorCode(body))
+	suite.Equal("failed", item.Status)
+	suite.Equal("THM-1017", item.Code)
 }
 
 // TestUpdateThemeOmittedHandleKeepsExistingHandle asserts an update that omits the handle is
@@ -266,15 +251,14 @@ func (suite *DesignUsagesHandleAPITestSuite) TestUpdateThemeOmittedHandleKeepsEx
 	themeID := suite.createTheme(handle)
 	defer suite.deleteResource(themeBasePath, themeID)
 
-	payload, err := json.Marshal(UpdateThemeRequest{
+	item := suite.importOutcome("theme", themeImportDocument{ID: themeID, UpdateThemeRequest: UpdateThemeRequest{
 		DisplayName: "Updated Without Handle",
 		Theme:       testTheme,
-	})
-	suite.Require().NoError(err)
+	}})
+	suite.Require().Equal("success", item.Status, "update failed with %s: %s", item.Code, item.Message)
 
-	status, body := suite.do(http.MethodPut, testServerURL+themeBasePath+"/"+themeID, payload)
-	suite.Require().Equal(http.StatusOK, status, "update failed: %s", body)
-
+	status, body := suite.do(http.MethodGet, testServerURL+themeBasePath+"/"+themeID, nil)
+	suite.Require().Equal(http.StatusOK, status, "get theme failed: %s", body)
 	var updated ThemeResponse
 	suite.Require().NoError(json.Unmarshal(body, &updated))
 	suite.Equal(handle, updated.Handle)
@@ -285,53 +269,47 @@ func (suite *DesignUsagesHandleAPITestSuite) TestUpdateLayoutHandleIsImmutable()
 	layoutID := suite.createLayout("immutable-layout-handle")
 	defer suite.deleteResource(layoutBasePath, layoutID)
 
-	payload, err := json.Marshal(UpdateLayoutRequest{
+	item := suite.importOutcome("layout", layoutImportDocument{ID: layoutID, UpdateLayoutRequest: UpdateLayoutRequest{
 		Handle:      "immutable-layout-handle-changed",
 		DisplayName: "Renamed Handle Layout",
 		Layout:      testLayout,
-	})
-	suite.Require().NoError(err)
+	}})
 
-	status, body := suite.do(http.MethodPut, testServerURL+layoutBasePath+"/"+layoutID, payload)
-
-	suite.Equal(http.StatusBadRequest, status)
-	suite.Equal("LAY-1018", suite.errorCode(body))
+	suite.Equal("failed", item.Status)
+	suite.Equal("LAY-1018", item.Code)
 }
 
 // --- helpers ---
 
+// createTheme creates a theme through an import with the management API key, the only way a data plane
+// takes one, and returns its ID.
 func (suite *DesignUsagesHandleAPITestSuite) createTheme(handle string) string {
-	payload, err := json.Marshal(CreateThemeRequest{
+	id, err := testutils.ImportResource("theme", CreateThemeRequest{
 		Handle:      handle,
 		DisplayName: "Usages Test Theme " + handle,
 		Theme:       testTheme,
-	})
-	suite.Require().NoError(err)
-
-	status, body := suite.do(http.MethodPost, testServerURL+themeBasePath, payload)
-	suite.Require().Equal(http.StatusCreated, status, "create theme failed: %s", body)
-
-	var created ThemeResponse
-	suite.Require().NoError(json.Unmarshal(body, &created))
-	suite.Require().NotEmpty(created.ID)
-	return created.ID
+	}, false)
+	suite.Require().NoError(err, "create theme failed")
+	return id
 }
 
+// createLayout creates a layout through an import with the management API key and returns its ID.
 func (suite *DesignUsagesHandleAPITestSuite) createLayout(handle string) string {
-	payload, err := json.Marshal(CreateLayoutRequest{
+	id, err := testutils.ImportResource("layout", CreateLayoutRequest{
 		Handle:      handle,
 		DisplayName: "Usages Test Layout " + handle,
 		Layout:      testLayout,
-	})
+	}, false)
+	suite.Require().NoError(err, "create layout failed")
+	return id
+}
+
+// importOutcome imports a theme or layout document and returns the outcome, whether it succeeded or
+// not.
+func (suite *DesignUsagesHandleAPITestSuite) importOutcome(resourceType string, document any) testutils.ImportItem {
+	item, err := testutils.ImportResourceOutcome(resourceType, document, true)
 	suite.Require().NoError(err)
-
-	status, body := suite.do(http.MethodPost, testServerURL+layoutBasePath, payload)
-	suite.Require().Equal(http.StatusCreated, status, "create layout failed: %s", body)
-
-	var created LayoutResponse
-	suite.Require().NoError(json.Unmarshal(body, &created))
-	suite.Require().NotEmpty(created.ID)
-	return created.ID
+	return item
 }
 
 // getUsages GETs a theme or layout usages endpoint and requires a 200 response.
@@ -383,15 +361,19 @@ func (suite *DesignUsagesHandleAPITestSuite) deleteApplication(id string) {
 	}
 }
 
-// deleteResource removes a theme or layout, tolerating an already-deleted resource.
+// deleteResource removes a theme or layout through an import deletion, which tolerates an
+// already-deleted resource.
 func (suite *DesignUsagesHandleAPITestSuite) deleteResource(basePath, id string) {
 	if id == "" {
 		return
 	}
 
-	status, body := suite.do(http.MethodDelete, testServerURL+basePath+"/"+id, nil)
-	if status != http.StatusNoContent && status != http.StatusNotFound {
-		suite.T().Logf("Failed to delete %s/%s: status %d: %s", basePath, id, status, body)
+	resourceType := "theme"
+	if basePath == layoutBasePath {
+		resourceType = "layout"
+	}
+	if err := testutils.DeleteImportedResource(resourceType, id); err != nil {
+		suite.T().Logf("Failed to delete %s %s: %v", resourceType, id, err)
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -130,8 +131,11 @@ func (d *dispatcher) OnEvent(ctx context.Context, ended session.TerminatedSessio
 		subjectID: ended.SubjectID,
 		appIDs:    make([]string, 0, len(ended.Participants)),
 	}
+	// An application signed in under several organization units has a row for each, and is notified once.
 	for _, p := range ended.Participants {
-		t.appIDs = append(t.appIDs, p.AppID)
+		if !slices.Contains(t.appIDs, p.AppID) {
+			t.appIDs = append(t.appIDs, p.AppID)
+		}
 	}
 
 	// Decide under the lock, record after it: recording writes a log line, which must not hold up

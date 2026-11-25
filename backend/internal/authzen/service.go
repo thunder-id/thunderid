@@ -474,7 +474,7 @@ func (s *authzenService) resolveSubject(ctx context.Context, subject Subject) (S
 	if s.entityProvider == nil {
 		return subject, nil
 	}
-	entity, err := s.entityProvider.GetEntityProfile(subject.ID)
+	entity, err := s.entityProvider.GetEntityProfile(ctx, subject.ID)
 	if err != nil {
 		if err.Code == entityprovider.ErrorCodeNotImplemented {
 			return subject, nil
@@ -589,7 +589,7 @@ func (s *authzenService) resolveGroupIDs(ctx context.Context, entityID string) (
 		return []string{}, nil
 	}
 
-	groups, err := s.entityProvider.GetTransitiveEntityGroups(entityID)
+	groups, err := s.entityProvider.GetTransitiveEntityGroups(ctx, entityID)
 	if err != nil {
 		if err.Code == entityprovider.ErrorCodeNotImplemented {
 			return []string{}, nil
@@ -635,7 +635,7 @@ func toAuthzAccessEvaluationRequest(
 	}
 }
 
-// buildDecisionContext returns the engine context or a default denial context.
+// buildDecisionContext preserves provider context, defaulting to a denial reason when absent.
 func buildDecisionContext(decision bool, context map[string]interface{}) map[string]interface{} {
 	if context != nil {
 		return context

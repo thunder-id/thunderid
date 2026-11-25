@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen, waitFor} from '@thunderid/test-utils';
 import type {NavigateFunction} from 'react-router';
 import {describe, it, expect, beforeEach, vi} from 'vitest';
@@ -130,6 +131,11 @@ const {default: useGetRoles} = await import('../../api/useGetRoles');
 const {useNavigate} = await import('react-router');
 const {useDataGridLocaleText} = await import('@thunderid/hooks');
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  isLoading: false,
+};
+
 describe('RolesList', () => {
   let mockNavigate: ReturnType<typeof vi.fn>;
 
@@ -217,6 +223,24 @@ describe('RolesList', () => {
 
     const dashElements = screen.getAllByText('-');
     expect(dashElements.length).toBeGreaterThan(0);
+  });
+
+  it('should hide the edit and delete row actions when the admin may only view roles', () => {
+    vi.mocked(useGetRoles).mockReturnValue({
+      data: mockRolesData,
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useGetRoles>);
+
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <RolesList />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.getByText('Admin Role')).toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: /edit/i})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: /delete/i})).not.toBeInTheDocument();
   });
 
   it('should open delete dialog when clicking Delete action', async () => {
@@ -364,5 +388,35 @@ describe('RolesList', () => {
     });
 
     expect(screen.getByRole('grid')).toBeInTheDocument();
+  });
+
+  it('should list the roles of the selected project', () => {
+    vi.mocked(useGetRoles).mockReturnValue({
+      data: {totalResults: 0, startIndex: 1, count: 0, roles: []},
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useGetRoles>);
+
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <RolesList />
+      </ProjectScopeProvider>,
+    );
+
+    expect(vi.mocked(useGetRoles)).toHaveBeenCalledWith(expect.objectContaining({projectId: 'project-1'}));
+  });
+
+  it('should list every role without a selected project', () => {
+    vi.mocked(useGetRoles).mockReturnValue({
+      data: {totalResults: 0, startIndex: 1, count: 0, roles: []},
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useGetRoles>);
+
+    render(<RolesList />);
+
+    expect(vi.mocked(useGetRoles)).toHaveBeenCalledWith(expect.objectContaining({projectId: undefined}));
   });
 });

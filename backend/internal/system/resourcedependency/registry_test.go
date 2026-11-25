@@ -29,6 +29,13 @@ type providerValidatorMock struct {
 	*UpdateValidatorMock
 }
 
+// providerDependentsMock combines ProviderMock and SuspensionDependentsListerMock so a single value satisfies both
+// interfaces for the suspension dependents type assertion.
+type providerDependentsMock struct {
+	*ProviderMock
+	*SuspensionDependentsListerMock
+}
+
 type RegistryTestSuite struct {
 	suite.Suite
 }
@@ -216,4 +223,49 @@ func (suite *RegistryTestSuite) TestSummarizeBlockingUsagesHumanizesTypes() {
 
 	// Sorted by raw type; rendered with humanized, lowercase nouns.
 	suite.Equal("2 flow(s), 1 notification sender(s), 1 system endpoint(s)", summary)
+}
+
+// Only restrict blocks a deletion: a fallback reference survives it and a cascade dependent is removed with it.
+func (suite *RegistryTestSuite) TestBlockingUsagesKeepsOnlyRestrict() {
+	blocking := BlockingUsages(&DependenciesResponse{Usages: []ResourceDependency{
+		{ID: "restrict", BehaviorOnDelete: BehaviorRestrict},
+		{ID: "fallback", BehaviorOnDelete: BehaviorFallback},
+		{ID: "cascade", BehaviorOnDelete: BehaviorCascade},
+	}})
+
+	suite.Equal([]ResourceDependency{{ID: "restrict", BehaviorOnDelete: BehaviorRestrict}}, blocking)
+}
+
+// SuspensionDependents collects the dependents named by every provider that lists them, skipping the others.
+func (suite *RegistryTestSuite) TestSuspensionDependentsCollectsFromListers() {
+	first := NewSuspensionDependentsListerMock(suite.T())
+	first.EXPECT().SuspensionDependents(mock.Anything, ResourceTypeUser, "u1").Return([]string{"a1"}, nil).Once()
+	second := NewSuspensionDependentsListerMock(suite.T())
+	second.EXPECT().SuspensionDependents(mock.Anything, ResourceTypeUser, "u1").Return([]string{"a2", "a3"}, nil).Once()
+	registry := Initialize(
+		providerDependentsMock{ProviderMock: NewProviderMock(suite.T()), SuspensionDependentsListerMock: first},
+		NewProviderMock(suite.T()),
+		providerDependentsMock{ProviderMock: NewProviderMock(suite.T()), SuspensionDependentsListerMock: second},
+	)
+
+	dependents, err := registry.SuspensionDependents(context.Background(), ResourceTypeUser, "u1")
+
+	suite.Require().NoError(err)
+	suite.Equal([]string{"a1", "a2", "a3"}, dependents)
+}
+
+// A provider failure stops the lookup and is returned.
+func (suite *RegistryTestSuite) TestSuspensionDependentsStopsAtTheFirstFailure() {
+	failing := NewSuspensionDependentsListerMock(suite.T())
+	failing.EXPECT().SuspensionDependents(mock.Anything, ResourceTypeUser, "u1").Return(nil, errors.New("down")).Once()
+	never := NewSuspensionDependentsListerMock(suite.T())
+	registry := Initialize(
+		providerDependentsMock{ProviderMock: NewProviderMock(suite.T()), SuspensionDependentsListerMock: failing},
+		providerDependentsMock{ProviderMock: NewProviderMock(suite.T()), SuspensionDependentsListerMock: never},
+	)
+
+	dependents, err := registry.SuspensionDependents(context.Background(), ResourceTypeUser, "u1")
+
+	suite.Require().Error(err)
+	suite.Nil(dependents)
 }

@@ -107,8 +107,10 @@ const useNodeTypes = (props: UseNodeTypesProps): UseNodeTypesReturn => {
     );
 
     return {
-      ...staticStepNodes,
       ...stepNodes,
+      // A static step wins over a palette step of the same type, such as VARIABLES, which is dragged in from the
+      // palette but drawn by its own node.
+      ...staticStepNodes,
       // Synthetic display node for collapsed executor runs in compact mode.
       [EXECUTION_STACK_NODE_TYPE]: (nodeProps: NodeProps) => <ExecutionStack {...nodeProps} />,
     };

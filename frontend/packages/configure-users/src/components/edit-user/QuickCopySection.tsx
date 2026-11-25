@@ -3,7 +3,7 @@
 
 import {SettingsCard} from '@thunderid/components';
 import type {User} from '@thunderid/types';
-import {Stack, TextField, InputAdornment, Tooltip, IconButton, FormControl, FormLabel} from '@wso2/oxygen-ui';
+import {Stack, TextField, InputAdornment, Tooltip, IconButton} from '@wso2/oxygen-ui';
 import {Copy, Check} from '@wso2/oxygen-ui-icons-react';
 import {useTranslation} from 'react-i18next';
 
@@ -25,48 +25,47 @@ export default function QuickCopySection({user, copiedField, onCopyToClipboard}:
       )}
     >
       <Stack spacing={3}>
-        <FormControl fullWidth>
-          <FormLabel htmlFor="user-id-input">{t('users:manageUser.sections.quickCopy.userId', 'User ID')}</FormLabel>
-          <TextField
-            fullWidth
-            id="user-id-input"
-            value={user.id}
-            InputProps={{
-              readOnly: true,
-              endAdornment: (
-                <InputAdornment position="end">
-                  <Tooltip
-                    title={
+        <TextField
+          labelPlacement="top"
+          label={t('users:manageUser.sections.quickCopy.userId', 'User ID')}
+          fullWidth
+          id="user-id-input"
+          value={user.id}
+          InputProps={{
+            readOnly: true,
+            endAdornment: (
+              <InputAdornment position="end">
+                <Tooltip
+                  title={
+                    copiedField === 'userId'
+                      ? t('common:actions.copied', 'Copied')
+                      : t('users:manageUser.sections.quickCopy.copyUserId', 'Copy user ID')
+                  }
+                >
+                  <IconButton
+                    aria-label={
                       copiedField === 'userId'
                         ? t('common:actions.copied', 'Copied')
                         : t('users:manageUser.sections.quickCopy.copyUserId', 'Copy user ID')
                     }
+                    onClick={() => {
+                      onCopyToClipboard(user.id, 'userId').catch(() => null);
+                    }}
+                    edge="end"
                   >
-                    <IconButton
-                      aria-label={
-                        copiedField === 'userId'
-                          ? t('common:actions.copied', 'Copied')
-                          : t('users:manageUser.sections.quickCopy.copyUserId', 'Copy user ID')
-                      }
-                      onClick={() => {
-                        onCopyToClipboard(user.id, 'userId').catch(() => null);
-                      }}
-                      edge="end"
-                    >
-                      {copiedField === 'userId' ? <Check size={16} /> : <Copy size={16} />}
-                    </IconButton>
-                  </Tooltip>
-                </InputAdornment>
-              ),
-            }}
-            sx={{
-              '& input': {
-                fontFamily: 'monospace',
-                fontSize: '0.875rem',
-              },
-            }}
-          />
-        </FormControl>
+                    {copiedField === 'userId' ? <Check size={16} /> : <Copy size={16} />}
+                  </IconButton>
+                </Tooltip>
+              </InputAdornment>
+            ),
+          }}
+          sx={{
+            '& input': {
+              fontFamily: 'monospace',
+              fontSize: '0.875rem',
+            },
+          }}
+        />
       </Stack>
     </SettingsCard>
   );

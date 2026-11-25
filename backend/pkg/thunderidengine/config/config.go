@@ -218,14 +218,25 @@ type RedisTLSConfig struct {
 
 // ServerConfig holds the server configuration details.
 type ServerConfig struct {
-	Hostname                   string         `yaml:"hostname"   json:"hostname"`
-	Port                       int            `yaml:"port"       json:"port"`
-	HTTPOnly                   bool           `yaml:"http_only"  json:"http_only"`
-	PublicURL                  string         `yaml:"public_url" json:"public_url"`
-	Identifier                 string         `yaml:"identifier" json:"identifier"`
-	SecurityConfig             SecurityConfig `yaml:"security"   json:"security"`
-	EnableOUQualifiedEndpoints bool           `yaml:"enable_ou_qualified_endpoints" json:"enable_ou_qualified_endpoints"` //nolint:lll // one tag pair
-	Timeouts                   ServerTimeouts `yaml:"timeouts"   json:"timeouts"`
+	Hostname                   string               `yaml:"hostname"   json:"hostname"`
+	Port                       int                  `yaml:"port"       json:"port"`
+	HTTPOnly                   bool                 `yaml:"http_only"  json:"http_only"`
+	PublicURL                  string               `yaml:"public_url" json:"public_url"`
+	ProductName                string               `yaml:"product_name" json:"product_name"`
+	Identifier                 string               `yaml:"identifier" json:"identifier"`
+	SystemOUID                 string               `yaml:"system_ou_id" json:"system_ou_id"`
+	SecurityConfig             SecurityConfig       `yaml:"security"   json:"security"`
+	EnableOUQualifiedEndpoints bool                 `yaml:"enable_ou_qualified_endpoints" json:"enable_ou_qualified_endpoints"` //nolint:lll // one tag pair
+	TrustedProxies             []TrustedProxyConfig `yaml:"trusted_proxies" json:"trusted_proxies"`
+	Timeouts                   ServerTimeouts       `yaml:"timeouts"   json:"timeouts"`
+}
+
+// TrustedProxyConfig is a reverse proxy, or a range of them, and the header it reports the client IP in.
+type TrustedProxyConfig struct {
+	// CIDR is the range the proxy connects from, such as "10.0.1.0/24" or "172.28.0.10/32".
+	CIDR string `yaml:"cidr" json:"cidr"`
+	// Header is the request header the proxy sets the client IP in. Defaults to "x-forwarded-for".
+	Header string `yaml:"header" json:"header"`
 }
 
 // The timeouts a server uses for a value that is not positive, the same as default.json ships. Go's
@@ -439,7 +450,6 @@ type OAuthConfig struct {
 	DeviceGrant          DeviceGrantConfig          `yaml:"device_grant"                json:"device_grant"`
 	ClientAssertion      ClientAssertionConfig      `yaml:"client_assertion"            json:"client_assertion"`
 	Revocation           RevocationConfig           `yaml:"revocation"                  json:"revocation"`
-	TokenExchange        TokenExchangeConfig        `yaml:"token_exchange"              json:"token_exchange"`
 	// AllowWildcardRedirectURI enables wildcard pattern matching for redirect URIs.
 	// When false (default), only exact redirect URI matching is performed.
 	AllowWildcardRedirectURI bool `yaml:"allow_wildcard_redirect_uri" json:"allow_wildcard_redirect_uri"`
@@ -608,14 +618,6 @@ func (c TokenFamilyRevocationConfig) OnExplicitRevokeEnabled() bool {
 // defaulting to false when unset (an explicit default lives in default.json).
 func (c TokenFamilyRevocationConfig) OnCodeReplayEnabled() bool {
 	return c.OnCodeReplay != nil && *c.OnCodeReplay
-}
-
-// TokenExchangeConfig holds RFC 8693 token-exchange settings.
-type TokenExchangeConfig struct {
-	// TokenFamily selects how an exchanged token relates to the subject token's token family:
-	// "none" (default) issues an independent token with no tfid; "inherit" copies the subject
-	// token's tfid so the exchanged token is revoked with that token family.
-	TokenFamily string `yaml:"token_family" json:"token_family"`
 }
 
 // FlowConfig holds the configuration details for the flow service.

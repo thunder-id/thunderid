@@ -64,8 +64,11 @@ function extractFrontmatter(content) {
   return { frontmatter, body: content.slice(match[0].length) };
 }
 
+// Only the page's own MDX imports go. An `import` line inside a code sample is part of the sample.
 function removeImports(content) {
-  return content.replace(/^import\s+[\s\S]*?from\s+['"][^'"]+['"];?\s*$/gm, '');
+  return transformOutsideCodeSpans(content, (plain) =>
+    plain.replace(/^import\s+[\s\S]*?from\s+['"][^'"]+['"];?\s*$/gm, ''),
+  );
 }
 
 /** Replace `{{...}}` frontmatter-style placeholders that may have leaked into the body. */
@@ -228,7 +231,22 @@ function dedent(text) {
 // their inner whitespace and re-adds exactly one blank line around the
 // content, instead of compounding with whatever blank lines already
 // surrounded the wrapper tag in the source.
-const BLOCK_UNWRAP_TAGS = new Set(['TutorialHero', 'Stepper', 'CodeGroup', 'Tabs', 'NextSteps', 'section', 'Box']);
+const BLOCK_UNWRAP_TAGS = new Set([
+  'TutorialHero',
+  'Stepper',
+  'CodeGroup',
+  'Tabs',
+  'LangTabs',
+  'NextSteps',
+  'section',
+  'Box',
+]);
+
+// Content a page shows for one choice only (an agent's mode, a code sample's language). The page
+// keeps every choice's content and hides the rest, so the export keeps it all too, each marked
+// with the choice it belongs to. A reader that knows the choice, such as the Console showing the
+// guide for one agent, keeps the matching content and drops the rest.
+const VARIANT_TAGS = { Mode: 'mode', Lang: 'lang' };
 
 // Inline wrappers: appear mid-sentence, so unwrapping must not inject
 // newlines around the content.
@@ -256,6 +274,20 @@ function renderElement(tagName, attrsRaw, inner) {
       return '```bash\nnpx thunderid\n```\n';
     case 'TutorialHeroItem':
       return `\n- ${inner.trim()}`;
+    case 'Mode':
+    case 'Lang': {
+      const value = getAttr(attrsRaw, 'value');
+      if (!value) return `\n${inner.trim()}\n`;
+      return `\n<!-- variant ${VARIANT_TAGS[tagName]}=${value} -->\n\n${inner.trim()}\n\n<!-- /variant -->\n`;
+    }
+    case 'summary':
+      return `\n**${inner.trim()}**\n`;
+    case 'details': {
+      // A collapsed code sample is named by the sample's own title, so its summary ("Copy file.py") goes.
+      const body = inner.trim().replace(/^\*\*[^\n]*\*\*\n+/, '');
+      const isOnlyCode = /^(`{3,})[^\n]*\n[\s\S]*\n\1$/.test(body) && findCodeSpan(body, 0) === body.length;
+      return `\n${isOnlyCode ? body : inner.trim()}\n`;
+    }
     case 'TabItem': {
       const label = getAttr(attrsRaw, 'label');
       return label ? `\n**${label}**\n\n${inner}` : inner;

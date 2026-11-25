@@ -17,9 +17,9 @@ const ApplicationSharingType sharing.ResourceType = resourceTypeApplication
 
 // applicationSharingDeclaration is how an application participates in sharing.
 //
-// Sharing an application means one thing only: the named organization units may be given as the
-// accessing organization unit on a token request. It does not place the application in their
-// listings, nor make it readable or editable there.
+// Sharing an application lets the named organization units be given as the accessing organization
+// unit on a token request, and places the application in their listings and reads, read only. It
+// does not make it editable there.
 type applicationSharingDeclaration struct {
 	service ApplicationServiceInterface
 }

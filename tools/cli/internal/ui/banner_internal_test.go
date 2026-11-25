@@ -158,3 +158,19 @@ func TestHolderLines_EmptyForNoHolders(t *testing.T) {
 		t.Fatalf("expected no output for no holders, got %q", out)
 	}
 }
+
+// The quickstart runs a Data Plane beside the Control Plane the session is known by, and its
+// Admin Console is where the Service Desk Admin signs in, so the status box lists it too.
+func TestStatusBoxString_ListsTheQuickstartDataPlane(t *testing.T) {
+	single := StatusBoxString("https://localhost:8090", "")
+	if strings.Contains(single, "Data Plane") {
+		t.Fatalf("a single-server install must not list a Data Plane, got:\n%s", single)
+	}
+
+	quickstart := StatusBoxString("https://localhost:8095", "https://localhost:8090")
+	for _, want := range []string{"https://localhost:8095/console", "Data Plane", "https://localhost:8090/console"} {
+		if !strings.Contains(quickstart, want) {
+			t.Fatalf("expected %q in the status box, got:\n%s", want, quickstart)
+		}
+	}
+}

@@ -34,7 +34,8 @@ func importWithReferences(t *testing.T, lookup secretresolver.Lookup, content st
 	t.Helper()
 	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{}}
 	svc := newImportService(
-		nil, nil, nil, nil, ouSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		nil, nil, nil, nil, ouSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		discardingBus{})
 	if lookup != nil {
 		svc.(*importService).references = secretresolver.New(lookup)
 	}
@@ -137,7 +138,8 @@ func TestImportResolvesASecretInACredentialField(t *testing.T) {
 	}
 	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{}}
 	svc := newImportService(
-		nil, nil, nil, nil, ouSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+		nil, nil, nil, nil, ouSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		discardingBus{})
 	svc.(*importService).references = secretresolver.New(held).
 		WithSecretFields(map[string][]string{resourceTypeOrganizationUnit: {"description"}})
 

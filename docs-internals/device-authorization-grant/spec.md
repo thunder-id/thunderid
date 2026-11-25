@@ -1,14 +1,15 @@
 # OAuth 2.0 Device Authorization Grant Specification
 
 - **Status:** Final
-- **Version:** 1.0
+- **Version:** 1.3
 - **Related documents:**
   - [Feature issue #5156](https://github.com/thunder-id/thunderid/issues/5156)
   - [RFC 8628](https://www.rfc-editor.org/info/rfc8628/)
+  - [OpenID Connect Native SSO for Mobile Apps 1.0, draft 07](https://openid.net/specs/openid-connect-native-sso-1_0-07.html)
 
 ## Summary
 
-OAuth 2.0 Device Authorization Grant supports clients with limited input, such as TVs and command-line tools. This feature adds the RFC 8628 authorization and polling endpoints and uses a Device Grant flow assigned to the requesting application for browser approval.
+OAuth 2.0 Device Authorization Grant supports clients with limited input, such as TVs and command-line tools. This feature adds the RFC 8628 authorization and polling endpoints and uses a Device Grant flow assigned to the requesting application or delegated agent for browser approval.
 
 ## Architecture
 
@@ -16,15 +17,15 @@ OAuth 2.0 Device Authorization Grant supports clients with limited input, such a
 | --- | --- |
 | Device client | Starts authorization, retains the secret `device_code`, displays the `user_code` and verification URI, and polls the token endpoint at the returned interval. |
 | Device authorization service | Validates client grant permission, scopes and resources; generates codes; stores a `PENDING` request; and returns the authorization response. |
-| Runtime store | Stores the request, hashed device-code key, request-ID index, HMAC-based user-code index, expiry, polling information, and lifecycle state. |
-| Gate / browser SDK | Renders the browser verification UI, starts and continues the `DEVICE_GRANT` flow through `/flow/execute`, and submits the terminal flow result to the OAuth callback. The application context identifies the assigned flow; `verification_uri_complete` can prefill the user code, but the user must submit it. |
-| Flow execution service | Starts the Device Grant flow assigned to the application. The caller cannot choose a flow ID. |
-| Device Grant flow | Runs administrator-configured prompts, verifies the user code, calls the application's Authentication flow by fixed flow ID, and displays success or failure. When Device Code grant is enabled, the Console automatically selects the bootstrapped default flow and saves that assignment with the application; an administrator can choose another flow. |
+| Runtime store | Stores the request, SHA-256 device-code key, request-ID index, SHA-256 user-code index, expiry, polling information, lifecycle state, and, from approval until the request is consumed, the SSO sessions kept for its device secret. |
+| Gate / browser SDK | Renders the browser verification UI, starts and continues the `DEVICE_GRANT` flow through `/flow/execute`, and submits the terminal flow result to the OAuth callback, with the SSO sessions the flow's responses returned (`@thunderid/react` 1.23.1 and later; earlier versions post none, so the device gets no `device_secret`). The requesting client's context identifies the assigned flow; `verification_uri_complete` can prefill the user code, but the user must submit it. |
+| Flow execution service | Starts the Device Grant flow assigned to the requesting application or delegated agent. The caller cannot choose a flow ID. |
+| Device Grant flow | Runs administrator-configured prompts, verifies the user code, calls the requesting client's Authentication flow by fixed flow ID, and displays success or failure. The application or agent Console selects and saves the assigned flow; an administrator can choose another flow. |
 | `DeviceCodeExecutor` | Verifies and atomically claims a pending request, then places trusted request data in flow runtime data for callback binding and token issuance. |
-| `CALL` node | Invokes its statically configured flow ID. In a Device Grant flow it is reachable only after successful user-code verification; assignment validates the referenced-flow relationship against the application's configured flows. |
-| Authentication flow | Applies the requesting application's configured authentication journey, including any consent step configured there. Device Grant does not force a separate consent policy. |
-| OAuth callback | Validates the signed assertion and its request binding, then marks the request approved, denied, or failed. |
-| Device Code token grant handler | Enforces client and resource binding, polling interval and expiry; returns pending or terminal OAuth errors; and issues tokens once for an approved request. |
+| `CALL` node | Invokes its statically configured flow ID. In a Device Grant flow it is reachable only after successful user-code verification; assignment validates the referenced-flow relationship against the requesting client's configured flows. |
+| Authentication flow | Applies the requesting application's or delegated agent's configured authentication journey, including any consent step configured there. Device Grant does not force a separate consent policy. |
+| OAuth callback | Validates the signed assertion and its request binding, then marks the request approved, denied, or failed. An approval keeps the posted SSO sessions when `device_sso` was authorized. |
+| Device Authorization Grant token handler | Enforces client and resource binding, polling interval and expiry; returns pending or terminal OAuth errors; and issues tokens once for an approved request, with a device secret when the approval kept SSO sessions. |
 | Discovery metadata | Advertises the device authorization endpoint and grant type when Device Grant is enabled by server configuration. |
 
 ### Device authorization and browser-flow execution
@@ -78,7 +79,7 @@ sequenceDiagram
             ThunderID-->>Device: slow_down, increase interval by five seconds
         else Request is approved
             ThunderID->>ThunderID: Consume approved request once
-            ThunderID-->>Device: Tokens
+            ThunderID-->>Device: Tokens, and a device secret for device_sso
         else Request is denied, failed, expired, consumed, or invalid
             ThunderID-->>Device: Corresponding OAuth error
         end
@@ -91,17 +92,17 @@ The browser and device have separate roles. The browser submits `user_code` and 
 
 ### Data model
 
-Flow definitions use the existing flow storage model. `DEVICE_GRANT` is added as a supported flow type. The inbound-client record stores the assigned Device Grant flow ID in `DEVICE_GRANT_FLOW_ID` for applications. When Device Code grant is enabled, the application must have a valid Device Grant flow assigned. That flow must call the application's configured Authentication flow. The application API exposes the flow assignment.
+Flow definitions use the existing flow storage model. `DEVICE_GRANT` is added as a supported flow type. The inbound-client record stores the assigned Device Grant flow ID in `DEVICE_GRANT_FLOW_ID` for applications and agents. Applications expose the assignment through their configuration API; agents expose `deviceGrantFlowId` through the Agent API and declarative configuration. When Device Authorization Grant is enabled, an application or delegated agent must have a valid Device Grant flow assigned. That flow must call the requesting client's configured Authentication flow. Device Authorization Grant is available to agents only in delegated mode.
 
-Device authorization requests are stored in the runtime store rather than in a dedicated configuration-database table. Each record contains the request ID, requesting-client and OAuth-client bindings, hashed device code, requested and authorized scopes, resources, expiry, polling state, lifecycle state, and approval details. The assigned flow ID is stored on the inbound-client record, not in the request. The plaintext user code is excluded from the serialized request. A keyed HMAC of the normalized user code forms its lookup index; the index and request-ID index resolve to the same request.
+Device authorization requests are stored in the runtime store rather than in a dedicated configuration-database table. The request record binds the requesting client ID to its OAuth `client_id` and stores the SHA-256 hash of the `device_code`, requested and authorized scopes and permissions, resources, expiry, polling state, lifecycle state, and approval details. On approval it also keeps the approving user's entity ID and, when `device_sso` was authorized, the SSO sessions the callback posted. The assigned flow ID remains on the inbound-client record, not in the request. The plaintext `user_code` is excluded from the serialized record. The runtime store keeps separate indexes for the request ID and normalized user code; each index points to the request key derived from the device-code hash. The user-code index key is an unkeyed SHA-256 hash of the user code after removing hyphens and whitespace and converting it to uppercase. The request ID itself is not hashed.
 
 ### API
 
 #### Device authorization request
 
-`POST /oauth2/device-authorize` accepts an `application/x-www-form-urlencoded` request. A public client supplies `client_id`; a confidential client authenticates using its configured token-endpoint authentication method. The requesting application must allow the Device Code grant type and have a Device Grant flow assigned. Application configuration validation rejects saving Device Code grant enabled without a Device Grant flow. If an inconsistent stored application has the grant enabled but no flow assigned, the endpoint returns `server_error` with HTTP 500 and no codes. ThunderID validates requested scopes and the optional resource indicator against the client and configured resource servers.
+`POST /oauth2/device-authorize` accepts an `application/x-www-form-urlencoded` request. A public client supplies `client_id`; a confidential client authenticates using its configured token-endpoint authentication method. The requesting application or delegated agent must allow the Device Authorization Grant and have a Device Grant flow assigned. Application and agent configuration validation reject saving the grant enabled without a valid flow assignment. For agents, the grant is available only in delegated mode. If an inconsistent stored client has the grant enabled but no flow assigned, the endpoint returns `server_error` with HTTP 500 and no codes. ThunderID validates requested scopes and the optional resource indicator against the client and configured resource servers.
 
-ThunderID creates a request ID and generates an opaque `device_code` and a human-enterable `user_code`. The device code is stored by its hash. The user code is excluded from the serialized request; ThunderID normalizes it only to compute a keyed HMAC lookup index for the stored request. The initial request state is `PENDING`. The endpoint does not start a browser flow. If request creation fails, the endpoint does not return usable codes.
+ThunderID creates a request ID and generates an opaque `device_code` and a human-enterable `user_code`. The `device_code` is stored by its SHA-256 hash. The plaintext `user_code` is excluded from the serialized request; ThunderID removes hyphens and whitespace and converts it to uppercase, then computes an unkeyed SHA-256 hash for the lookup index. The initial request state is `PENDING`. The endpoint does not start a browser flow. If request creation fails, the endpoint does not return usable codes.
 
 `oauth.device_grant.expires_in` configures the device authorization request lifetime, and `oauth.device_grant.interval` configures the initial polling interval. If either value is unset or nonpositive, ThunderID uses the 600-second lifetime or 5-second interval fallback. The response contains the effective values:
 
@@ -116,21 +117,21 @@ ThunderID creates a request ID and generates an opaque `device_code` and a human
 }
 ```
 
-ThunderID builds the Gate verification URL with an `applicationId` query parameter so Gate can load the requesting application's context and assigned Device Grant flow. `verification_uri_complete` adds the user code to that URL. After the user submits the code, ThunderID looks up the stored request and verifies that its client binding matches the flow context before continuing to the Authentication flow. The browser SDK can prefill the code input from the complete URI but still requires the user to submit it. The response is marked `Cache-Control: no-store` and `Pragma: no-cache`.
+ThunderID builds the Gate verification URL with an `applicationId` query parameter so Gate can load the requesting client's context and assigned Device Grant flow. `verification_uri_complete` adds the user code to that URL. After the user submits the code, ThunderID looks up the stored request and verifies that its client binding matches the flow context before continuing to the Authentication flow. The browser SDK can prefill the code input from the complete URI but still requires the user to submit it. The response is marked `Cache-Control: no-store` and `Pragma: no-cache`.
 
 #### Start and continue browser verification
 
-Gate or the browser SDK starts the existing `POST /flow/execute` with `flowType: DEVICE_GRANT`, the requesting application ID from the verification URI or SDK configuration, and empty inputs. ThunderID loads the Device Grant flow assigned to that application. The caller cannot choose a flow ID. The configured flow controls the order and content of its prompts; when the Device Code executor requests its required `user_code`, the browser SDK can prepopulate it from `verification_uri_complete` and still waits for the user to submit it.
+Gate or the browser SDK starts the existing `POST /flow/execute` with `flowType: DEVICE_GRANT`, the requesting client's ID from the verification URI or SDK configuration, and empty inputs. ThunderID loads the Device Grant flow assigned to that client. The caller cannot choose a flow ID. The configured flow controls the order and content of its prompts; when the `DeviceCodeExecutor` requests its required `user_code`, the browser SDK can prepopulate it from `verification_uri_complete` and still waits for the user to submit it.
 
-The default flow is provided by bootstrap resources as `default-device-grant-flow`. When Device Code grant is enabled, the Console automatically selects this flow and includes the assignment when the application is saved. The bootstrapped flow's `CALL` node has a fixed reference to the default Authentication flow; it does not resolve each application's Authentication flow dynamically. Flow validation requires a Device Code executor and a fixed `CALL` node reachable only after successful code verification, and validates that the target matches the application's configured Authentication flow. An application using a different Authentication flow must be assigned a compatible Device Grant flow. The Device Grant templates have an empty `CALL` reference, which the flow author configures with the application's Authentication flow.
+The default flow is provided by bootstrap resources as `default-device-grant-flow`. When Device Authorization Grant is enabled, the Console selects a default Device Grant flow when available and includes the assignment when the application or delegated agent is saved. The bootstrapped flow's `CALL` node has a fixed reference to the default Authentication flow; it does not resolve each client's Authentication flow dynamically. Flow validation requires a `DeviceCodeExecutor` and a fixed `CALL` node reachable only after successful code verification, and validates that the target matches the requesting client's configured Authentication flow. A client using a different Authentication flow must be assigned a compatible Device Grant flow. The Device Grant templates have an empty `CALL` reference, which the flow author configures with the requesting client's Authentication flow.
 
-The Device Code executor normalizes the submitted code, finds the stored request, and atomically changes its state from `PENDING` to `REDEEMING` only while the request remains unexpired. Unknown, expired, denied, or already-claimed codes are presented through a generic invalid/unavailable-code response. Once claimed, trusted values from the stored record—not browser-supplied application data—bind the request to the flow execution. The request ID is retained as `authorizationRequestId`; it is separate from the flow execution ID returned by `/flow/execute`.
+The `DeviceCodeExecutor` normalizes the submitted code, finds the stored request, and atomically changes its state from `PENDING` to `REDEEMING` only while the request remains unexpired. Unknown, expired, denied, or already-claimed codes are presented through a generic invalid/unavailable-code response. Once claimed, trusted values from the stored record—not browser-supplied application data—bind the request to the flow execution. The request ID is retained as `authorizationRequestId`; it is separate from the flow execution ID returned by `/flow/execute`.
 
-The Device Grant `CALL` node uses a fixed flow ID, just like other flow calls. The application assignment validator checks its referenced-flow relationship against that application's configured flows. The called flow runs as part of the same flow execution, and Gate renders the returned steps.
+The Device Grant `CALL` node uses a fixed flow ID, just like other flow calls. The application or agent assignment validator checks its referenced-flow relationship against that client's configured flows. The called flow runs as part of the same flow execution, and Gate renders the returned steps.
 
-The Authentication flow controls its own consent behavior. Device Grant does not require a consent purpose, force a consent prompt, or create a separate consent mechanism. If the application flow includes a consent step, its result participates in the flow outcome. A successful Authentication flow can approve the request without a consent claim; a flow error such as user denial records a denied outcome.
+The Authentication flow controls its own consent behavior. Device Grant does not require a consent purpose, force a consent prompt, or create a separate consent mechanism. If the application's or agent's Authentication flow includes a consent step, its result participates in the flow outcome. A successful Authentication flow can approve the request without a consent claim; a flow error such as user denial records a denied outcome.
 
-On terminal flow completion, the browser submits the signed assertion to the existing `/oauth2/auth/callback` using the Device Grant request ID as `authId` and the Device Code grant type for callback dispatch. The assertion's `authorization_request_id` must match both `authId` and the stored request ID. A valid successful assertion records the user and approval data; a signed user-denial result records `DENIED`. Approval is accepted only while the request is in `REDEEMING` and before expiry. For applicable flow errors, `/flow/execute` returns a signed `errorAssertion` and callback metadata (`type` and `authId`) under `data.additionalData` so the OAuth callback can record the failure.
+On terminal flow completion, the browser submits the signed assertion to the existing `/oauth2/auth/callback` using the Device Grant request ID as `authId` and the Device Authorization Grant for callback dispatch. The assertion's `authorization_request_id` must match both `authId` and the stored request ID. A valid successful assertion records the user and approval data, and keeps the posted `sessionData` when `device_sso` was authorized, under the same limits as the authorization code: at most ten entries, and an entry with a missing or over-long field is left out. A signed user-denial result records `DENIED`. Approval is accepted only while the request is in `REDEEMING` and before expiry. For applicable flow errors, `/flow/execute` returns a signed `errorAssertion` and callback metadata (`type` and `authId`) under `data.additionalData` so the OAuth callback can record the failure.
 
 #### Poll and issue tokens
 
@@ -146,7 +147,11 @@ The device sends `grant_type=urn:ietf:params:oauth:grant-type:device_code` and t
 | Expired request | `expired_token` |
 | `CONSUMED`, unknown code, or code owned by another client | `invalid_grant` |
 
-An ID token is returned when `openid` is authorized. A refresh token is returned when the client allows the `refresh_token`. The client must stop polling after tokens or a terminal OAuth error. A `slow_down` response requires increasing the polling interval by five seconds.
+An ID token is returned when `openid` is authorized. A refresh token is returned when the client allows the `refresh_token`. A `device_secret` is returned when `device_sso` is authorized and the approval kept at least one SSO session: it carries those sessions for the approving user, as the authorization code grant's does, and the client exchanges it for tokens of a client that signs in on the same flow with no browser. Native SSO draft 07 defines the `device_secret` for the authorization code and refresh token grants only (section 3.3), so returning one from this grant is a ThunderID extension. The client must stop polling after tokens or a terminal OAuth error. A `slow_down` response requires increasing the polling interval by five seconds.
+
+The called Authentication flow caches the user attributes required by the application's token configuration and granted scopes. The approval carries the cache ID to token issuance. If the flow prompts the user to choose an eligible organization unit, the configured `ouId` claim identifies that unit.
+
+The sign-in follows the called Authentication flow's organization unit boundary. A device authorization request cannot name an organization unit, so an application that is not shared signs in to its own unit, and a shared application's Authentication flow must decide the unit, for example with a Resolve OU node, or its assertion is refused with `FET-1124`. Reusing an SSO session is checked against the same boundary: the session is reused only while its user may sign in to the unit the sign-in decided, or, when none is decided, to the unit the user last signed in to with that session.
 
 Only one concurrent token exchange can consume an approved request. The `PENDING` to `REDEEMING`, `REDEEMING` to `APPROVED`, and `APPROVED` to `CONSUMED` transitions use atomic state comparisons; the first two and consumption also require the request expiry to remain in the future. If request storage expires, the request cannot be claimed, approved, or consumed.
 
@@ -160,45 +165,47 @@ The page does not look up code status before submission and does not use a Devic
 
 #### Console configuration
 
-- In **Applications**, enable the Device Code grant type. The Console automatically selects the bootstrapped default Device Grant flow; an administrator can choose another flow before saving. The assigned flow's `CALL` target must match the application's configured Authentication flow.
-- In **Flows**, use the bootstrapped default Device Grant flow when its fixed Authentication-flow target matches the application's configured Authentication flow. Otherwise, create a flow from a Device Authorization template and configure its `CALL` target to the application's Authentication flow. Configure the user-code prompt, Device Code executor, and success and failure prompts; ThunderID validates the flow and its application assignment.
+- In **Applications**, enable the Device Authorization Grant. The Console automatically selects the bootstrapped default Device Grant flow; an administrator can choose another flow before saving. The assigned flow's `CALL` target must match the application's configured Authentication flow.
+- In **Flows**, use the bootstrapped default Device Grant flow when its fixed Authentication-flow target matches the requesting client's configured Authentication flow. Otherwise, create a flow from a Device Authorization template and configure its `CALL` target to the application's Authentication flow. Configure the user-code prompt, `DeviceCodeExecutor`, and success and failure prompts; ThunderID validates the flow and its application assignment.
 
 ### Configuration
 
 - **Deployment-level — OAuth grant enablement:** `oauth.allowed_grant_types` must contain `urn:ietf:params:oauth:grant-type:device_code` to enable Device Grant. The server rejects device authorization requests when the grant is disabled.
-- **Application-level — Grant and flow assignment:** The application's OAuth `grantTypes` must include the Device Code grant. Enabling it automatically selects the bootstrapped Device Grant flow in the Console, and the selected flow ID is saved with the application. Its `CALL` target must match the application's configured Authentication flow.
+- **Application-level — Grant and flow assignment:** The application's OAuth `grantTypes` must include the Device Authorization Grant's registered type, `urn:ietf:params:oauth:grant-type:device_code`. Enabling it automatically selects the bootstrapped Device Grant flow in the Console, and the selected flow ID is saved with the application. Its `CALL` target must match the application's configured Authentication flow.
+- **Agent-level — Delegated grant and flow assignment:** The agent must be in delegated mode, its OAuth grant types must include `urn:ietf:params:oauth:grant-type:device_code`, and it must have a valid `deviceGrantFlowId` assigned. The assigned flow's `CALL` target must match the agent's configured Authentication flow.
 
 ## Requirements
 
 ### R1. Create a device request
 
-**Requirement:** An eligible application can start a Device Grant request and receive the codes and verification details needed to authorize and poll.
+**Requirement:** An eligible application or delegated agent can start a Device Authorization Grant request and receive the codes and verification details needed to authorize and poll.
 
 **Acceptance criteria:**
 
-- **AC1.1:** Given an application is enabled for Device Code grant, has an assigned Device Grant flow, and the client has passed authentication, when it submits a valid request to `/oauth2/device-authorize`, then ThunderID returns `device_code`, `user_code`, both verification URIs, `expires_in`, and `interval`.
-- **AC1.2:** Given the requesting application is not enabled for Device Code grant or client authentication fails, when it submits a device authorization request, then ThunderID rejects the request and returns no usable codes.
+- **AC1.1:** Given an application or delegated agent is enabled for Device Authorization Grant, has an assigned Device Grant flow, and the client has passed authentication, when it submits a valid request to `/oauth2/device-authorize`, then ThunderID returns `device_code`, `user_code`, both verification URIs, `expires_in`, and `interval`.
+- **AC1.2:** Given the requesting application is not enabled for Device Authorization Grant, the requesting agent is not in delegated mode or lacks the grant type, or client authentication fails, when it submits a device authorization request, then ThunderID rejects the request and returns no usable codes.
 - **AC1.3:** Given ThunderID has successfully created a device authorization request, when it stores the request, then its initial state is `PENDING` and no browser flow execution has started.
-- **AC1.4:** Given ThunderID generates device and user codes, when it persists the request and its indexes, then it stores only the device-code hash and does not serialize the user code; the HMAC user-code index resolves to the request record.
-- **AC1.5:** Given Device Code grant is enabled for an application, when its configuration is saved, then it has an assigned Device Grant flow that calls its configured Authentication flow.
+- **AC1.4:** Given ThunderID generates device and user codes, when it persists the request and its indexes, then it stores the device code as a SHA-256 hash and does not serialize the plaintext user code; the SHA-256 hash of the normalized user code resolves to the request record.
+- **AC1.5:** Given Device Authorization Grant is enabled for an application or delegated agent, when its configuration is saved, then it has an assigned Device Grant flow that calls its configured Authentication flow.
 - **AC1.6:** Given ThunderID creates a device authorization response, then `verification_uri` points to the Gate device page with the requesting application's ID, and `verification_uri_complete` appends the user code.
-- **AC1.7:** Given an application has Device Code grant enabled but no Device Grant flow due to inconsistent stored configuration, when it submits a device authorization request, then ThunderID returns `server_error` with HTTP 500 and no usable codes. Normal application configuration validation prevents saving this state.
+- **AC1.7:** Given an application or delegated agent has Device Authorization Grant enabled but no Device Grant flow due to inconsistent stored configuration, when it submits a device authorization request, then ThunderID returns `server_error` with HTTP 500 and no usable codes. Normal application and agent configuration validation prevents saving this state.
 
 ### R2. Verify and authorize in the browser
 
-**Requirement:** A user can submit a device code in Gate and complete the requesting application's Authentication flow for that device request.
+**Requirement:** A user can submit a user code in Gate and complete the requesting application's or delegated agent's Authentication flow for that device request.
 
 **Acceptance criteria:**
 
-- **AC2.1:** Given a user opens the verification page, when Gate starts Device Grant, then it calls the existing `/flow/execute` endpoint with `flowType: DEVICE_GRANT`, the application context, and no user-code input; ThunderID loads that application's assigned Device Grant flow.
+- **AC2.1:** Given a user opens the verification page, when Gate starts Device Grant, then it calls the existing `/flow/execute` endpoint with `flowType: DEVICE_GRANT`, the requesting-client context, and no user-code input; ThunderID loads that client's assigned Device Grant flow.
 - **AC2.2:** Given `verification_uri_complete` contains a user code, when the configured flow requests the code, then Gate or the browser SDK prefills the code field and waits for the user to submit it before verification.
-- **AC2.3:** Given an administrator saves a `DEVICE_GRANT` flow for application assignment, when ThunderID validates it, then the flow includes a Device Code executor and a configured Call node reachable only after successful code verification. A template may start with an empty Call reference, which the administrator configures before saving.
-- **AC2.4:** Given an application enables the Device Code grant or assigns a Device Grant flow, when ThunderID validates its configuration, then it ensures the flow calls that application's configured Authentication flow.
-- **AC2.5:** Given a submitted code is unknown, expired, denied, or already claimed, when ThunderID verifies it, then Gate receives the generic invalid-code response and the flow does not continue. Given the code belongs to another application, then the flow does not continue to the Authentication flow.
+- **AC2.3:** Given an administrator saves a `DEVICE_GRANT` flow for application or delegated-agent assignment, when ThunderID validates it, then the flow includes a `DeviceCodeExecutor` and a configured Call node reachable only after successful code verification. A template may start with an empty Call reference, which the administrator configures before saving.
+- **AC2.4:** Given an application or delegated agent enables the Device Authorization Grant or assigns a Device Grant flow, when ThunderID validates its configuration, then it ensures the flow calls that application's configured Authentication flow.
+- **AC2.5:** Given a submitted code is unknown, expired, denied, or already claimed, when ThunderID verifies it, then Gate receives the generic invalid-code response and the flow does not continue. Given the code belongs to another client, then the flow does not continue to the Authentication flow.
 - **AC2.6:** Given a request is `PENDING` and unexpired, when multiple browser executions attempt to claim its code concurrently, then at most one execution transitions the request to `REDEEMING`.
 - **AC2.7:** Given a Device Grant flow has claimed a request, when Gate submits its terminal assertion to the callback, then the callback `authId`, assertion `authorization_request_id`, and stored request ID must match, and the request ID remains distinct from the flow `executionId`.
-- **AC2.8:** Given an application has configured its Authentication flow, when the Device Grant flow calls it, then authentication and any consent behavior follow that flow without a separate Device Grant consent requirement.
+- **AC2.8:** Given an application or delegated agent has configured its Authentication flow, when the Device Grant flow calls it, then authentication and any consent behavior follow that flow without a separate Device Grant consent requirement.
 - **AC2.9:** Given a request is in `REDEEMING`, when the callback handles a valid signed success, user-denial, or other failure result for that request, then it records the corresponding `APPROVED`, `DENIED`, or `FAILED` outcome.
+- **AC2.10:** Given the Device Grant flow calls the Authentication flow, when the user signs in, then the sign-in is bounded as an Authentication flow sign-in: an application that is not shared signs in to its own organization unit, a shared application's sign-in that decides no organization unit is refused at its assertion with `FET-1124`, and an SSO session is reused only while its user may sign in to the organization unit the sign-in follows.
 
 ### R3. Poll and issue tokens once
 
@@ -206,11 +213,14 @@ The page does not look up code status before submission and does not use a Devic
 
 **Acceptance criteria:**
 
-- **AC3.1:** Given a client submits a token request using the Device Code grant type, when ThunderID validates it, then it requires `device_code` and enforces client ownership and the original resource binding.
+- **AC3.1:** Given a client submits a token request using the Device Authorization Grant, when ThunderID validates it, then it requires `device_code` and enforces client ownership and the original resource binding.
 - **AC3.2:** Given a request is `PENDING` or `REDEEMING`, when the client polls at the permitted interval, then the token endpoint returns `authorization_pending`; when it polls too soon, then the endpoint returns `slow_down` and increases the polling interval by five seconds.
 - **AC3.3:** Given a request is denied, failed, expired, consumed, unknown, or belongs to another client, when that client polls, then the endpoint returns the corresponding OAuth error and issues no tokens.
 - **AC3.4:** Given a request is approved, when its client polls successfully, then ThunderID issues tokens limited to the authorized scopes and resource, returns an ID token when `openid` is authorized, and returns a refresh token when the client allows refresh token issuance.
 - **AC3.5:** Given two token exchanges race for the same approved request, when ThunderID consumes it, then only one exchange succeeds in consuming the request and receiving tokens.
+- **AC3.6:** Given `device_sso` is authorized and the approval kept at least one of the SSO sessions the callback posted, when the client polls successfully, then the token response includes a `device_secret` carrying the kept sessions for the approving user's entity ID.
+- **AC3.7:** Given `device_sso` is not authorized, or the approval kept no session because none was posted or every posted entry was left out, when the client polls successfully, then the token response has no `device_secret`.
+- **AC3.8:** Given a request is approved, when its client polls successfully, then the access token carries the user attributes configured for it and the ID token the configured attributes the granted scopes release, both limited to the attributes the user approved when the flow includes consent, and a configured `ouId` claim names the organization unit the sign-in decided.
 
 ### R4. Expiry and request integrity
 
@@ -229,11 +239,14 @@ The page does not look up code status before submission and does not use a Devic
 
 **Acceptance criteria:**
 
-- **AC5.1:** Given Device Code grant is enabled at server level, when a client reads OAuth Authorization Server Metadata or OpenID Configuration, then the metadata includes `device_authorization_endpoint` and `urn:ietf:params:oauth:grant-type:device_code`.
-- **AC5.2:** Given Device Code grant is disabled at server level, when a client reads discovery metadata or submits a device authorization request, then discovery omits the grant and the endpoint does not accept the request.
+- **AC5.1:** Given Device Authorization Grant is enabled at server level, when a client reads OAuth Authorization Server Metadata or OpenID Configuration, then the metadata includes `device_authorization_endpoint` and `urn:ietf:params:oauth:grant-type:device_code`.
+- **AC5.2:** Given Device Authorization Grant is disabled at server level, when a client reads discovery metadata or submits a device authorization request, then discovery omits the grant and the endpoint does not accept the request.
 
 ## Change log
 
 | Version | Date | Change |
 | --- | --- | --- |
 | 1.0 | 2026-10-09 | Initial specification. |
+| 1.1 | 2026-11-05 | Added delegated-agent support. |
+| 1.2 | 2026-11-16 | The Device Code token response returns a device secret for `device_sso`, from the SSO sessions the approval kept. |
+| 1.3 | 2026-11-23 | Device tokens carry configured user attributes and the organization unit chosen during sign-in, and the device sign-in follows the Authentication flow's organization unit boundary ([#6991](https://github.com/thunder-id/thunderid/issues/6991)). |

@@ -1,0 +1,118 @@
+---
+displayed_sidebar: null
+title: <ConsentAuthorizationDetail />
+docType: reference
+description: Renders one RFC 9396 authorization detail on a React consent step, with its fields and a toggle that approves or declines it.
+---
+
+# `<ConsentAuthorizationDetail />`
+
+The `ConsentAuthorizationDetail` component renders one [RFC 9396 authorization detail](../../../../../guides/protocols/oauth-oidc/rich-authorization-requests) on the consent step: its summary, its fields, and a toggle that approves or declines the detail as a whole. A field is read-only unless the detail's type lets the user change it. Render it inside [`<Consent />`](../consent), once for each element of an authorization details purpose.
+
+The summary and the field labels come from the server, which builds them from the type's consent summary and schema titles. The component does not translate them again.
+
+## Usage
+
+### Basic Usage
+
+```tsx
+<ConsentAuthorizationDetail
+  purposeId={purpose.purposeId}
+  element={element}
+  formValues={formValues}
+  onInputChange={onInputChange}
+/>
+```
+
+See [`<Consent />`](../consent#usage) for the complete consent step.
+
+### Render Props for Custom UI
+
+Pass a function as `children` to draw the detail yourself. This example renders each field with [`<ConsentDetailField />`](../consent-detail-field) and a checkbox for the decision:
+
+```tsx title="src/DetailCards.tsx" showLineNumbers
+import { ConsentAuthorizationDetail, ConsentDetailField, type ConsentPurpose } from '@thunderid/react'
+import { type ReactElement } from 'react'
+
+interface DetailCardsProps {
+  formValues: Record<string, string>
+  onInputChange: (name: string, value: string) => void
+  purpose: ConsentPurpose
+}
+
+export default function DetailCards({ purpose, formValues, onInputChange }: DetailCardsProps): ReactElement {
+  return (
+    <>
+      {purpose.optional.map((element) => (
+        <ConsentAuthorizationDetail
+          key={element.name}
+          purposeId={purpose.purposeId}
+          element={element}
+          formValues={formValues}
+          onInputChange={onInputChange}
+        >
+          {({ summary, rows, isApproved, handleChange }) => (
+            <section>
+              <h3>{summary}</h3>
+              {rows.map((row) => (
+                <div key={row.path}>
+                  <span>{row.label}</span>
+                  <ConsentDetailField
+                    purposeId={purpose.purposeId}
+                    detailId={element.name}
+                    row={row}
+                    formValues={formValues}
+                    onInputChange={onInputChange}
+                  />
+                </div>
+              ))}
+              <label>
+                <input
+                  type="checkbox"
+                  aria-label={`Allow ${summary}`}
+                  checked={isApproved}
+                  onChange={(event) => handleChange(event.target.checked)}
+                />
+                Allow
+              </label>
+            </section>
+          )}
+        </ConsentAuthorizationDetail>
+      ))}
+    </>
+  )
+}
+```
+
+## Props
+
+| Prop | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `purposeId` | `string` | ✅ | The `purposeId` of the authorization details purpose the detail belongs to. |
+| `element` | `ConsentPurpose['optional'][number]` | ✅ | The detail: one element of the purpose's `optional` list. |
+| `formValues` | `Record<string, string>` | ✅ | The consent form values. |
+| `onInputChange` | `(name: string, value: string) => void` | ✅ | Called with a form key and its new value. |
+| `children` | `(props: ConsentAuthorizationDetailRenderProps) => ReactNode` | ❌ | Render-props callback that replaces the default UI. |
+| `t` | `UseTranslation['t']` | ❌ | Translation function for the default UI's own labels. |
+
+An authorization detail element carries these fields:
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `name` | `string` | The detail's identifier. Pass it as `detailId` to the field components. |
+| `detailType` | `string` | The authorization details type of the detail. |
+| `summary` | `string` | The sentence the server built from the type's consent summary. Absent when the type has none. |
+| `rows` | `ConsentDetailRow[]` | The detail's fields. See [`<ConsentDetailField />`](../consent-detail-field#consentdetailrow). |
+
+## Render Props
+
+| Prop | Type | Description |
+| :--- | :--- | :--- |
+| `summary` | `string` | The element's `summary`, or its `detailType` or `name` when it has none. |
+| `rows` | `ConsentDetailRow[]` | The detail's fields. |
+| `isApproved` | `boolean` | Whether the detail is approved. A detail counts as approved until the user declines it. |
+| `handleChange` | `(checked: boolean) => void` | Approves (`true`) or declines (`false`) the detail. |
+| `detailType` | `string \| undefined` | The detail's type. |
+| `element` | `ConsentPurpose['optional'][number]` | The detail's element. |
+
+A declined detail does not block approval of the consent, even when one of its fields shows a value that cannot be submitted. See [`isApprovalBlocked`](../consent#render-props).

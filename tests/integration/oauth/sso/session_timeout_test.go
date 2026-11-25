@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
@@ -52,18 +51,8 @@ func (ts *SSOLogoutTestSuite) writableSessionConfig() string {
 
 // putSessionConfig replaces the writable layer of the session section.
 func (ts *SSOLogoutTestSuite) putSessionConfig(body string) {
-	req, err := http.NewRequest(http.MethodPut, sessionConfigURL, strings.NewReader(body))
-	ts.Require().NoError(err)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := testutils.GetHTTPClient().Do(req)
-	ts.Require().NoError(err, "failed to update session server config")
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	ts.Require().NoError(err)
-	ts.Require().Equal(http.StatusOK, resp.StatusCode,
-		"failed to update session config with %s: %s", body, string(respBody))
+	ts.Require().NoError(testutils.PutWritableServerConfig("session", []byte(body)),
+		"failed to update session config with %s", body)
 }
 
 // applySessionTimeouts writes the given timeouts and restarts the server so the session service
@@ -105,19 +94,10 @@ func (ts *SSOLogoutTestSuite) sessionSurvives(client *http.Client, state string)
 // putSessionConfigExpectingRejection writes a session configuration that validation must refuse,
 // and returns the response body for the assertion.
 func (ts *SSOLogoutTestSuite) putSessionConfigExpectingRejection(body string) string {
-	req, err := http.NewRequest(http.MethodPut, sessionConfigURL, strings.NewReader(body))
-	ts.Require().NoError(err)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := testutils.GetHTTPClient().Do(req)
+	status, respBody, err := testutils.PutWritableServerConfigWithStatus("session", []byte(body))
 	ts.Require().NoError(err, "failed to send session config update")
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	ts.Require().NoError(err)
-	ts.Require().Equal(http.StatusBadRequest, resp.StatusCode,
-		"an incoherent session configuration must be refused, got %d for %s: %s",
-		resp.StatusCode, body, string(respBody))
+	ts.Require().Equal(http.StatusBadRequest, status,
+		"an incoherent session configuration must be refused, got %d for %s: %s", status, body, string(respBody))
 
 	return string(respBody)
 }

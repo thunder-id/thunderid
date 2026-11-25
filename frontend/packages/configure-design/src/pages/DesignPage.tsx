@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, ExternalLink, QueryErrorNotice} from '@thunderid/components';
+import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
 import {useGetThemes, useGetLayouts} from '@thunderid/design';
 import {Box, Button, Grid, PageContent, PageTitle, Skeleton, Typography} from '@wso2/oxygen-ui';
 import {ArrowUpRight, LayoutTemplate, Palette, Plus} from '@wso2/oxygen-ui-icons-react';
@@ -25,10 +26,18 @@ function isLayoutPresetVariant(handle: string): handle is LayoutPresetVariant {
 
 export default function DesignPage(): JSX.Element {
   const {t} = useTranslation('design');
+  // Inside a project, only its themes and layouts are listed.
+  const {projectId} = useProjectScope();
   const navigate = useNavigate();
   const routes = useDesignRoutes();
-  const {data: themesData, isLoading: themesLoading, error: themesError, refetch: refetchThemes} = useGetThemes();
-  const {data: layoutsData, error: layoutsError, refetch: refetchLayouts} = useGetLayouts();
+  const {can} = useCapabilitiesContext();
+  const {
+    data: themesData,
+    isLoading: themesLoading,
+    error: themesError,
+    refetch: refetchThemes,
+  } = useGetThemes({projectId});
+  const {data: layoutsData, error: layoutsError, refetch: refetchLayouts} = useGetLayouts({projectId});
 
   const [showAllThemes, setShowAllThemes] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{id: string; name: string} | null>(null);
@@ -58,20 +67,22 @@ export default function DesignPage(): JSX.Element {
           count={allThemes.length}
           icon={<Palette size={18} />}
           action={
-            <Button
-              variant="contained"
-              size="small"
-              startIcon={<Plus size={16} />}
-              onClick={() => {
-                (async () => {
-                  await navigate(routes.design.themesCreate());
-                })().catch(() => {
-                  // Ignore navigation errors
-                });
-              }}
-            >
-              {t('themes.actions.add.label', 'Add theme')}
-            </Button>
+            can('design', 'create') && (
+              <Button
+                variant="contained"
+                size="small"
+                startIcon={<Plus size={16} />}
+                onClick={() => {
+                  (async () => {
+                    await navigate(routes.design.themesCreate());
+                  })().catch(() => {
+                    // Ignore navigation errors
+                  });
+                }}
+              >
+                {t('themes.actions.add.label', 'Add theme')}
+              </Button>
+            )
           }
         />
 
@@ -101,7 +112,7 @@ export default function DesignPage(): JSX.Element {
                             });
                           }}
                           onDelete={
-                            theme.isReadOnly
+                            theme.isReadOnly || !can('design', 'delete')
                               ? undefined
                               : () => setDeleteTarget({id: theme.id, name: theme.displayName})
                           }

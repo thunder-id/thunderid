@@ -58,9 +58,10 @@ sections:
       - name: user
         type: ComputedRef<User \
         description: The authenticated user object, or `null` if not signed in
-      - name: organization
-        type: ComputedRef<Organization \
-        description: The current organization context, or `null`
+      - name: currentOrganizationUnit
+        type: ComputedRef<CurrentOrganizationUnit | null>
+        description: The organization unit the session was issued for, read on the server from its `ouId`, `ouHandle`,
+          and `ouName` claims for display only, or `null`
       - name: signIn
         type: (...args) => Promise
         description: Initiate the sign-in flow
@@ -73,6 +74,13 @@ sections:
       - name: getAccessToken
         type: () => Promise
         description: Get a client-safe access token via `/api/auth/token`
+      - name: getCurrentOrganizationUnit
+        type: '() => Promise<CurrentOrganizationUnit | null>'
+        description: Resolve with the value of `currentOrganizationUnit`
+      - name: switchOrganizationUnit
+        type: '(organizationUnitId: string, options?: SwitchOrganizationUnitOptions) => Promise<undefined>'
+        description: Sign in again bounded to another organization unit. Sends the browser to `/api/auth/signin?ouId=<id>`,
+          and the callback replaces the session only when the sign-in succeeds
       example: |-
         <script setup lang="ts">
         const { isSignedIn, user, signIn, signOut } = useThunderID()
@@ -174,6 +182,49 @@ sections:
           <SignedOut>
             <SignInButton />
           </SignedOut>
+        </template>
+    - group: Components
+      kind: component
+      name: <OrganizationUnitSwitcher />
+      description: The `OrganizationUnitSwitcher` component shows the organization unit the session is in, in a field
+        that opens a menu of the units the signed-in user can access. It is auto-registered by the Nuxt module. It reads
+        the units from `GET /api/auth/user/organization-units`, which calls `/users/me/ous` with the server-held session.
+        Picking a unit calls `switchOrganizationUnit`, which sends the browser to the sign-in route bounded to that unit,
+        and emits `switch` with the unit. The default scoped slot replaces the built-in UI.
+      rowsLabel: Props
+      rows:
+      - name: scope
+        type: AccessibleOrganizationUnitScope
+        tag: optional
+        description: '`''siblings''` lists the accessible units that share the parent of the current unit. Omit it to list every
+          accessible unit.'
+      - name: limit
+        type: number
+        tag: optional
+        description: The page size. Defaults to `10`.
+      - name: onSelect
+        type: '(unit: AccessibleOrganizationUnit) => void'
+        tag: optional
+        description: 'Takes over a pick: called with the unit instead of switching. Also available as `@select`.'
+      - name: title
+        type: string
+        tag: optional
+        description: Overrides the small label above the current unit. Pass an empty string to omit it.
+      - name: className
+        type: string
+        tag: optional
+        description: Extra CSS class added to the root element.
+      - name: preferences
+        type: Preferences
+        tag: optional
+        description: Component-level preferences, for example `i18n.bundles` overrides.
+      example: |-
+        <template>
+          <nav>
+            <SignedIn>
+              <OrganizationUnitSwitcher scope="siblings" />
+            </SignedIn>
+          </nav>
         </template>
     - group: Components
       kind: component

@@ -80,6 +80,22 @@ Open your application in the <ProductName /> Console, navigate to **Customizatio
 
 Changes take effect immediately for new authentication sessions.
 
+## Scope Themes to a Project
+
+On the control plane, every theme you manage through the REST API, the MCP server, or an import belongs to a project. Pass the project ID when you work with these themes.
+
+- **Create**: set `projectId` in the body of `POST /design/themes`. A request without `projectId` fails with `THM-1019`.
+- **Update**: a `PUT /design/themes/{id}` without `projectId`, or with the current one, keeps the theme in its project without checking the project again. A different `projectId` moves the theme to that project.
+- **List**: `GET /design/themes?projectId=<project-id>` returns the themes in the project, and its pagination links keep the `projectId` filter. An empty `projectId=` returns an empty list. A project that does not exist can still return declarative themes that name it.
+- **MCP tools**: `list_themes` takes `projectId` and lists the themes in that project. Unlike the REST filter, an empty or omitted `projectId` lists every theme. `list_themes` and `get_theme_by_id` return each theme's `projectId`, and leave the field out for a theme without a project.
+- **Resource files**: a `theme` document in an import or a bootstrap file that creates a theme goes through the same project checks as `POST /design/themes`. One that updates an existing theme follows the update rules above, so without `projectId` the theme keeps its current project. A dry run does not check the project, so it can report success for a document that fails when you apply it. A declarative resource file can set `projectId`, but its loader does not check it. A declarative theme without `projectId` appears in no project's list in the Console, and one that names a project that does not exist still appears in a list filtered by that project ID. Exports write `projectId` when the theme has one.
+- **Delete the project**: a project that still has a theme cannot be deleted. `DELETE /projects/{projectId}` fails with `PRJ-1013` and `409` until you delete the project's themes or move them to another project. Declarative themes are read-only, so remove them from your resource files or change their `projectId`, then restart the server before you delete the project again.
+- **Console**: select a project to see its themes under **Design**. A theme you create there belongs to the project, and an application's theme picker offers the themes of the application's project. The default themes that <ProductName /> creates at startup belong to the default project.
+
+A project that does not exist fails a create, or an update that moves the theme to it, with `THM-1018`. `THM-1018` and `THM-1019` both return `400`.
+
+A data plane, such as the all-in-one server, has no projects. It keeps a `projectId` it receives without checking it and does not require one, so configuration imported from a control plane keeps its project. On every server, a `projectId` longer than 36 characters fails with `THM-1018`.
+
 ## Delete a Theme
 
 1. Navigate to **Design** in the <ProductName /> Console.

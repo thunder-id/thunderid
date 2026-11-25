@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {DurationField} from '@thunderid/components';
 import {
   Accordion,
   AccordionDetails,
@@ -19,7 +20,6 @@ import {
 import {ChevronDown} from '@wso2/oxygen-ui-icons-react';
 import {useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import DurationField from './DurationField';
 import LockLadderRows from './LockLadderRows';
 import {LockGranularities, type AccountLockCategory, type LockGranularity} from '../../models/accountAccess';
 import type {AccountLockForm} from '../../utils/accountLockPayload';

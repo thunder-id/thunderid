@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/deployment"
@@ -20,6 +21,12 @@ type resourceStoreInterface interface {
 	GetResourceServer(ctx context.Context, id string) (providers.ResourceServer, error)
 	GetResourceServerList(ctx context.Context, limit, offset int) ([]providers.ResourceServer, error)
 	GetResourceServerListCount(ctx context.Context) (int, error)
+	GetResourceServerListByOUID(ctx context.Context, ouID string, limit, offset int) ([]providers.ResourceServer, error)
+	GetResourceServerListCountByOUID(ctx context.Context, ouID string) (int, error)
+	GetResourceServerListByProject(
+		ctx context.Context, projectID, ouID string, limit, offset int,
+	) ([]providers.ResourceServer, error)
+	GetResourceServerListCountByProject(ctx context.Context, projectID, ouID string) (int, error)
 	UpdateResourceServer(ctx context.Context, id string, rs providers.ResourceServer) error
 	DeleteResourceServer(ctx context.Context, id string) error
 	CheckResourceServerNameExists(ctx context.Context, name string) (bool, error)
@@ -36,6 +43,7 @@ type resourceStoreInterface interface {
 		ctx context.Context, resServerID string, parentID *string, limit, offset int,
 	) ([]providers.Resource, error)
 	GetResourceListCount(ctx context.Context, resServerID string) (int, error)
+	GetDeclaredPermissions(ctx context.Context, resServerID string, roots []string, delimiter string) ([]string, error)
 	GetResourceListCountByParent(ctx context.Context, resServerID string, parentID *string) (int, error)
 	UpdateResource(ctx context.Context, id string, resServerID string, res providers.Resource) error
 	UpdateResourcePermission(ctx context.Context, id string, resServerID string, permission string) error
@@ -72,8 +80,9 @@ type resourceStore struct {
 
 // resourceServerProperties represents the JSON structure of PROPERTIES column.
 type resourceServerProperties struct {
-	Delimiter           string                               `json:"delimiter"`
-	AuthorizationEngine *providers.AuthorizationEngineConfig `json:"authorizationEngine,omitempty"`
+	Delimiter               string                               `json:"delimiter"`
+	HierarchicalPermissions bool                                 `json:"hierarchicalPermissions,omitempty"`
+	AuthorizationEngine     *providers.AuthorizationEngineConfig `json:"authorizationEngine,omitempty"`
 }
 
 // actionProperties represents the JSON structure of the ACTION.PROPERTIES column.
@@ -107,6 +116,7 @@ func (s *resourceStore) CreateResourceServer(ctx context.Context, id string, rs 
 			queryCreateResourceServer,
 			id,
 			rs.OUID,
+			resolveNullableString(rs.ProjectID),
 			rs.Name,
 			rs.Description,
 			resolveNullableString(rs.Identifier),
@@ -185,6 +195,112 @@ func (s *resourceStore) GetResourceServerListCount(ctx context.Context) (int, er
 	return count, err
 }
 
+// GetResourceServerListByOUID retrieves the resource servers owned by an organization unit with pagination.
+func (s *resourceStore) GetResourceServerListByOUID(
+	ctx context.Context, ouID string, limit, offset int,
+) ([]providers.ResourceServer, error) {
+	var resourceServers []providers.ResourceServer
+	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
+		results, err := dbClient.QueryContext(
+			ctx, queryGetResourceServerListByOUID, ouID, limit, offset, s.scope(ctx))
+		if err != nil {
+			return fmt.Errorf("failed to get resource server list by organization unit: %w", err)
+		}
+
+		resourceServers = make([]providers.ResourceServer, 0, len(results))
+		for _, row := range results {
+			rs, err := buildResourceServerFromResultRow(row)
+			if err != nil {
+				return fmt.Errorf("failed to build resource server: %w", err)
+			}
+			resourceServers = append(resourceServers, rs)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resourceServers, nil
+}
+
+// GetResourceServerListCountByOUID retrieves the total count of resource servers owned by an organization unit.
+func (s *resourceStore) GetResourceServerListCountByOUID(ctx context.Context, ouID string) (int, error) {
+	var count int
+	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
+		results, err := dbClient.QueryContext(ctx, queryGetResourceServerListCountByOUID, ouID, s.scope(ctx))
+		if err != nil {
+			return fmt.Errorf("failed to get resource server count by organization unit: %w", err)
+		}
+
+		count, err = parseCountResult(results)
+		return err
+	})
+	return count, err
+}
+
+// GetResourceServerListByProject retrieves the resource servers of a project with pagination, narrowed to
+// the ones an organization unit owns when ouID is set.
+func (s *resourceStore) GetResourceServerListByProject(
+	ctx context.Context, projectID, ouID string, limit, offset int,
+) ([]providers.ResourceServer, error) {
+	var resourceServers []providers.ResourceServer
+	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
+		var results []map[string]interface{}
+		var err error
+		if ouID == "" {
+			results, err = dbClient.QueryContext(
+				ctx, queryGetResourceServerListByProject, projectID, limit, offset, s.scope(ctx))
+		} else {
+			results, err = dbClient.QueryContext(ctx, queryGetResourceServerListByProjectAndOUID,
+				projectID, ouID, limit, offset, s.scope(ctx))
+		}
+		if err != nil {
+			return fmt.Errorf("failed to get resource server list by project: %w", err)
+		}
+
+		resourceServers = make([]providers.ResourceServer, 0, len(results))
+		for _, row := range results {
+			rs, err := buildResourceServerFromResultRow(row)
+			if err != nil {
+				return fmt.Errorf("failed to build resource server: %w", err)
+			}
+			resourceServers = append(resourceServers, rs)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resourceServers, nil
+}
+
+// GetResourceServerListCountByProject retrieves the total count of the resource servers of a project,
+// narrowed to the ones an organization unit owns when ouID is set.
+func (s *resourceStore) GetResourceServerListCountByProject(
+	ctx context.Context, projectID, ouID string,
+) (int, error) {
+	var count int
+	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
+		var results []map[string]interface{}
+		var err error
+		if ouID == "" {
+			results, err = dbClient.QueryContext(ctx, queryGetResourceServerListCountByProject, projectID, s.scope(ctx))
+		} else {
+			results, err = dbClient.QueryContext(ctx, queryGetResourceServerListCountByProjectAndOUID,
+				projectID, ouID, s.scope(ctx))
+		}
+		if err != nil {
+			return fmt.Errorf("failed to get resource server count by project: %w", err)
+		}
+
+		count, err = parseCountResult(results)
+		return err
+	})
+	return count, err
+}
+
 // UpdateResourceServer updates a resource server.
 func (s *resourceStore) UpdateResourceServer(ctx context.Context, id string, rs providers.ResourceServer) error {
 	return s.withDBClient(func(dbClient provider.DBClientInterface) error {
@@ -192,6 +308,7 @@ func (s *resourceStore) UpdateResourceServer(ctx context.Context, id string, rs 
 			ctx,
 			queryUpdateResourceServer,
 			rs.OUID,
+			resolveNullableString(rs.ProjectID),
 			rs.Name,
 			rs.Description,
 			resolveNullableString(rs.Identifier),
@@ -235,17 +352,29 @@ func (s *resourceStore) CheckResourceServerNameExists(ctx context.Context, name 
 	return exists, err
 }
 
-// CheckResourceServerIdentifierExists checks if a resource server identifier exists.
+// CheckResourceServerIdentifierExists checks if a resource server identifier equivalent to the given one exists.
 func (s *resourceStore) CheckResourceServerIdentifierExists(ctx context.Context, identifier string) (bool, error) {
 	var exists bool
 	err := s.withDBClient(func(dbClient provider.DBClientInterface) error {
-		results, err := dbClient.QueryContext(ctx, queryCheckResourceServerIdentifierExists, identifier, s.scope(ctx))
+		normalized := normalizeResourceIdentifier(identifier)
+		lowered := strings.ToLower(normalized)
+		results, err := dbClient.QueryContext(ctx, queryCheckResourceServerIdentifierExists,
+			identifier, lowered, strings.TrimSuffix(lowered, "/"), s.scope(ctx))
 		if err != nil {
 			return fmt.Errorf("failed to check resource server identifier: %w", err)
 		}
 
-		exists, err = parseBoolFromCount(results)
-		return err
+		for _, row := range results {
+			existing, ok := row["identifier"].(string)
+			if !ok {
+				return fmt.Errorf("identifier field is missing or invalid")
+			}
+			if normalizeResourceIdentifier(existing) == normalized {
+				exists = true
+				return nil
+			}
+		}
+		return nil
 	})
 	return exists, err
 }
@@ -818,6 +947,39 @@ func (s *resourceStore) CheckActionHandleExists(
 	return exists, err
 }
 
+// GetDeclaredPermissions retrieves covered resources and their actions in a single query.
+func (s *resourceStore) GetDeclaredPermissions(
+	ctx context.Context, resServerID string, roots []string, delimiter string,
+) ([]string, error) {
+	if len(roots) == 0 {
+		return nil, nil
+	}
+	encoded, err := json.Marshal(roots)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode permission roots: %w", err)
+	}
+	permissions := []string{}
+	err = s.withDBClient(func(client provider.DBClientInterface) error {
+		rows, queryErr := client.QueryContext(ctx, queryGetDeclaredPermissions,
+			resServerID, s.scope(ctx), string(encoded), delimiter)
+		if queryErr != nil {
+			return queryErr
+		}
+		for _, row := range rows {
+			permission, ok := row["permission"].(string)
+			if !ok {
+				return fmt.Errorf("permission field is missing or invalid in query result")
+			}
+			permissions = append(permissions, permission)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list declared permissions: %w", err)
+	}
+	return permissions, nil
+}
+
 // ValidatePermissions validates that permissions exist for a given resource server.
 // Returns array of invalid permissions (empty if all are valid).
 func (s *resourceStore) ValidatePermissions(
@@ -952,6 +1114,7 @@ func resolveProperties(row map[string]interface{}, rs *providers.ResourceServer)
 		if len(propsBytes) > 0 {
 			if err := json.Unmarshal(propsBytes, &props); err == nil {
 				rs.Delimiter = props.Delimiter
+				rs.HierarchicalPermissions = props.HierarchicalPermissions
 				if props.AuthorizationEngine != nil {
 					rs.AuthorizationEngine = *props.AuthorizationEngine
 				}
@@ -962,7 +1125,10 @@ func resolveProperties(row map[string]interface{}, rs *providers.ResourceServer)
 
 // buildPropertiesJSON builds the PROPERTIES JSON for a providers.ResourceServer.
 func buildPropertiesJSON(rs providers.ResourceServer) interface{} {
-	properties := resourceServerProperties{Delimiter: rs.Delimiter}
+	properties := resourceServerProperties{
+		Delimiter:               rs.Delimiter,
+		HierarchicalPermissions: rs.HierarchicalPermissions,
+	}
 	if rs.AuthorizationEngine.Type != "" || rs.AuthorizationEngine.Properties.PDPConnectionID != "" {
 		properties.AuthorizationEngine = &rs.AuthorizationEngine
 	}
@@ -1018,6 +1184,10 @@ func buildResourceServerFromResultRow(row map[string]interface{}) (providers.Res
 		rs.OUID = ouID
 	} else {
 		return rs, fmt.Errorf("ou_id field is missing or invalid")
+	}
+
+	if projectID, ok := row["project_id"].(string); ok {
+		rs.ProjectID = projectID
 	}
 
 	if name, ok := row["name"].(string); ok {

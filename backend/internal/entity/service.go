@@ -15,11 +15,16 @@ import (
 
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/sharing"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
+	"github.com/thunder-id/thunderid/internal/system/observability/event"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -42,18 +47,28 @@ type EntityServiceInterface interface {
 	// each credential the entity type declares. A credential with no value there is left out.
 	GetDeclaredCredentialValues(ctx context.Context, category providers.EntityCategory, entityType string,
 		attributes json.RawMessage) (map[string]string, error)
+	// UpdateEntity fully updates an entity. An entity with no project ID keeps its stored project, unlike
+	// UpdateOwnership, which treats an empty project ID as no project.
 	UpdateEntity(ctx context.Context, entityID string, entity *providers.Entity) (*providers.Entity, error)
 	DeleteEntity(ctx context.Context, entityID string) error
 
 	// Partial updates
 	UpdateAttributes(ctx context.Context, entityID string, attributes json.RawMessage) error
 	UpdateSystemAttributes(ctx context.Context, entityID string, attrs json.RawMessage) error
+	// UpdateOwnership moves an entity to another organization unit and project. An empty projectID
+	// leaves the entity in no project.
+	UpdateOwnership(ctx context.Context, entityID, ouID, projectID string) error
 
 	// Credentials
+	// ValidateCredentials checks schema-defined credential updates as UpdateCredentials does, writing nothing.
+	ValidateCredentials(ctx context.Context, entityID string, plaintextUpdates json.RawMessage) error
 	UpdateCredentials(ctx context.Context, entityID string,
 		plaintextUpdates json.RawMessage) error
 	UpdateSystemCredentials(ctx context.Context, entityID string,
 		plaintextUpdates json.RawMessage) error
+	// RemoveCredential removes the stored values of one declared credential and returns the credential
+	// marker it wrote.
+	RemoveCredential(ctx context.Context, entityID, credentialType string) (string, error)
 	// SetValidUntil sets the reserved validUntil system attribute alone. Only the service that owns
 	// the entity type calls it, today the agent service, after authorizing and validating the change.
 	SetValidUntil(ctx context.Context, entityID string, validUntil string) error
@@ -64,6 +79,9 @@ type EntityServiceInterface interface {
 	GetLinkedEntities(ctx context.Context, idpID, sub string) ([]providers.Entity, error)
 	LinkAccount(ctx context.Context, entityID, idpID, sub string) error
 	SearchEntities(ctx context.Context, filters map[string]interface{}) ([]providers.Entity, error)
+	// EntityOUs returns the organization units an entity is in: its own first, then, when its category can be
+	// shared, the ones it is shared into. found is false when the store holds no entity with that ID.
+	EntityOUs(ctx context.Context, entityID string) (ouIDs []string, found bool, err error)
 
 	// Lists (category-scoped)
 	GetEntityListCount(ctx context.Context, category providers.EntityCategory,
@@ -74,6 +92,11 @@ type EntityServiceInterface interface {
 		ouIDs []string, filters map[string]interface{}) (int, error)
 	GetEntityListByOUIDs(ctx context.Context, category providers.EntityCategory,
 		ouIDs []string, limit, offset int, filters map[string]interface{}) ([]providers.Entity, error)
+	GetEntityListCountByProject(ctx context.Context, category providers.EntityCategory,
+		projectID string, ouIDs []string) (int, error)
+	GetEntityListByProject(ctx context.Context, category providers.EntityCategory,
+		projectID string, ouIDs []string, limit, offset int) ([]providers.Entity, error)
+	ProjectHasEntities(ctx context.Context, projectID string) (bool, error)
 	// GetEntityPageInOU lists the entities of a category an organization unit owns, in the store's list
 	// order, then the ones shared into it.
 	GetEntityPageInOU(ctx context.Context, category providers.EntityCategory, ouID string,
@@ -86,6 +109,8 @@ type EntityServiceInterface interface {
 		sysQuery SystemAttributeQuery, ouIDs []string) (int, error)
 	GetEntityListBySystemAttributesAndOUIDs(ctx context.Context, category providers.EntityCategory,
 		sysQuery SystemAttributeQuery, ouIDs []string, limit, offset int) ([]providers.Entity, error)
+	GetEntityListByType(ctx context.Context, category providers.EntityCategory, entityType string,
+		limit int) ([]providers.Entity, error)
 
 	// Bulk
 	ValidateEntityIDs(ctx context.Context, entityIDs []string) ([]string, error)
@@ -123,6 +148,20 @@ type EntityServiceInterface interface {
 	// false when the category cannot be shared.
 	GetSharedResourceType(category providers.EntityCategory) (sharing.ResourceType, bool)
 
+	// Client secrets
+	// RegisterClientSecretHolder names the service that decides whether the client secret of an entity of
+	// the category may be regenerated.
+	RegisterClientSecretHolder(category providers.EntityCategory, holder ClientSecretHolderInterface)
+	// RegenerateClientSecret replaces the entity's client secret with a generated one, revoking what the
+	// old one issued, and returns it.
+	RegenerateClientSecret(ctx context.Context, category providers.EntityCategory, entityID string) (
+		*ClientSecretRegeneration, *tidcommon.ServiceError)
+	// RotateClientSecret runs write, which replaces the entity's client secret, between the flows that revoke
+	// what the entity's OAuth client issued before it. A failure of the flow after the write is returned as
+	// revocationErr, since the secret is stored by then.
+	RotateClientSecret(ctx context.Context, entityID string, write func() *tidcommon.ServiceError) (
+		svcErr, revocationErr *tidcommon.ServiceError)
+
 	// Runtime state, used by the governance service.
 	GetGovernedEntity(ctx context.Context, entityID string,
 		seedMissing bool) (*identitygovernance.GovernedEntity, error)
@@ -135,8 +174,17 @@ type EntityServiceInterface interface {
 		revision int64) (bool, error)
 	RecordLogin(ctx context.Context, entityID string, at, notBefore time.Time) error
 	SetSuspension(ctx context.Context, entityID string, at time.Time, operatorNote string) (bool, error)
+	SetOwnerSuspension(ctx context.Context, entityID string, at time.Time) (bool, error)
+	ClearOwnerSuspension(ctx context.Context, entityID string) (bool, error)
+	SetCascadeSuspension(ctx context.Context, entityID string, at time.Time) (bool, error)
+	ClearCascadeSuspension(ctx context.Context, entityID string) (bool, error)
 	ClearSuspension(ctx context.Context, entityID string, hold *identitygovernance.AccountHold,
 		suspendedAt string) (bool, error)
+
+	// Attribute verification
+	// RecordAttributeVerification records the attribute as verified while the entity has the record's type
+	// and the attribute's canonical value is the record's value.
+	RecordAttributeVerification(ctx context.Context, record AttributeVerificationRecord) (bool, error)
 }
 
 // GroupMembershipProvider resolves group memberships for entities. Implemented by the group
@@ -147,7 +195,8 @@ type GroupMembershipProvider interface {
 	GetTransitiveAncestorGroups(ctx context.Context, groupID string) ([]string, error)
 }
 
-// entityService is the default implementation of EntityServiceInterface.
+// entityService is the default implementation of EntityServiceInterface. The entity service trusts its
+// caller; the flow-facing provider and the domain services are the boundaries.
 type entityService struct {
 	store                   entityStoreInterface
 	runtimeStore            entityRuntimeStoreInterface
@@ -157,8 +206,13 @@ type entityService struct {
 	sharingService          sharing.SharingServiceInterface
 	sharedTypes             map[providers.EntityCategory]sharing.ResourceType
 	transactioner           providers.Transactioner
+	observability           providers.ObservabilityProvider
 	logger                  *log.Logger
 	groupMembershipProvider GroupMembershipProvider
+	// secretHolders decide, by entity category, whether a client secret may be regenerated.
+	secretHolders map[providers.EntityCategory]ClientSecretHolderInterface
+	// systemFlows is nil where system flows are off.
+	systemFlows systemFlowProvider
 }
 
 // usesEntityType reports whether entities of the given category route through the entity type
@@ -176,6 +230,7 @@ func newEntityService(
 	ouService ou.OrganizationUnitServiceInterface,
 	transactioner providers.Transactioner,
 	sharingService sharing.SharingServiceInterface,
+	observabilitySvc providers.ObservabilityProvider,
 ) EntityServiceInterface {
 	return &entityService{
 		store:             store,
@@ -185,7 +240,9 @@ func newEntityService(
 		ouService:         ouService,
 		sharingService:    sharingService,
 		sharedTypes:       map[providers.EntityCategory]sharing.ResourceType{},
+		secretHolders:     map[providers.EntityCategory]ClientSecretHolderInterface{},
 		transactioner:     transactioner,
+		observability:     observabilitySvc,
 		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, "EntityService")),
 	}
 }
@@ -201,7 +258,7 @@ func (s *entityService) CreateEntity(ctx context.Context, entity *providers.Enti
 	if link != nil && (link.IdpID == "" || link.Sub == "") {
 		return nil, ErrBadAttributesInRequest
 	}
-	sysAttrs, err := withoutLinkedIDs(entity.SystemAttributes)
+	sysAttrs, err := s.withoutCreateProtectedAttributes(entity.SystemAttributes)
 	if err != nil {
 		return nil, err
 	}
@@ -315,7 +372,12 @@ func (s *entityService) GetCredentialsByType(
 	if err != nil {
 		return nil, err
 	}
+	return credentialsOfType(result, credType)
+}
 
+// credentialsOfType returns the stored credentials of credType in a read entity. A system credential of the
+// type replaces a schema one.
+func credentialsOfType(result *entityWithCredentials, credType string) ([]StoredCredential, error) {
 	var creds []StoredCredential
 	if len(result.SchemaCredentials) > 0 {
 		var schemaMap map[string][]StoredCredential
@@ -349,6 +411,11 @@ func (s *entityService) GetHeldCredentialTypes(ctx context.Context, entityID str
 	if result == nil || result.Entity == nil {
 		return nil, ErrEntityNotFound
 	}
+	return s.heldCredentialTypes(ctx, result)
+}
+
+// heldCredentialTypes returns the credentials the type of a read entity declares that it holds a value for.
+func (s *entityService) heldCredentialTypes(ctx context.Context, result *entityWithCredentials) ([]string, error) {
 	declared, err := s.declaredCredentialTypes(ctx, result.Entity.Category, result.Entity.Type)
 	if err != nil || len(declared) == 0 {
 		return nil, err
@@ -398,7 +465,7 @@ func (s *entityService) GetDeclaredCredentialValues(ctx context.Context, categor
 	return credentialValues(declared, attrsMap), nil
 }
 
-// UpdateEntity updates an entity.
+// UpdateEntity updates an entity. An entity with no project ID keeps its stored project.
 // Uses a transaction to ensure the entity update and identifier re-sync are atomic.
 // The entity's state is not written: lifecycle state lives in the runtime store.
 func (s *entityService) UpdateEntity(
@@ -442,14 +509,31 @@ func (s *entityService) UpdateEntity(
 		return nil, err
 	}
 
+	verifiableAttributes, err := s.verifiableAttributesOf(ctx, entity.Category, entity.Type)
+	if err != nil {
+		return nil, err
+	}
+
 	var updated providers.Entity
+	var cleared []clearedVerification
 	err = s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		entity.ID = entityID
-		preserved, prErr := s.mergeReservedAttributes(txCtx, entityID, entity.SystemAttributes)
+		current, lockErr := s.store.LockEntity(txCtx, entityID)
+		if lockErr != nil {
+			return lockErr
+		}
+
+		preserved, prErr := s.mergeReservedAttributes(current.SystemAttributes, entity.SystemAttributes)
 		if prErr != nil {
 			return prErr
 		}
-		entity.SystemAttributes = preserved
+
+		var invalidateErr error
+		entity.SystemAttributes, cleared, invalidateErr = s.invalidateVerification(current, entity.Type,
+			verifiableAttributes, entity.Attributes, preserved)
+		if invalidateErr != nil {
+			return invalidateErr
+		}
 
 		if err := s.store.UpdateEntity(txCtx, entity); err != nil {
 			return err
@@ -457,13 +541,17 @@ func (s *entityService) UpdateEntity(
 
 		// Merge extracted schema credentials with existing credentials.
 		if len(schemaCredsJSON) > 0 {
-			existing, getErr := s.store.GetEntityWithCredentials(txCtx, entityID)
+			// Read from the store under the lock, so a cached copy cannot restore a removed credential.
+			existing, getErr := s.store.LockEntityWithCredentials(txCtx, entityID)
 			if getErr != nil {
 				return getErr
 			}
 
 			mergedCreds := mergeCredentialJSON(existing.SchemaCredentials, schemaCredsJSON)
 			if err := s.store.UpdateCredentials(txCtx, entityID, mergedCreds); err != nil {
+				return err
+			}
+			if _, err := s.stampCredentialMarker(txCtx, entityID, entity.SystemAttributes); err != nil {
 				return err
 			}
 		}
@@ -479,29 +567,42 @@ func (s *entityService) UpdateEntity(
 		return nil, err
 	}
 
+	s.publishClearedVerifications(ctx, entityID, cleared)
+
 	entities := []providers.Entity{updated}
 	applyRuntimeData(entities, runtimeRecords)
 	return &entities[0], nil
 }
 
-// DeleteEntity deletes an entity.
-// Uses a transaction to ensure the entity row and its indexed identifiers are deleted atomically.
+// DeleteEntity deletes an entity, revoking what was issued to it as a subject and ending its sessions.
+// Uses a transaction to ensure the entity row and its indexed identifiers are deleted atomically. A failure
+// to revoke after the deletion is logged and the deletion reported as done, since the entity is gone and
+// deleting again could not revoke anything more.
 func (s *entityService) DeleteEntity(ctx context.Context, entityID string) error {
 	s.logger.Debug(ctx, "Deleting entity", log.MaskedString("id", entityID))
-	err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
-		return s.store.DeleteEntity(txCtx, entityID)
-	})
-	if err != nil {
-		return err
-	}
+	err := s.revokeAround(ctx, entityID, systemFlowEntityDeletePre, systemFlowRevocationPost, func() error {
+		err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+			return s.store.DeleteEntity(txCtx, entityID)
+		})
+		if err != nil {
+			return err
+		}
 
-	// Deleted after the entity commit, so a failed entity delete never loses its holds. A row left
-	// behind is reset by a later create at the same id.
-	if err := s.runtimeStore.DeleteRuntimeData(ctx, entityID); err != nil {
-		s.logger.Warn(ctx, "Failed to delete entity runtime data", log.MaskedString("id", entityID),
-			log.Error(err))
+		// Deleted after the entity commit, so a failed entity delete never loses its holds. A row left
+		// behind is reset by a later create at the same id.
+		if err := s.runtimeStore.DeleteRuntimeData(ctx, entityID); err != nil {
+			s.logger.Warn(ctx, "Failed to delete entity runtime data", log.MaskedString("id", entityID),
+				log.Error(err))
+		}
+		return nil
+	})
+	if errors.Is(err, ErrRevocationIncomplete) {
+		s.logger.Error(ctx, "The entity was deleted, but revoking what was issued to it while it was deleted "+
+			"failed; a token issued in that window can stay valid until it expires",
+			log.MaskedString("id", entityID), log.Error(err))
+		return nil
 	}
-	return nil
+	return err
 }
 
 // UpdateAttributes updates only the schema attributes of an entity.
@@ -544,23 +645,56 @@ func (s *entityService) UpdateAttributes(ctx context.Context, entityID string, a
 	// entityForExtraction.Attributes has credential fields removed.
 	cleanedAttrs := entityForExtraction.Attributes
 
-	return s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+	var cleared []clearedVerification
+	typeUnchanged, err := s.transactOnLockedEntity(ctx, existing, func(txCtx context.Context,
+		current providers.Entity, verifiableAttributes map[string]string) error {
+		var invalidated json.RawMessage
+		var err error
+		invalidated, cleared, err = s.invalidateVerification(current, current.Type, verifiableAttributes,
+			cleanedAttrs, current.SystemAttributes)
+		if err != nil {
+			return err
+		}
+
 		if err := s.store.UpdateAttributes(txCtx, entityID, cleanedAttrs); err != nil {
 			return err
 		}
 
+		if len(cleared) > 0 {
+			if err := s.store.UpdateSystemAttributes(txCtx, entityID, invalidated); err != nil {
+				return err
+			}
+		}
+
 		// Merge extracted schema credentials with existing credentials.
 		if len(schemaCredsJSON) > 0 {
-			existingWithCreds, getErr := s.store.GetEntityWithCredentials(txCtx, entityID)
+			// Read from the store under the lock, so a cached copy cannot restore a removed credential.
+			existingWithCreds, getErr := s.store.LockEntityWithCredentials(txCtx, entityID)
 			if getErr != nil {
 				return getErr
 			}
 			mergedCreds := mergeCredentialJSON(existingWithCreds.SchemaCredentials, schemaCredsJSON)
-			return s.store.UpdateCredentials(txCtx, entityID, mergedCreds)
+			if err := s.store.UpdateCredentials(txCtx, entityID, mergedCreds); err != nil {
+				return err
+			}
+			// Stamped over the system attributes this transaction wrote, so a cleared verification is kept.
+			_, err := s.stampCredentialMarker(txCtx, entityID, invalidated)
+			return err
 		}
 
 		return nil
 	})
+	if err != nil {
+		return err
+	}
+
+	// The attributes were validated against the type read before the lock.
+	if !typeUnchanged {
+		return ErrSchemaValidationFailed
+	}
+
+	s.publishClearedVerifications(ctx, entityID, cleared)
+	return nil
 }
 
 // UpdateSystemAttributes updates the system-managed attributes of an entity.
@@ -571,12 +705,23 @@ func (s *entityService) UpdateSystemAttributes(ctx context.Context, entityID str
 		return err
 	}
 	return s.transactioner.Transact(ctx, func(txCtx context.Context) error {
-		preserved, err := s.mergeReservedAttributes(txCtx, entityID, attrs)
+		current, err := s.store.LockEntity(txCtx, entityID)
+		if err != nil {
+			return err
+		}
+
+		preserved, err := s.mergeReservedAttributes(current.SystemAttributes, attrs)
 		if err != nil {
 			return err
 		}
 		return s.store.UpdateSystemAttributes(txCtx, entityID, preserved)
 	})
+}
+
+// UpdateOwnership moves an entity to another organization unit and project.
+func (s *entityService) UpdateOwnership(ctx context.Context, entityID, ouID, projectID string) error {
+	s.logger.Debug(ctx, "Updating entity ownership", log.MaskedString("id", entityID))
+	return s.store.UpdateOwnership(ctx, entityID, ouID, projectID)
 }
 
 // SetValidUntil sets the entity's lifespan end, which every other system-attribute write carries
@@ -588,23 +733,130 @@ func (s *entityService) SetValidUntil(ctx context.Context, entityID string, vali
 	})
 }
 
-// IdentifyEntity identifies an entity using the given filters.
+// IdentifyEntity identifies an entity using the given filters. When a sign-in has fixed its organization unit, only
+// users in it are considered, so a username another unit also uses still identifies one user.
 func (s *entityService) IdentifyEntity(ctx context.Context,
 	filters map[string]interface{}) (*string, error) {
-	id, err := s.store.IdentifyEntity(ctx, filters)
+	ouID := signInOU(ctx)
+	if ouID == "" {
+		id, err := s.store.IdentifyEntity(ctx, filters)
+		if err != nil {
+			return nil, err
+		}
+		return id, nil
+	}
+
+	// A search without filters lists every entity, which identifies none of them.
+	if len(filters) == 0 {
+		return nil, ErrEntityNotFound
+	}
+	entities, err := s.searchInOU(ctx, filters, ouID)
 	if err != nil {
 		return nil, err
 	}
-	return id, nil
+	if len(entities) > 1 {
+		return nil, ErrAmbiguousEntity
+	}
+	return &entities[0].ID, nil
 }
 
-// ResolveLinkedAccounts returns the entities linked to an identity provider subject. A subject no
-// entity is linked to returns an empty list.
+// EntityOUs returns the organization units an entity is in: its own first, then, when its category can be shared,
+// the ones it is shared into. found is false when the store holds no entity with that ID.
+func (s *entityService) EntityOUs(ctx context.Context, entityID string) ([]string, bool, error) {
+	e, err := s.store.GetEntity(ctx, entityID)
+	if errors.Is(err, ErrEntityNotFound) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	ouIDs := []string{e.OUID}
+	if resourceType, ok := s.sharedTypes[e.Category]; ok {
+		shared, svcErr := s.sharingService.ListResourceSharedOUIDs(ctx, resourceType, e.ID)
+		if svcErr != nil {
+			return nil, false, fmt.Errorf("failed to list the organization units the entity is shared into: %s",
+				svcErr.Error.DefaultValue)
+		}
+		// The reach comes in no particular order, so it is sorted for a stable list.
+		slices.Sort(shared)
+		ouIDs = append(ouIDs, shared...)
+	}
+	return ouIDs, true, nil
+}
+
+// signInOU returns the organization unit a sign-in on the context has fixed, or "" when lookups run
+// deployment-wide.
+func signInOU(ctx context.Context) string {
+	b, _ := authnprovidercm.SignInBoundaryFrom(ctx)
+	return b.OUID
+}
+
+// searchInOU searches for the entities the filters match, leaving out entities not in the organization unit.
+func (s *entityService) searchInOU(ctx context.Context, filters map[string]interface{},
+	ouID string) ([]providers.Entity, error) {
+	entities, err := s.store.SearchEntities(ctx, filters)
+	if err != nil {
+		return nil, err
+	}
+	inside, err := s.keepInOU(ctx, entities, ouID)
+	if err != nil {
+		return nil, err
+	}
+	if len(inside) == 0 {
+		return nil, ErrEntityNotFound
+	}
+	return inside, nil
+}
+
+// keepInOU leaves out entities the organization unit neither owns nor, for a category that can be shared, is
+// shared with.
+func (s *entityService) keepInOU(ctx context.Context, entities []providers.Entity,
+	ouID string) ([]providers.Entity, error) {
+	inside := make([]providers.Entity, 0, len(entities))
+	for _, e := range entities {
+		if e.OUID != ouID {
+			resourceType, shareable := s.sharedTypes[e.Category]
+			if !shareable {
+				continue
+			}
+			shared, svcErr := s.sharingService.IsVisible(ctx, resourceType, e.ID, ouID)
+			if svcErr != nil {
+				return nil, fmt.Errorf("failed to check whether the entity is shared into the organization unit: %s",
+					svcErr.Error.DefaultValue)
+			}
+			if !shared {
+				continue
+			}
+		}
+		inside = append(inside, e)
+	}
+	return inside, nil
+}
+
+// ResolveLinkedAccounts returns the entities linked to an identity provider subject, leaving out entities not in the
+// organization unit a sign-in has fixed. A subject no entity is linked to returns an empty list.
 func (s *entityService) ResolveLinkedAccounts(ctx context.Context, idpID, sub string) ([]string, error) {
 	if idpID == "" || sub == "" {
 		return nil, ErrBadAttributesInRequest
 	}
-	return s.store.ResolveLinkedAccounts(ctx, idpID, sub)
+	entityIDs, err := s.store.ResolveLinkedAccounts(ctx, idpID, sub)
+	ouID := signInOU(ctx)
+	if err != nil || ouID == "" || len(entityIDs) == 0 {
+		return entityIDs, err
+	}
+	entities, err := s.store.GetEntitiesByIDs(ctx, entityIDs)
+	if err != nil {
+		return nil, err
+	}
+	inside, err := s.keepInOU(ctx, entities, ouID)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(inside))
+	for _, e := range inside {
+		ids = append(ids, e.ID)
+	}
+	return ids, nil
 }
 
 // GetLinkedEntities returns the entities linked to an identity provider subject, with their OUHandle
@@ -629,7 +881,7 @@ func (s *entityService) LinkAccount(ctx context.Context, entityID, idpID, sub st
 		return ErrBadAttributesInRequest
 	}
 	s.logger.Debug(ctx, "Linking account", log.MaskedString("id", entityID),
-		log.String("idpId", idpID))
+		log.String(log.LoggerKeyIDPID, idpID))
 
 	return s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		current, err := s.store.LockEntity(txCtx, entityID)
@@ -645,11 +897,18 @@ func (s *entityService) LinkAccount(ctx context.Context, entityID, idpID, sub st
 	})
 }
 
-// SearchEntities searches for all entities matching the provided filters. The returned
-// entities have their OUHandle populated for presentation/disambiguation consumers.
+// SearchEntities searches for all entities matching the provided filters, leaving out entities not in the
+// organization unit a sign-in has fixed. The returned entities have their OUHandle populated for
+// presentation/disambiguation consumers.
 func (s *entityService) SearchEntities(ctx context.Context,
 	filters map[string]interface{}) ([]providers.Entity, error) {
-	entities, err := s.store.SearchEntities(ctx, filters)
+	var entities []providers.Entity
+	var err error
+	if ouID := signInOU(ctx); ouID != "" {
+		entities, err = s.searchInOU(ctx, filters, ouID)
+	} else {
+		entities, err = s.store.SearchEntities(ctx, filters)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -696,6 +955,32 @@ func (s *entityService) GetEntityListByOUIDs(ctx context.Context, category provi
 		return nil, err
 	}
 	return entities, nil
+}
+
+// GetEntityListCountByProject retrieves the number of entities of a category in a project, narrowed to
+// the given organization units when ouIDs is not nil.
+func (s *entityService) GetEntityListCountByProject(ctx context.Context, category providers.EntityCategory,
+	projectID string, ouIDs []string) (int, error) {
+	return s.store.GetEntityListCountByProject(ctx, string(category), projectID, ouIDs)
+}
+
+// GetEntityListByProject retrieves a page of the entities of a category in a project, narrowed to
+// the given organization units when ouIDs is not nil.
+func (s *entityService) GetEntityListByProject(ctx context.Context, category providers.EntityCategory,
+	projectID string, ouIDs []string, limit, offset int) ([]providers.Entity, error) {
+	entities, err := s.store.GetEntityListByProject(ctx, string(category), projectID, ouIDs, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.populateRuntime(ctx, entities); err != nil {
+		return nil, err
+	}
+	return entities, nil
+}
+
+// ProjectHasEntities reports whether any entity, of any category, is in a project.
+func (s *entityService) ProjectHasEntities(ctx context.Context, projectID string) (bool, error) {
+	return s.store.ProjectHasEntities(ctx, projectID)
 }
 
 // GetEntityPageInOU retrieves one page of the entities of a category an organization unit owns,
@@ -822,6 +1107,19 @@ func (s *entityService) GetEntityListBySystemAttributesAndOUIDs(ctx context.Cont
 	return entities, nil
 }
 
+// GetEntityListByType retrieves up to limit entities of a category that are of the given type.
+func (s *entityService) GetEntityListByType(ctx context.Context, category providers.EntityCategory,
+	entityType string, limit int) ([]providers.Entity, error) {
+	entities, err := s.store.GetEntityListByType(ctx, string(category), entityType, limit)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.populateRuntime(ctx, entities); err != nil {
+		return nil, err
+	}
+	return entities, nil
+}
+
 // ValidateEntityIDs checks if all provided entity IDs exist.
 func (s *entityService) ValidateEntityIDs(ctx context.Context, entityIDs []string) ([]string, error) {
 	return s.store.ValidateEntityIDs(ctx, entityIDs)
@@ -873,15 +1171,27 @@ func (s *entityService) GetSharedResourceType(category providers.EntityCategory)
 	return resourceType, ok
 }
 
-// GetTransitiveEntityGroups retrieves all groups an entity belongs to, including nested group membership.
-// Delegates entirely to the group membership provider which covers both DB and declarative groups.
+// GetTransitiveEntityGroups retrieves all groups an entity belongs to, including nested group membership,
+// leaving out groups the organization unit a sign-in has fixed does not own, since groups are never shared.
+// Delegates the lookup to the group membership provider which covers both DB and declarative groups.
 func (s *entityService) GetTransitiveEntityGroups(
 	ctx context.Context, entityID string,
 ) ([]providers.EntityGroup, error) {
 	if s.groupMembershipProvider == nil {
 		return []providers.EntityGroup{}, nil
 	}
-	return s.groupMembershipProvider.GetTransitiveGroupsForEntity(ctx, entityID)
+	groups, err := s.groupMembershipProvider.GetTransitiveGroupsForEntity(ctx, entityID)
+	ouID := signInOU(ctx)
+	if err != nil || ouID == "" {
+		return groups, err
+	}
+	inOU := make([]providers.EntityGroup, 0, len(groups))
+	for _, group := range groups {
+		if group.OUID == ouID {
+			inOU = append(inOU, group)
+		}
+	}
+	return inOU, nil
 }
 
 // GetTransitiveGroupAncestors resolves the ancestor chain of a single group.
@@ -1048,41 +1358,102 @@ func (s *entityService) verifyOneCredential(ctx context.Context, credType, credV
 
 // UpdateCredentials updates schema-defined credentials (e.g., password) by hashing new
 // plaintext values and merging with existing stored credentials. Payload keys are
-// restricted to fields declared as credentials in the entity's schema.
+// restricted to fields declared as credentials in the entity's schema. An update that replaces a
+// credential the entity holds revokes what was issued to it as a subject and ends its sessions, even with
+// the value it holds, so a reset ends a session that was taken without the credential; one that sets a
+// credential for the first time replaces nothing, so it revokes nothing. A managed import re-sends the
+// credentials a control plane deployed on every apply, so there a value the entity already holds is not
+// written, and an apply that changes nothing revokes nothing.
 func (s *entityService) UpdateCredentials(ctx context.Context, entityID string,
 	plaintextUpdates json.RawMessage) error {
 	if len(plaintextUpdates) == 0 {
 		return nil
 	}
+	if err := s.ValidateCredentials(ctx, entityID, plaintextUpdates); err != nil {
+		return err
+	}
+	changes, replaces, err := s.credentialChanges(ctx, entityID, plaintextUpdates,
+		managedresource.IsManagedImport(ctx))
+	if err != nil || changes == nil {
+		return err
+	}
+	if !replaces {
+		return s.writeCredentials(ctx, entityID, changes)
+	}
+	return s.revokeAround(ctx, entityID, systemFlowCredentialUpdatePre, systemFlowCredentialUpdatePost,
+		func() error { return s.writeCredentials(ctx, entityID, changes) })
+}
 
-	// Parse and validate new credential updates.
-	var updates map[string]interface{}
+// credentialChanges reports whether the update replaces a credential the entity holds. With dropHeldValues
+// it first drops each value the entity already holds, and returns nil changes when nothing is left. A value
+// that cannot be compared with the stored one counts as a change.
+func (s *entityService) credentialChanges(ctx context.Context, entityID string, plaintextUpdates json.RawMessage,
+	dropHeldValues bool) (json.RawMessage, bool, error) {
+	var updates map[string]json.RawMessage
 	if err := json.Unmarshal(plaintextUpdates, &updates); err != nil {
-		return fmt.Errorf("%w: failed to parse credentials", ErrInvalidCredential)
+		return nil, false, fmt.Errorf("%w: failed to parse credentials", ErrInvalidCredential)
 	}
-
-	for credType, credValue := range updates {
-		switch v := credValue.(type) {
-		case string:
-			if strings.TrimSpace(v) == "" {
-				return fmt.Errorf("%w: empty value for credential type %q", ErrInvalidCredential, credType)
-			}
-		case nil:
-			return fmt.Errorf("%w: nil value for credential type %q", ErrInvalidCredential, credType)
-		default:
-			_ = v
-		}
-	}
-
-	// Load entity to route schema by category/type and enforce the credential-field allowlist.
-	existing, err := s.store.GetEntity(ctx, entityID)
+	// One read serves both the credentials held and the values they are compared with.
+	stored, err := s.store.GetEntityWithCredentials(ctx, entityID)
 	if err != nil {
-		return err
+		return nil, false, err
 	}
-	if err := s.validateCredentialKeys(ctx, existing.Category, existing.Type, updates); err != nil {
-		return err
+	if stored == nil || stored.Entity == nil {
+		return nil, false, ErrEntityNotFound
 	}
+	held, err := s.heldCredentialTypes(ctx, stored)
+	if err != nil {
+		return nil, false, err
+	}
+	replaces := false
+	for _, credType := range held {
+		value, ok := updates[credType]
+		if !ok {
+			continue
+		}
+		if !dropHeldValues {
+			replaces = true
+			continue
+		}
+		unchanged, err := s.holdsCredentialValue(ctx, stored, credType, value)
+		if err != nil {
+			return nil, false, err
+		}
+		if unchanged {
+			delete(updates, credType)
+			continue
+		}
+		replaces = true
+	}
+	if len(updates) == 0 {
+		return nil, false, nil
+	}
+	changes, err := json.Marshal(updates)
+	if err != nil {
+		return nil, false, fmt.Errorf("failed to marshal credential updates: %w", err)
+	}
+	return changes, replaces, nil
+}
 
+// holdsCredentialValue reports whether value, a plaintext credential of credType, matches one the entity
+// holds.
+func (s *entityService) holdsCredentialValue(ctx context.Context, result *entityWithCredentials, credType string,
+	value json.RawMessage) (bool, error) {
+	var plaintext string
+	if err := json.Unmarshal(value, &plaintext); err != nil || plaintext == "" {
+		return false, nil
+	}
+	stored, err := credentialsOfType(result, credType)
+	if err != nil {
+		return false, err
+	}
+	matched, _ := s.verifyOneCredential(ctx, credType, plaintext, stored)
+	return matched, nil
+}
+
+// writeCredentials hashes the validated plaintext credentials and merges them into the stored ones.
+func (s *entityService) writeCredentials(ctx context.Context, entityID string,
+	plaintextUpdates json.RawMessage) error {
 	// Hash new plaintext values.
 	hashedUpdates, err := s.hashPlaintextCredentials(plaintextUpdates)
 	if err != nil {
@@ -1094,9 +1465,9 @@ func (s *entityService) UpdateCredentials(ctx context.Context, entityID string,
 		return fmt.Errorf("failed to unmarshal hashed updates: %w", err)
 	}
 
-	// Fetch existing, merge, and store.
+	// Fetch existing under the entity's lock, merge, and store, so a concurrent credential write is kept.
 	return s.transactioner.Transact(ctx, func(txCtx context.Context) error {
-		existingWithCreds, err := s.store.GetEntityWithCredentials(txCtx, entityID)
+		existingWithCreds, err := s.store.LockEntityWithCredentials(txCtx, entityID)
 		if err != nil {
 			return err
 		}
@@ -1125,9 +1496,144 @@ func (s *entityService) UpdateCredentials(ctx context.Context, entityID string,
 		// Record the change so the refresh grant can reject tokens established before it. Every
 		// password change lands here, and the marker shares this transaction with the write. The blob
 		// is read under the entity's lock, since a cached copy could drop a concurrent link write.
-		return s.setReservedAttribute(txCtx, entityID, authnprovidercm.SystemAttrCredentialUpdatedAt,
-			time.Now().UTC().Format(time.RFC3339))
+		_, err = s.stampCredentialMarker(txCtx, entityID, existingWithCreds.Entity.SystemAttributes)
+		return err
 	})
+}
+
+// validateCredentialRemoval checks that the entity's type declares credentialType as a credential. A
+// type that declares none, or an entity without a type, has nothing to remove.
+func (s *entityService) validateCredentialRemoval(ctx context.Context, entityID, credentialType string) error {
+	existing, err := s.store.GetEntity(ctx, entityID)
+	if err != nil {
+		return err
+	}
+	declared, err := s.declaredCredentialTypes(ctx, existing.Category, existing.Type)
+	if err != nil {
+		return err
+	}
+	if !slices.Contains(declared, credentialType) {
+		return fmt.Errorf("%w: %q is not a declared credential", ErrInvalidCredential, credentialType)
+	}
+	return nil
+}
+
+// RemoveCredential removes the stored values of credentialType, keeping every other credential, so the
+// removed value no longer authenticates. As a replaced credential does, it revokes what was issued to the entity
+// before it and ends its sessions. A credential already absent is removed again without error. The
+// credential marker is written with sub-second precision, so a later change in the same second still
+// moves it; the refresh grant reads it to the second.
+func (s *entityService) RemoveCredential(ctx context.Context, entityID, credentialType string) (string, error) {
+	if err := s.validateCredentialRemoval(ctx, entityID, credentialType); err != nil {
+		return "", err
+	}
+
+	var marker string
+	err := s.revokeAround(ctx, entityID, systemFlowCredentialUpdatePre, systemFlowCredentialUpdatePost,
+		func() error {
+			var err error
+			marker, err = s.removeCredential(ctx, entityID, credentialType)
+			return err
+		})
+	if err != nil {
+		return "", err
+	}
+	return marker, nil
+}
+
+// removeCredential deletes the stored values of credentialType and returns the credential marker it wrote. It
+// reads the credentials under the entity's lock, so a concurrent credential write cannot restore the value, and
+// takes the marker under that lock.
+func (s *entityService) removeCredential(ctx context.Context, entityID, credentialType string) (string, error) {
+	var marker string
+	err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		existing, err := s.store.LockEntityWithCredentials(txCtx, entityID)
+		if err != nil {
+			return err
+		}
+
+		creds := make(map[string]any)
+		if len(existing.SchemaCredentials) > 0 {
+			if err := json.Unmarshal(existing.SchemaCredentials, &creds); err != nil {
+				return fmt.Errorf("failed to unmarshal existing credentials: %w", err)
+			}
+		}
+		delete(creds, credentialType)
+
+		remaining, err := json.Marshal(creds)
+		if err != nil {
+			return fmt.Errorf("failed to marshal remaining credentials: %w", err)
+		}
+		if err := s.store.UpdateCredentials(txCtx, entityID, remaining); err != nil {
+			return err
+		}
+		marker, err = s.stampCredentialMarker(txCtx, entityID, existing.Entity.SystemAttributes)
+		return err
+	})
+	if err != nil {
+		return "", err
+	}
+	return marker, nil
+}
+
+// stampCredentialMarker writes a new credential marker over systemAttributes, the system attributes the entity
+// holds under its lock, including any written earlier in the transaction, and returns it. The marker is always
+// later than the stored one, so no write repeats the marker a reset recorded.
+func (s *entityService) stampCredentialMarker(txCtx context.Context, entityID string,
+	systemAttributes json.RawMessage) (string, error) {
+	var attrs map[string]any
+	if len(systemAttributes) > 0 {
+		if err := json.Unmarshal(systemAttributes, &attrs); err != nil {
+			return "", fmt.Errorf("failed to unmarshal system attributes: %w", err)
+		}
+	}
+	now := time.Now().UTC()
+	stored, _ := attrs[authnprovidercm.SystemAttrCredentialUpdatedAt].(string)
+	if previous, err := time.Parse(time.RFC3339Nano, stored); err == nil && !now.After(previous) {
+		now = previous.Add(time.Nanosecond)
+	}
+	marker := now.Format(time.RFC3339Nano)
+
+	updated, err := withSystemAttribute(systemAttributes, authnprovidercm.SystemAttrCredentialUpdatedAt, marker)
+	if err != nil {
+		return "", err
+	}
+	if err := s.store.UpdateSystemAttributes(txCtx, entityID, updated); err != nil {
+		return "", err
+	}
+	return marker, nil
+}
+
+// ValidateCredentials checks schema-defined credential updates the way UpdateCredentials does, without
+// writing them: each value is non-empty, each key is a credential the entity's schema declares, and each
+// value meets its schema definition.
+func (s *entityService) ValidateCredentials(ctx context.Context, entityID string,
+	plaintextUpdates json.RawMessage) error {
+	var updates map[string]any
+	if err := json.Unmarshal(plaintextUpdates, &updates); err != nil {
+		return fmt.Errorf("%w: failed to parse credentials", ErrInvalidCredential)
+	}
+
+	for credType, credValue := range updates {
+		switch v := credValue.(type) {
+		case string:
+			if strings.TrimSpace(v) == "" {
+				return fmt.Errorf("%w: empty value for credential type %q", ErrInvalidCredential, credType)
+			}
+		case nil:
+			return fmt.Errorf("%w: nil value for credential type %q", ErrInvalidCredential, credType)
+		}
+	}
+
+	// Load entity to route schema by category/type and enforce the credential-field allowlist.
+	existing, err := s.store.GetEntity(ctx, entityID)
+	if err != nil {
+		return err
+	}
+	if err := s.validateCredentialKeys(ctx, existing.Category, existing.Type, updates); err != nil {
+		return err
+	}
+	return s.validateCredentialValues(ctx, existing.Category, existing.Type, plaintextUpdates)
 }
 
 // validateCredentialKeys rejects any payload key that isn't declared as a credential field
@@ -1147,6 +1653,29 @@ func (s *entityService) validateCredentialKeys(
 		if !slices.Contains(declared, key) {
 			return fmt.Errorf("%w: %q is not a declared credential", ErrInvalidCredential, key)
 		}
+	}
+	return nil
+}
+
+// validateCredentialValues checks new credential values against their schema definitions, such as a
+// password regex, the same way they are checked when the entity is created.
+func (s *entityService) validateCredentialValues(
+	ctx context.Context, category providers.EntityCategory, entityType string, credentials json.RawMessage,
+) error {
+	if !usesEntityType(category) || s.entityTypeService == nil {
+		return nil
+	}
+
+	isValid, svcErr := s.entityTypeService.ValidateEntityValues(ctx, entitytype.TypeCategory(category),
+		entityType, credentials)
+	if svcErr != nil {
+		if svcErr.Type == tidcommon.ServerErrorType {
+			return fmt.Errorf("failed to validate credential values against schema: %s", svcErr.ErrorDescription)
+		}
+		return fmt.Errorf("%w: %s", ErrSchemaValidationFailed, svcErr.ErrorDescription)
+	}
+	if !isValid {
+		return ErrSchemaValidationFailed
 	}
 	return nil
 }
@@ -1281,8 +1810,8 @@ func (s *entityService) UpdateSystemCredentials(ctx context.Context, entityID st
 	})
 }
 
-// withoutLinkedIDs returns systemAttributes without their linkedIds, unchanged when there are none.
-func withoutLinkedIDs(systemAttributes json.RawMessage) (json.RawMessage, error) {
+// withoutCreateProtectedAttributes drops incoming linked identities and verification metadata.
+func (s *entityService) withoutCreateProtectedAttributes(systemAttributes json.RawMessage) (json.RawMessage, error) {
 	if len(systemAttributes) == 0 {
 		return systemAttributes, nil
 	}
@@ -1290,10 +1819,12 @@ func withoutLinkedIDs(systemAttributes json.RawMessage) (json.RawMessage, error)
 	if err := json.Unmarshal(systemAttributes, &attrs); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal system attributes: %w", err)
 	}
-	if _, ok := attrs[authnprovidercm.SystemAttrLinkedIDs]; !ok {
+	count := len(attrs)
+	delete(attrs, authnprovidercm.SystemAttrLinkedIDs)
+	delete(attrs, systemAttrAttributeVerification)
+	if len(attrs) == count {
 		return systemAttributes, nil
 	}
-	delete(attrs, authnprovidercm.SystemAttrLinkedIDs)
 	stripped, err := json.Marshal(attrs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal system attributes: %w", err)
@@ -1426,16 +1957,19 @@ func (s *entityService) validateEntityType(
 	isValid, svcErr := s.entityTypeService.ValidateEntity(ctx, schemaCategory, entityType, attributes,
 		skipCredentialRequired)
 	if svcErr != nil {
+		if svcErr.Type == tidcommon.ServerErrorType {
+			return fmt.Errorf("failed to validate attributes against schema: %s", svcErr.ErrorDescription)
+		}
 		return fmt.Errorf("%w: %s", ErrSchemaValidationFailed, svcErr.ErrorDescription)
 	}
 	if !isValid {
 		return ErrSchemaValidationFailed
 	}
 
-	// Validate attribute uniqueness
+	// Validate attribute uniqueness. It reads the store, so a sign-in boundary does not narrow it.
 	isValid, svcErr = s.entityTypeService.ValidateEntityUniqueness(ctx, schemaCategory, entityType, attributes,
 		func(filters map[string]interface{}) (bool, error) {
-			id, err := s.IdentifyEntity(ctx, filters)
+			id, err := s.store.IdentifyEntity(ctx, filters)
 			if err != nil {
 				if errors.Is(err, ErrEntityNotFound) {
 					return false, nil // Not found = unique
@@ -1452,6 +1986,9 @@ func (s *entityService) validateEntityType(
 			return true, nil
 		})
 	if svcErr != nil {
+		if svcErr.Type == tidcommon.ServerErrorType {
+			return fmt.Errorf("failed to validate attribute uniqueness: %s", svcErr.ErrorDescription)
+		}
 		return fmt.Errorf("%w: %s", ErrAttributeConflict, svcErr.ErrorDescription)
 	}
 	if !isValid {
@@ -1479,15 +2016,10 @@ func (s *entityService) checkIDNotDeclarative(ctx context.Context, entityID stri
 // that own an entity rebuild it from their own model, so without this a rename would drop the
 // credential-change marker this package writes and revive the tokens a credential change invalidated.
 // A reserved key the caller sends is replaced by the stored value, or dropped when none is stored, so
-// only this package writes them. The entity is read under its lock rather than from the cache, so a
-// concurrent write to a reserved key is carried across instead of being overwritten.
-func (s *entityService) mergeReservedAttributes(ctx context.Context, entityID string,
-	incoming json.RawMessage) (json.RawMessage, error) {
-	current, err := s.store.LockEntity(ctx, entityID)
-	if err != nil {
-		return nil, err
-	}
-	preserved, err := reservedAttributesOf(current.SystemAttributes)
+// only this package writes them. The caller reads current under the entity's lock rather than from the
+// cache, so a concurrent write to a reserved key is carried across instead of being overwritten.
+func (s *entityService) mergeReservedAttributes(current, incoming json.RawMessage) (json.RawMessage, error) {
+	preserved, err := reservedAttributesOf(current)
 	if err != nil {
 		return nil, err
 	}
@@ -1829,11 +2361,80 @@ func (s *entityService) SetSuspension(ctx context.Context, entityID string,
 	return s.runtimeStore.SetAccessSuspension(ctx, entityID, at, operatorNote)
 }
 
+// SetOwnerSuspension records the owner's suspension. It reports false when it is already in place.
+func (s *entityService) SetOwnerSuspension(ctx context.Context, entityID string, at time.Time) (bool, error) {
+	return s.runtimeStore.SetAccessOwnerSuspension(ctx, entityID, at)
+}
+
+// ClearOwnerSuspension removes the owner's suspension. It reports false when there is none.
+func (s *entityService) ClearOwnerSuspension(ctx context.Context, entityID string) (bool, error) {
+	return s.runtimeStore.ClearAccessOwnerSuspension(ctx, entityID)
+}
+
+// SetCascadeSuspension records the cascaded suspension. It reports false when it is already in place.
+func (s *entityService) SetCascadeSuspension(ctx context.Context, entityID string, at time.Time) (bool, error) {
+	return s.runtimeStore.SetAccessCascadeSuspension(ctx, entityID, at)
+}
+
+// ClearCascadeSuspension removes the cascaded suspension. It reports false when there is none.
+func (s *entityService) ClearCascadeSuspension(ctx context.Context, entityID string) (bool, error) {
+	return s.runtimeStore.ClearAccessCascadeSuspension(ctx, entityID)
+}
+
 // ClearSuspension removes the suspension placed at suspendedAt, optionally replacing it with an
 // account-wide hold in the same write. It reports false when that suspension is no longer there.
 func (s *entityService) ClearSuspension(ctx context.Context, entityID string,
 	hold *identitygovernance.AccountHold, suspendedAt string) (bool, error) {
 	return s.runtimeStore.ClearAccessSuspension(ctx, entityID, hold, suspendedAt)
+}
+
+// RecordAttributeVerification writes the verification entry of the record's attribute under the entity
+// lock, only while the entity still has the record's type and the attribute's canonical value is still
+// the record's value, compared as invalidation compares it. It returns false when either changed, the
+// attribute is no longer verifiable or the entity is gone.
+func (s *entityService) RecordAttributeVerification(ctx context.Context,
+	record AttributeVerificationRecord) (bool, error) {
+	if record.Value == "" {
+		return false, nil
+	}
+
+	pinned := providers.Entity{ID: record.EntityID, Category: record.EntityCategory, Type: record.EntityType}
+	applied := false
+	_, err := s.transactOnLockedEntity(ctx, pinned, func(txCtx context.Context, current providers.Entity,
+		verifiableAttributes map[string]string) error {
+		stored, err := s.storedContactValue(current.Attributes, verifiableAttributes, record.Attribute)
+		if err != nil || stored != record.Value {
+			return err
+		}
+
+		entries, err := ReadRecordedAttributeVerifications(current.SystemAttributes)
+		if err != nil {
+			return err
+		}
+
+		entries[record.Attribute] = providers.VerifiedAttribute{
+			VerifiedAt: record.VerifiedAt.UTC().Format(time.RFC3339Nano)}
+		attrs, err := s.withVerifiedAttributes(current.SystemAttributes, entries)
+		if err != nil {
+			return err
+		}
+
+		if err := s.store.UpdateSystemAttributes(txCtx, record.EntityID, attrs); err != nil {
+			return err
+		}
+
+		applied = true
+		return nil
+	})
+	if errors.Is(err, ErrEntityNotFound) {
+		return false, nil
+	}
+
+	if err != nil {
+		return false, err
+	}
+
+	return applied, nil
 }
 
 // populateRuntime sets the runtime state and attributes on each entity, read outside the profile
@@ -1889,6 +2490,226 @@ func (s *entityService) governedRuntimeData(ctx context.Context,
 	}
 
 	return record, nil
+}
+
+// publishClearedVerifications publishes an event for each verification a committed write cleared.
+func (s *entityService) publishClearedVerifications(ctx context.Context, entityID string,
+	cleared []clearedVerification) {
+	if len(cleared) == 0 || s.observability == nil || !s.observability.IsEnabled() {
+		return
+	}
+
+	for _, c := range cleared {
+		s.observability.PublishEvent(ctx, s.newVerificationInvalidatedEvent(ctx, entityID, c))
+	}
+}
+
+// newVerificationInvalidatedEvent describes a write that cleared a recorded verification. It names the
+// attribute, never its value, and names the caller as the actor outside a runtime context.
+func (s *entityService) newVerificationInvalidatedEvent(ctx context.Context, entityID string,
+	cleared clearedVerification) *providers.Event {
+	evt := event.NewEvent(syscontext.GetTraceID(ctx), string(event.EventTypeAttributeVerificationInvalidated),
+		event.ComponentEntityService).
+		WithStatus(providers.StatusSuccess).
+		WithData(event.DataKey.Subject, entityID).
+		WithData(event.DataKey.SubjectType, event.PrincipalTypeUser).
+		WithData(event.DataKey.Attribute, cleared.attribute).
+		WithData(event.DataKey.InvalidationReason, string(cleared.reason))
+	if actor := security.GetSubject(ctx); actor != "" && !security.IsRuntimeContext(ctx) {
+		evt.WithData(event.DataKey.ActorSub, actor)
+	}
+
+	return evt
+}
+
+// verifiableAttributesOf maps each email or mobile attribute of an entity type to its attribute type.
+// A category without verifiable attributes, or a service without an entity type service, has none.
+func (s *entityService) verifiableAttributesOf(ctx context.Context, category providers.EntityCategory,
+	entityType string) (map[string]string, error) {
+	if category != providers.EntityCategoryUser {
+		return nil, nil
+	}
+
+	verifiableAttributes := make(map[string]string)
+	if s.entityTypeService == nil {
+		return verifiableAttributes, nil
+	}
+
+	attributes, svcErr := s.entityTypeService.GetAttributes(ctx, entitytype.TypeCategoryUser, entityType,
+		entitytype.AttributeFilter{AllowNonCredential: true})
+	if svcErr != nil {
+		return nil, fmt.Errorf("failed to read contact schema: %s", svcErr.Code)
+	}
+
+	for _, attribute := range attributes {
+		if entitytypemodel.IsContactType(attribute.Type) {
+			verifiableAttributes[attribute.Attribute] = attribute.Type
+		}
+	}
+
+	return verifiableAttributes, nil
+}
+
+// transactOnLockedEntity reads the verifiable attributes of existing's type, then runs fn in a transaction
+// with the entity locked. They come from the configuration database, so they are read before the
+// transaction. It returns false without running fn when the locked entity's category or type is no
+// longer the one read.
+func (s *entityService) transactOnLockedEntity(ctx context.Context, existing providers.Entity,
+	fn func(txCtx context.Context, current providers.Entity, verifiableAttributes map[string]string) error) (
+	bool, error) {
+	verifiableAttributes, err := s.verifiableAttributesOf(ctx, existing.Category, existing.Type)
+	if err != nil {
+		return false, err
+	}
+
+	typeUnchanged := false
+	err = s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		current, err := s.store.LockEntity(txCtx, existing.ID)
+		if err != nil {
+			return err
+		}
+
+		if current.Category != existing.Category || current.Type != existing.Type {
+			return nil
+		}
+
+		typeUnchanged = true
+		return fn(txCtx, current, verifiableAttributes)
+	})
+
+	return typeUnchanged, err
+}
+
+// invalidateVerification removes the verifications a write to the locked entity invalidates, and
+// returns the system attributes to write with the attributes it cleared.
+func (s *entityService) invalidateVerification(current providers.Entity, nextType string,
+	verifiableAttributes map[string]string, nextAttributes, systemAttributes json.RawMessage) (
+	json.RawMessage, []clearedVerification, error) {
+	if current.Category != providers.EntityCategoryUser {
+		return systemAttributes, nil, nil
+	}
+
+	entries, err := ReadRecordedAttributeVerifications(current.SystemAttributes)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if len(entries) == 0 {
+		return systemAttributes, nil, nil
+	}
+
+	var cleared []clearedVerification
+	if current.Type != nextType {
+		for _, name := range slices.Sorted(maps.Keys(entries)) {
+			cleared = append(cleared, clearedVerification{attribute: name,
+				reason: verificationUserTypeChanged})
+		}
+	} else {
+		cleared, err = s.changedVerifiedValues(current, verifiableAttributes, nextAttributes, entries)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	if len(cleared) == 0 {
+		return systemAttributes, nil, nil
+	}
+
+	for _, c := range cleared {
+		delete(entries, c.attribute)
+	}
+
+	invalidated, err := s.withVerifiedAttributes(systemAttributes, entries)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return invalidated, cleared, nil
+}
+
+// withVerifiedAttributes returns the system attributes with the recorded verification replaced by entries.
+func (s *entityService) withVerifiedAttributes(systemAttributes json.RawMessage,
+	entries map[string]providers.VerifiedAttribute) (json.RawMessage, error) {
+	var attributes map[string]json.RawMessage
+	if len(systemAttributes) > 0 {
+		if err := json.Unmarshal(systemAttributes, &attributes); err != nil {
+			return nil, err
+		}
+	}
+
+	if attributes == nil {
+		attributes = make(map[string]json.RawMessage)
+	}
+
+	encoded, err := json.Marshal(entries)
+	if err != nil {
+		return nil, err
+	}
+	attributes[systemAttrAttributeVerification] = encoded
+
+	return json.Marshal(attributes)
+}
+
+// changedVerifiedValues returns the verified attributes whose value the write changes or removes.
+func (s *entityService) changedVerifiedValues(current providers.Entity, verifiableAttributes map[string]string,
+	nextAttributes json.RawMessage, entries map[string]providers.VerifiedAttribute) ([]clearedVerification, error) {
+	var before, after map[string]json.RawMessage
+	if len(current.Attributes) > 0 {
+		if err := json.Unmarshal(current.Attributes, &before); err != nil {
+			return nil, err
+		}
+	}
+
+	if len(nextAttributes) > 0 {
+		if err := json.Unmarshal(nextAttributes, &after); err != nil {
+			return nil, err
+		}
+	}
+
+	var cleared []clearedVerification
+	for _, name := range slices.Sorted(maps.Keys(entries)) {
+		newValue := s.verificationValue(after[name], verifiableAttributes[name])
+		if s.verificationValue(before[name], verifiableAttributes[name]) == newValue {
+			continue
+		}
+
+		reason := verificationValueChanged
+		if newValue == "" {
+			reason = verificationValueRemoved
+		}
+
+		cleared = append(cleared, clearedVerification{attribute: name, reason: reason})
+	}
+
+	return cleared, nil
+}
+
+// storedContactValue returns the canonical value an attribute holds, compared as invalidation compares
+// it, or empty when the attribute is not one of verifiableAttributes or holds no string.
+func (s *entityService) storedContactValue(attributes json.RawMessage, verifiableAttributes map[string]string,
+	attribute string) (string, error) {
+	attributeType := verifiableAttributes[attribute]
+	if attributeType == "" || len(attributes) == 0 {
+		return "", nil
+	}
+
+	var values map[string]json.RawMessage
+	if err := json.Unmarshal(attributes, &values); err != nil {
+		return "", err
+	}
+
+	return s.verificationValue(values[attribute], attributeType), nil
+}
+
+// verificationValue returns the canonical form of a stored contact value, empty when it is absent or
+// not a string.
+func (s *entityService) verificationValue(raw json.RawMessage, attributeType string) string {
+	var value string
+	if json.Unmarshal(raw, &value) != nil {
+		return ""
+	}
+
+	return entitytypemodel.CanonicalContactValue(attributeType, value)
 }
 
 // governedEntityOf narrows a hydrated entity to the part governance needs.

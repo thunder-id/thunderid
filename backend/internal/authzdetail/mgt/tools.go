@@ -29,6 +29,7 @@ type typeMCPItem struct {
 	Version     int    `json:"version"`
 	Reuse       bool   `json:"reuse"`
 	IsReadOnly  bool   `json:"isReadOnly"`
+	ProjectID   string `json:"projectId,omitempty"`
 }
 
 // typeListMCPResponse is the MCP list tool output.
@@ -37,19 +38,27 @@ type typeListMCPResponse struct {
 	Types        []typeMCPItem `json:"types"`
 }
 
+// listTypesInput is the input of the list tool.
+type listTypesInput struct {
+	ProjectID string `json:"projectId,omitempty" jsonschema:"Project ID. Lists only its authorization details types."`
+}
+
 // updateTypeInput is the input of the update tool.
 type updateTypeInput struct {
 	ID string `json:"id" jsonschema:"The unique identifier of the authorization details type to update."`
 	AuthorizationDetailTypeRequest
 }
 
-// registerMCPTools registers the authorization details type tools with the MCP server.
-func registerMCPTools(server *mcp.Server, service AuthorizationDetailMgtServiceInterface) {
+// registerMCPTools registers the authorization details type tools with the MCP server. The create and update
+// tools are registered only when tokenWrites is set: an MCP caller always presents a token, and a data plane
+// takes a type only from an import with the management API key.
+func registerMCPTools(server *mcp.Server, service AuthorizationDetailMgtServiceInterface, tokenWrites bool) {
 	tools := &typeTools{service: service}
 
 	mcp.AddTool(server, &mcp.Tool{
-		Name:        "list_authorization_detail_types",
-		Description: `List the registered RFC 9396 authorization details types.`,
+		Name: "list_authorization_detail_types",
+		Description: `List the registered RFC 9396 authorization details types. ` +
+			`Pass projectId to list only the types of a project.`,
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "List Authorization Detail Types",
 			ReadOnlyHint: true,
@@ -70,6 +79,10 @@ func registerMCPTools(server *mcp.Server, service AuthorizationDetailMgtServiceI
 		},
 	}, rawTool(tools.getType))
 
+	if !tokenWrites {
+		return
+	}
+
 	server.AddTool(&mcp.Tool{
 		Name: "create_authorization_detail_type",
 		Description: `Register an RFC 9396 authorization details type that clients can request in ` +
@@ -84,6 +97,7 @@ Key Requirements:
 - consentTemplate: The consent summary, with {{field.path}} placeholders.
 - processor: Required when any field is supplied or changed by the processor.
 - reuse: Whether an approval may stand in for later prompts and be renewed by refresh (default false).
+- projectId: The project the type belongs to. Required on a deployment that serves projects.
 
 Use get_authorization_detail_type_by_id on an existing type to see a complete example.`,
 		InputSchema: tool.GenerateSchema[AuthorizationDetailTypeRequest](
@@ -105,7 +119,8 @@ Use get_authorization_detail_type_by_id on an existing type to see a complete ex
 
 Use get_authorization_detail_type_by_id first to get the current definition, change it, and send ` +
 			`the complete definition back. The version increments when the schema, consent template or reuse ` +
-			`changes, or the processor is added or removed, and earlier approvals then no longer cover new requests.`,
+			`changes, or the processor is added or removed, and earlier approvals then no longer cover new requests. ` +
+			`Leaving projectId out keeps the type's project.`,
 		InputSchema: tool.GenerateSchema[updateTypeInput](
 			withSchemaObject("The JSON Schema 2020-12 object schema of the type, with field "+
 				"policies."),
@@ -172,15 +187,19 @@ func withSchemaObject(description string) func(*jsonschema.Schema) {
 
 // listTypes handles the list_authorization_detail_types tool call.
 func (t *typeTools) listTypes(ctx context.Context, _ *mcp.CallToolRequest,
-	_ any) (*mcp.CallToolResult, *typeListMCPResponse, error) {
+	input listTypesInput) (*mcp.CallToolResult, *typeListMCPResponse, error) {
 	types, svcErr := t.service.ListAllAuthorizationDetailTypes(ctx)
 	if svcErr != nil {
 		return nil, nil, fmt.Errorf("failed to list authorization details types: %s", svcErr.ErrorDescription)
 	}
 	items := make([]typeMCPItem, 0, len(types))
 	for _, typ := range types {
+		if input.ProjectID != "" && typ.ProjectID != input.ProjectID {
+			continue
+		}
 		items = append(items, typeMCPItem{ID: typ.ID, Type: typ.Type, Name: typ.Name,
-			Description: typ.Description, Version: typ.Version, Reuse: typ.Reuse, IsReadOnly: typ.IsReadOnly})
+			Description: typ.Description, Version: typ.Version, Reuse: typ.Reuse, IsReadOnly: typ.IsReadOnly,
+			ProjectID: typ.ProjectID})
 	}
 	return nil, &typeListMCPResponse{TotalResults: len(items), Types: items}, nil
 }

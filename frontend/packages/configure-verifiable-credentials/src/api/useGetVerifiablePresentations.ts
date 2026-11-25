@@ -8,18 +8,22 @@ import VerifiablePresentationQueryKeys from '../constants/vp-query-keys';
 import type {VPListResponse} from '../models/vp';
 
 /**
- * Fetches all OpenID4VP presentation definitions.
+ * Fetches the OpenID4VP presentation definitions: every definition, or only a project's when a project ID is
+ * given.
+ *
+ * @param projectId - List only the presentation definitions of this project
  */
-export default function useGetVerifiablePresentations(): UseQueryResult<VPListResponse> {
+export default function useGetVerifiablePresentations(projectId?: string): UseQueryResult<VPListResponse> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
 
   return useQuery<VPListResponse>({
-    queryKey: [VerifiablePresentationQueryKeys.VPS],
+    queryKey: [VerifiablePresentationQueryKeys.VPS, ...(projectId ? [{projectId}] : [])],
     queryFn: async (): Promise<VPListResponse> => {
       const serverUrl: string = getServerUrl();
+      const query: string = projectId ? `?${new URLSearchParams({projectId}).toString()}` : '';
       const response: {data: VPListResponse} = await http.request({
-        url: `${serverUrl}/openid4vp/presentation-definitions`,
+        url: `${serverUrl}/openid4vp/presentation-definitions${query}`,
         method: 'GET',
       } as unknown as Parameters<typeof http.request>[0]);
 

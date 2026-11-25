@@ -158,3 +158,82 @@ func (s *FileBasedStoreTestSuite) TestLookupsMissOnUnknownKeys() {
 	s.Require().NoError(err)
 	s.Require().False(exists)
 }
+
+// testDeclaredOUID is the organization unit that owns the alpha, zebra and SMS declared templates.
+const testDeclaredOUID = "01900000-0000-7000-8000-000000000001"
+
+// declaredOtherOUYAML declares an email template owned by a second organization unit.
+const declaredOtherOUYAML = `resource_type: notification_template
+id: kiwi-email
+channel: email
+handle: kiwi
+ouId: 01900000-0000-7000-8000-000000000002
+displayName: Kiwi
+content:
+  subject: K
+  body: k
+`
+
+func (s *FileBasedStoreTestSuite) TestListTemplatesByOUIDs() {
+	loadDeclared(s.T(), s.fileStore, declaredZebraYAML)
+	loadDeclared(s.T(), s.fileStore, declaredAlphaYAML)
+	loadDeclared(s.T(), s.fileStore, declaredOtherOUYAML)
+	loadDeclared(s.T(), s.fileStore, declaredSMSYAML)
+	ouID := testDeclaredOUID
+
+	all, err := s.fileStore.ListTemplatesByOUIDs(s.ctx, ChannelTypeEmail, []string{ouID}, 10, 0)
+	s.Require().NoError(err)
+	s.Require().Equal([]string{"alpha", "zebra"}, handlesOf(all))
+
+	page, err := s.fileStore.ListTemplatesByOUIDs(s.ctx, ChannelTypeEmail, []string{ouID}, 1, 1)
+	s.Require().NoError(err)
+	s.Require().Equal([]string{"zebra"}, handlesOf(page))
+
+	beyond, err := s.fileStore.ListTemplatesByOUIDs(s.ctx, ChannelTypeEmail, []string{ouID}, 10, 5)
+	s.Require().NoError(err)
+	s.Require().Empty(beyond)
+
+	count, err := s.fileStore.CountTemplatesByOUIDs(s.ctx, ChannelTypeEmail, []string{ouID})
+	s.Require().NoError(err)
+	s.Require().Equal(2, count)
+
+	count, err = s.fileStore.CountTemplatesByOUIDs(s.ctx, ChannelTypeEmail,
+		[]string{"01900000-0000-7000-8000-000000000002"})
+	s.Require().NoError(err)
+	s.Require().Equal(1, count)
+}
+
+// declaredInProjectYAML declares an email template in a project.
+const declaredInProjectYAML = `resource_type: notification_template
+id: plum-email
+channel: email
+handle: plum
+ouId: 01900000-0000-7000-8000-000000000001
+projectId: proj-1
+displayName: Plum
+content:
+  subject: P
+  body: p
+`
+
+func (s *FileBasedStoreTestSuite) TestListTemplatesByProject() {
+	loadDeclared(s.T(), s.fileStore, declaredAlphaYAML)
+	loadDeclared(s.T(), s.fileStore, declaredInProjectYAML)
+
+	list, err := s.fileStore.ListTemplatesByProject(s.ctx, ChannelTypeEmail, "proj-1", 10, 0)
+	s.Require().NoError(err)
+	s.Require().Equal([]string{"plum"}, handlesOf(list))
+	s.Require().Equal("proj-1", list[0].ProjectID)
+
+	beyond, err := s.fileStore.ListTemplatesByProject(s.ctx, ChannelTypeEmail, "proj-1", 10, 5)
+	s.Require().NoError(err)
+	s.Require().Empty(beyond)
+
+	count, err := s.fileStore.CountTemplatesByProject(s.ctx, ChannelTypeEmail, "proj-1")
+	s.Require().NoError(err)
+	s.Require().Equal(1, count)
+
+	count, err = s.fileStore.CountTemplatesByProject(s.ctx, ChannelTypeSMS, "proj-1")
+	s.Require().NoError(err)
+	s.Require().Zero(count)
+}

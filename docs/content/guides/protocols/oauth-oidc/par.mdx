@@ -29,6 +29,7 @@ PAR removes sensitive parameters (`scope`, `redirect_uri`, `state`, `claims`, `r
 | Global enforcement | `oauth.par.require_par: true` in `deployment.yaml` requires PAR for every client |
 | DPoP interaction | When DPoP is in use, a DPoP proof on the PAR request binds the resulting authorization code to the proof's public key |
 | Failure mode | Direct `GET /oauth2/authorize` requests without a `request_uri` are rejected with `invalid_request` when PAR is required |
+| Authorization details | `authorization_details` ([RFC 9396](../rich-authorization-requests)) can be pushed, which keeps a large JSON value out of the browser URL. It is validated when pushed, with an error returned as `invalid_authorization_details`, and again when the `request_uri` is used, since its types can change in between |
 
 When both the global flag and the per-application flag are set, the per-application flag adds enforcement on top: there is no way to opt **out** of a globally required PAR.
 
@@ -103,3 +104,4 @@ GET /oauth2/authorize
 - [PKCE](../pkce), `code_challenge` is pushed inside the PAR request
 - [DPoP](../dpop), pushing the PAR request with a DPoP proof binds the auth code
 - [Client Authentication Methods](../client-authentication-methods), required on the PAR endpoint
+- [Rich Authorization Requests](../rich-authorization-requests), push `authorization_details` with the request

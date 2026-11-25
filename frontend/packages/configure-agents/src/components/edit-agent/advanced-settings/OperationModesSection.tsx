@@ -4,6 +4,7 @@
 import {OAuth2Logo, SettingsCard} from '@thunderid/components';
 import {
   BackchannelLogoutUriField,
+  LoginConsentField,
   OAuth2GrantTypes,
   TokenEndpointAuthMethods,
   type OAuth2Config,
@@ -36,6 +37,7 @@ import type {ReactNode} from 'react';
 import {Trans, useTranslation} from 'react-i18next';
 import RedirectURIsSection from './RedirectURIsSection';
 import {DELEGATED_ONLY_GRANTS, DELEGATION_GRANTS} from '../../../constants/delegationGrants';
+import type {AgentLoginConsentConfig} from '../../../models/agent';
 import applyAgentPkceRule from '../../../utils/applyAgentPkceRule';
 import {hasDelegationGrant} from '../../../utils/isDelegatedAgent';
 import {codeComponents} from '../shared/transCodeComponents';
@@ -48,6 +50,8 @@ interface OperationModesSectionProps {
   oauth2Config?: OAuth2Config;
   onOAuth2ConfigChange?: (updates: Partial<OAuth2Config>) => void;
   onBackchannelLogoutUriValidationChange?: (hasError: boolean) => void;
+  loginConsent?: AgentLoginConsentConfig;
+  onLoginConsentChange?: (loginConsent: AgentLoginConsentConfig) => void;
   disabled?: boolean;
 }
 
@@ -55,6 +59,8 @@ export default function OperationModesSection({
   oauth2Config = undefined,
   onOAuth2ConfigChange = undefined,
   onBackchannelLogoutUriValidationChange = undefined,
+  loginConsent = undefined,
+  onLoginConsentChange = undefined,
   disabled = false,
 }: OperationModesSectionProps) {
   const {t} = useTranslation();
@@ -254,6 +260,15 @@ export default function OperationModesSection({
           </Typography>
         </FormControl>
 
+        {/* Consent is collected only in flows that sign a user in, such as authorization code and CIBA. */}
+        {hasUserAccess(grantTypes) && (
+          <LoginConsentField
+            loginConsent={loginConsent}
+            onLoginConsentChange={onLoginConsentChange}
+            disabled={disabled}
+          />
+        )}
+
         <Divider />
 
         <Box>
@@ -314,24 +329,21 @@ export default function OperationModesSection({
 
         <Divider />
 
-        <FormControl fullWidth size="small">
-          <FormLabel htmlFor="agent_default_audience">
-            {t('applications:edit.advanced.audience.label', 'Default audience (aud)')}
-          </FormLabel>
-          <TextField
-            id="agent_default_audience"
-            size="small"
-            fullWidth
-            value={oauth2Config.token?.accessToken?.defaultAudience ?? ''}
-            disabled={!isEditable}
-            onChange={(e) => handleAudienceChange(e.target.value.trim())}
-            inputProps={{maxLength: 2048}}
-            placeholder={t('applications:edit.advanced.audience.placeholder', 'e.g. https://api.example.com')}
-            helperText={t('applications:edit.advanced.audience.hint', 'Leave empty to use the {{entity}} client ID.', {
-              entity: 'agent',
-            })}
-          />
-        </FormControl>
+        <TextField
+          labelPlacement="top"
+          label={t('applications:edit.advanced.audience.label', 'Default audience (aud)')}
+          id="agent_default_audience"
+          size="small"
+          fullWidth
+          value={oauth2Config.token?.accessToken?.defaultAudience ?? ''}
+          disabled={!isEditable}
+          onChange={(e) => handleAudienceChange(e.target.value.trim())}
+          inputProps={{maxLength: 2048}}
+          placeholder={t('applications:edit.advanced.audience.placeholder', 'e.g. https://api.example.com')}
+          helperText={t('applications:edit.advanced.audience.hint', 'Leave empty to use the {{entity}} client ID.', {
+            entity: 'agent',
+          })}
+        />
       </Stack>
     </SettingsCard>
   );

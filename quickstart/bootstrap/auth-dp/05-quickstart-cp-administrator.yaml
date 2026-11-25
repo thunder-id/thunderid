@@ -1,0 +1,16 @@
+# Quickstart-only: packaged into auth-dp alone, next to the Control Plane resource server that
+# build.sh's package_quickstart copies in from backend/cmd/cpserver/idp-bootstrap. It grants the
+# default Administrators group the system root of that resource server, so the operator who signs
+# into the Control Plane console receives a token the Control Plane accepts.
+resource_type: role
+id: 01900000-0000-7000-8000-0000000000f6
+name: Control Plane Administrator
+description: Control Plane administrator role with full permissions
+ouHandle: default
+permissions:
+  - resourceServerId: 01900000-0000-7000-8000-000000000021
+    permissions:
+      - system
+assignments:
+  - id: 01900000-0000-7000-8000-000000000040
+    type: group

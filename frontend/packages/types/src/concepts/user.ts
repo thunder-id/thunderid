@@ -28,6 +28,11 @@ export interface User {
   ouHandle?: string;
 
   /**
+   * Identifier of the project the user belongs to; absent when the user belongs to the organization.
+   */
+  projectId?: string;
+
+  /**
    * User category or classification.
    */
   type: string;
@@ -43,6 +48,12 @@ export interface User {
   attributes?: Record<string, unknown>;
 
   /**
+   * When each current contact attribute was verified, keyed by attribute. Empty when none is verified; absent when the
+   * server did not read it, so the status is unknown.
+   */
+  readonly verifiedAttributes?: Readonly<Record<string, {readonly verifiedAt: string}>>;
+
+  /**
    * Human-readable display name for the user.
    */
   display?: string;
@@ -51,4 +62,9 @@ export interface User {
    * Whether the user is read-only and cannot be modified or deleted.
    */
   isReadOnly?: boolean;
+  /**
+   * Whether the organization unit the user is read in owns it. False for a user shared into that unit,
+   * which the unit can read but not change.
+   */
+  isOwnedByOU?: boolean;
 }

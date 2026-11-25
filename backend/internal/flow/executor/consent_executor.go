@@ -4,6 +4,7 @@
 package executor
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +18,8 @@ import (
 
 	consentauthn "github.com/thunder-id/thunderid/internal/authn/consent"
 	authzdetail "github.com/thunder-id/thunderid/internal/authzdetail/common"
+	"github.com/thunder-id/thunderid/internal/entitytype"
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
@@ -24,14 +27,19 @@ import (
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
+// oneTimeConsentValidityPeriod is the validity period, in seconds, a decision is recorded with when the user
+// chooses not to remember it. The consent is kept for audit and expires at once.
+const oneTimeConsentValidityPeriod = 1
+
 // consentExecutor handles consent collection during identity journeys.
 // It checks whether the authenticated user has the required consents for the application,
 // prompts if not, and records the user's decisions after they are collected by the prompt node.
 type consentExecutor struct {
 	providers.Executor
-	consentEnforcer providers.ConsentProvider
-	authnProvider   providers.AuthnProviderManager
-	logger          *log.Logger
+	consentEnforcer   providers.ConsentProvider
+	authnProvider     providers.AuthnProviderManager
+	entityTypeService entitytype.EntityTypeServiceInterface
+	logger            *log.Logger
 }
 
 var _ providers.Executor = (*consentExecutor)(nil)
@@ -41,6 +49,7 @@ func newConsentExecutor(
 	flowFactory core.FlowFactoryInterface,
 	consentEnforcer providers.ConsentProvider,
 	authnProvider providers.AuthnProviderManager,
+	entityTypeService entitytype.EntityTypeServiceInterface,
 ) *consentExecutor {
 	logger := log.GetLogger().With(
 		log.String(log.LoggerKeyComponentName, "ConsentExecutor"),
@@ -66,14 +75,16 @@ func newConsentExecutor(
 			SupportedProperties: []providers.ExecutorSupportedProperties{
 				{Property: "timeout"},
 				{Property: propertyKeyConsentFailOnDeny},
+				{Property: propertyKeyConsentPromptValidityPeriod},
 			},
 		})
 
 	return &consentExecutor{
-		Executor:        base,
-		consentEnforcer: consentEnforcer,
-		authnProvider:   authnProvider,
-		logger:          logger,
+		Executor:          base,
+		consentEnforcer:   consentEnforcer,
+		authnProvider:     authnProvider,
+		entityTypeService: entityTypeService,
+		logger:            logger,
 	}
 }
 
@@ -141,8 +152,13 @@ func (e *consentExecutor) checkConsent(ctx *providers.NodeContext, execResp *pro
 	essentialAttributes, optionalAttributes := e.getRequiredAttributes(ctx)
 	authorizedPermissions := strings.Fields(ctx.RuntimeData["authorized_permissions"])
 	availableAttributes := e.buildAugmentedAvailableAttributes(availableAttrResp, entityRef)
+	requested := append(slices.Clone(essentialAttributes), optionalAttributes...)
+	if err := e.offerVerificationClaims(ctx.Context, requested, availableAttributes, entityRef); err != nil {
+		return nil, err
+	}
 	appName := ctx.Application.Name
-	forceReprompt := ctx.RuntimeData[common.RuntimeKeyForceConsentReprompt] == "true"
+	// The request can ask for a fresh consent (prompt=consent, CIBA), and so can the client's own setting.
+	forceReprompt := ctx.RuntimeData[common.RuntimeKeyForceConsentReprompt] == "true" || e.alwaysPromptsConsent(ctx)
 	authorizationDetails, err := requestedAuthorizationDetails(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read the requested authorization details: %w", err)
@@ -155,10 +171,17 @@ func (e *consentExecutor) checkConsent(ctx *providers.NodeContext, execResp *pro
 		}
 	}
 
-	// Resolve consent to determine if any required consents are missing and need to be prompted
-	promptData, svcErr := e.consentEnforcer.ResolveConsent(
+	// Resolve missing consent using the authorization step's resource-server binding.
+	var resourcePermissions []providers.AuthorizedResourcePermissions
+	if len(authorizedPermissions) > 0 {
+		resourcePermissions = []providers.AuthorizedResourcePermissions{{
+			ResourceServerID: ctx.RuntimeData[common.RuntimeKeyResourceServerID],
+			Permissions:      authorizedPermissions,
+		}}
+	}
+	resolution, svcErr := e.consentEnforcer.ResolveConsent(
 		ctx.Context, ouID, appID, appName, entityRef.EntityID,
-		essentialAttributes, optionalAttributes, authorizedPermissions, authorizationDetails,
+		essentialAttributes, optionalAttributes, resourcePermissions, authorizationDetails,
 		availableAttributes, forceReprompt, core.BuildProviderMetadata(ctx).RuntimeMetadata)
 	if svcErr != nil {
 		if detailsErr := undecidedAuthorizationDetailsError(svcErr); detailsErr != nil {
@@ -176,7 +199,7 @@ func (e *consentExecutor) checkConsent(ctx *providers.NodeContext, execResp *pro
 	}
 
 	// All consents are active — nothing to prompt
-	if promptData == nil {
+	if resolution == nil {
 		if err := setConsentedAuthorizationDetails(execResp, authorizationDetails); err != nil {
 			return nil, err
 		}
@@ -185,7 +208,20 @@ func (e *consentExecutor) checkConsent(ctx *providers.NodeContext, execResp *pro
 		return execResp, nil
 	}
 
+	if resolution.Prompt == nil {
+		logger.Debug(ctx.Context, "All required consents are active; completing consent executor")
+		if err := setConsentedAuthorizationDetails(execResp, authorizationDetails); err != nil {
+			return nil, err
+		}
+		if resolution.Consent != nil {
+			e.setConsentRuntimeData(execResp, appID, resolution.Consent)
+		}
+		execResp.Status = providers.ExecComplete
+		return execResp, nil
+	}
+
 	// Consent is needed — forward prompt data to the prompt node via ForwardedData
+	promptData := resolution.Prompt
 	promptJSON, err := json.Marshal(promptData.Purposes)
 	if err != nil {
 		logger.Error(ctx.Context, "Failed to marshal consent prompt data", log.Error(err))
@@ -195,6 +231,7 @@ func (e *consentExecutor) checkConsent(ctx *providers.NodeContext, execResp *pro
 	execResp.ForwardedData[common.ForwardedDataKeyConsentPrompt] = promptData.Purposes
 	execResp.AdditionalData[common.DataConsentPrompt] = string(promptJSON)
 	e.addClientHosts(ctx, execResp)
+	e.addValidityInput(ctx, execResp)
 
 	// Store the session token in RuntimeData for validation during consent recording
 	if promptData.SessionToken != "" {
@@ -231,6 +268,81 @@ func (e *consentExecutor) addClientHosts(ctx *providers.NodeContext, execResp *p
 	execResp.AdditionalData[common.DataRedirectURIHost] = redirectURIHost
 	execResp.AdditionalData[common.DataRedirectURILoopback] =
 		strconv.FormatBool(sysutils.IsLoopbackRedirectHost(redirectURIHost))
+}
+
+// alwaysPromptsConsent reports whether the application or agent asks for consent on every authorization.
+func (e *consentExecutor) alwaysPromptsConsent(ctx *providers.NodeContext) bool {
+	loginConsent := ctx.Application.LoginConsent
+	return loginConsent != nil && loginConsent.AlwaysPrompt != nil && *loginConsent.AlwaysPrompt
+}
+
+// addValidityInput asks the consent prompt to let the user choose how long their consent lasts, with the
+// longest period the application or agent allows, or 0 when it sets none. It asks nothing of a client that
+// prompts every time, since a remembered consent is never used there and the choice would change nothing.
+func (e *consentExecutor) addValidityInput(ctx *providers.NodeContext, execResp *providers.ExecutorResponse) {
+	if !e.promptsValidityPeriod(ctx) || e.alwaysPromptsConsent(ctx) {
+		return
+	}
+	execResp.AdditionalData[common.DataPromptConsentValidity] = "true"
+	execResp.AdditionalData[common.DataMaxConsentValidity] =
+		strconv.FormatInt(noExpiryAsZero(e.configuredValidityPeriod(ctx)), 10)
+}
+
+// promptsValidityPeriod reports whether the node lets the user choose how long their consent lasts.
+func (e *consentExecutor) promptsValidityPeriod(ctx *providers.NodeContext) bool {
+	prompt, _ := ctx.NodeProperties[propertyKeyConsentPromptValidityPeriod].(bool)
+	return prompt
+}
+
+// configuredValidityPeriod returns the consent validity period, in seconds, set on the application or agent. A
+// consent that does not expire is reported as the longest period, so that every period compares the same way.
+func (e *consentExecutor) configuredValidityPeriod(ctx *providers.NodeContext) int64 {
+	if ctx.Application.LoginConsent == nil || ctx.Application.LoginConsent.ValidityPeriod <= 0 {
+		return consentauthn.MaxValidityPeriod
+	}
+	return min(ctx.Application.LoginConsent.ValidityPeriod, consentauthn.MaxValidityPeriod)
+}
+
+// noExpiryAsZero returns 0, which stands for consent that does not expire, for the longest period, and the period
+// itself otherwise.
+func noExpiryAsZero(period int64) int64 {
+	if period >= consentauthn.MaxValidityPeriod {
+		return 0
+	}
+	return period
+}
+
+// resolveValidityPeriod returns the validity period, in seconds, to record the consent with, and whether the user
+// chose not to remember the decision. When the node lets the user choose and the user approves, a decision the
+// user chose not to remember is recorded for one second, and otherwise the period is their choice capped to the
+// period of the application or agent. In every other case, and when the user chose nothing usable, it is that
+// period. The longest period is recorded as zero, a consent that does not expire.
+func (e *consentExecutor) resolveValidityPeriod(ctx *providers.NodeContext, decisionsJSON string,
+	decisions providers.ConsentDecisions) (int64, bool) {
+	period := e.configuredValidityPeriod(ctx)
+	oneTime := false
+	if decisions.Approved && e.promptsValidityPeriod(ctx) {
+		if decisions.OneTime {
+			period = oneTimeConsentValidityPeriod
+			oneTime = true
+		} else if chosen := e.chosenValidityPeriod(decisionsJSON); chosen > 0 {
+			period = min(chosen, period)
+		}
+	}
+
+	return noExpiryAsZero(period), oneTime
+}
+
+// chosenValidityPeriod returns the whole seconds the user chose in the submitted decisions, or 0 when the
+// value is missing, not a number or below one second.
+func (e *consentExecutor) chosenValidityPeriod(decisionsJSON string) int64 {
+	var submitted struct {
+		ValidityPeriod float64 `json:"validityPeriod"`
+	}
+	if err := json.Unmarshal([]byte(decisionsJSON), &submitted); err != nil || submitted.ValidityPeriod < 1 {
+		return 0
+	}
+	return int64(min(submitted.ValidityPeriod, float64(consentauthn.MaxValidityPeriod)))
 }
 
 // handleConsentDecisions processes the user's consent decisions.
@@ -291,11 +403,8 @@ func (e *consentExecutor) handleConsentDecisions(ctx *providers.NodeContext, exe
 		}
 	}
 
-	// Determine validity period from the application config
-	validityPeriod := int64(0)
-	if ctx.Application.LoginConsent != nil {
-		validityPeriod = ctx.Application.LoginConsent.ValidityPeriod
-	}
+	validityPeriod, oneTime := e.resolveValidityPeriod(ctx, decisionsJSON, decisions)
+	decisions.OneTime = oneTime
 
 	// Retrieve the consent session token from RuntimeData for server-side validation
 	sessionToken := ctx.RuntimeData[common.RuntimeKeyConsentSessionToken]
@@ -314,7 +423,7 @@ func (e *consentExecutor) handleConsentDecisions(ctx *providers.NodeContext, exe
 		}
 		// Essential consent denied: the consent record was persisted but the user denied
 		// a required attribute, so the flow cannot proceed
-		if svcErr.Code == consentauthn.ErrorEssentialConsentDenied.Code {
+		if svcErr.Code == providers.ErrorEssentialConsentDenied.Code {
 			logger.Debug(ctx.Context, "User denied essential consent attributes")
 			execResp.Status = providers.ExecFailure
 			execResp.Error = &ErrConsentDenied
@@ -342,11 +451,6 @@ func (e *consentExecutor) handleConsentDecisions(ctx *providers.NodeContext, exe
 		return execResp, nil
 	}
 
-	// Store the consent ID in RuntimeData for downstream usage. Empty when nothing was recorded.
-	if consentRecord.ID != "" {
-		execResp.RuntimeData[common.RuntimeKeyConsentID] = consentRecord.ID
-	}
-
 	grantedDetails, err := e.decideAuthorizationDetails(ctx, consentRecord)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decide the authorization details: %w", err)
@@ -355,14 +459,7 @@ func (e *consentExecutor) handleConsentDecisions(ctx *providers.NodeContext, exe
 		return nil, err
 	}
 
-	// Derive approved attribute and permission names from the full (merged) consent record so
-	// downstream executors can easily restrict to only consented values without needing to
-	// understand the full consent data structure. Both keys are always set (even if empty) so
-	// auth assert knows that the consent step ran and can apply the appropriate precedence chain.
-	consentedAttrs := collectApprovedElementsByPurposeName(consentRecord, buildAttributePurposeName(appID))
-	execResp.RuntimeData[common.RuntimeKeyConsentedAttributes] = strings.Join(consentedAttrs, " ")
-	consentedPerms := collectApprovedElementsByPurposeName(consentRecord, buildPermissionsPurposeName(appID))
-	execResp.RuntimeData[common.RuntimeKeyConsentedPermissions] = strings.Join(consentedPerms, " ")
+	e.setConsentRuntimeData(execResp, appID, consentRecord)
 
 	logger.Debug(ctx.Context, "Consent recorded successfully", log.String("consentID", consentRecord.ID))
 	execResp.Status = providers.ExecComplete
@@ -449,6 +546,40 @@ func (e *consentExecutor) buildAugmentedAvailableAttributes(
 		Attributes:    augmented,
 		Verifications: baseVerifications,
 	}
+}
+
+// offerVerificationClaims makes each verification claim the server issues for the user's type available
+// with its contact. The schema is read only when a verification claim is requested.
+func (e *consentExecutor) offerVerificationClaims(ctx context.Context, requested []string,
+	available *providers.AttributesResponse, entityRef *providers.EntityReference) error {
+	if available == nil || !slices.ContainsFunc(requested, entitytypemodel.IsVerificationClaimName) {
+		return nil
+	}
+
+	contacts, err := verificationClaimContacts(ctx, e.entityTypeService, entityRef.EntityCategory,
+		entityRef.EntityType)
+	if err != nil {
+		return err
+	}
+
+	for name, contact := range contacts {
+		if _, offered := available.Attributes[contact]; offered {
+			available.Attributes[name] = &providers.AttributeResponse{}
+		}
+	}
+
+	return nil
+}
+
+// setConsentRuntimeData stores the approved attribute names and the approved permissions of the consent
+// in RuntimeData.
+func (e *consentExecutor) setConsentRuntimeData(execResp *providers.ExecutorResponse, appID string,
+	consent *providers.Consent) {
+	consentedAttrs := collectApprovedElementsByPurposeName(consent, buildAttributePurposeName(appID))
+	execResp.RuntimeData[common.RuntimeKeyConsentedAttributes] = strings.Join(consentedAttrs, " ")
+
+	consentedPerms := collectApprovedElementsByPurposeName(consent, buildPermissionsPurposeName(appID))
+	execResp.RuntimeData[common.RuntimeKeyConsentedPermissions] = strings.Join(consentedPerms, " ")
 }
 
 // collectApprovedElementsByPurposeName returns a list of element names that are approved by the user for a

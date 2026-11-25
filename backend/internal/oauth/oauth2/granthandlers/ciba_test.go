@@ -827,3 +827,17 @@ func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_DenyListUnavailableIsRef
 	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildAccessToken", mock.Anything, mock.Anything)
 	suite.mockCIBAService.AssertNotCalled(suite.T(), "MarkConsumed", mock.Anything, mock.Anything)
 }
+
+func (suite *CIBAGrantHandlerTestSuite) TestIssuedScopesCompactAfterSnapshotChecks() {
+	suite.mockResource.EXPECT().GetResourceServerByIdentifier(mock.Anything, testCIBAResourceURL).
+		Return(&providers.ResourceServer{ID: "rs-1", Identifier: testCIBAResourceURL,
+			HierarchicalPermissions: true, Delimiter: ":"}, nil)
+	suite.mockResource.EXPECT().ValidatePermissions(mock.Anything, "rs-1", mock.Anything).
+		Return([]string{}, nil)
+	record := suite.boundAuthenticatedRecord("openid reservations reservations:create")
+	_, scopes, errResp := suite.handler.(*cibaGrantHandler).resolveIssuedAudiencesAndScopes(
+		context.Background(), record, suite.oauthApp, record.AuthorizedScopes)
+	suite.Nil(errResp)
+	suite.Equal([]string{"openid", "reservations"}, scopes)
+	suite.Equal("openid reservations reservations:create", record.AuthorizedScopes)
+}

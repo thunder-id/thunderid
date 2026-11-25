@@ -1,0 +1,591 @@
+// Copyright 2026 The ThunderID Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package gateway
+
+import (
+	"encoding/json"
+	"regexp"
+	"sort"
+	"strings"
+)
+
+// What a resource needs to run is read from its own document: an application names its flows and
+// its unit by id, a flow its connections, a role its resource server, and so on. Every scalar in a
+// document that is the id of another document in the same bundle is taken as a dependency, so
+// nothing has to be declared per resource type, and a new type joins in by being in the bundle. A value
+// under a field that describes the resource, such as its name, is never a reference. A reference by
+// name or handle is not read, a resource named that way being expected on the gateway already, except the
+// type an agent or a user names by its handle: a gateway can start with no types, and the agent or user
+// cannot be written without its type.
+
+// scalarLine reads the scalar a block-style line holds: a mapping's value, a list item, or a list
+// item's mapping value, quoted or not.
+var scalarLine = regexp.MustCompile(`^\s*(?:-\s+` + mappingKey + `\s*:\s*|-\s*|` + mappingKey + `\s*:\s*)` +
+	`['"]?([^'"#]+?)['"]?\s*$`)
+
+// describingKeys are the fields that describe a resource in words rather than name another, so a value
+// under one is never read as a reference, even when it equals an id: an id given in a declarative file
+// need not be a UUID, and such an id can also be someone's name or description.
+var describingKeys = map[string]bool{"name": true, "displayName": true, "description": true, "handle": true,
+	"text": true, "title": true, "label": true, "username": true, "email": true}
+
+// idListKeys are the fields whose one value names several resources by id, separated by commas, such as the groups
+// and roles a provisioning node assigns. Each id in the value is read as a reference.
+var idListKeys = map[string]bool{"assignGroup": true, "assignRole": true}
+
+// kindKeys say what kind of thing a document, or an entry in it, is, at any depth, such as a member's
+// `type: user`, and never name another resource. A document's own top-level `id` is its identity, not a
+// reference either, while a nested id, such as a member's, is one.
+var kindKeys = map[string]bool{"resource_type": true, "type": true, "category": true}
+
+const (
+	resourceTypeAgentType            = "agent_type"
+	resourceTypeUserType             = "user_type"
+	resourceTypeNotificationTemplate = "notification_template"
+)
+
+// emailTemplates and smsTemplates are the kinds a flow's node names a notification template by: its
+// handle is unique only within its channel.
+const (
+	emailTemplates = resourceTypeNotificationTemplate + "/email"
+	smsTemplates   = resourceTypeNotificationTemplate + "/sms"
+)
+
+// channelField reads the channel a notification template is sent on.
+var channelField = regexp.MustCompile(`(?m)^channel:\s*(.+?)\s*$`)
+
+// typeReferences are, by the kind of resource that holds them, the fields that name a resource by its
+// handle, and the kind each names: an agent's and a user's own type at the top of the document, the user
+// types an application admits, and the agent types and the email and SMS templates a flow's node names.
+var typeReferences = map[string]map[string]string{
+	resourceTypeAgent: {"type": resourceTypeAgentType},
+	resourceTypeUser:  {"type": resourceTypeUserType},
+	"application":     {"allowedUserTypes": resourceTypeUserType},
+	"flow": {"allowedAgentTypes": resourceTypeAgentType, "emailTemplate": emailTemplates,
+		"smsTemplate": smsTemplates},
+}
+
+// fieldLine reads a block-style mapping line's indent, key and value.
+var fieldLine = regexp.MustCompile(`^(\s*)(?:-\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*?)\s*$`)
+
+// listItem reads a block-style list item's indent and scalar.
+var listItem = regexp.MustCompile(`^(\s*)-\s+['"]?([^'"#\[\]{}]+?)['"]?\s*$`)
+
+// typesNamed returns the types a document names by handle, each as its kind and handle. A type of the
+// agent or the user itself is read from the top of the document only, since a nested type, such as a
+// client's, says what kind of entry holds it. A list of types is read as a block or as a flow sequence.
+func typesNamed(resource bundleResource) []string {
+	fields := typeReferences[resource.Type]
+	if len(fields) == 0 {
+		return nil
+	}
+	var named []string
+	lines := strings.Split(resource.Content, "\n")
+	for i, line := range lines {
+		match := fieldLine.FindStringSubmatch(line)
+		if match == nil {
+			continue
+		}
+		kind, ok := fields[match[2]]
+		if !ok || (match[2] == "type" && match[1] != "") {
+			continue
+		}
+		value := strings.Trim(match[3], `"'`)
+		if value != "" {
+			for _, handle := range strings.Split(strings.Trim(value, "[]"), ",") {
+				if handle = strings.Trim(strings.TrimSpace(handle), `"'`); handle != "" {
+					named = append(named, kind+"/"+handle)
+				}
+			}
+			continue
+		}
+		for _, next := range lines[i+1:] {
+			item := listItem.FindStringSubmatch(next)
+			if len(item) < 3 || len(item[1]) < len(match[1]) {
+				break
+			}
+			named = append(named, kind+"/"+strings.TrimSpace(item[2]))
+		}
+	}
+	return named
+}
+
+// needsOf reads, for each resource in a bundle, the keys of the resources its document names by id, and of
+// the types it names by handle, sorted, each once. A document never needs itself. Resources of different
+// types that share an id are all needed, since the document names the id alone.
+func needsOf(resources []bundleResource) map[string][]string {
+	byID := make(map[string][]string, len(resources))
+	for _, resource := range resources {
+		if resource.ID != "" {
+			byID[resource.ID] = append(byID[resource.ID], resource.key())
+		}
+	}
+	typeByHandle := map[string]string{}
+	for _, resource := range resources {
+		handle := firstMatch(handleField, resource.Content)
+		if handle == "" {
+			continue
+		}
+		switch resource.Type {
+		case resourceTypeAgentType, resourceTypeUserType:
+			typeByHandle[resource.Type+"/"+handle] = resource.key()
+		case resourceTypeNotificationTemplate:
+			if channel := strings.ToLower(firstMatch(channelField, resource.Content)); channel != "" {
+				typeByHandle[resourceTypeNotificationTemplate+"/"+channel+"/"+handle] = resource.key()
+			}
+		}
+	}
+	needs := make(map[string][]string, len(resources))
+	for _, resource := range resources {
+		own := resource.key()
+		seen := map[string]bool{}
+		for _, named := range typesNamed(resource) {
+			if needed, found := typeByHandle[named]; found && !seen[needed] {
+				seen[needed] = true
+				needs[own] = append(needs[own], needed)
+			}
+		}
+		for _, line := range strings.Split(resource.Content, "\n") {
+			match := scalarLine.FindStringSubmatch(line)
+			if len(match) < 4 {
+				continue
+			}
+			field := strings.Trim(match[1]+match[2], `"'`)
+			if describingKeys[field] || kindKeys[field] ||
+				(field == "id" && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "-")) {
+				continue
+			}
+			values := []string{strings.TrimSpace(match[3])}
+			if idListKeys[field] {
+				values = strings.Split(match[3], ",")
+			}
+			for _, value := range values {
+				for _, needed := range byID[strings.TrimSpace(value)] {
+					if needed == own || seen[needed] {
+						continue
+					}
+					seen[needed] = true
+					needs[own] = append(needs[own], needed)
+				}
+			}
+		}
+		sort.Strings(needs[own])
+	}
+	return needs
+}
+
+// sends reports whether a change writes its resource to the gateway.
+func sends(change Change) bool {
+	return change.Change == ChangeAdded || change.Change == ChangeUpdated
+}
+
+// withNeeded widens a selection to what the selected changes need that the gateway lacks or holds
+// differently: each needed resource whose change writes it, followed through its own needs. A
+// dependency the gateway holds as it is is not sent, and one the gateway holds back is not taken in:
+// only selecting it releases it. It returns the keys added, each with the selected key that first
+// needed it.
+func withNeeded(selection []string, changes []Change) (expanded []string, required map[string]string) {
+	byKey := make(map[string]Change, len(changes))
+	for _, change := range changes {
+		byKey[change.Key] = change
+	}
+	chosen := toSet(selection)
+	required = map[string]string{}
+	expanded = append([]string{}, selection...)
+	queue := append([]string{}, selection...)
+	for len(queue) > 0 {
+		key := queue[0]
+		queue = queue[1:]
+		for _, needed := range byKey[key].Needs {
+			change, ok := byKey[needed]
+			if !ok || chosen[needed] || !sends(change) || change.HeldBack {
+				continue
+			}
+			chosen[needed] = true
+			root := key
+			if by, ok := required[key]; ok {
+				root = by
+			}
+			required[needed] = root
+			expanded = append(expanded, needed)
+			queue = append(queue, needed)
+		}
+	}
+	return expanded, required
+}
+
+// lacking returns, for a selection sent without its dependencies, what each selected change needs
+// that the gateway does not hold or holds refused, sorted by the selected key, and whether the gateway
+// holds back any of it. A dependency the gateway holds in another form is held: the selected change can
+// name it, and replacing it is a choice of its own, which can change what else on the gateway uses it.
+func lacking(selection []string, changes []Change) (missing []string, heldBack bool) {
+	byKey := make(map[string]Change, len(changes))
+	for _, change := range changes {
+		byKey[change.Key] = change
+	}
+	chosen := toSet(selection)
+	for _, key := range selection {
+		for _, needed := range byKey[key].Needs {
+			if change, ok := byKey[needed]; ok && !chosen[needed] && sends(change) &&
+				(change.Change == ChangeAdded || change.Failed) {
+				missing = append(missing, key+" needs "+needed)
+				heldBack = heldBack || change.HeldBack
+			}
+		}
+	}
+	sort.Strings(missing)
+	return missing, heldBack
+}
+
+// stillReferenced returns the removals that a document the gateway keeps still names by id, each with
+// the key that names it: removing it would leave that document pointing at nothing. The documents are
+// read as this apply leaves them: one the apply writes over is read as the version has it, so a
+// removal it no longer names goes through, and one removed in the same apply does not count.
+func stillReferenced(deletions []gatewayDeletion, held, updated []bundleResource) []string {
+	if len(deletions) == 0 {
+		return nil
+	}
+	removing := map[string]bool{}
+	for _, deletion := range deletions {
+		removing[deletion.ResourceType+"/"+deletion.ID] = true
+	}
+	var referenced []string
+	for holder, needs := range needsOf(projectedOver(held, updated)) {
+		if removing[holder] {
+			continue
+		}
+		for _, needed := range needs {
+			if removing[needed] {
+				referenced = append(referenced, needed+" is needed by "+holder)
+			}
+		}
+	}
+	sort.Strings(referenced)
+	return referenced
+}
+
+// projectedOver is what a gateway keeps once an apply's documents are written over it.
+func projectedOver(held, updated []bundleResource) []bundleResource {
+	byKey := make(map[string]bundleResource, len(held)+len(updated))
+	order := make([]string, 0, len(held)+len(updated))
+	for _, resource := range held {
+		byKey[resource.key()] = resource
+		order = append(order, resource.key())
+	}
+	for _, resource := range updated {
+		if _, ok := byKey[resource.key()]; !ok {
+			order = append(order, resource.key())
+		}
+		byKey[resource.key()] = resource
+	}
+	projected := make([]bundleResource, 0, len(order))
+	for _, key := range order {
+		projected = append(projected, byKey[key])
+	}
+	return projected
+}
+
+// orderedRemovals puts each removal before the removals of what its document names, as the gateway
+// holds it: a child unit before its parent, an application before its flows. The gateway's import
+// keeps the order of removals of one type, so a resource is not refused for still being needed by one
+// removed later in the same apply. Removals that need nothing of each other keep their order.
+func orderedRemovals(deletions []gatewayDeletion, held []bundleResource) []gatewayDeletion {
+	if len(deletions) < 2 {
+		return deletions
+	}
+	byKey := make(map[string]gatewayDeletion, len(deletions))
+	for _, deletion := range deletions {
+		byKey[deletion.ResourceType+"/"+deletion.ID] = deletion
+	}
+	dependents := map[string][]string{}
+	for holder, needs := range needsOf(held) {
+		if _, removing := byKey[holder]; !removing {
+			continue
+		}
+		for _, needed := range needs {
+			if _, removing := byKey[needed]; removing {
+				dependents[needed] = append(dependents[needed], holder)
+			}
+		}
+	}
+	ordered := make([]gatewayDeletion, 0, len(deletions))
+	visited := map[string]bool{}
+	var visit func(key string)
+	visit = func(key string) {
+		if visited[key] {
+			return
+		}
+		visited[key] = true
+		sort.Strings(dependents[key])
+		for _, dependent := range dependents[key] {
+			visit(dependent)
+		}
+		ordered = append(ordered, byKey[key])
+	}
+	for _, deletion := range deletions {
+		visit(deletion.ResourceType + "/" + deletion.ID)
+	}
+	return ordered
+}
+
+var (
+	ouIDField   = topLevelScalar("ouId")
+	parentField = topLevelScalar("parent")
+)
+
+// replacementsOf pairs a resource a version adds with the held one it replaces: one the version
+// removes, of the same type and name, in the same organization unit, project and parent, as when a
+// resource is deleted and created again under a new id. The gateway refuses the new one while the old
+// one holds the name. It returns the removed key by the added one. A name that two removals or two
+// additions share is left unpaired, since which one replaces which cannot be told.
+func replacementsOf(held, applied []bundleResource) map[string]string {
+	identity := func(resource bundleResource) string {
+		return strings.Join([]string{resource.Type, resource.Name, firstMatch(ouIDField, resource.Content),
+			firstMatch(projectIDField, resource.Content), firstMatch(parentField, resource.Content)}, "\x00")
+	}
+	heldKeys := make(map[string]bool, len(held))
+	for _, resource := range held {
+		heldKeys[resource.key()] = true
+	}
+	appliedKeys := make(map[string]bool, len(applied))
+	for _, resource := range applied {
+		appliedKeys[resource.key()] = true
+	}
+	removed, added := map[string][]string{}, map[string][]string{}
+	for _, resource := range held {
+		if resource.Name != "" && !appliedKeys[resource.key()] {
+			removed[identity(resource)] = append(removed[identity(resource)], resource.key())
+		}
+	}
+	for _, resource := range applied {
+		if resource.Name != "" && !heldKeys[resource.key()] {
+			added[identity(resource)] = append(added[identity(resource)], resource.key())
+		}
+	}
+	replaced := map[string]string{}
+	for name, keys := range added {
+		if len(keys) == 1 && len(removed[name]) == 1 {
+			replaced[keys[0]] = removed[name][0]
+		}
+	}
+	return replaced
+}
+
+// replacedBy returns the keys of the resources that the additions an apply sends replace.
+func replacedBy(diff *Diff) map[string]bool {
+	replaced := map[string]bool{}
+	for _, change := range diff.Changes {
+		if change.Selected && change.Replaces != "" {
+			replaced[change.Replaces] = true
+		}
+	}
+	return replaced
+}
+
+// replacedRemovals takes out of an apply's removals, in their order, those that go before its
+// documents: the removal of each resource an added one replaces, and the removal of every removed
+// resource that names one of those, which the gateway would otherwise refuse to remove first.
+func replacedRemovals(deletions []gatewayDeletion, held []bundleResource,
+	replaced map[string]bool) (first, rest []gatewayDeletion) {
+	if len(replaced) == 0 {
+		return nil, deletions
+	}
+	removing := make(map[string]bool, len(deletions))
+	for _, deletion := range deletions {
+		removing[deletion.ResourceType+"/"+deletion.ID] = true
+	}
+	going := map[string]bool{}
+	for key := range replaced {
+		going[key] = removing[key]
+	}
+	needs := needsOf(held)
+	for grew := true; grew; {
+		grew = false
+		for key := range removing {
+			if going[key] {
+				continue
+			}
+			for _, needed := range needs[key] {
+				if going[needed] {
+					going[key], grew = true, true
+					break
+				}
+			}
+		}
+	}
+	for _, deletion := range deletions {
+		if going[deletion.ResourceType+"/"+deletion.ID] {
+			first = append(first, deletion)
+			continue
+		}
+		rest = append(rest, deletion)
+	}
+	return first, rest
+}
+
+// deferredRemovals splits an apply's removals into those sent with its documents and those sent only
+// once the documents are written: a removal that a document the gateway keeps names, which this apply
+// updates to stop naming it, waits for that update, so a refused update leaves the resource in place.
+// For each removal that waits it returns the documents the gateway has to accept first.
+func deferredRemovals(deletions []gatewayDeletion, held,
+	updated []bundleResource) (now, after []gatewayDeletion, awaiting map[string][]bundleResource) {
+	if len(deletions) == 0 || len(updated) == 0 {
+		return deletions, nil, nil
+	}
+	updating := make(map[string]bundleResource, len(updated))
+	for _, resource := range updated {
+		updating[resource.key()] = resource
+	}
+	holders := map[string][]bundleResource{}
+	for holder, needs := range needsOf(held) {
+		resource, ok := updating[holder]
+		if !ok {
+			continue
+		}
+		for _, needed := range needs {
+			holders[needed] = append(holders[needed], resource)
+		}
+	}
+	awaiting = map[string][]bundleResource{}
+	for _, deletion := range deletions {
+		key := deletion.ResourceType + "/" + deletion.ID
+		if held, ok := holders[key]; ok {
+			awaiting[key] = held
+		}
+	}
+	// A removal that a waiting removal's document names waits with it, for the same updates: the gateway
+	// keeps that document, and so its reference, until the waiting removal is made.
+	removing := make(map[string]bool, len(deletions))
+	for _, deletion := range deletions {
+		removing[deletion.ResourceType+"/"+deletion.ID] = true
+	}
+	// A removal waits for every update any removal it follows waits for, so it is made only once all of
+	// them were accepted.
+	heldNeeds := needsOf(held)
+	for changed := true; changed; {
+		changed = false
+		for waiting, updates := range awaiting {
+			for _, needed := range heldNeeds[waiting] {
+				if !removing[needed] {
+					continue
+				}
+				merged, grew := unionResources(awaiting[needed], updates)
+				if grew || awaiting[needed] == nil {
+					awaiting[needed] = merged
+					changed = true
+				}
+			}
+		}
+	}
+	for _, deletion := range deletions {
+		if _, waits := awaiting[deletion.ResourceType+"/"+deletion.ID]; waits {
+			after = append(after, deletion)
+			continue
+		}
+		now = append(now, deletion)
+	}
+	return now, after, awaiting
+}
+
+// unionResources adds to a list the resources of another it lacks, by key, and reports whether it grew.
+func unionResources(into, from []bundleResource) ([]bundleResource, bool) {
+	have := make(map[string]bool, len(into))
+	for _, resource := range into {
+		have[resource.key()] = true
+	}
+	merged, grew := append([]bundleResource{}, into...), false
+	for _, resource := range from {
+		if !have[resource.key()] {
+			have[resource.key()] = true
+			merged = append(merged, resource)
+			grew = true
+		}
+	}
+	return merged, grew
+}
+
+// releasedRemovals returns, of the removals that waited for an update, those whose updates the
+// gateway accepted, read from its answer the way the master reads it. One whose update the gateway
+// refused, or did not answer for while refusing something, stays in place.
+func releasedRemovals(after []gatewayDeletion, awaiting map[string][]bundleResource,
+	answer json.RawMessage) []gatewayDeletion {
+	if len(after) == 0 {
+		return nil
+	}
+	outcomes, answered := outcomesOf(answer)
+	if !answered {
+		return nil
+	}
+	// Read as the master reads the answer: a document the answer names is accepted when it says so,
+	// and one it does not name is taken as written unless the gateway refused something it did not name.
+	matcher := newOutcomeMatcher(outcomes)
+	named := map[string]*importOutcome{}
+	for _, held := range awaiting {
+		for _, resource := range held {
+			if _, seen := named[resource.key()]; !seen {
+				named[resource.key()] = matcher.take(resource, false)
+			}
+		}
+	}
+	unnamedFailure := matcher.refusedUnnamed()
+	accepted := make(map[string]bool, len(named))
+	for key, outcome := range named {
+		if outcome == nil {
+			accepted[key] = !unnamedFailure
+			continue
+		}
+		accepted[key] = outcome.Status == outcomeSuccess
+	}
+	var released []gatewayDeletion
+	for _, deletion := range after {
+		ready := true
+		for _, resource := range awaiting[deletion.ResourceType+"/"+deletion.ID] {
+			ready = ready && accepted[resource.key()]
+		}
+		if ready {
+			released = append(released, deletion)
+		}
+	}
+	return released
+}
+
+// mergeAnswers joins the answers of two imports into one: the results in order, the summary summed. It
+// reports false when either answer cannot be read, so what the second import was for is not taken as
+// done on the first answer alone.
+func mergeAnswers(first, second json.RawMessage) (json.RawMessage, bool) {
+	type parsed struct {
+		Summary map[string]json.RawMessage `json:"summary"`
+		Results []json.RawMessage          `json:"results"`
+	}
+	var a, b parsed
+	if _, answered := outcomesOf(second); !answered {
+		return first, false
+	}
+	if json.Unmarshal(first, &a) != nil || json.Unmarshal(second, &b) != nil {
+		return first, false
+	}
+	summary := map[string]interface{}{}
+	for _, part := range []map[string]json.RawMessage{a.Summary, b.Summary} {
+		for key, raw := range part {
+			var number float64
+			if json.Unmarshal(raw, &number) == nil {
+				sum, _ := summary[key].(float64)
+				summary[key] = sum + number
+				continue
+			}
+			if _, ok := summary[key]; !ok {
+				summary[key] = raw
+			}
+		}
+	}
+	results := append(append([]json.RawMessage{}, a.Results...), b.Results...)
+	if results == nil {
+		results = []json.RawMessage{}
+	}
+	merged, err := json.Marshal(map[string]interface{}{"summary": summary, "results": results})
+	if err != nil {
+		return first, false
+	}
+	return merged, true
+}

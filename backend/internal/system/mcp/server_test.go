@@ -1,0 +1,198 @@
+// Copyright 2026 The ThunderID Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package mcp
+
+import (
+	"context"
+	"testing"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/security"
+)
+
+func TestToolPermissionMiddleware(t *testing.T) {
+	security.InitControlPlanePermissions("")
+
+	tests := []struct {
+		name        string
+		tool        string
+		permissions []string
+		wantCalled  bool
+	}{
+		{name: "RootCallsAnyTool", tool: "create_flow", permissions: []string{"system"}, wantCalled: true},
+		{name: "ExactPermission", tool: "create_flow",
+			permissions: []string{"system:flow:create"}, wantCalled: true},
+		{name: "UpdateCannotCreate", tool: "create_flow",
+			permissions: []string{"system:flow:update"}, wantCalled: false},
+		{name: "CreateCannotUpdate", tool: "update_flow",
+			permissions: []string{"system:flow:create"}, wantCalled: false},
+		{name: "ParentPermission", tool: "update_flow",
+			permissions: []string{"system:flow"}, wantCalled: true},
+		{name: "ViewCannotWrite", tool: "create_flow",
+			permissions: []string{"system:flow:view"}, wantCalled: false},
+		{name: "ViewCanRead", tool: "list_flows",
+			permissions: []string{"system:flow:view"}, wantCalled: true},
+		{name: "UnmappedToolNeedsRoot", tool: "list_gateway_variables",
+			permissions: []string{"system:gateway"}, wantCalled: false},
+		{name: "NoPermissions", tool: "list_flows", permissions: nil, wantCalled: false},
+		{name: "AppRootCallsAnyTool", tool: "create_application", permissions: []string{"system"}, wantCalled: true},
+		{name: "AppExactPermission", tool: "create_application",
+			permissions: []string{"system:app:create"}, wantCalled: true},
+		{name: "AppUpdateCannotCreate", tool: "create_application",
+			permissions: []string{"system:app:update"}, wantCalled: false},
+		{name: "AppCreateCannotUpdate", tool: "update_application",
+			permissions: []string{"system:app:create"}, wantCalled: false},
+		{name: "AppParentPermission", tool: "update_application",
+			permissions: []string{"system:app"}, wantCalled: true},
+		{name: "AppViewCannotWrite", tool: "create_application",
+			permissions: []string{"system:app:view"}, wantCalled: false},
+		{name: "AppViewCanRead", tool: "list_applications",
+			permissions: []string{"system:app:view"}, wantCalled: true},
+		{name: "AppUnmappedToolNeedsRoot", tool: "list_flows",
+			permissions: []string{"system:app"}, wantCalled: false},
+		{name: "AppNoPermissions", tool: "list_applications", permissions: nil, wantCalled: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			called := false
+			next := func(context.Context, string, mcp.Request) (mcp.Result, error) {
+				called = true
+				return &mcp.CallToolResult{}, nil
+			}
+			ctx := security.WithSecurityContextTest(context.Background(),
+				security.NewSecurityContextForTest("user-1", "ou-1", "", tt.permissions, nil))
+
+			result, err := toolPermissionMiddleware(next)(ctx, "tools/call",
+				&mcp.CallToolRequest{Params: &mcp.CallToolParamsRaw{Name: tt.tool}})
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantCalled, called)
+			if !tt.wantCalled {
+				callResult, ok := result.(*mcp.CallToolResult)
+				require.True(t, ok)
+				assert.True(t, callResult.IsError)
+			}
+		})
+	}
+}
+
+func TestToolPermissionMiddleware_OtherMethodsPassThrough(t *testing.T) {
+	security.InitControlPlanePermissions("")
+
+	called := false
+	next := func(context.Context, string, mcp.Request) (mcp.Result, error) {
+		called = true
+		return &mcp.ListToolsResult{}, nil
+	}
+
+	_, err := toolPermissionMiddleware(next)(context.Background(), "tools/list", &mcp.ListToolsRequest{})
+
+	require.NoError(t, err)
+	assert.True(t, called)
+}
+
+func TestServerName(t *testing.T) {
+	tests := []struct {
+		productName string
+		want        string
+	}{
+		{productName: "ThunderID", want: "thunderid-mcp"},
+		{productName: "Identity and Access Management", want: "identity-and-access-management-mcp"},
+		{productName: "  Acme IAM 2.0 ", want: "acme-iam-2-0-mcp"},
+		{productName: "", want: "mcp"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.productName, func(t *testing.T) {
+			assert.Equal(t, tt.want, serverName(tt.productName))
+		})
+	}
+}
+
+func TestNewServer_ReportsNameFromProductName(t *testing.T) {
+	config.ResetServerRuntime()
+	t.Cleanup(config.ResetServerRuntime)
+	cfg := &config.Config{}
+	cfg.Server.ProductName = "Acme IAM"
+	require.NoError(t, config.InitializeServerRuntime("", cfg))
+
+	ctx := context.Background()
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	serverSession, err := NewServer().Connect(ctx, serverTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = serverSession.Close() }()
+
+	session, err := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "1.0.0"}, nil).
+		Connect(ctx, clientTransport, nil)
+	require.NoError(t, err)
+	defer func() { _ = session.Close() }()
+
+	info := session.InitializeResult().ServerInfo
+	require.NotNil(t, info)
+	assert.Equal(t, "acme-iam-mcp", info.Name)
+}
+
+func TestToolPermissionMiddleware_DataPlane(t *testing.T) {
+	security.InitDataPlanePermissions("")
+	t.Cleanup(func() { security.InitControlPlanePermissions("") })
+
+	tests := []struct {
+		name        string
+		tool        string
+		permissions []string
+		noUnit      bool
+		wantCalled  bool
+	}{
+		{name: "SystemCallsOrgTool", tool: "create_flow", permissions: []string{"system"}, wantCalled: true},
+		{name: "OrgCallsOrgTool", tool: "create_flow", permissions: []string{"org"}, wantCalled: true},
+		{name: "StaleSystemChildCannotCall", tool: "create_flow",
+			permissions: []string{"system:flow:create"}, wantCalled: false},
+		{name: "SystemCallsDeploymentWideTool", tool: "list_gateway_variables",
+			permissions: []string{"system"}, wantCalled: true},
+		{name: "OrgCannotCallDeploymentWideTool", tool: "list_gateway_variables",
+			permissions: []string{"org"}, wantCalled: false},
+		{name: "SystemOnboardsAgents", tool: "onboard_agents", permissions: []string{"system"}, wantCalled: true},
+		{name: "OrgOnboardsAgents", tool: "onboard_agents", permissions: []string{"org"}, wantCalled: true},
+		{name: "AgentCreateOnboardsAgents", tool: "onboard_agents", permissions: []string{"org:agent:create"},
+			wantCalled: true},
+		{name: "AgentViewCannotOnboardAgents", tool: "onboard_agents", permissions: []string{"org:agent:view"},
+			wantCalled: false},
+		{name: "UserCreateCannotOnboardAgents", tool: "onboard_agents", permissions: []string{"org:user:create"},
+			wantCalled: false},
+		{name: "UserCreateOnboardsUsers", tool: "onboard_users", permissions: []string{"org:user:create"},
+			wantCalled: true},
+		{name: "AgentCreateCannotOnboardUsers", tool: "onboard_users", permissions: []string{"org:agent:create"},
+			wantCalled: false},
+		{name: "OrgWithoutAUnitCannotCall", tool: "create_flow", permissions: []string{"org"}, noUnit: true,
+			wantCalled: false},
+		{name: "SystemWithoutAUnitCalls", tool: "create_flow", permissions: []string{"system"}, noUnit: true,
+			wantCalled: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			called := false
+			next := func(context.Context, string, mcp.Request) (mcp.Result, error) {
+				called = true
+				return &mcp.CallToolResult{}, nil
+			}
+			ouID := "ou-1"
+			if tt.noUnit {
+				ouID = ""
+			}
+			ctx := security.WithSecurityContextTest(context.Background(),
+				security.NewSecurityContextForTest("user-1", ouID, "", tt.permissions, nil))
+
+			_, err := toolPermissionMiddleware(next)(ctx, "tools/call",
+				&mcp.CallToolRequest{Params: &mcp.CallToolParamsRaw{Name: tt.tool}})
+
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantCalled, called)
+		})
+	}
+}

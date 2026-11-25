@@ -741,19 +741,19 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetRoleList_PropagatesFile
 	assert.Equal(suite.T(), fileErr, err)
 }
 
-// Test GetEntityRoleIDs delegates directly to the DB store; the file store is never
-// consulted (assignments are never persisted in YAML).
-func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetEntityRoleIDs_DelegatesToDB() {
+func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetEntityRoleIDs_CombinesStores() {
 	expected := []string{"role-a", "role-b"}
 	suite.mockDBStore.On(
 		"GetEntityRoleIDs", suite.ctx, "user1", []string{"group1"}, "",
 	).Return(expected, nil)
+	suite.mockFileStore.On(
+		"GetEntityRoleIDs", suite.ctx, "user1", []string{"group1"}, "",
+	).Return([]string{"role-b", "role-c"}, nil)
 
 	result, err := suite.store.GetEntityRoleIDs(suite.ctx, "user1", []string{"group1"}, "")
 
 	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), expected, result)
-	suite.mockFileStore.AssertNotCalled(suite.T(), "GetEntityRoleIDs", mock.Anything, mock.Anything, mock.Anything)
+	assert.ElementsMatch(suite.T(), []string{"role-a", "role-b", "role-c"}, result)
 }
 
 // Test GetEntityRoleIDs propagates DB errors.
@@ -768,6 +768,19 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetEntityRoleIDs_Propagate
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), result)
 	assert.Equal(suite.T(), dbErr, err)
+}
+
+func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetEntityRoleIDs_PropagatesFileError() {
+	fileErr := errors.New("file error")
+	suite.mockDBStore.On("GetEntityRoleIDs", suite.ctx, "user1", []string{}, "ou1").
+		Return([]string{"role-a"}, nil)
+	suite.mockFileStore.On("GetEntityRoleIDs", suite.ctx, "user1", []string{}, "ou1").
+		Return(nil, fileErr)
+
+	result, err := suite.store.GetEntityRoleIDs(suite.ctx, "user1", []string{}, "ou1")
+
+	assert.ErrorIs(suite.T(), err, fileErr)
+	assert.Nil(suite.T(), result)
 }
 
 // Test that GetAuthorizedPermissions short-circuits when no permissions are requested.

@@ -7,10 +7,13 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/suite"
+
+	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 )
 
 // flow1CookieName is the wire name of the SSO cookie for "flow-1": "tid_sso_" followed by the first
@@ -58,6 +61,31 @@ func (s *TransportTestSuite) TestInboundFrom_NothingAttached() {
 	got, ok := InboundFrom(context.Background())
 	s.False(ok)
 	s.Nil(got)
+}
+
+func (s *TransportTestSuite) TestClientInfoFrom() {
+	ctx := sysContext.WithRequestMetadata(context.Background(),
+		sysContext.RequestMetadata{ClientIP: "203.0.113.10", UserAgent: "Mozilla/5.0"})
+
+	s.Equal(ClientInfo{IP: "203.0.113.10", UserAgent: "Mozilla/5.0"}, ClientInfoFrom(ctx))
+}
+
+func (s *TransportTestSuite) TestClientInfoFrom_NoRequestMetadata() {
+	s.Equal(ClientInfo{}, ClientInfoFrom(context.Background()))
+}
+
+func (s *TransportTestSuite) TestClientInfoFrom_DropsInvalidUTF8() {
+	ctx := sysContext.WithRequestMetadata(context.Background(),
+		sysContext.RequestMetadata{UserAgent: "Mozilla/5.0 \xff\xfe(Test)"})
+
+	s.Equal("Mozilla/5.0 (Test)", ClientInfoFrom(ctx).UserAgent)
+}
+
+func (s *TransportTestSuite) TestClientInfoFrom_TruncatesUserAgent() {
+	ctx := sysContext.WithRequestMetadata(context.Background(),
+		sysContext.RequestMetadata{UserAgent: strings.Repeat("x", 600)})
+
+	s.Len(ClientInfoFrom(ctx).UserAgent, maxUserAgentLength)
 }
 
 func (s *TransportTestSuite) TestInboundFrom_NilAttached() {

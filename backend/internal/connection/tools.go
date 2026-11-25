@@ -178,7 +178,7 @@ func (t *httpConnectionTools) getHTTPConnectionByID(
 	_ *mcp.CallToolRequest,
 	input tool.IDInput,
 ) (*mcp.CallToolResult, *httpConnectionMCPOutput, error) {
-	connection, svcErr := t.svc.getHTTP(ctx, input.ID)
+	connection, _, svcErr := t.svc.getHTTP(ctx, input.ID)
 	if svcErr != nil {
 		return nil, nil, fmt.Errorf("failed to get HTTP connection: %s", svcErr.ErrorDescription)
 	}

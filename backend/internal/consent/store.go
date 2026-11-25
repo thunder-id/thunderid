@@ -63,6 +63,10 @@ func (s *consentStore) CreateConsent(ctx context.Context, consent *Consent) erro
 	if err != nil {
 		return err
 	}
+	properties, err := marshalProperties(consent.Properties)
+	if err != nil {
+		return err
+	}
 
 	now := time.Now().UTC()
 	_, err = dbClient.ExecuteContext(
@@ -73,6 +77,7 @@ func (s *consentStore) CreateConsent(ctx context.Context, consent *Consent) erro
 		string(consent.Status),
 		unixToNullableTime(consent.ValidityTime),
 		purposes,
+		properties,
 		s.scope(ctx),
 		now,
 		now,
@@ -125,6 +130,10 @@ func (s *consentStore) UpdateConsent(ctx context.Context, consent *Consent) erro
 	if err != nil {
 		return err
 	}
+	properties, err := marshalProperties(consent.Properties)
+	if err != nil {
+		return err
+	}
 
 	rowsAffected, err := dbClient.ExecuteContext(
 		ctx,
@@ -133,6 +142,7 @@ func (s *consentStore) UpdateConsent(ctx context.Context, consent *Consent) erro
 		string(consent.Status),
 		unixToNullableTime(consent.ValidityTime),
 		purposes,
+		properties,
 		time.Now().UTC(),
 		s.scope(ctx),
 	)
@@ -264,6 +274,7 @@ func buildConsentFromResultRow(row map[string]interface{}) (*Consent, error) {
 		Status:       ConsentStatus(status),
 		ValidityTime: validityTime,
 		Purposes:     purposes,
+		Properties:   unmarshalProperties(row["properties"]),
 	}, nil
 }
 
@@ -333,6 +344,40 @@ func unmarshalPurposes(value interface{}) ([]ConsentPurposeItem, error) {
 	}
 
 	return purposes, nil
+}
+
+// marshalProperties encodes the properties for the PROPERTIES column, or NULL when none is set.
+func marshalProperties(properties ConsentProperties) (interface{}, error) {
+	if properties == (ConsentProperties{}) {
+		return nil, nil
+	}
+	data, err := json.Marshal(properties)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal consent properties: %w", err)
+	}
+	return string(data), nil
+}
+
+// unmarshalProperties decodes the PROPERTIES column. NULL, from a consent recorded before the column existed,
+// and a value that cannot be read both decode to empty properties: they are kept for audit only, so they must
+// not stop the consent from being used.
+func unmarshalProperties(value interface{}) ConsentProperties {
+	var raw string
+	switch v := value.(type) {
+	case string:
+		raw = v
+	case []byte:
+		raw = string(v)
+	}
+
+	var properties ConsentProperties
+	if strings.TrimSpace(raw) == "" {
+		return properties
+	}
+	if err := json.Unmarshal([]byte(raw), &properties); err != nil {
+		return ConsentProperties{}
+	}
+	return properties
 }
 
 // parseStringColumn extracts a string column value from a database result row.

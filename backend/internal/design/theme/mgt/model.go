@@ -11,6 +11,7 @@ type Theme struct {
 	Handle      string          `json:"handle" yaml:"handle"`
 	DisplayName string          `json:"displayName" yaml:"displayName"`
 	Description string          `json:"description" yaml:"description,omitempty"`
+	ProjectID   string          `json:"projectId,omitempty" yaml:"projectId,omitempty"`
 	Theme       json.RawMessage `json:"theme" yaml:"theme"`
 	CreatedAt   string          `json:"createdAt" yaml:"createdAt,omitempty"`
 	UpdatedAt   string          `json:"updatedAt" yaml:"updatedAt,omitempty"`
@@ -23,6 +24,7 @@ type ThemeListItem struct {
 	Handle             string `json:"handle"`
 	DisplayName        string `json:"displayName"`
 	Description        string `json:"description"`
+	ProjectID          string `json:"projectId,omitempty"`
 	DefaultColorScheme string `json:"defaultColorScheme"`
 	PrimaryColor       string `json:"primaryColor"`
 	CreatedAt          string `json:"createdAt"`
@@ -68,6 +70,7 @@ type CreateThemeRequest struct {
 	Handle      string          `json:"handle"`
 	DisplayName string          `json:"displayName"`
 	Description string          `json:"description"`
+	ProjectID   string          `json:"projectId,omitempty"`
 	Theme       json.RawMessage `json:"theme"`
 }
 
@@ -77,6 +80,7 @@ type CreateThemeRequestWithID struct {
 	Handle      string          `json:"handle"`
 	DisplayName string          `json:"displayName"`
 	Description string          `json:"description"`
+	ProjectID   string          `json:"projectId,omitempty"`
 	Theme       json.RawMessage `json:"theme"`
 }
 
@@ -85,6 +89,7 @@ type UpdateThemeRequest struct {
 	Handle      string          `json:"handle"`
 	DisplayName string          `json:"displayName"`
 	Description string          `json:"description"`
+	ProjectID   string          `json:"projectId,omitempty"`
 	Theme       json.RawMessage `json:"theme"`
 }
 
@@ -94,6 +99,7 @@ type themeRequestWithID struct {
 	Handle      string      `yaml:"handle"`
 	DisplayName string      `yaml:"displayName"`
 	Description string      `yaml:"description,omitempty"`
+	ProjectID   string      `yaml:"projectId,omitempty"`
 	Theme       interface{} `yaml:"theme"`
 }
 

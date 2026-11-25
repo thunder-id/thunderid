@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/session"
@@ -39,6 +40,12 @@ func (suite *SSOCheckExecutorTestSuite) TearDownTest() {
 func (suite *SSOCheckExecutorTestSuite) newExecutor(sso session.Service) *ssoCheckExecutor {
 	flowFactory, _ := core.Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"))
 	return newSSOCheckExecutor(flowFactory, sso)
+}
+
+// resolvedSession matches the session liveSession resolves to.
+func resolvedSession() any {
+	want := liveSession().SessionID
+	return mock.MatchedBy(func(sess *session.Session) bool { return sess != nil && sess.SessionID == want })
 }
 
 func ssoNodeContext() *providers.NodeContext {
@@ -82,7 +89,7 @@ func (suite *SSOCheckExecutorTestSuite) assertAbsent(resp *providers.ExecutorRes
 func (suite *SSOCheckExecutorTestSuite) TestPresent() {
 	sso := sessionmock.NewServiceMock(suite.T())
 	sso.EXPECT().Resolve(mock.Anything, "handle-abc", "flow-1", 3, mock.Anything).Return(liveSession(), nil)
-	sso.EXPECT().FindCheckpoint(mock.Anything, "sess-1", "session").
+	sso.EXPECT().FindCheckpoint(mock.Anything, resolvedSession(), "session").
 		Return(&session.SessionContext{SessionID: "sess-1", CheckpointID: "session"}, nil)
 	exec := suite.newExecutor(sso)
 
@@ -103,6 +110,47 @@ func (suite *SSOCheckExecutorTestSuite) TestPresent() {
 	suite.Equal("session", forwardedContext.CheckpointID)
 }
 
+// A client that requires one subject reuses only that subject's session. Another subject's session routes to
+// Authenticate, so the fresh sign-in enforces the rule; the handle is still shared, and the join does not attach
+// a checkpoint to a session of a different subject.
+func (suite *SSOCheckExecutorTestSuite) TestRequiredSubject() {
+	for name, tc := range map[string]struct {
+		required string
+		reused   bool
+	}{
+		"TheRequiredSubjectsSession": {required: "owner-1", reused: true},
+		"AnotherSubjectsSession":     {required: "owner-2", reused: false},
+		"NoSubjectRequired":          {required: "", reused: true},
+	} {
+		suite.Run(name, func() {
+			sso := sessionmock.NewServiceMock(suite.T())
+			live := liveSession()
+			live.SubjectID = "owner-1"
+			sso.EXPECT().Resolve(mock.Anything, "handle-abc", "flow-1", 3, mock.Anything).Return(live, nil)
+			if tc.reused {
+				sso.EXPECT().FindCheckpoint(mock.Anything, live, "session").
+					Return(&session.SessionContext{SessionID: "sess-1", CheckpointID: "session"}, nil)
+			}
+			ctx := ssoNodeContext()
+			ctx.Context = authnprovidercm.WithSubjectTypeConstraints(ctx.Context,
+				authnprovidercm.SubjectTypeConstraints{RequiredSubjectID: tc.required})
+
+			resp, err := suite.newExecutor(sso).Execute(ctx)
+
+			suite.Require().NoError(err)
+			suite.Equal("handle-abc", resp.RuntimeData[common.RuntimeKeySSOSessionHandle])
+			if tc.reused {
+				suite.Equal(providers.ExecComplete, resp.Status)
+				return
+			}
+			suite.Equal(providers.ExecFailure, resp.Status)
+			suite.Equal("false",
+				resp.RuntimeData[common.SSOCheckpointKey(common.RuntimeKeySSOSessionPresent, "session")])
+			suite.Empty(resp.ForwardedData)
+		})
+	}
+}
+
 // TestAbsentCheckpointNotPresent covers a live session that lacks this checkpoint: the node routes to
 // Authenticate so the stage authenticates fresh, but still shares the session handle so the fresh join
 // attaches its new checkpoint to that same session.
@@ -110,7 +158,7 @@ func (suite *SSOCheckExecutorTestSuite) TestAbsentCheckpointNotPresent() {
 	sso := sessionmock.NewServiceMock(suite.T())
 	sso.EXPECT().Resolve(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(liveSession(), nil)
-	sso.EXPECT().FindCheckpoint(mock.Anything, "sess-1", "session").Return(nil, nil)
+	sso.EXPECT().FindCheckpoint(mock.Anything, resolvedSession(), "session").Return(nil, nil)
 	exec := suite.newExecutor(sso)
 
 	resp, err := exec.Execute(ssoNodeContext())

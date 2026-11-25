@@ -36,8 +36,8 @@ func registerMCPTools(server *mcp.Server, appService ApplicationServiceInterface
 
 Behavior:
 - With ouId, lists the applications the organization unit owns, followed by the ones shared into it.
-- With projectId, lists the project's root organization unit, or ouId when it is in the project.
-  A project that does not exist, or an organization unit outside it, has no applications.`,
+- With projectId, lists the project's applications, narrowed to ouId when given.
+  A project that does not exist has no applications.`,
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "List Applications",
 			ReadOnlyHint: true,
@@ -98,13 +98,29 @@ Workflow:
 2. Modify the fields you want to change
 3. Send the complete object back
 
-Any field not provided will be reset to empty/default.`,
+Any field not provided will be reset to empty/default, except projectId: leaving it out keeps the
+application in its project.`,
 		InputSchema: getUpdateAppSchema(),
 		Annotations: &mcp.ToolAnnotations{
 			Title:          "Update Application",
 			IdempotentHint: true,
 		},
 	}, tools.updateApplication)
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name: "regenerate_application_secret",
+		Description: `Replace an application's client secret with a newly generated one and return it.
+
+Behavior:
+- Only an application that authenticates with a client secret has one to regenerate.
+- The old secret stops working at once. Where the server revokes tokens, the tokens it issued are revoked too,
+  and the notice says whether they were.
+- The new secret is returned only this once.`,
+		Annotations: &mcp.ToolAnnotations{
+			Title:          "Regenerate Application Secret",
+			IdempotentHint: false,
+		},
+	}, tools.regenerateApplicationSecret)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "get_application_templates",
@@ -114,7 +130,7 @@ Templates contain ONLY the required fields to create each app type. ` +
 			`Optional fields with service-layer defaults are omitted.
 
 Theme: SPA, Mobile, and Server templates include a themeId field that controls the ` +
-			`visual appearance of the ThunderID-hosted login page. ` +
+			`visual appearance of the hosted login page. ` +
 			`Call list_themes first to see available themes, then replace the ` +
 			`<THEME_ID> placeholder with the ID of the desired theme. ` +
 			`Omit themeId to use the system default theme. ` +
@@ -218,6 +234,32 @@ func (t *applicationTools) updateApplication(
 	}
 
 	return nil, updatedApp, nil
+}
+
+// regenerateApplicationSecret handles the regenerate_application_secret tool call.
+func (t *applicationTools) regenerateApplicationSecret(
+	ctx context.Context,
+	req *mcp.CallToolRequest,
+	input tool.IDInput,
+) (*mcp.CallToolResult, *model.RegenerateClientSecretOutput, error) {
+	regenerated, svcErr := t.appService.RegenerateClientSecret(ctx, input.ID)
+	if svcErr != nil {
+		return nil, nil, fmt.Errorf("failed to regenerate application secret: %s", svcErr.ErrorDescription)
+	}
+
+	var notice string
+	switch {
+	case regenerated.Revoked:
+		notice = "The old secret no longer works, and the tokens it issued are revoked. " + clientSecretNotice
+	case regenerated.RevocationIncomplete:
+		notice = "The old secret no longer works, but revoking the tokens issued while it was replaced failed, so " +
+			"those can stay valid until they expire; regenerating again revokes them. " + clientSecretNotice
+	default:
+		notice = "The old secret no longer works. Tokens it already issued were not revoked and stay valid until " +
+			"they expire. " + clientSecretNotice
+	}
+	return nil, &model.RegenerateClientSecretOutput{ClientSecret: regenerated.ClientSecret,
+		RevocationIncomplete: regenerated.RevocationIncomplete, Notice: notice}, nil
 }
 
 // getApplicationTemplates handles the get_application_templates tool call.

@@ -1,7 +1,7 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {FormHelperText, FormLabel, Stack, TextField, Typography} from '@wso2/oxygen-ui';
+import {Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {useEffect, useMemo, useState, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import type {CommonResourcePropertiesPropsInterface} from './types';
@@ -33,21 +33,18 @@ function UserTypeResolverProperties({resource, onChange}: CommonResourceProperti
         {t('flows:core.executions.userTypeResolver.description')}
       </Typography>
 
-      <div>
-        <FormLabel htmlFor="allowed-user-types">
-          {t('flows:core.executions.userTypeResolver.allowedUserTypes.label')}
-        </FormLabel>
-        <TextField
-          id="allowed-user-types"
-          value={localValue}
-          onChange={(e) => setLocalValue(e.target.value)}
-          onBlur={() => onChange('data.properties.allowedUserTypes', parseCommaSeparated(localValue), resource)}
-          placeholder={t('flows:core.executions.userTypeResolver.allowedUserTypes.placeholder')}
-          fullWidth
-          size="small"
-        />
-        <FormHelperText>{t('flows:core.executions.userTypeResolver.allowedUserTypes.hint')}</FormHelperText>
-      </div>
+      <TextField
+        labelPlacement="top"
+        label={t('flows:core.executions.userTypeResolver.allowedUserTypes.label')}
+        helperText={t('flows:core.executions.userTypeResolver.allowedUserTypes.hint')}
+        id="allowed-user-types"
+        value={localValue}
+        onChange={(e) => setLocalValue(e.target.value)}
+        onBlur={() => onChange('data.properties.allowedUserTypes', parseCommaSeparated(localValue), resource)}
+        placeholder={t('flows:core.executions.userTypeResolver.allowedUserTypes.placeholder')}
+        fullWidth
+        size="small"
+      />
     </Stack>
   );
 }

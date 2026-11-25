@@ -35,6 +35,8 @@ type httpConnectionResponse struct {
 	TimeoutMS      int                         `json:"timeoutMs"`
 	Headers        []httpconnection.Header     `json:"headers"`
 	Authentication outboundauth.Authentication `json:"authentication"`
+
+	connectionOwnership
 }
 
 // httpToDTO converts a create request into an HTTP connection with its authentication in property

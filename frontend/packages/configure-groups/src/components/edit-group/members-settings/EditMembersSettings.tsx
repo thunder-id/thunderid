@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {Stack, Button, Alert} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
@@ -24,6 +25,8 @@ export default function EditMembersSettings({group}: EditMembersSettingsProps): 
   const {t} = useTranslation('groups');
   const addGroupMembers = useAddGroupMembers();
   const removeGroupMember = useRemoveGroupMember();
+  const {can} = useCapabilitiesContext();
+  const isReadOnly = group.isReadOnly === true || !can('group', 'update');
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -80,9 +83,9 @@ export default function EditMembersSettings({group}: EditMembersSettingsProps): 
       <ManageMembersSection
         groupId={group.id}
         onRemoveMember={handleRemoveMember}
-        isReadOnly={group.isReadOnly}
+        isReadOnly={isReadOnly}
         headerAction={
-          !group.isReadOnly ? (
+          !isReadOnly ? (
             <Button
               variant="contained"
               size="small"
@@ -98,7 +101,7 @@ export default function EditMembersSettings({group}: EditMembersSettingsProps): 
         }
       />
 
-      {addDialogOpen && !group.isReadOnly && (
+      {addDialogOpen && !isReadOnly && (
         <AddMemberDialog
           open={addDialogOpen}
           onClose={() => {

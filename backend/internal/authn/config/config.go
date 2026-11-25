@@ -14,6 +14,8 @@ type Config struct {
 	DirectAPIEnabled bool
 	// DirectAuthSecret gates the Direct API endpoints. An empty value blocks them.
 	DirectAuthSecret string
+	// ProductName is the product name the authentication MCP tools name in their text.
+	ProductName string
 }
 
 // FromServerRuntime builds a Config from the server runtime.
@@ -22,5 +24,6 @@ func FromServerRuntime() Config {
 	return Config{
 		DirectAuthSecret: runtime.Config.Server.SecurityConfig.DirectAuthSecret,
 		DirectAPIEnabled: runtime.Config.DirectAPI.IsEnabled(),
+		ProductName:      runtime.Config.Server.ProductName,
 	}
 }

@@ -136,6 +136,54 @@ func (suite *GroupFileBasedStoreTestSuite) TestGetGroupMemberCount_NonExistentGr
 	suite.Equal(0, count)
 }
 
+func (suite *GroupFileBasedStoreTestSuite) TestGetGroupMember() {
+	suite.seedGroup(groupDeclarativeResource{
+		ID:   "grp1",
+		Name: "Admins",
+		OUID: "ou1",
+		Members: []Member{
+			{ID: "user1", Type: memberTypeEntity},
+			{ID: "group2", Type: MemberTypeGroup},
+		},
+	})
+
+	member, err := suite.store.GetGroupMember(context.Background(), "grp1", "group2")
+	suite.NoError(err)
+	suite.Equal(&Member{ID: "group2", Type: MemberTypeGroup}, member)
+
+	member, err = suite.store.GetGroupMember(context.Background(), "grp1", "user3")
+	suite.NoError(err)
+	suite.Nil(member)
+}
+
+func (suite *GroupFileBasedStoreTestSuite) TestGetGroupMember_NonExistentGroup() {
+	member, err := suite.store.GetGroupMember(context.Background(), "nonexistent", "user1")
+
+	suite.NoError(err)
+	suite.Nil(member)
+}
+
+func (suite *GroupFileBasedStoreTestSuite) TestIsGroupMemberDeclarative() {
+	suite.seedGroup(groupDeclarativeResource{
+		ID:      "grp1",
+		Name:    "Admins",
+		OUID:    "ou1",
+		Members: []Member{{ID: "user1", Type: memberTypeEntity}},
+	})
+
+	declared, err := suite.store.IsGroupMemberDeclarative(context.Background(), "grp1", "user1")
+	suite.NoError(err)
+	suite.True(declared)
+
+	declared, err = suite.store.IsGroupMemberDeclarative(context.Background(), "grp1", "user2")
+	suite.NoError(err)
+	suite.False(declared)
+
+	declared, err = suite.store.IsGroupMemberDeclarative(context.Background(), "nonexistent", "user1")
+	suite.NoError(err)
+	suite.False(declared)
+}
+
 func (suite *GroupFileBasedStoreTestSuite) TestCheckGroupNameConflictForCreate() {
 	suite.seedGroup(groupDeclarativeResource{ID: "grp1", Name: "Admins", OUID: "ou1"})
 	suite.seedGroup(groupDeclarativeResource{ID: "grp2", Name: "Admins", OUID: "ou2"})
@@ -267,6 +315,20 @@ func (suite *GroupFileBasedStoreTestSuite) TestImmutability() {
 		{ID: "user1", Type: MemberTypeUser},
 	})
 	suite.Error(err)
+}
+
+// Declared memberships are not writable, so the writable membership lookup leaves them out.
+func (suite *GroupFileBasedStoreTestSuite) TestGetMemberGroupIDs_IgnoresDeclaredMembers() {
+	suite.seedGroup(groupDeclarativeResource{ID: "declared-grp", Name: "Declared", OUID: "ou1",
+		Members: []Member{{ID: "user1", Type: MemberTypeUser}}})
+	declared, err := suite.store.GetTransitiveGroupsForEntity(context.Background(), "user1")
+	suite.Require().NoError(err)
+	suite.Len(declared, 1)
+
+	groupIDs, err := suite.store.GetMemberGroupIDs(context.Background(), string(memberTypeEntity), "user1")
+
+	suite.NoError(err)
+	suite.Empty(groupIDs)
 }
 
 func (suite *GroupFileBasedStoreTestSuite) TestCreate_ImplementsStorer() {
@@ -530,4 +592,38 @@ func (suite *GroupFileBasedStoreTestSuite) TestGetDirectGroupParents_ResolvesWhe
 
 	suite.NoError(err)
 	suite.Contains(parents, "ok-parent")
+}
+
+func (suite *GroupFileBasedStoreTestSuite) TestGetGroupListByProject() {
+	suite.seedGroup(groupDeclarativeResource{ID: "grp1", Name: "Admins", OUID: "ou1", ProjectID: "project-1"})
+	suite.seedGroup(groupDeclarativeResource{ID: "grp2", Name: "Engineers", OUID: "ou2", ProjectID: "project-1"})
+	suite.seedGroup(groupDeclarativeResource{ID: "grp3", Name: "Finance", OUID: "ou1", ProjectID: "project-2"})
+	suite.seedGroup(groupDeclarativeResource{ID: "grp4", Name: "Support", OUID: "ou1"})
+
+	count, err := suite.store.GetGroupListCountByProject(context.Background(), "project-1", nil)
+	suite.NoError(err)
+	suite.Equal(2, count)
+
+	count, err = suite.store.GetGroupListCountByProject(context.Background(), "project-1", []string{"ou1"})
+	suite.NoError(err)
+	suite.Equal(1, count)
+
+	groups, err := suite.store.GetGroupListByProject(context.Background(), "project-1", nil, 1, 1)
+	suite.NoError(err)
+	suite.Len(groups, 1)
+	suite.Equal("project-1", groups[0].ProjectID)
+	suite.True(groups[0].IsReadOnly)
+
+	groups, err = suite.store.GetGroupListByProject(context.Background(), "project-1", nil, 10, 5)
+	suite.NoError(err)
+	suite.Empty(groups)
+}
+
+func (suite *GroupFileBasedStoreTestSuite) TestGetGroupCarriesTheProject() {
+	suite.seedGroup(groupDeclarativeResource{ID: "grp1", Name: "Admins", OUID: "ou1", ProjectID: "project-1"})
+
+	group, err := suite.store.GetGroup(context.Background(), "grp1")
+
+	suite.NoError(err)
+	suite.Equal("project-1", group.ProjectID)
 }

@@ -101,6 +101,11 @@ const sidebar: SidebarsConfig = {
                   id: 'sdks-and-tools/vue/apis/components/change-credential',
                   label: '<ChangeCredential />',
                 },
+                {
+                  type: 'doc',
+                  id: 'sdks-and-tools/vue/apis/components/organization-unit-switcher',
+                  label: '<OrganizationUnitSwitcher />',
+                },
               ],
             },
           ],

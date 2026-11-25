@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -19,11 +20,15 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/session"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/sessionmock"
 )
+
+// testExistingHandle is the handle a checkpoint saved earlier in the execution recorded.
+const testExistingHandle = "existing-handle"
 
 type SessionExecutorTestSuite struct {
 	suite.Suite
@@ -112,7 +117,7 @@ func captureSave(sso *sessionmock.ServiceMock, captured *session.SaveCheckpointI
 func (suite *SessionExecutorTestSuite) TestFreshSave() {
 	sso := sessionmock.NewServiceMock(suite.T())
 	var in session.SaveCheckpointInput
-	captureSave(sso, &in, session.SaveCheckpointResult{Handle: "handle-xyz", Created: true})
+	captureSave(sso, &in, session.SaveCheckpointResult{Handle: "handle-xyz"})
 	exec := suite.newExecutor(sso, suite.saveAuthnMock())
 
 	resp, err := exec.Execute(freshCtx())
@@ -155,7 +160,6 @@ func (suite *SessionExecutorTestSuite) TestFreshSave_PublishesAuthTime() {
 	var in session.SaveCheckpointInput
 	captureSave(sso, &in, session.SaveCheckpointResult{
 		Handle:          "handle-xyz",
-		Created:         true,
 		AuthenticatedAt: time.Unix(1700000000, 0).UTC(),
 	})
 	exec := suite.newExecutor(sso, suite.saveAuthnMock())
@@ -171,7 +175,7 @@ func (suite *SessionExecutorTestSuite) TestFreshSave_PublishesAuthTime() {
 func (suite *SessionExecutorTestSuite) TestFreshSave_NoAuthTimeWhenUnset() {
 	sso := sessionmock.NewServiceMock(suite.T())
 	var in session.SaveCheckpointInput
-	captureSave(sso, &in, session.SaveCheckpointResult{Handle: "handle-xyz", Created: true})
+	captureSave(sso, &in, session.SaveCheckpointResult{Handle: "handle-xyz"})
 	exec := suite.newExecutor(sso, suite.saveAuthnMock())
 
 	resp, err := exec.Execute(freshCtx())
@@ -180,12 +184,15 @@ func (suite *SessionExecutorTestSuite) TestFreshSave_NoAuthTimeWhenUnset() {
 	suite.NotContains(resp.RuntimeData, common.RuntimeKeyAuthTime)
 }
 
-// TestFreshSave_AttachNoCookie covers attaching to an existing session (service reports
-// Created=false): the handle is recorded on RuntimeData but no cookie is emitted.
-func (suite *SessionExecutorTestSuite) TestFreshSave_AttachNoCookie() {
+// TestFreshSave_AttachReturnsHandle covers attaching to an existing session: the handle is emitted as a
+// minted one is, with the session's end.
+func (suite *SessionExecutorTestSuite) TestFreshSave_AttachReturnsHandle() {
 	sso := sessionmock.NewServiceMock(suite.T())
 	var in session.SaveCheckpointInput
-	captureSave(sso, &in, session.SaveCheckpointResult{Handle: "handle-abc", Created: false})
+	expiresAt := time.Date(2026, 11, 16, 18, 30, 0, 500, time.UTC)
+	captureSave(sso, &in, session.SaveCheckpointResult{
+		Handle: "handle-abc", AbsoluteExpiresAt: expiresAt,
+	})
 	exec := suite.newExecutor(sso, suite.saveAuthnMock())
 	ctx := freshCtx()
 	ctx.CurrentNodeID = "step_up"
@@ -195,9 +202,12 @@ func (suite *SessionExecutorTestSuite) TestFreshSave_AttachNoCookie() {
 	suite.Require().NoError(err)
 
 	suite.Equal("handle-abc", in.HandleHint, "the shared handle hint is passed to the service")
-	suite.Empty(resp.EngineData[common.RuntimeKeySSOSessionHandle], "no cookie is emitted when attaching")
+	suite.Equal("handle-abc", resp.EngineData[common.RuntimeKeySSOSessionHandle])
 	suite.Equal("handle-abc",
 		resp.RuntimeData[common.SSOCheckpointKey(common.RuntimeKeySSOSessionSaved, "step_up")])
+	// The joined session's end goes out with its handle, and stays for a re-executed join to emit again.
+	suite.Equal(strconv.FormatInt(expiresAt.Unix(), 10), resp.EngineData[common.RuntimeKeySSOSessionExpiresAt])
+	suite.Equal(strconv.FormatInt(expiresAt.Unix(), 10), resp.RuntimeData[common.RuntimeKeySSOSessionExpiresAt])
 }
 
 // TestFreshSave_SkippedNoEmission covers the service declining the save (subject conflict): nothing is
@@ -230,18 +240,43 @@ func (suite *SessionExecutorTestSuite) TestFreshSave_SaveErrorIsNonFatal() {
 	suite.Empty(resp.EngineData[common.RuntimeKeySSOSessionHandle])
 }
 
-// TestFreshSave_Idempotent covers a checkpoint already saved in this execution: the handle is
-// re-emitted from RuntimeData without calling the service (no SaveCheckpoint expectation is set).
+// TestFreshSave_Idempotent covers a checkpoint already saved in this execution: the service is not called (no
+// SaveCheckpoint expectation is set), and what the first save recorded is published again.
 func (suite *SessionExecutorTestSuite) TestFreshSave_Idempotent() {
-	sso := sessionmock.NewServiceMock(suite.T())
-	exec := suite.newExecutor(sso, suite.saveAuthnMock())
-	ctx := freshCtx()
-	ctx.RuntimeData[common.SSOCheckpointKey(common.RuntimeKeySSOSessionSaved, "session")] = "existing-handle"
+	cases := []struct {
+		name        string
+		carried     map[string]string
+		wantEngine  map[string]string
+		wantRuntime map[string]string
+	}{
+		{"the handle", nil,
+			map[string]string{common.RuntimeKeySSOSessionHandle: testExistingHandle}, nil},
+		{"the session's end", map[string]string{common.RuntimeKeySSOSessionExpiresAt: "1700028800"},
+			map[string]string{common.RuntimeKeySSOSessionExpiresAt: "1700028800"}, nil},
+		{"the session id", map[string]string{common.RuntimeKeySSOSessionID: "sess-earlier"},
+			nil, map[string]string{common.RuntimeKeySSOSessionID: "sess-earlier"}},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			sso := sessionmock.NewServiceMock(suite.T())
+			exec := suite.newExecutor(sso, suite.saveAuthnMock())
+			ctx := freshCtx()
+			ctx.RuntimeData[common.SSOCheckpointKey(common.RuntimeKeySSOSessionSaved, "session")] = testExistingHandle
+			for key, value := range tc.carried {
+				ctx.RuntimeData[key] = value
+			}
 
-	resp, err := exec.Execute(ctx)
-	suite.Require().NoError(err)
+			resp, err := exec.Execute(ctx)
+			suite.Require().NoError(err)
 
-	suite.Equal("existing-handle", resp.EngineData[common.RuntimeKeySSOSessionHandle])
+			for key, want := range tc.wantEngine {
+				suite.Equal(want, resp.EngineData[key], key)
+			}
+			for key, want := range tc.wantRuntime {
+				suite.Equal(want, resp.RuntimeData[key], key)
+			}
+		})
+	}
 }
 
 // TestFreshSave_Unauthenticated covers no authenticated subject: the service is never called.
@@ -261,7 +296,7 @@ func (suite *SessionExecutorTestSuite) TestFreshSave_Unauthenticated() {
 func (suite *SessionExecutorTestSuite) TestFreshSave_ResolvesTheSubjectOnce() {
 	sso := sessionmock.NewServiceMock(suite.T())
 	var in session.SaveCheckpointInput
-	captureSave(sso, &in, session.SaveCheckpointResult{Handle: "h", Created: true})
+	captureSave(sso, &in, session.SaveCheckpointResult{Handle: "h"})
 	authn := suite.saveAuthnMock()
 	exec := suite.newExecutor(sso, authn)
 
@@ -340,7 +375,7 @@ func (suite *SessionExecutorTestSuite) TestFreshSave_NoResolvedSubjectSkips() {
 func (suite *SessionExecutorTestSuite) TestFreshSave_SanitizesSnapshot() {
 	sso := sessionmock.NewServiceMock(suite.T())
 	var in session.SaveCheckpointInput
-	captureSave(sso, &in, session.SaveCheckpointResult{Handle: "h", Created: true})
+	captureSave(sso, &in, session.SaveCheckpointResult{Handle: "h"})
 	exec := suite.newExecutor(sso, suite.saveAuthnMock())
 
 	ctx := freshCtx()
@@ -349,6 +384,7 @@ func (suite *SessionExecutorTestSuite) TestFreshSave_SanitizesSnapshot() {
 	ctx.RuntimeData[common.SSOCheckpointKey(common.RuntimeKeySSOSessionSaved, "other")] = "h"
 	ctx.RuntimeData[common.RuntimeKeyRequiredEssentialAttributes] = "email"
 	ctx.RuntimeData[common.RuntimeKeyRequiredOptionalAttributes] = "phone"
+	ctx.RuntimeData[common.RuntimeKeyUserAttributesCacheTTLSeconds] = "120"
 	ctx.RuntimeData[common.RuntimeKeyRequiredLocales] = "en-US"
 	ctx.RuntimeData[common.RuntimeKeyRequestedPermissions] = "openid profile"
 	ctx.RuntimeData[common.RuntimeKeyResourceServerIdentifier] = "rs-a"
@@ -375,6 +411,7 @@ func (suite *SessionExecutorTestSuite) TestFreshSave_SanitizesSnapshot() {
 	// Request-scoped keys are stripped so they cannot override a joining app's request.
 	suite.NotContains(rd, common.RuntimeKeyRequiredEssentialAttributes)
 	suite.NotContains(rd, common.RuntimeKeyRequiredOptionalAttributes)
+	suite.NotContains(rd, common.RuntimeKeyUserAttributesCacheTTLSeconds)
 	suite.NotContains(rd, common.RuntimeKeyRequiredLocales)
 	suite.NotContains(rd, common.RuntimeKeyRequestedPermissions)
 	suite.NotContains(rd, common.RuntimeKeyResourceServerIdentifier)
@@ -402,6 +439,48 @@ func ssoLoadCtx() *providers.NodeContext {
 	}
 }
 
+// TestFreshSave_PassesClientInfo verifies the save path hands the request's client metadata to the
+// service so a newly established session records its device and IP.
+func (suite *SessionExecutorTestSuite) TestFreshSave_PassesClientInfo() {
+	sso := sessionmock.NewServiceMock(suite.T())
+	var in session.SaveCheckpointInput
+	captureSave(sso, &in, session.SaveCheckpointResult{Handle: "handle-xyz"})
+	exec := suite.newExecutor(sso, suite.saveAuthnMock())
+	client := session.ClientInfo{IP: "203.0.113.10", UserAgent: "Mozilla/5.0 (Macintosh) Chrome/140.0"}
+	ctx := freshCtx()
+	ctx.Context = sysContext.WithRequestMetadata(ctx.Context,
+		sysContext.RequestMetadata{ClientIP: client.IP, UserAgent: client.UserAgent})
+
+	_, err := exec.Execute(ctx)
+	suite.Require().NoError(err)
+
+	suite.Equal(client, in.ClientInfo)
+}
+
+// TestSSOLoad_PassesClientInfo verifies the load path hands the request's client metadata to the
+// service so a reused session records where it was last active.
+func (suite *SessionExecutorTestSuite) TestSSOLoad_PassesClientInfo() {
+	client := session.ClientInfo{IP: "198.51.100.7", UserAgent: "Mozilla/5.0 (iPhone) Safari/17.0"}
+	sso := sessionmock.NewServiceMock(suite.T())
+	sso.EXPECT().LoadCheckpoint(mock.Anything, mock.MatchedBy(func(in session.LoadCheckpointInput) bool {
+		return in.ClientInfo == client
+	})).Return(
+		&session.Session{SessionID: "sess-1", SubjectID: "user-2", HandleID: "handle-abc"},
+		&session.SessionContext{
+			SessionID: "sess-1",
+			AuthUser: json.RawMessage(
+				`{"default":{"entityReference":{"entityId":"user-2","ouId":"ou-9","type":"person"}}}`),
+			ContextVersion: 1,
+		}, nil)
+	exec := suite.newExecutor(sso, managermock.NewAuthnProviderManagerMock(suite.T()))
+	ctx := ssoLoadCtx()
+	ctx.Context = sysContext.WithRequestMetadata(ctx.Context,
+		sysContext.RequestMetadata{ClientIP: client.IP, UserAgent: client.UserAgent})
+
+	_, err := exec.Execute(ctx)
+	suite.Require().NoError(err)
+}
+
 // TestSSOLoad verifies the load path rehydrates the subject from the service-returned context, replays
 // the snapshotted RuntimeData, and overrides auth_time from the lean session.
 func (suite *SessionExecutorTestSuite) TestSSOLoad() {
@@ -413,7 +492,8 @@ func (suite *SessionExecutorTestSuite) TestSSOLoad() {
 	})).Return(
 		&session.Session{
 			SessionID: "sess-1", SubjectID: "user-2", HandleID: "handle-abc",
-			AuthenticatedAt: time.Unix(1700000000, 0).UTC(),
+			AuthenticatedAt:   time.Unix(1700000000, 0).UTC(),
+			AbsoluteExpiresAt: time.Unix(1700028800, 0).UTC(),
 		},
 		&session.SessionContext{
 			SessionID: "sess-1",
@@ -445,6 +525,10 @@ func (suite *SessionExecutorTestSuite) TestSSOLoad() {
 	suite.Equal("eng", resp.RuntimeData["department"])
 	// auth_time comes from the lean session and wins over the stale snapshot copy.
 	suite.Equal("1700000000", resp.RuntimeData[common.RuntimeKeyAuthTime])
+	// The reused session's handle is emitted, so the response returns it, with the end the session was
+	// created with.
+	suite.Equal("handle-abc", resp.EngineData[common.RuntimeKeySSOSessionHandle])
+	suite.Equal("1700028800", resp.EngineData[common.RuntimeKeySSOSessionExpiresAt])
 }
 
 // TestSSOLoad_PassesForwardedReadsToService is the executor half of the reuse-path read reduction: the
@@ -561,7 +645,7 @@ func (suite *SessionExecutorTestSuite) TestFreshSave_LeavesExtensionDataOutOfThe
 	ctx.RuntimeData["failureReason"] = "flow-owned"
 	sso := sessionmock.NewServiceMock(suite.T())
 	var in session.SaveCheckpointInput
-	captureSave(sso, &in, session.SaveCheckpointResult{Handle: "handle-xyz", Created: true})
+	captureSave(sso, &in, session.SaveCheckpointResult{Handle: "handle-xyz"})
 	exec := suite.newExecutor(sso, suite.saveAuthnMock())
 
 	_, err := exec.Execute(ctx)
@@ -580,7 +664,7 @@ func (suite *SessionExecutorTestSuite) TestFreshSave_LeavesExtensionDataOutOfThe
 func (suite *SessionExecutorTestSuite) TestFreshSave_PublishesSessionID() {
 	sso := sessionmock.NewServiceMock(suite.T())
 	var in session.SaveCheckpointInput
-	captureSave(sso, &in, session.SaveCheckpointResult{Handle: "handle-xyz", SessionID: "sess-1", Created: true})
+	captureSave(sso, &in, session.SaveCheckpointResult{Handle: "handle-xyz", SessionID: "sess-1"})
 	exec := suite.newExecutor(sso, suite.saveAuthnMock())
 
 	resp, err := exec.Execute(freshCtx())
@@ -588,21 +672,6 @@ func (suite *SessionExecutorTestSuite) TestFreshSave_PublishesSessionID() {
 
 	suite.Equal("sess-1", resp.RuntimeData[common.RuntimeKeySSOSessionID])
 	suite.NotContains(resp.EngineData, common.RuntimeKeySSOSessionID)
-}
-
-// TestFreshSave_Idempotent_RepublishesSessionID covers a re-executed join: the service is not called,
-// yet the session id resolved earlier in this execution is still published.
-func (suite *SessionExecutorTestSuite) TestFreshSave_Idempotent_RepublishesSessionID() {
-	sso := sessionmock.NewServiceMock(suite.T())
-	exec := suite.newExecutor(sso, suite.saveAuthnMock())
-	ctx := freshCtx()
-	ctx.RuntimeData[common.SSOCheckpointKey(common.RuntimeKeySSOSessionSaved, "session")] = "existing-handle"
-	ctx.RuntimeData[common.RuntimeKeySSOSessionID] = "sess-earlier"
-
-	resp, err := exec.Execute(ctx)
-	suite.Require().NoError(err)
-
-	suite.Equal("sess-earlier", resp.RuntimeData[common.RuntimeKeySSOSessionID])
 }
 
 // TestSSOLoad_PublishesSessionIDFromSessionNotSnapshot verifies the load path publishes the id of the
@@ -633,15 +702,17 @@ func (suite *SessionExecutorTestSuite) TestSSOLoad_PublishesSessionIDFromSession
 	suite.Equal("sess-live", resp.RuntimeData[common.RuntimeKeySSOSessionID])
 }
 
-// TestSanitizeSnapshotRuntimeData_DropsSSOSessionID verifies the session id never enters a snapshot.
-func (suite *SessionExecutorTestSuite) TestSanitizeSnapshotRuntimeData_DropsSSOSessionID() {
-	sanitized := sanitizeSnapshotRuntimeData(map[string]string{
-		common.RuntimeKeySSOSessionID: "sess-1",
-		"keep_me":                     "value",
-	})
+// TestSanitizeSnapshotRuntimeData_DropsSSOSessionKeys verifies the session id and the session's end never
+// enter a snapshot, so a reuse publishes the values of the session it loads, not replayed copies.
+func (suite *SessionExecutorTestSuite) TestSanitizeSnapshotRuntimeData_DropsSSOSessionKeys() {
+	for _, key := range []string{common.RuntimeKeySSOSessionID, common.RuntimeKeySSOSessionExpiresAt} {
+		suite.Run(key, func() {
+			sanitized := sanitizeSnapshotRuntimeData(map[string]string{key: "value-1", "keep_me": "value"})
 
-	suite.NotContains(sanitized, common.RuntimeKeySSOSessionID)
-	suite.Equal("value", sanitized["keep_me"])
+			suite.NotContains(sanitized, key)
+			suite.Equal("value", sanitized["keep_me"])
+		})
+	}
 }
 
 // TestFreshSave_SkippedClearsCarriedSessionID covers a save declined for a subject mismatch: a session

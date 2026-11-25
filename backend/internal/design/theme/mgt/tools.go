@@ -10,6 +10,8 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/mcp/tool"
 )
@@ -26,9 +28,15 @@ type themeSummary struct {
 	Handle      string `json:"handle"`
 	DisplayName string `json:"displayName"`
 	Description string `json:"description,omitempty"`
+	ProjectID   string `json:"projectId,omitempty"`
 	IsReadOnly  bool   `json:"isReadOnly"`
 	CreatedAt   string `json:"createdAt,omitempty"`
 	UpdatedAt   string `json:"updatedAt,omitempty"`
+}
+
+// themeListMCPInput is the MCP list tool input.
+type themeListMCPInput struct {
+	ProjectID string `json:"projectId,omitempty" jsonschema:"Project ID. Lists only its themes."`
 }
 
 // themeListMCPResponse is the MCP list tool output.
@@ -46,6 +54,7 @@ type themeDetailMCPResponse struct {
 	Handle      string                 `json:"handle"`
 	DisplayName string                 `json:"displayName"`
 	Description string                 `json:"description,omitempty"`
+	ProjectID   string                 `json:"projectId,omitempty"`
 	Theme       map[string]interface{} `json:"theme,omitempty"`
 	IsReadOnly  bool                   `json:"isReadOnly"`
 	CreatedAt   string                 `json:"createdAt,omitempty"`
@@ -59,6 +68,7 @@ func registerMCPTools(server *mcp.Server, themeMgtService ThemeMgtServiceInterfa
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "list_themes",
 		Description: `List all themes with summary information (ID, handle, display name). ` +
+			`Pass projectId to list only the themes of a project. ` +
 			`Use get_theme_by_id to retrieve full color and typography configuration for a specific theme.`,
 		Annotations: &mcp.ToolAnnotations{
 			Title:        "List Themes",
@@ -80,14 +90,21 @@ func registerMCPTools(server *mcp.Server, themeMgtService ThemeMgtServiceInterfa
 func (t *themeTools) listThemes(
 	ctx context.Context,
 	_ *mcp.CallToolRequest,
-	_ any,
+	input themeListMCPInput,
 ) (*mcp.CallToolResult, *themeListMCPResponse, error) {
 	var summaries []themeSummary
 	var totalResults int
 	offset := 0
 
 	for {
-		resp, svcErr := t.themeMgtService.GetThemeList(ctx, serverconst.MaxPageSize, offset)
+		var resp *ThemeList
+		var svcErr *tidcommon.ServiceError
+		if input.ProjectID != "" {
+			resp, svcErr = t.themeMgtService.GetThemeListByProject(ctx, input.ProjectID, serverconst.MaxPageSize,
+				offset)
+		} else {
+			resp, svcErr = t.themeMgtService.GetThemeList(ctx, serverconst.MaxPageSize, offset)
+		}
 		if svcErr != nil {
 			return nil, nil, fmt.Errorf("failed to list themes: %s", svcErr.ErrorDescription)
 		}
@@ -100,6 +117,7 @@ func (t *themeTools) listThemes(
 				Handle:      th.Handle,
 				DisplayName: th.DisplayName,
 				Description: th.Description,
+				ProjectID:   th.ProjectID,
 				IsReadOnly:  th.IsReadOnly,
 				CreatedAt:   th.CreatedAt,
 				UpdatedAt:   th.UpdatedAt,
@@ -133,6 +151,7 @@ func (t *themeTools) getThemeByID(
 		Handle:      theme.Handle,
 		DisplayName: theme.DisplayName,
 		Description: theme.Description,
+		ProjectID:   theme.ProjectID,
 		IsReadOnly:  theme.IsReadOnly,
 		CreatedAt:   theme.CreatedAt,
 		UpdatedAt:   theme.UpdatedAt,

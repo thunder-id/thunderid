@@ -24,7 +24,9 @@ describe('RouteConfig', () => {
   });
 
   it('agentTypes builds paths from the segment', () => {
+    expect(RouteConfig.agentTypes.list()).toBe('/agent-types');
     expect(RouteConfig.agentTypes.detail('agent-type-1')).toBe('/agent-types/agent-type-1');
+    expect(RouteConfig.agentTypes.create()).toBe('/agent-types/create');
   });
 
   it('agents builds paths from the segment', () => {
@@ -49,6 +51,12 @@ describe('RouteConfig', () => {
     expect(RouteConfig.resourceServers.list()).toBe('/resource-servers');
     expect(RouteConfig.resourceServers.detail('rs-1')).toBe('/resource-servers/rs-1');
     expect(RouteConfig.resourceServers.create()).toBe('/resource-servers/create');
+  });
+
+  it('authorizationDetailTypes builds paths from the segment', () => {
+    expect(RouteConfig.authorizationDetailTypes.list()).toBe('/authorization-detail-types');
+    expect(RouteConfig.authorizationDetailTypes.detail('type-1')).toBe('/authorization-detail-types/type-1');
+    expect(RouteConfig.authorizationDetailTypes.create()).toBe('/authorization-detail-types/create');
   });
 
   it('translations builds paths from the segment', () => {
@@ -119,21 +127,6 @@ describe('RouteConfig', () => {
     expect(RouteConfig.importConfiguration.summary()).toBe('/import-configuration/summary');
   });
 
-  it('welcome builds paths from the segment', () => {
-    expect(RouteConfig.welcome.root()).toBe('/welcome');
-    expect(RouteConfig.welcome.createProject()).toBe('/welcome/create-project');
-    expect(RouteConfig.welcome.getStarted()).toBe('/welcome/get-started');
-    expect(RouteConfig.welcome.getStartedApplicationsTypes()).toBe('/welcome/get-started/applications/types');
-    expect(RouteConfig.welcome.getStartedApplicationsCreate()).toBe('/welcome/get-started/applications/create');
-    expect(RouteConfig.welcome.getStartedAgentsCreate()).toBe('/welcome/get-started/agents/create');
-    expect(RouteConfig.welcome.tryoutSecuringApplication?.()).toBe('/welcome/tryout/securing-application');
-    expect(RouteConfig.welcome.tryoutAiAgents?.()).toBe('/welcome/tryout/ai-agents');
-    expect(RouteConfig.welcome.tryoutMcp?.()).toBe('/welcome/tryout/mcp');
-    expect(RouteConfig.welcome.importConfigurationUpload()).toBe('/welcome/import-configuration');
-    expect(RouteConfig.welcome.importConfigurationValidate()).toBe('/welcome/import-configuration/validate');
-    expect(RouteConfig.welcome.importConfigurationSummary()).toBe('/welcome/import-configuration/summary');
-  });
-
   it('settings builds paths from the segment', () => {
     expect(RouteConfig.settings.list()).toBe('/settings');
   });
@@ -141,6 +134,5 @@ describe('RouteConfig', () => {
   it('every builder derives its path from ROUTE_SEGMENTS rather than a separate literal', () => {
     expect(RouteConfig.organizationUnits.list()).toBe(`/${ROUTE_SEGMENTS.organizationUnits}`);
     expect(RouteConfig.users.list()).toBe(`/${ROUTE_SEGMENTS.users}`);
-    expect(RouteConfig.welcome.root()).toBe(`/${ROUTE_SEGMENTS.welcome}`);
   });
 });

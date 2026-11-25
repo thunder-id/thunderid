@@ -566,7 +566,7 @@ func (suite *ResourceServerExportTestSuite) TestExportResourceServerByID() {
 
 	suite.Contains(yamlContent, "resource_type: resource_server")
 	suite.Contains(yamlContent, "name: Export Resource Server")
-	suite.Contains(yamlContent, "identifier: {{."+exportIdentifierVariable+"}}",
+	suite.Contains(yamlContent, "identifier: {{."+suite.exportIdentifierVariable()+"}}",
 		"The identifier is the deployment's own, so it is exported as a template variable")
 	suite.NotContains(yamlContent, "identifier: https://api.example.com/export-rs")
 	suite.Contains(yamlContent, `delimiter: ":"`)
@@ -583,7 +583,7 @@ func (suite *ResourceServerExportTestSuite) TestExportCarriesTheIdentifierInTheE
 	export, err := exportResourceServersResponse([]string{suite.resourceServerID})
 	suite.Require().NoError(err)
 
-	suite.Contains(export.EnvironmentVariables, exportIdentifierVariable+"=https://api.example.com/export-rs")
+	suite.Contains(export.EnvironmentVariables, suite.exportIdentifierVariable()+"=https://api.example.com/export-rs")
 }
 
 // An export imported with another value for the identifier variable serves under that identifier,
@@ -603,7 +603,7 @@ func (suite *ResourceServerExportTestSuite) TestImportFillsTheIdentifierFromTheV
 
 	resp, err := doJSONRequest(http.MethodPost, testServerURL+"/import", map[string]interface{}{
 		"content":   export.Resources,
-		"variables": map[string]string{exportIdentifierVariable: "https://api.example.com/export-rs-moved"},
+		"variables": map[string]string{suite.exportIdentifierVariable(): "https://api.example.com/export-rs-moved"},
 		"options":   map[string]interface{}{"target": "runtime", "upsert": true},
 	})
 	suite.Require().NoError(err)
@@ -992,7 +992,10 @@ func (suite *ResourceServerExportTestSuite) TestExportNonExistentResourceServer(
 
 // exportIdentifierVariable is the variable the export of the suite's resource server names its
 // identifier by.
-const exportIdentifierVariable = "RESOURCE_SERVER_EXPORT_RESOURCE_SERVER_IDENTIFIER"
+func (suite *ResourceServerExportTestSuite) exportIdentifierVariable() string {
+	return testutils.ExportVariableName("RESOURCE_SERVER", suite.resourceServerID,
+		"IDENTIFIER")
+}
 
 // exportResourceServers exports the given resource servers and returns the generated YAML.
 func exportResourceServers(ids []string) (string, error) {

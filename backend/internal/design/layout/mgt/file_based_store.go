@@ -28,6 +28,7 @@ func (f *layoutFileBasedStore) Create(id string, data interface{}) error {
 		Handle:      layout.Handle,
 		DisplayName: layout.DisplayName,
 		Description: layout.Description,
+		ProjectID:   layout.ProjectID,
 		Layout:      layout.Layout,
 	}
 	return f.CreateLayout(ctx, id, createReq)
@@ -40,6 +41,7 @@ func (f *layoutFileBasedStore) CreateLayout(ctx context.Context, id string, layo
 		Handle:      layout.Handle,
 		DisplayName: layout.DisplayName,
 		Description: layout.Description,
+		ProjectID:   layout.ProjectID,
 		Layout:      layout.Layout,
 		CreatedAt:   "",
 		UpdatedAt:   "",
@@ -99,6 +101,47 @@ func (f *layoutFileBasedStore) GetLayoutList(ctx context.Context, limit, offset 
 		end = len(layoutList)
 	}
 	return layoutList[start:end], nil
+}
+
+// GetLayoutListByProject implements layoutMgtStoreInterface.
+func (f *layoutFileBasedStore) GetLayoutListByProject(ctx context.Context, projectID string, limit, offset int) (
+	[]Layout, error) {
+	layouts, err := f.layoutsByProject(projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	start := max(offset, 0)
+	if start >= len(layouts) {
+		return []Layout{}, nil
+	}
+	end := min(start+max(limit, 0), len(layouts))
+	return layouts[start:end], nil
+}
+
+// GetLayoutListCountByProject implements layoutMgtStoreInterface.
+func (f *layoutFileBasedStore) GetLayoutListCountByProject(ctx context.Context, projectID string) (int, error) {
+	layouts, err := f.layoutsByProject(projectID)
+	if err != nil {
+		return 0, err
+	}
+	return len(layouts), nil
+}
+
+// layoutsByProject returns the declarative layouts of a project.
+func (f *layoutFileBasedStore) layoutsByProject(projectID string) ([]Layout, error) {
+	list, err := f.GenericFileBasedStore.List()
+	if err != nil {
+		return nil, err
+	}
+
+	layouts := make([]Layout, 0, len(list))
+	for _, item := range list {
+		if layout, ok := item.Data.(*Layout); ok && layout.ProjectID == projectID {
+			layouts = append(layouts, *layout)
+		}
+	}
+	return layouts, nil
 }
 
 // GetLayoutListCount implements layoutMgtStoreInterface.

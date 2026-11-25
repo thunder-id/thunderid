@@ -44,11 +44,12 @@ func (ts *SSOLogoutTestSuite) TestTokenExchange_DeviceSecretSignsInAnotherApp() 
 // TestTokenExchange_NoIDTokenWithoutOpenID verifies that an exchange that does not request openid signs the
 // user in to the app with an access token but returns no ID token.
 func (ts *SSOLogoutTestSuite) TestTokenExchange_NoIDTokenWithoutOpenID() {
-	appID := ts.createTokenExchangeApp(exchangeAppClientID, ts.authFlowID, false)
+	appClientID := exchangeAppClientID + "_no_openid"
+	appID := ts.createTokenExchangeApp(appClientID, ts.authFlowID, false)
 	defer ts.deleteAppByID(appID)
 	first, _ := ts.loginDeviceSecret(ts.newSessionClient(), deviceSSOScope, "exchange_no_openid_state", true)
 
-	status, token := ts.exchangeDeviceSecret(exchangeAppClientID, clientSecret, first.DeviceSecret, "")
+	status, token := ts.exchangeDeviceSecret(appClientID, clientSecret, first.DeviceSecret, "")
 
 	ts.Require().Equal(http.StatusOK, status, "the exchange should succeed: %v", token)
 	ts.NotEmpty(token["access_token"], "an access token is issued")
@@ -83,7 +84,8 @@ func (ts *SSOLogoutTestSuite) TestTokenExchange_DeviceSecretOfAnotherFlowNeedsIn
 // TestTokenExchange_EndedSessionNeedsInteraction verifies that once the session is signed out, its
 // device secret no longer signs anyone in.
 func (ts *SSOLogoutTestSuite) TestTokenExchange_EndedSessionNeedsInteraction() {
-	appID := ts.createTokenExchangeApp(exchangeAppClientID, ts.authFlowID, false)
+	appClientID := exchangeAppClientID + "_ended"
+	appID := ts.createTokenExchangeApp(appClientID, ts.authFlowID, false)
 	defer ts.deleteAppByID(appID)
 	nativeAppID := ts.createAppNativeApp()
 	defer ts.deleteAppByID(nativeAppID)
@@ -103,7 +105,7 @@ func (ts *SSOLogoutTestSuite) TestTokenExchange_EndedSessionNeedsInteraction() {
 	})
 	ts.Require().Equal("COMPLETE", signOut.FlowStatus, "sign-out should complete")
 
-	status, token := ts.exchangeDeviceSecret(exchangeAppClientID, clientSecret, first.DeviceSecret, "openid")
+	status, token := ts.exchangeDeviceSecret(appClientID, clientSecret, first.DeviceSecret, "openid")
 
 	ts.Equal(http.StatusBadRequest, status)
 	ts.Equal("interaction_required", token["error"])
@@ -112,7 +114,8 @@ func (ts *SSOLogoutTestSuite) TestTokenExchange_EndedSessionNeedsInteraction() {
 // TestTokenExchange_PicksTheSessionOfTheAppsFlow verifies that of the sessions a device secret carries,
 // the exchange uses the one for the exchanging app's login flow.
 func (ts *SSOLogoutTestSuite) TestTokenExchange_PicksTheSessionOfTheAppsFlow() {
-	appID := ts.createTokenExchangeApp(exchangeAppClientID, ts.authFlowID, false)
+	appClientID := exchangeAppClientID + "_pick"
+	appID := ts.createTokenExchangeApp(appClientID, ts.authFlowID, false)
 	defer ts.deleteAppByID(appID)
 	client := ts.newSessionClient()
 	authID, executionID := ts.authorize(client, deviceSSOScope, "exchange_pick_state")
@@ -120,7 +123,7 @@ func (ts *SSOLogoutTestSuite) TestTokenExchange_PicksTheSessionOfTheAppsFlow() {
 	first := ts.completeAndExchange(client, authID, step.Assertion,
 		append([]testutils.FlowSessionData{unrelatedSession}, collected...))
 
-	status, token := ts.exchangeDeviceSecret(exchangeAppClientID, clientSecret, first.DeviceSecret, "openid")
+	status, token := ts.exchangeDeviceSecret(appClientID, clientSecret, first.DeviceSecret, "openid")
 
 	ts.Require().Equal(http.StatusOK, status, "the exchange should succeed: %v", token)
 	ts.NotEmpty(token["access_token"])
@@ -130,7 +133,8 @@ func (ts *SSOLogoutTestSuite) TestTokenExchange_PicksTheSessionOfTheAppsFlow() {
 // another user: a callback that posts another user's session in place of the signed-in user's gets a
 // device secret whose exchange is refused, since the session the flow runs on is not its subject's.
 func (ts *SSOLogoutTestSuite) TestTokenExchange_SessionOfAnotherUserRefused() {
-	appID := ts.createTokenExchangeApp(exchangeAppClientID, ts.authFlowID, false)
+	appClientID := exchangeAppClientID + "_other_user"
+	appID := ts.createTokenExchangeApp(appClientID, ts.authFlowID, false)
 	defer ts.deleteAppByID(appID)
 	otherClient := ts.newSessionClient()
 	_, otherExecutionID := ts.authorize(otherClient, deviceSSOScope, "exchange_other_user_state")
@@ -140,7 +144,7 @@ func (ts *SSOLogoutTestSuite) TestTokenExchange_SessionOfAnotherUserRefused() {
 	step, _ := ts.runCredentialLogin(client, executionID, ssoReuseUsername)
 	swapped := ts.completeAndExchange(client, authID, step.Assertion, otherUsersSessions)
 
-	status, token := ts.exchangeDeviceSecret(exchangeAppClientID, clientSecret, swapped.DeviceSecret, "openid")
+	status, token := ts.exchangeDeviceSecret(appClientID, clientSecret, swapped.DeviceSecret, "openid")
 
 	ts.Equal(http.StatusBadRequest, status)
 	ts.Equal("invalid_grant", token["error"])
@@ -182,19 +186,31 @@ func (ts *SSOLogoutTestSuite) createTokenExchangeApp(appClientID, flowID string,
 // given scope (none when empty), and returns the status and the decoded response body.
 func (ts *SSOLogoutTestSuite) exchangeDeviceSecret(appClientID, secret, deviceSecret, scope string) (
 	int, map[string]interface{}) {
+	return ts.exchangeDeviceSecretAt("/oauth2/token", appClientID, secret, deviceSecret, scope)
+}
+
+// exchangeDeviceSecretAt is exchangeDeviceSecret at the token endpoint at path.
+func (ts *SSOLogoutTestSuite) exchangeDeviceSecretAt(path, appClientID, secret, deviceSecret, scope string) (
+	int, map[string]interface{}) {
 	ts.Require().NotEmpty(deviceSecret, "the first login should have returned a device secret")
+	return ts.requestTokenExchange(path, appClientID, secret, deviceSecret, jwtTokenType, scope)
+}
+
+// requestTokenExchange sends a token exchange to the token endpoint at path as the given client, requesting
+// the given scope (none when empty), and returns the status and the decoded response body.
+func (ts *SSOLogoutTestSuite) requestTokenExchange(path, appClientID, secret, subjectToken, subjectTokenType,
+	scope string) (int, map[string]interface{}) {
 	form := url.Values{}
 	form.Set("grant_type", tokenExchangeGrant)
-	form.Set("subject_token", deviceSecret)
-	form.Set("subject_token_type", jwtTokenType)
+	form.Set("subject_token", subjectToken)
+	form.Set("subject_token_type", subjectTokenType)
 	if scope != "" {
 		form.Set("scope", scope)
 	}
 	if secret == "" {
 		form.Set("client_id", appClientID)
 	}
-	req, err := http.NewRequest(http.MethodPost, testutils.TestServerURL+"/oauth2/token",
-		strings.NewReader(form.Encode()))
+	req, err := http.NewRequest(http.MethodPost, testutils.TestServerURL+path, strings.NewReader(form.Encode()))
 	ts.Require().NoError(err)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	if secret != "" {

@@ -33,8 +33,12 @@ type InboundClientValidationSuite struct {
 	// attribute outside this set is provably undeclared.
 	userTypeName string
 	userTypeID   string
-	themeID      string
-	layoutID     string
+	// contactTypeName / contactTypeID identify a user type whose email and mobile_number are contacts,
+	// so their <attribute>_verified claims are declared.
+	contactTypeName string
+	contactTypeID   string
+	themeID         string
+	layoutID        string
 }
 
 func TestInboundClientValidationSuite(t *testing.T) {
@@ -73,6 +77,21 @@ func (suite *InboundClientValidationSuite) SetupSuite() {
 	suite.Require().NoError(err, "Failed to create user type")
 	suite.userTypeID = userTypeID
 
+	suite.contactTypeName = "inboundclientcontact" + suffix
+	contactTypeID, err := testutils.CreateUserType(testutils.UserType{
+		Handle:      suite.contactTypeName,
+		DisplayName: "Contact User Type",
+		OUID:        suite.ouID,
+		Schema: map[string]interface{}{
+			"username":      map[string]interface{}{"type": "string"},
+			"email":         map[string]interface{}{"type": "email"},
+			"mobile_number": map[string]interface{}{"type": "mobile"},
+			"displayName":   map[string]interface{}{"type": "string"},
+		},
+	})
+	suite.Require().NoError(err, "Failed to create contact user type")
+	suite.contactTypeID = contactTypeID
+
 	suite.themeID = suite.createDesignResource("/design/themes", map[string]interface{}{
 		"handle":      "inbound-client-theme-" + suffix,
 		"displayName": "Inbound Client Theme",
@@ -89,9 +108,12 @@ func (suite *InboundClientValidationSuite) TearDownSuite() {
 	suite.deleteDesignResource("/design/themes", suite.themeID)
 	suite.deleteDesignResource("/design/layouts", suite.layoutID)
 
-	if suite.userTypeID != "" {
-		if err := testutils.DeleteUserType(suite.userTypeID); err != nil {
-			suite.T().Logf("Failed to delete user type %s: %v", suite.userTypeID, err)
+	for _, typeID := range []string{suite.userTypeID, suite.contactTypeID} {
+		if typeID == "" {
+			continue
+		}
+		if err := testutils.DeleteUserType(typeID); err != nil {
+			suite.T().Logf("Failed to delete user type %s: %v", typeID, err)
 		}
 	}
 	if suite.ouID != "" {
@@ -250,6 +272,74 @@ func (suite *InboundClientValidationSuite) TestCreateWithDeclaredUserAttributesS
 	suite.Contains(attrs, "username")
 }
 
+// --- Verification claims: create rejects, update strips ---
+
+// TestCreateWithVerificationClaimsOfContactsSucceeds is the control: <attribute>_verified is declared
+// for an email or mobile attribute of an allowed user type.
+func (suite *InboundClientValidationSuite) TestCreateWithVerificationClaimsOfContactsSucceeds() {
+	claims := []string{"email", "email_verified", "mobile_number", "mobile_number_verified"}
+	status, body := suite.createApplication(map[string]interface{}{
+		"name":             suite.appName("verification-claims"),
+		"allowedUserTypes": []string{suite.contactTypeName},
+		"assertion":        map[string]interface{}{"userAttributes": claims},
+	})
+	suite.Require().Equal(http.StatusCreated, status, "body: %s", body)
+
+	appID := suite.idOf(body)
+	defer suite.deleteApplication(appID)
+
+	suite.ElementsMatch(claims, suite.assertionUserAttributes(suite.getApplication(appID)))
+}
+
+// TestCreateWithVerificationClaimOfNonContactIsRejected pins that <attribute>_verified is undeclared
+// for an attribute that is not an email or mobile, including an email attribute of type string.
+func (suite *InboundClientValidationSuite) TestCreateWithVerificationClaimOfNonContactIsRejected() {
+	for name, tc := range map[string]struct{ userType, claim string }{
+		"string attribute": {suite.contactTypeName, "displayName_verified"},
+		"username":         {suite.contactTypeName, "username_verified"},
+		"string email":     {suite.userTypeName, "email_verified"},
+	} {
+		suite.Run(name, func() {
+			status, body := suite.createApplication(map[string]interface{}{
+				"name":             suite.appName("verification-claim-create"),
+				"allowedUserTypes": []string{tc.userType},
+				"assertion":        map[string]interface{}{"userAttributes": []string{"email", tc.claim}},
+			})
+
+			suite.Equal(http.StatusBadRequest, status, "body: %s", body)
+			suite.Equal("APP-1035", suite.errorCode(body))
+		})
+	}
+}
+
+// TestUpdateWithVerificationClaimOfNonContactStripsIt is the update-side divergence for the claims
+// above: the update succeeds and the undeclared claim is not stored.
+func (suite *InboundClientValidationSuite) TestUpdateWithVerificationClaimOfNonContactStripsIt() {
+	name := suite.appName("verification-claim-update")
+	status, body := suite.createApplication(map[string]interface{}{
+		"name":             name,
+		"allowedUserTypes": []string{suite.contactTypeName},
+		"assertion":        map[string]interface{}{"userAttributes": []string{"email", "email_verified"}},
+	})
+	suite.Require().Equal(http.StatusCreated, status, "body: %s", body)
+
+	appID := suite.idOf(body)
+	defer suite.deleteApplication(appID)
+
+	updateStatus, updateBody := suite.updateApplication(appID, map[string]interface{}{
+		"name":             name,
+		"allowedUserTypes": []string{suite.contactTypeName},
+		"assertion": map[string]interface{}{
+			"userAttributes": []string{"email", "email_verified", "displayName_verified", "username_verified"},
+		},
+	})
+	suite.Require().Equal(http.StatusOK, updateStatus, "body: %s", updateBody)
+
+	attrs := suite.assertionUserAttributes(suite.getApplication(appID))
+	suite.ElementsMatch([]string{"email", "email_verified"}, attrs,
+		"an update must keep the contact's claim and strip the undeclared ones")
+}
+
 // --- Subject attribute mapping ---
 
 // TestCreateWithValidSubjectAttributeSucceeds is the control: "email" is unique and required.
@@ -334,25 +424,34 @@ func (suite *InboundClientValidationSuite) assertionUserAttributes(app map[strin
 	return attrs
 }
 
-// createDesignResource creates a theme or layout and returns its ID.
+// createDesignResource creates a theme or layout through an import with the management API key, the only
+// way a data plane takes one, and returns its ID.
 func (suite *InboundClientValidationSuite) createDesignResource(
 	basePath string, body map[string]interface{},
 ) string {
-	status, respBody := suite.do(http.MethodPost, testutils.TestServerURL+basePath, body)
-	suite.Require().Equal(http.StatusCreated, status, "create %s failed: %s", basePath, respBody)
-	return suite.idOf(respBody)
+	id, err := testutils.ImportResource(designResourceType(basePath), body, false)
+	suite.Require().NoError(err, "create %s failed", basePath)
+	return id
 }
 
-// deleteDesignResource removes a theme or layout, tolerating an already-deleted resource.
+// deleteDesignResource removes a theme or layout through an import deletion, which tolerates an
+// already-deleted resource.
 func (suite *InboundClientValidationSuite) deleteDesignResource(basePath, id string) {
 	if id == "" {
 		return
 	}
 
-	status, body := suite.do(http.MethodDelete, testutils.TestServerURL+basePath+"/"+id, nil)
-	if status != http.StatusNoContent && status != http.StatusNotFound {
-		suite.T().Logf("Failed to delete %s/%s: status %d: %s", basePath, id, status, body)
+	if err := testutils.DeleteImportedResource(designResourceType(basePath), id); err != nil {
+		suite.T().Logf("Failed to delete %s/%s: %v", basePath, id, err)
 	}
+}
+
+// designResourceType returns the import resource type of the theme or layout API path.
+func designResourceType(basePath string) string {
+	if basePath == "/design/layouts" {
+		return "layout"
+	}
+	return "theme"
 }
 
 // idOf extracts the id field from a created-resource response body.

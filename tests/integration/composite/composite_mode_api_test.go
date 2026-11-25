@@ -27,42 +27,20 @@ import (
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
+// compositeAgentType is the declarative agent type of decl-ou-1 (agenttype-declarative-1.yaml), which the
+// declarative agents are of and the runtime agents this suite creates in decl-ou-1 use.
+const compositeAgentType = "declarative-agents"
+
 type CompositeModeSuite struct {
 	suite.Suite
-	createdResources  map[string][]string
-	agentTypeSnapshot *testutils.AgentTypeSnapshot
+	createdResources map[string][]string
 }
 
 func (suite *CompositeModeSuite) SetupSuite() {
 	suite.createdResources = make(map[string][]string)
-
-	// The "default" agent type is a singleton shared with every other suite. Snapshot it before
-	// pointing it at the declarative OU, so teardown can put it back.
-	snapshot, err := testutils.SnapshotAgentType()
-	suite.Require().NoError(err, "Failed to snapshot the default agent type")
-	suite.agentTypeSnapshot = snapshot
-
-	// Ensure the singleton "default" agent type exists so composite agent tests can create runtime agents.
-	_, err = testutils.CreateAgentType(testutils.UserType{
-		Handle:      "default",
-		DisplayName: "Default",
-		OUID:        "decl-ou-1",
-		Schema: map[string]interface{}{
-			"name":        map[string]interface{}{"type": "string", "required": true, "unique": true},
-			"description": map[string]interface{}{"type": "string"},
-		},
-	})
-	suite.Require().NoError(err, "Failed to ensure default agent type exists")
 }
 
 func (suite *CompositeModeSuite) TearDownSuite() {
-	// Restore the shared agent type before deleting any runtime resources it may reference.
-	if suite.agentTypeSnapshot != nil {
-		if err := testutils.RestoreAgentType(suite.agentTypeSnapshot); err != nil {
-			suite.T().Errorf("teardown: failed to restore the default agent type: %v", err)
-		}
-	}
-
 	// Delete only runtime resources (not declarative)
 	for module, ids := range suite.createdResources {
 		for _, id := range ids {
@@ -86,10 +64,11 @@ func (suite *CompositeModeSuite) TearDownSuite() {
 				suite.deleteResource(fmt.Sprintf("%s/flows/%s", testutils.TestServerURL, id))
 			case "user_type":
 				suite.deleteResource(fmt.Sprintf("%s/user-types/%s", testutils.TestServerURL, id))
-			case "theme":
-				suite.deleteResource(fmt.Sprintf("%s/design/themes/%s", testutils.TestServerURL, id))
-			case "layout":
-				suite.deleteResource(fmt.Sprintf("%s/design/layouts/%s", testutils.TestServerURL, id))
+			case "theme", "layout":
+				// A data plane removes themes and layouts only through an import.
+				if err := testutils.DeleteImportedResource(module, id); err != nil {
+					suite.T().Logf("teardown: failed to delete %s %s: %v", module, id, err)
+				}
 			}
 		}
 	}
@@ -235,7 +214,7 @@ func (suite *CompositeModeSuite) TestDeclaredUserListedInTheUnitsItIsSharedInto(
 
 func (suite *CompositeModeSuite) TestAgentCreate() {
 	agent := map[string]interface{}{
-		"type":       "default",
+		"type":       compositeAgentType,
 		"ouId":       "decl-ou-1",
 		"attributes": map[string]interface{}{"name": "Test Runtime Agent"},
 	}
@@ -350,7 +329,17 @@ func (suite *CompositeModeSuite) TestOrganizationUnitDeclarativeVisibility() {
 	suite.Equal(http.StatusOK, resp.StatusCode, "declarative organization unit should be visible")
 	resp.Body.Close()
 
-	suite.assertMergedCollectionContainsIDs("/organization-units", "organizationUnits", "decl-ou-1", "organization_unit")
+	rootIDs := suite.extractCollectionIDs(suite.getCollectionItems("/organization-units", "organizationUnits"))
+	suite.Contains(rootIDs, "decl-ou-1", "root organization units should include decl-ou-1; got IDs: %v", rootIDs)
+
+	// The runtime unit is created under decl-ou-1, so the merged listing is that unit's children.
+	runtimeIDs := suite.createdResources["organization_unit"]
+	suite.Require().NotEmpty(runtimeIDs, "runtime organization unit should be created before verifying the listing")
+	childIDs := suite.extractCollectionIDs(
+		suite.getCollectionItems("/organization-units/decl-ou-1/ous", "organizationUnits"))
+	for _, id := range runtimeIDs {
+		suite.Contains(childIDs, id, "children of decl-ou-1 should include runtime unit %s; got IDs: %v", id, childIDs)
+	}
 }
 
 func (suite *CompositeModeSuite) TestIdentityProviderDeclarativeVisibility() {
@@ -364,6 +353,33 @@ func (suite *CompositeModeSuite) TestIdentityProviderDeclarativeVisibility() {
 
 	suite.assertMergedCollectionContainsIDs(
 		"/connections?category=identity-provider", "connections", "decl-idp-1", "identity_provider")
+}
+
+// TestDeclarativeConnectionAuthorizationRuleTargetsInItsOU verifies a declarative connection whose rule targets a
+// role and a group its organization unit owns loads with that mapping. The loader refuses a target outside the unit,
+// which would stop the server from starting.
+func (suite *CompositeModeSuite) TestDeclarativeConnectionAuthorizationRuleTargetsInItsOU() {
+	client := testutils.GetHTTPClient()
+	resp, err := client.Get(fmt.Sprintf("%s/connections/google/decl-idp-1", testutils.TestServerURL))
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+
+	var connection struct {
+		AttributeConfiguration struct {
+			AuthorizationMapping struct {
+				Rules []testutils.AuthorizationRuleMapping `json:"rules"`
+			} `json:"authorizationMapping"`
+		} `json:"attributeConfiguration"`
+	}
+	suite.Require().NoError(json.NewDecoder(resp.Body).Decode(&connection))
+	rules := connection.AttributeConfiguration.AuthorizationMapping.Rules
+	suite.Require().Len(rules, 1)
+	suite.Require().Len(rules[0].Values, 1)
+	suite.ElementsMatch([]testutils.AuthorizationTarget{
+		{Type: testutils.AuthorizationTargetRole, ID: "decl-role-1"},
+		{Type: testutils.AuthorizationTargetGroup, ID: "decl-group-1"},
+	}, rules[0].Values[0].Targets)
 }
 
 // declarativeOUID reads the id the server reports for the declarative organization unit decl-ou-1.
@@ -815,9 +831,12 @@ func (suite *CompositeModeSuite) TestOrganizationUnitCreate() {
 	timestamp := time.Now().Unix()
 	ouHandle := fmt.Sprintf("runtime-ou-%d", timestamp)
 
+	// A root organization unit reaches the server only through import, so the runtime unit is created
+	// through the API under the declarative one.
 	ou := map[string]interface{}{
 		"handle": ouHandle,
 		"name":   "Test Runtime OU",
+		"parent": suite.declarativeOUID(),
 	}
 
 	payload, _ := json.Marshal(ou)
@@ -1101,32 +1120,13 @@ func (suite *CompositeModeSuite) TestThemeCreate() {
 		},
 	}
 
-	payload, _ := json.Marshal(theme)
-	client := testutils.GetHTTPClient()
-
-	req, err := http.NewRequest(
-		"POST",
-		fmt.Sprintf("%s/design/themes", testutils.TestServerURL),
-		strings.NewReader(string(payload)),
-	)
-	suite.Require().NoError(err)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
-	suite.Require().NoError(err)
-	suite.Equal(http.StatusCreated, resp.StatusCode, "theme should be created")
-
-	var themeResp map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&themeResp)
-	resp.Body.Close()
-
-	themeID, ok := themeResp["id"].(string)
-	suite.Require().True(ok, "response should contain theme ID")
+	// A data plane takes a theme only from an import with the management API key.
+	themeID, err := testutils.ImportResource("theme", theme, false)
+	suite.Require().NoError(err, "theme should be created")
 	suite.Require().NotEmpty(themeID, "theme ID should not be empty")
 
 	// Verify retrieval
-	getReq, _ := http.NewRequest("GET", fmt.Sprintf("%s/design/themes/%s", testutils.TestServerURL, themeID), nil)
-	resp, err = client.Do(getReq)
+	resp, err := testutils.GetHTTPClient().Get(fmt.Sprintf("%s/design/themes/%s", testutils.TestServerURL, themeID))
 	suite.Require().NoError(err)
 	suite.Equal(http.StatusOK, resp.StatusCode, "created theme should be retrievable")
 	resp.Body.Close()
@@ -1143,32 +1143,13 @@ func (suite *CompositeModeSuite) TestLayoutCreate() {
 		},
 	}
 
-	payload, _ := json.Marshal(layout)
-	client := testutils.GetHTTPClient()
-
-	req, err := http.NewRequest(
-		"POST",
-		fmt.Sprintf("%s/design/layouts", testutils.TestServerURL),
-		strings.NewReader(string(payload)),
-	)
-	suite.Require().NoError(err)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
-	suite.Require().NoError(err)
-	suite.Equal(http.StatusCreated, resp.StatusCode, "layout should be created")
-
-	var layoutResp map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&layoutResp)
-	resp.Body.Close()
-
-	layoutID, ok := layoutResp["id"].(string)
-	suite.Require().True(ok, "response should contain layout ID")
+	// A data plane takes a layout only from an import with the management API key.
+	layoutID, err := testutils.ImportResource("layout", layout, false)
+	suite.Require().NoError(err, "layout should be created")
 	suite.Require().NotEmpty(layoutID, "layout ID should not be empty")
 
 	// Verify retrieval
-	getReq, _ := http.NewRequest("GET", fmt.Sprintf("%s/design/layouts/%s", testutils.TestServerURL, layoutID), nil)
-	resp, err = client.Do(getReq)
+	resp, err := testutils.GetHTTPClient().Get(fmt.Sprintf("%s/design/layouts/%s", testutils.TestServerURL, layoutID))
 	suite.Require().NoError(err)
 	suite.Equal(http.StatusOK, resp.StatusCode, "created layout should be retrievable")
 	resp.Body.Close()
@@ -1239,7 +1220,7 @@ func (suite *CompositeModeSuite) TestUserDeclarativeDeleteReject() {
 func (suite *CompositeModeSuite) TestAgentDeclarativeUpdateReject() {
 	client := testutils.GetHTTPClient()
 	payload := map[string]interface{}{
-		"type":       "default",
+		"type":       compositeAgentType,
 		"ouId":       "decl-ou-1",
 		"attributes": map[string]interface{}{"name": "Updated"},
 	}
@@ -1492,60 +1473,37 @@ func (suite *CompositeModeSuite) TestEntityTypeDeclarativeDeleteReject() {
 	suite.Equal("USRS-1008", errCode, "error code should be USRS-1008 for immutable user type")
 }
 
+// The declarative design rejects run through an import with the management API key, since a data plane
+// takes no theme or layout write from a token.
+
 func (suite *CompositeModeSuite) TestThemeDeclarativeUpdateReject() {
-	client := testutils.GetHTTPClient()
-	payload := map[string]interface{}{"displayName": "Updated"}
-	jsonPayload, _ := json.Marshal(payload)
-
-	req, _ := http.NewRequest("PUT", fmt.Sprintf("%s/design/themes/decl-theme-1", testutils.TestServerURL), strings.NewReader(string(jsonPayload)))
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
+	item, err := testutils.ImportResourceOutcome("theme",
+		map[string]interface{}{"id": "decl-theme-1", "displayName": "Updated"}, true)
 	suite.Require().NoError(err)
-	suite.Equal(http.StatusBadRequest, resp.StatusCode, "update of declarative theme should be rejected")
-
-	errCode := suite.extractErrorCode(resp)
-	suite.Equal("THM-1014", errCode, "error code should be THM-1014 for immutable theme")
+	suite.Equal("failed", item.Status, "update of declarative theme should be rejected")
+	suite.Equal("THM-1014", item.Code, "error code should be THM-1014 for immutable theme")
 }
 
 func (suite *CompositeModeSuite) TestThemeDeclarativeDeleteReject() {
-	client := testutils.GetHTTPClient()
-	req, _ := http.NewRequest("DELETE", fmt.Sprintf("%s/design/themes/decl-theme-1", testutils.TestServerURL), nil)
-
-	resp, err := client.Do(req)
+	item, err := testutils.DeleteImportedResourceOutcome("theme", "decl-theme-1")
 	suite.Require().NoError(err)
-	suite.Equal(http.StatusBadRequest, resp.StatusCode, "delete of declarative theme should be rejected")
-
-	errCode := suite.extractErrorCode(resp)
-	suite.Equal("THM-1014", errCode, "error code should be THM-1014 for immutable theme")
+	suite.Equal("failed", item.Status, "delete of declarative theme should be rejected")
+	suite.Equal("THM-1014", item.Code, "error code should be THM-1014 for immutable theme")
 }
 
 func (suite *CompositeModeSuite) TestLayoutDeclarativeUpdateReject() {
-	client := testutils.GetHTTPClient()
-	payload := map[string]interface{}{"displayName": "Updated"}
-	jsonPayload, _ := json.Marshal(payload)
-
-	req, _ := http.NewRequest("PUT", fmt.Sprintf("%s/design/layouts/decl-layout-1", testutils.TestServerURL), strings.NewReader(string(jsonPayload)))
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
+	item, err := testutils.ImportResourceOutcome("layout",
+		map[string]interface{}{"id": "decl-layout-1", "displayName": "Updated"}, true)
 	suite.Require().NoError(err)
-	suite.Equal(http.StatusBadRequest, resp.StatusCode, "update of declarative layout should be rejected")
-
-	errCode := suite.extractErrorCode(resp)
-	suite.Equal("LAY-1015", errCode, "error code should be LAY-1015 for immutable layout")
+	suite.Equal("failed", item.Status, "update of declarative layout should be rejected")
+	suite.Equal("LAY-1015", item.Code, "error code should be LAY-1015 for immutable layout")
 }
 
 func (suite *CompositeModeSuite) TestLayoutDeclarativeDeleteReject() {
-	client := testutils.GetHTTPClient()
-	req, _ := http.NewRequest("DELETE", fmt.Sprintf("%s/design/layouts/decl-layout-1", testutils.TestServerURL), nil)
-
-	resp, err := client.Do(req)
+	item, err := testutils.DeleteImportedResourceOutcome("layout", "decl-layout-1")
 	suite.Require().NoError(err)
-	suite.Equal(http.StatusBadRequest, resp.StatusCode, "delete of declarative layout should be rejected")
-
-	errCode := suite.extractErrorCode(resp)
-	suite.Equal("LAY-1015", errCode, "error code should be LAY-1015 for immutable layout")
+	suite.Equal("failed", item.Status, "delete of declarative layout should be rejected")
+	suite.Equal("LAY-1015", item.Code, "error code should be LAY-1015 for immutable layout")
 }
 
 // Run the test suite

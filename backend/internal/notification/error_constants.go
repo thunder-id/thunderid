@@ -260,3 +260,14 @@ var (
 	errDeclarativeSenderLocked = errors.New(
 		"default email sender is set declaratively and cannot be overridden")
 )
+
+// errNilEventBus is returned when the notification services are initialized without the event bus the
+// sender management service audits on.
+var errNilEventBus = errors.New("the notification sender management service needs an event bus")
+
+// errSenderNotFoundNoop is returned by deleteSender when the sender does not exist. DeleteSender turns it
+// into a success, so it never reaches a caller.
+var errSenderNotFoundNoop = &tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: ErrorSenderNotFound.Code,
+}

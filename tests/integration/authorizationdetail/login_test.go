@@ -168,6 +168,57 @@ func (s *AuthorizationCodeTestSuite) TestApprovalIsReusedUntilPromptConsent() {
 	s.Len(detailsPurpose(s.T(), step).Optional, 1, "prompt=consent prompts even for a covered detail")
 }
 
+// The user's latest approval of a type replaces their earlier ones, so narrowing a value on the consent screen
+// takes effect: a later request beyond the narrowed value is prompted, though an earlier approval covered it.
+func (s *AuthorizationCodeTestSuite) TestLatestApprovalReplacesAnEarlierWiderOne() {
+	value := uniqueTypeValue("ac-latest")
+	reusable := createType(s.T(), typeRequest{Type: value, Name: "Reusable", Schema: flightSchema,
+		ConsentTemplate: "Book {{route}}", Reuse: true})
+	defer deleteType(s.T(), reusable.ID)
+	detail := func(fare string) string {
+		return `[{"type":"` + value + `","route":"CMB-SIN","maxFare":` + fare + `}]`
+	}
+
+	_, executionID, step, purpose := s.loginExpectingDetailsPrompt(detail("500"))
+	s.Require().Equal("COMPLETE", s.decide(executionID, step.ChallengeToken, purpose, true).FlowStatus)
+
+	_, executionID, step, purpose = s.loginExpectingDetailsPrompt(detail("700"))
+	final := submitConsent(s.T(), executionID, step.ChallengeToken,
+		modifiedDecision(purpose, map[string]json.RawMessage{"maxFare": json.RawMessage(`300`)}))
+	s.Require().Equal("COMPLETE", final.FlowStatus)
+
+	_, _, step = s.login(acClientID, detail("450"), nil)
+	s.Len(detailsPurpose(s.T(), step).Optional, 1, "the earlier approval of 500 no longer covers the request")
+
+	_, _, step = s.login(acClientID, detail("300"), nil)
+	s.Equal("COMPLETE", step.FlowStatus, "the latest approval covers a request within it")
+}
+
+// A covered detail is kept with a new approval of its type on the same prompt, so a request repeating both is
+// not prompted again.
+func (s *AuthorizationCodeTestSuite) TestCoveredDetailIsKeptWithANewApprovalOfItsType() {
+	value := uniqueTypeValue("ac-sibling")
+	reusable := createType(s.T(), typeRequest{Type: value, Name: "Reusable", Schema: flightSchema,
+		ConsentTemplate: "Book {{route}}", Reuse: true})
+	defer deleteType(s.T(), reusable.ID)
+	sin := `{"type":"` + value + `","route":"CMB-SIN","maxFare":300}`
+	lhr := `{"type":"` + value + `","route":"CMB-LHR","maxFare":200}`
+
+	_, executionID, step, purpose := s.loginExpectingDetailsPrompt("[" + sin + "]")
+	s.Require().Equal("COMPLETE", s.decide(executionID, step.ChallengeToken, purpose, true).FlowStatus)
+
+	both := "[" + sin + "," + lhr + "]"
+	_, executionID, step, purpose = s.loginExpectingDetailsPrompt(both)
+	s.Require().Len(purpose.Optional, 1, "only the detail no approval covers is prompted")
+	s.Require().Equal("COMPLETE", s.decide(executionID, step.ChallengeToken, purpose, true).FlowStatus)
+
+	authID, _, step := s.login(acClientID, both, nil)
+	s.Require().Equal("COMPLETE", step.FlowStatus, "both details stay covered")
+	token := s.exchange(authID, step.Assertion, "")
+	s.Require().Equal(http.StatusOK, token.status, string(token.body))
+	s.JSONEq(both, rawJSON(s.T(), token.details))
+}
+
 // The consent prompt describes each field of a detail, with the changes the user may make, and summarizes the
 // detail from its type's template only when every placeholder has a value. The changes the user makes are issued.
 func (s *AuthorizationCodeTestSuite) TestConsentPromptDescribesEachFieldOfADetail() {

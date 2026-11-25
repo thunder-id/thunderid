@@ -1,6 +1,8 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import type {AttributeConfiguration} from './connection';
+
 /**
  * A trusted issuer is a trust-only OIDC connection (`/connections/oidc`) that stores just
  * enough configuration for ThunderID to validate identity assertions issued by an external
@@ -43,6 +45,10 @@ export interface TrustedIssuerFormData {
    * @example "thunderid-console"
    */
   trustedTokenAudience?: string;
+  /**
+   * Attribute and authorization mapping stored on the connection. Sent back on save so the update keeps it.
+   */
+  attributeConfiguration?: AttributeConfiguration;
 }
 
 /**
@@ -60,6 +66,10 @@ export interface TrustedIssuer extends TrustedIssuerFormData {
    * @example "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
    */
   ouId: string;
+  /**
+   * False for a trusted issuer shared into the organization unit it is read in, which that unit cannot change.
+   */
+  isOwnedByOU?: boolean;
 }
 
 /**

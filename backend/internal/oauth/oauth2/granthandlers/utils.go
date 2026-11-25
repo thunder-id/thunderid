@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"slices"
 	"time"
 
@@ -14,8 +15,10 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -113,4 +116,97 @@ func modifyGrantedAuthorizationDetails(ctx context.Context,
 		return nil, oauth2utils.AuthorizationDetailsErrorResponse(svcErr)
 	}
 	return modified, nil
+}
+
+// oidcScopeSet returns the subset of scopes that are OIDC scopes for this application, as a set for
+// repeated lookup.
+func oidcScopeSet(scopes []string, scopeClaims map[string][]string) map[string]struct{} {
+	oidcScopes, _ := oauth2utils.SeparateOIDCAndNonOIDCScopes(tokenservice.JoinScopes(scopes), scopeClaims)
+	set := make(map[string]struct{}, len(oidcScopes))
+	for _, scope := range oidcScopes {
+		set[scope] = struct{}{}
+	}
+	return set
+}
+
+// grantPermits allows exact scopes and permission descendants within the carried grant.
+// Requested OIDC scopes require exact grants; held OIDC scopes cannot authorize descendants.
+func grantPermits(requested string, granted []string, oidcScopes map[string]struct{}, delimiter string) bool {
+	if _, isOIDC := oidcScopes[requested]; isOIDC {
+		return slices.Contains(granted, requested)
+	}
+	for _, grant := range granted {
+		if grant == requested {
+			return true
+		}
+		if _, isOIDC := oidcScopes[grant]; isOIDC {
+			continue
+		}
+		if security.PermissionCovers(grant, requested, delimiter) {
+			return true
+		}
+	}
+	return false
+}
+
+// hierarchyDelimiter returns the delimiter a hierarchical resource server's permissions nest on, and
+// the empty delimiter, which matches exactly, for any other or for no resource server.
+func hierarchyDelimiter(server *providers.ResourceServer) string {
+	if server == nil || !server.HierarchicalPermissions {
+		return ""
+	}
+	return server.Delimiter
+}
+
+// compactPermissionScopes removes covered permission strings after authorization and consent checks.
+func compactPermissionScopes(scopes, oidcScopes []string,
+	server *providers.ResourceServer,
+) []string {
+	if server == nil || !server.HierarchicalPermissions || server.Delimiter == "" {
+		return scopes
+	}
+	result := make([]string, 0, len(scopes))
+	for _, scope := range scopes {
+		if slices.Contains(oidcScopes, scope) {
+			result = append(result, scope)
+			continue
+		}
+		covered := false
+		for _, parent := range scopes {
+			if slices.Contains(oidcScopes, parent) {
+				continue
+			}
+			if parent != scope && security.PermissionCovers(parent, scope, server.Delimiter) {
+				covered = true
+				break
+			}
+		}
+		if !covered && !slices.Contains(result, scope) {
+			result = append(result, scope)
+		}
+	}
+	return result
+}
+
+// buildDeviceSecret returns the device secret carrying the SSO sessions a grant kept for its subject. It returns
+// an empty token when the grant keeps none, and a failure to build it is logged rather than failing the
+// exchange, since the grant has already been spent.
+func buildDeviceSecret(ctx context.Context, tokenBuilder tokenservice.TokenBuilderInterface, validity time.Duration,
+	oauthApp *providers.OAuthClient, subjectID string, sessionData []model.SessionData,
+	logger *log.Logger) model.TokenDTO {
+	if validity == 0 || len(sessionData) == 0 {
+		return model.TokenDTO{}
+	}
+	token, err := tokenBuilder.BuildDeviceSecret(ctx, &tokenservice.DeviceSecretBuildContext{
+		OAuthApp:    oauthApp,
+		SubjectID:   subjectID,
+		SessionData: sessionData,
+		// Each session's own deadline is checked when it is exchanged.
+		ValidityPeriod: int64(math.Ceil(validity.Seconds())),
+	})
+	if err != nil {
+		logger.Error(ctx, "Failed to build the device secret", log.Error(err))
+		return model.TokenDTO{}
+	}
+	return *token
 }

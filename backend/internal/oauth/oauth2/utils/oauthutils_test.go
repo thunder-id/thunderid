@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"regexp"
 	"strings"
@@ -19,6 +20,7 @@ import (
 	authzdetailexec "github.com/thunder-id/thunderid/internal/authzdetail/exec"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -1699,6 +1701,7 @@ func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_InvalidJWT() {
 func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_ValidWithAllClaims_IatFloat64() {
 	assertion := buildTestAssertion(map[string]interface{}{
 		"sub":                  "user-123",
+		"sub_id":               "entity-123",
 		"aci":                  "cache-abc",
 		"completed_auth_class": "urn:acr:pwd",
 		"iat":                  float64(1700000000),
@@ -1707,6 +1710,7 @@ func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_ValidWithAllCla
 	claims, payload, err := DecodeFlowAssertionClaims(assertion)
 	suite.NoError(err)
 	suite.Equal("user-123", claims.UserID)
+	suite.Equal("entity-123", claims.SubjectID)
 	suite.Equal("cache-abc", claims.AttributeCacheID)
 	suite.Equal("urn:acr:pwd", claims.CompletedACR)
 	suite.Equal(int64(1700000000), claims.AuthTime.Unix())
@@ -2107,6 +2111,94 @@ func (suite *OAuth2UtilsTestSuite) TestAuthorizationDetailsErrorResponse() {
 	for _, tc := range testCases {
 		suite.Run(tc.name, func() {
 			assert.Equal(suite.T(), tc.expected, AuthorizationDetailsErrorResponse(tc.svcErr))
+		})
+	}
+}
+
+func (suite *OAuth2UtilsTestSuite) TestAuditOutcome() {
+	cases := []struct {
+		code string
+		want audit.Outcome
+	}{
+		{constants.ErrorInvalidClient, audit.OutcomeDenied("invalid_client")},
+		{constants.ErrorUnauthorizedClient, audit.OutcomeDenied("unauthorized_client")},
+		{constants.ErrorAccessDenied, audit.OutcomeDenied("access_denied")},
+		{constants.ErrorInvalidScope, audit.OutcomeDenied("invalid_scope")},
+		{constants.ErrorInvalidRequest, audit.OutcomeFailed("invalid_request")},
+		{constants.ErrorInvalidGrant, audit.OutcomeFailed("invalid_grant")},
+		{constants.ErrorUnsupportedGrantType, audit.OutcomeFailed("unsupported_grant_type")},
+		{constants.ErrorServerError, audit.OutcomeFailed("server_error")},
+		{"", audit.OutcomeFailed("server_error")},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.code, func() {
+			suite.Equal(tc.want, AuditOutcome(tc.code))
+		})
+	}
+}
+
+// The actor of a client is the application or agent it belongs to, by its ID and never its client ID.
+func (suite *OAuth2UtilsTestSuite) TestAuditClientActor() {
+	const entityID, clientID = "01900000-0000-7000-8000-000000000041", "audit-client"
+	cases := []struct {
+		name   string
+		client *providers.OAuthClient
+		want   audit.Actor
+	}{
+		{"an application", &providers.OAuthClient{ID: entityID, ClientID: clientID,
+			EntityCategory: providers.EntityCategoryApp}, audit.Actor{Type: audit.ActorTypeApplication, ID: entityID}},
+		{"an agent", &providers.OAuthClient{ID: entityID, ClientID: clientID,
+			EntityCategory: providers.EntityCategoryAgent}, audit.Actor{Type: audit.ActorTypeAgent, ID: entityID}},
+		{"a client without a category", &providers.OAuthClient{ID: entityID, ClientID: clientID},
+			audit.Actor{Type: audit.ActorTypeApplication, ID: entityID}},
+		{"no client", nil, audit.Actor{Type: audit.ActorTypeAnonymous}},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			suite.Equal(tc.want, AuditClientActor(tc.client))
+		})
+	}
+}
+
+func (suite *OAuth2UtilsTestSuite) TestKeepDeviceSessions() {
+	first := model.SessionData{FlowIdentifier: "77e0937879f72858", SessionHandle: "handle-1"}
+	second := model.SessionData{FlowIdentifier: "f51bdb0f22d906bb", SessionHandle: "handle-2"}
+	longest := model.SessionData{FlowIdentifier: "77e0937879f72858",
+		SessionHandle: strings.Repeat("h", maxDeviceSessionFieldLength)}
+	overLong := strings.Repeat("x", maxDeviceSessionFieldLength+1)
+	tooMany := make([]model.SessionData, 0, maxDeviceSessions+1)
+	for i := range maxDeviceSessions + 1 {
+		tooMany = append(tooMany, model.SessionData{FlowIdentifier: fmt.Sprintf("identifier-%d", i),
+			SessionHandle: "handle"})
+	}
+	cases := []struct {
+		name        string
+		scopes      []string
+		sessionData []model.SessionData
+		want        []model.SessionData
+	}{
+		{"every posted session is kept", []string{"openid", "device_sso"}, []model.SessionData{first, second},
+			[]model.SessionData{first, second}},
+		{"device_sso was not granted", []string{"openid"}, []model.SessionData{first}, nil},
+		{"nothing was posted", []string{"device_sso"}, nil, nil},
+		{"an entry missing a field is dropped", []string{"device_sso"},
+			[]model.SessionData{{FlowIdentifier: "identifier"}, {SessionHandle: "handle"}, first},
+			[]model.SessionData{first}},
+		{"an entry with an over-long field is dropped", []string{"device_sso"},
+			[]model.SessionData{{FlowIdentifier: overLong, SessionHandle: "handle"},
+				{FlowIdentifier: "identifier", SessionHandle: overLong}, longest},
+			[]model.SessionData{longest}},
+		{"no more than maxDeviceSessions are kept", []string{"device_sso"}, tooMany, tooMany[:maxDeviceSessions]},
+		{"a posted time left is kept as posted", []string{"device_sso"},
+			[]model.SessionData{{FlowIdentifier: first.FlowIdentifier, SessionHandle: first.SessionHandle,
+				ExpiresIn: new(int64(600))}},
+			[]model.SessionData{{FlowIdentifier: first.FlowIdentifier, SessionHandle: first.SessionHandle,
+				ExpiresIn: new(int64(600))}}},
+	}
+
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			suite.Equal(tc.want, KeepDeviceSessions(tc.scopes, tc.sessionData))
 		})
 	}
 }

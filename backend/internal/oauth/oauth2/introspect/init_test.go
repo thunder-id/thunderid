@@ -4,6 +4,7 @@
 package introspect
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"testing"
@@ -13,11 +14,19 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/tests/mocks/jose/jwtmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/discoverymock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
 )
+
+// discardingBus accepts every event and keeps none, for tests the audit event does not matter to.
+type discardingBus struct{}
+
+func (discardingBus) Publish(context.Context, *eventbus.Event) error {
+	return nil
+}
 
 type InitTestSuite struct {
 	suite.Suite
@@ -44,7 +53,7 @@ func (suite *InitTestSuite) TestInitialize() {
 	mux := http.NewServeMux()
 
 	service := Initialize(mux, suite.mockJWTService, nil, nil, suite.mockDiscoveryService,
-		suite.mockTokenValidator, nil, nil, engineconfig.ClientAssertionConfig{}, 0)
+		suite.mockTokenValidator, nil, nil, engineconfig.ClientAssertionConfig{}, 0, discardingBus{})
 
 	assert.NotNil(suite.T(), service)
 	assert.Implements(suite.T(), (*TokenIntrospectionServiceInterface)(nil), service)
@@ -54,7 +63,7 @@ func (suite *InitTestSuite) TestInitialize_RegistersRoutes() {
 	mux := http.NewServeMux()
 
 	Initialize(mux, suite.mockJWTService, nil, nil, suite.mockDiscoveryService,
-		suite.mockTokenValidator, nil, nil, engineconfig.ClientAssertionConfig{}, 0)
+		suite.mockTokenValidator, nil, nil, engineconfig.ClientAssertionConfig{}, 0, discardingBus{})
 
 	// Verify that the routes are registered by attempting to get a handler for them.
 	// The pattern includes the method because of CORS middleware wrapping.

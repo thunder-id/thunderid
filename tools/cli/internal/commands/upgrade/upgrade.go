@@ -15,6 +15,7 @@ import (
 	"charm.land/huh/v2"
 	huhspinner "charm.land/huh/v2/spinner"
 
+	"github.com/thunder-id/thunderid/tools/cli/internal/plane"
 	"github.com/thunder-id/thunderid/tools/cli/internal/product"
 	"github.com/thunder-id/thunderid/tools/cli/internal/services/config"
 	"github.com/thunder-id/thunderid/tools/cli/internal/services/health"
@@ -121,13 +122,18 @@ func Switch(baseDir, currentVersion string, livePort int, verbose bool, pendingU
 	}
 
 	fmt.Print(ui.Dim("  Stopping " + product.Name + " v" + currentVersion + "..."))
-	if err := setup.FreePort(livePort, 10*time.Second); err != nil {
+	if err := freeInstallPorts(config.ReadInstallPath(currentVersion), livePort, 10*time.Second); err != nil {
 		fmt.Println()
 		ui.Fatal("Could not stop v" + currentVersion + ": " + err.Error())
 		return false, "", err
 	}
 	fmt.Printf("\r\033[2K  %s Stopped v%s\n", ui.Green("✓"), currentVersion)
 
+	// A quickstart cannot move off its ports, and another plane is not set up on the current
+	// one's port, so only an install of the same plane takes the live port over.
+	if setup.HasFixedPorts(installPath) || setup.PlaneOf(installPath) != installedPlane(currentVersion) {
+		livePort = setup.ServerPort(installPath)
+	}
 	fmt.Print(ui.Dim("\n  Starting " + product.Name + " v" + selected + "..."))
 	proc, err := setup.StartBackgroundOnPort(installPath, verbose, livePort)
 	if err != nil {
@@ -135,8 +141,8 @@ func Switch(baseDir, currentVersion string, livePort int, verbose bool, pendingU
 		ui.Fatal("Failed to start v" + selected + ": " + err.Error())
 		return false, "", err
 	}
-	if err := health.WaitReady(livePort, startupTimeout); err != nil {
-		stopStartedProcess(proc, livePort)
+	if err := waitReady(installPath, livePort); err != nil {
+		stopStartedProcess(proc, setup.InstallPorts(installPath, livePort))
 		fmt.Println()
 		ui.Fatal(fmt.Sprintf("Failed to start v%s: %s", selected, startupFailure(installPath, err)))
 		return false, "", fmt.Errorf("failed to start v%s: %w", selected, err)
@@ -161,7 +167,7 @@ func runUpgrade(baseDir, activeVersion, newVersion string, verbose bool, livePor
 	// only the default, and whatever listens on it belongs to something else.
 	if activeVersion != "" {
 		fmt.Print(ui.Dim("  Stopping " + label + "..."))
-		if err := setup.FreePort(livePort, 15*time.Second); err != nil {
+		if err := freeInstallPorts(config.ReadInstallPath(activeVersion), livePort, 15*time.Second); err != nil {
 			fmt.Println()
 			ui.Fatal("Could not stop " + label + ": " + err.Error())
 			return err
@@ -172,6 +178,12 @@ func runUpgrade(baseDir, activeVersion, newVersion string, verbose bool, livePor
 	newPath := versionedPath(baseDir, newVersion)
 	if err := downloadVersion(newVersion, newPath, verbose); err != nil {
 		return err
+	}
+	// The new release may ship a different plane than the one it replaces (a 1.x Data Plane
+	// upgraded to a 2.x quickstart), and a quickstart cannot move off its ports, so the old
+	// port carries over only to the same plane.
+	if setup.HasFixedPorts(newPath) || setup.PlaneOf(newPath) != installedPlane(activeVersion) {
+		livePort = setup.DefaultPort(newPath)
 	}
 	creds, err := runSetupWithPort(newVersion, newPath, verbose, livePort)
 	if err != nil {
@@ -186,8 +198,8 @@ func runUpgrade(baseDir, activeVersion, newVersion string, verbose bool, livePor
 		ui.Fatal("Failed to start " + product.Name + ": " + err.Error())
 		return err
 	}
-	if err := health.WaitReady(livePort, startupTimeout); err != nil {
-		stopStartedProcess(proc, livePort)
+	if err := waitReady(newPath, livePort); err != nil {
+		stopStartedProcess(proc, setup.InstallPorts(newPath, livePort))
 		fmt.Println()
 		ui.PrintCredentialsFallback(creds)
 		ui.Fatal(fmt.Sprintf("Failed to start %s: %s", product.Name, startupFailure(newPath, err)))
@@ -226,7 +238,7 @@ func startupFailure(installPath string, err error) string {
 // not run when the launcher is killed outright on Windows, and it does not wait for the
 // port to be released either; freeing the port makes the stop definite. Nothing else can
 // be on that port here: it was ours to start on.
-func stopStartedProcess(proc *exec.Cmd, port int) {
+func stopStartedProcess(proc *exec.Cmd, ports []int) {
 	if proc != nil && proc.Process != nil {
 		if runtime.GOOS == "windows" {
 			_ = proc.Process.Kill()
@@ -234,9 +246,40 @@ func stopStartedProcess(proc *exec.Cmd, port int) {
 			_ = proc.Process.Signal(syscall.SIGTERM)
 		}
 	}
-	if setup.IsPortInUse(port) {
-		_ = setup.FreePort(port, 5*time.Second)
+	for _, port := range ports {
+		if setup.IsPortInUse(port) {
+			_ = setup.FreePort(port, 5*time.Second)
+		}
 	}
+}
+
+// freeInstallPorts stops every server of the install at installPath, which is known by port.
+func freeInstallPorts(installPath string, port int, timeout time.Duration) error {
+	for _, p := range setup.InstallPorts(installPath, port) {
+		if err := setup.FreePort(p, timeout); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// waitReady waits until every server of the install at installPath answers.
+func waitReady(installPath string, port int) error {
+	for _, p := range setup.InstallPorts(installPath, port) {
+		if err := health.WaitReady(p, startupTimeout); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// installedPlane returns the plane of the install recorded for version, or plane.Auto when none is.
+func installedPlane(version string) plane.Plane {
+	path := config.ReadInstallPath(version)
+	if version == "" || path == "" {
+		return plane.Auto
+	}
+	return setup.PlaneOf(path)
 }
 
 func downloadVersion(version, destDir string, verbose bool) error {

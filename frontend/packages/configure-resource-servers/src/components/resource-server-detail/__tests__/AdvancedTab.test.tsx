@@ -259,3 +259,48 @@ describe('AdvancedTab', () => {
     expect(screen.getByText('Failed to load AuthZEN PDP connections.')).toHaveClass('Mui-error');
   });
 });
+
+describe('AdvancedTab permission matching', () => {
+  const renderFor = (server: ResourceServer) =>
+    renderWithProviders(
+      <AdvancedTab
+        {...engineProps}
+        resourceServer={server}
+        identifier={server.identifier}
+        onIdentifierChange={vi.fn()}
+      />,
+    );
+
+  it('reports a hierarchical resource server and its delimiter', () => {
+    renderFor({...mockResourceServer, hierarchicalPermissions: true, delimiter: ':'});
+
+    expect(
+      screen.getByText(/Granting a permission also grants its current and future descendants/i),
+    ).toBeInTheDocument();
+    // The delimiter is shown as a value, in a field of its own, and cannot be edited: the
+    // permission strings were built from it.
+    const delimiter = screen.getByLabelText('Permission delimiter');
+    expect(delimiter).toHaveValue(':');
+    expect(delimiter).toBeDisabled();
+  });
+
+  it('reports one whose permissions are matched exactly', () => {
+    renderFor({...mockResourceServer, hierarchicalPermissions: false, delimiter: '-'});
+
+    expect(screen.getByText(/Each permission is granted on its own/i)).toBeInTheDocument();
+  });
+
+  it('keeps exact matching read only', () => {
+    renderFor({...mockResourceServer, hierarchicalPermissions: false, delimiter: ':'});
+    const matching = screen.getByRole('textbox', {name: 'Permission matching'});
+    expect(matching).toHaveValue('Exact');
+    expect(matching).toBeDisabled();
+  });
+
+  it('keeps hierarchical matching read only', () => {
+    renderFor({...mockResourceServer, hierarchicalPermissions: true, delimiter: ':'});
+    const matching = screen.getByRole('textbox', {name: 'Permission matching'});
+    expect(matching).toHaveValue('Hierarchical');
+    expect(matching).toBeDisabled();
+  });
+});

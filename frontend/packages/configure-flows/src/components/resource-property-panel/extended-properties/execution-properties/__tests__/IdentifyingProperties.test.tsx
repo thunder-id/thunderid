@@ -23,6 +23,19 @@ vi.mock('react-i18next', async (importOriginal) => ({
   }),
 }));
 
+vi.mock('@thunderid/configure-user-types', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/configure-user-types')>()),
+  useGetUserTypeAttributes: () => ({
+    attributes: [
+      {attribute: 'email', credential: false, unique: true, userTypes: ['Person', 'Employee']},
+      {attribute: 'given_name', credential: false, unique: false, userTypes: ['Person']},
+      {attribute: 'password', credential: true, unique: false, userTypes: ['Person']},
+      {attribute: 'username', credential: false, unique: true, userTypes: ['Person']},
+    ],
+    isLoading: false,
+  }),
+}));
+
 describe('IdentifyingProperties', () => {
   const mockOnChange = vi.fn();
 
@@ -86,5 +99,266 @@ describe('IdentifyingProperties', () => {
       }),
       resource,
     );
+  });
+
+  describe('CIBA login hint', () => {
+    const cibaLabel = 'flows:core.executions.identifying.cibaLoginHint.label';
+    const attributeLabel = 'flows:core.executions.identifying.loginHintAttribute.label';
+    const resourceWith = (mode: string, properties: Record<string, unknown> = {}): Resource =>
+      ({data: {action: {executor: {mode}}, properties}}) as unknown as Resource;
+
+    it('should offer the option unchecked in identify mode, without the attribute field', () => {
+      render(<IdentifyingProperties resource={resourceWith('identify')} onChange={mockOnChange} />);
+
+      expect(screen.getByLabelText(cibaLabel)).not.toBeChecked();
+      expect(screen.queryByLabelText(attributeLabel)).not.toBeInTheDocument();
+    });
+
+    it('should not offer the option in resolve mode when it is off', () => {
+      render(<IdentifyingProperties resource={resourceWith('resolve')} onChange={mockOnChange} />);
+
+      expect(screen.queryByLabelText(cibaLabel)).not.toBeInTheDocument();
+    });
+
+    it('should keep the option in resolve mode when it is on, so it can be turned off', () => {
+      render(
+        <IdentifyingProperties
+          resource={resourceWith('resolve', {loginHintAttribute: 'username'})}
+          onChange={mockOnChange}
+        />,
+      );
+
+      expect(screen.getByLabelText(cibaLabel)).toBeChecked();
+    });
+
+    it('should show the option checked with the configured attribute', () => {
+      render(
+        <IdentifyingProperties
+          resource={resourceWith('identify', {loginHintAttribute: 'email'})}
+          onChange={mockOnChange}
+        />,
+      );
+
+      expect(screen.getByLabelText(cibaLabel)).toBeChecked();
+      expect(screen.getByLabelText(attributeLabel)).toHaveValue('email');
+    });
+
+    it('should show the new attribute when the configured value changes', () => {
+      const {rerender} = render(
+        <IdentifyingProperties
+          resource={resourceWith('identify', {loginHintAttribute: 'username'})}
+          onChange={mockOnChange}
+        />,
+      );
+
+      rerender(
+        <IdentifyingProperties
+          resource={resourceWith('identify', {loginHintAttribute: 'email'})}
+          onChange={mockOnChange}
+        />,
+      );
+
+      expect(screen.getByLabelText(attributeLabel)).toHaveValue('email');
+    });
+
+    it('should set the default attribute and clear continue on no match when checked', async () => {
+      const user = userEvent.setup();
+      const resource = resourceWith('identify', {boundToUserType: true, continueOnNoMatch: true});
+      render(<IdentifyingProperties resource={resource} onChange={mockOnChange} />);
+
+      await user.click(screen.getByLabelText(cibaLabel));
+
+      expect(mockOnChange).toHaveBeenCalledTimes(1);
+      expect(mockOnChange).toHaveBeenCalledWith(
+        'data.properties',
+        {boundToUserType: true, continueOnNoMatch: false, loginHintAttribute: 'username'},
+        resource,
+      );
+    });
+
+    it('should disable continue on no match while it is on', () => {
+      render(
+        <IdentifyingProperties
+          resource={resourceWith('identify', {loginHintAttribute: 'username'})}
+          onChange={mockOnChange}
+        />,
+      );
+
+      expect(screen.getByLabelText('flows:core.executions.identifying.continueOnNoMatch.label')).toBeDisabled();
+    });
+
+    it('should clear the attribute when unchecked', async () => {
+      const user = userEvent.setup();
+      const resource = resourceWith('identify', {loginHintAttribute: 'username'});
+      render(<IdentifyingProperties resource={resource} onChange={mockOnChange} />);
+
+      await user.click(screen.getByLabelText(cibaLabel));
+
+      expect(mockOnChange).toHaveBeenCalledWith('data.properties.loginHintAttribute', '', resource);
+    });
+
+    it('should suggest only the unique user type attributes', async () => {
+      const user = userEvent.setup();
+      render(
+        <IdentifyingProperties
+          resource={resourceWith('identify', {loginHintAttribute: 'username'})}
+          onChange={mockOnChange}
+        />,
+      );
+
+      await user.clear(screen.getByLabelText(attributeLabel));
+      await user.keyboard('{ArrowDown}');
+
+      expect(screen.getByRole('option', {name: /email/})).toHaveTextContent('Person, Employee');
+      expect(screen.getByRole('option', {name: /username/})).toBeInTheDocument();
+      expect(screen.queryByRole('option', {name: /given_name/})).not.toBeInTheDocument();
+      expect(screen.queryByRole('option', {name: /password/})).not.toBeInTheDocument();
+    });
+
+    it('should commit a suggested attribute when selected', async () => {
+      const user = userEvent.setup();
+      const resource = resourceWith('identify', {loginHintAttribute: 'username'});
+      render(<IdentifyingProperties resource={resource} onChange={mockOnChange} />);
+
+      await user.clear(screen.getByLabelText(attributeLabel));
+      await user.type(screen.getByLabelText(attributeLabel), 'em');
+      await user.click(screen.getByRole('option', {name: /email/}));
+
+      expect(mockOnChange).toHaveBeenCalledTimes(1);
+      expect(mockOnChange).toHaveBeenCalledWith('data.properties.loginHintAttribute', 'email', resource);
+      expect(screen.getByLabelText(attributeLabel)).toHaveValue('email');
+    });
+
+    it('should commit a typed attribute trimmed on blur, not while typing', async () => {
+      const user = userEvent.setup();
+      const resource = resourceWith('identify', {loginHintAttribute: 'username'});
+      render(<IdentifyingProperties resource={resource} onChange={mockOnChange} />);
+
+      await user.clear(screen.getByLabelText(attributeLabel));
+      await user.type(screen.getByLabelText(attributeLabel), '  mobileNumber  ');
+      expect(mockOnChange).not.toHaveBeenCalled();
+
+      await user.tab();
+
+      expect(mockOnChange).toHaveBeenCalledWith('data.properties.loginHintAttribute', 'mobileNumber', resource);
+    });
+
+    it('should restore the attribute instead of clearing it when the field is emptied', async () => {
+      const user = userEvent.setup();
+      render(
+        <IdentifyingProperties
+          resource={resourceWith('identify', {loginHintAttribute: 'username'})}
+          onChange={mockOnChange}
+        />,
+      );
+
+      await user.clear(screen.getByLabelText(attributeLabel));
+      await user.tab();
+
+      expect(mockOnChange).not.toHaveBeenCalled();
+      expect(screen.getByLabelText(attributeLabel)).toHaveValue('username');
+    });
+
+    it('should commit a typed attribute when the panel unmounts before blur', async () => {
+      const user = userEvent.setup();
+      const resource = resourceWith('identify', {loginHintAttribute: 'username'});
+      const {unmount} = render(<IdentifyingProperties resource={resource} onChange={mockOnChange} />);
+
+      await user.clear(screen.getByLabelText(attributeLabel));
+      await user.type(screen.getByLabelText(attributeLabel), ' email ');
+      unmount();
+
+      expect(mockOnChange).toHaveBeenCalledTimes(1);
+      expect(mockOnChange).toHaveBeenCalledWith('data.properties.loginHintAttribute', 'email', resource);
+    });
+
+    it('should not commit on unmount when the field was not edited', () => {
+      const {unmount} = render(
+        <IdentifyingProperties
+          resource={resourceWith('identify', {loginHintAttribute: 'username'})}
+          onChange={mockOnChange}
+        />,
+      );
+
+      unmount();
+
+      expect(mockOnChange).not.toHaveBeenCalled();
+    });
+
+    it('should not commit on unmount when the field was emptied', async () => {
+      const user = userEvent.setup();
+      const {unmount} = render(
+        <IdentifyingProperties
+          resource={resourceWith('identify', {loginHintAttribute: 'username'})}
+          onChange={mockOnChange}
+        />,
+      );
+
+      await user.clear(screen.getByLabelText(attributeLabel));
+      unmount();
+
+      expect(mockOnChange).not.toHaveBeenCalled();
+    });
+
+    it('should not commit on blur when the attribute is unchanged', async () => {
+      const user = userEvent.setup();
+      render(
+        <IdentifyingProperties
+          resource={resourceWith('identify', {loginHintAttribute: 'username'})}
+          onChange={mockOnChange}
+        />,
+      );
+
+      await user.click(screen.getByLabelText(attributeLabel));
+      await user.tab();
+
+      expect(mockOnChange).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('identify options', () => {
+    const boundLabel = 'flows:core.executions.identifying.boundToUserType.label';
+    const noMatchLabel = 'flows:core.executions.identifying.continueOnNoMatch.label';
+    const resourceWith = (mode: string, properties: Record<string, unknown> = {}): Resource =>
+      ({data: {action: {executor: {mode}}, properties}}) as unknown as Resource;
+
+    it('should offer the user type and no-match options in identify mode', () => {
+      render(<IdentifyingProperties resource={resourceWith('identify')} onChange={mockOnChange} />);
+
+      expect(screen.getByLabelText(boundLabel)).not.toBeChecked();
+      expect(screen.getByLabelText(noMatchLabel)).not.toBeChecked();
+      expect(screen.getByLabelText(noMatchLabel)).toBeEnabled();
+    });
+
+    it('should not offer them in resolve mode', () => {
+      render(<IdentifyingProperties resource={resourceWith('resolve')} onChange={mockOnChange} />);
+
+      expect(screen.queryByLabelText(boundLabel)).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(noMatchLabel)).not.toBeInTheDocument();
+    });
+
+    it('should set each property when checked', async () => {
+      const user = userEvent.setup();
+      const resource = resourceWith('identify');
+      render(<IdentifyingProperties resource={resource} onChange={mockOnChange} />);
+
+      await user.click(screen.getByLabelText(boundLabel));
+      await user.click(screen.getByLabelText(noMatchLabel));
+
+      expect(mockOnChange).toHaveBeenCalledWith('data.properties.boundToUserType', true, resource);
+      expect(mockOnChange).toHaveBeenCalledWith('data.properties.continueOnNoMatch', true, resource);
+    });
+
+    it('should show the configured values', () => {
+      render(
+        <IdentifyingProperties
+          resource={resourceWith('identify', {boundToUserType: true, continueOnNoMatch: true})}
+          onChange={mockOnChange}
+        />,
+      );
+
+      expect(screen.getByLabelText(boundLabel)).toBeChecked();
+      expect(screen.getByLabelText(noMatchLabel)).toBeChecked();
+    });
   });
 });

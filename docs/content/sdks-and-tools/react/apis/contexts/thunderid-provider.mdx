@@ -115,6 +115,7 @@ The `ThunderIDProvider` component accepts the following props:
 | `afterSignInUrl` | `string` | ❌ | URL to redirect to after sign-in process is completed. |
 | `afterSignUpUrl` | `string` | ❌ | URL to redirect to after sign-up process is completed. |
 | `afterSignOutUrl` | `string` | ❌ | URL to redirect to after sign-out process is completed. |
+| `authorizationDetails` | `AuthorizationDetail[]` | ❌ | RFC 9396 authorization details to request on every sign-in. Authorization details passed to `signIn()` take precedence. See [Request Authorization Details](../../hooks/use-thunderid#request-authorization-details). |
 | `tokenValidation` | `TokenValidation` | ❌ | Configuration for token validation. |
 | `preferences` | `Preferences` | ❌ | Customization options for UI behavior, internationalization (i18n) and styling. |
 | `http` | `{ fetcher?: (url: string, config: RequestInit) => Promise<Response> }` | ❌ | HTTP options. `http.fetcher` is the transport for the [management hooks](../../hooks/management-hooks) and applies to management operations only. Defaults to the SDK's authenticated HTTP client. A `fetcher` passed to an individual hook takes precedence. |

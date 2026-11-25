@@ -7,6 +7,8 @@ Open-source IAM stack (`github.com/thunder-id/thunderid`). Two builds of one cod
 
 A control plane can manage many data planes. See [docs/static/assets/images/readme/architecture.svg](docs/static/assets/images/readme/architecture.svg), the editable source of the diagram in the README.
 
+**Projects** group configuration on the control plane. The project API and MCP tools live in `internal/project`, which only `cmd/cpserver` links. Every project includes the system organization unit, and a resource in a project stores the project's ID in its `projectId` field. Each resource type is designed to be project-level (such as applications, agents, and flows), organization-level (such as user types, agent types, and connections), or either (users, groups, roles, and resource servers), and a resource with no `projectId` is organization-level. Only the control plane requires a project, and it does not yet for applications, agents, and flows. Resources that belong to neither an organization unit nor a project, such as translations, server configuration, variables, secrets, and authorization details types, stay deployment-level. A gateway deploy can be scoped to one project. Projects are a configuration-time grouping, not isolation: the data plane stores a `projectId` it receives without checking that the project exists and uses it only in management APIs, such as to filter lists. Sign-in, flow execution, and tokens never use it. Separate deployments remain the isolation boundary. Design: [Discussion #5862](https://github.com/thunder-id/thunderid/discussions/5862#discussioncomment-19390966). Rules for a resource that can belong to a project: [.agent/skills/backend/resource.md](.agent/skills/backend/resource.md#projects).
+
 ## Structure
 
 ```text

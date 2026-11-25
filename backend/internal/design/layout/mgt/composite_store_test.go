@@ -444,3 +444,38 @@ func (suite *CompositeLayoutStoreTestSuite) TestIsLayoutHandleConflict_DBStoreEr
 	suite.Equal(testErr, err)
 	suite.False(conflict)
 }
+
+func (suite *CompositeLayoutStoreTestSuite) TestGetLayoutListByProject() {
+	suite.mockDBStore.On("GetLayoutListCountByProject", testCtx(), "proj-1").Return(2, nil)
+	suite.mockFileStore.On("GetLayoutListCountByProject", testCtx(), "proj-1").Return(1, nil)
+	suite.mockDBStore.On("GetLayoutListByProject", testCtx(), "proj-1", 2, 0).
+		Return([]Layout{{ID: "db-1"}, {ID: "db-2"}}, nil)
+	suite.mockFileStore.On("GetLayoutListByProject", testCtx(), "proj-1", 1, 0).
+		Return([]Layout{{ID: "file-1"}}, nil)
+
+	layouts, err := suite.store.GetLayoutListByProject(testCtx(), "proj-1", 10, 0)
+	suite.NoError(err)
+	suite.Len(layouts, 3)
+
+	count, err := suite.store.GetLayoutListCountByProject(testCtx(), "proj-1")
+	suite.NoError(err)
+	suite.Equal(3, count)
+}
+
+func (suite *CompositeLayoutStoreTestSuite) TestGetLayoutListByProject_LimitExceeded() {
+	suite.mockDBStore.On("GetLayoutListCountByProject", testCtx(), "proj-1").Return(1001, nil)
+	suite.mockFileStore.On("GetLayoutListCountByProject", testCtx(), "proj-1").Return(1, nil)
+
+	_, err := suite.store.GetLayoutListByProject(testCtx(), "proj-1", 10, 0)
+
+	suite.ErrorIs(err, errResultLimitExceededInCompositeMode)
+}
+
+func (suite *CompositeLayoutStoreTestSuite) TestGetLayoutListByProject_StoreError() {
+	storeErr := errors.New("db error")
+	suite.mockDBStore.On("GetLayoutListCountByProject", testCtx(), "proj-1").Return(0, storeErr)
+
+	_, err := suite.store.GetLayoutListByProject(testCtx(), "proj-1", 10, 0)
+
+	suite.ErrorIs(err, storeErr)
+}

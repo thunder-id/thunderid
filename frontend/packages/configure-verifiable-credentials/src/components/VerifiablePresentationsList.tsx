@@ -1,11 +1,12 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {QueryErrorNotice} from '@thunderid/components';
+import {EditOrViewAction, QueryErrorNotice} from '@thunderid/components';
+import {useCapabilitiesContext, useProjectScope} from '@thunderid/contexts';
 import {useDataGridLocaleText} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
 import {IconButton, Typography, Tooltip, DataGrid, ListingTable} from '@wso2/oxygen-ui';
-import {Pencil, QrCode as QrCodeIcon, Trash2} from '@wso2/oxygen-ui-icons-react';
+import {QrCode as QrCodeIcon, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useMemo, useCallback, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
@@ -32,6 +33,7 @@ export default function VerifiablePresentationsList({
   const {t} = useTranslation();
   const logger = useLogger('VerifiablePresentationsList');
   const dataGridLocaleText = useDataGridLocaleText();
+  const {can} = useCapabilitiesContext();
   const routes = useVerifiableCredentialRoutes();
 
   // Resolves an error through the `verifiable-presentations` catalog. `t` defaults to the `common`
@@ -43,7 +45,8 @@ export default function VerifiablePresentationsList({
     [t],
   );
 
-  const {data, isLoading, error, refetch} = useGetVerifiablePresentations();
+  const {projectId} = useProjectScope();
+  const {data, isLoading, error, refetch} = useGetVerifiablePresentations(projectId);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<boolean>(false);
@@ -117,36 +120,27 @@ export default function VerifiablePresentationsList({
                 </IconButton>
               </Tooltip>
             )}
-            <Tooltip title={t('common:actions.edit', 'Edit')}>
-              <IconButton
-                aria-label={t('common:actions.edit', 'Edit')}
-                size="small"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleEditClick(params.row.id);
-                }}
-              >
-                <Pencil size={16} />
-              </IconButton>
-            </Tooltip>
-            <Tooltip title={t('common:actions.delete', 'Delete')}>
-              <IconButton
-                aria-label={t('common:actions.delete', 'Delete')}
-                size="small"
-                color="error"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeleteClick(params.row.id);
-                }}
-              >
-                <Trash2 size={16} />
-              </IconButton>
-            </Tooltip>
+            <EditOrViewAction canEdit={can('vc', 'update')} onClick={() => handleEditClick(params.row.id)} />
+            {can('vc', 'delete') && (
+              <Tooltip title={t('common:actions.delete', 'Delete')}>
+                <IconButton
+                  aria-label={t('common:actions.delete', 'Delete')}
+                  size="small"
+                  color="error"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteClick(params.row.id);
+                  }}
+                >
+                  <Trash2 size={16} />
+                </IconButton>
+              </Tooltip>
+            )}
           </ListingTable.RowActions>
         ),
       },
     ],
-    [handleDeleteClick, handleEditClick, showWalletQr, t],
+    [can, handleDeleteClick, handleEditClick, showWalletQr, t],
   );
 
   if (error) {

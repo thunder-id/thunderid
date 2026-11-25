@@ -41,7 +41,10 @@ export interface ResourceServer {
   description?: string | null;
   identifier: string;
   ouId: string;
+  projectId?: string;
   delimiter: string;
+  /** Whether a granted permission on this server authorizes the permissions beneath it. */
+  hierarchicalPermissions?: boolean;
   isReadOnly?: boolean;
   type: ResourceServerType;
   authorizationEngine?: AuthorizationEngineConfig;
@@ -96,7 +99,11 @@ export interface CreateResourceServerRequest {
   description?: string;
   identifier: string;
   delimiter?: PermissionDelimiter;
-  ouId: string;
+  hierarchicalPermissions?: boolean;
+  /** Required unless `projectId` is given. */
+  ouId?: string;
+  /** Places the resource server in the project, in the system organization unit unless `ouId` names one of the project's. */
+  projectId?: string;
   type?: ResourceServerType;
 }
 

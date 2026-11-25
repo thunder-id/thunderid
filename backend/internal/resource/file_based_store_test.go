@@ -682,6 +682,37 @@ func (s *FileBasedResourceStoreTestSuite) TestCreateAndGetResourceServer() {
 	assert.Equal(s.T(), "test-server", rs.Identifier)
 }
 
+func (s *FileBasedResourceStoreTestSuite) TestGetResourceServerListByOUID() {
+	fileStore, ok := s.store.(*fileBasedResourceStore)
+	s.Require().True(ok)
+	s.Require().NoError(fileStore.Create("rs-ou1-a", &providers.ResourceServer{ID: "rs-ou1-a", OUID: "ou1"}))
+	s.Require().NoError(fileStore.Create("rs-ou1-b", &providers.ResourceServer{ID: "rs-ou1-b", OUID: "ou1"}))
+	s.Require().NoError(fileStore.Create("rs-ou2", &providers.ResourceServer{ID: "rs-ou2", OUID: "ou2"}))
+
+	count, err := s.store.GetResourceServerListCountByOUID(s.ctx, "ou1")
+	s.NoError(err)
+	s.Equal(2, count)
+
+	servers, err := s.store.GetResourceServerListByOUID(s.ctx, "ou1", 10, 0)
+	s.NoError(err)
+	s.Len(servers, 2)
+	for _, rs := range servers {
+		s.Equal("ou1", rs.OUID)
+	}
+
+	servers, err = s.store.GetResourceServerListByOUID(s.ctx, "ou1", 1, 1)
+	s.NoError(err)
+	s.Len(servers, 1)
+
+	servers, err = s.store.GetResourceServerListByOUID(s.ctx, "ou1", 10, 5)
+	s.NoError(err)
+	s.Empty(servers)
+
+	count, err = s.store.GetResourceServerListCountByOUID(s.ctx, "ou-none")
+	s.NoError(err)
+	s.Zero(count)
+}
+
 func (s *FileBasedResourceStoreTestSuite) TestGetResourceServerList_WithData() {
 	fileStore, ok := s.store.(*fileBasedResourceStore)
 	assert.True(s.T(), ok)
@@ -780,6 +811,29 @@ func (s *FileBasedResourceStoreTestSuite) TestCheckResourceServerIdentifierExist
 	assert.False(s.T(), exists)
 }
 
+func (s *FileBasedResourceStoreTestSuite) TestCheckResourceServerIdentifierExists_EquivalentURI() {
+	fileStore, ok := s.store.(*fileBasedResourceStore)
+	s.Require().True(ok)
+	s.Require().NoError(fileStore.Create("rs-uri", &providers.ResourceServer{
+		ID:         "rs-uri",
+		Name:       "URI Server",
+		Identifier: "https://api.example.com",
+		OUID:       "ou1",
+		Delimiter:  ":",
+	}))
+
+	for identifier, expected := range map[string]bool{
+		"https://API.example.com":    true,
+		"https://api.example.com/":   true,
+		"https://api.example.com/v1": false,
+		"http://api.example.com":     false,
+	} {
+		exists, err := s.store.CheckResourceServerIdentifierExists(s.ctx, identifier)
+		s.NoError(err)
+		s.Equal(expected, exists, identifier)
+	}
+}
+
 // TestServerActionsFromALoadedFile verifies that the actions a declarative file declares on the
 // resource server itself are served at the resource server level, filtered by kind, counted as
 // dependencies and accepted as permissions.
@@ -818,4 +872,62 @@ actions:
 	invalid, err := s.store.ValidatePermissions(s.ctx, rs.ID, []string{"search", "docs", "unknown"})
 	assert.NoError(s.T(), err)
 	assert.Equal(s.T(), []string{"unknown"}, invalid)
+}
+
+func (s *FileBasedResourceStoreTestSuite) TestGetResourceServerListByProject() {
+	fileStore, ok := s.store.(*fileBasedResourceStore)
+	s.Require().True(ok)
+	s.Require().NoError(fileStore.Create("rs-p1-a",
+		&providers.ResourceServer{ID: "rs-p1-a", OUID: "ou1", ProjectID: "proj1"}))
+	s.Require().NoError(fileStore.Create("rs-p1-b",
+		&providers.ResourceServer{ID: "rs-p1-b", OUID: "ou2", ProjectID: "proj1"}))
+	s.Require().NoError(fileStore.Create("rs-org", &providers.ResourceServer{ID: "rs-org", OUID: "ou1"}))
+
+	count, err := s.store.GetResourceServerListCountByProject(s.ctx, "proj1", "")
+	s.NoError(err)
+	s.Equal(2, count)
+
+	servers, err := s.store.GetResourceServerListByProject(s.ctx, "proj1", "", 10, 0)
+	s.NoError(err)
+	s.Len(servers, 2)
+	for _, rs := range servers {
+		s.Equal("proj1", rs.ProjectID)
+	}
+
+	servers, err = s.store.GetResourceServerListByProject(s.ctx, "proj1", "", 1, 1)
+	s.NoError(err)
+	s.Len(servers, 1)
+
+	servers, err = s.store.GetResourceServerListByProject(s.ctx, "proj1", "", 10, 5)
+	s.NoError(err)
+	s.Empty(servers)
+
+	servers, err = s.store.GetResourceServerListByProject(s.ctx, "proj1", "ou2", 10, 0)
+	s.NoError(err)
+	s.Require().Len(servers, 1)
+	s.Equal("rs-p1-b", servers[0].ID)
+
+	count, err = s.store.GetResourceServerListCountByProject(s.ctx, "proj1", "ou2")
+	s.NoError(err)
+	s.Equal(1, count)
+}
+
+func (s *FileBasedResourceStoreTestSuite) TestGetDeclaredPermissionsIncludesNestedResources() {
+	store, ok := s.store.(*fileBasedResourceStore)
+	s.Require().True(ok)
+	server := &providers.ResourceServer{ID: "api", Delimiter: "_", Resources: []providers.Resource{
+		{Permission: "reports", Actions: []providers.Action{{Permission: "reports_view"}}},
+		{Permission: "reports_online", Actions: []providers.Action{{Permission: "reports_online_create"}}},
+		{Permission: "reportsx", Actions: []providers.Action{{Permission: "reportsx_delete"}}},
+	}}
+	s.Require().NoError(store.Create("api", server))
+	permissions, err := s.store.GetDeclaredPermissions(s.ctx, "api", []string{"reports"}, "_")
+	s.NoError(err)
+	s.Equal([]string{"reports", "reports_online", "reports_online_create", "reports_view"}, permissions)
+	exact, err := s.store.GetDeclaredPermissions(s.ctx, "api", []string{"reports"}, "")
+	s.NoError(err)
+	s.Equal([]string{"reports"}, exact)
+	missing, err := s.store.GetDeclaredPermissions(s.ctx, "other-api", []string{"reports"}, "_")
+	s.NoError(err)
+	s.Empty(missing)
 }

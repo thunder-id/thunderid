@@ -167,6 +167,68 @@ paths:
                   key: "error.internal_server_error_description"
                   defaultValue: "An unexpected error occurred while processing the import request"
 
+  /import/managed:
+    post:
+      tags:
+        - Import
+      summary: Deploy resources from a control plane
+      description: >
+        Imports declarative YAML documents the way `POST /import` does, with the same request and
+        response, for a control plane deploying to this deployment. Only the management API key may call
+        it; any other caller is refused with `403`. What it writes is recorded as deployed by the control
+        plane and becomes read only here: the resources' own APIs, and the plain import, refuse to change
+        or remove them. Reads report `isReadOnly` where the resource's response has the field. Application
+        and agent details, connections, projects, credential configurations, presentation definitions,
+        translations and server configuration sections do not report it, though writes to them are refused
+        all the same. A group's members and a role's assignments are
+        owned entry by entry: the ones it sends are read only, the ones it sent before and does not send
+        any more are removed, and ones added on this deployment are left as they are. A resource it removes
+        through `deletions` is forgotten. A dry run records nothing. A resource written but not recorded is
+        reported as failed, so the control plane deploys it again.
+      security:
+        - ManagementAPIKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImportRequest'
+      responses:
+        "200":
+          description: Import completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportResponse'
+        "400":
+          description: Invalid import request or processing error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: The caller is not the management API key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "IMP-1008"
+                message:
+                  key: "error.import.managedImportNotAllowed"
+                  defaultValue: "Managed import not allowed"
+                description:
+                  key: "error.import.managedImportNotAllowed.description"
+                  defaultValue: "Only the management API key may deploy resources through the managed import"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /import/delete:
     post:
       tags:
@@ -228,6 +290,14 @@ paths:
 
 components:
   securitySchemes:
+    ManagementAPIKey:
+      type: apiKey
+      in: header
+      name: API-Key
+      description: >
+        The deployment's management API key, whose SHA-256 digest is configured as
+        `server.security.management_api_key_hash`. It opens the managed import, the plain import, and the
+        variable and secret stores. Only the managed import marks what it writes as read only.
     OAuth2:
       type: oauth2
       flows:
@@ -316,25 +386,77 @@ components:
             same configuration a no-op. A request may carry deletions and no `content`.
           items:
             $ref: '#/components/schemas/ResourceDeletion'
+        sharingRemovals:
+          type: array
+          description: >
+            Sharing policies the content no longer carries for the resources it writes. Each is
+            removed once its resource is written, a flow's just before it is written. A policy left
+            out of a document is never removed otherwise.
+          items:
+            type: object
+            required: [resourceType, id]
+            properties:
+              resourceType:
+                type: string
+                description: The type of the resource the policy governs, such as `flow`.
+              id:
+                type: string
+                description: The id of the resource.
+              initiatingOuId:
+                type: string
+                description: The organization unit that issued the policy. Omit for the resource's owner.
         options:
           $ref: '#/components/schemas/ImportOptions'
 
     ResourceDeletion:
       type: object
-      description: Identifies a runtime resource to remove during an import.
+      description: >
+        Identifies a runtime resource to remove during an import, or, with `role_assignment` or
+        `group_member`, the assignees or members to take off a role or group that stays.
       required: [resourceType, id]
       properties:
         resourceType:
           type: string
           description: >
             Type of the resource to remove. A type with no runtime delete operation, such as
-            `translation` or `server_config`, is reported as an unsupported outcome rather than
-            silently skipped.
+            `server_config`, is reported as an unsupported outcome rather than silently skipped.
+            `role_assignment` takes the assignees in `members` off the role `id` names, and
+            `group_member` takes the members in `members` off the group `id` names. These run before
+            any resource is removed. One that no longer holds the role directly in that organization
+            unit, or is no longer in the group, is skipped as already removed.
           example: "application"
         id:
           type: string
-          description: Identifier of the resource to remove.
+          description: >
+            Identifier of the resource to remove, or of the role or group to take `members` off. A
+            `translation` is identified by its language, and removing it clears every custom
+            translation of that language.
           example: "550e8400-e29b-41d4-a716-446655440000"
+        members:
+          type: array
+          description: >
+            Required for `role_assignment` and `group_member`: who to take off the role or group.
+          items:
+            $ref: '#/components/schemas/RemovedMember'
+
+    RemovedMember:
+      type: object
+      description: An assignee to take off a role, or a member to take off a group.
+      required: [id, type]
+      properties:
+        id:
+          type: string
+          description: Identifier of the assignee or member.
+          example: "550e8400-e29b-41d4-a716-446655440001"
+        type:
+          type: string
+          description: Type of the assignee or member, such as `user` or `group`.
+          example: "user"
+        ouId:
+          type: string
+          description: >
+            For a role assignment, the organization unit the assignment was made in. Required for
+            `role_assignment`.
 
     ImportOptions:
       type: object
@@ -360,6 +482,12 @@ components:
             Target storage for imported resources.
             - `runtime`: Imports into runtime stores (database/in-memory)
             Currently only `runtime` is supported.
+        forceSharingEdits:
+          type: boolean
+          default: false
+          description: >
+            When true, a change to a sharing policy that the sharing policies API refuses, such as a
+            different reach, is applied by rewriting the policy.
 
     ImportResponse:
       type: object
@@ -373,6 +501,11 @@ components:
           items:
             $ref: '#/components/schemas/ImportItemOutcome'
           description: Detailed outcome for each imported resource document.
+        sharingRemovalsAccepted:
+          type: boolean
+          description: >
+            Present and true when the request carried `sharingRemovals`, to say this deployment acts
+            on them. An older deployment ignores the field and omits this one.
 
     ImportSummary:
       type: object
@@ -452,6 +585,21 @@ components:
             Contains error details when status is `failed`. Successful user, agent and application
             imports include a warning here when a non-empty top-level `state` was ignored.
           example: "Resource created successfully"
+        removedSharing:
+          type: array
+          description: Sharing policies removed from the resource, with the reshares that lost their standing.
+          items:
+            type: object
+            required: [policyId, reshare]
+            properties:
+              policyId:
+                type: string
+              initiatingOuId:
+                type: string
+                description: The organization unit that issued the policy. Omitted for the resource's owner.
+              reshare:
+                type: boolean
+                description: True if an organization unit issued the policy to pass the resource on.
 
     DeleteResourceRequest:
       type: object

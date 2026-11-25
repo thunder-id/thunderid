@@ -41,6 +41,16 @@ func (suite *SubjectTypeConstraintsTestSuite) TestPermitsSubject() {
 			"empty agent list accepts no agent",
 			SubjectTypeConstraints{}, providers.EntityCategoryAgent, "default", false,
 		},
+		{
+			"any agent type accepts every agent type",
+			SubjectTypeConstraints{AllowedAgentTypes: []string{providers.AnyAgentType}},
+			providers.EntityCategoryAgent, "privileged", true,
+		},
+		{
+			"any agent type with another entry is not a wildcard",
+			SubjectTypeConstraints{AllowedAgentTypes: []string{providers.AnyAgentType, "default"}},
+			providers.EntityCategoryAgent, "privileged", false,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -49,6 +59,16 @@ func (suite *SubjectTypeConstraintsTestSuite) TestPermitsSubject() {
 				tc.constraints.PermitsSubject(tc.category, tc.entityType))
 		})
 	}
+}
+
+func (suite *SubjectTypeConstraintsTestSuite) TestPermitsSubjectID() {
+	required := SubjectTypeConstraints{RequiredSubjectID: "owner-1"}
+
+	assert.True(suite.T(), required.PermitsSubjectID("owner-1"))
+	assert.False(suite.T(), required.PermitsSubjectID("user-2"))
+	assert.False(suite.T(), required.PermitsSubjectID(""))
+	assert.True(suite.T(), SubjectTypeConstraints{}.PermitsSubjectID("user-2"),
+		"no required subject leaves the subject to the type constraints")
 }
 
 func (suite *SubjectTypeConstraintsTestSuite) TestContextRoundTrip() {

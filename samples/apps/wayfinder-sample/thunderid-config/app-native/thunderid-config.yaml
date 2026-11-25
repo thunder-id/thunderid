@@ -466,6 +466,7 @@ nodes:
     executor:
       name: CredentialSetter
     onSuccess: release_account_locks
+    onIncomplete: prompt_new_password
   - id: release_account_locks
     type: TASK_EXECUTION
     executor:
@@ -564,7 +565,7 @@ nodes:
   - id: permission_validator
     type: TASK_EXECUTION
     properties:
-      requiredScopes: ["system"]
+      requiredScopes: ["system", "org"]
     executor:
       name: PermissionValidator
     onSuccess: user_type_resolver
@@ -1784,7 +1785,8 @@ nodes:
 ---
 resource_type: agent
 id: wayfinder-concierge
-owner: "{{.AGENT_OWNER_ID}}"
+owner:
+  id: "{{.AGENT_OWNER_ID}}"
 description: Wayfinder Concierge AI agent for the Wayfinder Travel sample
 ouHandle: default
 type: default
@@ -1823,7 +1825,8 @@ resource_type: agent
 # auth_flow_handle is shared between authorization_code and CIBA — they need
 # different flows (interactive vs backchannel notification).
 id: wayfinder-upgrade-agent
-owner: "{{.AGENT_OWNER_ID}}"
+owner:
+  id: "{{.AGENT_OWNER_ID}}"
 description: Upgrade scheduler agent — initiates CIBA for users with pending flight upgrade requests
 ouHandle: default
 type: default
@@ -2075,26 +2078,20 @@ value:
   userOnboardingFlow:
     defaultHandle: wayfinder-onboarding-flow
     expirySeconds: 86400
+  selfFlow:
+    expirySeconds: 1800
   userDeletionFlow:
     defaultHandle: default-user-deletion-flow
-  applicationDeletionFlow:
-    defaultHandle: default-application-deletion-flow
-  secretRegenerationFlow:
-    defaultHandle: default-secret-regeneration-flow
   agentOnboardingFlow:
     defaultHandle: default-agent-onboarding-flow
-  roleAssignmentRemovalFlow:
-    defaultHandle: default-role-assignment-removal-flow
+  adminAttributeVerificationFlow:
+    defaultHandle: default-admin-attribute-verification-flow
   roleDeletionFlow:
     defaultHandle: default-role-deletion-flow
   rolePermissionRemovalFlow:
     defaultHandle: default-role-permission-removal-flow
-  groupDeletionFlow:
-    defaultHandle: default-group-deletion-flow
-  groupMembershipRemovalFlow:
-    defaultHandle: default-group-membership-removal-flow
-  actionDeletionFlow:
-    defaultHandle: default-action-deletion-flow
+  adminUserCredentialResetFlow:
+    defaultHandle: default-admin-user-credential-reset-flow
   userUnlockFlow:
     defaultHandle: default-user-unlock-flow
   userSuspendFlow:

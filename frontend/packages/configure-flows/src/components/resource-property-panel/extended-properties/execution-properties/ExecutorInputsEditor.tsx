@@ -145,21 +145,20 @@ const InputRow = memo(function InputRow({input, index, onUpdate, onRemove}: Inpu
             ))}
           </Select>
         </div>
-        <div>
-          <FormLabel>{t('flows:core.executions.inputs.identifierLabel')}</FormLabel>
-          <TextField
-            value={localIdentifier}
-            onChange={(e) => setLocalIdentifier(e.target.value)}
-            onBlur={() => {
-              if (localIdentifier !== input.identifier) {
-                onUpdate(index, 'identifier', localIdentifier);
-              }
-            }}
-            placeholder={t('flows:core.executions.inputs.identifierPlaceholder')}
-            size="small"
-            fullWidth
-          />
-        </div>
+        <TextField
+          labelPlacement="top"
+          label={t('flows:core.executions.inputs.identifierLabel')}
+          value={localIdentifier}
+          onChange={(e) => setLocalIdentifier(e.target.value)}
+          onBlur={() => {
+            if (localIdentifier !== input.identifier) {
+              onUpdate(index, 'identifier', localIdentifier);
+            }
+          }}
+          placeholder={t('flows:core.executions.inputs.identifierPlaceholder')}
+          size="small"
+          fullWidth
+        />
         {canHoldDefault && (
           <div>
             <FormLabel>{t('flows:core.executions.inputs.defaultLabel')}</FormLabel>

@@ -6,6 +6,8 @@ import {ColorSchemeImage, Paper, Stack, styled} from '@wso2/oxygen-ui';
 import type {JSX, ReactNode} from 'react';
 
 const StyledPaper = styled(Paper)(({theme}) => ({
+  // Lets content draw on the card's edges, e.g. the countdown line of an expired flow.
+  position: 'relative',
   display: 'flex',
   flexDirection: 'column',
   alignSelf: 'center',

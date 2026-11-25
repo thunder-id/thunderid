@@ -58,20 +58,39 @@ const sidebars: SidebarsConfig = {
         {type: 'html', value: 'What are you building?', className: 'sidebar-connect-label'},
         {
           type: 'category',
-          label: 'Application',
+          label: 'Applications',
+          key: 'connect-applications',
           className: 'connect-section connect-section--app',
           collapsible: true,
           items: [
-            {type: 'doc', id: 'getting-started/connect-your-application/react', label: 'React', customProps: {icon: 'react'}},
-            {type: 'doc', id: 'getting-started/connect-your-application/nextjs', label: 'Next.js', customProps: {icon: 'next'}},
-            {type: 'doc', id: 'getting-started/connect-your-application/express', label: 'Express', customProps: {icon: 'express'}},
-            {type: 'doc', id: 'getting-started/connect-your-application/vue', label: 'Vue', customProps: {icon: 'vue'}},
-            {type: 'doc', id: 'getting-started/connect-your-application/nuxt', label: 'Nuxt', customProps: {icon: 'nuxt'}},
-            {type: 'doc', id: 'getting-started/connect-your-application/node', label: 'Node.js', customProps: {icon: 'node'}},
-            {type: 'doc', id: 'getting-started/connect-your-application/browser', label: 'JavaScript', customProps: {icon: 'javascript'}},
-            {type: 'doc', id: 'getting-started/connect-your-application/ios', label: 'iOS', customProps: {icon: 'ios'}},
-            {type: 'doc', id: 'getting-started/connect-your-application/android', label: 'Android', customProps: {icon: 'android'}},
-            {type: 'doc', id: 'getting-started/connect-your-application/flutter', label: 'Flutter', customProps: {icon: 'flutter'}},
+            {
+              type: 'category',
+              label: 'B2C',
+              key: 'connect-app-b2c',
+              className: 'connect-app-tab',
+              items: [
+                {type: 'doc', id: 'getting-started/connect-your-application/react', label: 'React', customProps: {icon: 'react'}},
+                {type: 'doc', id: 'getting-started/connect-your-application/nextjs', label: 'Next.js', customProps: {icon: 'next'}},
+                {type: 'doc', id: 'getting-started/connect-your-application/express', label: 'Express', customProps: {icon: 'express'}},
+                {type: 'doc', id: 'getting-started/connect-your-application/vue', label: 'Vue', customProps: {icon: 'vue'}},
+                {type: 'doc', id: 'getting-started/connect-your-application/nuxt', label: 'Nuxt', customProps: {icon: 'nuxt'}},
+                {type: 'doc', id: 'getting-started/connect-your-application/node', label: 'Node.js', customProps: {icon: 'node'}},
+                {type: 'doc', id: 'getting-started/connect-your-application/browser', label: 'JavaScript', customProps: {icon: 'javascript'}},
+                {type: 'doc', id: 'getting-started/connect-your-application/ios', label: 'iOS', customProps: {icon: 'ios'}},
+                {type: 'doc', id: 'getting-started/connect-your-application/android', label: 'Android', customProps: {icon: 'android'}},
+                {type: 'doc', id: 'getting-started/connect-your-application/flutter', label: 'Flutter', customProps: {icon: 'flutter'}},
+              ],
+            },
+            {
+              type: 'category',
+              label: 'B2B',
+              key: 'connect-app-b2b',
+              className: 'connect-app-tab',
+              items: [
+                {type: 'doc', id: 'getting-started/connect-your-b2b-application/react', label: 'React', key: 'b2b-react', customProps: {icon: 'react'}},
+                {type: 'doc', id: 'getting-started/connect-your-b2b-application/nextjs', label: 'Next.js', key: 'b2b-nextjs', customProps: {icon: 'next'}},
+              ],
+            },
           ],
         },
         {
@@ -214,10 +233,33 @@ const sidebars: SidebarsConfig = {
         },
         {
           type: 'category',
-          label: 'SaaS Applications (B2B)',
+          label: 'Secure B2B SaaS Applications',
+          link: {type: 'doc', id: 'use-cases/b2b/index'},
           collapsible: true,
           collapsed: true,
-          items: [{type: 'doc', id: 'use-cases/b2b/multi-tenant-saas', label: 'Multi-Tenant SaaS'}],
+          items: [
+            {type: 'doc', id: 'use-cases/b2b/overview', label: 'Understand It', key: 'b2b-understand-it'},
+            {type: 'doc', id: 'use-cases/b2b/concepts', label: 'Learn the Model'},
+            {type: 'doc', id: 'use-cases/b2b/try-it-out/index', label: 'See It in a Sample App', key: 'b2b-see-it-in-a-sample-app'},
+            {
+              type: 'category',
+              label: 'Build Each Journey',
+              collapsible: true,
+              collapsed: true,
+              items: [
+                {type: 'doc', id: 'use-cases/b2b/journeys/organization-sign-up', label: 'Let Companies Sign Up'},
+                {
+                  type: 'doc',
+                  id: 'use-cases/b2b/journeys/delegated-administration',
+                  label: 'Let Organization Admins Manage Teams',
+                },
+                {type: 'doc', id: 'use-cases/b2b/journeys/invite-members', label: 'Invite People In'},
+                {type: 'doc', id: 'use-cases/b2b/journeys/enterprise-sso', label: 'Plug In an Enterprise IdP'},
+                {type: 'doc', id: 'use-cases/b2b/journeys/switch-organizations', label: 'Switch Organizations'},
+              ],
+            },
+            {type: 'doc', id: 'use-cases/b2b/architecture-decisions', label: 'Design Decisions', key: 'b2b-design-decisions'},
+          ],
         },
         {
           type: 'category',
@@ -442,6 +484,11 @@ const sidebars: SidebarsConfig = {
               type: 'doc',
               id: 'guides/applications/application-settings',
               label: 'Application Settings',
+            },
+            {
+              type: 'doc',
+              id: 'guides/applications/configure-token-attributes',
+              label: 'Configure Attributes in Tokens',
             },
           ],
         },
@@ -709,6 +756,11 @@ const sidebars: SidebarsConfig = {
                     },
                   ],
                 },
+                {
+                  type: 'doc',
+                  id: 'guides/integrations/authorization-details-processor',
+                  label: 'Authorization Details Processor',
+                },
               ],
             },
             {
@@ -795,6 +847,11 @@ const sidebars: SidebarsConfig = {
               id: 'guides/organization-units/machine-to-machine-access',
               label: 'Machine-to-Machine (M2M) Access for Organization Units',
             },
+            {
+              type: 'doc',
+              id: 'guides/organization-units/sign-in-to-organization-units',
+              label: 'Sign Users In to Organization Units',
+            },
           ],
         },
         {
@@ -849,6 +906,11 @@ const sidebars: SidebarsConfig = {
           type: 'doc',
           id: 'guides/resource-servers',
           label: 'Resource Servers',
+        },
+        {
+          type: 'doc',
+          id: 'guides/intents',
+          label: 'Intents',
         },
         {
           type: 'category',
@@ -937,6 +999,11 @@ const sidebars: SidebarsConfig = {
                       id: 'guides/protocols/oauth-oidc/client-credentials',
                       label: 'Client Credentials',
                     },
+                    {
+                      type: 'doc',
+                      id: 'guides/protocols/oauth-oidc/device-authorization',
+                      label: 'Device Authorization Grant',
+                    },
                     {type: 'doc', id: 'guides/protocols/oauth-oidc/refresh-token', label: 'Refresh Token'},
                     // Unique `key` avoids a translation-key collision with the "Token Exchange"
                     // item under Identity Providers (i18n key is derived from the label).
@@ -1008,6 +1075,11 @@ const sidebars: SidebarsConfig = {
                       type: 'doc',
                       id: 'guides/protocols/oauth-oidc/resource-indicators',
                       label: 'Resource Indicators',
+                    },
+                    {
+                      type: 'doc',
+                      id: 'guides/protocols/oauth-oidc/rich-authorization-requests',
+                      label: 'Rich Authorization Requests',
                     },
                   ],
                 },

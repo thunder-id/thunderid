@@ -21,6 +21,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -179,6 +180,7 @@ func toApplicationGetResponse(ctx context.Context, appDTO *providers.Application
 	returnApp := &model.ApplicationGetResponse{
 		ID:          appDTO.ID,
 		OUID:        appDTO.OUID,
+		ProjectID:   appDTO.ProjectID,
 		Name:        appDTO.Name,
 		Description: appDTO.Description,
 		InboundAuthProfileReq: inboundmodel.InboundAuthProfileReq{
@@ -207,6 +209,9 @@ func toApplicationGetResponse(ctx context.Context, appDTO *providers.Application
 		PolicyURI: appDTO.PolicyURI,
 		Contacts:  appDTO.Contacts,
 		Metadata:  appDTO.Metadata,
+
+		IsOwnedByOU: appDTO.IsOwnedByOU,
+		IsReadOnly:  appDTO.IsReadOnly,
 	}
 
 	// TODO: Need to refactor when supporting other/multiple inbound auth types.
@@ -392,6 +397,31 @@ func (ah *applicationHandler) HandleApplicationDeleteRequest(w http.ResponseWrit
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
 }
 
+// HandleClientSecretRegenerateRequest handles a request to regenerate an application's client secret.
+// The new secret is in the response, the only time it can be read.
+func (ah *applicationHandler) HandleClientSecretRegenerateRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	id := r.PathValue("id")
+	if id == "" {
+		errResp := apierror.ErrorResponse{
+			Code:        ErrorInvalidApplicationID.Code,
+			Message:     ErrorInvalidApplicationID.Error,
+			Description: ErrorInvalidApplicationID.ErrorDescription,
+		}
+		sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, errResp)
+		return
+	}
+
+	regenerated, svcErr := ah.service.RegenerateClientSecret(ctx, id)
+	if svcErr != nil {
+		ah.handleError(ctx, w, r, svcErr)
+		return
+	}
+
+	w.Header().Set("Cache-Control", "no-store")
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, regenerated)
+}
+
 // processInboundAuthConfig prepares the response for OAuth app configuration.
 func (ah *applicationHandler) processInboundAuthConfig(
 	ctx context.Context, logger *log.Logger, appDTO *model.ApplicationDTO,
@@ -474,6 +504,9 @@ func (ah *applicationHandler) handleError(ctx context.Context, w http.ResponseWr
 	statusCode := http.StatusInternalServerError
 	if svcErr.Type == tidcommon.ClientErrorType {
 		switch svcErr.Code {
+		case tidcommon.ErrorUnauthorized.Code, sysauthz.ErrorGrantNotPermitted.Code,
+			ErrorSharedApplicationReadOnly.Code:
+			statusCode = http.StatusForbidden
 		case ErrorApplicationNotFound.Code, ErrorSharingPolicyNotFound.Code,
 			ErrorApplicationNotSharedToOU.Code:
 			statusCode = http.StatusNotFound
@@ -679,6 +712,7 @@ func applicationCompleteResponseFromDTO(
 	response := model.ApplicationCompleteResponse{
 		ID:          dto.ID,
 		OUID:        dto.OUID,
+		ProjectID:   dto.ProjectID,
 		Name:        dto.Name,
 		Description: dto.Description,
 		InboundAuthProfileReq: inboundmodel.InboundAuthProfileReq{

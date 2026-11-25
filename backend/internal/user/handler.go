@@ -65,7 +65,13 @@ func (uh *userHandler) HandleUserListRequest(w http.ResponseWriter, r *http.Requ
 	includeDisplay := r.URL.Query().Get(sysutils.QueryParamInclude) == sysutils.IncludeValueDisplay
 
 	// Get the user list using the user service.
-	userListResponse, svcErr := uh.userService.GetUserList(ctx, limit, offset, filters, includeDisplay)
+	var userListResponse *UserListResponse
+	if query := r.URL.Query(); query.Has(queryParamProjectID) {
+		userListResponse, svcErr = uh.userService.GetUserListByProject(ctx,
+			sysutils.SanitizeString(query.Get(queryParamProjectID)), limit, offset, filters, includeDisplay)
+	} else {
+		userListResponse, svcErr = uh.userService.GetUserList(ctx, limit, offset, filters, includeDisplay)
+	}
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return
@@ -100,8 +106,18 @@ func (uh *userHandler) HandleUserPostRequest(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// A user in no project must name its organization unit; one in a project may leave it to the system
+	// organization unit.
+	projectID := sysutils.SanitizeString(createRequest.ProjectID)
+	if createRequest.OUID == "" && projectID == "" {
+		sysutils.WriteStructuredErrorResponse(w, http.StatusBadRequest, "Validation Failed",
+			map[string]string{"ouId": "The field 'ouId' is missing but is strictly required."})
+		return
+	}
+
 	user := &providers.User{
 		OUID:       createRequest.OUID,
+		ProjectID:  projectID,
 		Type:       createRequest.Type,
 		Attributes: createRequest.Attributes,
 	}
@@ -138,8 +154,14 @@ func (uh *userHandler) HandleUserGetRequest(w http.ResponseWriter, r *http.Reque
 	// Parse include parameter to check if display name should be included.
 	includeDisplay := r.URL.Query().Get(sysutils.QueryParamInclude) == sysutils.IncludeValueDisplay
 
-	// Get the user using the user service.
-	user, svcErr := uh.userService.GetUser(ctx, id, includeDisplay)
+	// With an organization unit, the user is read as that unit sees it.
+	var user *providers.User
+	var svcErr *tidcommon.ServiceError
+	if ouID := r.URL.Query().Get(queryParamOUID); ouID != "" {
+		user, svcErr = uh.userService.GetUserInOU(ctx, id, ouID, includeDisplay)
+	} else {
+		user, svcErr = uh.userService.GetUser(ctx, id, includeDisplay)
+	}
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return
@@ -471,6 +493,27 @@ func (uh *userHandler) HandleSelfOrganizationUnitsGetRequest(w http.ResponseWrit
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, list)
 }
 
+// HandleUserOrganizationUnitsGetRequest lists the organization units a user can access.
+func (uh *userHandler) HandleUserOrganizationUnitsGetRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	limit, offset, svcErr := parsePaginationParams(r.URL.Query())
+	if svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+	if limit == 0 {
+		limit = serverconst.DefaultPageSize
+	}
+
+	list, svcErr := uh.userService.GetUserOrganizationUnits(ctx, r.PathValue("id"), limit, offset)
+	if svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, list)
+}
+
 // HandleSelfUserCredentialUpdateRequest handles the credential update for the authenticated user.
 func (uh *userHandler) HandleSelfUserCredentialUpdateRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -479,6 +522,10 @@ func (uh *userHandler) HandleSelfUserCredentialUpdateRequest(w http.ResponseWrit
 	userID := security.GetSubject(ctx)
 	if strings.TrimSpace(userID) == "" {
 		handleError(ctx, w, &ErrorAuthenticationFailed)
+		return
+	}
+	if security.IsDelegated(ctx) {
+		handleError(ctx, w, &ErrorDelegatedTokenNotAllowed)
 		return
 	}
 
@@ -606,7 +653,8 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.S
 			statusCode = http.StatusBadRequest
 		case ErrorAuthenticationFailed.Code:
 			statusCode = http.StatusUnauthorized
-		case tidcommon.ErrorUnauthorized.Code, sysauthz.ErrorGrantNotPermitted.Code:
+		case tidcommon.ErrorUnauthorized.Code, sysauthz.ErrorGrantNotPermitted.Code, ErrorSharedUserReadOnly.Code,
+			ErrorDelegatedTokenNotAllowed.Code:
 			statusCode = http.StatusForbidden
 		default:
 			statusCode = http.StatusBadRequest
@@ -825,7 +873,7 @@ func (uh *userHandler) HandleSharingPolicyDeleteRequest(w http.ResponseWriter, r
 func (uh *userHandler) HandleOverlayRuleGetRequest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	overlay, svcErr := uh.userService.ResolveSharingOverlay(ctx, r.PathValue("id"), r.URL.Query().Get("ouId"))
+	overlay, svcErr := uh.userService.ResolveSharingOverlay(ctx, r.PathValue("id"), r.URL.Query().Get(queryParamOUID))
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return

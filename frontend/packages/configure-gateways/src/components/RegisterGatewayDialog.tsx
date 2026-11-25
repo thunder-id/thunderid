@@ -12,9 +12,7 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
-  FormControl,
   FormControlLabel,
-  FormLabel,
   Stack,
   TextField,
   Typography,
@@ -146,60 +144,56 @@ export default function RegisterGatewayDialog({open, onClose, onRegistered}: Reg
                 'Record where a gateway answers. The gateway is not contacted until a configuration is applied to it.',
               )}
             </Typography>
-            <FormControl fullWidth required>
-              <FormLabel htmlFor="gateway-name-input">{t('gateways:form.name.label', 'Name')}</FormLabel>
-              <TextField
-                id="gateway-name-input"
-                fullWidth
-                value={values.name}
-                onChange={(e) => handleChange('name', e.target.value)}
-                placeholder={t('gateways:form.name.placeholder', 'e.g. production')}
-              />
-            </FormControl>
-            <FormControl fullWidth required>
-              <FormLabel htmlFor="gateway-base-url-input">{t('gateways:form.baseUrl.label', 'Base URL')}</FormLabel>
-              <TextField
-                id="gateway-base-url-input"
-                fullWidth
-                value={values.baseUrl}
-                onChange={(e) => handleChange('baseUrl', e.target.value)}
-                placeholder={t('gateways:form.baseUrl.placeholder', 'https://gateway.example.com:8090')}
-                helperText={t('gateways:form.baseUrl.hint', 'Where the gateway answers. Each gateway registers once.')}
-              />
-            </FormControl>
-            <FormControl fullWidth>
-              <FormLabel htmlFor="gateway-key-input">{t('gateways:form.key.label', 'Key (optional)')}</FormLabel>
-              <TextField
-                id="gateway-key-input"
-                fullWidth
-                type="password"
-                autoComplete="new-password"
-                value={values.key}
-                onChange={(e) => handleChange('key', e.target.value)}
-                helperText={t(
-                  'gateways:form.key.hint',
-                  'Leave empty to generate one. Supply a key only when the gateway already holds one.',
-                )}
-              />
-            </FormControl>
-            <FormControl fullWidth>
-              <FormLabel htmlFor="gateway-ca-certificate-input">
-                {t('gateways:form.caCertificate.label', 'CA certificate (optional)')}
-              </FormLabel>
-              <TextField
-                id="gateway-ca-certificate-input"
-                fullWidth
-                multiline
-                minRows={4}
-                value={values.caCertificate}
-                onChange={(e) => handleChange('caCertificate', e.target.value)}
-                helperText={t(
-                  'gateways:form.caCertificate.hint',
-                  'A PEM certificate to trust when calling this gateway, for one serving a certificate no public authority signed.',
-                )}
-                slotProps={{htmlInput: {sx: {fontFamily: 'monospace', fontSize: '0.8rem'}}}}
-              />
-            </FormControl>
+            <TextField
+              labelPlacement="top"
+              label={t('gateways:form.name.label', 'Name')}
+              required
+              id="gateway-name-input"
+              fullWidth
+              value={values.name}
+              onChange={(e) => handleChange('name', e.target.value)}
+              placeholder={t('gateways:form.name.placeholder', 'e.g. production')}
+            />
+            <TextField
+              labelPlacement="top"
+              label={t('gateways:form.baseUrl.label', 'Base URL')}
+              required
+              id="gateway-base-url-input"
+              fullWidth
+              value={values.baseUrl}
+              onChange={(e) => handleChange('baseUrl', e.target.value)}
+              placeholder={t('gateways:form.baseUrl.placeholder', 'https://gateway.example.com:8090')}
+              helperText={t('gateways:form.baseUrl.hint', 'Where the gateway answers. Each gateway registers once.')}
+            />
+            <TextField
+              labelPlacement="top"
+              label={t('gateways:form.key.label', 'Key (optional)')}
+              id="gateway-key-input"
+              fullWidth
+              type="password"
+              autoComplete="new-password"
+              value={values.key}
+              onChange={(e) => handleChange('key', e.target.value)}
+              helperText={t(
+                'gateways:form.key.hint',
+                'Leave empty to generate one. Supply a key only when the gateway already holds one.',
+              )}
+            />
+            <TextField
+              labelPlacement="top"
+              label={t('gateways:form.caCertificate.label', 'CA certificate (optional)')}
+              id="gateway-ca-certificate-input"
+              fullWidth
+              multiline
+              minRows={4}
+              value={values.caCertificate}
+              onChange={(e) => handleChange('caCertificate', e.target.value)}
+              helperText={t(
+                'gateways:form.caCertificate.hint',
+                'A PEM certificate to trust when calling this gateway, for one serving a certificate no public authority signed.',
+              )}
+              slotProps={{htmlInput: {sx: {fontFamily: 'monospace', fontSize: '0.8rem'}}}}
+            />
             <FormControlLabel
               control={
                 <Checkbox

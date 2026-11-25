@@ -7,10 +7,17 @@ import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import type {OAuth2Config} from '../../../../models/oauth';
 import OAuth2ConfigSection from '../OAuth2ConfigSection';
 
+const {mockT} = vi.hoisted(() => ({mockT: vi.fn((key: string) => key)}));
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: mockT,
   }),
+}));
+
+vi.mock('@thunderid/contexts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/contexts')>()),
+  useConfig: () => ({config: {brand: {product_name: 'Acme IAM'}}}),
 }));
 
 const {mockUseThunderID} = vi.hoisted(() => ({
@@ -61,6 +68,43 @@ describe('OAuth2ConfigSection', () => {
 
       expect(screen.getByText('applications:edit.advanced.labels.oauth2Config')).toBeInTheDocument();
       expect(screen.getByText('applications:edit.advanced.oauth2Config.intro')).toBeInTheDocument();
+    });
+  });
+
+  describe('Redirect URIs Required Marker', () => {
+    const redirectUrisLabel = (): HTMLElement | null =>
+      screen.getByText('applications:edit.general.redirectUris.title').closest('label');
+
+    it('marks redirect URIs as required when the authorization code grant is enabled', () => {
+      render(
+        <OAuth2ConfigSection
+          oauth2Config={{grantTypes: ['authorization_code'], responseTypes: ['code'], redirectUris: []}}
+        />,
+      );
+
+      expect(redirectUrisLabel()).toHaveTextContent('*');
+    });
+
+    it('does not mark redirect URIs as required without the authorization code grant', () => {
+      render(<OAuth2ConfigSection oauth2Config={{grantTypes: ['client_credentials'], redirectUris: []}} />);
+
+      expect(redirectUrisLabel()).not.toHaveTextContent('*');
+    });
+
+    it('names the configured product in the redirect URIs description', () => {
+      mockT.mockClear();
+
+      render(
+        <OAuth2ConfigSection
+          oauth2Config={{grantTypes: ['authorization_code'], responseTypes: ['code'], redirectUris: []}}
+        />,
+      );
+
+      expect(mockT).toHaveBeenCalledWith(
+        'applications:edit.general.redirectUris.description',
+        'Where {{productName}} sends users back after they sign in. Sign-in requests must use one of these URIs.',
+        {productName: 'Acme IAM'},
+      );
     });
   });
 

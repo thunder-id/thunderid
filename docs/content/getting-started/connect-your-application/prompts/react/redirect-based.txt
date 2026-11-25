@@ -12,7 +12,7 @@ I have a React application and I want to integrate {{productName}}'s authenticat
 
 ## Configuration
 - **Client ID**: {{clientId}}
-- **Base URL**: https://localhost:8090 (or your {{productName}} instance URL)
+- **Base URL**: {{baseUrl}}
 - **SDK**: @thunderid/react
 
 ## IMPORTANT Configuration Rules

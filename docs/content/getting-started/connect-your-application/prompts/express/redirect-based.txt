@@ -15,7 +15,7 @@ I have an Express application and I want to integrate {{productName}} authentica
 ## Configuration
 - **Client ID**: {{clientId}}
 - **Client Secret**: `<your-client-secret>`
-- **Base URL**: https://localhost:8090 (or your {{productName}} instance URL)
+- **Base URL**: {{baseUrl}}
 - **App URL**: http://localhost:3000
 - **Login Callback Route**: `/login`
 - **Logout Callback Route**: `/logout`

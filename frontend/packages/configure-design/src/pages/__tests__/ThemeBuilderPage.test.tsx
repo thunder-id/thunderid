@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {render, screen} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import ThemeBuilderPage from '../ThemeBuilderPage';
@@ -15,6 +16,7 @@ const {mockNavigate, mockSetActiveSection, mockSetDraftTheme, mockSetIsDirty, mo
     mockResetDraft: vi.fn(),
     mockThemeBuilderState: {
       themeId: 'theme-1',
+      projectId: 'project-1' as string | null,
       displayName: 'Midnight',
       isReadOnly: false,
       activeSection: 'colors' as const,
@@ -34,6 +36,7 @@ vi.mock('react-router', async () => {
 vi.mock('../../contexts/ThemeBuilder/useThemeBuilder', () => ({
   default: () => ({
     themeId: mockThemeBuilderState.themeId,
+    projectId: mockThemeBuilderState.projectId,
     displayName: mockThemeBuilderState.displayName,
     isReadOnly: mockThemeBuilderState.isReadOnly,
     activeSection: mockThemeBuilderState.activeSection,
@@ -93,8 +96,14 @@ vi.mock('../../components/themes/ThemeDeleteDialog', () => ({
     ) : null,
 }));
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  isLoading: false,
+};
+
 describe('ThemeBuilderPage', () => {
   beforeEach(() => {
+    mockThemeBuilderState.projectId = 'project-1';
     vi.clearAllMocks();
     mockThemeBuilderState.themeId = 'theme-1';
     mockThemeBuilderState.displayName = 'Midnight';
@@ -154,6 +163,18 @@ describe('ThemeBuilderPage', () => {
       mockThemeBuilderState.isReadOnly = true;
       render(<ThemeBuilderPage />);
       expect(screen.queryByRole('button', {name: 'Delete'})).not.toBeInTheDocument();
+    });
+
+    it('hides Delete and disables Save when the admin may only view designs', () => {
+      mockThemeBuilderState.isDirty = true;
+      render(
+        <CapabilitiesProvider capabilities={viewOnly}>
+          <ThemeBuilderPage />
+        </CapabilitiesProvider>,
+      );
+
+      expect(screen.queryByRole('button', {name: 'Delete'})).not.toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
     });
 
     it('opens the delete dialog when Delete is clicked', async () => {
@@ -259,5 +280,28 @@ describe('ThemeBuilderPage', () => {
       render(<ThemeBuilderPage />);
       expect(screen.getByTestId('config-panel')).toHaveTextContent(':colors');
     });
+  });
+
+  it('shows a theme of the selected project', () => {
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <ThemeBuilderPage />
+      </ProjectScopeProvider>,
+    );
+
+    expect(screen.getByTestId('left-panel')).toBeInTheDocument();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  });
+
+  it('returns to the list for a theme of another project', () => {
+    mockThemeBuilderState.projectId = 'project-2';
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <ThemeBuilderPage />
+      </ProjectScopeProvider>,
+    );
+
+    expect(screen.queryByTestId('left-panel')).not.toBeInTheDocument();
+    expect(mockNavigate).toHaveBeenCalledWith(expect.any(String), {replace: true});
   });
 });

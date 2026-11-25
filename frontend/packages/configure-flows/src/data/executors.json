@@ -224,10 +224,6 @@
         "onSuccess": "",
         "onFailure": "",
         "onIncomplete": ""
-      },
-      "properties": {
-        "relyingPartyId": "localhost",
-        "relyingPartyName": "{{productName}}"
       }
     }
   },
@@ -278,8 +274,10 @@
         "onIncomplete": ""
       },
       "properties": {
-        "relyingPartyId": "localhost",
-        "relyingPartyName": "{{productName}}"
+        "authenticatorSelection": {
+          "residentKey": "required",
+          "requireResidentKey": true
+        }
       }
     }
   },
@@ -890,6 +888,59 @@
     "category": "EXECUTOR",
     "type": "TASK_EXECUTION",
     "display": {
+      "header": "Credential Setter",
+      "label": "Validate Credential Reset",
+      "description": "In an administrator-initiated flow, check that the user's credential can be reset before the link is sent",
+      "image": "assets/images/icons/password.svg",
+      "showOnResourcePanel": false
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "CredentialSetter",
+          "mode": "validate",
+          "inputs": [
+            {
+              "identifier": "credential",
+              "type": "TEXT_INPUT",
+              "required": true
+            }
+          ]
+        },
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Credential Setter",
+      "label": "Remove Credential",
+      "description": "In an administrator-initiated flow, remove the credential being reset once its link is sent",
+      "image": "assets/images/icons/password.svg",
+      "showOnResourcePanel": false
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "CredentialSetter",
+          "mode": "invalidate"
+        },
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
       "header": "Attribute Uniqueness Validator",
       "label": "Validate Attribute Uniqueness",
       "description": "Ensure an attribute value is not already taken",
@@ -930,7 +981,7 @@
         "onIncomplete": ""
       },
       "properties": {
-        "requiredScopes": ["system"]
+        "requiredScopes": ["system", "org"]
       }
     }
   },
@@ -1037,30 +1088,6 @@
     "category": "EXECUTOR",
     "type": "TASK_EXECUTION",
     "display": {
-      "header": "Pre Delete Executor",
-      "label": "Validate and Plan Full Revocation",
-      "description": "Validate the target of an administrative operation, then plan revocation of every grant the subject holds",
-      "image": "assets/images/icons/magnifying-glass.svg",
-      "showOnResourcePanel": true
-    },
-    "data": {
-      "action": {
-        "type": "EXECUTOR",
-        "executor": {
-          "name": "PreDeleteExecutor",
-          "mode": "revoke_all"
-        },
-        "onSuccess": "",
-        "onFailure": "",
-        "onIncomplete": ""
-      }
-    }
-  },
-  {
-    "resourceType": "STEP",
-    "category": "EXECUTOR",
-    "type": "TASK_EXECUTION",
-    "display": {
       "header": "Criteria Revocation Executor",
       "label": "Revoke Tokens",
       "description": "Persist every token criterion from the trusted revocation plan",
@@ -1096,110 +1123,6 @@
           "name": "SessionRevocationExecutor"
         },
         "onSuccess": ""
-      }
-    }
-  },
-  {
-    "resourceType": "STEP",
-    "category": "EXECUTOR",
-    "type": "TASK_EXECUTION",
-    "display": {
-      "header": "User Delete Executor",
-      "label": "Delete User",
-      "description": "Delete the validated user after tokens and sessions have been revoked",
-      "image": "assets/images/icons/link.svg",
-      "showOnResourcePanel": true
-    },
-    "data": {
-      "action": {
-        "type": "EXECUTOR",
-        "executor": {
-          "name": "UserDeleteExecutor"
-        },
-        "onSuccess": "",
-        "onFailure": ""
-      }
-    }
-  },
-  {
-    "resourceType": "STEP",
-    "category": "EXECUTOR",
-    "type": "TASK_EXECUTION",
-    "display": {
-      "header": "Application Deletion Validator",
-      "label": "Validate and Plan Application Deletion",
-      "description": "Validate the application being deleted, then plan revocation of every artifact issued to its OAuth client",
-      "image": "assets/images/icons/magnifying-glass.svg",
-      "showOnResourcePanel": true
-    },
-    "data": {
-      "action": {
-        "type": "EXECUTOR",
-        "executor": {"name": "ApplicationActionValidator", "mode": "revoke_all"},
-        "onSuccess": "",
-        "onFailure": "",
-        "onIncomplete": ""
-      }
-    }
-  },
-  {
-    "resourceType": "STEP",
-    "category": "EXECUTOR",
-    "type": "TASK_EXECUTION",
-    "display": {
-      "header": "Secret Regeneration Validator",
-      "label": "Validate and Plan Secret Regeneration",
-      "description": "Validate the application whose client secret is being regenerated, then plan revocation of the artifacts issued under the old secret",
-      "image": "assets/images/icons/magnifying-glass.svg",
-      "showOnResourcePanel": true
-    },
-    "data": {
-      "action": {
-        "type": "EXECUTOR",
-        "executor": {"name": "ApplicationActionValidator", "mode": "revoke_before_action"},
-        "onSuccess": "",
-        "onFailure": "",
-        "onIncomplete": ""
-      }
-    }
-  },
-  {
-    "resourceType": "STEP",
-    "category": "EXECUTOR",
-    "type": "TASK_EXECUTION",
-    "display": {
-      "header": "Application Delete Executor",
-      "label": "Delete Application",
-      "description": "Delete the validated application after its tokens and session participation have been revoked",
-      "image": "assets/images/icons/link.svg",
-      "showOnResourcePanel": true
-    },
-    "data": {
-      "action": {
-        "type": "EXECUTOR",
-        "executor": {"name": "ApplicationDeleteExecutor"},
-        "onSuccess": "",
-        "onFailure": ""
-      }
-    }
-  },
-  {
-    "resourceType": "STEP",
-    "category": "EXECUTOR",
-    "type": "TASK_EXECUTION",
-    "display": {
-      "header": "Client Secret Executor",
-      "label": "Regenerate Client Secret",
-      "description": "Regenerate the application's client secret, returning the new value once",
-      "image": "assets/images/icons/link.svg",
-      "showOnResourcePanel": true
-    },
-    "data": {
-      "action": {
-        "type": "EXECUTOR",
-        "executor": {"name": "ClientSecretExecutor"},
-        "onSuccess": "",
-        "onFailure": ""
       }
     }
   },
@@ -1271,146 +1194,6 @@
     "category": "EXECUTOR",
     "type": "TASK_EXECUTION",
     "display": {
-      "header": "Role Assignment Removal Executor",
-      "label": "Remove Role Assignment",
-      "description": "Unassign the role named by the trusted revocation plan",
-      "image": "assets/images/icons/link.svg",
-      "showOnResourcePanel": true
-    },
-    "data": {
-      "action": {
-        "type": "EXECUTOR",
-        "executor": {"name": "RoleExecutor", "mode": "role_assignment_removal"},
-        "onSuccess": "",
-        "onFailure": ""
-      }
-    }
-  },
-  {
-    "resourceType": "STEP",
-    "category": "EXECUTOR",
-    "type": "TASK_EXECUTION",
-    "display": {
-      "header": "Role Deletion Validator",
-      "label": "Validate and Plan Role Deletion",
-      "description": "Validate the role and plan revocation of every scope it grants",
-      "image": "assets/images/icons/magnifying-glass.svg",
-      "showOnResourcePanel": true
-    },
-    "data": {
-      "action": {
-        "type": "EXECUTOR",
-        "executor": {"name": "AccessChangeValidator", "mode": "role_deletion"},
-        "onSuccess": "",
-        "onFailure": ""
-      }
-    }
-  },
-  {
-    "resourceType": "STEP",
-    "category": "EXECUTOR",
-    "type": "TASK_EXECUTION",
-    "display": {
-      "header": "Role Deletion Executor",
-      "label": "Delete Role",
-      "description": "Delete the role named by the trusted revocation plan",
-      "image": "assets/images/icons/link.svg",
-      "showOnResourcePanel": true
-    },
-    "data": {
-      "action": {
-        "type": "EXECUTOR",
-        "executor": {"name": "RoleExecutor", "mode": "role_deletion"},
-        "onSuccess": "",
-        "onFailure": ""
-      }
-    }
-  },
-  {
-    "resourceType": "STEP",
-    "category": "EXECUTOR",
-    "type": "TASK_EXECUTION",
-    "display": {
-      "header": "Role Permission Removal Validator",
-      "label": "Validate and Plan Permission Change",
-      "description": "Validate the new permission set and plan revocation of the scopes it drops",
-      "image": "assets/images/icons/magnifying-glass.svg",
-      "showOnResourcePanel": true
-    },
-    "data": {
-      "action": {
-        "type": "EXECUTOR",
-        "executor": {"name": "AccessChangeValidator", "mode": "role_permission_removal"},
-        "onSuccess": "",
-        "onFailure": ""
-      }
-    }
-  },
-  {
-    "resourceType": "STEP",
-    "category": "EXECUTOR",
-    "type": "TASK_EXECUTION",
-    "display": {
-      "header": "Role Permission Removal Executor",
-      "label": "Change Role Permissions",
-      "description": "Replace the permissions the role grants, as named by the trusted revocation plan",
-      "image": "assets/images/icons/link.svg",
-      "showOnResourcePanel": true
-    },
-    "data": {
-      "action": {
-        "type": "EXECUTOR",
-        "executor": {"name": "RoleExecutor", "mode": "role_permission_removal"},
-        "onSuccess": "",
-        "onFailure": ""
-      }
-    }
-  },
-  {
-    "resourceType": "STEP",
-    "category": "EXECUTOR",
-    "type": "TASK_EXECUTION",
-    "display": {
-      "header": "Group Deletion Validator",
-      "label": "Validate and Plan Group Deletion",
-      "description": "Validate the group and plan revocation of the scopes its members hold through it",
-      "image": "assets/images/icons/magnifying-glass.svg",
-      "showOnResourcePanel": true
-    },
-    "data": {
-      "action": {
-        "type": "EXECUTOR",
-        "executor": {"name": "AccessChangeValidator", "mode": "group_deletion"},
-        "onSuccess": "",
-        "onFailure": ""
-      }
-    }
-  },
-  {
-    "resourceType": "STEP",
-    "category": "EXECUTOR",
-    "type": "TASK_EXECUTION",
-    "display": {
-      "header": "Group Deletion Executor",
-      "label": "Delete Group",
-      "description": "Delete the group named by the trusted revocation plan",
-      "image": "assets/images/icons/link.svg",
-      "showOnResourcePanel": true
-    },
-    "data": {
-      "action": {
-        "type": "EXECUTOR",
-        "executor": {"name": "GroupExecutor", "mode": "group_deletion"},
-        "onSuccess": "",
-        "onFailure": ""
-      }
-    }
-  },
-  {
-    "resourceType": "STEP",
-    "category": "EXECUTOR",
-    "type": "TASK_EXECUTION",
-    "display": {
       "header": "Group Membership Removal Validator",
       "label": "Validate and Plan Membership Removal",
       "description": "Validate the membership and plan revocation of the scopes the member held through the group",
@@ -1431,26 +1214,6 @@
     "category": "EXECUTOR",
     "type": "TASK_EXECUTION",
     "display": {
-      "header": "Group Membership Removal Executor",
-      "label": "Remove Group Member",
-      "description": "Remove the member named by the trusted revocation plan from the group",
-      "image": "assets/images/icons/link.svg",
-      "showOnResourcePanel": true
-    },
-    "data": {
-      "action": {
-        "type": "EXECUTOR",
-        "executor": {"name": "GroupExecutor", "mode": "group_membership_removal"},
-        "onSuccess": "",
-        "onFailure": ""
-      }
-    }
-  },
-  {
-    "resourceType": "STEP",
-    "category": "EXECUTOR",
-    "type": "TASK_EXECUTION",
-    "display": {
       "header": "Action Deletion Validator",
       "label": "Validate and Plan Action Deletion",
       "description": "Validate the action and plan revocation of the scope it defines, for every principal",
@@ -1461,26 +1224,6 @@
       "action": {
         "type": "EXECUTOR",
         "executor": {"name": "AccessChangeValidator", "mode": "action_deletion"},
-        "onSuccess": "",
-        "onFailure": ""
-      }
-    }
-  },
-  {
-    "resourceType": "STEP",
-    "category": "EXECUTOR",
-    "type": "TASK_EXECUTION",
-    "display": {
-      "header": "Action Deletion Executor",
-      "label": "Delete Action",
-      "description": "Delete the action behind the scope named by the trusted revocation plan",
-      "image": "assets/images/icons/link.svg",
-      "showOnResourcePanel": true
-    },
-    "data": {
-      "action": {
-        "type": "EXECUTOR",
-        "executor": {"name": "ActionDeletionExecutor"},
         "onSuccess": "",
         "onFailure": ""
       }
@@ -1561,6 +1304,154 @@
       "action": {
         "type": "EXECUTOR",
         "executor": {"name": "IdentityGovernanceExecutor", "mode": "unlock"},
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Sharing Executor",
+      "label": "Validate Share",
+      "description": "Authorize sharing a resource into a child organization unit, as the admin",
+      "image": "assets/images/icons/link.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "SharingExecutor",
+          "mode": "validate"
+        },
+        "onSuccess": "",
+        "onFailure": ""
+      },
+      "properties": {
+        "resourceType": "user",
+        "resourceId": "{{ctx(userID)}}",
+        "targetOuId": "{{ctx(ouId)}}"
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Sharing Executor",
+      "label": "Share",
+      "description": "Share the resource the flow authorized, once the invitee accepts",
+      "image": "assets/images/icons/link.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "SharingExecutor",
+          "mode": "share"
+        },
+        "onSuccess": "",
+        "onFailure": ""
+      },
+      "properties": {
+        "resourceType": "user",
+        "resourceId": "{{ctx(userID)}}",
+        "targetOuId": "{{ctx(ouId)}}"
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Role Selection Executor",
+      "label": "Select Roles",
+      "description": "Offer the roles the admin can assign and record the choice",
+      "image": "assets/images/icons/user.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "RoleExecutor",
+          "mode": "role_selection"
+        },
+        "onSuccess": "",
+        "onIncomplete": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Role Assignment Executor",
+      "label": "Assign Roles",
+      "description": "Assign the recorded roles as the admin who chose them",
+      "image": "assets/images/icons/user.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "RoleExecutor",
+          "mode": "role_assignment"
+        },
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Attribute Verification Executor",
+      "label": "Prepare Verification",
+      "description": "Choose the email address or mobile number to verify",
+      "image": "assets/images/icons/user.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "AttributeVerificationExecutor",
+          "mode": "prepare"
+        },
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Attribute Verification Executor",
+      "label": "Record Verification",
+      "description": "Mark the chosen email address or mobile number as verified",
+      "image": "assets/images/icons/user.svg",
+      "showOnResourcePanel": true
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "AttributeVerificationExecutor",
+          "mode": "record"
+        },
         "onSuccess": "",
         "onFailure": ""
       }

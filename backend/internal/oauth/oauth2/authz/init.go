@@ -9,10 +9,14 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
 	"github.com/thunder-id/thunderid/internal/flow/session"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
+	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/par"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
+	"github.com/thunder-id/thunderid/internal/system/middleware"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -44,17 +48,40 @@ func Initialize(
 		ssoSession, flowProvider, governance, cfg, jtiStore, authzDetails,
 	)
 	authzHandler := newAuthorizeHandler(authzService, ssoTransport, cfg)
-	registerRoutes(mux, authzHandler)
+	registerRoutes(mux, authzHandler, cfg.EnableOUQualifiedEndpoints)
 	return authzService, nil
 }
 
-// registerRoutes registers the GET /oauth2/authorize route. The POST /oauth2/auth/callback
-// route is registered by the callback package which dispatches by grant type.
+// registerRoutes registers the GET /oauth2/authorize route, and its organization-unit-qualified form
+// where the deployment turned it on. The POST /oauth2/auth/callback route is registered by the
+// callback package which dispatches by grant type.
 //
 // Clickjacking protection (X-Frame-Options and CSP frame-ancestors, per RFC 9700 §4.16) is applied
 // globally by the security-headers middleware rather than per route, so it is not wrapped here.
-func registerRoutes(mux *http.ServeMux, authzHandler AuthorizeHandlerInterface) {
+func registerRoutes(mux *http.ServeMux, authzHandler AuthorizeHandlerInterface, ouQualifiedEndpointsEnabled bool) {
 	// CORS MUST NOT be enabled on the authorization endpoint.
 	// The client redirects the user agent to it; it is not accessed directly via XHR/fetch.
 	mux.HandleFunc("GET /oauth2/authorize", authzHandler.HandleAuthorizeGetRequest)
+
+	if !ouQualifiedEndpointsEnabled {
+		return
+	}
+
+	// The sign-in this route starts is bounded to the organization unit in the path.
+	mux.Handle("GET /ou/{"+middleware.PathParamOUID+"}/oauth2/authorize",
+		withPathOU(http.HandlerFunc(authzHandler.HandleAuthorizeGetRequest)))
+}
+
+// withPathOU records the organization unit in the path on the request context without looking it up,
+// so the flow start refuses one that does not exist exactly as one the application is not accessible from.
+func withPathOU(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ouID := sysutils.SanitizeString(r.PathValue(middleware.PathParamOUID))
+		if ouID == "" {
+			sysutils.WriteJSONError(r.Context(), w, oauth2const.ErrorInvalidRequest, "Invalid authorization request",
+				http.StatusBadRequest, nil)
+			return
+		}
+		next.ServeHTTP(w, r.WithContext(syscontext.WithAccessingOUID(r.Context(), ouID)))
+	})
 }

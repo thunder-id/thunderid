@@ -769,3 +769,86 @@ func TestMatchesOUFilter(t *testing.T) {
 		})
 	}
 }
+
+// A project lists its organization units whose parent is not in the project, and only those.
+func (s *FileBasedStoreTestSuite) TestProjectListing() {
+	ctx := context.Background()
+	other := "other-root"
+	shop := "shop-root"
+	system := "system"
+	for _, ou := range []OrganizationUnit{
+		{ID: "system", Handle: "system", Name: "System"},
+		{ID: shop, Handle: "shop", Name: "Shop", ProjectID: "project-1"},
+		{ID: "shop-child", Handle: "child", Name: "Child", Parent: &shop, ProjectID: "project-1"},
+		{ID: "legacy", Handle: "legacy", Name: "Legacy", Parent: &system, ProjectID: "project-1"},
+		{ID: other, Handle: "other", Name: "Other", ProjectID: "project-2"},
+	} {
+		s.Require().NoError(s.store.CreateOrganizationUnit(ctx, ou))
+	}
+
+	count, err := s.store.GetOrganizationUnitListCountByProject(ctx, "project-1", nil)
+	s.Require().NoError(err)
+	s.Equal(2, count)
+
+	ous, err := s.store.GetOrganizationUnitListByProject(ctx, "project-1", 10, 0, nil)
+	s.Require().NoError(err)
+	ids := make([]string, 0, len(ous))
+	for _, ou := range ous {
+		ids = append(ids, ou.ID)
+		s.Equal("project-1", ou.ProjectID)
+	}
+	s.ElementsMatch([]string{shop, "legacy"}, ids)
+
+	page, err := s.store.GetOrganizationUnitListByProject(ctx, "project-1", 1, 1, nil)
+	s.Require().NoError(err)
+	s.Len(page, 1)
+
+	beyond, err := s.store.GetOrganizationUnitListByProject(ctx, "project-1", 10, 5, nil)
+	s.Require().NoError(err)
+	s.Empty(beyond)
+
+	none, err := s.store.GetOrganizationUnitListCountByProject(ctx, "project-3", nil)
+	s.Require().NoError(err)
+	s.Zero(none)
+}
+
+// The children of a parent are counted and listed only when they belong to the given project.
+func (s *FileBasedStoreTestSuite) TestChildrenInProject() {
+	ctx := context.Background()
+	system := "system"
+	for _, ou := range []OrganizationUnit{
+		{ID: system, Handle: "system", Name: "System"},
+		{ID: "a", Handle: "a", Name: "A", Parent: &system, ProjectID: "project-1"},
+		{ID: "b", Handle: "b", Name: "B", Parent: &system, ProjectID: "project-1"},
+		{ID: "other", Handle: "other", Name: "Other", Parent: &system, ProjectID: "project-2"},
+		{ID: "root", Handle: "root", Name: "Root", ProjectID: "project-1"},
+	} {
+		s.Require().NoError(s.store.CreateOrganizationUnit(ctx, ou))
+	}
+
+	count, err := s.store.GetOrganizationUnitChildrenCountInProject(ctx, system, "project-1")
+	s.Require().NoError(err)
+	s.Equal(2, count)
+
+	children, err := s.store.GetOrganizationUnitChildrenListInProject(ctx, system, "project-1", 10, 0)
+	s.Require().NoError(err)
+	ids := make([]string, 0, len(children))
+	for _, child := range children {
+		ids = append(ids, child.ID)
+		s.Equal(system, *child.Parent)
+	}
+	s.ElementsMatch([]string{"a", "b"}, ids)
+
+	page, err := s.store.GetOrganizationUnitChildrenListInProject(ctx, system, "project-1", 1, 1)
+	s.Require().NoError(err)
+	s.Len(page, 1)
+
+	beyond, err := s.store.GetOrganizationUnitChildrenListInProject(ctx, system, "project-1", 10, 5)
+	s.Require().NoError(err)
+	s.Empty(beyond)
+}
+
+func (s *FileBasedStoreTestSuite) TestUpdateOrganizationUnitsProjectIsNotSupported() {
+	err := s.store.UpdateOrganizationUnitsProject(context.Background(), []string{"ou-1"}, "project-1", time.Now())
+	s.Error(err)
+}

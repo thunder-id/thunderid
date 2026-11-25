@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	"gopkg.in/yaml.v3"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
@@ -21,6 +22,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/export"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/tests/mocks/eventbusmock"
+	"github.com/thunder-id/thunderid/tests/mocks/oumock"
 )
 
 // declaredEmailYAML is a minimal valid email template declaration.
@@ -69,7 +72,7 @@ content:
 `
 	dto, err := parseDeclaredTemplate([]byte(badSMS))
 	s.Require().NoError(err)
-	validate := newDeclaredTemplateValidator(nil)
+	validate := newDeclaredTemplateValidator(nil, false, nil)
 	s.Require().Error(validate(dto), "expected validation to reject an SMS template with a subject")
 }
 
@@ -85,7 +88,7 @@ content:
 `
 	dto, err := parseDeclaredTemplate([]byte(noOU))
 	s.Require().NoError(err)
-	validate := newDeclaredTemplateValidator(nil)
+	validate := newDeclaredTemplateValidator(nil, false, nil)
 	s.Require().ErrorContains(validate(dto), "missing the required ouId")
 }
 
@@ -110,7 +113,7 @@ content:
   subject: Bye
   body: Bye
 `
-	validate := newDeclaredTemplateValidator(nil)
+	validate := newDeclaredTemplateValidator(nil, false, nil)
 	firstDTO, err := parseDeclaredTemplate([]byte(first))
 	s.Require().NoError(err)
 	s.Require().NoError(validate(firstDTO))
@@ -141,7 +144,7 @@ content:
   subject: Hi
   body: Hello
 `
-	validate := newDeclaredTemplateValidator(nil)
+	validate := newDeclaredTemplateValidator(nil, false, nil)
 	firstDTO, err := parseDeclaredTemplate([]byte(first))
 	s.Require().NoError(err)
 	s.Require().NoError(validate(firstDTO))
@@ -176,7 +179,7 @@ func (s *DeclarativeResourceTestSuite) TestValidatorRejectsHandleTakenByDB() {
 
 	dto, err := parseDeclaredTemplate([]byte(declaredForDBCheck))
 	s.Require().NoError(err)
-	err = newDeclaredTemplateValidator(db)(dto)
+	err = newDeclaredTemplateValidator(db, false, nil)(dto)
 	s.Require().ErrorContains(err, "already used by a")
 }
 
@@ -190,7 +193,7 @@ func (s *DeclarativeResourceTestSuite) TestValidatorRejectsIDTakenByDB() {
 
 	dto, err := parseDeclaredTemplate([]byte(declaredForDBCheck))
 	s.Require().NoError(err)
-	err = newDeclaredTemplateValidator(db)(dto)
+	err = newDeclaredTemplateValidator(db, false, nil)(dto)
 	s.Require().ErrorContains(err, "already used by a database template")
 }
 
@@ -204,7 +207,7 @@ func (s *DeclarativeResourceTestSuite) TestValidatorPassesWhenFreeInDB() {
 
 	dto, err := parseDeclaredTemplate([]byte(declaredForDBCheck))
 	s.Require().NoError(err)
-	s.Require().NoError(newDeclaredTemplateValidator(db)(dto))
+	s.Require().NoError(newDeclaredTemplateValidator(db, false, nil)(dto))
 }
 
 // TestValidatorSurfacesDBError verifies a transient database error during the handle check is
@@ -216,7 +219,7 @@ func (s *DeclarativeResourceTestSuite) TestValidatorSurfacesDBError() {
 
 	dto, err := parseDeclaredTemplate([]byte(declaredForDBCheck))
 	s.Require().NoError(err)
-	s.Require().ErrorContains(newDeclaredTemplateValidator(db)(dto), "failed to check the database")
+	s.Require().ErrorContains(newDeclaredTemplateValidator(db, false, nil)(dto), "failed to check the database")
 }
 
 // TestLoadDeclarativeTemplatesReadsFromDisk drives loadDeclarativeTemplates end-to-end: it writes a
@@ -234,7 +237,7 @@ func (s *DeclarativeResourceTestSuite) TestLoadDeclarativeTemplatesReadsFromDisk
 	defer config.ResetServerRuntime()
 
 	fileStore := newTestFileStore()
-	s.Require().NoError(loadDeclarativeTemplates(fileStore, nil))
+	s.Require().NoError(loadDeclarativeTemplates(fileStore, nil, false, nil))
 
 	got, err := fileStore.GetTemplateByHandle(context.Background(), ChannelTypeEmail, "welcome")
 	s.Require().NoError(err)
@@ -266,7 +269,7 @@ content:
 		&config.Config{DeclarativeResources: config.DeclarativeResources{Enabled: true}}))
 	defer config.ResetServerRuntime()
 
-	err := loadDeclarativeTemplates(newTestFileStore(), nil)
+	err := loadDeclarativeTemplates(newTestFileStore(), nil, false, nil)
 	s.Require().ErrorContains(err, "failed to load notification template resources")
 }
 
@@ -283,7 +286,7 @@ func (s *DeclarativeResourceTestSuite) loadTemplateFile(yaml string) (*templateF
 	s.T().Cleanup(config.ResetServerRuntime)
 
 	fileStore := newTestFileStore()
-	return fileStore, loadDeclarativeTemplates(fileStore, nil)
+	return fileStore, loadDeclarativeTemplates(fileStore, nil, false, nil)
 }
 
 // TestLoadResolvesEnvVarAndKeepsPlaceholders verifies the loader resolves a {{.VAR}} env reference while
@@ -407,9 +410,11 @@ func (s *ExporterTestSuite) TestExportMultilineBodyRoundTrips() {
 	s.service.On("GetTemplate", mock.Anything, ChannelTypeSMS, "welcome-email").
 		Return(nil, &ErrorTemplateNotFound).Maybe()
 
-	exportSvc := export.Initialize(http.NewServeMux(),
-		[]declarativeresource.ResourceExporter{s.exporter}, export.TemplatePlaceholders)
-	result, svcErr := exportSvc.ExportResources(s.ctx,
+	exportSvc, err := export.Initialize(http.NewServeMux(),
+		[]declarativeresource.ResourceExporter{s.exporter}, export.TemplatePlaceholders,
+		eventbusmock.NewEventBusInterfaceMock(s.T()))
+	s.Require().NoError(err)
+	result, svcErr := exportSvc.ReadResources(s.ctx,
 		&export.ExportRequest{NotificationTemplates: []string{"welcome-email"}})
 	s.Require().Nil(svcErr)
 	s.Require().Len(result.Files, 1)
@@ -538,4 +543,61 @@ func (s *ExporterTestSuite) TestGetResourceRules() {
 	// Nil rules keep the parameterizer from quoting scalars (which would corrupt multi-line bodies).
 	rules := s.exporter.GetResourceRules()
 	s.Require().Nil(rules)
+}
+
+func (s *DeclarativeResourceTestSuite) TestValidatorRequiresAProjectWhenOneIsRequired() {
+	dto, err := parseDeclaredTemplate([]byte(declaredAlphaYAML))
+	s.Require().NoError(err)
+
+	s.Require().ErrorContains(newDeclaredTemplateValidator(nil, true, nil)(dto), "missing the required projectId")
+	s.Require().NoError(newDeclaredTemplateValidator(nil, false, nil)(dto))
+}
+
+func (s *DeclarativeResourceTestSuite) TestValidatorAcceptsAProjectWhenOneIsRequired() {
+	dto, err := parseDeclaredTemplate([]byte(declaredInProjectYAML))
+	s.Require().NoError(err)
+
+	s.Require().NoError(newDeclaredTemplateValidator(nil, true, nil)(dto))
+}
+
+func (s *DeclarativeResourceTestSuite) TestExportKeepsTheProject() {
+	declared := templateToDeclared(ChannelTypeEmail, &Template{ID: "id-1", OUID: "ou-1", ProjectID: "proj-1",
+		Handle: "plum", DisplayName: "Plum", Content: TemplateContent{Subject: "P", Body: "p"}})
+	s.Require().Equal("proj-1", declared.ProjectID)
+
+	out, err := yaml.Marshal(declared)
+	s.Require().NoError(err)
+	s.Require().Contains(string(out), "projectId: proj-1")
+}
+
+// declaredProjectNoOUYAML declares an email template in a project without an organization unit.
+const declaredProjectNoOUYAML = `resource_type: notification_template
+id: pear-email
+channel: email
+handle: pear
+projectId: proj-1
+displayName: Pear
+content:
+  subject: P
+  body: p
+`
+
+func (s *DeclarativeResourceTestSuite) TestValidatorPlacesAProjectTemplateInTheSystemOU() {
+	dto, err := parseDeclaredTemplate([]byte(declaredProjectNoOUYAML))
+	s.Require().NoError(err)
+	ouMock := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
+	ouMock.EXPECT().GetSystemOUID(mock.Anything).Return("sys-ou", nil)
+
+	s.Require().NoError(newDeclaredTemplateValidator(nil, true, ouMock)(dto))
+	s.Equal("sys-ou", dto.(*declaredNotificationTemplate).OUID)
+}
+
+func (s *DeclarativeResourceTestSuite) TestValidatorFailsWhenTheSystemOUCannotBeRead() {
+	dto, err := parseDeclaredTemplate([]byte(declaredProjectNoOUYAML))
+	s.Require().NoError(err)
+	ouMock := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
+	ouMock.EXPECT().GetSystemOUID(mock.Anything).Return("", &tidcommon.InternalServerError)
+
+	s.Require().ErrorContains(newDeclaredTemplateValidator(nil, true, ouMock)(dto),
+		"system organization unit of notification template")
 }

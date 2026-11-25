@@ -46,10 +46,10 @@ describe('withTheme', () => {
     context.meta = null;
   });
 
-  it('uses the Admin Console theme when the application has no Design', () => {
+  it('uses the default ThunderID theme when the application has no Design', () => {
     renderThemed();
 
-    expect(screen.getByTestId('primary')).toHaveTextContent('#a31515');
+    expect(screen.getByTestId('primary')).toHaveTextContent('#3688FF');
   });
 
   it('takes the Design theme of the application from the flow meta response', () => {

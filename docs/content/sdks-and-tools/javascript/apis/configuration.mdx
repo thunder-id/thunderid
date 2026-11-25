@@ -37,6 +37,7 @@ await client.initialize({
 |-----------|------|---------|-------------|
 | `afterSignInUrl` | `string` | - | URL to redirect to after a successful sign-in. Must match an allowed redirect URI in your IdP |
 | `afterSignOutUrl` | `string` | - | URL to redirect to after sign-out. Must match an allowed post-logout redirect URI |
+| `authorizationDetails` | `AuthorizationDetail[]` | - | RFC 9396 authorization details to request. See [Authorization Details](#authorization-details) |
 | `scopes` | `string \| string[]` | `['openid']` | OAuth 2.0 scopes to request. Accepts a space-separated string or an array |
 | `clientSecret` | `string` | - | Client secret. Only required for confidential clients. Do not use in browser applications |
 | `enablePKCE` | `boolean` | `true` | Enable PKCE (RFC 7636). Disable only if your authorization server does not support it |
@@ -50,6 +51,39 @@ await client.initialize({
 | `signOutOptions` | `Record<string, unknown>` | - | Additional parameters to include in the sign-out request |
 | `signUpOptions` | `Record<string, unknown>` | - | Additional parameters to include in the sign-up request |
 | `signUpUrl` | `string` | - | Override the sign-up page URL |
+
+### Authorization Details
+
+`authorizationDetails` requests fine-grained authorizations, such as a single payment of a set amount, as defined by [RFC 9396 Rich Authorization Requests](../../../../guides/protocols/oauth-oidc/rich-authorization-requests). Each entry names a `type` registered on the server and carries the members that type defines. The Console lists these types under **Intents**. See [Manage Intents](../../../../guides/intents).
+
+Authorization details are sent on a redirect sign-in, where the sign-in UI renders the consent step. A browser client also sends them on silent sign-in (`prompt=none`), which succeeds only when an earlier approval covers every detail. An app-native sign-in flow cannot carry them, and a browser client configured with `endpoints.backend` does not send them. A request without a `resource` needs a [default resource server](../../../../guides/protocols/oauth-oidc/resource-indicators). When the user declines every detail, sign-in still completes, and the token carries no `authorization_details`.
+
+```ts
+await client.initialize({
+  clientId: '<your-client-id>',
+  baseUrl: 'https://localhost:8090',
+  afterSignInUrl: 'http://localhost:3000',
+  authorizationDetails: [
+    {
+      type: 'payment_initiation',
+      creditorName: 'Merchant A',
+      instructedAmount: {currency: 'EUR', amount: 120},
+    },
+  ],
+})
+```
+
+The SDK sends the array as the JSON-encoded `authorization_details` parameter on these requests:
+
+| Request | When |
+|---------|------|
+| Authorization request | Every redirect sign-in, and silent sign-in in a browser client. Authorization details passed to a single sign-in take precedence. See [Rich Authorization Requests](../thunderid-javascript-client#rich-authorization-requests) |
+| Backchannel authentication request | `initiateCIBA()`, unless its `authorizationDetails` option is set |
+| Token request for the `client_credentials` grant | `getAccessToken()` when `grantType` is `'client_credentials'` |
+
+On the `client_credentials` grant, no user consents, so every requested type must declare a [processor](../../../../guides/integrations/authorization-details-processor). The token carries only the details the processors approve, and a request whose details are all refused, or that names a type without a processor, fails with `invalid_authorization_details`. See [Client Credentials](../../../../guides/protocols/oauth-oidc/rich-authorization-requests#client-credentials).
+
+On a redirect sign-in, the user approves the authorization details on the consent step of the application's sign-in flow. The user may lower the values that the type allows the user to change.
 
 ### Token Parameters
 
@@ -87,15 +121,17 @@ By default the SDK fetches `{baseUrl}/.well-known/openid-configuration` to resol
 | `endpoints.flowExecute` | `string` | `{baseUrl}/flow/execute` | Override the flow execution endpoint (embedded sign-in, sign-up, recovery, and user onboarding flows) |
 | `endpoints.flowMeta` | `string` | `{baseUrl}/flow/meta` | Override the flow metadata endpoint |
 | `endpoints.usersMe` | `string` | `{baseUrl}/users/me` | Override the current-user profile endpoint |
+| `endpoints.usersMeOrganizationUnits` | `string` | `{baseUrl}/users/me/ous` | Override the endpoint that lists the organization units the signed-in user can access |
 | `endpoints.applications` | `string` | `{baseUrl}/applications` | Override the applications collection used by the [management](../management) operations |
 | `endpoints.users` | `string` | `{baseUrl}/users` | Override the users collection used by the [management](../management) operations |
 | `endpoints.agents` | `string` | `{baseUrl}/agents` | Override the agents collection used by the [management](../management) operations |
+| `endpoints.authorizationDetailTypes` | `string` | `{baseUrl}/authorization-detail-types` | Override the authorization details types collection used by the [management](../management#authorization-details-types) operations |
 
 The `endpoints.authorization`, `endpoints.token`, `endpoints.userInfo`, `endpoints.jwks`, `endpoints.introspection`,
 and `endpoints.endSession` overrides address OIDC/OAuth endpoints, which are otherwise resolved from the discovery
-document. The `endpoints.flowExecute`, `endpoints.flowMeta`, `endpoints.usersMe`, `endpoints.applications`,
-`endpoints.users`, and `endpoints.agents` overrides address resource-server endpoints, which are otherwise derived by
-concatenating `baseUrl` with a fixed path.
+document. The `endpoints.flowExecute`, `endpoints.flowMeta`, `endpoints.usersMe`, `endpoints.usersMeOrganizationUnits`,
+`endpoints.applications`, `endpoints.users`, `endpoints.agents`, and `endpoints.authorizationDetailTypes` overrides address
+resource-server endpoints, which are otherwise derived by concatenating `baseUrl` with a fixed path.
 
 Split these two groups when the OAuth authorization server and the <ProductName /> resource server are different hosts,
 for example when two <ProductName /> instances are connected as trusted issuers. Point `baseUrl` (and hence the
@@ -112,6 +148,15 @@ resource server that owns the users and flows:
   },
 }
 ```
+
+### Backend Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `endpoints.backend` | `BackendEndpoints` | - | Browser SDKs only. Hands sign-in to your application's backend, which runs the OAuth flow and keeps the tokens. The browser holds only an `HttpOnly` cookie. In this mode `baseUrl` is the backend and defaults to the application's origin. Each endpoint defaults to a path under `/api/auth`, resolved against `baseUrl` |
+| `endpoints.backend.ouSwitch` | `string` | `/api/auth/switch` | Switches the backend's session to another organization unit for `switchOrganizationUnit()`, without leaving the page. See [`ThunderIDBrowserClient`](../../../browser/apis/thunderid-browser-client#switchorganizationunitorganizationunitid-options) |
+
+A browser client's `switchOrganizationUnit()` sends `POST {ouSwitch}?ouId=<id>` with `{"ouId": "<id>"}` as a JSON body, so the backend can read the unit from either. Switch the session the backend holds to that organization unit and answer `200`, or refuse with an OAuth `error` in a JSON body, such as `{"error": "interaction_required"}`. A refusal that says the user has to sign in sends the browser to the `signIn` endpoint with `ouId`, unless the call sets `redirect: false`. That endpoint must bound the sign-in to the unit. Answer `401` with `{"error": "session_expired"}` when the session needs a refresh, and the SDK refreshes it once and retries. The SDK treats any other `401` as `login_required`.
 
 ### Application Parameters
 

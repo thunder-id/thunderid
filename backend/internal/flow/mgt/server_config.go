@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"strconv"
 
 	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -62,6 +64,16 @@ func (h *FlowConfigHandler) Validate(ctx context.Context, incoming, _, _ any) er
 		return fmt.Errorf("flow: unexpected config type %T", incoming)
 	}
 
+	if cfg.DefaultReturnURL != "" && !isValidReturnURL(cfg.DefaultReturnURL) {
+		return fmt.Errorf("flow: defaultReturnUrl must be an absolute http or https URL with a host and no credentials")
+	}
+	if cfg.SelfFlow.DefaultHandle != "" {
+		return fmt.Errorf("flow: selfFlow.defaultHandle is not supported")
+	}
+	if cfg.AdminInitiatedFlow.DefaultHandle != "" {
+		return fmt.Errorf("flow: adminInitiatedFlow.defaultHandle is not supported")
+	}
+
 	type entry struct {
 		tc       flowconfig.FlowTypeConfig
 		flowType providers.FlowType
@@ -73,16 +85,11 @@ func (h *FlowConfigHandler) Validate(ctx context.Context, incoming, _, _ any) er
 		{cfg.UserOnboardingFlow, providers.FlowTypeUserOnboarding, "userOnboardingFlow"},
 		{cfg.RecoveryFlow, providers.FlowTypeRecovery, "recoveryFlow"},
 		{cfg.SignOutFlow, providers.FlowTypeSignOut, "signOutFlow"},
-		{cfg.UserDeletionFlow, providers.FlowTypeAdministration, "userDeletionFlow"},
-		{cfg.ApplicationDeletionFlow, providers.FlowTypeAdministration, "applicationDeletionFlow"},
-		{cfg.SecretRegenerationFlow, providers.FlowTypeAdministration, "secretRegenerationFlow"},
+		{cfg.SelfFlow, providers.FlowTypeSelf, "selfFlow"},
+		{cfg.AdminInitiatedFlow, providers.FlowTypeAdminInitiated, "adminInitiatedFlow"},
 		{cfg.AgentOnboardingFlow, providers.FlowTypeAdministration, "agentOnboardingFlow"},
-		{cfg.RoleAssignmentRemovalFlow, providers.FlowTypeAdministration, "roleAssignmentRemovalFlow"},
-		{cfg.RoleDeletionFlow, providers.FlowTypeAdministration, "roleDeletionFlow"},
-		{cfg.RolePermissionRemovalFlow, providers.FlowTypeAdministration, "rolePermissionRemovalFlow"},
-		{cfg.GroupDeletionFlow, providers.FlowTypeAdministration, "groupDeletionFlow"},
-		{cfg.GroupMembershipRemovalFlow, providers.FlowTypeAdministration, "groupMembershipRemovalFlow"},
-		{cfg.ActionDeletionFlow, providers.FlowTypeAdministration, "actionDeletionFlow"},
+		{cfg.AdminAttributeVerificationFlow, providers.FlowTypeAdminInitiated, "adminAttributeVerificationFlow"},
+		{cfg.AdminUserCredentialResetFlow, providers.FlowTypeAdminInitiated, "adminUserCredentialResetFlow"},
 		{cfg.UserUnlockFlow, providers.FlowTypeAdministration, "userUnlockFlow"},
 		{cfg.UserSuspendFlow, providers.FlowTypeAdministration, "userSuspendFlow"},
 		{cfg.UserUnsuspendFlow, providers.FlowTypeAdministration, "userUnsuspendFlow"},
@@ -108,36 +115,45 @@ func (h *FlowConfigHandler) Validate(ctx context.Context, incoming, _, _ any) er
 	return nil
 }
 
+// isValidReturnURL reports whether a URL is one a sign-in page may send the user to: an absolute http or https
+// URL that names a host, carries no credentials, and has a port a browser accepts.
+func isValidReturnURL(value string) bool {
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Hostname() == "" || parsed.User != nil {
+		return false
+	}
+	if port := parsed.Port(); port != "" {
+		if n, err := strconv.Atoi(port); err != nil || n > 65535 {
+			return false
+		}
+	}
+	return parsed.Scheme == "http" || parsed.Scheme == "https"
+}
+
 // Merge overlays the writable (db) layer onto the read-only (declarative) layer. A non-empty
-// writable handle or a positive writable expiry wins for its sub-field; otherwise the read-only
-// value stands.
+// writable return URL or handle, or a positive writable expiry, wins for its field; otherwise the
+// read-only value stands.
 func (h *FlowConfigHandler) Merge(readOnly, writable any) any {
 	ro, _ := readOnly.(flowconfig.FlowSectionConfig)
 	wr, _ := writable.(flowconfig.FlowSectionConfig)
+	defaultReturnURL := ro.DefaultReturnURL
+	if wr.DefaultReturnURL != "" {
+		defaultReturnURL = wr.DefaultReturnURL
+	}
 	return flowconfig.FlowSectionConfig{
-		AuthFlow:           mergeFlowTypeConfig(ro.AuthFlow, wr.AuthFlow),
-		RegistrationFlow:   mergeFlowTypeConfig(ro.RegistrationFlow, wr.RegistrationFlow),
-		UserOnboardingFlow: mergeFlowTypeConfig(ro.UserOnboardingFlow, wr.UserOnboardingFlow),
-		RecoveryFlow:       mergeFlowTypeConfig(ro.RecoveryFlow, wr.RecoveryFlow),
-		SignOutFlow:        mergeFlowTypeConfig(ro.SignOutFlow, wr.SignOutFlow),
-		UserDeletionFlow:   mergeFlowTypeConfig(ro.UserDeletionFlow, wr.UserDeletionFlow),
-		ApplicationDeletionFlow: mergeFlowTypeConfig(
-			ro.ApplicationDeletionFlow, wr.ApplicationDeletionFlow),
-		SecretRegenerationFlow: mergeFlowTypeConfig(
-			ro.SecretRegenerationFlow, wr.SecretRegenerationFlow),
+		DefaultReturnURL:    defaultReturnURL,
+		AuthFlow:            mergeFlowTypeConfig(ro.AuthFlow, wr.AuthFlow),
+		RegistrationFlow:    mergeFlowTypeConfig(ro.RegistrationFlow, wr.RegistrationFlow),
+		UserOnboardingFlow:  mergeFlowTypeConfig(ro.UserOnboardingFlow, wr.UserOnboardingFlow),
+		RecoveryFlow:        mergeFlowTypeConfig(ro.RecoveryFlow, wr.RecoveryFlow),
+		SignOutFlow:         mergeFlowTypeConfig(ro.SignOutFlow, wr.SignOutFlow),
+		SelfFlow:            mergeFlowTypeConfig(ro.SelfFlow, wr.SelfFlow),
+		AdminInitiatedFlow:  mergeFlowTypeConfig(ro.AdminInitiatedFlow, wr.AdminInitiatedFlow),
 		AgentOnboardingFlow: mergeFlowTypeConfig(ro.AgentOnboardingFlow, wr.AgentOnboardingFlow),
-		RoleAssignmentRemovalFlow: mergeFlowTypeConfig(
-			ro.RoleAssignmentRemovalFlow, wr.RoleAssignmentRemovalFlow),
-		RoleDeletionFlow: mergeFlowTypeConfig(
-			ro.RoleDeletionFlow, wr.RoleDeletionFlow),
-		RolePermissionRemovalFlow: mergeFlowTypeConfig(
-			ro.RolePermissionRemovalFlow, wr.RolePermissionRemovalFlow),
-		GroupDeletionFlow: mergeFlowTypeConfig(
-			ro.GroupDeletionFlow, wr.GroupDeletionFlow),
-		GroupMembershipRemovalFlow: mergeFlowTypeConfig(
-			ro.GroupMembershipRemovalFlow, wr.GroupMembershipRemovalFlow),
-		ActionDeletionFlow: mergeFlowTypeConfig(
-			ro.ActionDeletionFlow, wr.ActionDeletionFlow),
+		AdminAttributeVerificationFlow: mergeFlowTypeConfig(
+			ro.AdminAttributeVerificationFlow, wr.AdminAttributeVerificationFlow),
+		AdminUserCredentialResetFlow: mergeFlowTypeConfig(
+			ro.AdminUserCredentialResetFlow, wr.AdminUserCredentialResetFlow),
 
 		UserUnlockFlow:         mergeFlowTypeConfig(ro.UserUnlockFlow, wr.UserUnlockFlow),
 		UserSuspendFlow:        mergeFlowTypeConfig(ro.UserSuspendFlow, wr.UserSuspendFlow),

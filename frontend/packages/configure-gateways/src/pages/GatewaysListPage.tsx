@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle} from '@thunderid/components';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {Button, PageContent, PageTitle} from '@wso2/oxygen-ui';
 import {Plus} from '@wso2/oxygen-ui-icons-react';
@@ -18,6 +19,7 @@ export default function GatewaysListPage(): JSX.Element {
   const navigate = useNavigate();
   const routes = useGatewayRoutes();
   const logger = useLogger('GatewaysListPage');
+  const {can} = useCapabilitiesContext();
   const [registerOpen, setRegisterOpen] = useState(false);
 
   const handleRegistered = (gateway: GatewayRegistration): void => {
@@ -38,9 +40,11 @@ export default function GatewaysListPage(): JSX.Element {
           {t('gateways:list.subtitle', 'Register the gateways this deployment administers and how it reaches them.')}
         </PageTitle.SubHeader>
         <PageTitle.Actions>
-          <Button variant="contained" startIcon={<Plus size={18} />} onClick={() => setRegisterOpen(true)}>
-            {t('gateways:list.register', 'Register gateway')}
-          </Button>
+          {can('gateway', 'create') && (
+            <Button variant="contained" startIcon={<Plus size={18} />} onClick={() => setRegisterOpen(true)}>
+              {t('gateways:list.register', 'Register gateway')}
+            </Button>
+          )}
         </PageTitle.Actions>
       </PageTitle>
 

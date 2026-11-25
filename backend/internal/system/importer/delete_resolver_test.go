@@ -13,7 +13,9 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/notificationtemplate"
+	"github.com/thunder-id/thunderid/internal/resource"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // everyDeleter stands in for every adapter's delete, and records which one was called. It
@@ -71,6 +73,18 @@ func (e *everyDeleter) DeleteRole(_ context.Context, id string) *tidcommon.Servi
 func (e *everyDeleter) DeleteGroup(_ context.Context, id string) *tidcommon.ServiceError {
 	return e.record(resourceTypeGroup, id)
 }
+func (e *everyDeleter) GetAllResourceList(
+	context.Context, string,
+) ([]providers.Resource, *tidcommon.ServiceError) {
+	return nil, nil
+}
+
+func (e *everyDeleter) GetActionList(
+	context.Context, string, *string, providers.ActionKind, int, int,
+) (*resource.ActionList, *tidcommon.ServiceError) {
+	return &resource.ActionList{}, nil
+}
+
 func (e *everyDeleter) DeleteResourceServer(_ context.Context, id string) *tidcommon.ServiceError {
 	return e.record(resourceTypeResourceServer, id)
 }

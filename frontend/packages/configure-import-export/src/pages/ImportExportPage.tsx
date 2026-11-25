@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, ExternalLink} from '@thunderid/components';
+import {useCapabilitiesContext, useConfig} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {AppBreadcrumbs, Box, Card, CardContent, IconButton, LinearProgress, Stack, Typography} from '@wso2/oxygen-ui';
 import {FileOutput, FileInput, X} from '@wso2/oxygen-ui-icons-react';
@@ -11,6 +12,8 @@ import {useNavigate} from 'react-router';
 import useImportExportRoutes from '../hooks/useImportExportRoutes';
 
 interface ImportExportOption {
+  /** Whether the admin may do what the option opens. */
+  allowed: boolean;
   route: string;
   labelKey: string;
   labelDefault: string;
@@ -21,9 +24,12 @@ interface ImportExportOption {
 
 export default function ImportExportPage(): JSX.Element {
   const {t} = useTranslation('importExport');
+  const {config} = useConfig();
+  const productName: string = config.brand.product_name;
   const navigate = useNavigate();
   const logger = useLogger('ImportExportPage');
   const routes = useImportExportRoutes();
+  const {can} = useCapabilitiesContext();
 
   const handleClose = (): void => {
     (async () => {
@@ -43,14 +49,16 @@ export default function ImportExportPage(): JSX.Element {
 
   const options: ImportExportOption[] = [
     {
+      allowed: can('import', 'create'),
       route: routes.importConfiguration.upload(),
       labelKey: 'landing.type.import.label',
       labelDefault: 'Import',
       descriptionKey: 'landing.type.import.description',
-      descriptionDefault: 'Bring in an existing ThunderID configuration file.',
+      descriptionDefault: 'Bring in an existing {{productName}} configuration file.',
       icon: <FileInput size={28} />,
     },
     {
+      allowed: can('export', 'create'),
       route: routes.export.page(),
       labelKey: 'landing.type.export.label',
       labelDefault: 'Export',
@@ -58,7 +66,7 @@ export default function ImportExportPage(): JSX.Element {
       descriptionDefault: 'Download your current configuration as a file.',
       icon: <FileOutput size={28} />,
     },
-  ];
+  ].filter((option: ImportExportOption) => option.allowed);
 
   return (
     <Box sx={{minHeight: '100vh', display: 'flex', flexDirection: 'column'}}>
@@ -143,7 +151,7 @@ export default function ImportExportPage(): JSX.Element {
                               {t(option.labelKey, option.labelDefault)}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
-                              {t(option.descriptionKey, option.descriptionDefault)}
+                              {t(option.descriptionKey, option.descriptionDefault, {productName})}
                             </Typography>
                           </Stack>
                         </Stack>

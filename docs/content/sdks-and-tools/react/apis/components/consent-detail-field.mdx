@@ -1,0 +1,65 @@
+---
+displayed_sidebar: null
+title: <ConsentDetailField />
+docType: reference
+description: Renders the value of one authorization detail field on a React consent step, as an input bounded by its policy when the user may change it.
+---
+
+# `<ConsentDetailField />`
+
+The `ConsentDetailField` component renders the value of one field of an [RFC 9396 authorization detail](../../../../../guides/protocols/oauth-oidc/rich-authorization-requests) on the consent step. It renders the value only, so render the field's `label` next to it. A field the user may change, as the field policy of the detail's type allows, renders as an input. Every other field is read-only. [`<ConsentAuthorizationDetail />`](../consent-authorization-detail) renders it for each field by default.
+
+## Usage
+
+```tsx
+<ConsentDetailField
+  purposeId={purpose.purposeId}
+  detailId={element.name}
+  row={row}
+  formValues={formValues}
+  onInputChange={onInputChange}
+/>
+```
+
+See [`<ConsentAuthorizationDetail />`](../consent-authorization-detail#render-props-for-custom-ui) for a complete example.
+
+## Field Behavior
+
+The field's `modification` sets what the user may do:
+
+| `modification` | Renders | The user may |
+| :--- | :--- | :--- |
+| `decrease` | A number or date input | Enter a value up to the value shown |
+| `increase` | A number or date input | Enter a value from the value shown upward |
+| `removeItems` | One button per item | Remove items, except the last one kept, and add removed items back |
+| `addItems` | The items shown, and a button for each item the type allows | Add the allowed items, and remove the ones they added |
+| None | The value as text | Nothing |
+
+A field renders read-only text instead when its value does not fit its `modification`: a `decrease` or `increase` field that is neither a number nor a date in `YYYY-MM-DD` form (a `dateTime` field is never editable), a `removeItems` list with fewer than two items, or a `removeItems` or `addItems` list whose items are not all strings, numbers, or booleans. An `addItems` list whose type lists no allowed values also shows a text input that adds a typed item when the user presses Enter.
+
+A value the user enters outside its bound, or text that is not a number or a date, shows an error such as `Enter 120 or less.` The field then submits no change and marks itself invalid, which blocks approval through [`isApprovalBlocked`](../consent#render-props) until the user corrects it or declines the detail. The server checks every change it receives against the field policy.
+
+## Props
+
+| Prop | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `purposeId` | `string` | ✅ | The `purposeId` of the authorization details purpose. |
+| `detailId` | `string` | ✅ | The `name` of the detail's element. |
+| `row` | `ConsentDetailRow` | ✅ | The field to render. |
+| `formValues` | `Record<string, string>` | ✅ | The consent form values. |
+| `onInputChange` | `(name: string, value: string) => void` | ✅ | Called with a form key and its new value. |
+| `align` | `'start' \| 'end'` | ❌ | Side the value aligns to. Defaults to `'end'`. |
+| `children` | `(field: UseConsentDetailFieldResult) => ReactNode` | ❌ | Render-props callback that replaces the default UI. It receives the field's state from [`useConsentDetailField()`](../../hooks/use-consent-detail-field). |
+| `t` | `UseTranslation['t']` | ❌ | Translation function for the error messages and button labels. |
+
+## `ConsentDetailRow`
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `path` | `string` | Dot-separated location of the field in the detail, such as `instructedAmount.amount` |
+| `label` | `string` | The field's `title` from the type's schema, or its path when the schema gives none |
+| `value` | `unknown` | The field's value in the requested detail |
+| `modification` | `ConsentDetailModification` (`'none' \| 'decrease' \| 'increase' \| 'removeItems' \| 'addItems'`) | The change the user may make. Absent, or `'none'`, for a read-only field |
+| `as` | `'number' \| 'date' \| 'dateTime'` | How a field with a modification is compared. Present only with `decrease` or `increase` |
+| `options` | `unknown[]` | The values the type allows in an `addItems` list |
+| `origin` | `string` | `'server'` when the type's processor supplied the value |

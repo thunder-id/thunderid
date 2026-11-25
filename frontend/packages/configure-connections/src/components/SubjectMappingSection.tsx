@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {SettingsCard} from '@thunderid/components';
+import {sanitizeKeyValuePart, SettingsCard} from '@thunderid/components';
 import {Alert, Box, Button, CircularProgress, Stack, Typography} from '@wso2/oxygen-ui';
 import {Route, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {type JSX, useMemo, useState} from 'react';
@@ -11,7 +11,6 @@ import SubjectMappingCategory from './SubjectMappingCategory';
 import useSubjectMappingTypes from '../api/useSubjectMappingTypes';
 import type {SubjectMappingValues} from '../models/connection';
 import type {SubjectMappingGroup, SubjectRowsState, SubjectTypeOption} from '../models/subject-mapping';
-import {sanitizeKeyValuePart} from '../utils/keyValuePairs';
 import {
   buildSubjectRows,
   canonicalSubjectAttributeMappings,

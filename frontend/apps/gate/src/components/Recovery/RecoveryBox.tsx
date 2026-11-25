@@ -9,7 +9,7 @@
 import {FlowComponentRenderer, AuthCardLayout, useDesign} from '@thunderid/design';
 import {useTemplateLiteralResolver} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
-import {EmbeddedFlowEventType, Recovery, type EmbeddedFlowComponent} from '@thunderid/react';
+import {EmbeddedFlowEventType, Recovery, useThunderID, type EmbeddedFlowComponent} from '@thunderid/react';
 import {TemplateLiteralType} from '@thunderid/utils';
 import {Box, Alert, CircularProgress} from '@wso2/oxygen-ui';
 import type {JSX, ReactNode} from 'react';
@@ -17,6 +17,7 @@ import {useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useSearchParams} from 'react-router';
 import RouteConfig from '../../configs/RouteConfig';
+import FlowExpired from '../FlowExpired/FlowExpired';
 
 export default function RecoveryBox(): JSX.Element {
   const {resolveAll} = useTemplateLiteralResolver();
@@ -25,6 +26,7 @@ export default function RecoveryBox(): JSX.Element {
   const {t} = useTranslation();
   const logger = useLogger('RecoveryBox');
   const {isDesignEnabled} = useDesign();
+  const {meta} = useThunderID();
   const [flowError, setFlowError] = useState<string | null>(null);
 
   const base = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -48,6 +50,7 @@ export default function RecoveryBox(): JSX.Element {
     >
       <Recovery
         afterRecoveryUrl={signInUrl}
+        afterFlowExpiredUrl={meta?.application?.url}
         onError={(error: Error) => {
           logger.error('Recovery error:', error);
         }}
@@ -77,14 +80,24 @@ export default function RecoveryBox(): JSX.Element {
             values,
             handleInputChange,
             handleSubmit,
+            isFlowExpired,
+            isFlowRestarted,
+            flowExpiryRedirect,
             meta: flowMeta,
           }: any) =>
-            isLoading && !components?.length ? (
+            isFlowExpired ? (
+              <FlowExpired applicationName={flowMeta?.application?.name} redirect={flowExpiryRedirect} />
+            ) : isLoading && !components?.length ? (
               <Box sx={{display: 'flex', justifyContent: 'center', p: 3}}>
                 <CircularProgress />
               </Box>
             ) : (
               <>
+                {isFlowRestarted && (
+                  <Alert severity="info" sx={{mb: 2}}>
+                    {t('auth:flowExpired.restarted', 'Your session expired, so we started again.')}
+                  </Alert>
+                )}
                 {(flowError ?? error) && (
                   <Alert severity="error" sx={{mb: 2}}>
                     {flowError ??

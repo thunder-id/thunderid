@@ -7,6 +7,7 @@ import {
   useGetOrganizationUnit,
   useHasMultipleOUs,
 } from '@thunderid/configure-organization-units';
+import {useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage} from '@thunderid/utils';
 import {Box, Button, CircularProgress, Alert} from '@wso2/oxygen-ui';
@@ -20,6 +21,7 @@ import ConfigureBasicInfo from '../components/create-role/ConfigureBasicInfo';
 import ConfigurePermissions from '../components/create-role/ConfigurePermissions';
 import RoleConstraints from '../constants/role-constraints';
 import useRoleCreate from '../contexts/RoleCreate/useRoleCreate';
+import useRoleRoutes from '../hooks/useRoleRoutes';
 import type {CreateRoleRequest} from '../models/requests';
 import {RoleCreateFlowStep} from '../models/role-create-flow';
 
@@ -28,11 +30,17 @@ export default function CreateRolePage(): JSX.Element {
   const {t} = useTranslation('roles');
   const logger = useLogger('CreateRolePage');
   const createRole = useCreateRole();
+  const routes = useRoleRoutes();
 
   const {currentStep, setCurrentStep, name, setName, ouId, setOuId, error, setError, permissions, setPermissions} =
     useRoleCreate();
 
-  const {hasMultipleOUs, isLoading: isOuLoading, ouList} = useHasMultipleOUs();
+  const {projectId} = useProjectScope();
+  // Inside a project the role goes to the system organization unit or one of the project's own,
+  // picked on the organization unit step. The step is offered only when the project has
+  // organization units; without any, the API places the role in the system organization unit.
+  const isInProject = Boolean(projectId);
+  const {hasMultipleOUs, isLoading: isOuLoading, ouList} = useHasMultipleOUs(projectId);
 
   // The organization unit is the wizard's first step whenever there's a choice to make. Single-OU
   // deployments never need it, so once that's known, skip straight past it.
@@ -43,7 +51,7 @@ export default function CreateRolePage(): JSX.Element {
   }, [isOuLoading, hasMultipleOUs, currentStep, setCurrentStep]);
 
   // The organization unit whose name is shown in the Details step's summary chip.
-  const resolvedOuId = hasMultipleOUs ? ouId : ouList[0]?.id;
+  const resolvedOuId = isInProject ? (hasMultipleOUs && ouId) || undefined : hasMultipleOUs ? ouId : ouList[0]?.id;
   const {data: resolvedOrganizationUnit, isLoading: isResolvedOuLoading} = useGetOrganizationUnit(
     resolvedOuId,
     Boolean(resolvedOuId),
@@ -72,7 +80,7 @@ export default function CreateRolePage(): JSX.Element {
     return map;
   }, [t, hasMultipleOUs]);
 
-  const listUrl = '/roles';
+  const listUrl = routes.roles.list();
 
   const handleClose = (): void => {
     if (createRole.isPending) return;
@@ -110,15 +118,15 @@ export default function CreateRolePage(): JSX.Element {
       return;
     }
 
-    const selectedOuId = hasMultipleOUs ? ouId : ouList[0]?.id;
-    if (!selectedOuId) {
+    if (!isInProject && !resolvedOuId) {
       setError(t('create.form.organizationUnit.required', 'Organization unit is required'));
       return;
     }
 
     const requestData: CreateRoleRequest = {
       name: trimmedName,
-      ouId: selectedOuId,
+      ...(isInProject ? {projectId} : {}),
+      ...(resolvedOuId ? {ouId: resolvedOuId} : {}),
       ...(permissions.length > 0 ? {permissions} : {}),
     };
 
@@ -213,6 +221,7 @@ export default function CreateRolePage(): JSX.Element {
             "Choose the organization unit that will own this role. You can't change this once created.",
           )}
           value={ouId}
+          projectId={projectId}
           onChange={setOuId}
           onBack={handleClose}
           onContinue={handleNextStep}

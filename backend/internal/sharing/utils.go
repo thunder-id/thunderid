@@ -12,7 +12,11 @@ import (
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
+	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
+	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 
 	"gopkg.in/yaml.v3"
@@ -36,15 +40,6 @@ func DecodePolicyBody[T PolicyCreateBody | PolicyUpdateBody](
 		return nil, false
 	}
 	return body, true
-}
-
-// nullableString maps an empty string to a SQL null, so an absent parent or named organization
-// unit stores as null rather than as an empty string a foreign key would reject.
-func nullableString(v string) interface{} {
-	if v == "" {
-		return nil
-	}
-	return v
 }
 
 // copyStrings returns a copy of a member list, so a stored rule cannot be mutated through a
@@ -139,4 +134,92 @@ func yamlFieldNames(t reflect.Type) map[string]bool {
 		}
 	}
 	return names
+}
+
+// ListReadablePolicies returns one page of the sharing policies of a resource that the caller may read. A
+// caller who may read the resource in its owning organization unit reads every policy. Any other caller
+// reads the policies its own organization units made, and is refused with tidcommon.ErrorUnauthorized
+// when it made none. A resource holds at most one policy per organization unit, so those are paged in
+// memory. mayRead checks the caller may read the resource in an organization unit, and translate maps an
+// error of the sharing framework to the resource type's own codes.
+func ListReadablePolicies(ctx context.Context, sharingService SharingServiceInterface, rt ResourceType,
+	resourceID, owningOUID string, limit, offset int, mayRead func(ouID string) *tidcommon.ServiceError,
+	translate func(*tidcommon.ServiceError) *tidcommon.ServiceError,
+) (PolicyList, *tidcommon.ServiceError) {
+	svcErr := mayRead(owningOUID)
+	if svcErr == nil {
+		list, svcErr := sharingService.GetPolicyList(ctx, rt, resourceID, limit, offset)
+		if svcErr != nil {
+			return PolicyList{}, translate(svcErr)
+		}
+		return list, nil
+	}
+	if svcErr.Code != tidcommon.ErrorUnauthorized.Code {
+		return PolicyList{}, svcErr
+	}
+
+	if svcErr := validatePaginationParams(limit, offset); svcErr != nil {
+		return PolicyList{}, translate(svcErr)
+	}
+	policies, svcErr := sharingService.ListPolicies(ctx, rt, resourceID)
+	if svcErr != nil {
+		return PolicyList{}, translate(svcErr)
+	}
+	own := make([]Policy, 0, len(policies))
+	for _, p := range policies {
+		svcErr := mayRead(p.InitiatingOUID)
+		if svcErr == nil {
+			own = append(own, p)
+			continue
+		}
+		if svcErr.Code != tidcommon.ErrorUnauthorized.Code {
+			return PolicyList{}, svcErr
+		}
+	}
+	if len(own) == 0 {
+		return PolicyList{}, &tidcommon.ErrorUnauthorized
+	}
+	return pagePolicies(own, limit, offset), nil
+}
+
+// pagePolicies returns one page of a set of policies narrowed in memory.
+func pagePolicies(policies []Policy, limit, offset int) PolicyList {
+	page := []Policy{}
+	if offset < len(policies) {
+		page = policies[offset : offset+min(limit, len(policies)-offset)]
+	}
+	return PolicyList{
+		TotalResults: len(policies),
+		StartIndex:   offset + 1,
+		Count:        len(page),
+		Policies:     page,
+	}
+}
+
+// SharedIntoCallerOU answers a caller refused access to a resource in its owning organization unit with the
+// organization unit the caller is confined to, when the resource is shared into that unit. It returns empty when the
+// refusal is not one a share can lift, the resource is not shared there, or that unit no longer exists.
+func SharedIntoCallerOU(ctx context.Context, authzService sysauthz.SystemAuthorizationServiceInterface,
+	sharingService SharingServiceInterface, logger *log.Logger, rt ResourceType, resourceID, ownerOUID string,
+	refusal *tidcommon.ServiceError) (string, *tidcommon.ServiceError) {
+	ouID := sysauthz.SharedAccessOU(ctx, authzService, ownerOUID, refusal)
+	if ouID == "" {
+		return "", nil
+	}
+	// Asked as the runtime, as the caller may not read the organization units above its own.
+	visible, svcErr := sharingService.IsVisible(security.WithRuntimeContext(ctx), rt, resourceID, ouID)
+	if svcErr != nil {
+		// The organization unit the token names no longer exists, so nothing is shared into it.
+		if svcErr.Code == oupkg.ErrorOrganizationUnitNotFound.Code {
+			return "", nil
+		}
+		logger.Error(ctx, "Failed to check whether the resource is shared into the organization unit",
+			log.String("resourceType", string(rt)), log.MaskedString("resourceID", resourceID),
+			log.String("ouID", ouID), log.Any("error", svcErr))
+		return "", &tidcommon.InternalServerError
+	}
+	if !visible {
+		return "", nil
+	}
+	return ouID, nil
 }

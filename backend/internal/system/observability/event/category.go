@@ -88,6 +88,11 @@ var eventTypeToCategory = map[providers.EventType]EventCategory{
 	EventTypeAgentReactivated:           CategoryAdministration,
 	EventTypeAgentLifespanUpdateFailed:  CategoryAdministration,
 
+	EventTypeAttributeVerificationRequested:   CategoryAdministration,
+	EventTypeAttributeVerificationVerified:    CategoryAdministration,
+	EventTypeAttributeVerificationRefused:     CategoryAdministration,
+	EventTypeAttributeVerificationInvalidated: CategoryAdministration,
+
 	// Flow events
 	EventTypeFlowStarted:                CategoryFlows,
 	EventTypeFlowNodeExecutionStarted:   CategoryFlows,

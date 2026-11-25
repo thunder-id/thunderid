@@ -38,6 +38,8 @@ type githubConnectionResponse struct {
 	Prompt       string   `json:"prompt,omitempty"`
 
 	AttributeConfiguration *providers.AttributeConfiguration `json:"attributeConfiguration,omitempty"`
+
+	connectionOwnership
 }
 
 func githubToIDPDTO(req githubConnectionRequest) (*providers.IDPDTO, error) {

@@ -924,7 +924,7 @@ func (ts *IDJAGIssuanceTestSuite) extraIDJAGAppDefinition() map[string]any {
 // and groups: the ID-JAG carries the email, and none of roles, groups or the claims the ID token adds.
 func (ts *IDJAGIssuanceTestSuite) TestIDJAGIssuance_CarriesIDTokenAttributes() {
 	ts.grantRoleAndGroup()
-	appID := ts.createApplication(ts.idTokenAttributesAppDefinition())
+	appID := ts.createApplication(ts.idTokenAttributesAppDefinition(idTokenAttrsClientID))
 	ts.T().Cleanup(func() { _ = testutils.DeleteApplication(appID) })
 
 	ts.assertIDJAGCarriesIDTokenAttributes(idTokenAttrsClientID, issuanceClientSecret)
@@ -944,15 +944,16 @@ func (ts *IDJAGIssuanceTestSuite) TestIDJAGIssuance_Agent_CarriesIDTokenAttribut
 // TestIDJAGIssuance_CarriesOnlyReleasedAttributes covers a sign-in without the email scope: the ID token
 // holds no email, so the ID-JAG holds none either, although the ID token configuration lists it.
 func (ts *IDJAGIssuanceTestSuite) TestIDJAGIssuance_CarriesOnlyReleasedAttributes() {
-	appID := ts.createApplication(ts.idTokenAttributesAppDefinition())
+	clientID := idTokenAttrsClientID + "_released"
+	appID := ts.createApplication(ts.idTokenAttributesAppDefinition(clientID))
 	ts.T().Cleanup(func() { _ = testutils.DeleteApplication(appID) })
 
-	idToken := ts.obtainIDTokenForScope(idTokenAttrsClientID, issuanceClientSecret, "openid")
+	idToken := ts.obtainIDTokenForScope(clientID, issuanceClientSecret, "openid")
 	idTokenClaims, err := testutils.DecodeJWTPayloadMap(idToken)
 	ts.Require().NoError(err)
 	ts.Require().NotContains(idTokenClaims, "email", "the ID token should not carry email without the email scope")
 
-	claims := ts.issueIDJAGClaims(idTokenAttrsClientID, issuanceClientSecret, idToken, "")
+	claims := ts.issueIDJAGClaims(clientID, issuanceClientSecret, idToken, "")
 
 	ts.NotContains(claims, "email")
 }
@@ -960,15 +961,16 @@ func (ts *IDJAGIssuanceTestSuite) TestIDJAGIssuance_CarriesOnlyReleasedAttribute
 // TestIDJAGIssuance_ExchangeScopeDoesNotAddClaims covers an exchange request whose scope names email: the
 // scope lands in the ID-JAG's scope claim, but no email claim is added when the ID token holds none.
 func (ts *IDJAGIssuanceTestSuite) TestIDJAGIssuance_ExchangeScopeDoesNotAddClaims() {
-	appID := ts.createApplication(ts.idTokenAttributesAppDefinition())
+	clientID := idTokenAttrsClientID + "_exchange_scope"
+	appID := ts.createApplication(ts.idTokenAttributesAppDefinition(clientID))
 	ts.T().Cleanup(func() { _ = testutils.DeleteApplication(appID) })
 
-	idToken := ts.obtainIDTokenForScope(idTokenAttrsClientID, issuanceClientSecret, "openid")
+	idToken := ts.obtainIDTokenForScope(clientID, issuanceClientSecret, "openid")
 	idTokenClaims, err := testutils.DecodeJWTPayloadMap(idToken)
 	ts.Require().NoError(err)
 	ts.Require().NotContains(idTokenClaims, "email", "the ID token should not carry email without the email scope")
 
-	claims := ts.issueIDJAGClaims(idTokenAttrsClientID, issuanceClientSecret, idToken, "email")
+	claims := ts.issueIDJAGClaims(clientID, issuanceClientSecret, idToken, "email")
 
 	ts.Equal("email", claims["scope"])
 	ts.NotContains(claims, "email")
@@ -1047,7 +1049,7 @@ func idTokenAttributesTokenConfig() map[string]any {
 
 // idTokenAttributesAppDefinition returns an application whose ID token releases email, roles and groups,
 // with ID-JAG on.
-func (ts *IDJAGIssuanceTestSuite) idTokenAttributesAppDefinition() map[string]any {
+func (ts *IDJAGIssuanceTestSuite) idTokenAttributesAppDefinition(clientID string) map[string]any {
 	return map[string]any{
 		"name": idTokenAttrsAppName, "description": "ID-JAG app whose ID token releases attributes",
 		"ouId": ts.ouID, "type": "fullstack", "authFlowId": ts.authFlowID,
@@ -1056,7 +1058,7 @@ func (ts *IDJAGIssuanceTestSuite) idTokenAttributesAppDefinition() map[string]an
 		"inboundAuthConfig": []map[string]any{{
 			"type": "oauth2",
 			"config": map[string]any{
-				"clientId": idTokenAttrsClientID, "clientSecret": issuanceClientSecret,
+				"clientId": clientID, "clientSecret": issuanceClientSecret,
 				"redirectUris":            []string{issuanceRedirectURI},
 				"grantTypes":              []string{"authorization_code", tokenExchangeGrantType},
 				"responseTypes":           []string{"code"},

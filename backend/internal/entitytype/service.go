@@ -17,7 +17,10 @@ import (
 	"github.com/thunder-id/thunderid/internal/entitytype/model"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -58,6 +61,9 @@ type EntityTypeServiceInterface interface {
 		ctx context.Context, category TypeCategory, entityType string, attributes json.RawMessage,
 		skipCredentialRequired bool,
 	) (bool, *tidcommon.ServiceError)
+	ValidateEntityValues(
+		ctx context.Context, category TypeCategory, entityType string, attributes json.RawMessage,
+	) (bool, *tidcommon.ServiceError)
 	ValidateEntityUniqueness(
 		ctx context.Context,
 		category TypeCategory,
@@ -83,14 +89,62 @@ type EntityTypeServiceInterface interface {
 	) (*EntityType, *tidcommon.ServiceError)
 	GetResourceDependencies(
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
+	SetDependencyRegistry(r resourcedependency.Registry)
 }
 
 // entityTypeService is the default implementation of the EntityTypeServiceInterface.
 type entityTypeService struct {
-	entityTypeStore entityTypeStoreInterface
-	ouService       oupkg.OrganizationUnitServiceInterface
-	transactioner   providers.Transactioner
-	authzService    sysauthz.SystemAuthorizationServiceInterface
+	entityTypeStore    entityTypeStoreInterface
+	ouService          oupkg.OrganizationUnitServiceInterface
+	transactioner      providers.Transactioner
+	authzService       sysauthz.SystemAuthorizationServiceInterface
+	bus                eventbus.EventBusInterface
+	dependencyRegistry resourcedependency.Registry
+	// managed says which types a control plane deployed, which stay read only here. Nil where nothing
+	// is deployed from one.
+	managed managedresource.StoreInterface
+}
+
+// setManagedStore gives the service the record of what a control plane deployed.
+func setManagedStore(service EntityTypeServiceInterface, managed managedresource.StoreInterface) {
+	if us, ok := service.(*entityTypeService); ok {
+		us.managed = managed
+	}
+}
+
+// managedType is the type a control plane marks the types of a category with.
+func managedType(category TypeCategory) string {
+	if category == TypeCategoryAgent {
+		return managedresource.TypeAgentType
+	}
+	return managedresource.TypeUserType
+}
+
+// refuseManaged refuses a change to a type a control plane deployed, unless the change is the managed
+// import's: only a deploy from the control plane changes or removes it.
+func (us *entityTypeService) refuseManaged(
+	ctx context.Context, category TypeCategory, schemaID string) *tidcommon.ServiceError {
+	managed, err := managedresource.IsReadOnly(ctx, us.managed, schemaID, managedType(category))
+	if err != nil {
+		log.GetLogger().Error(ctx, "Failed to read whether a control plane deployed the type",
+			log.String("id", schemaID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if managed {
+		return &ErrorManagedEntityType
+	}
+	return nil
+}
+
+// withManaged reports a type a control plane deployed as read only. A failed read of that is logged and
+// taken as not: every write to such a type is refused whatever the read says.
+func (us *entityTypeService) withManaged(ctx context.Context, category TypeCategory, entityType *EntityType) {
+	deployed, err := managedresource.IsDeployed(ctx, us.managed, entityType.ID, managedType(category))
+	if err != nil {
+		log.GetLogger().Error(ctx, "Failed to read whether a control plane deployed the type",
+			log.String("id", entityType.ID), log.Error(err))
+	}
+	entityType.IsReadOnly = deployed
 }
 
 // newEntityTypeService creates a new instance of entityTypeService.
@@ -99,12 +153,14 @@ func newEntityTypeService(
 	store entityTypeStoreInterface,
 	transactioner providers.Transactioner,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
+	bus eventbus.EventBusInterface,
 ) EntityTypeServiceInterface {
 	return &entityTypeService{
 		entityTypeStore: store,
 		ouService:       ouService,
 		transactioner:   transactioner,
 		authzService:    authzService,
+		bus:             bus,
 	}
 }
 
@@ -127,13 +183,24 @@ func (us *entityTypeService) GetEntityTypeList(ctx context.Context, category Typ
 		return nil, svcErr
 	}
 
+	var list *EntityTypeListResponse
 	if accessible.AllAllowed {
 		logger.Debug(ctx, "Caller has access to all entity types, retrieving without OU filtering",
 			log.String("category", string(category)))
-		return us.listAllEntityTypes(ctx, category, limit, offset, includeDisplay, logger)
+		list, svcErr = us.listAllEntityTypes(ctx, category, limit, offset, includeDisplay, logger)
+	} else {
+		list, svcErr = us.listAccessibleEntityTypes(ctx, category, accessible.IDs, limit, offset,
+			includeDisplay, logger)
 	}
-
-	return us.listAccessibleEntityTypes(ctx, category, accessible.IDs, limit, offset, includeDisplay, logger)
+	if list != nil {
+		if err := managedresource.MarkDeployed(ctx, us.managed, list.Types,
+			func(t *EntityTypeListItem) string { return t.ID },
+			func(t *EntityTypeListItem) { t.IsReadOnly = true }, managedType(category)); err != nil {
+			// Every write to such a type is refused whatever the list says, so it is served without the flag.
+			logger.Error(ctx, "Failed to read which types a control plane deployed", log.Error(err))
+		}
+	}
+	return list, svcErr
 }
 
 // listAllEntityTypes retrieves entity types without authorization filtering.
@@ -208,14 +275,23 @@ func (us *entityTypeService) listAccessibleEntityTypes(
 func (us *entityTypeService) CreateEntityType(
 	ctx context.Context, category TypeCategory, request CreateEntityTypeRequestWithID,
 ) (*EntityType, *tidcommon.ServiceError) {
+	created, svcErr := us.createEntityType(ctx, category, request)
+	var id string
+	if svcErr == nil {
+		id = created.ID
+	}
+	us.publishEntityTypeEvent(ctx, category, createEventForCategory(category), audit.ActionCreate, id, svcErr)
+	return created, svcErr
+}
+
+// createEntityType creates a new entity type in the given category without publishing its audit event.
+func (us *entityTypeService) createEntityType(
+	ctx context.Context, category TypeCategory, request CreateEntityTypeRequestWithID,
+) (*EntityType, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeLoggerComponentName))
 
 	if svcErr := validateCategory(category); svcErr != nil {
 		return nil, svcErr
-	}
-
-	if category == TypeCategoryAgent && request.Handle != DefaultAgentTypeHandle {
-		return nil, &ErrorAgentTypeOnlyDefaultAllowed
 	}
 
 	if isDeclarativeModeEnabled() {
@@ -284,8 +360,16 @@ func (us *entityTypeService) CreateEntityType(
 	}
 
 	if err := us.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		if category == TypeCategoryAgent {
+			if err := us.ensureOUHasNoAgentType(txCtx, request.OUID); err != nil {
+				return err
+			}
+		}
 		return us.entityTypeStore.CreateEntityType(txCtx, entityType)
 	}); err != nil {
+		if errors.Is(err, errAgentTypeExistsInOU) {
+			return nil, &ErrorAgentTypeAlreadyExistsInOU
+		}
 		return nil, logAndReturnServerError(ctx, logger, "Failed to create entity type", err)
 	}
 
@@ -329,6 +413,7 @@ func (us *entityTypeService) GetEntityType(
 			entityType.OUHandle = handle
 		}
 	}
+	us.withManaged(ctx, category, &entityType)
 
 	return &entityType, nil
 }
@@ -384,6 +469,7 @@ func (us *entityTypeService) GetEntityTypeByHandle(
 		ctx, category, readActionForCategory(category), entityType.OUID); svcErr != nil {
 		return nil, svcErr
 	}
+	us.withManaged(ctx, category, &entityType)
 
 	return &entityType, nil
 }
@@ -392,14 +478,21 @@ func (us *entityTypeService) GetEntityTypeByHandle(
 func (us *entityTypeService) UpdateEntityType(ctx context.Context, category TypeCategory,
 	schemaID string, request UpdateEntityTypeRequest) (
 	*EntityType, *tidcommon.ServiceError) {
+	updated, svcErr := us.updateEntityType(ctx, category, schemaID, request)
+	us.publishEntityTypeEvent(ctx, category, updateEventForCategory(category), audit.ActionUpdate, schemaID,
+		svcErr)
+	return updated, svcErr
+}
+
+// updateEntityType updates an entity type by its ID within the given category without publishing its
+// audit event.
+func (us *entityTypeService) updateEntityType(ctx context.Context, category TypeCategory,
+	schemaID string, request UpdateEntityTypeRequest) (
+	*EntityType, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeLoggerComponentName))
 
 	if svcErr := validateCategory(category); svcErr != nil {
 		return nil, svcErr
-	}
-
-	if category == TypeCategoryAgent && request.Handle != "" && request.Handle != DefaultAgentTypeHandle {
-		return nil, &ErrorAgentTypeOnlyDefaultAllowed
 	}
 
 	if schemaID == "" {
@@ -446,6 +539,9 @@ func (us *entityTypeService) UpdateEntityType(ctx context.Context, category Type
 		ctx, category, updateActionForCategory(category), existingSchema.OUID); svcErr != nil {
 		return nil, svcErr
 	}
+	if svcErr := us.refuseManaged(ctx, category, schemaID); svcErr != nil {
+		return nil, svcErr
+	}
 
 	if request.OUID != existingSchema.OUID {
 		if svcErr := us.checkEntityTypeAccess(
@@ -470,8 +566,16 @@ func (us *entityTypeService) UpdateEntityType(ctx context.Context, category Type
 	}
 
 	if err := us.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		if category == TypeCategoryAgent && request.OUID != existingSchema.OUID {
+			if err := us.ensureOUHasNoAgentType(txCtx, request.OUID); err != nil {
+				return err
+			}
+		}
 		return us.entityTypeStore.UpdateEntityTypeByID(txCtx, category, schemaID, entityType)
 	}); err != nil {
+		if errors.Is(err, errAgentTypeExistsInOU) {
+			return nil, &ErrorAgentTypeAlreadyExistsInOU
+		}
 		return nil, logAndReturnServerError(ctx, logger, "Failed to update entity type", err)
 	}
 
@@ -481,14 +585,25 @@ func (us *entityTypeService) UpdateEntityType(ctx context.Context, category Type
 // DeleteEntityType deletes an entity type by its ID within the given category.
 func (us *entityTypeService) DeleteEntityType(ctx context.Context, category TypeCategory,
 	schemaID string) *tidcommon.ServiceError {
+	svcErr := us.deleteEntityType(ctx, category, schemaID)
+	// A delete that found nothing to remove succeeds without an event, so no caller can record a
+	// deletion of an ID it made up.
+	if svcErr == errEntityTypeNotFoundNoop {
+		return nil
+	}
+	us.publishEntityTypeEvent(ctx, category, deleteEventForCategory(category), audit.ActionDelete, schemaID,
+		svcErr)
+	return svcErr
+}
+
+// deleteEntityType deletes an entity type by its ID within the given category without publishing its
+// audit event.
+func (us *entityTypeService) deleteEntityType(ctx context.Context, category TypeCategory,
+	schemaID string) *tidcommon.ServiceError {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeLoggerComponentName))
 
 	if svcErr := validateCategory(category); svcErr != nil {
 		return svcErr
-	}
-
-	if category == TypeCategoryAgent {
-		return &ErrorAgentTypeCannotDelete
 	}
 
 	if schemaID == "" {
@@ -502,7 +617,7 @@ func (us *entityTypeService) DeleteEntityType(ctx context.Context, category Type
 				ctx, category, deleteActionForCategory(category), ""); svcErr != nil {
 				return svcErr
 			}
-			return nil
+			return errEntityTypeNotFoundNoop
 		}
 		return logAndReturnServerError(ctx, logger, "Failed to get entity type for delete", err)
 	}
@@ -515,6 +630,15 @@ func (us *entityTypeService) DeleteEntityType(ctx context.Context, category Type
 	if us.entityTypeStore.IsEntityTypeDeclarative(category, schemaID) {
 		return &ErrorCannotModifyDeclarativeResource
 	}
+	if svcErr := us.refuseManaged(ctx, category, schemaID); svcErr != nil {
+		return svcErr
+	}
+
+	if category == TypeCategoryAgent {
+		if svcErr := us.ensureAgentTypeNotInUse(ctx, existingSchema.Handle, logger); svcErr != nil {
+			return svcErr
+		}
+	}
 
 	if err := us.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		return us.entityTypeStore.DeleteEntityTypeByID(txCtx, category, schemaID)
@@ -523,6 +647,24 @@ func (us *entityTypeService) DeleteEntityType(ctx context.Context, category Type
 	}
 
 	return nil
+}
+
+// publishEntityTypeEvent publishes the audit event of an attempt on the entity type with id, after the
+// change committed or was refused. The category picks the target type, a user type or an agent type.
+// Neither the schema nor any other part of the type is recorded.
+func (us *entityTypeService) publishEntityTypeEvent(ctx context.Context, category TypeCategory, name string,
+	action audit.Action, id string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the ID the caller asked for, even one that matches no entity type, as
+	// forensic evidence of what was probed; the payload caps it and the sink escapes it.
+	target := audit.Ref{Type: auditTargetTypeForCategory(category), ID: id}
+	eventbus.TryPublish(ctx, us.bus,
+		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
+}
+
+// SetDependencyRegistry injects the dependency registry. Called by servicemanager after the
+// provider services are initialized to avoid a cyclic import.
+func (us *entityTypeService) SetDependencyRegistry(r resourcedependency.Registry) {
+	us.dependencyRegistry = r
 }
 
 // GetResourceDependencies implements resourcedependency.Provider. It reports the user types and agent
@@ -568,6 +710,29 @@ func (us *entityTypeService) ValidateEntity(
 	ctx context.Context, category TypeCategory, entityType string, attributes json.RawMessage,
 	skipCredentialRequired bool,
 ) (bool, *tidcommon.ServiceError) {
+	return us.validateAgainstSchema(ctx, category, entityType,
+		func(schema *model.Schema, logger *log.Logger) (bool, error) {
+			return schema.Validate(ctx, attributes, logger, skipCredentialRequired)
+		})
+}
+
+// ValidateEntityValues validates only the given attributes against the schema for the given category and
+// entity type, without requiring the attributes the payload leaves out.
+func (us *entityTypeService) ValidateEntityValues(
+	ctx context.Context, category TypeCategory, entityType string, attributes json.RawMessage,
+) (bool, *tidcommon.ServiceError) {
+	return us.validateAgainstSchema(ctx, category, entityType,
+		func(schema *model.Schema, logger *log.Logger) (bool, error) {
+			return schema.ValidateValues(ctx, attributes, logger)
+		})
+}
+
+// validateAgainstSchema loads the compiled schema for the given category and entity type and runs
+// validate against it.
+func (us *entityTypeService) validateAgainstSchema(
+	ctx context.Context, category TypeCategory, entityType string,
+	validate func(schema *model.Schema, logger *log.Logger) (bool, error),
+) (bool, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, entityTypeLoggerComponentName))
 
 	if svcErr := validateCategory(category); svcErr != nil {
@@ -582,7 +747,7 @@ func (us *entityTypeService) ValidateEntity(
 		return false, logAndReturnServerError(ctx, logger, "Failed to load entity type", err)
 	}
 
-	isValid, err := compiledSchema.Validate(ctx, attributes, logger, skipCredentialRequired)
+	isValid, err := validate(compiledSchema, logger)
 	if err != nil {
 		return false, logAndReturnServerError(ctx, logger, "Failed to validate entity attributes against schema", err)
 	}
@@ -727,6 +892,50 @@ func (us *entityTypeService) GetDisplayAttributesByHandles(
 	return result, nil
 }
 
+// ensureOUHasNoAgentType refuses a write that would give the organization unit a second agent type. The
+// agent type being written is never already in the organization unit: a create adds a new one, and an
+// update checks only an organization unit it moves the agent type into.
+func (us *entityTypeService) ensureOUHasNoAgentType(ctx context.Context, ouID string) error {
+	existing, err := us.entityTypeStore.GetEntityTypeListByOUIDs(ctx, TypeCategoryAgent, []string{ouID}, 1, 0)
+	if err != nil {
+		return err
+	}
+	if len(existing) > 0 {
+		return errAgentTypeExistsInOU
+	}
+	return nil
+}
+
+// ensureAgentTypeNotInUse refuses the deletion of an agent type that agents are of, or that applications,
+// agents or flows allow. Every reference names an agent type by its handle, so the registry target is the
+// handle, unlike other targets, which are IDs; the dependencies reported back still carry their own IDs.
+// Because deletion is destructive, it fails closed: if dependency data cannot be determined, the
+// deletion is refused rather than allowed.
+func (us *entityTypeService) ensureAgentTypeNotInUse(
+	ctx context.Context, handle string, logger *log.Logger,
+) *tidcommon.ServiceError {
+	if us.dependencyRegistry == nil {
+		logger.Error(ctx, "Dependency registry not set; refusing to delete agent type")
+		return &tidcommon.InternalServerError
+	}
+
+	deps, err := us.dependencyRegistry.GetDependencies(ctx, resourcedependency.ResourceTypeAgentType, handle)
+	if err != nil {
+		logger.Error(ctx, "Failed to evaluate agent type dependencies", log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	// Fail closed: nil TotalResults means a provider failed to report, so usage is unknown.
+	if deps == nil || deps.TotalResults == nil {
+		logger.Error(ctx, "Agent type dependency data unavailable; refusing to delete")
+		return &tidcommon.InternalServerError
+	}
+
+	if len(resourcedependency.BlockingUsages(deps)) > 0 {
+		return &ErrorAgentTypeInUse
+	}
+	return nil
+}
+
 func (us *entityTypeService) getCompiledSchemaForEntityType(
 	ctx context.Context,
 	category TypeCategory,
@@ -842,13 +1051,13 @@ func (us *entityTypeService) ensureOrganizationUnitExists(
 	exists, svcErr := us.ouService.IsOrganizationUnitExists(ctx, oUID)
 	if svcErr != nil {
 		logger.Error(ctx, "Failed to verify organization unit existence",
-			log.String("oUID", oUID), log.Any("error", svcErr))
+			log.String("ouID", oUID), log.Any("error", svcErr))
 		return &tidcommon.InternalServerError
 	}
 
 	if !exists {
 		logger.Debug(ctx, "Organization unit does not exist",
-			log.String("oUID", oUID))
+			log.String("ouID", oUID))
 		return invalidEntityTypeRequestErr(category, "organization unit id does not exist")
 	}
 
@@ -955,6 +1164,41 @@ func resourceTypeForCategory(category TypeCategory) security.ResourceType {
 		return security.ResourceTypeAgentType
 	}
 	return security.ResourceTypeUserType
+}
+
+// createEventForCategory returns the audit event of an attempt to create an entity type of the given
+// category.
+func createEventForCategory(category TypeCategory) string {
+	if category == TypeCategoryAgent {
+		return audit.EventAgentTypeCreate
+	}
+	return audit.EventUserTypeCreate
+}
+
+// updateEventForCategory returns the audit event of an attempt to change an entity type of the given
+// category.
+func updateEventForCategory(category TypeCategory) string {
+	if category == TypeCategoryAgent {
+		return audit.EventAgentTypeUpdate
+	}
+	return audit.EventUserTypeUpdate
+}
+
+// deleteEventForCategory returns the audit event of an attempt to delete an entity type of the given
+// category.
+func deleteEventForCategory(category TypeCategory) string {
+	if category == TypeCategoryAgent {
+		return audit.EventAgentTypeDelete
+	}
+	return audit.EventUserTypeDelete
+}
+
+// auditTargetTypeForCategory returns the audit target type of an entity type of the given category.
+func auditTargetTypeForCategory(category TypeCategory) string {
+	if category == TypeCategoryAgent {
+		return audit.TargetTypeAgentType
+	}
+	return audit.TargetTypeUserType
 }
 
 // buildPaginationLinks builds pagination links for the response.

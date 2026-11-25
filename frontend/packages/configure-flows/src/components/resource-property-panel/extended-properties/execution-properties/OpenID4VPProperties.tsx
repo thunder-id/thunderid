@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {Stack, Typography} from '@wso2/oxygen-ui';
-import {useMemo, type ReactNode} from 'react';
+import type {ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import CheckboxWithHint from './CheckboxWithHint';
 import type {CommonResourcePropertiesPropsInterface} from './types';
+import VariableBinding from './VariableBinding';
+import {BOOLEAN_VARIABLES, TEXT_VARIABLES} from './variableBindingTypes';
 import useResourceFieldError from '../../../../hooks/useResourceFieldError';
-import type {StepData} from '../../../../models/steps';
 import PresentationDefinitionSelect from '../../PresentationDefinitionSelect';
 
 /**
@@ -18,11 +19,6 @@ import PresentationDefinitionSelect from '../../PresentationDefinitionSelect';
 function OpenID4VPProperties({resource, onChange}: CommonResourcePropertiesPropsInterface): ReactNode {
   const {t} = useTranslation();
 
-  const properties = useMemo(() => {
-    const stepData = resource?.data as StepData | undefined;
-    return stepData?.properties ?? {};
-  }, [resource]);
-
   const errorMessage: string = useResourceFieldError(resource?.id, 'data.properties.presentation_definition_id');
 
   return (
@@ -30,24 +26,46 @@ function OpenID4VPProperties({resource, onChange}: CommonResourcePropertiesProps
       <Typography variant="body2" color="text.secondary">
         {t('flows:core.executions.openid4vp.description')}
       </Typography>
-      <PresentationDefinitionSelect
+      <VariableBinding
+        resource={resource}
+        onChange={onChange}
         propertyKey="presentation_definition_id"
-        value={(properties['presentation_definition_id'] as string) ?? ''}
-        onChange={(value: string) => onChange('data.properties.presentation_definition_id', value, resource)}
-        errorMessage={errorMessage}
-      />
-      <CheckboxWithHint
-        checked={!!properties['allowAuthenticationWithoutLocalUser']}
-        onChange={(checked) => onChange('data.properties.allowAuthenticationWithoutLocalUser', checked, resource)}
+        accepts={TEXT_VARIABLES}
+        htmlFor="presentation_definition_id"
+        label={t('verifiable-presentations:select.label')}
+      >
+        {({commit, value: stored}) => (
+          <PresentationDefinitionSelect
+            propertyKey="presentation_definition_id"
+            value={(stored as string) ?? ''}
+            onChange={(value: string) => commit(value)}
+            errorMessage={errorMessage}
+          />
+        )}
+      </VariableBinding>
+      <VariableBinding
+        inline
+        resource={resource}
+        onChange={onChange}
+        propertyKey="allowAuthenticationWithoutLocalUser"
+        accepts={BOOLEAN_VARIABLES}
         label={t(
           'flows:core.executions.openid4vp.allowAuthenticationWithoutLocalUser.label',
           'Allow authentication without a local user',
         )}
-        hint={t(
-          'flows:core.executions.openid4vp.allowAuthenticationWithoutLocalUser.hint',
-          'When enabled, a holder with no matching local user is provisioned just-in-time. When disabled, login requires an existing matching user.',
+      >
+        {({commit, label, value: stored}) => (
+          <CheckboxWithHint
+            checked={!!stored}
+            onChange={commit}
+            label={label}
+            hint={t(
+              'flows:core.executions.openid4vp.allowAuthenticationWithoutLocalUser.hint',
+              'When enabled, a holder with no matching local user is provisioned just-in-time. When disabled, login requires an existing matching user.',
+            )}
+          />
         )}
-      />
+      </VariableBinding>
     </Stack>
   );
 }

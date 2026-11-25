@@ -40,7 +40,7 @@ describe('ChangeList', () => {
     expect(within(lines).getByText('+ url: new')).toHaveAttribute('data-kind', '+');
     expect(within(lines).getByText('7 unchanged lines')).toBeInTheDocument();
     expect(within(lines).queryByText('  line 0')).not.toBeInTheDocument();
-    expect(screen.getByText('1 resources are already as the version has them.')).toBeInTheDocument();
+    expect(screen.getByText('1 resource is already as the version has it.')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', {name: 'Hide the changes to Orders'}));
     expect(screen.getByRole('button', {name: 'Show the changes to Orders'})).toHaveAttribute('aria-expanded', 'false');
@@ -65,6 +65,25 @@ describe('ChangeList', () => {
     await userEvent.click(boxes[2]);
     expect(onToggleAll).toHaveBeenCalledWith(['application/a1', 'role/r1'], true);
     expect(onToggle).toHaveBeenCalledWith('role/r1');
+  });
+
+  it('locks a change a ticked one brings, and leaves it out of ticking them all', async () => {
+    const onToggleAll = vi.fn();
+    render(
+      <ChangeList
+        changes={changes}
+        selected={new Set(['application/a1', 'role/r1'])}
+        required={new Map([['role/r1', 'application/a1']])}
+        onToggle={vi.fn()}
+        onToggleAll={onToggleAll}
+      />,
+    );
+
+    const admin = screen.getByRole('checkbox', {name: 'Write Admin'});
+    expect(admin).toBeChecked();
+    expect(admin).toBeDisabled();
+    await userEvent.click(screen.getAllByRole('checkbox')[0]);
+    expect(onToggleAll).toHaveBeenCalledWith(['application/a1'], false);
   });
 
   it('opens a change from anywhere on its row, while only the checkbox selects it', async () => {

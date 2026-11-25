@@ -1,11 +1,15 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {DocumentTitle, FullScreenCreationWizardLayout} from '@thunderid/components';
-import {OrganizationUnitTreePicker} from '@thunderid/configure-organization-units';
+import {useMutation} from '@tanstack/react-query';
+import {DocumentTitle, FullScreenCreationWizardLayout, QueryErrorNotice} from '@thunderid/components';
+import {OrganizationUnitTreePicker, useGetOrganizationUnits} from '@thunderid/configure-organization-units';
+import {useConfig, useProjectScope} from '@thunderid/contexts';
 import {useResolveDisplayName} from '@thunderid/hooks';
+import {orderAttributes} from '@thunderid/utils';
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   CircularProgress,
@@ -14,17 +18,20 @@ import {
   MenuItem,
   Select,
   Stack,
+  TextField,
   Typography,
 } from '@wso2/oxygen-ui';
 import {useState, type JSX} from 'react';
 import {useForm} from 'react-hook-form';
 import {useTranslation} from 'react-i18next';
 import {useNavigate} from 'react-router';
+import useAddUserToRoles from '../api/useAddUserToRoles';
 import useCreateUser from '../api/useCreateUser';
+import useGetAssignableRoles from '../api/useGetAssignableRoles';
 import useGetUserType from '../api/useGetUserType';
 import useGetUserTypes from '../api/useGetUserTypes';
 import useUserRoutes from '../hooks/useUserRoutes';
-import type {PropertyDefinition, SchemaInterface} from '../models/users';
+import type {CreateUserRequest, PropertyDefinition, SchemaInterface, UserRole} from '../models/users';
 import getUserErrorMessage from '../utils/getUserErrorMessage';
 import renderSchemaField from '../utils/renderSchemaField';
 
@@ -43,11 +50,54 @@ export default function UserAddFormPage(): JSX.Element {
   const routes = useUserRoutes();
   const {resolveDisplayName} = useResolveDisplayName({handlers: {t}});
   const createUser = useCreateUser();
+  const addToRoles = useAddUserToRoles();
+  const {projectId} = useProjectScope();
+  // A user added outside any project is an administrator, given the roles the console's config names.
+  const {config} = useConfig();
+  const administratorRoleIds: string[] = config.administrators?.role_ids ?? [];
+  // The user is created and then given its roles, as one mutation, so the roles are still given if the page
+  // is closed while the user is being created. Should assigning fail, the page stays and says so, since the
+  // user exists without those roles.
+  const addUser = useMutation<void, Error, {request: CreateUserRequest; roleIds: string[]}>({
+    mutationFn: async ({request, roleIds}): Promise<void> => {
+      const created = await createUser.mutateAsync(request);
+      if (roleIds.length > 0) {
+        await addToRoles.mutateAsync({userId: created.id, roleIds});
+      }
+    },
+  });
+  // Inside a project the user goes to the system organization unit or one of the project's own,
+  // picked on the organization unit step. The step is offered only when the project has
+  // organization units; without any, the API places the user in the system organization unit.
+  const isInProject = Boolean(projectId);
+  const {
+    data: projectOus,
+    isLoading: projectOusLoading,
+    error: projectOusError,
+    refetch: refetchProjectOus,
+  } = useGetOrganizationUnits({limit: 1, offset: 0, projectId}, isInProject);
+  const hasProjectOus = (projectOus?.totalResults ?? 0) > 0;
+  // Inside a project the user can be given the project's roles, picked on the roles step. The step is
+  // offered only when the project has roles.
+  const {
+    data: projectRoleList,
+    error: projectRolesError,
+    refetch: refetchProjectRoles,
+  } = useGetAssignableRoles(projectId, isInProject);
+  const projectRolesReadError = projectRoleList ? null : projectRolesError;
+  const projectRoles: UserRole[] = projectRoleList?.roles ?? [];
+  const [roles, setRoles] = useState<UserRole[]>([]);
 
   const [typeId, setTypeId] = useState<string>('');
-  const [ouId, setOuId] = useState<string>('');
+  const [chosenOuId, setOuId] = useState<string>('');
   const {data: typeList, isLoading: typesLoading} = useGetUserTypes({limit: 100, offset: 0});
-  const {data: userType} = useGetUserType(typeId || undefined);
+  const types: SchemaInterface[] = typeList?.types ?? [];
+  // With a single user type there is nothing to choose, so it is used without offering the choice.
+  const soleType: SchemaInterface | undefined = types.length === 1 ? types[0] : undefined;
+  const selectedType: SchemaInterface | undefined = soleType ?? types.find((type) => type.id === typeId);
+  // Outside a project the type's own organization unit starts selected, as it does when a type is chosen.
+  const ouId: string = chosenOuId || (soleType && !isInProject ? soleType.ouId : '');
+  const {data: userType} = useGetUserType(selectedType?.id);
 
   // A previously chosen type's fields are cleared when the type changes, so they are not posted.
   const {
@@ -57,8 +107,25 @@ export default function UserAddFormPage(): JSX.Element {
     reset,
   } = useForm<AttributeFormData>({mode: 'onBlur', shouldUnregister: true});
 
-  const types: SchemaInterface[] = typeList?.types ?? [];
-  const selectedType: SchemaInterface | undefined = types.find((type) => type.id === typeId);
+  // A user of a type belongs to the type's organization unit or one beneath it, so inside a project only
+  // the placements in that subtree are offered. None means the type cannot be used in this project.
+  const {
+    data: typePlacements,
+    isLoading: typePlacementsLoading,
+    error: typePlacementsError,
+    refetch: refetchTypePlacements,
+  } = useGetOrganizationUnits(
+    {limit: 1, offset: 0, projectId, placement: true, within: selectedType?.ouId},
+    isInProject && Boolean(selectedType),
+  );
+  const isTypeOutsideProject = isInProject && typePlacements?.totalResults === 0;
+  // Until both reads succeed it is not known where the user can go, so the user is not created.
+  const projectOusReadError = projectOus ? null : projectOusError;
+  const typePlacementsReadError = typePlacements ? null : typePlacementsError;
+  const placementsReadError = projectOusReadError ?? typePlacementsReadError;
+  // The picker selects the first placement once its own listing loads, so the user waits for it rather than being
+  // sent without an organization unit, which would place it in the system organization unit.
+  const isAwaitingPick = isInProject && hasProjectOus && !ouId;
   const schema: Record<string, PropertyDefinition> = userType?.schema ?? {};
 
   const handleClose = (): void => {
@@ -66,13 +133,23 @@ export default function UserAddFormPage(): JSX.Element {
   };
 
   const onSubmit = handleSubmit((values: AttributeFormData) => {
+    if (!selectedType) return;
+
     // An optional field left empty is omitted rather than posted as an empty string.
     const attributes: AttributeFormData = Object.fromEntries(
       Object.entries(values).filter(([, value]) => value !== '' && value !== undefined && value !== null),
     );
 
-    createUser.mutate(
-      {ouId, type: selectedType?.handle ?? '', attributes},
+    addUser.mutate(
+      {
+        request: {
+          ...(isInProject ? {projectId} : {}),
+          ...(ouId ? {ouId} : {}),
+          type: selectedType.handle,
+          attributes,
+        },
+        roleIds: isInProject ? roles.map((role) => role.id) : administratorRoleIds,
+      },
       {
         onSuccess: () => {
           void navigate(routes.list());
@@ -118,6 +195,46 @@ export default function UserAddFormPage(): JSX.Element {
           </Alert>
         )}
 
+        {addToRoles.isError && (
+          <Alert
+            severity="error"
+            data-testid="administrator-roles-error"
+            action={
+              <Button
+                color="inherit"
+                size="small"
+                disabled={addToRoles.isPending}
+                onClick={() => {
+                  const {variables, error} = addToRoles;
+                  if (!variables || !error) return;
+                  addToRoles.mutate(
+                    {userId: variables.userId, roleIds: error.failedRoles.map((role) => role.id)},
+                    {
+                      onSuccess: () => {
+                        void navigate(routes.list());
+                      },
+                    },
+                  );
+                }}
+              >
+                {t('users:addForm.retryRoles', 'Try again')}
+              </Button>
+            }
+          >
+            {isInProject
+              ? t(
+                  'users:addForm.rolesError',
+                  "The user was created, but could not be given the roles {{roles}}. Try again, or assign them from the user's Roles tab.",
+                  {roles: addToRoles.error.failedRoles.map((role) => role.name).join(', ')},
+                )
+              : t(
+                  'users:addForm.administratorRolesError',
+                  'The administrator was created, but could not be given the roles {{roles}}. Try again, or assign them from Roles.',
+                  {roles: addToRoles.error.failedRoles.map((role) => role.name).join(', ')},
+                )}
+          </Alert>
+        )}
+
         <form
           noValidate
           onSubmit={(event) => {
@@ -125,33 +242,36 @@ export default function UserAddFormPage(): JSX.Element {
           }}
         >
           <Stack spacing={3}>
-            <FormControl fullWidth required>
-              <FormLabel htmlFor="user-type">{t('users:addForm.userType')}</FormLabel>
-              <Select
-                id="user-type"
-                value={typeId}
-                displayEmpty
-                onChange={(event) => {
-                  const nextTypeId = String(event.target.value);
-                  setTypeId(nextTypeId);
-                  // The type's own organization unit is the picker's root, so it starts selected.
-                  setOuId(types.find((type) => type.id === nextTypeId)?.ouId ?? '');
-                  // Another type's schema can share a field name, so its values are not carried over.
-                  reset({});
-                }}
-              >
-                <MenuItem value="">
-                  <em>{t('users:addForm.selectUserType')}</em>
-                </MenuItem>
-                {types.map((type: SchemaInterface) => (
-                  <MenuItem key={type.id} value={type.id}>
-                    {resolveDisplayName(type.displayName) || type.handle}
+            {!soleType && (
+              <FormControl fullWidth required>
+                <FormLabel htmlFor="user-type">{t('users:addForm.userType')}</FormLabel>
+                <Select
+                  id="user-type"
+                  value={typeId}
+                  displayEmpty
+                  onChange={(event) => {
+                    const nextTypeId = String(event.target.value);
+                    setTypeId(nextTypeId);
+                    // The type's own organization unit is the picker's root, so it starts selected. Inside a
+                    // project the picker selects the first placement the type allows instead.
+                    setOuId(isInProject ? '' : (types.find((type) => type.id === nextTypeId)?.ouId ?? ''));
+                    // Another type's schema can share a field name, so its values are not carried over.
+                    reset({});
+                  }}
+                >
+                  <MenuItem value="">
+                    <em>{t('users:addForm.selectUserType')}</em>
                   </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+                  {types.map((type: SchemaInterface) => (
+                    <MenuItem key={type.id} value={type.id}>
+                      {resolveDisplayName(type.displayName) || type.handle}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
 
-            {selectedType && (
+            {selectedType && !isInProject && (
               <FormControl fullWidth required>
                 <FormLabel htmlFor="user-ou">{t('users:addForm.organizationUnit')}</FormLabel>
                 {/* A user of a type belongs to the type's organization unit or one beneath it. */}
@@ -165,19 +285,113 @@ export default function UserAddFormPage(): JSX.Element {
               </FormControl>
             )}
 
+            {selectedType && placementsReadError && (
+              <QueryErrorNotice
+                variant="inline"
+                error={placementsReadError}
+                t={(key, options) => t(key.includes(':') ? key : `users:${key}`, options)}
+                fallbackKey="users:addForm.placementsError"
+                fallbackDefaultValue="The organization units this user can be placed in could not be loaded."
+                onRetry={() => {
+                  if (projectOusReadError) void refetchProjectOus();
+                  if (typePlacementsReadError) void refetchTypePlacements();
+                }}
+              />
+            )}
+
+            {selectedType && isTypeOutsideProject && (
+              <Alert severity="warning">
+                {t(
+                  'users:addForm.typeOutsideProject',
+                  "Users of this type cannot be created in this project. Choose a type whose organization unit is the system organization unit or one of this project's.",
+                )}
+              </Alert>
+            )}
+
+            {selectedType && isInProject && hasProjectOus && !isTypeOutsideProject && !placementsReadError && (
+              <FormControl fullWidth>
+                <FormLabel htmlFor="user-ou">{t('users:addForm.organizationUnit')}</FormLabel>
+                <OrganizationUnitTreePicker
+                  key={selectedType.id}
+                  id="user-ou"
+                  value={ouId}
+                  onChange={setOuId}
+                  projectId={projectId}
+                  withinOuId={selectedType.ouId || undefined}
+                />
+              </FormControl>
+            )}
+
             {/* The type's own schema decides the rest, so a type with extra attributes needs no
                 change here. */}
-            {Object.entries(schema).map(([name, definition]: [string, PropertyDefinition]) =>
+            {orderAttributes(schema, {onCreate: true}).map(([name, definition]: [string, PropertyDefinition]) =>
               renderSchemaField(name, definition, control, errors, resolveDisplayName),
+            )}
+
+            {selectedType && isInProject && projectRolesReadError && (
+              <QueryErrorNotice
+                variant="inline"
+                error={projectRolesReadError}
+                t={(key, options) => t(key.includes(':') ? key : `users:${key}`, options)}
+                fallbackKey="users:addForm.rolesLoadError"
+                fallbackDefaultValue="The roles of this project could not be loaded. You can still create the user and assign roles later."
+                onRetry={() => {
+                  void refetchProjectRoles();
+                }}
+              />
+            )}
+
+            {selectedType && isInProject && projectRoles.length > 0 && (
+              <FormControl fullWidth>
+                <FormLabel htmlFor="user-roles">{t('users:addForm.roles', 'Roles')}</FormLabel>
+                <Autocomplete
+                  id="user-roles"
+                  multiple
+                  fullWidth
+                  filterSelectedOptions
+                  // The user exists once assigning its roles is tried, so the roles are retried as they were chosen.
+                  disabled={addUser.isPending || addToRoles.isError}
+                  options={projectRoles}
+                  value={roles}
+                  getOptionLabel={(role: UserRole) => role.name}
+                  isOptionEqualToValue={(option: UserRole, value: UserRole) => option.id === value.id}
+                  onChange={(_event, next: UserRole[]) => setRoles(next)}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      placeholder={roles.length > 0 ? undefined : t('users:addForm.rolesPlaceholder', 'Select roles')}
+                      helperText={t(
+                        'users:addForm.rolesHint',
+                        'Optional. The roles this user is given in the project.',
+                      )}
+                    />
+                  )}
+                />
+              </FormControl>
             )}
 
             <Stack direction="row" spacing={1}>
               <Button
                 type="submit"
                 variant="contained"
-                disabled={!selectedType || !ouId || !userType || createUser.isPending}
+                disabled={
+                  !selectedType ||
+                  (!isInProject && !ouId) ||
+                  (isInProject &&
+                    (projectOusLoading ||
+                      typePlacementsLoading ||
+                      isTypeOutsideProject ||
+                      Boolean(placementsReadError) ||
+                      isAwaitingPick)) ||
+                  !userType ||
+                  addUser.isPending ||
+                  // The user exists once assigning its roles is tried, so submitting again would create another.
+                  addToRoles.isError
+                }
               >
-                {createUser.isPending ? t('users:addForm.creating') : t('users:addForm.submit')}
+                {addUser.isPending
+                  ? t('users:addForm.creating', 'Creating...')
+                  : t('users:addForm.submit', 'Create user')}
               </Button>
               <Button variant="outlined" onClick={handleClose}>
                 {t('common:actions.cancel', 'Cancel')}

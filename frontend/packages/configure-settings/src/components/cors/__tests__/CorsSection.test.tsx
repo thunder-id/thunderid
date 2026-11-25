@@ -3,6 +3,7 @@
 
 import {fireEvent, screen, waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {renderWithProviders} from '@thunderid/test-utils';
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
 import type {CorsConfigResponse} from '../../../models/responses';
@@ -32,6 +33,11 @@ function makeData(overrides?: Partial<CorsConfigResponse>): CorsConfigResponse {
     ...overrides,
   };
 }
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  isLoading: false,
+};
 
 describe('CorsSection', () => {
   beforeEach(() => {
@@ -179,6 +185,21 @@ describe('CorsSection', () => {
     expect(screen.queryByPlaceholderText('https://app.example.com')).toBeNull();
     await user.click(screen.getByRole('button', {name: 'Add origin'}));
     expect(screen.getByPlaceholderText('https://app.example.com')).toBeInTheDocument();
+  });
+
+  it('offers no Add origin when the admin may not update server configuration', () => {
+    mockUseGetCorsConfig.mockReturnValue({
+      data: makeData({readOnly: {allowedOrigins: []}, writable: {allowedOrigins: []}}),
+      isLoading: false,
+      error: null,
+    });
+    renderWithProviders(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <CorsSection />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.queryByRole('button', {name: 'Add origin'})).not.toBeInTheDocument();
   });
 
   it('saves the edited origins via the update mutation and clears the unsaved bar on success', async () => {

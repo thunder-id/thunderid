@@ -11,9 +11,9 @@ import type {DeployRoutePaths, GatewayRoutePaths} from '@thunderid/configure-gat
 import type {GroupRoutePaths} from '@thunderid/configure-groups';
 import type {ImportExportRoutePaths} from '@thunderid/configure-import-export';
 import type {NotificationTemplateRoutePaths} from '@thunderid/configure-notification-templates';
-import type {OnboardingRoutePaths} from '@thunderid/configure-onboarding';
 import type {OrganizationUnitRoutePaths} from '@thunderid/configure-organization-units';
-import type {ResourceServerRoutePaths} from '@thunderid/configure-resource-servers';
+import type {ProjectRoutePaths} from '@thunderid/configure-projects';
+import type {AuthorizationDetailTypeRoutePaths, ResourceServerRoutePaths} from '@thunderid/configure-resource-servers';
 import type {RoleRoutePaths} from '@thunderid/configure-roles';
 import type {TranslationRoutePaths} from '@thunderid/configure-translations';
 import type {UserTypeRoutePaths} from '@thunderid/configure-user-types';
@@ -33,6 +33,8 @@ export interface ConsoleRoutePaths {
   settings: {
     list: () => string;
   };
+  /** The Control Plane's own users, its administrators, outside any project. */
+  administrators: UserRoutePaths['users'];
 }
 
 /**
@@ -55,6 +57,7 @@ export type RouteConfig = OrganizationUnitRoutePaths &
   ApplicationRoutePaths &
   ConnectionRoutePaths &
   ResourceServerRoutePaths &
+  AuthorizationDetailTypeRoutePaths &
   TranslationRoutePaths &
   VerifiableCredentialRoutePaths &
   ImportExportRoutePaths &
@@ -63,9 +66,9 @@ export type RouteConfig = OrganizationUnitRoutePaths &
   FlowRoutePaths &
   GroupRoutePaths &
   RoleRoutePaths &
-  OnboardingRoutePaths &
   GatewayRoutePaths &
   DeployRoutePaths &
+  ProjectRoutePaths &
   ConsoleRoutePaths;
 
 /**
@@ -80,12 +83,14 @@ export type RouteConfig = OrganizationUnitRoutePaths &
 export const ROUTE_SEGMENTS = {
   organizationUnits: 'organization-units',
   users: 'users',
+  administrators: 'administrators',
   userTypes: 'user-types',
   agentTypes: 'agent-types',
   agents: 'agents',
   connections: 'connections',
   trustedIssuers: 'trusted-issuers',
   resourceServers: 'resource-servers',
+  authorizationDetailTypes: 'authorization-detail-types',
   translations: 'translations',
   notificationTemplates: 'notification-templates',
   home: 'home',
@@ -99,10 +104,13 @@ export const ROUTE_SEGMENTS = {
   importExport: 'import-export',
   export: 'export',
   importConfiguration: 'import-configuration',
-  welcome: 'welcome',
   settings: 'settings',
+  projects: 'projects',
+  project: 'project',
   gateways: 'gateways',
   deploy: 'deploy',
+  // Where a gateway's own page is, before its id: as the deployment sets it, else under Deploy.
+  deployTargets: window.__THUNDERID_RUNTIME_CONFIG__?.deploy?.gateway_path ?? 'deploy/gateways',
 } as const;
 
 const RouteConfig: RouteConfig = {
@@ -116,13 +124,20 @@ const RouteConfig: RouteConfig = {
     detail: (userId) => `/${ROUTE_SEGMENTS.users}/${userId}`,
     add: () => `/${ROUTE_SEGMENTS.users}/add`,
   },
+  administrators: {
+    list: () => `/${ROUTE_SEGMENTS.administrators}`,
+    detail: (userId) => `/${ROUTE_SEGMENTS.administrators}/${userId}`,
+    add: () => `/${ROUTE_SEGMENTS.administrators}/add`,
+  },
   userTypes: {
     list: () => `/${ROUTE_SEGMENTS.userTypes}`,
     detail: (id) => `/${ROUTE_SEGMENTS.userTypes}/${id}`,
     create: () => `/${ROUTE_SEGMENTS.userTypes}/create`,
   },
   agentTypes: {
+    list: () => `/${ROUTE_SEGMENTS.agentTypes}`,
     detail: (id) => `/${ROUTE_SEGMENTS.agentTypes}/${id}`,
+    create: () => `/${ROUTE_SEGMENTS.agentTypes}/create`,
   },
   agents: {
     list: () => `/${ROUTE_SEGMENTS.agents}`,
@@ -143,6 +158,11 @@ const RouteConfig: RouteConfig = {
     list: () => `/${ROUTE_SEGMENTS.resourceServers}`,
     detail: (resourceServerId) => `/${ROUTE_SEGMENTS.resourceServers}/${resourceServerId}`,
     create: () => `/${ROUTE_SEGMENTS.resourceServers}/create`,
+  },
+  authorizationDetailTypes: {
+    list: () => `/${ROUTE_SEGMENTS.authorizationDetailTypes}`,
+    detail: (id) => `/${ROUTE_SEGMENTS.authorizationDetailTypes}/${id}`,
+    create: () => `/${ROUTE_SEGMENTS.authorizationDetailTypes}/create`,
   },
   translations: {
     list: () => `/${ROUTE_SEGMENTS.translations}`,
@@ -206,19 +226,13 @@ const RouteConfig: RouteConfig = {
     validate: () => `/${ROUTE_SEGMENTS.importConfiguration}/validate`,
     summary: () => `/${ROUTE_SEGMENTS.importConfiguration}/summary`,
   },
-  welcome: {
-    root: () => `/${ROUTE_SEGMENTS.welcome}`,
-    createProject: () => `/${ROUTE_SEGMENTS.welcome}/create-project`,
-    getStarted: () => `/${ROUTE_SEGMENTS.welcome}/get-started`,
-    getStartedApplicationsTypes: () => `/${ROUTE_SEGMENTS.welcome}/get-started/applications/types`,
-    getStartedApplicationsCreate: () => `/${ROUTE_SEGMENTS.welcome}/get-started/applications/create`,
-    getStartedAgentsCreate: () => `/${ROUTE_SEGMENTS.welcome}/get-started/agents/create`,
-    importConfigurationUpload: () => `/${ROUTE_SEGMENTS.welcome}/import-configuration`,
-    importConfigurationValidate: () => `/${ROUTE_SEGMENTS.welcome}/import-configuration/validate`,
-    importConfigurationSummary: () => `/${ROUTE_SEGMENTS.welcome}/import-configuration/summary`,
-  },
   settings: {
     list: () => `/${ROUTE_SEGMENTS.settings}`,
+  },
+  projects: {
+    list: () => `/${ROUTE_SEGMENTS.projects}`,
+    create: () => `/${ROUTE_SEGMENTS.projects}/create`,
+    home: (handle, path = '') => `/${ROUTE_SEGMENTS.project}/${encodeURIComponent(handle)}${path}`,
   },
   gateways: {
     list: () => `/${ROUTE_SEGMENTS.gateways}`,
@@ -228,7 +242,56 @@ const RouteConfig: RouteConfig = {
     list: () => `/${ROUTE_SEGMENTS.deploy}`,
     explore: (gatewayId: string) => `/${ROUTE_SEGMENTS.deploy}/gateways/${encodeURIComponent(gatewayId)}/explore`,
     values: (gatewayId: string) => `/${ROUTE_SEGMENTS.deploy}/gateways/${encodeURIComponent(gatewayId)}/values`,
+    // A gateway belongs to the organization, so its pages are the same from wherever they are opened.
+    gateway: (gatewayId: string) => `/${ROUTE_SEGMENTS.deployTargets}/${encodeURIComponent(gatewayId)}`,
+    // Outside a project there is no project home to return to; inside one, projectRouteConfig names it.
+    project: () => RouteConfig.projects.list(),
   },
 };
+
+/** The domains whose pages work in a project, and so are routed under the project's path. */
+const PROJECT_SCOPED_DOMAINS = [
+  'organizationUnits',
+  'users',
+  'agents',
+  'resourceServers',
+  'authorizationDetailTypes',
+  'notificationTemplates',
+  'applications',
+  'groups',
+  'roles',
+  'verifiableCredentials',
+  'verifiablePresentations',
+  'flows',
+  'design',
+  'deploy',
+] as const satisfies readonly (keyof RouteConfig)[];
+
+type PathBuilders = Record<string, (...args: never[]) => string | undefined>;
+
+/**
+ * The route configuration inside one project: every project-scoped page is under the project's path,
+ * so the pages a package links to stay in the project they were opened in.
+ *
+ * @public
+ */
+export function projectRouteConfig(handle: string): RouteConfig {
+  const prefix = RouteConfig.projects.home(handle);
+  const scoped = Object.fromEntries(
+    PROJECT_SCOPED_DOMAINS.map((domain) => [
+      domain,
+      Object.fromEntries(
+        Object.entries(RouteConfig[domain] as PathBuilders).map(([name, build]) => [
+          name,
+          (...args: never[]) => `${prefix}${build(...args) ?? ''}`,
+        ]),
+      ),
+    ]),
+  );
+  const config = {...RouteConfig, ...scoped} as RouteConfig;
+  config.deploy.project = () => prefix;
+  config.deploy.pipeline = () => `${prefix}/pipeline`;
+  return config;
+}
 
 export default RouteConfig;

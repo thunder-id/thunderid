@@ -3,12 +3,29 @@
 
 /* eslint-disable react/require-default-props */
 
-import {render, screen, fireEvent, waitFor} from '@testing-library/react';
+import {
+  render as rtlRender,
+  screen,
+  fireEvent,
+  waitFor,
+  type RenderOptions,
+  type RenderResult,
+} from '@testing-library/react';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {DataGrid} from '@wso2/oxygen-ui';
+import type {JSX, ReactElement, ReactNode} from 'react';
 import {MemoryRouter} from 'react-router';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {BasicFlowDefinition} from '../../models/responses';
 import FlowsList from '../FlowsList';
+
+// The admin may do everything, so the component's actions show; a test nests its own provider to restrict them.
+function AllowAll({children}: {children: ReactNode}): JSX.Element {
+  return <CapabilitiesProvider capabilities={{can: () => true, isLoading: false}}>{children}</CapabilitiesProvider>;
+}
+
+const render = (ui: ReactElement, options?: RenderOptions): RenderResult =>
+  rtlRender(ui, {wrapper: AllowAll, ...options});
 
 // Mock logger with accessible mock functions
 const mockLoggerError = vi.fn();
@@ -94,6 +111,7 @@ const mockFlowsData: {flows: BasicFlowDefinition[]} = {
   ],
 };
 
+const mockUseGetFlowsParams = vi.fn();
 let mockUseGetFlowsReturn = {
   data: mockFlowsData,
   isLoading: false,
@@ -102,7 +120,10 @@ let mockUseGetFlowsReturn = {
 };
 
 vi.mock('../../api/useGetFlows', () => ({
-  default: () => mockUseGetFlowsReturn,
+  default: (params?: {projectId?: string}) => {
+    mockUseGetFlowsParams(params);
+    return mockUseGetFlowsReturn;
+  },
 }));
 
 // Mock FlowDeleteDialog
@@ -223,6 +244,11 @@ vi.mock('@wso2/oxygen-ui', async () => {
   };
 });
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  isLoading: false,
+};
+
 describe('FlowsList', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -233,6 +259,30 @@ describe('FlowsList', () => {
       refetch: mockRefetch,
     };
     capturedColumns.value = [];
+  });
+
+  describe('Project scope', () => {
+    it('lists the flows of the selected project', () => {
+      render(
+        <MemoryRouter>
+          <ProjectScopeProvider project={{id: 'project-1'}}>
+            <FlowsList />
+          </ProjectScopeProvider>
+        </MemoryRouter>,
+      );
+
+      expect(mockUseGetFlowsParams).toHaveBeenCalledWith({projectId: 'project-1'});
+    });
+
+    it('lists every flow without a selected project', () => {
+      render(
+        <MemoryRouter>
+          <FlowsList />
+        </MemoryRouter>,
+      );
+
+      expect(mockUseGetFlowsParams).toHaveBeenCalledWith({projectId: undefined});
+    });
   });
 
   describe('Rendering', () => {
@@ -465,6 +515,24 @@ describe('FlowsList', () => {
         actionsColumn!.renderCell!({row: mockFlowsData.flows[1]} as DataGrid.GridRenderCellParams<BasicFlowDefinition>),
       );
       expect(regContainer.querySelectorAll('button').length).toBeGreaterThan(0);
+    });
+
+    it('omits the delete row action when the admin may not delete flows', () => {
+      render(
+        <CapabilitiesProvider capabilities={viewOnly}>
+          <MemoryRouter>
+            <FlowsList />
+          </MemoryRouter>
+        </CapabilitiesProvider>,
+      );
+
+      const actionsColumn = capturedColumns.value.find((col) => col.field === 'actions');
+      const {container} = render(
+        actionsColumn!.renderCell!({row: mockFlowsData.flows[0]} as DataGrid.GridRenderCellParams<BasicFlowDefinition>),
+      );
+
+      expect(container.querySelectorAll('button').length).toBe(1);
+      expect(container.querySelector('[aria-label="Delete"]')).toBeNull();
     });
 
     it('should render a read-only flow with a single view action that navigates', async () => {

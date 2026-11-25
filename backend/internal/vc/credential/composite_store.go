@@ -71,24 +71,50 @@ func (c *compositeCredentialStore) ListCredentialConfigurationSummaries(
 	if err != nil {
 		return nil, err
 	}
-	seen := make(map[string]bool, len(dbSummaries))
-	result := make([]CredentialConfigurationList, 0, len(dbSummaries)+len(fileSummaries))
-	for _, s := range dbSummaries {
-		if !seen[s.ID] {
-			seen[s.ID] = true
-			result = append(result, s)
-		}
+	return mergeSummaries(dbSummaries, fileSummaries)
+}
+
+// ListCredentialConfigurationSummariesByOUID retrieves minimal listing data for the credential configurations an
+// organization unit owns from both stores and merges the results.
+func (c *compositeCredentialStore) ListCredentialConfigurationSummariesByOUID(
+	ctx context.Context, ouID string,
+) ([]CredentialConfigurationList, error) {
+	dbSummaries, err := c.dbStore.ListCredentialConfigurationSummariesByOUID(ctx, ouID)
+	if err != nil {
+		return nil, err
 	}
-	for _, s := range fileSummaries {
-		if !seen[s.ID] {
-			seen[s.ID] = true
-			result = append(result, s)
-		}
+	fileSummaries, err := c.fileStore.ListCredentialConfigurationSummariesByOUID(ctx, ouID)
+	if err != nil {
+		return nil, err
 	}
-	if len(result) > serverconst.MaxCompositeStoreRecords {
-		return nil, ErrResultLimitExceededInCompositeMode
+	return mergeSummaries(dbSummaries, fileSummaries)
+}
+
+// ListCredentialConfigurationSummariesByProject retrieves minimal listing data for the credential configurations
+// of a project from both stores and merges the results.
+func (c *compositeCredentialStore) ListCredentialConfigurationSummariesByProject(
+	ctx context.Context, projectID string,
+) ([]CredentialConfigurationList, error) {
+	dbSummaries, err := c.dbStore.ListCredentialConfigurationSummariesByProject(ctx, projectID)
+	if err != nil {
+		return nil, err
 	}
-	return result, nil
+	fileSummaries, err := c.fileStore.ListCredentialConfigurationSummariesByProject(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	return mergeSummaries(dbSummaries, fileSummaries)
+}
+
+// CountCredentialConfigurationsByProject returns the number of credential configurations of a project in both stores.
+// An ID is unique across the stores, so the counts add up exactly.
+func (c *compositeCredentialStore) CountCredentialConfigurationsByProject(
+	ctx context.Context, projectID string,
+) (int, error) {
+	return declarativeresource.CompositeMergeCountHelper(
+		func() (int, error) { return c.dbStore.CountCredentialConfigurationsByProject(ctx, projectID) },
+		func() (int, error) { return c.fileStore.CountCredentialConfigurationsByProject(ctx, projectID) },
+	)
 }
 
 // List retrieves credential configurations from both stores and merges the results.
@@ -165,6 +191,29 @@ func (c *compositeCredentialStore) existsInFileStore(ctx context.Context, id str
 		return false, nil
 	}
 	return false, err
+}
+
+// mergeSummaries merges database and file summaries, deduplicated by ID with the database entry
+// winning, and rejects a merged list over the composite cap.
+func mergeSummaries(dbSummaries, fileSummaries []CredentialConfigurationList) ([]CredentialConfigurationList, error) {
+	seen := make(map[string]bool, len(dbSummaries))
+	result := make([]CredentialConfigurationList, 0, len(dbSummaries)+len(fileSummaries))
+	for _, s := range dbSummaries {
+		if !seen[s.ID] {
+			seen[s.ID] = true
+			result = append(result, s)
+		}
+	}
+	for _, s := range fileSummaries {
+		if !seen[s.ID] {
+			seen[s.ID] = true
+			result = append(result, s)
+		}
+	}
+	if len(result) > serverconst.MaxCompositeStoreRecords {
+		return nil, ErrResultLimitExceededInCompositeMode
+	}
+	return result, nil
 }
 
 // mergeAndDeduplicate merges configurations from both stores, removing duplicate IDs

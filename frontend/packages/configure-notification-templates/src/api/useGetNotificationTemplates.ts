@@ -22,13 +22,17 @@ export interface UseGetNotificationTemplatesParams {
    * Number of records to skip for pagination.
    */
   offset?: number;
+  /**
+   * List only the templates of this project. Without it, every template is listed.
+   */
+  projectId?: string;
 }
 
 /**
  * Fetches a paginated list of notification templates for a channel from the server.
  *
  * @param channel - The notification channel (`email` or `sms`) to list templates for
- * @param params - Optional pagination parameters
+ * @param params - Optional pagination parameters and the project to list
  * @returns TanStack Query result containing the template list, loading state, and error information
  *
  * @public
@@ -39,10 +43,10 @@ export default function useGetNotificationTemplates(
 ): UseQueryResult<TemplateListResponse> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
-  const {limit = 30, offset = 0} = params ?? {};
+  const {limit = 30, offset = 0, projectId} = params ?? {};
 
   return useQuery<TemplateListResponse>({
-    queryKey: [NotificationTemplateQueryKeys.TEMPLATES, channel, {limit, offset}],
+    queryKey: [NotificationTemplateQueryKeys.TEMPLATES, channel, {limit, offset, ...(projectId ? {projectId} : {})}],
     placeholderData: keepPreviousData,
     queryFn: async (): Promise<TemplateListResponse> => {
       const serverUrl: string = getServerUrl();
@@ -50,6 +54,9 @@ export default function useGetNotificationTemplates(
         limit: limit.toString(),
         offset: offset.toString(),
       });
+      if (projectId) {
+        queryParams.append('projectId', projectId);
+      }
 
       const response: {
         data: TemplateListResponse;

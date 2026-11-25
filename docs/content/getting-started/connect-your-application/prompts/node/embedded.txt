@@ -15,7 +15,7 @@ I have a Node.js application and I want to integrate {{productName}} authenticat
 
 ## Configuration
 - **Application ID**: {{applicationId}}
-- **Base URL**: https://localhost:8090 (or your {{productName}} instance URL)
+- **Base URL**: {{baseUrl}}
 - **Flow Secret**: `<your-flow-secret>`
 - **App URL**: http://localhost:3000
 - **Sign-In Page**: /login

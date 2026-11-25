@@ -19,6 +19,7 @@ type OrganizationUnitRequest struct {
 	Name                      string  `json:"name" native:"required,min=1,max=100"`
 	Description               string  `json:"description,omitempty"`
 	Parent                    *string `json:"parent" native:"omitempty,max=255"`
+	ProjectID                 string  `json:"projectId,omitempty"`
 	ThemeID                   string  `json:"themeId,omitempty"`
 	LayoutID                  string  `json:"layoutId,omitempty"`
 	AuthFlowID                string  `json:"authFlowId,omitempty"`
@@ -54,6 +55,7 @@ type OrganizationUnit struct {
 	Name                      string    `json:"name" yaml:"name"`
 	Description               string    `json:"description,omitempty" yaml:"description,omitempty"`
 	Parent                    *string   `json:"parent" yaml:"parent"`
+	ProjectID                 string    `json:"projectId,omitempty" yaml:"projectId,omitempty"`
 	ThemeID                   string    `json:"themeId,omitempty" yaml:"themeId,omitempty"`
 	LayoutID                  string    `json:"layoutId,omitempty" yaml:"layoutId,omitempty"`
 	AuthFlowID                string    `json:"authFlowId,omitempty" yaml:"authFlowId,omitempty"`
@@ -69,6 +71,8 @@ type OrganizationUnit struct {
 	CookiePolicyURI           string    `json:"cookiePolicyUri,omitempty" yaml:"cookiePolicyUri,omitempty"`
 	CreatedAt                 time.Time `json:"createdAt" yaml:"createdAt"`
 	UpdatedAt                 time.Time `json:"updatedAt" yaml:"updatedAt"`
+	// IsReadOnly marks an organization unit a control plane deployed. It is never exported.
+	IsReadOnly bool `json:"isReadOnly" yaml:"-"`
 }
 
 // OrganizationUnitRequestWithID represents the request body for creating an organization unit
@@ -79,6 +83,7 @@ type OrganizationUnitRequestWithID struct {
 	Name                      string  `json:"name" yaml:"name" native:"required,min=1,max=100"`
 	Description               string  `json:"description,omitempty" yaml:"description,omitempty"`
 	Parent                    *string `json:"parent" yaml:"parent"`
+	ProjectID                 string  `json:"projectId,omitempty" yaml:"projectId,omitempty"`
 	ThemeID                   string  `json:"themeId,omitempty" yaml:"themeId,omitempty"`
 	LayoutID                  string  `json:"layoutId,omitempty" yaml:"layoutId,omitempty"`
 	AuthFlowID                string  `json:"authFlowId,omitempty" yaml:"authFlowId,omitempty"`
@@ -107,14 +112,19 @@ type OrganizationUnitListResponse struct {
 
 // OrganizationUnitBasic represents the basic information of an organization unit.
 type OrganizationUnitBasic struct {
-	ID          string    `json:"id"`
-	Handle      string    `json:"handle"`
-	Name        string    `json:"name"`
-	Description string    `json:"description,omitempty"`
-	LogoURL     string    `json:"logoUrl,omitempty"`
-	IsReadOnly  bool      `json:"isReadOnly"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	ID          string `json:"id"`
+	Handle      string `json:"handle"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	ProjectID   string `json:"projectId,omitempty"`
+	// Parent is the ID of the parent organization unit, omitted for a root organization unit.
+	Parent     *string `json:"parent,omitempty"`
+	LogoURL    string  `json:"logoUrl,omitempty"`
+	IsReadOnly bool    `json:"isReadOnly"`
+	// IsSystem marks the system organization unit where a placement listing lists it.
+	IsSystem  bool      `json:"isSystem,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
 }
 
 // User represents a user with basic information for OU endpoints. IsOwnedByOU reports whether the

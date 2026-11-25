@@ -22,7 +22,7 @@ const (
 	ReasonSessionLogout                Reason = "session_logout"
 	ReasonCodeReplay                   Reason = "code_replay"
 	ReasonExplicitTokenFamily          Reason = "explicit_token_family"
-	ReasonApplicationDeleted           Reason = "application_deleted"
+	ReasonApplicationRemoved           Reason = "application_removed"
 	ReasonApplicationSecretRegenerated Reason = "application_secret_regenerated"
 	ReasonRoleAssignmentRemoved        Reason = "role_assignment_removed"
 	ReasonRolePermissionRemoved        Reason = "role_permission_removed"
@@ -33,7 +33,11 @@ const (
 	ReasonOrganizationUnitChanged      Reason = "organization_unit_changed"
 	ReasonConsentRevoked               Reason = "consent_revoked"
 	ReasonUserDeleted                  Reason = "user_deleted"
+	ReasonIdentityDeleted              Reason = "identity_deleted"
+	ReasonClientRemoved                Reason = "client_removed"
+	ReasonClientSecretRotated          Reason = "client_secret_rotated" // #nosec G101 -- reason name, not a secret
 	ReasonIdentitySuspended            Reason = "identity_suspended"
+	ReasonCredentialUpdated            Reason = "credential_updated" // #nosec G101 -- reason name, not a secret
 )
 
 // CriterionType identifies an artifact attribute used for revocation.
@@ -53,6 +57,8 @@ const (
 	CriterionTypeConsent          CriterionType = "consent.id"
 	// CriterionTypeEntityScope names the per-principal scope dimension.
 	CriterionTypeEntityScope CriterionType = "entity.scope"
+	// CriterionTypeEntityScopeSubtree revokes a frozen permission subtree for one principal.
+	CriterionTypeEntityScopeSubtree CriterionType = "entity.scope.subtree"
 	// CriterionTypeScope names the deployment-wide scope dimension.
 	CriterionTypeScope CriterionType = "scope"
 	// CriterionTypeCredentialVersion names the credential-version dimension. The value is a version
@@ -101,6 +107,8 @@ type CriteriaRevocation struct {
 // all derive from this slice so they cannot disagree about whether a revocation is terminal.
 var boundaryReasons = []Reason{
 	ReasonIdentitySuspended,
+	ReasonApplicationRemoved,
+	// Nothing writes it any more; it stays so the rows already stored with it keep their bound until they expire.
 	ReasonApplicationSecretRegenerated,
 	ReasonRoleAssignmentRemoved,
 	ReasonRolePermissionRemoved,
@@ -110,6 +118,10 @@ var boundaryReasons = []Reason{
 	ReasonGroupMembershipRemoved,
 	ReasonOrganizationUnitChanged,
 	ReasonConsentRevoked,
+	ReasonCredentialUpdated,
+	ReasonIdentityDeleted,
+	ReasonClientRemoved,
+	ReasonClientSecretRotated,
 }
 
 // BoundaryReasons returns a copy of the boundary reasons, for callers that need the full set rather
@@ -137,4 +149,6 @@ type AudienceScope struct {
 	// Audience is the resource server identifier.
 	Audience string
 	Scope    string
+	// SubtreeDelimiter marks a subtree rule; empty preserves exact matching.
+	SubtreeDelimiter string
 }

@@ -1,6 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {fireEvent, renderWithProviders, screen, waitFor} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {ResourceServer} from '../../../models/resource-server';
@@ -59,6 +60,11 @@ const mockMcpResourceServer: ResourceServer = {
   ouId: 'ou-1',
   delimiter: ':',
   type: 'MCP',
+};
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  isLoading: false,
 };
 
 describe('ResourceDetailPanel', () => {
@@ -177,6 +183,23 @@ describe('ResourceDetailPanel', () => {
       },
       expect.any(Object),
     );
+  });
+
+  it('locks the identifier and offers no Save when the admin may not update resource servers', () => {
+    const selectedNode: SelectedNode = {
+      type: 'server',
+      id: 'rs-1',
+      data: mockResourceServer,
+    };
+
+    renderWithProviders(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <ResourceDetailPanel selectedNode={selectedNode} resourceServer={mockResourceServer} onRefresh={vi.fn()} />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.getByDisplayValue('https://api.example.com')).toBeDisabled();
+    expect(screen.queryByRole('button', {name: /Save/i})).not.toBeInTheDocument();
   });
 
   it('does not save when the server identifier is cleared', async () => {

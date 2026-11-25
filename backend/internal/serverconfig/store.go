@@ -18,6 +18,10 @@ import (
 type serverConfigStoreInterface interface {
 	GetServerConfig(ctx context.Context, name ConfigName) (storeLayers, error)
 	UpsertServerConfig(ctx context.Context, cfg ServerConfig) error
+	// ReplaceServerConfigIf writes the writable layer only while it still holds expected, as it was
+	// read, or, with expected nil, only while it is unset, and reports whether it wrote. Of two writes
+	// that read the same layer, on any node, only one writes.
+	ReplaceServerConfigIf(ctx context.Context, cfg ServerConfig, expected json.RawMessage) (bool, error)
 }
 
 // serverConfigStore is the database-backed (writable) store.
@@ -82,6 +86,27 @@ func (s *serverConfigStore) UpsertServerConfig(ctx context.Context, cfg ServerCo
 		return fmt.Errorf("failed to upsert server config: %w", err)
 	}
 	return nil
+}
+
+// ReplaceServerConfigIf writes the writable layer only while the database still holds what was read.
+func (s *serverConfigStore) ReplaceServerConfigIf(ctx context.Context, cfg ServerConfig,
+	expected json.RawMessage) (bool, error) {
+	dbClient, err := s.getDBClient()
+	if err != nil {
+		return false, err
+	}
+	var written int64
+	if expected == nil {
+		written, err = dbClient.ExecuteContext(ctx, queryInsertServerConfigIfAbsent, string(cfg.Name),
+			string(cfg.Value), s.scope(ctx))
+	} else {
+		written, err = dbClient.ExecuteContext(ctx, queryReplaceServerConfigIf, string(cfg.Value),
+			string(cfg.Name), s.scope(ctx), string(expected))
+	}
+	if err != nil {
+		return false, fmt.Errorf("failed to write server config: %w", err)
+	}
+	return written == 1, nil
 }
 
 // valueFromRow extracts the JSON value column from a database result row.

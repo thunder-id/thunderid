@@ -8,22 +8,37 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
+	"net/url"
 	"strconv"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
+	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 const loggerComponentName = "ThemeMgtService"
 
+// projectIDQueryParam is the query parameter that lists the themes of one project.
+const projectIDQueryParam = "projectId"
+
+// maxProjectIDLength is the length of the PROJECT_ID column of THEME.
+const maxProjectIDLength = 36
+
 // ThemeMgtServiceInterface defines the interface for the theme management service.
 type ThemeMgtServiceInterface interface {
 	GetThemeList(ctx context.Context, limit, offset int) (*ThemeList, *tidcommon.ServiceError)
+	GetThemeListByProject(ctx context.Context, projectID string, limit, offset int) (*ThemeList,
+		*tidcommon.ServiceError)
+	ProjectHasThemes(ctx context.Context, projectID string) (bool, *tidcommon.ServiceError)
 	CreateTheme(ctx context.Context, theme CreateThemeRequestWithID) (*Theme, *tidcommon.ServiceError)
 	GetTheme(ctx context.Context, id string) (*Theme, *tidcommon.ServiceError)
 	UpdateTheme(ctx context.Context, id string, theme UpdateThemeRequest) (*Theme, *tidcommon.ServiceError)
@@ -36,17 +51,44 @@ type ThemeMgtServiceInterface interface {
 
 // themeMgtService is the default implementation of the ThemeMgtServiceInterface.
 type themeMgtService struct {
+	authzService       sysauthz.SystemAuthorizationServiceInterface
 	themeMgtStore      themeMgtStoreInterface
 	dependencyRegistry resourcedependency.Registry
-	logger             *log.Logger
+	// projectChecker is nil on a deployment that serves no projects.
+	projectChecker projectChecker
+	// projectRequired is set on a deployment that serves projects, where every theme belongs to one.
+	projectRequired bool
+	logger          *log.Logger
+	bus             eventbus.EventBusInterface
+	// managed says which themes a control plane deployed, which stay read only here. Nil where nothing
+	// is deployed from one.
+	managed managedresource.StoreInterface
+}
+
+// setManagedStore gives the service the record of what a control plane deployed.
+func setManagedStore(service ThemeMgtServiceInterface, managed managedresource.StoreInterface) {
+	if ts, ok := service.(*themeMgtService); ok {
+		ts.managed = managed
+	}
+}
+
+// projectChecker reports whether the project a theme names exists.
+type projectChecker interface {
+	ProjectExists(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
 }
 
 // newThemeMgtService creates a new instance of ThemeMgtService with injected dependencies.
-func newThemeMgtService(themeMgtStore themeMgtStoreInterface) ThemeMgtServiceInterface {
+func newThemeMgtService(themeMgtStore themeMgtStoreInterface, bus eventbus.EventBusInterface,
+	projectChecker projectChecker, authzService sysauthz.SystemAuthorizationServiceInterface) ThemeMgtServiceInterface {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	return &themeMgtService{
-		themeMgtStore: themeMgtStore,
-		logger:        logger,
+		authzService:   authzService,
+		themeMgtStore:  themeMgtStore,
+		projectChecker: projectChecker,
+		projectRequired: projectChecker != nil &&
+			projectscope.ProjectRequired(security.ResourceTypeDesign),
+		logger: logger,
+		bus:    bus,
 	}
 }
 
@@ -68,21 +110,95 @@ func (ts *themeMgtService) GetThemeList(ctx context.Context, limit, offset int) 
 		return nil, &tidcommon.InternalServerError
 	}
 
+	if err := managedresource.MarkDeployed(ctx, ts.managed, themes,
+		func(t *Theme) string { return t.ID }, func(t *Theme) { t.IsReadOnly = true },
+		managedresource.TypeTheme); err != nil {
+		// Every write to such a theme is refused whatever the list says, so it is served without the flag.
+		ts.logger.Error(ctx, "Failed to read which themes a control plane deployed", log.Error(err))
+	}
+
 	response := &ThemeList{
 		TotalResults: totalCount,
 		Themes:       themes,
 		StartIndex:   offset + 1,
 		Count:        len(themes),
-		Links:        buildPaginationLinks(limit, offset, totalCount),
+		Links:        buildPaginationLinks(limit, offset, totalCount, ""),
 	}
 
 	return response, nil
 }
 
+// GetThemeListByProject retrieves the themes of a project. A project that does not exist has none.
+func (ts *themeMgtService) GetThemeListByProject(ctx context.Context, projectID string, limit, offset int) (
+	*ThemeList, *tidcommon.ServiceError) {
+	if err := validatePaginationParams(limit, offset); err != nil {
+		return nil, err
+	}
+
+	extraQuery := "&" + projectIDQueryParam + "=" + url.QueryEscape(projectID)
+	if projectID == "" {
+		return &ThemeList{
+			Themes:     []Theme{},
+			StartIndex: offset + 1,
+			Links:      buildPaginationLinks(limit, offset, 0, extraQuery),
+		}, nil
+	}
+
+	totalCount, err := ts.themeMgtStore.GetThemeListCountByProject(ctx, projectID)
+	if err != nil {
+		ts.logger.Error(ctx, "Failed to get theme count in project", log.String("projectID", projectID),
+			log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	themes, err := ts.themeMgtStore.GetThemeListByProject(ctx, projectID, limit, offset)
+	if err != nil {
+		ts.logger.Error(ctx, "Failed to list themes in project", log.String("projectID", projectID),
+			log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	return &ThemeList{
+		TotalResults: totalCount,
+		Themes:       themes,
+		StartIndex:   offset + 1,
+		Count:        len(themes),
+		Links:        buildPaginationLinks(limit, offset, totalCount, extraQuery),
+	}, nil
+}
+
+// ProjectHasThemes reports whether any theme belongs to the project.
+func (ts *themeMgtService) ProjectHasThemes(ctx context.Context, projectID string) (bool,
+	*tidcommon.ServiceError) {
+	count, err := ts.themeMgtStore.GetThemeListCountByProject(ctx, projectID)
+	if err != nil {
+		ts.logger.Error(ctx, "Failed to count themes in project", log.String("projectID", projectID),
+			log.Error(err))
+		return false, &tidcommon.InternalServerError
+	}
+	return count > 0, nil
+}
+
 // CreateTheme creates a new theme configuration.
 func (ts *themeMgtService) CreateTheme(ctx context.Context, theme CreateThemeRequestWithID) (*Theme,
 	*tidcommon.ServiceError) {
+	created, svcErr := ts.createTheme(ctx, theme)
+	var themeID string
+	if svcErr == nil {
+		themeID = created.ID
+	}
+	ts.publishThemeEvent(ctx, audit.EventThemeCreate, audit.ActionCreate, themeID, svcErr)
+	return created, svcErr
+}
+
+// createTheme creates a new theme configuration without publishing its audit event.
+func (ts *themeMgtService) createTheme(ctx context.Context, theme CreateThemeRequestWithID) (*Theme,
+	*tidcommon.ServiceError) {
 	ts.logger.Debug(ctx, "Creating theme configuration")
+
+	if svcErr := ts.checkWriteAccess(ctx, security.ActionCreateDesign); svcErr != nil {
+		return nil, svcErr
+	}
 
 	if theme.DisplayName == "" {
 		return nil, &ErrorMissingDisplayName
@@ -110,6 +226,15 @@ func (ts *themeMgtService) CreateTheme(ctx context.Context, theme CreateThemeReq
 		return nil, err
 	}
 
+	// A deployment that serves projects keeps every theme in one.
+	if theme.ProjectID == "" {
+		if ts.projectRequired {
+			return nil, &ErrorProjectRequired
+		}
+	} else if err := ts.validateProject(ctx, theme.ProjectID); err != nil {
+		return nil, err
+	}
+
 	id := theme.ID
 	if id == "" {
 		var err error
@@ -124,6 +249,7 @@ func (ts *themeMgtService) CreateTheme(ctx context.Context, theme CreateThemeReq
 		Handle:      theme.Handle,
 		DisplayName: theme.DisplayName,
 		Description: theme.Description,
+		ProjectID:   theme.ProjectID,
 		Theme:       theme.Theme,
 	}
 
@@ -137,6 +263,7 @@ func (ts *themeMgtService) CreateTheme(ctx context.Context, theme CreateThemeReq
 		Handle:      theme.Handle,
 		DisplayName: theme.DisplayName,
 		Description: theme.Description,
+		ProjectID:   theme.ProjectID,
 		Theme:       theme.Theme,
 	}
 
@@ -162,14 +289,51 @@ func (ts *themeMgtService) GetTheme(ctx context.Context, id string) (*Theme, *ti
 		return nil, &tidcommon.InternalServerError
 	}
 
+	if !theme.IsReadOnly {
+		deployed, err := managedresource.IsDeployed(ctx, ts.managed, id, managedresource.TypeTheme)
+		if err != nil {
+			// Every write to such a theme is refused whatever the read says, so it is served without the flag.
+			ts.logger.Error(ctx, "Failed to read whether a control plane deployed the theme",
+				log.String("id", id), log.Error(err))
+		}
+		theme.IsReadOnly = deployed
+	}
+
 	ts.logger.Debug(ctx, "Successfully retrieved theme", log.String("id", theme.ID))
 	return &theme, nil
+}
+
+// refuseManaged refuses a change to a theme a control plane deployed, unless the change is the managed
+// import's: only a deploy from the control plane changes or removes it.
+func (ts *themeMgtService) refuseManaged(ctx context.Context, id string) *tidcommon.ServiceError {
+	managed, err := managedresource.IsReadOnly(ctx, ts.managed, id, managedresource.TypeTheme)
+	if err != nil {
+		ts.logger.Error(ctx, "Failed to read whether a control plane deployed the theme",
+			log.String("id", id), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if managed {
+		return &ErrorManagedTheme
+	}
+	return nil
 }
 
 // UpdateTheme updates an existing theme configuration.
 func (ts *themeMgtService) UpdateTheme(ctx context.Context, id string, theme UpdateThemeRequest) (*Theme,
 	*tidcommon.ServiceError) {
+	updated, svcErr := ts.updateTheme(ctx, id, theme)
+	ts.publishThemeEvent(ctx, audit.EventThemeUpdate, audit.ActionUpdate, id, svcErr)
+	return updated, svcErr
+}
+
+// updateTheme updates an existing theme configuration without publishing its audit event.
+func (ts *themeMgtService) updateTheme(ctx context.Context, id string, theme UpdateThemeRequest) (*Theme,
+	*tidcommon.ServiceError) {
 	ts.logger.Debug(ctx, "Updating theme", log.String("id", id))
+
+	if svcErr := ts.checkWriteAccess(ctx, security.ActionUpdateDesign); svcErr != nil {
+		return nil, svcErr
+	}
 
 	if id == "" {
 		return nil, &ErrorInvalidThemeID
@@ -182,6 +346,9 @@ func (ts *themeMgtService) UpdateTheme(ctx context.Context, id string, theme Upd
 	// Check if the theme is declarative (read-only)
 	if ts.themeMgtStore.IsThemeDeclarative(ctx, id) {
 		return nil, &ErrorCannotModifyDeclarativeResource
+	}
+	if svcErr := ts.refuseManaged(ctx, id); svcErr != nil {
+		return nil, svcErr
 	}
 
 	// Fetch existing theme to enforce handle immutability
@@ -203,6 +370,16 @@ func (ts *themeMgtService) UpdateTheme(ctx context.Context, id string, theme Upd
 		return nil, err
 	}
 
+	// An update that names no project keeps the theme in its project. The project is checked only when the
+	// update moves the theme to another one, so a theme whose project is gone can still be edited.
+	if theme.ProjectID == "" {
+		theme.ProjectID = existingTheme.ProjectID
+	} else if theme.ProjectID != existingTheme.ProjectID {
+		if err := ts.validateProject(ctx, theme.ProjectID); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := ts.themeMgtStore.UpdateTheme(ctx, id, theme); err != nil {
 		ts.logger.Error(ctx, "Failed to update theme", log.String("id", id), log.Error(err))
 		return nil, &tidcommon.InternalServerError
@@ -213,6 +390,7 @@ func (ts *themeMgtService) UpdateTheme(ctx context.Context, id string, theme Upd
 		Handle:      existingTheme.Handle,
 		DisplayName: theme.DisplayName,
 		Description: theme.Description,
+		ProjectID:   theme.ProjectID,
 		Theme:       theme.Theme,
 	}
 
@@ -222,7 +400,23 @@ func (ts *themeMgtService) UpdateTheme(ctx context.Context, id string, theme Upd
 
 // DeleteTheme deletes a theme configuration.
 func (ts *themeMgtService) DeleteTheme(ctx context.Context, id string) *tidcommon.ServiceError {
+	svcErr := ts.deleteTheme(ctx, id)
+	// A delete that found nothing to remove succeeds without an event, so no caller can record a
+	// deletion of an ID it made up.
+	if svcErr == errThemeNotFoundNoop {
+		return nil
+	}
+	ts.publishThemeEvent(ctx, audit.EventThemeDelete, audit.ActionDelete, id, svcErr)
+	return svcErr
+}
+
+// deleteTheme deletes a theme configuration without publishing its audit event.
+func (ts *themeMgtService) deleteTheme(ctx context.Context, id string) *tidcommon.ServiceError {
 	ts.logger.Debug(ctx, "Deleting theme", log.String("id", id))
+
+	if svcErr := ts.checkWriteAccess(ctx, security.ActionDeleteDesign); svcErr != nil {
+		return svcErr
+	}
 
 	if id == "" {
 		return &ErrorInvalidThemeID
@@ -231,6 +425,9 @@ func (ts *themeMgtService) DeleteTheme(ctx context.Context, id string) *tidcommo
 	// Check if the theme is declarative (read-only)
 	if ts.themeMgtStore.IsThemeDeclarative(ctx, id) {
 		return &ErrorCannotModifyDeclarativeResource
+	}
+	if svcErr := ts.refuseManaged(ctx, id); svcErr != nil {
+		return svcErr
 	}
 
 	// Check if theme exists. Return success for non-existing themes (idempotent delete).
@@ -242,7 +439,7 @@ func (ts *themeMgtService) DeleteTheme(ctx context.Context, id string) *tidcommo
 
 	if !exists {
 		ts.logger.Debug(ctx, "Theme not found for deletion, returning success", log.String("id", id))
-		return nil
+		return errThemeNotFoundNoop
 	}
 
 	// A theme can be deleted even while applications reference it: those applications keep their
@@ -255,6 +452,17 @@ func (ts *themeMgtService) DeleteTheme(ctx context.Context, id string) *tidcommo
 
 	ts.logger.Debug(ctx, "Successfully deleted theme", log.String("id", id))
 	return nil
+}
+
+// publishThemeEvent publishes the audit event of an attempt on the theme with id, after the change was
+// stored or refused. Only the ID is recorded, never the theme's handle, names or content.
+func (ts *themeMgtService) publishThemeEvent(ctx context.Context, name string, action audit.Action,
+	id string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the ID the caller asked for, even one that matches no theme, as forensic
+	// evidence of what was probed; the payload caps it and the sink escapes it.
+	target := audit.Ref{Type: audit.TargetTypeTheme, ID: id}
+	eventbus.TryPublish(ctx, ts.bus,
+		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
 }
 
 // IsThemeExist checks if a theme exists.
@@ -318,6 +526,28 @@ func (ts *themeMgtService) GetThemeUsages(
 	return resourcedependency.PaginateUsages(result, limit, offset), nil
 }
 
+// validateProject checks that the project a theme names exists. It returns ErrorInvalidProject when it does
+// not.
+//
+// A deployment that serves no projects, such as a Data Plane, cannot check that the project exists. It keeps a
+// project ID that fits the column as given, so that imported configuration retains it.
+func (ts *themeMgtService) validateProject(ctx context.Context, projectID string) *tidcommon.ServiceError {
+	if len(projectID) > maxProjectIDLength {
+		return &ErrorInvalidProject
+	}
+	if ts.projectChecker == nil {
+		return nil
+	}
+	exists, svcErr := ts.projectChecker.ProjectExists(ctx, projectID)
+	if svcErr != nil {
+		return &tidcommon.InternalServerError
+	}
+	if !exists {
+		return &ErrorInvalidProject
+	}
+	return nil
+}
+
 // validateThemePreferences validates the theme JSON.
 func (ts *themeMgtService) validateThemePreferences(
 	ctx context.Context, theme json.RawMessage) *tidcommon.ServiceError {
@@ -331,6 +561,19 @@ func (ts *themeMgtService) validateThemePreferences(
 		return &ErrorInvalidThemeFormat
 	}
 
+	return nil
+}
+
+// checkWriteAccess refuses a caller who may not write a theme.
+func (ts *themeMgtService) checkWriteAccess(ctx context.Context, action security.Action) *tidcommon.ServiceError {
+	allowed, svcErr := ts.authzService.IsActionAllowed(ctx, action,
+		&sysauthz.ActionContext{ResourceType: security.ResourceTypeDesign})
+	if svcErr != nil {
+		return &tidcommon.InternalServerError
+	}
+	if !allowed {
+		return &tidcommon.ErrorUnauthorized
+	}
 	return nil
 }
 
@@ -351,30 +594,13 @@ func validatePaginationParams(limit, offset int) *tidcommon.ServiceError {
 	return nil
 }
 
-// buildPaginationLinks builds pagination links for the response.
-func buildPaginationLinks(limit, offset, totalCount int) []Link {
-	links := make([]Link, 0)
-
-	// Previous link
-	if offset > 0 {
-		prevOffset := offset - limit
-		if prevOffset < 0 {
-			prevOffset = 0
-		}
-		links = append(links, Link{
-			Href: fmt.Sprintf("/design/themes?limit=%d&offset=%d", limit, prevOffset),
-			Rel:  "previous",
-		})
+// buildPaginationLinks builds pagination links for the response. extraQuery is appended to each link, so a
+// project's list links to the next page of the same project.
+func buildPaginationLinks(limit, offset, totalCount int, extraQuery string) []Link {
+	shared := utils.BuildPaginationLinks("/design/themes", limit, offset, totalCount, extraQuery)
+	links := make([]Link, 0, len(shared))
+	for _, link := range shared {
+		links = append(links, Link(link))
 	}
-
-	// Next link
-	if offset+limit < totalCount {
-		nextOffset := offset + limit
-		links = append(links, Link{
-			Href: fmt.Sprintf("/design/themes?limit=%d&offset=%d", limit, nextOffset),
-			Rel:  "next",
-		})
-	}
-
 	return links
 }

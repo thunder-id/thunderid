@@ -17,11 +17,9 @@ const (
 	paramTypeProject    = "Project"
 )
 
-// projectDocument is a project as it is exported and imported. The root organization unit is
-// exported as a document of its own, which carries the rest of its settings.
+// projectDocument is a project as it is exported and imported.
 type projectDocument struct {
 	ID          string `json:"id" yaml:"id"`
-	RootOUID    string `json:"rootOuId" yaml:"rootOuId"`
 	Handle      string `json:"handle" yaml:"handle"`
 	DisplayName string `json:"displayName" yaml:"displayName"`
 	Description string `json:"description,omitempty" yaml:"description,omitempty"`
@@ -74,7 +72,6 @@ func (e *projectExporter) GetResourceByID(
 	}
 	return &projectDocument{
 		ID:          project.ID,
-		RootOUID:    project.RootOUID,
 		Handle:      project.Handle,
 		DisplayName: project.DisplayName,
 		Description: project.Description,

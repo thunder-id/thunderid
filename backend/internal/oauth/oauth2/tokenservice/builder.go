@@ -4,6 +4,7 @@
 package tokenservice
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
@@ -118,9 +119,9 @@ func (tb *tokenBuilder) BuildAccessToken(
 	}
 	if tokenCtx.ActorClaims != nil {
 		tokenDTO.Delegated = true
-		tokenDTO.ActorSub = tb.resolveActorIdentity(tokenCtx, tokenCtx.ActorClaims.Sub)
+		tokenDTO.ActorSub = tb.resolveActorIdentity(ctx, tokenCtx, tokenCtx.ActorClaims.Sub)
 	}
-	tokenDTO.SubjectID, tokenDTO.SubjectCategory = tb.resolveSubjectIdentity(tokenCtx)
+	tokenDTO.SubjectID, tokenDTO.SubjectCategory = tb.resolveSubjectIdentity(ctx, tokenCtx)
 
 	token, iat, err := tb.jwtService.GenerateJWT(
 		ctx,
@@ -150,16 +151,23 @@ func (tb *tokenBuilder) BuildAccessToken(
 //
 // Every grant reaches this function, so none can omit the fields by forgetting to set them, but a
 // grant whose upstream layer already knows the answer supplies it and skips the lookup entirely.
-func (tb *tokenBuilder) resolveSubjectIdentity(tokenCtx *AccessTokenBuildContext) (id, category string) {
+func (tb *tokenBuilder) resolveSubjectIdentity(
+	ctx context.Context, tokenCtx *AccessTokenBuildContext,
+) (id, category string) {
 	// authorization_code: carried on the flow assertion, which resolved the entity during login.
 	if tokenCtx.SubjectEntityID != "" {
 		if tokenCtx.SubjectCategory != "" {
 			return tokenCtx.SubjectEntityID, tokenCtx.SubjectCategory
 		}
-		return tokenCtx.SubjectEntityID, tb.lookupCategory(tokenCtx.SubjectEntityID)
+		return tokenCtx.SubjectEntityID, tb.lookupCategory(ctx, tokenCtx.SubjectEntityID)
 	}
 
 	if tokenCtx.Subject == "" {
+		return "", ""
+	}
+
+	// An external identity provider's subject names no local entity, even when it equals one's ID.
+	if tokenCtx.SourceIDP != "" {
 		return "", ""
 	}
 
@@ -173,7 +181,7 @@ func (tb *tokenBuilder) resolveSubjectIdentity(tokenCtx *AccessTokenBuildContext
 	// Resolving it decides which: a mapped attribute matches no entity, so an unresolvable subject is
 	// reported as no subject rather than published as-is. This is what keeps a mapped attribute, which
 	// may be an email address, off the events.
-	category = tb.lookupCategory(tokenCtx.Subject)
+	category = tb.lookupCategory(ctx, tokenCtx.Subject)
 	if category == "" {
 		return "", ""
 	}
@@ -187,7 +195,9 @@ func (tb *tokenBuilder) resolveSubjectIdentity(tokenCtx *AccessTokenBuildContext
 // issuing application may have mapped to an attribute such as an email address, and reporting no
 // actor is preferable to publishing one that identifies a person. Delegation itself stays visible
 // regardless, because the token DTO records it separately from the actor's identifier.
-func (tb *tokenBuilder) resolveActorIdentity(tokenCtx *AccessTokenBuildContext, actorSub string) string {
+func (tb *tokenBuilder) resolveActorIdentity(
+	ctx context.Context, tokenCtx *AccessTokenBuildContext, actorSub string,
+) string {
 	if actorSub == "" {
 		return ""
 	}
@@ -197,13 +207,18 @@ func (tb *tokenBuilder) resolveActorIdentity(tokenCtx *AccessTokenBuildContext, 
 		return tokenCtx.ActorClaims.EntityID
 	}
 
+	// An external identity provider's subject names no local entity, even when it equals one's ID.
+	if tokenCtx.ActorClaims != nil && tokenCtx.ActorClaims.SourceIDP != "" {
+		return ""
+	}
+
 	// Grants that name the authenticated client as the actor (authorization_code, CIBA, refresh, and
 	// token exchange without an actor_token) already hold a resource ID, so no lookup is needed.
 	if tokenCtx.OAuthApp != nil && actorSub == tokenCtx.OAuthApp.ID {
 		return actorSub
 	}
 
-	if tb.lookupCategory(actorSub) == "" {
+	if tb.lookupCategory(ctx, actorSub) == "" {
 		return ""
 	}
 	return actorSub
@@ -212,11 +227,11 @@ func (tb *tokenBuilder) resolveActorIdentity(tokenCtx *AccessTokenBuildContext, 
 // lookupCategory returns the entity category of the given resource ID, or an empty string when the
 // provider is absent or the ID resolves to no entity. Reads are served by the cache-backed entity
 // store, so this is normally an in-memory hit.
-func (tb *tokenBuilder) lookupCategory(entityID string) string {
+func (tb *tokenBuilder) lookupCategory(ctx context.Context, entityID string) string {
 	if tb.actorProvider == nil {
 		return ""
 	}
-	entity, svcErr := tb.actorProvider.GetActor(entityID)
+	entity, svcErr := tb.actorProvider.GetActor(ctx, entityID)
 	if svcErr != nil || entity == nil {
 		return ""
 	}
@@ -425,8 +440,8 @@ func (tb *tokenBuilder) buildAccessTokenClaims(
 	}
 
 	// Set after merging user attributes so a federated principal's attributes cannot spoof the source
-	// IdP. For a jwt-bearer-grant (ID-JAG) token the `sub` is an external IdP identifier and MUST be
-	// interpreted together with this claim.
+	// IdP. For a jwt-bearer (ID-JAG) or token exchange token for an external subject the `sub` is an
+	// external IdP identifier and MUST be interpreted together with this claim.
 	if ctx.SourceIDP != "" {
 		claims[constants.ClaimIDP] = ctx.SourceIDP
 	}
@@ -496,8 +511,10 @@ func (tb *tokenBuilder) buildActorClaim(actorClaims *SubjectTokenClaims) map[str
 		"sub": actorClaims.Sub,
 	}
 
-	if actorClaims.Iss != "" {
-		actClaim["iss"] = actorClaims.Iss
+	// iss names the issuer whose namespace sub is in: for an actor token issued here for an external
+	// identity provider's subject, that provider.
+	if iss := cmp.Or(actorClaims.SourceIDP, actorClaims.Iss); iss != "" {
+		actClaim["iss"] = iss
 	}
 
 	if len(actorClaims.NestedAct) > 0 {
@@ -630,6 +647,9 @@ func (tb *tokenBuilder) buildRefreshTokenClaims(ctx *RefreshTokenBuildContext) (
 		claims[constants.ClaimRefreshAuthorizationDetails] = values
 		claims[constants.ClaimRefreshAuthorizationDetailVersions] = versions
 	}
+	if ctx.OUID != "" {
+		claims[constants.ClaimAccessTokenOUID] = ctx.OUID
+	}
 
 	return claims, nil
 }
@@ -731,10 +751,9 @@ func (tb *tokenBuilder) BuildLogoutToken(
 	}, nil
 }
 
-// BuildDeviceSecret builds the token that carries the SSO sessions of a sign-in to the client on a code
-// exchange: each session's flow identifier and handle, for the subject who signed in. It is signed with
-// the client's ID token signing algorithm and addressed to this server, which accepts it back as a token
-// exchange subject token.
+// BuildDeviceSecret builds the device secret that carries a subject's SSO sessions: each session's flow
+// identifier and handle. It is signed with the client's ID token signing algorithm and addressed to this
+// server, which accepts it back as a token exchange subject token.
 func (tb *tokenBuilder) BuildDeviceSecret(
 	ctx context.Context,
 	tokenCtx *DeviceSecretBuildContext,

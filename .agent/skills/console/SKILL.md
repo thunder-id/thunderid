@@ -81,8 +81,7 @@ playwright-cli fill <password-ref> "<actual-password>" -s=thunderid
 # 5. Click Sign In (use the ref from snapshot for the submit button)
 playwright-cli click <submit-ref> -s=thunderid
 
-# 6. Verify the Console loads. A first sign-in may open /console/welcome;
-#    close Welcome to reach /console/home.
+# 6. Verify the Console loads at /console/home.
 playwright-cli snapshot -s=thunderid
 ```
 

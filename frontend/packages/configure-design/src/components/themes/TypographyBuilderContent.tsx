@@ -12,8 +12,6 @@ import {
 import {
   Autocomplete,
   Box,
-  FormControl,
-  FormLabel,
   Link,
   Stack,
   TextField,
@@ -248,57 +246,51 @@ export default function TypographyBuilderContent({draft, onUpdate}: TypographyBu
           />
         ) : (
           <Stack gap={1.5} sx={{mb: 1.5}}>
-            <FormControl fullWidth>
-              <FormLabel htmlFor="font-import-url-input">
-                {t('themes.forms.typography_builder.fields.font_import_url.label', 'Font import URL')}
-              </FormLabel>
-              <TextField
-                fullWidth
-                id="font-import-url-input"
-                size="small"
-                value={importURL}
-                onChange={(e) => {
-                  const newUrl = e.target.value;
-                  const newFamily = newUrl ? fontFamily : '';
-                  applyFont(newFamily, newUrl);
-                  // Pre-sync so the re-sync effect doesn't flip mode when clearing the field.
-                  setPrevFontFamily(newFamily);
-                  setPrevImportURL(newUrl);
-                }}
-                placeholder={t(
-                  'themes.forms.typography_builder.fields.font_import_url.placeholder',
-                  'E.g., https://fonts.googleapis.com/css2?family=Poppins',
-                )}
-                helperText={t(
-                  'themes.forms.typography_builder.fields.font_import_url.helper_text',
-                  'Enter a URL to import a custom font from a font service.',
-                )}
-              />
-            </FormControl>
+            <TextField
+              labelPlacement="top"
+              label={t('themes.forms.typography_builder.fields.font_import_url.label', 'Font import URL')}
+              fullWidth
+              id="font-import-url-input"
+              size="small"
+              value={importURL}
+              onChange={(e) => {
+                const newUrl = e.target.value;
+                const newFamily = newUrl ? fontFamily : '';
+                applyFont(newFamily, newUrl);
+                // Pre-sync so the re-sync effect doesn't flip mode when clearing the field.
+                setPrevFontFamily(newFamily);
+                setPrevImportURL(newUrl);
+              }}
+              placeholder={t(
+                'themes.forms.typography_builder.fields.font_import_url.placeholder',
+                'E.g., https://fonts.googleapis.com/css2?family=Poppins',
+              )}
+              helperText={t(
+                'themes.forms.typography_builder.fields.font_import_url.helper_text',
+                'Enter a URL to import a custom font from a font service.',
+              )}
+            />
             <CspOriginHint value={importURL} resourceType="font" />
-            <FormControl fullWidth>
-              <FormLabel htmlFor="font-family-input">
-                {t('themes.forms.typography_builder.fields.font_family_input.label', 'Font family')}
-              </FormLabel>
-              <TextField
-                fullWidth
-                id="font-family-input"
-                size="small"
-                value={fontFamily}
-                onChange={(e) => {
-                  const newFamily = e.target.value;
-                  applyFont(newFamily, importURL);
-                  // Pre-sync so the re-sync effect doesn't flip mode while typing a family name.
-                  setPrevFontFamily(newFamily);
-                  setPrevImportURL(importURL);
-                }}
-                placeholder={t('themes.forms.typography_builder.fields.font_family_input.placeholder', 'E.g. Poppins')}
-                helperText={t(
-                  'themes.forms.typography_builder.fields.font_family_input.helper_text',
-                  'Enter the font family name documented by the font service above.',
-                )}
-              />
-            </FormControl>
+            <TextField
+              labelPlacement="top"
+              label={t('themes.forms.typography_builder.fields.font_family_input.label', 'Font family')}
+              fullWidth
+              id="font-family-input"
+              size="small"
+              value={fontFamily}
+              onChange={(e) => {
+                const newFamily = e.target.value;
+                applyFont(newFamily, importURL);
+                // Pre-sync so the re-sync effect doesn't flip mode while typing a family name.
+                setPrevFontFamily(newFamily);
+                setPrevImportURL(importURL);
+              }}
+              placeholder={t('themes.forms.typography_builder.fields.font_family_input.placeholder', 'E.g. Poppins')}
+              helperText={t(
+                'themes.forms.typography_builder.fields.font_family_input.helper_text',
+                'Enter the font family name documented by the font service above.',
+              )}
+            />
           </Stack>
         )}
 

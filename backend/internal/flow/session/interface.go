@@ -27,10 +27,11 @@ type sessionStore interface {
 	// returns errVersionConflict when the stored version no longer matches, and bumps the in-memory
 	// Version on success.
 	Update(ctx context.Context, s *Session) error
-	// TouchAuthenticatedAt records a fresh authentication inside an existing session and slides the
-	// idle deadline with it. It carries no version guard, so it never loses to a concurrent slide.
+	// TouchAuthenticatedAt records a fresh authentication inside an existing session, with the session's
+	// properties (carrying the IP it came from), and slides the idle deadline with it. It carries no
+	// version guard, so it never loses to a concurrent slide.
 	TouchAuthenticatedAt(ctx context.Context, sessionID string, authenticatedAt,
-		idleExpiresAt time.Time) error
+		idleExpiresAt time.Time, properties SessionProperties) error
 	// SlideIdleDeadline moves an active, unexpired session's last-active timestamp to now and its idle
 	// deadline to idleExpiresAt, unless its last refresh is after refreshedBefore. A session it does not
 	// match is left as it is and is not an error.
@@ -47,7 +48,7 @@ type sessionStore interface {
 	DeleteSession(ctx context.Context, sessionID string) (bool, error)
 
 	// Record inserts the participant, or refreshes its LAST_ACTIVE_AT (preserving FIRST_JOINED_AT)
-	// when the application has already joined the session.
+	// when the application has already joined the session under the same organization unit.
 	Record(ctx context.Context, p Participant) error
 	// ListBySessionID returns the applications that have joined the session, oldest first.
 	ListBySessionID(ctx context.Context, sessionID string) ([]Participant, error)
@@ -58,6 +59,6 @@ type sessionStore interface {
 	DeleteBySessionID(ctx context.Context, sessionID string) error
 	// ListByAppID returns every participation of the application, across sessions, oldest first.
 	ListByAppID(ctx context.Context, appID string) ([]Participant, error)
-	// DeleteParticipant removes one application's participation in one session.
-	DeleteParticipant(ctx context.Context, sessionID, appID string) error
+	// DeleteParticipant removes one application's participation in one session under one organization unit.
+	DeleteParticipant(ctx context.Context, sessionID, appID, ouID string) error
 }

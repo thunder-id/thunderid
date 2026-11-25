@@ -860,6 +860,22 @@ func (suite *InboundClientStoreTestSuite) TestGetEntityIDsByReference_Flow() {
 	})
 }
 
+func (suite *InboundClientStoreTestSuite) TestGetEntityIDsByReference_AllowedAgentType() {
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
+	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetEntityIDsByAllowedAgentTypeCount,
+		"support-agents", testServerID).
+		Return([]map[string]interface{}{{"total": int64(1)}}, nil).Once()
+	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetEntityIDsByAllowedAgentType,
+		"support-agents", testServerID, 10, 0).
+		Return([]map[string]interface{}{{"entity_id": "app-1"}}, nil).Once()
+
+	ids, total, err := suite.store.GetEntityIDsByReference(
+		context.Background(), resourcedependency.ResourceTypeAgentType, "support-agents", 10, 0)
+	suite.NoError(err)
+	suite.Equal(1, total)
+	suite.Equal([]string{"app-1"}, ids)
+}
+
 func (suite *InboundClientStoreTestSuite) TestGetEntityIDsByReference_UnknownTypeSkipsDB() {
 	ids, total, err := suite.store.GetEntityIDsByReference(
 		context.Background(), "unknownReferenceType", "ref-1", 10, 0)

@@ -12,8 +12,17 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
+
+// AgentSystemAttributes holds the agent fields kept in the entity SystemAttributes blob.
+type AgentSystemAttributes struct {
+	Description string
+	Owner       *providers.AgentOwner
+	ClientID    string
+	Kind        providers.AgentKind
+}
 
 // AgentRequestWithID is the YAML-aware struct used for declarative resource loading.
 // Attributes uses map[string]interface{} (not json.RawMessage) so the YAML library can
@@ -22,12 +31,14 @@ type AgentRequestWithID struct {
 	ID          string                 `json:"id"                    yaml:"id"`
 	OUID        string                 `json:"ouId,omitempty"        yaml:"ouId,omitempty"`
 	OUHandle    string                 `json:"ouHandle,omitempty"    yaml:"ouHandle,omitempty"`
+	ProjectID   string                 `json:"projectId,omitempty"   yaml:"projectId,omitempty"`
 	Type        string                 `json:"type"                  yaml:"type"`
 	Description string                 `json:"description,omitempty" yaml:"description,omitempty"`
 	LogoURL     string                 `json:"logoUrl,omitempty"     yaml:"logoUrl,omitempty"`
-	Owner       string                 `json:"owner,omitempty"       yaml:"owner,omitempty"`
+	Owner       *providers.AgentOwner  `json:"owner,omitempty"       yaml:"owner,omitempty"`
 	Attributes  map[string]interface{} `json:"attributes,omitempty"  yaml:"attributes,omitempty"`
 	ValidUntil  string                 `json:"validUntil,omitempty"  yaml:"validUntil,omitempty"`
+	Kind        providers.AgentKind    `json:"kind,omitempty"        yaml:"kind,omitempty"`
 	// Credentials holds the value of each of the agent's credentials, by credential.
 	Credentials map[string]interface{} `json:"-"                     yaml:"credentials,omitempty"`
 
@@ -37,16 +48,18 @@ type AgentRequestWithID struct {
 
 // CreateAgentRequest is the HTTP request body for creating an agent.
 type CreateAgentRequest struct {
-	OUID        string          `json:"ouId,omitempty"`
-	OUHandle    string          `json:"ouHandle,omitempty"`
-	ProjectID   string          `json:"projectId,omitempty"`
-	Type        string          `json:"type" native:"required"`
-	Description string          `json:"description,omitempty"`
-	LogoURL     string          `json:"logoUrl,omitempty"`
-	Owner       string          `json:"owner,omitempty"`
-	Delegated   bool            `json:"delegated,omitempty"`
-	Attributes  json.RawMessage `json:"attributes,omitempty"`
-	ValidUntil  *string         `json:"validUntil,omitempty"`
+	OUID        string                `json:"ouId,omitempty"`
+	OUHandle    string                `json:"ouHandle,omitempty"`
+	ProjectID   string                `json:"projectId,omitempty"`
+	Type        string                `json:"type" native:"required"`
+	Description string                `json:"description,omitempty"`
+	LogoURL     string                `json:"logoUrl,omitempty"`
+	Owner       *providers.AgentOwner `json:"owner,omitempty"`
+	Delegated   bool                  `json:"delegated,omitempty"`
+	Attributes  json.RawMessage       `json:"attributes,omitempty"`
+	ValidUntil  *string               `json:"validUntil,omitempty"`
+
+	Kind providers.AgentKind `json:"kind,omitempty"`
 
 	inboundmodel.InboundAuthProfileReq
 	InboundAuthConfig []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
@@ -54,15 +67,15 @@ type CreateAgentRequest struct {
 
 // UpdateAgentRequest is the HTTP request body for updating an agent.
 type UpdateAgentRequest struct {
-	OUID        string          `json:"ouId,omitempty"`
-	OUHandle    string          `json:"ouHandle,omitempty"`
-	ProjectID   string          `json:"projectId,omitempty"`
-	Type        string          `json:"type,omitempty"`
-	Description string          `json:"description,omitempty"`
-	LogoURL     string          `json:"logoUrl,omitempty"`
-	Owner       string          `json:"owner,omitempty"`
-	Delegated   bool            `json:"delegated,omitempty"`
-	Attributes  json.RawMessage `json:"attributes,omitempty"`
+	OUID        string                `json:"ouId,omitempty"`
+	OUHandle    string                `json:"ouHandle,omitempty"`
+	ProjectID   string                `json:"projectId,omitempty"`
+	Type        string                `json:"type,omitempty"`
+	Description string                `json:"description,omitempty"`
+	LogoURL     string                `json:"logoUrl,omitempty"`
+	Owner       *providers.AgentOwner `json:"owner,omitempty"`
+	Delegated   bool                  `json:"delegated,omitempty"`
+	Attributes  json.RawMessage       `json:"attributes,omitempty"`
 	// ValidUntil is kept raw so an absent value, which leaves the lifespan unchanged, is told apart
 	// from null, which removes the expiry.
 	ValidUntil json.RawMessage `json:"validUntil,omitempty"`
@@ -74,14 +87,15 @@ type UpdateAgentRequest struct {
 // AgentCompleteResponse is returned on create and update operations. Includes clientSecret
 // in the embedded OAuth config when an OAuth profile was just provisioned.
 type AgentCompleteResponse struct {
-	ID          string          `json:"id,omitempty"`
-	OUID        string          `json:"ouId,omitempty"`
-	OUHandle    string          `json:"ouHandle,omitempty"`
-	Type        string          `json:"type,omitempty"`
-	Description string          `json:"description,omitempty"`
-	LogoURL     string          `json:"logoUrl,omitempty"`
-	Owner       string          `json:"owner,omitempty"`
-	Attributes  json.RawMessage `json:"attributes,omitempty"`
+	ID          string                `json:"id,omitempty"`
+	OUID        string                `json:"ouId,omitempty"`
+	OUHandle    string                `json:"ouHandle,omitempty"`
+	ProjectID   string                `json:"projectId,omitempty"`
+	Type        string                `json:"type,omitempty"`
+	Description string                `json:"description,omitempty"`
+	LogoURL     string                `json:"logoUrl,omitempty"`
+	Owner       *providers.AgentOwner `json:"owner,omitempty"`
+	Attributes  json.RawMessage       `json:"attributes,omitempty"`
 	// Status is the effective access status and what produced it, set on update responses.
 	Status *providers.AccessStatusReport `json:"status,omitempty"`
 	// LastLoginAt is when this agent was last granted access, set on update responses.
@@ -89,21 +103,24 @@ type AgentCompleteResponse struct {
 	ValidUntil  string    `json:"validUntil,omitempty"`
 	Lifespan    *Lifespan `json:"lifespan,omitempty"`
 
+	Kind providers.AgentKind `json:"kind,omitempty"`
+
 	inboundmodel.InboundAuthProfileReq
 	InboundAuthConfig []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty"`
 }
 
 // AgentGetResponse is returned on read operations. Excludes secrets (no clientSecret).
 type AgentGetResponse struct {
-	ID          string `json:"id,omitempty"          yaml:"id,omitempty"`
-	OUID        string `json:"ouId,omitempty"        yaml:"ouId,omitempty"`
-	OUHandle    string `json:"ouHandle,omitempty"    yaml:"-"`
-	Type        string `json:"type,omitempty"        yaml:"type,omitempty"`
-	Display     string `json:"display,omitempty"     yaml:"-"`
-	Description string `json:"description,omitempty" yaml:"description,omitempty"`
-	LogoURL     string `json:"logoUrl,omitempty"     yaml:"logoUrl,omitempty"`
-	ClientID    string `json:"clientId,omitempty"    yaml:"-"`
-	Owner       string `json:"owner,omitempty"       yaml:"owner,omitempty"`
+	ID          string                `json:"id,omitempty"          yaml:"id,omitempty"`
+	OUID        string                `json:"ouId,omitempty"        yaml:"ouId,omitempty"`
+	OUHandle    string                `json:"ouHandle,omitempty"    yaml:"-"`
+	ProjectID   string                `json:"projectId,omitempty"   yaml:"projectId,omitempty"`
+	Type        string                `json:"type,omitempty"        yaml:"type,omitempty"`
+	Display     string                `json:"display,omitempty"     yaml:"-"`
+	Description string                `json:"description,omitempty" yaml:"description,omitempty"`
+	LogoURL     string                `json:"logoUrl,omitempty"     yaml:"logoUrl,omitempty"`
+	ClientID    string                `json:"clientId,omitempty"    yaml:"-"`
+	Owner       *providers.AgentOwner `json:"owner,omitempty"       yaml:"owner,omitempty"`
 	// Attributes holds the raw JSON for API responses; json.RawMessage cannot be
 	// directly YAML-marshaled, so AttributesYAML carries the decoded map for export.
 	Attributes     json.RawMessage        `json:"attributes,omitempty" yaml:"-"`
@@ -111,6 +128,9 @@ type AgentGetResponse struct {
 	// Credentials holds the agent's credentials by credential: a placeholder for each in an export, and
 	// each value in what a write hands the value capturer. A read never returns it.
 	Credentials map[string]interface{} `json:"-" yaml:"credentials,omitempty"`
+	// SharingPolicies holds the sharing policies an export writes with the agent. A read never returns
+	// them.
+	SharingPolicies []sharing.PolicyRequest `json:"-" yaml:"sharingPolicies,omitempty"`
 	// Status is the effective access status and what produced it, derived at read time: SUSPENDED
 	// beats LOCKED beats ACTIVE. Read-only, and excluded from the YAML export as runtime state.
 	Status *providers.AccessStatusReport `json:"status,omitempty" yaml:"-"`
@@ -119,6 +139,11 @@ type AgentGetResponse struct {
 	LastLoginAt string    `json:"lastLoginAt,omitempty" yaml:"-"`
 	ValidUntil  string    `json:"validUntil,omitempty" yaml:"validUntil,omitempty"`
 	Lifespan    *Lifespan `json:"lifespan,omitempty"   yaml:"-"`
+	IsReadOnly  bool      `json:"isReadOnly"           yaml:"-"`
+	// IsOwnedByOU says whether the organization unit the agent is read in owns it rather than being shared it.
+	IsOwnedByOU *bool `json:"isOwnedByOU,omitempty" yaml:"-"`
+
+	Kind providers.AgentKind `json:"kind,omitempty" yaml:"kind,omitempty"`
 
 	inboundmodel.InboundAuthProfileReq `yaml:",inline"`
 	InboundAuthConfig                  []providers.InboundAuthConfigWithSecret `json:"inboundAuthConfig,omitempty" yaml:"inboundAuthConfig,omitempty"`
@@ -126,19 +151,20 @@ type AgentGetResponse struct {
 
 // BasicAgentResponse is the summary view used in list responses.
 type BasicAgentResponse struct {
-	ID          string          `json:"id,omitempty"`
-	OUID        string          `json:"ouId,omitempty"`
-	OUHandle    string          `json:"ouHandle,omitempty"`
-	Type        string          `json:"type,omitempty"`
-	Display     string          `json:"display,omitempty"`
-	Description string          `json:"description,omitempty"`
-	LogoURL     string          `json:"logoUrl,omitempty"`
-	ClientID    string          `json:"clientId,omitempty"`
-	Owner       string          `json:"owner,omitempty"`
-	Attributes  json.RawMessage `json:"attributes,omitempty"`
-	ValidUntil  string          `json:"validUntil,omitempty"`
-	Lifespan    *Lifespan       `json:"lifespan,omitempty"`
-	IsReadOnly  bool            `json:"isReadOnly"`
+	ID          string                `json:"id,omitempty"`
+	OUID        string                `json:"ouId,omitempty"`
+	OUHandle    string                `json:"ouHandle,omitempty"`
+	ProjectID   string                `json:"projectId,omitempty"`
+	Type        string                `json:"type,omitempty"`
+	Display     string                `json:"display,omitempty"`
+	Description string                `json:"description,omitempty"`
+	LogoURL     string                `json:"logoUrl,omitempty"`
+	ClientID    string                `json:"clientId,omitempty"`
+	Owner       *providers.AgentOwner `json:"owner,omitempty"`
+	Attributes  json.RawMessage       `json:"attributes,omitempty"`
+	ValidUntil  string                `json:"validUntil,omitempty"`
+	Lifespan    *Lifespan             `json:"lifespan,omitempty"`
+	IsReadOnly  bool                  `json:"isReadOnly"`
 	// Status is the effective access status and what produced it, derived at read time.
 	Status *providers.AccessStatusReport `json:"status,omitempty"`
 	// LastLoginAt is when this agent was last granted access. Absent until a sign-in has been
@@ -146,6 +172,8 @@ type BasicAgentResponse struct {
 	LastLoginAt string `json:"lastLoginAt,omitempty"`
 	// IsOwnedByOU says whether the listed organization unit owns the agent rather than being shared it.
 	IsOwnedByOU *bool `json:"isOwnedByOU,omitempty"`
+
+	Kind providers.AgentKind `json:"kind,omitempty"`
 }
 
 // Lifespan reports where an agent stands in its lifespan, derived on every read.
@@ -164,6 +192,42 @@ const (
 	// LifespanPhaseExpired is a lifespan whose end has passed.
 	LifespanPhaseExpired LifespanPhase = "EXPIRED"
 )
+
+// UpdateAgentCredentialsRequest is the body of an administrator's credential update.
+type UpdateAgentCredentialsRequest struct {
+	Credentials json.RawMessage `json:"credentials,omitempty"`
+}
+
+// UpdateOwnedAgentCredentialsRequest is the body of an owner's credential update.
+type UpdateOwnedAgentCredentialsRequest struct {
+	Attributes json.RawMessage `json:"attributes,omitempty"`
+}
+
+// ClientSecretResponse carries a newly generated client secret. It is returned once, when the secret is
+// generated, and no read returns it again.
+type ClientSecretResponse struct {
+	ClientSecret string `json:"clientSecret"`
+	// RevocationIncomplete is set when the secret is stored but revoking the tokens issued while it was
+	// being written failed. Regenerating again revokes them.
+	RevocationIncomplete bool `json:"revocationIncomplete,omitempty"`
+	// Revoked reports that the tokens the old secret issued were revoked. It is false where tokens are
+	// not revoked, as on a control plane, which issues none.
+	Revoked bool `json:"-"`
+}
+
+// SuspendOwnedAgentsResponse reports how many of the owner's agents a suspend-all suspended.
+type SuspendOwnedAgentsResponse struct {
+	SuspendedCount int `json:"suspendedCount"`
+}
+
+// UpdateOwnedAgentRequest is the body of an owner's update of their agent: the whole part the owner may change.
+// Attributes, grant types and redirect URIs are required; a description left out is cleared.
+type UpdateOwnedAgentRequest struct {
+	Description  string                `json:"description,omitempty"`
+	Attributes   json.RawMessage       `json:"attributes,omitempty"`
+	GrantTypes   []providers.GrantType `json:"grantTypes,omitempty"`
+	RedirectURIs []string              `json:"redirectUris,omitempty"`
+}
 
 // AgentListResponse is the paginated list response.
 type AgentListResponse struct {

@@ -85,6 +85,8 @@ inboundAuthConfig:
               - ouHandle
 ```
 
+A token that calls the Data Plane's management APIs with `org` or one of its child permissions, such as `org:user:view`, must carry `ouId`. Those permissions act only in the organization unit the token names, so the Data Plane refuses a token without `ouId` with `403 Forbidden`. A token that holds `system` reaches every organization unit and needs no `ouId`. The Control Plane bounds no permission to an organization unit, so its tokens need no `ouId` either.
+
 ## Request a Token for an Organization Unit
 
 Name the organization unit by its id in the token endpoint's path. The path does not resolve handles:
@@ -115,11 +117,12 @@ The organization claims resolve to the organization unit named in the path:
 |---|---|
 | `401 invalid_client` | The client credentials are wrong. Credentials are checked before anything about the organization unit, so this answer says nothing about which organization units exist. |
 | `400 unauthorized_client` | The organization unit does not exist, or no policy lets this application act for it. The two answer identically, so a caller cannot use the endpoint to discover which organization units exist. |
-| `400 invalid_request` | A grant other than `client_credentials` was sent to the `/ou/{ouId}` path. Only `client_credentials` acts for an organization unit. |
+| `400 invalid_request` | A grant other than `client_credentials` was sent to the `/ou/{ouId}` path. Only `client_credentials` acts for an organization unit, apart from the device secret exchange in [Sign-In With a Device Secret](sign-in-to-organization-units.mdx#sign-in-with-a-device-secret). |
 
 ## Related Guides
 
 - [Manage Organization Units](manage-organization-units.mdx)
+- [Sign Users In to Organization Units](sign-in-to-organization-units.mdx)
 - [Client Credentials](../protocols/oauth-oidc/client-credentials.mdx)
 - [Resource Sharing Across Organization Units](../../key-concepts/resource-sharing.mdx)
 - [Import Resources](../declarative-configurations/import-resources.mdx)

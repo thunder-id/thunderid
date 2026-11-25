@@ -25,10 +25,14 @@ type groupStoreInterface interface {
 	GetGroupList(ctx context.Context, limit, offset int) ([]GroupBasicDAO, error)
 	GetGroupListCountByOUIDs(ctx context.Context, ouIDs []string) (int, error)
 	GetGroupListByOUIDs(ctx context.Context, ouIDs []string, limit, offset int) ([]GroupBasicDAO, error)
+	GetGroupListCountByProject(ctx context.Context, projectID string, ouIDs []string) (int, error)
+	GetGroupListByProject(ctx context.Context, projectID string, ouIDs []string, limit, offset int) (
+		[]GroupBasicDAO, error)
 	CreateGroup(ctx context.Context, group GroupDAO) error
 	GetGroup(ctx context.Context, id string) (GroupDAO, error)
 	GetGroupMembers(ctx context.Context, groupID string, limit, offset int) ([]Member, error)
 	GetGroupMemberCount(ctx context.Context, groupID string) (int, error)
+	GetGroupMember(ctx context.Context, groupID, memberID string) (*Member, error)
 	UpdateGroup(ctx context.Context, group GroupDAO) error
 	DeleteGroup(ctx context.Context, id string) error
 	ValidateGroupIDs(ctx context.Context, groupIDs []string) ([]string, error)
@@ -40,9 +44,11 @@ type groupStoreInterface interface {
 	AddGroupMembers(ctx context.Context, groupID string, members []Member) error
 	RemoveGroupMembers(ctx context.Context, groupID string, members []Member) error
 	DeleteMembershipsByMember(ctx context.Context, memberType, memberID string) (int64, error)
+	GetMemberGroupIDs(ctx context.Context, memberType, memberID string) ([]string, error)
 	GetGroupsByIDs(ctx context.Context, groupIDs []string) ([]GroupBasicDAO, error)
 	GetGroupsByNames(ctx context.Context, names []string) ([]GroupBasicDAO, error)
 	IsGroupDeclarative(ctx context.Context, id string) (bool, error)
+	IsGroupMemberDeclarative(ctx context.Context, groupID, memberID string) (bool, error)
 	GetTransitiveGroupsForEntity(ctx context.Context, entityID string) ([]providers.EntityGroup, error)
 	GetTransitiveAncestorGroups(ctx context.Context, groupID string) ([]string, error)
 	GetDirectGroupParents(ctx context.Context, groupIDs []string) ([]string, error)
@@ -154,6 +160,7 @@ func (s *groupStore) GetGroupList(ctx context.Context, limit, offset int) ([]Gro
 			Name:        group.Name,
 			Description: group.Description,
 			OUID:        group.OUID,
+			ProjectID:   group.ProjectID,
 		}
 
 		groups = append(groups, groupBasic)
@@ -222,11 +229,69 @@ func (s *groupStore) GetGroupListByOUIDs(
 			Name:        group.Name,
 			Description: group.Description,
 			OUID:        group.OUID,
+			ProjectID:   group.ProjectID,
 		}
 
 		groups = append(groups, groupBasic)
 	}
 
+	return groups, nil
+}
+
+// GetGroupListCountByProject retrieves the total count of the groups of a project, narrowed to the ones the
+// given organization units own when ouIDs is not empty.
+func (s *groupStore) GetGroupListCountByProject(ctx context.Context, projectID string, ouIDs []string) (int, error) {
+	dbClient, err := s.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get database client for counter query: %w", err)
+	}
+
+	query, args := buildGetGroupsCountByProjectQuery(projectID, ouIDs, s.scope(ctx))
+	countResults, err := dbClient.QueryContext(ctx, query, args...)
+	if err != nil {
+		return 0, err
+	}
+
+	var count int
+	if len(countResults) > 0 {
+		if countVal, ok := countResults[0]["total"].(int64); ok {
+			count = int(countVal)
+		} else if countVal, ok := countResults[0]["total"].(float64); ok { // sqlite count result type
+			count = int(countVal)
+		}
+	}
+	return count, nil
+}
+
+// GetGroupListByProject retrieves the groups of a project with pagination, narrowed to the ones the given
+// organization units own when ouIDs is not empty.
+func (s *groupStore) GetGroupListByProject(
+	ctx context.Context, projectID string, ouIDs []string, limit, offset int) ([]GroupBasicDAO, error) {
+	dbClient, err := s.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client for query: %w", err)
+	}
+
+	query, args := buildGetGroupsByProjectQuery(projectID, ouIDs, limit, offset, s.scope(ctx))
+	results, err := dbClient.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	groups := make([]GroupBasicDAO, 0, len(results))
+	for _, row := range results {
+		group, err := buildGroupFromResultRow(row)
+		if err != nil {
+			return nil, fmt.Errorf("failed to build group from result row: %w", err)
+		}
+		groups = append(groups, GroupBasicDAO{
+			ID:          group.ID,
+			Name:        group.Name,
+			Description: group.Description,
+			OUID:        group.OUID,
+			ProjectID:   group.ProjectID,
+		})
+	}
 	return groups, nil
 }
 
@@ -243,6 +308,7 @@ func (s *groupStore) CreateGroup(ctx context.Context, group GroupDAO) error {
 		QueryCreateGroup,
 		group.ID,
 		group.OUID,
+		nullableString(group.ProjectID),
 		group.Name,
 		group.Description,
 		s.scope(ctx),
@@ -340,6 +406,28 @@ func (s *groupStore) GetGroupMemberCount(ctx context.Context, groupID string) (i
 	return 0, nil
 }
 
+// GetGroupMember retrieves the group's direct member with the given ID, or nil when there is none.
+func (s *groupStore) GetGroupMember(ctx context.Context, groupID, memberID string) (*Member, error) {
+	dbClient, err := s.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	results, err := dbClient.QueryContext(ctx, QueryGetGroupMember, groupID, memberID, s.scope(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get group member: %w", err)
+	}
+
+	for _, row := range results {
+		id, idOK := row["member_id"].(string)
+		memberType, typeOK := row["member_type"].(string)
+		if idOK && typeOK {
+			return &Member{ID: id, Type: MemberType(memberType)}, nil
+		}
+	}
+	return nil, nil
+}
+
 // UpdateGroup updates an existing group.
 func (s *groupStore) UpdateGroup(ctx context.Context, group GroupDAO) error {
 	dbClient, err := s.dbProvider.GetEntityDBClient()
@@ -352,6 +440,7 @@ func (s *groupStore) UpdateGroup(ctx context.Context, group GroupDAO) error {
 		QueryUpdateGroup,
 		group.ID,
 		group.OUID,
+		nullableString(group.ProjectID),
 		group.Name,
 		group.Description,
 		time.Now().UTC(),
@@ -505,6 +594,7 @@ func (s *groupStore) GetGroupsByOrganizationUnit(
 		groups = append(groups, GroupBasicDAO{
 			ID:          group.ID,
 			OUID:        group.OUID,
+			ProjectID:   group.ProjectID,
 			Name:        group.Name,
 			Description: group.Description,
 		})
@@ -558,6 +648,29 @@ func (s *groupStore) DeleteMembershipsByMember(
 		return 0, fmt.Errorf("failed to delete memberships for member: %w", err)
 	}
 	return rowsAffected, nil
+}
+
+// GetMemberGroupIDs returns the IDs of the groups a member directly belongs to.
+func (s *groupStore) GetMemberGroupIDs(ctx context.Context, memberType, memberID string) ([]string, error) {
+	dbClient, err := s.dbProvider.GetEntityDBClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database client: %w", err)
+	}
+
+	results, err := dbClient.QueryContext(ctx, QueryGetMemberGroupIDs, memberType, memberID, s.scope(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get member groups: %w", err)
+	}
+
+	groupIDs := make([]string, 0, len(results))
+	for _, row := range results {
+		groupID, ok := row["group_id"].(string)
+		if !ok {
+			return nil, fmt.Errorf("failed to parse group_id as string")
+		}
+		groupIDs = append(groupIDs, groupID)
+	}
+	return groupIDs, nil
 }
 
 // GetGroupsByIDs retrieves groups by a list of IDs.
@@ -616,6 +729,7 @@ func (s *groupStore) getGroupsInBatches(
 				Name:        group.Name,
 				Description: group.Description,
 				OUID:        group.OUID,
+				ProjectID:   group.ProjectID,
 			})
 		}
 	}
@@ -625,6 +739,11 @@ func (s *groupStore) getGroupsInBatches(
 
 // IsGroupDeclarative returns false for the database store — database groups are never declarative.
 func (s *groupStore) IsGroupDeclarative(ctx context.Context, id string) (bool, error) {
+	return false, nil
+}
+
+// IsGroupMemberDeclarative returns false for the database store: its memberships are never declared.
+func (s *groupStore) IsGroupMemberDeclarative(ctx context.Context, groupID, memberID string) (bool, error) {
 	return false, nil
 }
 
@@ -718,14 +837,26 @@ func buildGroupFromResultRow(row map[string]interface{}) (GroupDAO, error) {
 		return GroupDAO{}, fmt.Errorf("failed to parse ou_id as string")
 	}
 
+	// A group in no project has no project ID.
+	projectID, _ := row["project_id"].(string)
+
 	group := GroupDAO{
 		ID:          groupID,
 		Name:        name,
 		Description: description,
 		OUID:        ouID,
+		ProjectID:   projectID,
 	}
 
 	return group, nil
+}
+
+// nullableString stores an empty value as NULL.
+func nullableString(value string) interface{} {
+	if value == "" {
+		return nil
+	}
+	return value
 }
 
 // addMembersToGroup adds a list of members to a group.

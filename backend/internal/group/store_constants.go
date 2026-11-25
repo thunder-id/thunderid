@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package group
@@ -20,12 +20,13 @@ var (
 	// QueryGetGroupList is the query to get groups with pagination.
 	QueryGetGroupList = dbmodel.DBQuery{
 		ID: "GRQ-GROUP_MGT-02",
-		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION FROM "GROUP" ` +
+		Query: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION FROM "GROUP" ` +
 			`WHERE DEPLOYMENT_ID = $3 ORDER BY NAME LIMIT $1 OFFSET $2`,
 	}
 
 	// QueryGetTransitiveGroupsForMember retrieves all groups a member belongs to, including groups
-	// inherited through nested group membership, using a recursive CTE.
+	// inherited through nested group membership, using a recursive CTE. Both joins use CROSS JOIN so
+	// SQLite keeps transitive_groups as the outer loop and seeks the member index and the group key.
 	QueryGetTransitiveGroupsForMember = dbmodel.DBQuery{
 		ID: "GRQ-GROUP_MGT-20",
 		Query: `WITH RECURSIVE transitive_groups AS (
@@ -34,13 +35,14 @@ var (
 			WHERE GMR.MEMBER_ID = $1 AND GMR.DEPLOYMENT_ID = $2 AND GMR.MEMBER_TYPE <> 'group'
 			UNION
 			SELECT GMR.GROUP_ID
-			FROM "GROUP_MEMBER_REFERENCE" GMR
-			INNER JOIN transitive_groups tg ON GMR.MEMBER_ID = tg.GROUP_ID
-			WHERE GMR.MEMBER_TYPE = 'group' AND GMR.DEPLOYMENT_ID = $2
+			FROM transitive_groups tg
+			CROSS JOIN "GROUP_MEMBER_REFERENCE" GMR
+			WHERE GMR.MEMBER_ID = tg.GROUP_ID AND GMR.MEMBER_TYPE = 'group' AND GMR.DEPLOYMENT_ID = $2
 		)
 		SELECT G.ID, G.OU_ID, G.NAME
 		FROM transitive_groups tg
-		INNER JOIN "GROUP" G ON tg.GROUP_ID = G.ID AND G.DEPLOYMENT_ID = $2
+		CROSS JOIN "GROUP" G
+		WHERE G.ID = tg.GROUP_ID AND G.DEPLOYMENT_ID = $2
 		ORDER BY G.NAME`,
 	}
 )
@@ -144,9 +146,9 @@ func buildGetGroupsByOUIDsQuery(
 	if len(ouIDs) == 0 {
 		return dbmodel.DBQuery{
 			ID:            "GRQ-GROUP_MGT-23",
-			Query:         `SELECT ID, OU_ID, NAME, DESCRIPTION FROM "GROUP" WHERE 1=0`,
-			PostgresQuery: `SELECT ID, OU_ID, NAME, DESCRIPTION FROM "GROUP" WHERE 1=0`,
-			SQLiteQuery:   `SELECT ID, OU_ID, NAME, DESCRIPTION FROM "GROUP" WHERE 1=0`,
+			Query:         `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION FROM "GROUP" WHERE 1=0`,
+			PostgresQuery: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION FROM "GROUP" WHERE 1=0`,
+			SQLiteQuery:   `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION FROM "GROUP" WHERE 1=0`,
 		}, []interface{}{}
 	}
 
@@ -161,11 +163,11 @@ func buildGetGroupsByOUIDsQuery(
 	offsetIdx := len(ouIDs) + 3
 
 	postgresQuery := fmt.Sprintf(
-		`SELECT ID, OU_ID, NAME, DESCRIPTION FROM "GROUP" `+
+		`SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION FROM "GROUP" `+
 			`WHERE OU_ID IN (%s) AND DEPLOYMENT_ID = $%d ORDER BY NAME LIMIT $%d OFFSET $%d`,
 		strings.Join(postgresPlaceholders, ","), deploymentIDIdx, limitIdx, offsetIdx)
 	sqliteQuery := fmt.Sprintf(
-		`SELECT ID, OU_ID, NAME, DESCRIPTION FROM "GROUP" `+
+		`SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION FROM "GROUP" `+
 			`WHERE OU_ID IN (%s) AND DEPLOYMENT_ID = ? ORDER BY NAME LIMIT ? OFFSET ?`,
 		strings.Join(sqlitePlaceholders, ","))
 
@@ -188,14 +190,14 @@ var (
 	QueryCreateGroup = dbmodel.DBQuery{
 		ID: "GRQ-GROUP_MGT-05",
 		Query: `INSERT INTO "GROUP" ` +
-			`(ID, OU_ID, NAME, DESCRIPTION, DEPLOYMENT_ID, CREATED_AT, UPDATED_AT) ` +
-			`VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+			`(ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION, DEPLOYMENT_ID, CREATED_AT, UPDATED_AT) ` +
+			`VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
 	}
 
 	// QueryGetGroupByID is the query to get a group by id.
 	QueryGetGroupByID = dbmodel.DBQuery{
 		ID:    "GRQ-GROUP_MGT-06",
-		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION FROM "GROUP" WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
+		Query: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION FROM "GROUP" WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
 
 	// QueryGetGroupMembers is the query to get members assigned to a group.
@@ -214,8 +216,8 @@ var (
 	// QueryUpdateGroup is the query to update a group.
 	QueryUpdateGroup = dbmodel.DBQuery{
 		ID: "GRQ-GROUP_MGT-09",
-		Query: `UPDATE "GROUP" SET OU_ID = $2, NAME = $3, DESCRIPTION = $4, UPDATED_AT = $5 ` +
-			`WHERE ID = $1 AND DEPLOYMENT_ID = $6`,
+		Query: `UPDATE "GROUP" SET OU_ID = $2, PROJECT_ID = $3, NAME = $4, DESCRIPTION = $5, UPDATED_AT = $6 ` +
+			`WHERE ID = $1 AND DEPLOYMENT_ID = $7`,
 	}
 
 	// QueryDeleteGroup is the query to delete a group.
@@ -269,7 +271,7 @@ var (
 	// QueryGetGroupsByOrganizationUnit is the query to get groups by organization unit with pagination.
 	QueryGetGroupsByOrganizationUnit = dbmodel.DBQuery{
 		ID: "GRQ-GROUP_MGT-16",
-		Query: `SELECT ID, OU_ID, NAME, DESCRIPTION FROM "GROUP" ` +
+		Query: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION FROM "GROUP" ` +
 			`WHERE OU_ID = $1 AND DEPLOYMENT_ID = $4 ORDER BY NAME LIMIT $2 OFFSET $3`,
 	}
 
@@ -278,6 +280,20 @@ var (
 		ID: "GRQ-GROUP_MGT-17",
 		Query: `DELETE FROM "GROUP_MEMBER_REFERENCE" ` +
 			`WHERE GROUP_ID = $1 AND MEMBER_TYPE = $2 AND MEMBER_ID = $3 AND DEPLOYMENT_ID = $4`,
+	}
+
+	// QueryGetGroupMember is the query to get one direct member of a group by the member's ID.
+	QueryGetGroupMember = dbmodel.DBQuery{
+		ID: "GRQ-GROUP_MGT-26",
+		Query: `SELECT MEMBER_ID, MEMBER_TYPE FROM "GROUP_MEMBER_REFERENCE" ` +
+			`WHERE GROUP_ID = $1 AND MEMBER_ID = $2 AND DEPLOYMENT_ID = $3 ORDER BY MEMBER_TYPE LIMIT 1`,
+	}
+
+	// QueryGetMemberGroupIDs is the query to get the IDs of the groups a member directly belongs to.
+	QueryGetMemberGroupIDs = dbmodel.DBQuery{
+		ID: "GRQ-GROUP_MGT-29",
+		Query: `SELECT GROUP_ID FROM "GROUP_MEMBER_REFERENCE" ` +
+			`WHERE MEMBER_TYPE = $1 AND MEMBER_ID = $2 AND DEPLOYMENT_ID = $3`,
 	}
 )
 
@@ -328,7 +344,7 @@ func buildBulkGroupExistsQuery(groupIDs []string, deploymentID string) (dbmodel.
 func buildGetGroupsByIDsQuery(groupIDs []string, deploymentID string) (dbmodel.DBQuery, []interface{}, error) {
 	return buildGroupINClauseQuery(
 		"GRQ-GROUP_MGT-19",
-		`SELECT ID, OU_ID, NAME, DESCRIPTION FROM "GROUP" WHERE ID IN (%s) AND DEPLOYMENT_ID = %s`,
+		`SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION FROM "GROUP" WHERE ID IN (%s) AND DEPLOYMENT_ID = %s`,
 		groupIDs, deploymentID,
 	)
 }
@@ -338,7 +354,60 @@ func buildGetGroupsByIDsQuery(groupIDs []string, deploymentID string) (dbmodel.D
 func buildGetGroupsByNamesQuery(names []string, deploymentID string) (dbmodel.DBQuery, []interface{}, error) {
 	return buildGroupINClauseQuery(
 		"GRQ-GROUP_MGT-25",
-		`SELECT ID, OU_ID, NAME, DESCRIPTION FROM "GROUP" WHERE NAME IN (%s) AND DEPLOYMENT_ID = %s`,
+		`SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION FROM "GROUP" WHERE NAME IN (%s) AND DEPLOYMENT_ID = %s`,
 		names, deploymentID,
 	)
+}
+
+// buildGetGroupsCountByProjectQuery constructs a query that counts the groups of a project, narrowed to the
+// ones the given organization units own when ouIDs is not empty.
+func buildGetGroupsCountByProjectQuery(
+	projectID string, ouIDs []string, deploymentID string,
+) (dbmodel.DBQuery, []interface{}) {
+	return buildGroupProjectQuery("GRQ-GROUP_MGT-27", `SELECT COUNT(*) as total FROM "GROUP"`, "",
+		projectID, ouIDs, deploymentID)
+}
+
+// buildGetGroupsByProjectQuery constructs a query that retrieves the groups of a project with pagination,
+// narrowed to the ones the given organization units own when ouIDs is not empty.
+func buildGetGroupsByProjectQuery(
+	projectID string, ouIDs []string, limit, offset int, deploymentID string,
+) (dbmodel.DBQuery, []interface{}) {
+	query, args := buildGroupProjectQuery("GRQ-GROUP_MGT-28",
+		`SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION FROM "GROUP"`, " ORDER BY NAME",
+		projectID, ouIDs, deploymentID)
+	next := len(args) + 1
+	query.PostgresQuery += fmt.Sprintf(" LIMIT $%d OFFSET $%d", next, next+1)
+	query.Query = query.PostgresQuery
+	query.SQLiteQuery += " LIMIT ? OFFSET ?"
+	return query, append(args, limit, offset)
+}
+
+// buildGroupProjectQuery filters the base query to the groups of a project in the deployment, and to the
+// given organization units when ouIDs is not empty, followed by the suffix.
+func buildGroupProjectQuery(queryID, baseQuery, suffix, projectID string, ouIDs []string,
+	deploymentID string) (dbmodel.DBQuery, []interface{}) {
+	postgresQuery := baseQuery + ` WHERE PROJECT_ID = $1`
+	sqliteQuery := baseQuery + ` WHERE PROJECT_ID = ?`
+	args := []interface{}{projectID}
+	if len(ouIDs) > 0 {
+		postgresPlaceholders := make([]string, len(ouIDs))
+		sqlitePlaceholders := make([]string, len(ouIDs))
+		for i, id := range ouIDs {
+			postgresPlaceholders[i] = fmt.Sprintf("$%d", i+2)
+			sqlitePlaceholders[i] = "?"
+			args = append(args, id)
+		}
+		postgresQuery += fmt.Sprintf(` AND OU_ID IN (%s)`, strings.Join(postgresPlaceholders, ","))
+		sqliteQuery += fmt.Sprintf(` AND OU_ID IN (%s)`, strings.Join(sqlitePlaceholders, ","))
+	}
+	args = append(args, deploymentID)
+	postgresQuery += fmt.Sprintf(` AND DEPLOYMENT_ID = $%d`, len(args)) + suffix
+	sqliteQuery += ` AND DEPLOYMENT_ID = ?` + suffix
+	return dbmodel.DBQuery{
+		ID:            queryID,
+		Query:         postgresQuery,
+		PostgresQuery: postgresQuery,
+		SQLiteQuery:   sqliteQuery,
+	}, args
 }

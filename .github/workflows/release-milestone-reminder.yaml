@@ -6,6 +6,10 @@ on:
     - cron: '30 0 * * 4'
   workflow_dispatch: # Allows you to trigger it manually for testing
 
+permissions:
+  contents: read
+  issues: read
+
 env:
   PRODUCT_NAME: "ThunderID"
 

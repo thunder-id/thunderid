@@ -1,0 +1,6 @@
+resource_type: organization_unit
+id: decl-paging-file-2
+handle: decl-paging-file-2
+name: Paging file child 2
+description: Declarative child listed after the runtime children of decl-paging-parent
+parent: decl-paging-parent

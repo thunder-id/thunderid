@@ -66,15 +66,16 @@ func (ts *ControlPlaneTestSuite) importToDataPlane(content string) importOutcome
 func (ts *ControlPlaneTestSuite) TestADataPlaneImportsTheExportWithItsOwnValues() {
 	ouHandle := unique("dp-ou")
 	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
-		Handle: ouHandle,
-		Name:   "Data Plane suite",
+		Handle:    ouHandle,
+		Name:      "Data Plane suite",
+		ProjectID: defaultProjectID,
 	})
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteOrganizationUnit(ouID) }()
 
 	name := unique("DP Import App")
 	appID, err := testutils.CreateApplication(testutils.Application{
-		OUID:         ouID,
+		ProjectID:    defaultProjectID,
 		Name:         name,
 		ClientID:     unique("cp-only-client"),
 		ClientSecret: unique("cp-only-secret"),
@@ -92,10 +93,11 @@ func (ts *ControlPlaneTestSuite) TestADataPlaneImportsTheExportWithItsOwnValues(
 	}, &exported)
 	ts.Require().Equal(http.StatusOK, status, string(raw))
 
-	variable := strings.ToUpper(strings.NewReplacer(" ", "_", "-", "_").Replace(name))
-	clientIDName := "APPLICATION_" + variable + "_CLIENT_ID"
-	clientSecretName := "APPLICATION_" + variable + "_CLIENT_SECRET"
-	redirectURIsName := "APPLICATION_" + variable + "_REDIRECT_URIS"
+	clientIDName := variableName("APPLICATION", appID, "CLIENT_ID")
+	clientSecretName := variableName("APPLICATION", appID, "CLIENT_SECRET")
+	redirectURIsName := variableName("APPLICATION", appID, "REDIRECT_URIS")
+	// The test application is flow native, so it holds a Flow Secret its export refers to as well.
+	flowSecretName := variableName("APPLICATION", appID, "FLOW_SECRET")
 
 	outcome := ts.importToDataPlane(exported.Resources)
 	ts.Equal(1, outcome.Summary.Failed, "an application was imported with no values for its references")
@@ -117,6 +119,9 @@ func (ts *ControlPlaneTestSuite) TestADataPlaneImportsTheExportWithItsOwnValues(
 	status, raw = ts.toDataPlane(http.MethodPut, "/variables/"+redirectURIsName,
 		map[string]any{"value": `["https://dp.example.com/callback"]`})
 	ts.Require().Less(status, http.StatusBadRequest, string(raw))
+	status, raw = ts.toDataPlane(http.MethodPut, "/secrets/"+flowSecretName,
+		map[string]any{"value": unique("dp-flow-secret")})
+	ts.Require().Less(status, http.StatusBadRequest, string(raw))
 
 	outcome = ts.importToDataPlane(exported.Resources)
 	ts.Require().Equal(0, outcome.Summary.Failed, "%+v", outcome.Results)
@@ -136,6 +141,87 @@ func (ts *ControlPlaneTestSuite) TestADataPlaneImportsTheExportWithItsOwnValues(
 	ts.Equal(http.StatusOK, resp.StatusCode, fmt.Sprintf("the client the data plane holds was refused: %s", tokenBody))
 }
 
+// flowStart is what a flow initiation answers with, when it starts the flow or refuses to.
+type flowStart struct {
+	FlowStatus string `json:"flowStatus"`
+	Code       string `json:"code"`
+}
+
+// startFlowOnDataPlane initiates an authentication flow for the application on the Data Plane,
+// presenting the Flow Secret as a backend application does.
+func (ts *ControlPlaneTestSuite) startFlowOnDataPlane(appID, flowSecret string) flowStart {
+	ts.T().Helper()
+	body, err := json.Marshal(map[string]any{"applicationId": appID, "flowType": "AUTHENTICATION"})
+	ts.Require().NoError(err)
+	req, err := http.NewRequest(http.MethodPost, testutils.DataPlaneURL+"/flow/execute", bytes.NewReader(body))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set(testutils.FlowSecretHeaderName, flowSecret)
+	resp, err := testutils.GetNoRedirectHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer func() { _ = resp.Body.Close() }()
+	raw, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	var started flowStart
+	ts.Require().NoError(json.Unmarshal(raw, &started), string(raw))
+	return started
+}
+
+// An application's Flow Secret reaches the Data Plane the way its client secret does: the export
+// refers to it, the Data Plane refuses the application until it holds the value, and once it holds the
+// Control Plane's value, the Flow Secret the Control Plane issued starts a flow there, rather than one
+// the Data Plane generated on import.
+func (ts *ControlPlaneTestSuite) TestADataPlaneAcceptsTheFlowSecretTheControlPlaneIssued() {
+	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle:    unique("dp-flow-secret-ou"),
+		Name:      "Data Plane Flow Secret suite",
+		ProjectID: defaultProjectID,
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(ouID) }()
+
+	appID, err := testutils.CreateApplication(testutils.Application{
+		OUID: ouID, ProjectID: defaultProjectID, Name: unique("DP Flow Secret App"), Type: "custom", Embedded: true,
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteApplication(appID) }()
+	flowSecret := testutils.GetFlowSecret(appID)
+	ts.Require().NotEmpty(flowSecret, "the application was not issued a Flow Secret")
+
+	var exported struct {
+		Resources string `json:"resources"`
+	}
+	status, raw := ts.call(http.MethodPost, "/export", map[string]any{
+		"organizationUnits": []string{ouID},
+		"applications":      []string{appID},
+	}, &exported)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	flowSecretName := variableName("APPLICATION", appID, "FLOW_SECRET")
+	ts.Contains(exported.Resources, "flowSecret: sec:"+flowSecretName)
+	ts.NotContains(exported.Resources, flowSecret, "the export carries the Flow Secret in the clear")
+
+	outcome := ts.importToDataPlane(exported.Resources)
+	ts.Equal(1, outcome.Summary.Failed, "an application was imported with no value for its Flow Secret")
+	refused := false
+	for _, result := range outcome.Results {
+		if result.ResourceType == "application" && result.Status == "failed" {
+			refused = true
+			ts.Equal("IMP-1006", result.Code, result.Message)
+		}
+	}
+	ts.True(refused, "the application was not the resource refused: %+v", outcome.Results)
+
+	status, raw = ts.toDataPlane(http.MethodPut, "/secrets/"+flowSecretName, map[string]any{"value": flowSecret})
+	ts.Require().Less(status, http.StatusBadRequest, string(raw))
+	outcome = ts.importToDataPlane(exported.Resources)
+	ts.Require().Equal(0, outcome.Summary.Failed, "%+v", outcome.Results)
+
+	started := ts.startFlowOnDataPlane(appID, flowSecret)
+	ts.Equal("INCOMPLETE", started.FlowStatus, "the Flow Secret the Control Plane issued was refused: %+v", started)
+	ts.Equal("FES-1012", ts.startFlowOnDataPlane(appID, unique("wrong-flow-secret")).Code,
+		"a Flow Secret the Data Plane does not hold started a flow")
+}
+
 // A resource server the Control Plane exports is held by the Data Plane under the identifier the
 // Data Plane holds a value for, not the Control Plane's.
 //
@@ -144,8 +230,9 @@ func (ts *ControlPlaneTestSuite) TestADataPlaneImportsTheExportWithItsOwnValues(
 // identifier another already has.
 func (ts *ControlPlaneTestSuite) TestADataPlaneHoldsAResourceServerUnderItsOwnIdentifier() {
 	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
-		Handle: unique("dp-rs-ou"),
-		Name:   "Data Plane resource server suite",
+		Handle:    unique("dp-rs-ou"),
+		Name:      "Data Plane resource server suite",
+		ProjectID: defaultProjectID,
 	})
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteOrganizationUnit(ouID) }()
@@ -182,7 +269,7 @@ func (ts *ControlPlaneTestSuite) TestADataPlaneHoldsAResourceServerUnderItsOwnId
 	ts.Equal(1, outcome.Summary.Failed, "a resource server was imported with no value for its identifier")
 
 	identifier := "https://" + unique("dp-orders") + ".example.com"
-	variable := variableName("RESOURCE_SERVER", name, "IDENTIFIER")
+	variable := variableName("RESOURCE_SERVER", created.ID, "IDENTIFIER")
 	status, raw = ts.toDataPlane(http.MethodPut, "/variables/"+variable, map[string]any{"value": identifier})
 	ts.Require().Less(status, http.StatusBadRequest, string(raw))
 

@@ -7,7 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"slices"
+	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -31,6 +32,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	sharedrevocation "github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
 	"github.com/thunder-id/thunderid/tests/mocks/authzdetailprovidermock"
@@ -1335,6 +1337,60 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_FetchUserGr
 	suite.mockTokenBuilder.AssertExpectations(suite.T())
 }
 
+// The organization unit scoped endpoint redeems a code only when its sign-in recorded that unit as ouId; the
+// bare endpoint redeems any code.
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_OUScopedEndpointRedeemsOnlyACodeForThatOU() {
+	cases := []struct {
+		name        string
+		accessingOU string
+		codeOU      string
+		issued      bool
+	}{
+		{"code issued for the unit", "ou-a", "ou-a", true},
+		{"code issued for another unit", "ou-a", "ou-b", false},
+		{"code recording no unit", "ou-a", "", false},
+		{"bare endpoint", "", "ou-b", true},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			code := suite.testAuthzCode
+			code.AttributeCacheID = testCacheID
+			attrs := map[string]interface{}{"username": "testuser"}
+			if tc.codeOU != "" {
+				attrs[constants.ClaimOUID] = tc.codeOU
+			}
+			suite.mockAttrCacheService.On("GetAttributeCache", mock.Anything, testCacheID).
+				Return(&attributecache.AttributeCache{ID: testCacheID, Attributes: attrs},
+					(*tidcommon.ServiceError)(nil))
+			suite.mockAuthzService.On("GetAuthorizationCodeDetails", mock.Anything, testClientID, "test-auth-code").
+				Return(&code, nil)
+			if tc.issued {
+				suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).
+					Return(&model.TokenDTO{Token: "test-jwt-token", TokenType: constants.TokenTypeBearer}, nil)
+			}
+			ctx := context.Background()
+			if tc.accessingOU != "" {
+				ctx = syscontext.WithAccessingOUID(ctx, tc.accessingOU)
+			}
+
+			result, err := suite.handler.HandleGrant(ctx, suite.testTokenReq, suite.oauthApp)
+
+			if tc.issued {
+				suite.Nil(err)
+				suite.Require().NotNil(result)
+				suite.Equal("test-jwt-token", result.AccessToken.Token)
+				return
+			}
+			suite.Nil(result)
+			suite.Require().NotNil(err)
+			suite.Equal(constants.ErrorInvalidGrant, err.Error)
+			suite.Equal(constants.OUCodeRefusal, err.ErrorDescription)
+			suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildAccessToken", mock.Anything, mock.Anything)
+		})
+	}
+}
+
 func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_AttributeCacheFetchError() {
 	authzCodeWithCacheID := suite.testAuthzCode
 	authzCodeWithCacheID.AttributeCacheID = testCacheID
@@ -1919,15 +1975,12 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_OIDCScopesA
 	suite.mockEnforcement.AssertCalled(suite.T(), "EnsureNotRevoked", mock.Anything,
 		revocation.RevocationIdentity{
 			EstablishedAt: suite.testAuthzCode.TimeCreated.UTC().Truncate(time.Second),
-			Criteria: []revocation.Criterion{
-				{Type: revocation.CriterionTypeEntityScope,
-					Value: sharedrevocation.EntityScopeCriterionValue(testUserID, testResourceURL, "read")},
-				{Type: revocation.CriterionTypeScope,
-					Value: sharedrevocation.ScopeCriterionValue(testResourceURL, "read")},
-				{Type: revocation.CriterionTypeTokenFamily, Value: "family-1"},
-				{Type: revocation.CriterionTypeSubject, Value: testUserID},
-				{Type: revocation.CriterionTypeApplicationKey, Value: testClientID},
-			},
+			Criteria: append(revocation.ScopeCriteria(testUserID, []string{testResourceURL}, []string{"read"}),
+				[]revocation.Criterion{
+					{Type: revocation.CriterionTypeTokenFamily, Value: "family-1"},
+					{Type: revocation.CriterionTypeSubject, Value: testUserID},
+					{Type: revocation.CriterionTypeApplicationKey, Value: testClientID},
+				}...),
 		})
 }
 
@@ -1979,59 +2032,84 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_DenyListUna
 	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildAccessToken", mock.Anything, mock.Anything)
 }
 
-// boundSessions is the SSO sessions the callback kept on the test code.
-var boundSessions = []model.SessionData{
-	{FlowIdentifier: "77e0937879f72858", SessionHandle: "handle-abc"},
-	{FlowIdentifier: "f51bdb0f22d906bb", SessionHandle: "handle-def"},
+// postedSessions returns sessions as the callback posts them, each saying it has the given seconds left; a nil
+// one says nothing.
+func postedSessions(expiresIn ...*int64) []model.SessionData {
+	sessions := make([]model.SessionData, 0, len(expiresIn))
+	for i, seconds := range expiresIn {
+		sessions = append(sessions, model.SessionData{
+			FlowIdentifier: fmt.Sprintf("flow-%d", i), SessionHandle: "handle", ExpiresIn: seconds,
+		})
+	}
+	return sessions
 }
 
-// boundCode returns the test code keeping the SSO sessions the callback bound to it.
-func (suite *AuthorizationCodeGrantHandlerTestSuite) boundCode() authz.AuthorizationCode {
-	code := suite.testAuthzCode
-	code.SubjectID = "user-entity-id"
-	code.SessionData = boundSessions
-	return code
-}
-
-func (suite *AuthorizationCodeGrantHandlerTestSuite) TestBuildDeviceSecret_CarriesTheBoundSessions() {
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestDeviceSecret_LastsUntilItsSessionsEnd() {
 	suite.handler.deviceSecretValidity = time.Hour
-	code := suite.boundCode()
-	suite.mockTokenBuilder.EXPECT().BuildDeviceSecret(mock.Anything,
-		mock.MatchedBy(func(c *tokenservice.DeviceSecretBuildContext) bool {
-			return c.OAuthApp == suite.oauthApp && c.SubjectID == "user-entity-id" &&
-				slices.Equal(c.SessionData, boundSessions) && c.ValidityPeriod == 3600
-		})).Return(&model.TokenDTO{Token: "device-secret"}, nil)
+	code := suite.testAuthzCode
+	code.SubjectID = "subject-entity"
+	code.TimeCreated = time.Now()
+	code.SessionData = postedSessions(new(int64(600)))
+	var built *tokenservice.DeviceSecretBuildContext
+	suite.mockTokenBuilder.EXPECT().BuildDeviceSecret(mock.Anything, mock.Anything).
+		RunAndReturn(func(_ context.Context, c *tokenservice.DeviceSecretBuildContext) (*model.TokenDTO, error) {
+			built = c
+			return &model.TokenDTO{Token: "device-secret"}, nil
+		})
 
-	got := suite.handler.buildDeviceSecret(context.Background(), &code, suite.oauthApp, log.GetLogger())
+	got := suite.handler.deviceSecret(context.Background(), &code, suite.oauthApp, log.GetLogger())
 
 	suite.Equal("device-secret", got.Token)
+	suite.Require().NotNil(built)
+	suite.Equal("subject-entity", built.SubjectID)
+	suite.NotEqual(code.AuthorizedUserID, built.SubjectID)
+	suite.Equal(code.SessionData, built.SessionData)
+	suite.LessOrEqual(built.ValidityPeriod, int64(600), "the device secret ends with its session, not the validity")
+	suite.Positive(built.ValidityPeriod)
 }
 
-func (suite *AuthorizationCodeGrantHandlerTestSuite) TestBuildDeviceSecret_NoneWhenTheCodeKeepsNoSession() {
-	code := suite.testAuthzCode
-
-	got := suite.handler.buildDeviceSecret(context.Background(), &code, suite.oauthApp, log.GetLogger())
-
-	suite.Empty(got.Token)
-	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildDeviceSecret", mock.Anything, mock.Anything)
-}
-
-func (suite *AuthorizationCodeGrantHandlerTestSuite) TestBuildDeviceSecret_NoneWithoutASessionService() {
-	code := suite.boundCode()
-
-	got := suite.handler.buildDeviceSecret(context.Background(), &code, suite.oauthApp, log.GetLogger())
-
-	suite.Empty(got.Token)
-	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildDeviceSecret", mock.Anything, mock.Anything)
-}
-
-func (suite *AuthorizationCodeGrantHandlerTestSuite) TestBuildDeviceSecret_BuildFailureIsNotFatal() {
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestDeviceSecret_NoneWhenItsSessionsHaveEnded() {
 	suite.handler.deviceSecretValidity = time.Hour
-	code := suite.boundCode()
-	suite.mockTokenBuilder.EXPECT().BuildDeviceSecret(mock.Anything, mock.Anything).
-		Return(nil, errors.New("signing failed"))
+	code := suite.testAuthzCode
+	code.TimeCreated = time.Now().Add(-10 * time.Minute)
+	code.SessionData = postedSessions(new(int64(60)), new(int64(120)))
 
-	got := suite.handler.buildDeviceSecret(context.Background(), &code, suite.oauthApp, log.GetLogger())
+	got := suite.handler.deviceSecret(context.Background(), &code, suite.oauthApp, log.GetLogger())
 
 	suite.Empty(got.Token)
+	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildDeviceSecret", mock.Anything, mock.Anything)
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestDeviceSecretLifetime() {
+	now := time.Unix(1700000000, 0)
+	cases := []struct {
+		name      string
+		postedAt  time.Time
+		expiresIn []*int64
+		want      time.Duration
+		wantAlive bool
+	}{
+		{"until its session ends", now, []*int64{new(int64(600))}, 600 * time.Second, true},
+		{"until the last of its sessions ends", now, []*int64{new(int64(600)), new(int64(1200))},
+			1200 * time.Second, true},
+		{"less the time since the sessions were posted", now.Add(-100 * time.Second), []*int64{new(int64(600))},
+			500 * time.Second, true},
+		{"never longer than the validity", now, []*int64{new(int64(7200))}, time.Hour, true},
+		{"a time left beyond the clock is capped", now, []*int64{new(int64(math.MaxInt64))}, time.Hour, true},
+		{"the validity when a session does not say", now, []*int64{new(int64(600)), nil}, time.Hour, true},
+		{"the validity when the posting time is unknown", time.Time{}, []*int64{new(int64(600))}, time.Hour, true},
+		{"an ended session does not extend it", now, []*int64{new(int64(600)), new(int64(0))}, 600 * time.Second, true},
+		{"none when every session has ended", now, []*int64{new(int64(0)), new(int64(-5))}, 0, false},
+		{"none when the sessions ended since they were posted", now.Add(-10 * time.Minute),
+			[]*int64{new(int64(60))}, 0, false},
+	}
+	suite.handler.deviceSecretValidity = time.Hour
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			got, alive := suite.handler.deviceSecretLifetime(postedSessions(tc.expiresIn...), tc.postedAt, now)
+
+			suite.Equal(tc.wantAlive, alive)
+			suite.Equal(tc.want, got)
+		})
+	}
 }

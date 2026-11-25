@@ -32,9 +32,63 @@ Send the token in the `Authorization` header:
 Authorization: Bearer <access_token>
 ```
 
+### Resources Imported Only With the Management API Key
+
+On a data plane, including the all-in-one server, no token writes the following resources, whatever its scopes:
+
+- Root organization units
+- Themes and layouts
+- Translations
+- Server configuration
+- Authorization details types
+
+Import them with the management API key instead. A token can still read them, and a control plane token with the matching scope still writes them. When a token imports one of them, the import reports that item as failed with the code `SSE-4030`.
+
+The key is off by default. To turn it on, set [`server.security.management_api_key_hash`](../../deployment/configuration.mdx) to the SHA-256 digest of the key, then send the key in the `API-Key` header:
+
+```http
+API-Key: <management_api_key>
+```
+
+The key opens the import APIs (`/import`, `/import/managed` and `/import/delete`), the variable store (`/variables`) and the secret store (`/secrets`), and nothing else. Only the managed import marks what it writes as read only.
+
+## Managed Import
+
+`POST /import/managed` takes the same request and returns the same response as `POST /import`. It exists on a data plane only: a control plane does not serve it, and neither does a data plane on an older release, which answers `404`. A control plane that gets that `404` deploys through the plain `POST /import` instead, so what it writes is editable on that data plane (see [Apply a Version](./configuration-versions.mdx#apply-a-version)). It is the import a control plane uses to deploy to a data plane. Only the management API key may call it. A token is refused with `IMP-1008`.
+
+Everything a managed import writes is read only on the data plane. The data plane's own APIs, and so its console, refuse to update or delete it, and refuse changes to what it holds, such as the resources and actions of a resource server. Only a later managed import changes or removes it. A plain `POST /import` is refused the same way for a resource a managed import wrote. Each refusal has an error code of its own for the type of resource, for example `GRP-1023` for a group and `AGT-1063` for an agent.
+
+The refusal answers `403` on update and delete, and on the other writes to the resource, and carries the code of the resource's type:
+
+| Resource | Code | Resource | Code |
+| --- | --- | --- | --- |
+| Agent | `AGT-1063` | Notification template | `NTM-1032` |
+| Application | `APP-1069` | Organization unit | `OU-1026` |
+| Authorization detail type | `RAR-1030` | Project | `PRJ-1014` |
+| Connection | `CON-1040` | Resource server | `RES-1028` |
+| Credential configuration | `VCI-2016` | Role, role assignee | `ROL-1043`, `ROL-1044` |
+| Flow | `FLM-1048` | Server configuration | `SCF-1006` |
+| Group, group member | `GRP-1023`, `GRP-1024` | Theme | `THM-1020` |
+| Language (translations) | `I18N-1009` | User | `USR-1044` |
+| Layout | `LAY-1021` | User type, agent type | `USRS-1023` |
+| Presentation definition | `VP-2021` | SCIM (any of the above) | `SCIM-1042` |
+
+A managed import that finds a flow with the same handle that no control plane deployed does not take it over. It reports that item as failed with `IMP-1009`, because the control plane could not later remove a resource it does not know by its own ID. Rename or remove the flow on the data plane first.
+
+A deployed user is read only the same way, which includes setting a password through the data plane's credential APIs and recovery flows. A deployed user cannot change their own password on the data plane until a later deploy changes it.
+
+What a plain import, or a call to the data plane's own APIs, creates stays editable.
+
+- **Group members and role assignments are owned one by one.** A managed import removes the members of a group, and the assignees of a role, that an earlier managed import deployed and no longer sends. Members and assignees added on the data plane stay, even on a group or role that was deployed. Removing a member or assignee that a managed import deployed through the API is refused with `GRP-1024` or `ROL-1044`.
+- **Server configuration and translations.** The API refuses to write a server configuration section, or a translation language, that a managed import deployed. The server's own updates, such as the localized names of an application, still go through.
+- **Reads show it.** Lists and reads return `isReadOnly: true` for what was deployed. Application and agent details, connections, projects, credential and presentation configurations, translations and server configuration sections do not carry the field in their responses yet. The writes to them are refused all the same.
+
+A managed import marks a resource only after it writes it successfully, and not on a dry run. When it cannot mark one, it reports that item as failed.
+
 ## Endpoint Summary
 
 - `POST /import`: Imports one or more YAML documents into runtime stores.
+- `POST /import/managed`: Imports the same documents as a control plane deploys them, which makes them read only on the data plane. Management API key only.
 - `POST /import/delete`: Deletes a file-backed declarative resource file by type and key.
 
 ## Request Model
@@ -78,6 +132,9 @@ carrying neither is rejected.
 - `options.target`:
   - Omitted: defaults to `runtime`.
   - `runtime` is currently supported.
+- `options.forceSharingEdits`:
+  - Omitted: defaults to `false`, and a change the sharing policies API refuses, such as a different reach, fails the document.
+  - `true`: the policy is rewritten in place instead, and the reshares that lose their standing are removed.
 
 ## Removing Resources
 
@@ -87,7 +144,8 @@ resources to remove, so one request can reconcile a deployment with the configur
 stands.
 
 Each entry names a `resourceType` and an `id`. User types and agent types are separate resource
-types, `user_type` and `agent_type`, as they are in `content`.
+types, `user_type` and `agent_type`, as they are in `content`. A `translation` is identified by its language, such as
+`fr-FR`, and removing it clears every custom translation of that language.
 
 ```json
 {
@@ -108,17 +166,86 @@ types, `user_type` and `agent_type`, as they are in `content`.
   no-op, and a request that failed because the removal already happened would make retrying
   impossible. Where the service reports not found, the outcome carries the message
   `resource already absent` and does not add to `summary.deleted`.
-- **A type with no runtime delete is reported, not skipped.** `translation`, `server_config`, and
-  `notification_template` are reported as an unsupported outcome, because a configuration that dropped
-  one would otherwise look reconciled when it is not.
+- **A type with no runtime delete is reported, not skipped.** `server_config` is reported as an
+  unsupported outcome, because a configuration that dropped it would otherwise look reconciled when it
+  is not. To clear a section, import it with an empty value instead.
 - **A removal the owning service refuses is reported with its reason.** An `agent_type` deletion
-  fails with `USRS-1015`, because agent creation depends on the default agent type.
+  fails with `USRS-1022` while any agent is of that agent type, or while an application, agent, or
+  flow lists it in its allowed agent types.
+- **Replace an agent type within one organization unit in two requests.** An organization unit can
+  have only one agent type, and an agent type cannot be removed while it is in use. So a request
+  that adds the new agent type, moves the agents to it, and removes the old one fails the same way
+  however often it is sent: the new agent type with `USRS-1021`, the agents with `AGT-1054` because
+  their new type does not exist, and the removal with `USRS-1022`. In a first request, move the old
+  agent type to an organization unit that has no agent type. In a second, add the new agent type,
+  change the agents' `type` to it, put the new handle in place of the old one wherever an
+  application, agent, or flow lists it in its allowed agent types, and remove the old agent type.
+- **The two requests work only for resources held in the database.** That covers the agent types and
+  every agent, application, and flow the second request changes. An import cannot change one that a
+  resource file defines: the agent type fails with `USRS-1008`, an agent with `AGT-1027`, an
+  application with `APP-1030`, and a flow with `FLM-1017`. The server also checks each agent loaded
+  from a file against its agent type's organization unit when it starts, so moving an agent type away
+  from such agents makes the next start fail. Change those resources in their resource files instead.
 - **A dry run reports what it would remove and removes nothing.**
 - **`deletions` alone is a valid request.** Removing what a configuration dropped does not require
   also restating what it kept.
 
 Deletions follow `options.continueOnError` as documents do: by default one refused removal does not
 hold back the rest.
+
+### Removing Role Assignees and Group Members
+
+A `role` document's `assignments` and a `group` document's `members` are added on import, but an
+assignee or member the document leaves out is not taken off. To take one off while the role or group
+stays, name it in a `role_assignment` or `group_member` entry. `id` is the role or group, and
+`members` lists who to take off, each by `id` and `type`. A role assignment also gives the
+organization unit it was made in as `ouId`, which is required.
+
+```json
+{
+  "deletions": [
+    {
+      "resourceType": "role_assignment",
+      "id": "770e8400-e29b-41d4-a716-446655440002",
+      "members": [{ "id": "880e8400-e29b-41d4-a716-446655440003", "type": "user", "ouId": "990e8400-e29b-41d4-a716-446655440004" }]
+    },
+    {
+      "resourceType": "group_member",
+      "id": "aa0e8400-e29b-41d4-a716-446655440005",
+      "members": [{ "id": "880e8400-e29b-41d4-a716-446655440003", "type": "user" }]
+    }
+  ]
+}
+```
+
+These run before any resource is removed, so an assignee removed in the same request is still there
+to be named. Each goes through the role or group service as a removal through its API does. Someone
+who no longer holds the role directly in that unit, or is no longer in the group, is already off it
+and is skipped: for example a user deleted since, or a unit the role is no longer shared with. A role
+or group that is already gone is reported as `resource already absent`. Each entry gets one outcome,
+with the role or group id as `resourceId`. Everyone an entry names is checked before anyone is taken
+off, so when one is refused, the entry fails and the role or group is left as it was.
+
+## Removing Sharing Policies
+
+A policy left out of a document is not removed. To remove one, name it in `sharingRemovals`, with the resource type, the resource id, and the organization unit that issued it (omit it for the owner). Each removal runs once its resource is written, or just before it for a flow, and the reshares that lose their standing go with it. The result for the resource lists them in `removedSharing`. If a removal fails, the resource's result fails. The response carries `sharingRemovalsAccepted: true` when the deployment acts on `sharingRemovals`, and an older deployment omits it, which lets the sender tell its removals were ignored.
+
+```json
+{
+  "content": "...",
+  "sharingRemovals": [
+    { "resourceType": "flow", "id": "550e8400-e29b-41d4-a716-446655440000" },
+    {
+      "resourceType": "flow",
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "initiatingOuId": "7f3c1d52-8a4e-4b6a-9c21-0d5e6f7a8b90"
+    }
+  ],
+  "options": { "forceSharingEdits": true }
+}
+```
+
+The first entry removes the owner's policy, since it has no `initiatingOuId`. The second removes the policy that organization unit issued.
 
 ## Response Model
 
@@ -184,6 +311,28 @@ curl -X POST "https://localhost:8090/import" \
     }
   }'
 ```
+
+## Agent Resources
+
+An agent resource stores its name in `attributes.name`. The agent type schema controls validation; the default type requires a unique string value for `name`.
+
+```yaml
+resource_type: agent
+id: 01900000-0000-7000-8000-000000000050
+type: default
+ouId: "<organization-unit-id>"
+owner:
+  id: "<owner-user-id>"
+attributes:
+  name: Calendar Agent
+  modelProvider: anthropic
+```
+
+Replace the organization unit and owner placeholders with existing IDs. This example creates an agent record without an OAuth profile. Include `inboundAuthConfig` when the agent needs OAuth credentials. See [Create and Manage Agents](../../agents/manage-agents).
+
+The Console import summary resolves each agent's label using the agent type's `systemAttributes.display` setting, which selects `name` by default. It checks agent types in the import bundle first, then types on the server. If no display value is available, it shows the agent ID. An import document with neither a display value nor an ID shows an unnamed-agent label.
+
+The resolved label is not a separate `name` or `display` field in the resource. Store attribute values under `attributes`; configure the display mapping on the agent type. See [Agent Schema](../../agents/agent-schema#display-attribute).
 
 ## Cross-Resource References by Handle
 
@@ -424,6 +573,9 @@ content:
 | `password-recovery` | email | Reset an account password. |
 | `ciba-notification` | email, sms | Approve a backchannel (CIBA) authentication request. |
 | `otp` | email, sms | Verify an email address or phone number with a one-time passcode. |
+| `self-email-verification` | email | Verify a signed-in user's own email address from a link. |
+| `admin-initiated-email-verification` | email | Verify an email address from a link an administrator asked for. |
+| `admin-user-credential-reset` | email | Reset a credential from a link an administrator asked for. |
 
 ## Resource Servers
 
@@ -465,6 +617,61 @@ resources:
       - { name: Read, handle: read }
   - { name: Lead, handle: lead, parent: "app:team:member" }
 ```
+
+### Upserting and Removing Resource Servers
+
+A `resource_server` document describes the whole resource server, so an upsert makes the stored resources and actions match it. Resources and actions that the document no longer lists are deleted, matched by their permission. A document that lists no resources or actions removes all of the server's resources and actions. Resources and actions that the document lists are created if absent and left as they are otherwise.
+
+A `deletions` entry of type `resource_server` removes the resource server's actions, then its resources, deepest first, then the resource server. This differs from `DELETE /resource-servers/{id}`, which still refuses with `RES-1006` while the resource server has resources or actions.
+
+These removals run one at a time, not in a single transaction. If one fails, the resource server can be left with some of its children removed. Send the same request again to finish the removal.
+
+## Authorization Detail Types
+
+An `authorization_detail_type` document declares an [intent](../intents.mdx), an RFC 9396 authorization details type that clients request through the `authorization_details` parameter. It takes the same fields as the management API: `id`, `type`, `name`, `description`, `schema`, `consentTemplate`, `processor`, and `reuse`. The import validates it as the API does and keeps its `id`, so an intent keeps the same ID across deployments.
+
+`schema` can be a YAML mapping, as below, or the schema's JSON, which is how an export writes it. Either way, the properties keep their order, which is the order of the rows on the consent card.
+
+```yaml
+resource_type: authorization_detail_type
+id: 0193b0a1-5001-7000-8000-000000000001
+type: fx_transfer
+name: Foreign exchange transfer
+description: Transfer money to an account in another currency
+schema:
+  type: object
+  properties:
+    amount:
+      type: number
+      title: Amount
+      minimum: 1
+      multipleOf: 0.01
+      policy:
+        modification: decrease
+        modifiableBy: [user]
+    currency:
+      type: string
+      title: Currency
+      enum: [EUR, GBP, USD]
+    rate:
+      type: number
+      title: Exchange rate
+      policy:
+        suppliedBy: processor
+  required: [amount, currency, rate]
+consentTemplate: "Transfer {{amount}} {{currency}}"
+processor:
+  endpoint: https://fx.example.com/rar/process
+  authentication:
+    type: bearer
+    properties:
+      token: "{{.FX_PROCESSOR_TOKEN}}"
+reuse: false
+```
+
+`{{amount}}` and `{{currency}}` in `consentTemplate` are summary placeholders and are kept as written. `{{.FX_PROCESSOR_TOKEN}}` is a template variable, resolved from `variables` on import.
+
+An intent imported through `POST /import` is stored like one created through the API. On a data plane, import intents with the management API key, and change them later with another import: an import with a `system` token reports the intent as failed with `SSE-4030`. An intent written by `POST /import/managed` is read only, and a plain import that changes or deletes it fails with `RAR-1030`. A processor credential can also be a `sec:` [value reference](./value-references.mdx#where-a-secret-may-stand). To declare read-only intents instead, place one document per file in `config/resources/authorization_detail_types/`. <ProductName /> loads these files at startup when `authorization_detail_type.store` is `declarative` or `composite`, the default. In a file, the processor credential can refer to an environment variable with the same `{{.NAME}}` syntax, read when the server starts. The API returns a file-based intent with `isReadOnly: true` and refuses to change it with `RAR-1013`, and so does an import of a document with the same `id`. See [Declarative Intents](../intents.mdx#declarative-intents).
 
 ## Delete File-Backed Declarative Resource
 

@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -35,6 +36,17 @@ func (h *handler) handleList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, gateways)
+}
+
+// handlePipeline returns the stages a version is deployed and promoted through.
+func (h *handler) handlePipeline(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	p, svcErr := h.service.GetPipeline(ctx)
+	if svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, p)
 }
 
 // handleGet returns one gateway.
@@ -127,7 +139,7 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *common.Serv
 		statusCode = http.StatusBadRequest
 	}
 	if svcErr.Code == ErrorGatewayNotFound.Code || svcErr.Code == ErrorVersionNotFound.Code ||
-		svcErr.Code == ErrorResourceNotDeployed.Code {
+		svcErr.Code == ErrorResourceNotDeployed.Code || svcErr.Code == ErrorProjectNotFound.Code {
 		statusCode = http.StatusNotFound
 	}
 	if svcErr.Code == ErrorGatewayUnreachable.Code || svcErr.Code == ErrorGatewayPrivateAddress.Code {
@@ -139,7 +151,10 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *common.Serv
 	if svcErr.Code == ErrorGatewayLimitReached.Code || svcErr.Code == ErrorGatewayNameTaken.Code ||
 		svcErr.Code == ErrorGatewayAlreadyRegistered.Code || svcErr.Code == ErrorMissingValues.Code ||
 		svcErr.Code == ErrorVersionRemoved.Code || svcErr.Code == ErrorAppliedChanged.Code ||
-		svcErr.Code == ErrorApplyInProgress.Code || svcErr.Code == ErrorRemovalsNeedConfirmation.Code {
+		svcErr.Code == ErrorApplyInProgress.Code || svcErr.Code == ErrorRemovalsNeedConfirmation.Code ||
+		svcErr.Code == ErrorDependencyNotDeployed.Code || svcErr.Code == ErrorRemovalInUse.Code ||
+		svcErr.Code == ErrorPromotionIncomplete.Code ||
+		svcErr.Code == serverconfig.ErrorConfigWriteConflict.Code {
 		statusCode = http.StatusConflict
 	}
 

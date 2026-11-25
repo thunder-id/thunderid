@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -17,6 +19,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // frame captures the per-call execution state saved when a CALL node pushes execution
@@ -32,6 +35,7 @@ type frame struct {
 	forwardedData       map[string]interface{}
 	additionalData      map[string]string
 	resumeCallNodeID    string
+	signInBounded       bool
 	ssoFlowVersion      int
 }
 
@@ -43,10 +47,13 @@ type EngineContext struct {
 	Context          context.Context
 	initiatorRequest *providers.InitiatorRequest
 
-	ExecutionID    string
-	FlowType       providers.FlowType
-	AppID          string
-	Verbose        bool
+	ExecutionID string
+	FlowType    providers.FlowType
+	AppID       string
+	Verbose     bool
+	// SignInBounded marks a flow whose sign-in is limited to an OU boundary. Set only by the flow
+	// execution service and persisted with the context.
+	SignInBounded  bool
 	UserInputs     map[string]string
 	RuntimeData    map[string]string
 	ForwardedData  map[string]interface{}
@@ -72,11 +79,21 @@ type EngineContext struct {
 	ExecutionHistory  map[string]*providers.NodeExecutionRecord
 
 	InterceptorSharedData map[string]string
-	// consumedInputs accumulates identifiers reported as consumed by executors and
-	// interceptors within the current request
-	consumedInputs []string
+	// consumedInputs holds the identifiers of the inputs read within the current request: through ConsumeInput,
+	// as the inputs of a prompt's action, or by an interceptor.
+	consumedInputs map[string]struct{}
+	// additionalInputs holds the identifiers of the inputs the current request submitted that the flow did not
+	// hold before.
+	additionalInputs map[string]struct{}
+	// requestedInputs holds the identifiers a request continuing the flow may carry, recorded when the flow
+	// paused. Nil when continuing is not limited, as before the first pause or after a redirection. Persisted
+	// with the context.
+	requestedInputs map[string]struct{}
 	// nodeVisits counts how many times each node ran within the current request
 	nodeVisits map[core.NodeInterface]int
+	// executedNodes holds the nodes that executed within the current request, leaving out the ones a
+	// condition skipped.
+	executedNodes map[core.NodeInterface]struct{}
 	// frameStack holds saved call frames. Top is the most recent caller.
 	frameStack []*frame
 	// sharedRuntimeData is a cross-frame key-value store available to executors that opt in.
@@ -88,12 +105,42 @@ type EngineContext struct {
 	// flow fetched when the context is loaded. Transient; used by the SSO-Check node to reject
 	// sessions established at an incompatible flow version.
 	SSOFlowVersion int
+	// boundSubject is the user a self or administrator-initiated flow was started for, taken at the start
+	// from the caller's token or the administrator's subject input. Persisted with the context and shared by
+	// every call frame; executors read it, never write it.
+	boundSubject string
+	// authority is what a flow that acts for its caller runs with. Persisted with the context; executors never
+	// see it.
+	authority *flowAuthority
 	// SessionFlowID overrides the flow whose SSO session this execution operates on. It is set for
 	// sign-out flows, which run a different flow than the one that owns the session: the login (auth)
 	// flow id is carried here so the inbound cookie, SSO inputs, and cookie clear all resolve under
 	// that flow rather than the running sign-out flow. Empty for all other flows. Transient — re-derived
 	// from the application on each context load, never persisted.
 	SessionFlowID string
+	// RequiredSubjectID is the entity ID of the only subject an authentication flow may sign in, from the
+	// client rules of the application's OAuth client, and is empty otherwise.
+	// Transient: re-derived on each context load, never persisted.
+	RequiredSubjectID string
+	// expiresAt is when the stored context expires. Set when the context is first stored and persisted
+	// with it, since an update keeps the stored expiry. Zero for a context stored without one.
+	expiresAt time.Time
+}
+
+// flowAuthority is the authority a flow that acts for its caller runs with: the caller who started it, as their
+// token named them.
+type flowAuthority struct {
+	Subject     string   `json:"subject"`
+	OUID        string   `json:"ouId"`
+	Permissions []string `json:"permissions"`
+}
+
+// rootFlowType returns the type of the flow the execution started, which a call into another flow does not change.
+func (ec *EngineContext) rootFlowType() providers.FlowType {
+	if len(ec.frameStack) > 0 {
+		return ec.frameStack[0].flowType
+	}
+	return ec.FlowType
 }
 
 // GetInitiatorRequest returns the original HTTP request that triggered the flow.
@@ -129,6 +176,7 @@ func (e *EngineContext) pushFrame(resumeCallNodeID string) {
 		forwardedData:       e.ForwardedData,
 		additionalData:      e.AdditionalData,
 		resumeCallNodeID:    resumeCallNodeID,
+		signInBounded:       e.SignInBounded,
 		ssoFlowVersion:      e.SSOFlowVersion,
 	}
 	e.frameStack = append(e.frameStack, f)
@@ -145,6 +193,7 @@ func (e *EngineContext) popFrame() *frame {
 
 	e.Graph = top.graph
 	e.FlowType = top.flowType
+	e.SignInBounded = top.signInBounded
 	e.CurrentNode = top.currentNode
 	e.CurrentNodeResponse = top.currentNodeResponse
 	e.CurrentAction = top.currentAction
@@ -155,6 +204,52 @@ func (e *EngineContext) popFrame() *frame {
 	e.SSOFlowVersion = top.ssoFlowVersion
 	e.clearPausedPromptInputs()
 	return top
+}
+
+// recordConsumedInputs notes inputs an executor, a prompt or an interceptor read within the current request.
+func (e *EngineContext) recordConsumedInputs(identifiers []string) {
+	if len(identifiers) == 0 {
+		return
+	}
+	if e.consumedInputs == nil {
+		e.consumedInputs = make(map[string]struct{}, len(identifiers))
+	}
+	for _, identifier := range identifiers {
+		e.consumedInputs[identifier] = struct{}{}
+	}
+}
+
+// onlyRequestedInputs keeps the inputs of a request continuing the flow that the step it is paused on asks
+// for. A nil requestedInputs, before the first pause or after a redirection, keeps every input. The authorization
+// params are left out, since only the request that starts a flow can set them.
+func (e *EngineContext) onlyRequestedInputs(inputs map[string]string) map[string]string {
+	if len(inputs) == 0 {
+		return inputs
+	}
+
+	accepted := maps.Clone(inputs)
+	for identifier := range accepted {
+		_, requested := e.requestedInputs[identifier]
+		if slices.Contains(authorizationParams, identifier) || (e.requestedInputs != nil && !requested) {
+			delete(accepted, identifier)
+		}
+	}
+	return accepted
+}
+
+// mergeInputs merges the inputs of a request into the flow's inputs, noting the ones the flow did not hold
+// before. A value the flow already holds was used by an earlier step, so a resent one replaces it.
+func (e *EngineContext) mergeInputs(inputs map[string]string) {
+	if len(inputs) == 0 {
+		return
+	}
+	e.additionalInputs = make(map[string]struct{}, len(inputs))
+	for identifier := range inputs {
+		if _, held := e.UserInputs[identifier]; !held {
+			e.additionalInputs[identifier] = struct{}{}
+		}
+	}
+	e.UserInputs = sysutils.MergeStringMaps(e.UserInputs, inputs)
 }
 
 // clearPausedPromptInputs drops the paused-prompt record. It is keyed by node ID, which is only
@@ -236,7 +331,6 @@ func (c *InterceptorRunnerContext) GetConsumedInputs() []string {
 // FlowStep represents the outcome of a individual flow step
 type FlowStep struct {
 	ExecutionID    string
-	StepID         string
 	Type           common.FlowStepType
 	Status         providers.FlowStatus
 	ChallengeToken string
@@ -245,19 +339,25 @@ type FlowStep struct {
 	ErrorAssertion string
 	Error          *tidcommon.ServiceError
 
-	// SSOHandleOut / SSOFlowID carry an SSO session handle minted during this step back to the
-	// transport layer (the handler), which sets it as a per-flow cookie. They are not part of
-	// the JSON response body.
+	// SSOHandleOut / SSOFlowID carry an SSO session handle minted or reused during this step, and the flow
+	// it belongs to, back to the transport layer (the handler). They are not part of the JSON response body.
 	SSOHandleOut string
 	SSOFlowID    string
+	// SSOHandleReused marks SSOHandleOut as the handle the request presented.
+	SSOHandleReused bool
+	// SSOHandleExpiresAt is when SSOHandleOut's session ends, zero when unknown.
+	SSOHandleExpiresAt time.Time
 	// SSOClearFlowID carries the flow id whose per-flow SSO cookie the transport layer must clear
 	// after this step terminated the session (sign-out). Empty when nothing was cleared. Not part of
 	// the JSON response body.
 	SSOClearFlowID string
-	// SessionData and ClearedSessions are the SSO sessions this step started and ended, in the shape the
-	// response body returns them to a caller that holds its handles itself.
+	// SessionData and ClearedSessions are the SSO sessions this step started or reused and ended, in the
+	// shape the response body returns them to a caller that holds its handles itself.
 	SessionData     []IssuedSessionData
 	ClearedSessions []string
+	// ExpiresAt is when the paused execution expires. Zero when the step did not pause the flow, or the
+	// stored context carries no expiry.
+	ExpiresAt time.Time
 }
 
 // FlowData holds the data returned by a flow execution step
@@ -273,11 +373,10 @@ type FlowData struct {
 // FlowResponse represents the flow execution API response body
 type FlowResponse struct {
 	ExecutionID    string                  `json:"executionId"`
-	StepID         string                  `json:"stepId,omitempty"`
 	FlowStatus     string                  `json:"flowStatus"`
 	Type           string                  `json:"type,omitempty"`
 	ChallengeToken string                  `json:"challengeToken,omitempty"`
-	Data           FlowData                `json:"data,omitempty"`
+	Data           FlowData                `json:"data,omitzero"`
 	Assertion      string                  `json:"assertion,omitempty"`
 	ErrorAssertion string                  `json:"errorAssertion,omitempty"`
 	Error          *apierror.ErrorResponse `json:"error,omitempty"`
@@ -285,6 +384,9 @@ type FlowResponse struct {
 	SessionData []IssuedSessionData `json:"sessionData,omitempty"`
 	// ClearedSessions lists the flow identifiers whose SSO session this step ended, for the caller to drop.
 	ClearedSessions []string `json:"clearedSessions,omitempty"`
+	// ExpiresIn is how many seconds the paused execution stays valid. Relative, so a client measures it on its
+	// own clock.
+	ExpiresIn int64 `json:"expiresIn,omitempty"`
 }
 
 // SessionData is one SSO session handle a caller holds, keyed by the identifier of the flow it belongs
@@ -294,8 +396,7 @@ type SessionData struct {
 	SessionHandle  string `json:"sessionHandle"`
 }
 
-// IssuedSessionData is the SSO session a step started, with how long its handle stays usable, as the
-// per-flow cookie's Max-Age says.
+// IssuedSessionData is the SSO session a step started or reused, with how long its handle stays usable.
 type IssuedSessionData struct {
 	SessionData
 	ExpiresIn int64 `json:"expiresIn"`
@@ -306,12 +407,14 @@ type FlowRequest struct {
 	FlowID         string            `json:"flowId,omitempty"`
 	ApplicationID  string            `json:"applicationId"`
 	FlowType       string            `json:"flowType"`
+	Handle         string            `json:"handle,omitempty"`
 	Verbose        bool              `json:"verbose,omitempty"`
 	ExecutionID    string            `json:"executionId"`
 	ChallengeToken string            `json:"challengeToken,omitempty"`
 	Action         string            `json:"action"`
 	Inputs         map[string]string `json:"inputs"`
 	SessionData    []SessionData     `json:"sessionData,omitempty"`
+	OUID           string            `json:"ouId,omitempty"`
 }
 
 // FlowInitContext represents the context for initiating a new flow with runtime data
@@ -341,12 +444,14 @@ type serializedFrame struct {
 	CurrentSegmentID *string `json:"currentSegmentId,omitempty"`
 	RuntimeData      *string `json:"runtimeData,omitempty"`
 	ResumeCallNodeID string  `json:"resumeCallNodeId,omitempty"`
+	SignInBounded    bool    `json:"signInBounded,omitempty"`
 }
 
 // flowContextContent holds all flow state serialized into the CONTEXT JSON column.
 type flowContextContent struct {
 	AppID                 string  `json:"appId"`
 	Verbose               bool    `json:"verbose"`
+	SignInBounded         bool    `json:"signInBounded,omitempty"`
 	CurrentNodeID         *string `json:"currentNodeId,omitempty"`
 	CurrentAction         *string `json:"currentAction,omitempty"`
 	CurrentSegmentID      *string `json:"currentSegmentId,omitempty"`
@@ -368,6 +473,11 @@ type flowContextContent struct {
 	InitiatorRequest      *string `json:"initiatorRequest,omitempty"`
 	PromptInputs          *string `json:"promptInputs,omitempty"`
 	PromptNodeID          *string `json:"promptNodeId,omitempty"`
+	BoundSubject          string  `json:"boundSubject,omitempty"`
+	// RequestedInputs is the identifiers a request continuing the flow may carry. Absent when it is not limited.
+	RequestedInputs *[]string `json:"requestedInputs,omitempty"`
+
+	Authority *flowAuthority `json:"authority,omitempty"`
 }
 
 // graphResolverFunc resolves a flow graph by its flow ID. Used during context deserialization to
@@ -564,6 +674,7 @@ func (f *FlowContextDB) ToEngineContext(ctx context.Context,
 		FlowType:              graph.GetType(),
 		AppID:                 content.AppID,
 		Verbose:               content.Verbose,
+		SignInBounded:         content.SignInBounded,
 		UserInputs:            userInputs,
 		RuntimeData:           runtimeData,
 		CurrentNode:           currentNode,
@@ -578,6 +689,15 @@ func (f *FlowContextDB) ToEngineContext(ctx context.Context,
 		sharedRuntimeData:     sharedRuntimeData,
 		CurrentPromptInputs:   promptInputs,
 		CurrentPromptNodeID:   promptNodeID,
+		boundSubject:          content.BoundSubject,
+		authority:             content.Authority,
+		expiresAt:             f.ExpiryTime,
+	}
+	if content.RequestedInputs != nil {
+		engineCtx.requestedInputs = make(map[string]struct{}, len(*content.RequestedInputs))
+		for _, identifier := range *content.RequestedInputs {
+			engineCtx.requestedInputs[identifier] = struct{}{}
+		}
 	}
 	engineCtx.SetInitiatorRequest(initiatorRequest)
 
@@ -732,9 +852,18 @@ func (f *FlowContextDB) FromEngineContext(ctx EngineContext) error {
 		initiatorRequestStr = &s
 	}
 
+	// An empty list is kept, not stored as null: a step that asks for nothing still limits the next request.
+	var requestedInputs *[]string
+	if ctx.requestedInputs != nil {
+		sorted := slices.AppendSeq(make([]string, 0, len(ctx.requestedInputs)), maps.Keys(ctx.requestedInputs))
+		slices.Sort(sorted)
+		requestedInputs = &sorted
+	}
+
 	content := flowContextContent{
 		AppID:                 ctx.AppID,
 		Verbose:               ctx.Verbose,
+		SignInBounded:         ctx.SignInBounded,
 		CurrentNodeID:         currentNodeID,
 		CurrentAction:         currentAction,
 		CurrentSegmentID:      currentSegmentID,
@@ -756,6 +885,9 @@ func (f *FlowContextDB) FromEngineContext(ctx EngineContext) error {
 		InitiatorRequest:      initiatorRequestStr,
 		PromptInputs:          promptInputsStr,
 		PromptNodeID:          promptNodeIDStr,
+		BoundSubject:          ctx.boundSubject,
+		Authority:             ctx.authority,
+		RequestedInputs:       requestedInputs,
 	}
 
 	contextJSON, err := json.Marshal(content)
@@ -765,6 +897,7 @@ func (f *FlowContextDB) FromEngineContext(ctx EngineContext) error {
 
 	f.ExecutionID = ctx.ExecutionID
 	f.Context = string(contextJSON)
+	f.ExpiryTime = ctx.expiresAt
 	return nil
 }
 
@@ -818,6 +951,7 @@ func (f *FlowContextDB) deserializeFrameStack(ctx context.Context,
 			currentSegmentID: currentSegmentID,
 			runtimeData:      runtimeData,
 			resumeCallNodeID: sf.ResumeCallNodeID,
+			signInBounded:    sf.SignInBounded,
 		})
 	}
 
@@ -840,6 +974,7 @@ func (f *FlowContextDB) serializeFrameStack(frameStack []*frame) (*string, error
 		sf := serializedFrame{
 			GraphID:          f.graph.GetID(),
 			ResumeCallNodeID: f.resumeCallNodeID,
+			SignInBounded:    f.signInBounded,
 		}
 
 		if f.currentNode != nil {

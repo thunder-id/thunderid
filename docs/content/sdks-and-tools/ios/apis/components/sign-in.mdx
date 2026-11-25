@@ -30,6 +30,7 @@ struct AuthView: View {
 | Parameter | Type | Required | Description |
 | :--- | :--- | :---: | :--- |
 | `applicationId` | `String` | ✅ | The Application ID from your <ProductName /> application settings. Identifies which sign-in flow to execute. |
+| `organizationUnitId` | `String?` | ❌ | Bounds the sign-in to this organization unit. The SDK sends it as `ouId` on the request that starts the flow. |
 | `onComplete` | `(() -> Void)?` | ❌ | Called when authentication completes successfully. |
 | `onError` | `((String) -> Void)?` | ❌ | Called with an error message when a flow step fails. |
 

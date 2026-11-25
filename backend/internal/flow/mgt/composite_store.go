@@ -88,6 +88,27 @@ func (c *compositeFlowStore) ListFlowsByOU(ctx context.Context, ouID string, lim
 	return merged[start:min(start+limit, total)], total, nil
 }
 
+// ListFlowsByProject lists the flows of a project in both stores, merged and deduplicated, then applies pagination to
+// the merged result.
+func (c *compositeFlowStore) ListFlowsByProject(ctx context.Context, projectID, ouID string, limit, offset int,
+	flowType string) ([]BasicFlowDefinition, int, error) {
+	const unlimitedSentinel = 10000
+
+	dbFlows, _, err := c.dbStore.ListFlowsByProject(ctx, projectID, ouID, unlimitedSentinel, 0, flowType)
+	if err != nil {
+		return nil, 0, err
+	}
+	fileFlows, _, err := c.fileStore.ListFlowsByProject(ctx, projectID, ouID, unlimitedSentinel, 0, flowType)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	merged := mergeAndDeduplicateFlows(dbFlows, fileFlows)
+	total := len(merged)
+	start := min(offset, total)
+	return merged[start:min(start+limit, total)], total, nil
+}
+
 // ListFlowsByIDs reads the flows with the given IDs from both stores, merged and deduplicated with the database
 // store taking precedence.
 func (c *compositeFlowStore) ListFlowsByIDs(ctx context.Context, ids []string, flowType string) (

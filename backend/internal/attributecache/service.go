@@ -76,7 +76,7 @@ func (s *attributeCacheService) CreateAttributeCache(
 		return nil, &ErrorInvalidRequestFormat
 	}
 
-	if len(cache.Attributes) == 0 {
+	if len(cache.Attributes) == 0 && cache.SessionGrants == nil {
 		return nil, &ErrorMissingAttributes
 	}
 
@@ -91,7 +91,7 @@ func (s *attributeCacheService) CreateAttributeCache(
 		return nil, &tidcommon.InternalServerError
 	}
 
-	data, err := json.Marshal(cache.Attributes)
+	data, err := json.Marshal(withSessionGrants(cache.Attributes, cache.SessionGrants))
 	if err != nil {
 		logger.Error(ctx, "Failed to marshal attributes", log.Error(err))
 		return nil, &tidcommon.InternalServerError
@@ -152,10 +152,17 @@ func (s *attributeCacheService) GetAttributeCache(
 		return nil, &tidcommon.InternalServerError
 	}
 
+	grants, err := splitSessionGrants(attrs)
+	if err != nil {
+		logger.Error(ctx, "Failed to read session grants", log.Error(err), log.String("id", id))
+		return nil, &tidcommon.InternalServerError
+	}
+
 	logger.Debug(ctx, "Successfully retrieved attribute cache", log.String("id", id))
 	return &AttributeCache{
-		ID:         id,
-		Attributes: attrs,
+		ID:            id,
+		Attributes:    attrs,
+		SessionGrants: grants,
 	}, nil
 }
 

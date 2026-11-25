@@ -54,6 +54,7 @@
     "@monaco-editor/react": "catalog:",
     "monaco-editor": "^0.55.1",
     "@tanstack/react-query": "catalog:",
+    "@tanstack/react-virtual": "catalog:",
     "@tanstack/react-query-devtools": "catalog:",
     "@thunderid/components": "workspace:^",
     "@thunderid/i18n": "workspace:^",

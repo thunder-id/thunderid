@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
@@ -406,6 +407,30 @@ func (s *CacheBackedOUStoreTestSuite) TestPassThroughMethods() {
 	s.Nil(err)
 	s.Empty(list)
 
+	s.mockStore.On("GetOrganizationUnitListCountByProject", mock.Anything, "project-1",
+		(*tidcommon.FilterGroup)(nil)).Return(2, nil).Once()
+	projectCount, err := s.cachedStore.GetOrganizationUnitListCountByProject(ctx, "project-1", nil)
+	s.Nil(err)
+	s.Equal(2, projectCount)
+
+	s.mockStore.On("GetOrganizationUnitListByProject", mock.Anything, "project-1", 10, 0,
+		(*tidcommon.FilterGroup)(nil)).Return([]OrganizationUnitBasic{}, nil).Once()
+	projectList, err := s.cachedStore.GetOrganizationUnitListByProject(ctx, "project-1", 10, 0, nil)
+	s.Nil(err)
+	s.Empty(projectList)
+
+	s.mockStore.On("GetOrganizationUnitChildrenCountInProject", mock.Anything, "parent-1", "project-1").
+		Return(1, nil).Once()
+	projectChildCount, err := s.cachedStore.GetOrganizationUnitChildrenCountInProject(ctx, "parent-1", "project-1")
+	s.Nil(err)
+	s.Equal(1, projectChildCount)
+
+	s.mockStore.On("GetOrganizationUnitChildrenListInProject", mock.Anything, "parent-1", "project-1", 10, 0).
+		Return([]OrganizationUnitBasic{}, nil).Once()
+	projectChildren, err := s.cachedStore.GetOrganizationUnitChildrenListInProject(ctx, "parent-1", "project-1", 10, 0)
+	s.Nil(err)
+	s.Empty(projectChildren)
+
 	s.mockStore.On("GetOrganizationUnitsByIDs", mock.Anything,
 		[]string{"id-1"}).Return([]OrganizationUnitBasic{}, nil).Once()
 	byIDs, err := s.cachedStore.GetOrganizationUnitsByIDs(ctx, []string{"id-1"})
@@ -604,4 +629,35 @@ func (s *CacheBackedOUStoreTestSuite) TestWrapWithCache_WithCacheManager() {
 
 	_, ok := result.(*cacheBackedOUStore)
 	s.True(ok)
+}
+
+// A move to another project drops the moved units from both caches instead of caching their new values, so a
+// transaction that rolls back the move leaves nothing stale behind.
+func (s *CacheBackedOUStoreTestSuite) TestUpdateOrganizationUnitsProject_InvalidatesCaches() {
+	ou := s.makeOU("marketing", nil)
+	s.ouByIDData[ou.ID] = &ou
+	key := handleParentCacheKey("marketing", nil)
+	s.ouByHandleParentData[key] = &ou
+	updatedAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	s.mockStore.On("UpdateOrganizationUnitsProject", mock.Anything, []string{ou.ID}, "project-1", updatedAt).
+		Return(nil).Once()
+
+	s.Nil(s.cachedStore.UpdateOrganizationUnitsProject(context.Background(), []string{ou.ID}, "project-1",
+		updatedAt))
+
+	s.NotContains(s.ouByIDData, ou.ID)
+	s.NotContains(s.ouByHandleParentData, key)
+}
+
+func (s *CacheBackedOUStoreTestSuite) TestUpdateOrganizationUnitsProject_StoreError() {
+	ou := s.makeOU("marketing", nil)
+	s.ouByIDData[ou.ID] = &ou
+	updatedAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	s.mockStore.On("UpdateOrganizationUnitsProject", mock.Anything, []string{ou.ID}, "project-1", updatedAt).
+		Return(errors.New("db error")).Once()
+
+	s.NotNil(s.cachedStore.UpdateOrganizationUnitsProject(context.Background(), []string{ou.ID}, "project-1",
+		updatedAt))
+
+	s.Contains(s.ouByIDData, ou.ID)
 }

@@ -17,32 +17,98 @@
  */
 
 // Package varname derives the template variable names that a declarative resource's placeholders
-// carry. It is a leaf so that both the exporter and whatever captures a credential can depend on it
-// and derive the same name.
+// carry. It depends only on the utils package, so that both the exporter and whatever captures a credential
+// can depend on it and derive the same name.
 package varname
 
-import "strings"
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"regexp"
+	"strings"
+
+	"github.com/thunder-id/thunderid/internal/system/utils"
+)
+
+const (
+	// segmentSeparator joins the parts of a name. The sanitizer collapses every run of underscores,
+	// so no part can contain it, which is what makes a name read back as exactly one resource type,
+	// ID and field.
+	segmentSeparator = "__"
+	// hashedIDPrefix marks an ID segment made from a hash. A hex ID never contains this letter, so a
+	// hashed segment cannot equal one written from an ID.
+	hashedIDPrefix = "H"
+	// hashedIDBytes is how many bytes of the hash a hashed ID segment keeps.
+	hashedIDBytes = 16
+)
+
+// derivedSegment is a sanitized part of a name: upper-case letters and digits, with single
+// underscores between them and none at either end.
+const derivedSegment = `[A-Z0-9]+(?:_[A-Z0-9]+)*`
+
+// derivedNameParts reads a name DeriveVariableName wrote for a resource with a type, a field and an
+// ID, with its ID segment as the one group: an optional leading underscore, the type, the ID as 32
+// upper-case hex digits or as a hashed segment, and the field, joined by the separator. A name chosen
+// by hand, such as "HOST" or "DATA_PLANE_URL", does not match, since it carries no ID segment.
+var derivedNameParts = regexp.MustCompile(`^_?(?:` + derivedSegment + segmentSeparator + `)?` +
+	`([0-9A-F]{32}|` + hashedIDPrefix + `[0-9A-F]{32})` + segmentSeparator + derivedSegment + `$`)
+
+// IDSegmentOf is the ID segment of a name DeriveVariableName wrote, and whether the name is one. It
+// reads the name with the layout DeriveVariableName writes, so a reader that asks whether a name was
+// generated, or which resource it belongs to by comparing it with IDSegment of the resource's ID,
+// follows any change to it.
+func IDSegmentOf(name string) (string, bool) {
+	match := derivedNameParts.FindStringSubmatch(name)
+	if match == nil {
+		return "", false
+	}
+	return match[1], true
+}
 
 // DeriveVariableName derives the declarative template variable name for a resource field, and is the
 // single source of truth for those names so that every caller derives the same one.
 //
-// The resource type leads the name because a name is only unique within its type: an application and
-// an agent both called "dummy" would otherwise share DUMMY_CLIENT_ID. The result is sanitized, since
-// a resource name routinely holds characters a template variable cannot carry.
+// A name is "<TYPE>__<ID>__<FIELD>". The ID is what makes it belong to one resource: names and
+// usernames are not unique once case, dots, hyphens and similar characters are folded away, so
+// "alice@example.com" and "alice.example.com" would read the same, but their IDs never do. The name of
+// the resource is left out for that reason: it can change and it can repeat, and the ID cannot.
 //
-// Example: ("application", "My App", "ClientSecret") -> "APPLICATION_MY_APP_CLIENT_SECRET".
-// Example: ("user", "user@example.com", "password") -> "USER_USER_EXAMPLE_COM_PASSWORD".
-func DeriveVariableName(resourceType, resourceName, fieldName string) string {
-	prefix := toSnakeCaseUpper(strings.ReplaceAll(resourceName, " ", "_"))
+// The ID is written in full. A shortened one could be matched on purpose by whoever chooses the ID
+// of a resource they import.
+//
+// Example: ("user", "0198f3a1-7c2e-7b10-9a44-5d3e8f21c6b7", "password") ->
+// "USER__0198F3A17C2E7B109A445D3E8F21C6B7__PASSWORD".
+func DeriveVariableName(resourceType, resourceID, fieldName string) string {
+	segments := make([]string, 0, 3)
 	if resourceType != "" {
-		prefix = toSnakeCaseUpper(strings.ReplaceAll(resourceType, " ", "_")) + "_" + prefix
+		segments = append(segments, sanitizeSegment(toSnakeCaseUpper(strings.ReplaceAll(resourceType, " ", "_"))))
 	}
-	return sanitizeVariableName(prefix + "_" + toSnakeCaseUpper(fieldName))
+	segments = append(segments, IDSegment(resourceID), sanitizeSegment(toSnakeCaseUpper(fieldName)))
+
+	name := strings.Join(segments, segmentSeparator)
+	// A name must not start with a digit.
+	if name[0] >= '0' && name[0] <= '9' {
+		return "_" + name
+	}
+	return name
 }
 
-// sanitizeVariableName replaces every character a Go template identifier cannot carry with an
+// IDSegment spells a resource ID as every name DeriveVariableName writes for the resource spells it,
+// so that two IDs never share a spelling. A lower-case UUID, which
+// is what the server generates, is written as its hex digits in upper case. Any other ID, such as one
+// a declarative file names, is hashed, because upper-casing and sanitizing would let "my-app" and
+// "my_app" read the same.
+func IDSegment(resourceID string) string {
+	if utils.IsValidUUID(resourceID) && resourceID == strings.ToLower(resourceID) {
+		return strings.ToUpper(strings.ReplaceAll(resourceID, "-", ""))
+	}
+	sum := sha256.Sum256([]byte(resourceID))
+	return hashedIDPrefix + strings.ToUpper(hex.EncodeToString(sum[:hashedIDBytes]))
+}
+
+// sanitizeSegment replaces every character a Go template identifier cannot carry with an
 // underscore, collapses runs of underscores, and trims them from the ends.
-func sanitizeVariableName(name string) string {
+func sanitizeSegment(name string) string {
 	var result strings.Builder
 	lastWasUnderscore := false
 
@@ -62,14 +128,7 @@ func sanitizeVariableName(name string) string {
 		result.WriteRune(r)
 	}
 
-	sanitized := strings.Trim(result.String(), "_")
-	// A name must not start with a digit, so a leading digit is prefixed with an underscore. The
-	// prefix matches the exporter's own sanitizer, because a placeholder and the variable captured for
-	// it have to spell the same name.
-	if sanitized != "" && sanitized[0] >= '0' && sanitized[0] <= '9' {
-		return "_" + sanitized
-	}
-	return sanitized
+	return strings.Trim(result.String(), "_")
 }
 
 // toSnakeCaseUpper converts camelCase/PascalCase to UPPER_SNAKE_CASE (e.g. "ClientID" -> "CLIENT_ID").

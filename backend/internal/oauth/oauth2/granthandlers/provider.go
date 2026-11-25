@@ -74,7 +74,8 @@ func newGrantHandlerProvider(
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeRefreshToken) {
 		grantProvider.refreshTokenGrantHandler = newRefreshTokenGrantHandler(
 			jwtService, tokenBuilder, tokenValidator, attrCacheService, resourceService,
-			rbacAuthzService, actorProvider, refreshTokenRevoker, criteriaRevoker, authzDetails, ssoSession, cfg)
+			rbacAuthzService, actorProvider, refreshTokenRevoker, criteriaRevoker, authzDetails, ouService, ssoSession,
+			cfg)
 	}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeTokenExchange) {
 		grantProvider.tokenExchangeGrantHandler = newTokenExchangeGrantHandler(
@@ -87,7 +88,7 @@ func newGrantHandlerProvider(
 	}
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeDeviceCode) {
 		grantProvider.deviceCodeGrantHandler = newDeviceCodeGrantHandler(
-			deviceService, tokenBuilder, attrCacheService, resourceService, enforcementService)
+			deviceService, tokenBuilder, attrCacheService, resourceService, enforcementService, deviceSecretValidity)
 	}
 	// The jwt-bearer grant accepts only ID-JAGs, so do not serve it while ID-JAG acceptance is off.
 	if isGrantTypeAllowed(allowedGrantTypes, providers.GrantTypeJWTBearer) && cfg.OAuth.IDJAG.Acceptance.IsEnabled() {

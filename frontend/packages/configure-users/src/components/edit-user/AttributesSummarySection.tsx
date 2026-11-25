@@ -4,11 +4,14 @@
 import {SettingsCard} from '@thunderid/components';
 import {useResolveDisplayName} from '@thunderid/hooks';
 import type {User} from '@thunderid/types';
+import {orderAttributes} from '@thunderid/utils';
 import {Box, Chip, CircularProgress, Stack, Typography} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
+import VerificationStatus from './VerificationStatus';
 import useGetUserType from '../../api/useGetUserType';
 import useGetUserTypes from '../../api/useGetUserTypes';
+import getVerifiableAttributes from '../../utils/getVerifiableAttributes';
 
 interface AttributesSummarySectionProps {
   user: User;
@@ -35,6 +38,14 @@ export default function AttributesSummarySection({user}: AttributesSummarySectio
   const {data: userTypeDetails, isLoading} = useGetUserType(matchedSchema?.id);
 
   const attributes = user.attributes ?? {};
+  // Attributes follow the schema order. Any not in the schema keep their place after them.
+  const schemaOrder = orderAttributes(userTypeDetails?.schema ?? {}).map(([name]) => name);
+  const position = (key: string): number => {
+    const index = schemaOrder.indexOf(key);
+    return index >= 0 ? index : schemaOrder.length;
+  };
+  const orderedAttributes = Object.entries(attributes).sort(([a], [b]) => position(a) - position(b));
+  const verifiable = getVerifiableAttributes(user, userTypeDetails?.schema);
 
   const labelFor = (key: string): string => {
     const fieldDef = userTypeDetails?.schema?.[key];
@@ -43,6 +54,13 @@ export default function AttributesSummarySection({user}: AttributesSummarySectio
     }
     return key;
   };
+
+  // The label stays the value's sibling unless a status sits beside it.
+  const labelOf = (key: string): JSX.Element => (
+    <Typography variant="caption" color="text.secondary">
+      {labelFor(key)}
+    </Typography>
+  );
 
   return (
     <SettingsCard
@@ -58,11 +76,16 @@ export default function AttributesSummarySection({user}: AttributesSummarySectio
         </Box>
       ) : Object.keys(attributes).length > 0 ? (
         <Stack spacing={2}>
-          {Object.entries(attributes).map(([key, value]) => (
+          {orderedAttributes.map(([key, value]) => (
             <Box key={key}>
-              <Typography variant="caption" color="text.secondary">
-                {labelFor(key)}
-              </Typography>
+              {verifiable.has(key) ? (
+                <Stack direction="row" alignItems="center" spacing={1} sx={{mb: 0.5}}>
+                  {labelOf(key)}
+                  <VerificationStatus verifiedAt={verifiable.get(key)} />
+                </Stack>
+              ) : (
+                labelOf(key)
+              )}
               {typeof value === 'boolean' ? (
                 <Box>
                   <Chip

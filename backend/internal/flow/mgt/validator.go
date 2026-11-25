@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"strconv"
@@ -18,6 +19,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/executormeta"
 	"github.com/thunder-id/thunderid/internal/flow/graphbuilder"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
+	"github.com/thunder-id/thunderid/internal/group"
+	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -53,6 +56,16 @@ type idpProvider interface {
 	GetIdentityProvider(ctx context.Context, idpID string) (*providers.IDPDTO, *tidcommon.ServiceError)
 }
 
+// groupProvider reads the groups a provisioning step assigns.
+type groupProvider interface {
+	GetGroupsByIDs(ctx context.Context, groupIDs []string) (map[string]*group.Group, *tidcommon.ServiceError)
+}
+
+// roleProvider reads the roles a provisioning step assigns.
+type roleProvider interface {
+	GetRolesByIDs(ctx context.Context, ids []string) (map[string]*role.Role, *tidcommon.ServiceError)
+}
+
 // flowValidator is responsible for validating flow definitions,
 // including metadata, structure, node configurations, and registry-dependent checks.
 type flowValidator struct {
@@ -62,6 +75,8 @@ type flowValidator struct {
 	graphBuilder           graphbuilder.GraphBuilderInterface
 	httpConnectionProvider httpConnectionProvider
 	idpProvider            idpProvider
+	groupProvider          groupProvider
+	roleProvider           roleProvider
 	logger                 *log.Logger
 }
 
@@ -73,6 +88,8 @@ func newFlowValidator(
 	graphBuilder graphbuilder.GraphBuilderInterface,
 	connectionProvider httpConnectionProvider,
 	idpProvider idpProvider,
+	groupProvider groupProvider,
+	roleProvider roleProvider,
 ) *flowValidator {
 	return &flowValidator{
 		executorRegistry:       executorRegistry,
@@ -80,6 +97,8 @@ func newFlowValidator(
 		graphBuilder:           graphBuilder,
 		httpConnectionProvider: connectionProvider,
 		idpProvider:            idpProvider,
+		groupProvider:          groupProvider,
+		roleProvider:           roleProvider,
 		logger:                 log.GetLogger().With(log.String(log.LoggerKeyComponentName, "FlowValidator")),
 	}
 }
@@ -150,11 +169,19 @@ func (v *flowValidator) validateFlow(ctx context.Context, flowDef *FlowDefinitio
 		return err
 	}
 
+	if err := v.validatePromptInputsNotOneTimeUse(flowDef.Nodes); err != nil {
+		return err
+	}
+
 	if err := v.validateInterceptors(flowDef.Interceptors, nodeIndex); err != nil {
 		return err
 	}
 
 	if err := v.validateExtensionSteps(ctx, flowDef.Nodes); err != nil {
+		return err
+	}
+
+	if err := v.validateProvisioningSteps(ctx, flowDef.Nodes); err != nil {
 		return err
 	}
 
@@ -238,33 +265,67 @@ var requiredExecutorsByFlowType = map[providers.FlowType][]string{
 	},
 }
 
-// companionExecutor is an executor that must appear alongside another, running in the given mode.
+// companionExecutor is an executor that must appear alongside another, running in the given mode. In a
+// system flow, systemMode satisfies the dependency too, when it is set.
 type companionExecutor struct {
-	name string
-	mode string
+	name       string
+	mode       string
+	systemMode string
 }
 
-// companionExecutors maps an executor to executors that must appear alongside it in the same flow,
-// independent of flow type.
+// companionExecutors maps an executor to executors that must appear alongside it in the same flow.
 //
 // SessionRevocationExecutor terminates a subject's SSO sessions but records no revocation itself. The
 // tokens those sessions hold are covered by the subject criterion that CriteriaRevocationExecutor
 // persists, which is why session termination does not enumerate token families per application. A
 // flow that terminates without it would therefore delete sessions while their tokens stay live, so
 // the pairing is required rather than conventional. Only the revoke mode counts: the advance_cutoff
-// mode writes nothing for a revoke-all plan, so it alone would leave those tokens live.
+// mode writes nothing for a revoke-all plan, so it alone would leave those tokens live. A system flow is
+// the exception. It is built into the server, and a service runs a system post flow only with the plan
+// of a pre flow that already revoked, so a post flow may end sessions after advancing the cutoff.
+//
+// AttributeVerificationExecutor has no default mode, so each of its nodes prepares or records. A flow
+// that prepares must record, or it completes without verifying anything, and a flow that records must
+// prepare, or it has no pin to record.
 var companionExecutors = map[string][]companionExecutor{
 	executormeta.ExecutorNameSessionRevocation: {
-		{name: executormeta.ExecutorNameCriteriaRevocation, mode: executormeta.ExecutorModeRevoke},
+		{
+			name: executormeta.ExecutorNameCriteriaRevocation, mode: executormeta.ExecutorModeRevoke,
+			systemMode: executormeta.ExecutorModeAdvanceCutoff,
+		},
+	},
+	executormeta.ExecutorNameAttributeVerification: {
+		{name: executormeta.ExecutorNameAttributeVerification, mode: executormeta.ExecutorModePrepare},
+		{name: executormeta.ExecutorNameAttributeVerification, mode: executormeta.ExecutorModeRecord},
 	},
 }
 
-// modeFlowTypes limits an executor mode to fewer flow types than the executor supports. Identity
-// governance suspends and unsuspends only in an administration flow; a recovery flow runs only unlock.
+// modeFlowTypes limits an executor mode to fewer flow types than the executor supports. The credential setter
+// runs a credential reset only in an administrator-initiated flow. Identity governance suspends and unsuspends
+// only in an administration flow; a recovery flow runs only unlock.
+// The access change validator plans a role permission change only in a system flow. The role executor
+// selects roles only in an invitation flow, and assigns them there or in a sign-up flow. The sharing executor
+// authorizes a share only in an invitation flow.
 var modeFlowTypes = map[string]map[string][]providers.FlowType{
+	executormeta.ExecutorNameAccessChangeValidator: {
+		executormeta.ExecutorModeRolePermissionRemoval: {providers.FlowTypeSystem},
+	},
+	executormeta.ExecutorNameCredentialSetter: {
+		executormeta.ExecutorModeValidate:   {providers.FlowTypeAdminInitiated},
+		executormeta.ExecutorModeInvalidate: {providers.FlowTypeAdminInitiated},
+	},
 	executormeta.ExecutorNameIdentityGovernance: {
 		executormeta.ExecutorModeSuspend:   {providers.FlowTypeAdministration},
 		executormeta.ExecutorModeUnsuspend: {providers.FlowTypeAdministration},
+	},
+	executormeta.ExecutorNameRole: {
+		executormeta.ExecutorModeRoleSelection:  {providers.FlowTypeInvitation},
+		executormeta.ExecutorModeRoleAssignment: {providers.FlowTypeInvitation, providers.FlowTypeRegistration},
+	},
+	executormeta.ExecutorNameSharing: {
+		executormeta.ExecutorModeValidate: {providers.FlowTypeInvitation},
+		executormeta.ExecutorModeShare: {providers.FlowTypeInvitation, providers.FlowTypeAuthentication,
+			providers.FlowTypeRegistration},
 	},
 }
 
@@ -279,12 +340,55 @@ func (v *flowValidator) validateFlowTypeBasedConstraints(
 	if svcErr := v.validateModeFlowTypes(flowType, nodes); svcErr != nil {
 		return svcErr
 	}
+	if svcErr := validateOUResolverPlacement(flowType, nodes); svcErr != nil {
+		return svcErr
+	}
 	if flowType == providers.FlowTypeDeviceGrant {
 		if svcErr := validateDeviceGrantAuthenticationCall(nodes); svcErr != nil {
 			return svcErr
 		}
 	}
-	return v.validateCompanionExecutors(nodes)
+	return v.validateCompanionExecutors(flowType, nodes)
+}
+
+// validateOUResolverPlacement refuses an authentication flow that can reach an OU resolver node from a session
+// node, where a reused session has already signed in without the organization unit the resolver decides.
+func validateOUResolverPlacement(
+	flowType providers.FlowType, nodes []providers.NodeDefinition,
+) *tidcommon.ServiceError {
+	if flowType != providers.FlowTypeAuthentication {
+		return nil
+	}
+	executors := make(map[string]string, len(nodes))
+	for _, node := range nodes {
+		if node.Type == string(common.NodeTypeTaskExecution) && node.Executor != nil {
+			executors[node.ID] = node.Executor.Name
+		}
+	}
+	adjacency := buildAdjacencyList(nodes)
+	for _, node := range nodes {
+		if executors[node.ID] != executormeta.ExecutorNameSession {
+			continue
+		}
+		visited := map[string]bool{node.ID: true}
+		queue := slices.Clone(adjacency[node.ID])
+		for len(queue) > 0 {
+			current := queue[0]
+			queue = queue[1:]
+			if visited[current] {
+				continue
+			}
+			visited[current] = true
+			if executors[current] == executormeta.ExecutorNameOUResolver {
+				return ErrorOUResolverAfterSession.WithParams(map[string]string{
+					"nodeID":        current,
+					"sessionNodeID": node.ID,
+				})
+			}
+			queue = append(queue, adjacency[current]...)
+		}
+	}
+	return nil
 }
 
 // validateModeFlowTypes returns an error when a node runs an executor in a mode the flow type cannot
@@ -296,7 +400,12 @@ func (v *flowValidator) validateModeFlowTypes(
 		if node.Type != string(common.NodeTypeTaskExecution) || node.Executor == nil {
 			continue
 		}
-		flowTypes, ok := modeFlowTypes[node.Executor.Name][node.Executor.Mode]
+		mode := node.Executor.Mode
+		if mode == "" {
+			meta, _ := executormeta.MetaFor(node.Executor.Name)
+			mode = meta.DefaultMode
+		}
+		flowTypes, ok := modeFlowTypes[node.Executor.Name][mode]
 		if !ok || slices.Contains(flowTypes, flowType) {
 			continue
 		}
@@ -307,7 +416,7 @@ func (v *flowValidator) validateModeFlowTypes(
 			Params: map[string]string{
 				"nodeID":       node.ID,
 				"executorName": node.Executor.Name,
-				"mode":         node.Executor.Mode,
+				"mode":         mode,
 				"flowType":     string(flowType),
 			},
 		})
@@ -416,24 +525,29 @@ func validateDeviceGrantAuthenticationCall(nodes []providers.NodeDefinition) *ti
 // validateCompanionExecutors returns an error when an executor is present without an executor it
 // depends on.
 func (v *flowValidator) validateCompanionExecutors(
-	nodes []providers.NodeDefinition,
+	flowType providers.FlowType, nodes []providers.NodeDefinition,
 ) *tidcommon.ServiceError {
 	presentExecutors := collectPresentExecutors(nodes)
-	for name, companions := range companionExecutors {
+	for _, name := range slices.Sorted(maps.Keys(companionExecutors)) {
 		if !presentExecutors[name] {
 			continue
 		}
-		for _, companion := range companions {
+		for _, companion := range companionExecutors[name] {
 			if hasExecutorInMode(nodes, companion.name, companion.mode) {
+				continue
+			}
+			if flowType == providers.FlowTypeSystem && companion.systemMode != "" &&
+				hasExecutorInMode(nodes, companion.name, companion.systemMode) {
 				continue
 			}
 			return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
 				Key: "error.flowmgtservice.companion_executor_missing_description",
 				DefaultValue: "Executor '{{param(executorName)}}' requires executor " +
-					"'{{param(companionExecutorName)}}' in the same flow",
+					"'{{param(companionExecutorName)}}' in mode '{{param(companionExecutorMode)}}' in the same flow",
 				Params: map[string]string{
 					"executorName":          name,
 					"companionExecutorName": companion.name,
+					"companionExecutorMode": companion.mode,
 				},
 			})
 		}
@@ -815,6 +929,25 @@ func (v *flowValidator) validateNodeFormat(
 		return v.validatePromptNode(node)
 	case string(common.NodeTypeCall):
 		return v.validateCallNode(node)
+	case string(common.NodeTypeVariables):
+		return v.validateVariablesNodeFailureTarget(node, nodeIndex)
+	}
+	return nil
+}
+
+// validateVariablesNodeFailureTarget validates that the onFailure of a VARIABLES node points to a PROMPT node.
+func (v *flowValidator) validateVariablesNodeFailureTarget(
+	node *providers.NodeDefinition, nodeIndex map[string]*providers.NodeDefinition,
+) *tidcommon.ServiceError {
+	if node.OnFailure == "" {
+		return nil
+	}
+	if target, ok := nodeIndex[node.OnFailure]; ok && target.Type != string(common.NodeTypePrompt) {
+		return tidcommon.CustomServiceError(ErrorInvalidNodeConfig, tidcommon.I18nMessage{
+			Key:          "error.flowmgtservice.variables_node_invalid_failure_target_description",
+			DefaultValue: "VARIABLES node '{{param(nodeID)}}': onFailure must point to a PROMPT node",
+			Params:       map[string]string{"nodeID": node.ID},
+		})
 	}
 	return nil
 }
@@ -1057,6 +1190,26 @@ func (v *flowValidator) validateDefaultsAgainstRules(
 						"nodeID": nodeID, "inputID": input.Identifier, "ruleType": string(rule.Type),
 					},
 				})
+			}
+		}
+	}
+	return nil
+}
+
+// validatePromptInputsNotOneTimeUse rejects a prompt input marked one time use. A prompt only collects the
+// input, so the executor that uses it declares it one time use.
+func (v *flowValidator) validatePromptInputsNotOneTimeUse(nodes []providers.NodeDefinition) *tidcommon.ServiceError {
+	for _, node := range nodes {
+		for _, prompt := range node.Prompts {
+			for _, input := range prompt.Inputs {
+				if input.OneTimeUse {
+					return tidcommon.CustomServiceError(ErrorInvalidInputConfig, tidcommon.I18nMessage{
+						Key: "error.flowmgtservice.prompt_input_one_time_use_description",
+						DefaultValue: "Node '{{param(nodeID)}}': prompt input '{{param(inputID)}}' cannot be one " +
+							"time use. Mark it one time use on the executor node that uses it",
+						Params: map[string]string{"nodeID": node.ID, "inputID": input.Identifier},
+					})
+				}
 			}
 		}
 	}
@@ -1320,8 +1473,43 @@ func (v *flowValidator) validateExecutorSpecificConstraints(
 		return v.validateAccountLinkingExecutor(node, nodeIndex)
 	case executormeta.ExecutorNameOUResolver:
 		return v.validateOUResolverExecutor(node, flowType)
+	case executormeta.ExecutorNameAgentTypeResolver:
+		return validateAgentTypeResolverExecutor(node)
+	case executormeta.ExecutorNameRole:
+		return validateRoleExecutor(node, flowType)
 	}
 	return nil
+}
+
+// validateRoleExecutor requires a sign-up flow's role assignment node to name its roles: no admin picks them there.
+func validateRoleExecutor(node *providers.NodeDefinition, flowType providers.FlowType) *tidcommon.ServiceError {
+	if flowType != providers.FlowTypeRegistration || node.Executor.Mode != executormeta.ExecutorModeRoleAssignment {
+		return nil
+	}
+	if roles, _ := node.Properties[common.NodePropertyRoles].(string); strings.TrimSpace(roles) == "" {
+		return missingRequiredPropertyError(node, common.NodePropertyRoles)
+	}
+	return nil
+}
+
+// validateAgentTypeResolverExecutor rejects "*" in the node's allowed agent types. The node reads each entry as
+// an agent type handle, so "*" would match no agent type, while leaving the property out already allows every
+// agent type. Applications and agents do take "*" in their allowed agent types, which is why it is caught here.
+func validateAgentTypeResolverExecutor(node *providers.NodeDefinition) *tidcommon.ServiceError {
+	allowed, _ := node.Properties[common.NodePropertyAllowedAgentTypes].([]interface{})
+	if !slices.Contains(allowed, interface{}(providers.AnyAgentType)) {
+		return nil
+	}
+	return tidcommon.CustomServiceError(ErrorInvalidExecutorConfig, tidcommon.I18nMessage{
+		Key: "error.flowmgtservice.agent_type_wildcard_not_supported_description",
+		DefaultValue: "Node '{{param(nodeID)}}': executor '{{param(executorName)}}' does not accept '*' in " +
+			"'{{param(propertyKey)}}'; leave the property out to allow every agent type",
+		Params: map[string]string{
+			"nodeID":       node.ID,
+			"executorName": node.Executor.Name,
+			"propertyKey":  common.NodePropertyAllowedAgentTypes,
+		},
+	})
 }
 
 // validateOUResolverExecutor rejects OU resolver properties and inputs that the node's strategy or flow type would
@@ -1692,6 +1880,87 @@ func (v *flowValidator) validateExtensionExecutor(
 		})
 	}
 	return &tidcommon.InternalServerError
+}
+
+// validateProvisioningSteps refuses a flow whose provisioning step assigns a group or role that does not exist. An ID
+// with a placeholder is resolved when the step runs, so it is not checked, but the plain IDs beside it are.
+func (v *flowValidator) validateProvisioningSteps(
+	ctx context.Context, nodes []providers.NodeDefinition,
+) *tidcommon.ServiceError {
+	for i := range nodes {
+		node := &nodes[i]
+		if node.Executor == nil || node.Executor.Name != executormeta.ExecutorNameProvisioning {
+			continue
+		}
+		missingGroupIDs, svcErr := v.missingGroups(ctx, assignedIDs(node.Properties, common.NodePropertyAssignGroup))
+		if svcErr != nil {
+			return svcErr
+		}
+		if len(missingGroupIDs) > 0 {
+			return ErrorProvisioningGroupNotFound.WithParams(map[string]string{
+				"nodeID":   node.ID,
+				"groupIDs": strings.Join(missingGroupIDs, ", "),
+			})
+		}
+		missingRoleIDs, svcErr := v.missingRoles(ctx, assignedIDs(node.Properties, common.NodePropertyAssignRole))
+		if svcErr != nil {
+			return svcErr
+		}
+		if len(missingRoleIDs) > 0 {
+			return ErrorProvisioningRoleNotFound.WithParams(map[string]string{
+				"nodeID":  node.ID,
+				"roleIDs": strings.Join(missingRoleIDs, ", "),
+			})
+		}
+	}
+	return nil
+}
+
+// assignedIDPlaceholderPattern matches a variable placeholder, such as {{var(groupId)}}, in a property value. It is
+// the only placeholder a node's properties resolve when the step runs.
+var assignedIDPlaceholderPattern = regexp.MustCompile(`\{\{\s*var\(.*?\)\s*\}\}`)
+
+// assignedIDs reads the comma-separated IDs a provisioning step property names. An ID that has a placeholder is
+// resolved when the step runs, so it names none, but the plain IDs beside it do. A value that is not a string names
+// none.
+func assignedIDs(properties map[string]any, key string) []string {
+	value, ok := properties[key].(string)
+	if !ok {
+		return nil
+	}
+	return slices.DeleteFunc(
+		utils.UniqueStrings(utils.ParseStringArray(assignedIDPlaceholderPattern.ReplaceAllString(value, "\x00"), ",")),
+		func(id string) bool { return id == "" || strings.Contains(id, "\x00") })
+}
+
+// missingGroups returns the group IDs that name no group.
+func (v *flowValidator) missingGroups(ctx context.Context, groupIDs []string) ([]string, *tidcommon.ServiceError) {
+	if len(groupIDs) == 0 {
+		return nil, nil
+	}
+	groups, svcErr := v.groupProvider.GetGroupsByIDs(ctx, groupIDs)
+	if svcErr != nil {
+		return nil, &tidcommon.InternalServerError
+	}
+	return slices.DeleteFunc(slices.Clone(groupIDs), func(id string) bool {
+		_, found := groups[id]
+		return found
+	}), nil
+}
+
+// missingRoles returns the role IDs that name no role.
+func (v *flowValidator) missingRoles(ctx context.Context, roleIDs []string) ([]string, *tidcommon.ServiceError) {
+	if len(roleIDs) == 0 {
+		return nil, nil
+	}
+	roles, svcErr := v.roleProvider.GetRolesByIDs(ctx, roleIDs)
+	if svcErr != nil {
+		return nil, &tidcommon.InternalServerError
+	}
+	return slices.DeleteFunc(slices.Clone(roleIDs), func(id string) bool {
+		_, found := roles[id]
+		return found
+	}), nil
 }
 
 // validateAccountLinkingExecutor checks that a linking node has an onIncomplete prompt whose
@@ -2101,8 +2370,8 @@ func (v *flowValidator) validateVariablesNodeFormat(node *providers.NodeDefiniti
 	switch {
 	case node.OnSuccess == "":
 		return fmt.Errorf("a VARIABLES node must have onSuccess")
-	case node.OnFailure != "" || node.OnIncomplete != "" || node.Next != "":
-		return fmt.Errorf("a VARIABLES node goes on through onSuccess only, with no onFailure, onIncomplete or next")
+	case node.OnIncomplete != "" || node.Next != "":
+		return fmt.Errorf("a VARIABLES node goes on through onSuccess and onFailure only, with no onIncomplete or next")
 	case node.Executor != nil || len(node.Prompts) > 0 || len(node.Properties) > 0 || node.Meta != nil ||
 		node.Flow != nil || node.Condition != nil || node.Variant != "" || node.Message != "":
 		return fmt.Errorf(

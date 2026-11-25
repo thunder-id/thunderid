@@ -3,6 +3,7 @@
 
 import {screen, waitFor, fireEvent} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {renderWithProviders} from '@thunderid/test-utils';
 import type {ReactNode} from 'react';
 import {describe, it, expect, beforeEach, afterEach, vi} from 'vitest';
@@ -122,11 +123,13 @@ vi.mock('../../components/edit-group/members-settings/EditMembersSettings', () =
 }));
 
 vi.mock('../../components/edit-group/advanced-settings/EditAdvancedSettings', () => ({
-  default: ({onDeleteClick}: {onDeleteClick: () => void}) => (
+  default: ({onDeleteClick = undefined}: {onDeleteClick?: () => void}) => (
     <div data-testid="advanced-settings">
-      <button type="button" data-testid="delete-click" onClick={onDeleteClick}>
-        Delete
-      </button>
+      {onDeleteClick && (
+        <button type="button" data-testid="delete-click" onClick={onDeleteClick}>
+          Delete
+        </button>
+      )}
     </div>
   ),
 }));
@@ -137,6 +140,11 @@ const mockGroup = {
   description: 'A test group',
   ouId: 'ou-1',
   members: [],
+};
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  isLoading: false,
 };
 
 describe('GroupEditPage', () => {
@@ -170,6 +178,57 @@ describe('GroupEditPage', () => {
       value: originalClipboard,
       writable: true,
       configurable: true,
+    });
+  });
+
+  describe('inside a project', () => {
+    it('should return to the list for a group of another project', async () => {
+      mockUseGetGroup.mockReturnValue({
+        data: {...mockGroup, projectId: 'project-2'},
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      });
+
+      renderWithProviders(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <GroupEditPage />
+        </ProjectScopeProvider>,
+      );
+
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith('/groups', {replace: true});
+      });
+    });
+
+    it('should return to the list for a group of the organization', async () => {
+      renderWithProviders(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <GroupEditPage />
+        </ProjectScopeProvider>,
+      );
+
+      await waitFor(() => {
+        expect(mockNavigate).toHaveBeenCalledWith('/groups', {replace: true});
+      });
+    });
+
+    it('should show a group of the selected project', () => {
+      mockUseGetGroup.mockReturnValue({
+        data: {...mockGroup, projectId: 'project-1'},
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      });
+
+      renderWithProviders(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <GroupEditPage />
+        </ProjectScopeProvider>,
+      );
+
+      expect(screen.getAllByText('Test Group').length).toBeGreaterThan(0);
+      expect(mockNavigate).not.toHaveBeenCalledWith('/groups', {replace: true});
     });
   });
 
@@ -259,6 +318,17 @@ describe('GroupEditPage', () => {
     await waitFor(() => {
       expect(screen.getByTestId('delete-dialog')).toBeInTheDocument();
     });
+  });
+
+  it('should hide the Advanced tab and the name edit when the admin may only view groups', () => {
+    renderWithProviders(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <GroupEditPage />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.queryByRole('tab', {name: 'Advanced'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'Edit group name'})).not.toBeInTheDocument();
   });
 
   it('should close delete dialog', async () => {

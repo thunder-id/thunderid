@@ -1,14 +1,33 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {act, render, screen, fireEvent, waitFor} from '@testing-library/react';
+import {
+  act,
+  render as rtlRender,
+  screen,
+  fireEvent,
+  waitFor,
+  type RenderOptions,
+  type RenderResult,
+} from '@testing-library/react';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import type {Node, Edge} from '@xyflow/react';
+import type {JSX, ReactElement, ReactNode} from 'react';
 import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import FlowConstants from '../../constants/FlowConstants';
 import {ElementTypes, ButtonVariants, ButtonTypes, ElementCategories, BlockTypes} from '../../models/elements';
 import type {Element} from '../../models/elements';
 import {ExecutionTypes, StepTypes} from '../../models/steps';
+import {REGISTRATION_GRAPH_VALIDATION_RULES} from '../../validation/validation-rules';
 import FlowBuilder from '../FlowBuilder';
+
+// The admin may do everything, so the component's actions show; a test nests its own provider to restrict them.
+function AllowAll({children}: {children: ReactNode}): JSX.Element {
+  return <CapabilitiesProvider capabilities={{can: () => true, isLoading: false}}>{children}</CapabilitiesProvider>;
+}
+
+const render = (ui: ReactElement, options?: RenderOptions): RenderResult =>
+  rtlRender(ui, {wrapper: AllowAll, ...options});
 
 // Use vi.hoisted for mock functions that need to be available during vi.mock hoisting
 const {
@@ -143,8 +162,9 @@ vi.mock('@xyflow/react', async (importOriginal) => ({
 
 // Captures the onNodesChange prop handed to FlowCanvas so tests can feed
 // canvas changes through FlowBuilder's stack-aware wrapper.
-const {onNodesChangeCapture} = vi.hoisted(() => ({
+const {onNodesChangeCapture, setEdgesCapture} = vi.hoisted(() => ({
   onNodesChangeCapture: {current: null as ((changes: unknown[]) => void) | null},
+  setEdgesCapture: {current: null as ((update: Edge[]) => void) | null},
 }));
 
 // Mock FlowCanvas component
@@ -157,6 +177,7 @@ vi.mock('../FlowCanvas', () => ({
     nodes,
     edges,
     onNodesChange,
+    setEdges,
     onResourceAdd,
     onTemplateLoad,
     onWidgetLoad,
@@ -164,14 +185,16 @@ vi.mock('../FlowCanvas', () => ({
     triggerAutoLayoutOnLoad,
     mutateComponents,
     isDirty,
+    saveBlockedReason,
   }: {
     flowTitle: string;
     flowHandle: string;
     onFlowTitleChange: (name: string) => void;
-    onSave: (data: {nodes: Node[]; edges: Edge[]; viewport: {x: number; y: number; zoom: number}}) => void;
+    onSave?: (data: {nodes: Node[]; edges: Edge[]; viewport: {x: number; y: number; zoom: number}}) => void;
     nodes: Node[];
     edges: Edge[];
     onNodesChange: (changes: unknown[]) => void;
+    setEdges: (update: Edge[]) => void;
     onResourceAdd: (resource: unknown) => void;
     onTemplateLoad: (template: unknown) => unknown;
     onWidgetLoad: (widget: unknown, target: unknown, nodes: Node[], edges: Edge[]) => unknown;
@@ -179,14 +202,18 @@ vi.mock('../FlowCanvas', () => ({
     triggerAutoLayoutOnLoad?: boolean;
     mutateComponents: (components: Element[]) => Element[];
     isDirty?: boolean;
+    saveBlockedReason?: string;
   }) => {
     onNodesChangeCapture.current = onNodesChange;
+    setEdgesCapture.current = setEdges;
     return (
       <div data-testid="flow-builder">
         <div data-testid="flow-title">{flowTitle}</div>
         <div data-testid="flow-handle">{flowHandle}</div>
         <div data-testid="auto-layout">{String(triggerAutoLayoutOnLoad)}</div>
         <div data-testid="is-dirty">{String(Boolean(isDirty))}</div>
+        <div data-testid="save-blocked">{saveBlockedReason ?? ''}</div>
+        <div data-testid="can-save">{String(Boolean(onSave))}</div>
         <div data-testid="nodes-count">{nodes.length}</div>
         <div data-testid="edges-count">{edges.length}</div>
         <button data-testid="change-title-btn" onClick={() => onFlowTitleChange('New Flow Name')} type="button">
@@ -194,7 +221,7 @@ vi.mock('../FlowCanvas', () => ({
         </button>
         <button
           data-testid="save-btn"
-          onClick={() => onSave({nodes, edges, viewport: {x: 0, y: 0, zoom: 1}})}
+          onClick={() => onSave?.({nodes, edges, viewport: {x: 0, y: 0, zoom: 1}})}
           type="button"
         >
           Save
@@ -552,6 +579,20 @@ const mockProviderQueries = vi.hoisted(() => {
   });
   return {settled, identity: settled(), sms: settled(), email: settled()};
 });
+
+// The flow's organization access, which the editor holds and saves after the flow.
+const mockSharingAccess = vi.hoisted(() => ({
+  draft: {childUnits: [] as {rules?: unknown}[]} as Record<string, unknown>,
+  hasChanges: false,
+  isDeclared: false,
+  reset: vi.fn(),
+  save: vi.fn(),
+  savedPolicy: undefined as unknown,
+}));
+
+vi.mock('@thunderid/configure-resource-sharing', () => ({
+  useOrganizationAccess: () => mockSharingAccess,
+}));
 
 vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-connections')>()),
@@ -959,6 +1000,165 @@ describe('Edge Style Updates', () => {
   });
 });
 
+describe('Sharing saved with the flow', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockUseParams.mockReturnValue({flowId: 'existing-flow-123'});
+    mockUseNodesState.mockReturnValue([[], mockSetNodes, vi.fn()]);
+    mockUseEdgesState.mockReturnValue([[], mockSetEdges, vi.fn()]);
+    mockUseUpdateNodeInternals.mockReturnValue(vi.fn());
+    mockIsFlowValid.value = true;
+    mockValidateFlowGraph.mockReturnValue([]);
+    mockExistingFlowData.value = {
+      id: 'existing-flow-123',
+      ouId: 'ou-1',
+      name: 'Existing Flow',
+      handle: 'existing-flow',
+      nodes: [],
+    };
+    mockSharingAccess.hasChanges = false;
+    mockSharingAccess.isDeclared = false;
+    mockSharingAccess.draft = {childUnits: []};
+    mockSharingAccess.savedPolicy = undefined;
+    mockSharingAccess.save.mockResolvedValue(undefined);
+  });
+
+  it('should count a sharing change as an unsaved change of the editor', () => {
+    mockSharingAccess.hasChanges = true;
+
+    render(<FlowBuilder />);
+
+    expect(screen.getByTestId('is-dirty')).toHaveTextContent('true');
+  });
+
+  it('should not count anything as unsaved when neither the flow nor its sharing changed', () => {
+    render(<FlowBuilder />);
+
+    expect(screen.getByTestId('is-dirty')).toHaveTextContent('false');
+  });
+
+  it('should save only the sharing when only the sharing changed, leaving the flow alone', async () => {
+    mockSharingAccess.hasChanges = true;
+
+    render(<FlowBuilder />);
+    fireEvent.click(screen.getByTestId('save-btn'));
+
+    await waitFor(() => expect(mockSharingAccess.save).toHaveBeenCalledTimes(1));
+    expect(mockUpdateFlowMutate).not.toHaveBeenCalled();
+  });
+
+  describe('with a default a unit would start with that its variable refuses', () => {
+    const variablesNode = {
+      id: 'vars',
+      type: 'VARIABLES',
+      position: {x: 0, y: 0},
+      data: {inputs: [{identifier: 'supportEmail', type: 'EMAIL_INPUT', defaultValue: 'a@b.co'}]},
+    } as Node;
+
+    beforeEach(() => {
+      mockUseNodesState.mockReturnValue([[variablesNode], mockSetNodes, vi.fn()]);
+      mockSharingAccess.hasChanges = true;
+      mockSharingAccess.draft = {
+        childUnitRules: {'variables.supportEmail': {editable: true, value: ['not-an-email']}},
+        childUnits: [],
+      };
+    });
+
+    it('should hold Save back and say why', () => {
+      render(<FlowBuilder />);
+
+      expect(screen.getByTestId('save-blocked')).toHaveTextContent(
+        'Fix the organization unit defaults marked in Share before saving',
+      );
+    });
+
+    it('should save nothing, neither the flow nor the sharing', async () => {
+      render(<FlowBuilder />);
+      fireEvent.click(screen.getByTestId('save-btn'));
+
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(mockUpdateFlowMutate).not.toHaveBeenCalled();
+      expect(mockSharingAccess.save).not.toHaveBeenCalled();
+    });
+
+    it('should save again once the default is valid', async () => {
+      mockSharingAccess.draft = {
+        childUnitRules: {'variables.supportEmail': {editable: true, value: ['ops@acme.io']}},
+        childUnits: [],
+      };
+
+      render(<FlowBuilder />);
+
+      expect(screen.getByTestId('save-blocked')).toBeEmptyDOMElement();
+
+      fireEvent.click(screen.getByTestId('save-btn'));
+
+      await waitFor(() => expect(mockSharingAccess.save).toHaveBeenCalledTimes(1));
+    });
+
+    it('should not hold back a flow whose sharing is declared in a resource file', () => {
+      mockSharingAccess.isDeclared = true;
+
+      render(<FlowBuilder />);
+
+      expect(screen.getByTestId('save-blocked')).toBeEmptyDOMElement();
+    });
+  });
+
+  describe('after the flow is saved', () => {
+    const policy = {
+      id: 'p1',
+      stage: 'share',
+      version: 1,
+      childUnits: {mode: 'all', overlayRules: {'variables.region': {editable: true}}},
+    };
+    const declaring = {
+      id: 'vars',
+      type: 'VARIABLES',
+      position: {x: 0, y: 0},
+      data: {inputs: [{identifier: 'region', type: 'TEXT_INPUT'}]},
+    } as Node;
+    const discardedMessage = /took its sharing terms with it/;
+
+    beforeEach(() => {
+      mockSharingAccess.savedPolicy = policy;
+      mockUpdateFlowMutate.mockImplementation((_data: unknown, options: {onSuccess?: () => void}) => {
+        options?.onSuccess?.();
+      });
+    });
+
+    it('should read the policy again when the save removed a variable it names, even with no sharing draft', async () => {
+      mockUseNodesState.mockReturnValue([[], mockSetNodes, vi.fn()]);
+
+      render(<FlowBuilder />);
+      fireEvent.click(screen.getByTestId('save-btn'));
+
+      await waitFor(() => expect(mockSharingAccess.reset).toHaveBeenCalledTimes(1));
+      expect(mockSharingAccess.save).not.toHaveBeenCalled();
+      expect(screen.queryByText(discardedMessage)).not.toBeInTheDocument();
+    });
+
+    it('should leave the policy alone while the variables it names are still declared', async () => {
+      mockUseNodesState.mockReturnValue([[declaring], mockSetNodes, vi.fn()]);
+
+      render(<FlowBuilder />);
+      fireEvent.click(screen.getByTestId('save-btn'));
+
+      await waitFor(() => expect(mockUpdateFlowMutate).toHaveBeenCalled());
+      expect(mockSharingAccess.reset).not.toHaveBeenCalled();
+    });
+  });
+
+  it('should save the flow itself when nothing of the sharing changed', async () => {
+    render(<FlowBuilder />);
+    fireEvent.click(screen.getByTestId('save-btn'));
+
+    await waitFor(() => expect(mockUpdateFlowMutate).toHaveBeenCalled());
+    expect(mockSharingAccess.save).not.toHaveBeenCalled();
+  });
+});
+
 describe('Save Functionality with Validation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1015,6 +1215,11 @@ describe('Save Functionality with Validation', () => {
   });
 });
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  isLoading: false,
+};
+
 describe('Update Existing Flow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -1043,6 +1248,25 @@ describe('Update Existing Flow', () => {
     await waitFor(() => {
       expect(mockUpdateFlowMutate).toHaveBeenCalled();
     });
+  });
+
+  it('withholds Save when the admin may not update flows', () => {
+    mockUseParams.mockReturnValue({flowId: 'existing-flow-123'});
+    mockExistingFlowData.value = {
+      id: 'existing-flow-123',
+      ouId: 'ou-1',
+      name: 'Existing Flow',
+      handle: 'existing-flow',
+      nodes: [],
+    };
+
+    render(
+      <CapabilitiesProvider capabilities={viewOnly}>
+        <FlowBuilder />
+      </CapabilitiesProvider>,
+    );
+
+    expect(screen.getByTestId('can-save')).toHaveTextContent('false');
   });
 
   it('should call createFlow for new flows without flowId', async () => {
@@ -1392,6 +1616,36 @@ describe('Existing Flow Data Loading', () => {
 
     // Flow title should be set from existing data or default
     expect(screen.getByTestId('flow-title')).toBeInTheDocument();
+  });
+
+  it('returns to the list for a flow of another project', async () => {
+    mockUseParams.mockReturnValue({flowId: 'test-flow-id'});
+    mockExistingFlowData.value = {id: 'test-flow-id', ouId: 'ou-1', projectId: 'project-2', nodes: []};
+
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <FlowBuilder />
+      </ProjectScopeProvider>,
+    );
+
+    expect(screen.queryByTestId('flow-builder')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith('/flows', {replace: true});
+    });
+  });
+
+  it('shows a flow of the selected project', () => {
+    mockUseParams.mockReturnValue({flowId: 'test-flow-id'});
+    mockExistingFlowData.value = {id: 'test-flow-id', ouId: 'ou-1', projectId: 'project-1', nodes: []};
+
+    render(
+      <ProjectScopeProvider project={{id: 'project-1'}}>
+        <FlowBuilder />
+      </ProjectScopeProvider>,
+    );
+
+    expect(screen.getByTestId('flow-builder')).toBeInTheDocument();
+    expect(mockNavigate).not.toHaveBeenCalledWith('/flows', {replace: true});
   });
 });
 
@@ -1968,6 +2222,90 @@ describe('Compact (Non-Verbose) Mode', () => {
 
     mockUseNodesState.mockReturnValue([
       nodesBefore.map((node) => ({...node, position: {x: node.position.x + 40, y: 25}})),
+      mockSetNodes,
+      vi.fn(),
+    ]);
+    rerender(<FlowBuilder />);
+
+    await waitFor(() => expect(screen.getByTestId('is-dirty')).toHaveTextContent('true'), {timeout: 2000});
+  });
+
+  it('should be clean after a save once the saved flow is read back, without a second save', async () => {
+    mockUseParams.mockReturnValue({flowId: 'existing-flow-123'});
+    mockExistingFlowData.value = {
+      id: 'existing-flow-123',
+      ouId: 'ou-1',
+      name: 'Existing Flow',
+      handle: 'existing-flow',
+      nodes: [],
+    };
+    mockUpdateFlowMutate.mockImplementation((_data: unknown, options: {onSuccess?: () => void}) => {
+      options?.onSuccess?.();
+    });
+    const nodesBefore: Node[] = [
+      {id: 'view-1', type: 'VIEW', position: {x: 0, y: 0}, data: {}},
+      {id: 'exec-a', type: 'TASK_EXECUTION', position: {x: 100, y: 0}, data: {}},
+    ];
+    mockUseNodesState.mockReturnValue([nodesBefore, mockSetNodes, vi.fn()]);
+    mockUseEdgesState.mockReturnValue([[], mockSetEdges, vi.fn()]);
+
+    const {rerender} = render(<FlowBuilder />);
+    fireEvent.pointerDown(window);
+    await waitFor(() => expect(screen.getByTestId('is-dirty')).toHaveTextContent('false'), {timeout: 2000});
+
+    // The user edits, and the edit makes the flow dirty.
+    const edited = nodesBefore.map((node) => (node.id === 'exec-a' ? {...node, position: {x: 160, y: 0}} : node));
+    mockUseNodesState.mockReturnValue([edited, mockSetNodes, vi.fn()]);
+    rerender(<FlowBuilder />);
+    await waitFor(() => expect(screen.getByTestId('is-dirty')).toHaveTextContent('true'), {timeout: 2000});
+
+    fireEvent.click(screen.getByTestId('save-btn'));
+    await waitFor(() => expect(mockUpdateFlowMutate).toHaveBeenCalled());
+
+    // Reading the saved flow back settles the graph once more, such as a relayout of its nodes.
+    mockUseNodesState.mockReturnValue([
+      edited.map((node) => ({...node, position: {x: node.position.x + 40, y: 25}})),
+      mockSetNodes,
+      vi.fn(),
+    ]);
+    rerender(<FlowBuilder />);
+
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    expect(screen.getByTestId('is-dirty')).toHaveTextContent('false');
+  });
+
+  it('should keep an edit made while a save is in flight dirty once the save is read back', async () => {
+    mockUseParams.mockReturnValue({flowId: 'existing-flow-123'});
+    mockExistingFlowData.value = {
+      id: 'existing-flow-123',
+      ouId: 'ou-1',
+      name: 'Existing Flow',
+      handle: 'existing-flow',
+      nodes: [],
+    };
+    let succeed: (() => void) | undefined;
+    mockUpdateFlowMutate.mockImplementation((_data: unknown, options: {onSuccess?: () => void}) => {
+      succeed = () => options?.onSuccess?.();
+    });
+    const nodesBefore: Node[] = [
+      {id: 'view-1', type: 'VIEW', position: {x: 0, y: 0}, data: {}},
+      {id: 'exec-a', type: 'TASK_EXECUTION', position: {x: 100, y: 0}, data: {}},
+    ];
+    mockUseNodesState.mockReturnValue([nodesBefore, mockSetNodes, vi.fn()]);
+    mockUseEdgesState.mockReturnValue([[], mockSetEdges, vi.fn()]);
+
+    const {rerender} = render(<FlowBuilder />);
+    fireEvent.pointerDown(window);
+    await waitFor(() => expect(screen.getByTestId('is-dirty')).toHaveTextContent('false'), {timeout: 2000});
+
+    fireEvent.click(screen.getByTestId('save-btn'));
+    await waitFor(() => expect(mockUpdateFlowMutate).toHaveBeenCalled());
+
+    // The user edits while the save is in flight; the save then succeeds, and the edit settles after it.
+    fireEvent.pointerDown(window);
+    act(() => succeed?.());
+    mockUseNodesState.mockReturnValue([
+      nodesBefore.map((node) => (node.id === 'exec-a' ? {...node, position: {x: 260, y: 0}} : node)),
       mockSetNodes,
       vi.fn(),
     ]);
@@ -4405,6 +4743,29 @@ describe('Edge Style Effect - setEdges Callback Execution', () => {
     // Each edge should have its type updated to the new edgeStyle
     expect(result.every((e: Edge) => e.type === 'smoothstep')).toBe(true);
   });
+
+  it('should keep display-only skip edges out of the edges state', () => {
+    const edge: Edge = {id: 'edge-1', source: 'a', target: 'b'};
+    const skipEdge: Edge = {id: 'condition-skip:a', source: 'a', target: 'c', data: {conditionSkip: true}};
+    const updates: ((prev: Edge[]) => Edge[])[] = [];
+
+    mockSetEdges.mockImplementation((update: unknown) => {
+      updates.push(update as (prev: Edge[]) => Edge[]);
+    });
+    mockUseEdgesState.mockReturnValue([[], mockSetEdges, vi.fn()]);
+
+    render(<FlowBuilder />);
+    updates.length = 0;
+
+    const withSkipEdge = [edge, skipEdge];
+    const withoutSkipEdge = [edge];
+    setEdgesCapture.current!(withSkipEdge);
+    setEdgesCapture.current!(withoutSkipEdge);
+
+    expect(updates[0]([])).toEqual([edge]);
+    // An update with no skip edge keeps its array, so React can skip the render.
+    expect(updates[1]([])).toBe(withoutSkipEdge);
+  });
 });
 
 describe('Verbose Mode Filtering - Component Integration', () => {
@@ -6126,6 +6487,30 @@ describe('isEditingExistingFlow Branch Coverage', () => {
       expect(mockUpdateFlowMutate).toHaveBeenCalled();
       expect(mockCreateFlowMutate).not.toHaveBeenCalled();
     });
+  });
+
+  // A sign-up flow is checked for a role assignment step with no roles, which the server refuses to save.
+  it('should register the sign-up graph validation rules for a registration flow', () => {
+    const setGraphValidationRules = vi.fn();
+    mockUseFlowConfig.mockImplementation(() => ({
+      setFlowCompletionConfigs: mockSetFlowCompletionConfigs,
+      setGraphValidationRules,
+      edgeStyle: mockEdgeStyle.value,
+      isVerboseMode: true,
+    }));
+    mockUseParams.mockReturnValue({flowId: 'sign-up-flow'});
+    mockExistingFlowData.value = {
+      id: 'sign-up-flow',
+      ouId: 'ou-1',
+      name: 'Sign-up',
+      handle: 'sign-up',
+      flowType: 'REGISTRATION',
+      nodes: [],
+    };
+
+    render(<FlowBuilder />);
+
+    expect(setGraphValidationRules).toHaveBeenCalledWith(REGISTRATION_GRAPH_VALIDATION_RULES);
   });
 
   it('should NOT be editing when both flowId and existingFlowData are missing', async () => {

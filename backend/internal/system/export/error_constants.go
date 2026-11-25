@@ -4,8 +4,13 @@
 package export
 
 import (
+	"errors"
+
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
+
+// errNilEventBus is returned when the service is initialized without the event bus it audits on.
+var errNilEventBus = errors.New("the export service needs an event bus")
 
 // Client errors for export operations.
 var (

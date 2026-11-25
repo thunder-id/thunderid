@@ -43,6 +43,7 @@ const servers = [
     identifier: 'https://booking.example.com',
     ouId: 'ou-1',
     delimiter: ':',
+    hierarchicalPermissions: true,
     type: 'API' as const,
   },
   {
@@ -51,6 +52,7 @@ const servers = [
     identifier: 'https://payments.example.com',
     ouId: 'ou-1',
     delimiter: ':',
+    hierarchicalPermissions: true,
     type: 'API' as const,
   },
 ];
@@ -61,6 +63,7 @@ const dotServer = {
   identifier: 'https://ecommerce.example.com',
   ouId: 'ou-1',
   delimiter: '.',
+  hierarchicalPermissions: true,
   type: 'API' as const,
 };
 
@@ -180,9 +183,12 @@ function renderCatalog(props: {
   selected: ResourcePermissions[];
   onChange?: ReturnType<typeof vi.fn>;
   readOnly?: boolean;
+  ouId?: string;
 }) {
   const onChange = props.onChange ?? vi.fn();
-  renderWithProviders(<PermissionCatalog selected={props.selected} onChange={onChange} readOnly={props.readOnly} />);
+  renderWithProviders(
+    <PermissionCatalog selected={props.selected} onChange={onChange} readOnly={props.readOnly} ouId={props.ouId} />,
+  );
   return onChange;
 }
 
@@ -208,7 +214,7 @@ describe('PermissionCatalog', () => {
     expect(await screen.findByText('Bookings')).toBeInTheDocument();
   });
 
-  it('clicking an unchecked resource checkbox cascades the whole subtree', async () => {
+  it('selecting a resource grants the resource alone, which carries its subtree', async () => {
     const user = userEvent.setup();
     const onChange = renderCatalog({selected: []});
     // Expand rs-1 server
@@ -218,47 +224,41 @@ describe('PermissionCatalog', () => {
     const allBookingsCheckboxes = screen.getAllByRole('checkbox', {name: 'bookings'});
     await user.click(allBookingsCheckboxes[0]);
     await waitFor(() => {
-      expect(onChange).toHaveBeenCalledWith([
-        {
-          resourceServerId: 'rs-1',
-          permissions: expect.arrayContaining([
-            'bookings',
-            'bookings:create',
-            'bookings:reservations',
-            'bookings:reservations:update',
-          ]) as string[],
-        },
-      ]);
+      expect(onChange).toHaveBeenCalledWith([{resourceServerId: 'rs-1', permissions: ['bookings']}]);
     });
   });
 
-  it('unticking an action also drops the resource scopes that would still confer it', async () => {
+  it('selecting a resource drops descendants already listed, which it now confers', async () => {
     const user = userEvent.setup();
-    // The state a cascade leaves behind: the resource scopes plus every action.
     const onChange = renderCatalog({
-      selected: [
-        {
-          resourceServerId: 'rs-1',
-          permissions: ['bookings', 'bookings:reservations', 'bookings:reservations:update'],
-        },
-      ],
+      selected: [{resourceServerId: 'rs-1', permissions: ['bookings:create', 'health:ping']}],
     });
     await user.click(screen.getByRole('button', {name: 'Booking API'}));
     await waitFor(() => expect(screen.getByText('Bookings')).toBeInTheDocument());
-    // Drill down to the Update action on the nested Reservations resource.
-    await user.click(screen.getByRole('button', {name: 'bookings'}));
-    await user.click(await screen.findByRole('button', {name: 'reservations'}));
-    await user.click(await screen.findByRole('checkbox', {name: 'bookings:reservations:update'}));
-    // Both 'bookings:reservations' and 'bookings' cover the action, so neither may survive.
+    const allBookingsCheckboxes = screen.getAllByRole('checkbox', {name: 'bookings'});
+    await user.click(allBookingsCheckboxes[0]);
     await waitFor(() => {
-      expect(onChange).toHaveBeenCalledWith([]);
+      expect(onChange).toHaveBeenCalledWith([{resourceServerId: 'rs-1', permissions: ['health:ping', 'bookings']}]);
     });
+  });
+
+  it('an action a selected resource confers is checked, and is cleared by clearing the resource', async () => {
+    const user = userEvent.setup();
+    renderCatalog({selected: [{resourceServerId: 'rs-1', permissions: ['bookings']}]});
+    await user.click(screen.getByRole('button', {name: 'Booking API'}));
+    await waitFor(() => expect(screen.getByText('Bookings')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', {name: 'bookings'}));
+
+    // Held through 'bookings' rather than listed, so the row reports it but cannot release it.
+    const createCheckbox = await screen.findByRole('checkbox', {name: 'bookings:create'});
+    expect(createCheckbox).toBeChecked();
+    expect(createCheckbox).toBeDisabled();
   });
 
   it('unticking an action leaves sibling permissions untouched', async () => {
     const user = userEvent.setup();
     const onChange = renderCatalog({
-      selected: [{resourceServerId: 'rs-1', permissions: ['bookings', 'bookings:create', 'health:ping']}],
+      selected: [{resourceServerId: 'rs-1', permissions: ['bookings:create', 'health:ping']}],
     });
     await user.click(screen.getByRole('button', {name: 'Booking API'}));
     await waitFor(() => expect(screen.getByText('Bookings')).toBeInTheDocument());
@@ -269,7 +269,7 @@ describe('PermissionCatalog', () => {
     });
   });
 
-  it('clicking a fully-selected resource checkbox clears the subtree', async () => {
+  it('clearing a resource also releases descendants a role listed individually', async () => {
     const user = userEvent.setup();
     const fullySelected: ResourcePermissions[] = [
       {
@@ -329,6 +329,33 @@ describe('PermissionCatalog', () => {
       // The whole rs-1 entry should be dropped
       expect(onChange).toHaveBeenCalledWith([]);
     });
+  });
+
+  it('lists only the resource servers of the given organization unit', async () => {
+    renderCatalog({selected: [], ouId: 'ou-1'});
+
+    await screen.findAllByRole('checkbox');
+    expect(useGetResourceServersModule.default).toHaveBeenCalledWith(expect.objectContaining({ouId: 'ou-1'}));
+  });
+
+  it('marks a selected server missing from a unit-scoped list as unavailable rather than not found', async () => {
+    const selected: ResourcePermissions[] = [{resourceServerId: 'rs-other-unit', permissions: ['x:read']}];
+    renderCatalog({selected, ouId: 'ou-1'});
+
+    expect(await screen.findByText('Unavailable')).toBeInTheDocument();
+    expect(screen.queryByText('Resource server not found')).not.toBeInTheDocument();
+  });
+
+  it('keeps the id of a selected server visible without a label when a unit-scoped list is only a partial page', async () => {
+    vi.mocked(useGetResourceServersModule.default).mockReturnValue(
+      queryResult({totalResults: 150, startIndex: 1, count: 2, resourceServers: servers}),
+    );
+    const selected: ResourcePermissions[] = [{resourceServerId: 'rs-later-page', permissions: ['x:read']}];
+    renderCatalog({selected, ouId: 'ou-1'});
+
+    expect(await screen.findByText('rs-later-page')).toBeInTheDocument();
+    expect(screen.queryByText('Unavailable')).not.toBeInTheDocument();
+    expect(screen.queryByText('Resource server not found')).not.toBeInTheDocument();
   });
 
   it('renders unknown-server entries as a warning group with uncheckable rows', async () => {
@@ -449,6 +476,7 @@ describe('PermissionCatalog', () => {
       identifier: 'https://empty.example.com',
       ouId: 'ou-1',
       delimiter: ':',
+      hierarchicalPermissions: true,
       type: 'API' as const,
     };
 
@@ -491,6 +519,7 @@ describe('PermissionCatalog', () => {
       identifier: 'https://mcp.example.com',
       ouId: 'ou-1',
       delimiter: ':',
+      hierarchicalPermissions: true,
       type: 'MCP' as const,
     };
 
@@ -557,6 +586,7 @@ describe('PermissionCatalog', () => {
       identifier: 'https://mcp.example.com',
       ouId: 'ou-1',
       delimiter: ':',
+      hierarchicalPermissions: true,
       type: 'MCP' as const,
     };
 
@@ -623,5 +653,90 @@ describe('PermissionCatalog', () => {
     // Since rs-1 is API type, its actions are listed flat without subsection labels
     const toolsLabels = screen.queryAllByText('Tools');
     expect(toolsLabels.length).toBe(0);
+  });
+
+  // A resource server that did not declare its permissions hierarchical confers nothing beyond the
+  // permission selected, so selecting a resource has to write out the subtree for the role to grant
+  // it, and a permission beneath it must not be shown as already held.
+  it('writes out the subtree, and confers nothing, when the server is not hierarchical', async () => {
+    const user = userEvent.setup();
+
+    // The same Booking API, with the declaration withdrawn.
+    vi.mocked(useGetResourceServersModule.default).mockReturnValue(
+      queryResult({
+        totalResults: 1,
+        startIndex: 1,
+        count: 1,
+        resourceServers: [{...servers[0], hierarchicalPermissions: false}],
+      }),
+    );
+
+    const onChange = renderCatalog({selected: []});
+
+    await user.click(screen.getByRole('button', {name: 'Booking API'}));
+    await waitFor(() => expect(screen.getByText('Bookings')).toBeInTheDocument());
+
+    const allBookingsCheckboxes = screen.getAllByRole('checkbox', {name: 'bookings'});
+    await user.click(allBookingsCheckboxes[0]);
+    await waitFor(() => {
+      expect(onChange).toHaveBeenCalledWith([
+        {
+          resourceServerId: 'rs-1',
+          permissions: expect.arrayContaining(['bookings', 'bookings:create']) as string[],
+        },
+      ]);
+    });
+  });
+
+  // Unticking an action drops the ancestors that were selected alongside it, which is what the
+  // catalogue has always done and what the role needs so the selection reflects the scopes.
+  it('drops the resource alongside an action unticked beneath it, when not hierarchical', async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(useGetResourceServersModule.default).mockReturnValue(
+      queryResult({
+        totalResults: 1,
+        startIndex: 1,
+        count: 1,
+        resourceServers: [{...servers[0], hierarchicalPermissions: false}],
+      }),
+    );
+
+    const onChange = renderCatalog({
+      selected: [{resourceServerId: 'rs-1', permissions: ['bookings', 'bookings:create', 'health:ping']}],
+    });
+
+    await user.click(screen.getByRole('button', {name: 'Booking API'}));
+    await waitFor(() => expect(screen.getByText('Bookings')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', {name: 'bookings'}));
+    await user.click(await screen.findByRole('checkbox', {name: 'bookings:create'}));
+
+    await waitFor(() => {
+      expect(onChange).toHaveBeenCalledWith([{resourceServerId: 'rs-1', permissions: ['health:ping']}]);
+    });
+  });
+
+  it('leaves a permission beneath a selected resource clearable when the server is not hierarchical', async () => {
+    const user = userEvent.setup();
+
+    vi.mocked(useGetResourceServersModule.default).mockReturnValue(
+      queryResult({
+        totalResults: 1,
+        startIndex: 1,
+        count: 1,
+        resourceServers: [{...servers[0], hierarchicalPermissions: false}],
+      }),
+    );
+
+    renderCatalog({selected: [{resourceServerId: 'rs-1', permissions: ['bookings']}]});
+
+    await user.click(screen.getByRole('button', {name: 'Booking API'}));
+    await waitFor(() => expect(screen.getByText('Bookings')).toBeInTheDocument());
+    await user.click(screen.getByRole('button', {name: 'bookings'}));
+
+    // Holding the resource confers nothing here, so the action is neither checked nor locked.
+    const createCheckbox = await screen.findByRole('checkbox', {name: 'bookings:create'});
+    expect(createCheckbox).not.toBeChecked();
+    expect(createCheckbox).toBeEnabled();
   });
 });

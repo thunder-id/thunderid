@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -24,6 +25,10 @@ const (
 	handleAuthFlowHandle2 = "agent-api-handle-flow-2"
 
 	jwtBearerGrant = "urn:ietf:params:oauth:grant-type:jwt-bearer"
+
+	// systemOUID is the system organization unit the bootstrap server configuration names.
+	systemOUID      = "01900000-0000-7000-8000-000000000001"
+	deviceCodeGrant = "urn:ietf:params:oauth:grant-type:device_code"
 )
 
 var testServerURL = testutils.TestServerURL
@@ -83,8 +88,9 @@ var (
 )
 
 var (
-	testOUID          string
-	defaultAuthFlowID string
+	testOUID                 string
+	defaultAuthFlowID        string
+	defaultDeviceGrantFlowID string
 
 	// IDs of the isolated auth flows referenced by handle in the resolution tests.
 	handleAuthFlowID1 string
@@ -125,6 +131,8 @@ func (ts *AgentAPITestSuite) SetupSuite() {
 
 	defaultAuthFlowID, err = testutils.GetFlowIDByHandle("default-flow", "AUTHENTICATION")
 	ts.Require().NoError(err, "Failed to get default auth flow ID")
+	defaultDeviceGrantFlowID, err = testutils.GetFlowIDByHandle("default-device-grant-flow", "DEVICE_GRANT")
+	ts.Require().NoError(err, "Failed to get default Device Grant flow ID")
 
 	handleAuthFlowID1, err = testutils.CreateIsolatedAuthFlow(handleAuthFlowHandle1)
 	ts.Require().NoError(err, "Failed to create the first isolated auth flow")
@@ -447,6 +455,133 @@ func (ts *AgentAPITestSuite) TestCreateAgentEntityOnly() {
 	ts.Assert().Empty(fetched.AuthFlowID, "entity-only agent must have no auth flow ID")
 }
 
+// An agent created without an organization unit goes to the system organization unit.
+func (ts *AgentAPITestSuite) TestCreateAgentWithoutOU() {
+	// The suite moves the default agent type into its own organization unit, and an agent is placed within
+	// its agent type's organization unit tree, so an agent type in the system organization unit stands in.
+	// Its clean-up is registered first so it runs after the agent's.
+	typeHandle := "create-without-ou-agents"
+	typeID, err := testutils.CreateNewAgentType(testutils.UserType{
+		Handle: typeHandle, DisplayName: "Create Without OU Agents", OUID: systemOUID,
+		Schema: map[string]interface{}{"name": map[string]interface{}{"type": "string", "required": true}},
+	})
+	ts.Require().NoError(err)
+	ts.T().Cleanup(func() { _ = testutils.DeleteAgentType(typeID) })
+
+	created, _ := ts.createAgentWithStatus(
+		Agent{Type: typeHandle, Attributes: agentAttrs("create-without-ou", nil)}, http.StatusCreated)
+
+	ts.Equal(systemOUID, created.OUID)
+}
+
+// --- owner ---
+
+func (ts *AgentAPITestSuite) TestCreateAgent_ExternalOwnerIsStoredAsGiven() {
+	owner := testutils.ExternalAgentOwner("alice@example.com", "email")
+	created, _ := ts.createAgentWithStatus(Agent{
+		OUID: testOUID, Type: "default", Owner: owner, Attributes: agentAttrs("owner-external-create", nil),
+	}, http.StatusCreated)
+
+	fetched, err := testutils.GetAgent(created.ID)
+	ts.Require().NoError(err)
+	ts.Require().NotNil(fetched.Owner)
+	ts.Equal(owner.ID, fetched.Owner.ID)
+	ts.Equal("email", fetched.Owner.IDType)
+	ts.Require().NotNil(fetched.Owner.IsLocal)
+	ts.False(*fetched.Owner.IsLocal)
+}
+
+func (ts *AgentAPITestSuite) TestCreateAgent_LocalOwnerMustExist() {
+	_, code := ts.createAgentWithStatus(Agent{
+		OUID: testOUID, Type: "default", Owner: testutils.LocalAgentOwner("0199a1b2-0000-7000-8000-000000000999"),
+		Attributes: agentAttrs("owner-local-missing", nil),
+	}, http.StatusBadRequest)
+	ts.Equal("AGT-1039", code)
+}
+
+func (ts *AgentAPITestSuite) TestCreateAgent_InvalidOwnerIsRejected() {
+	local := true
+	_, code := ts.createAgentWithStatus(Agent{
+		OUID: testOUID, Type: "default",
+		Owner:      &testutils.AgentOwner{ID: "alice@example.com", IDType: "email", IsLocal: &local},
+		Attributes: agentAttrs("owner-invalid", nil),
+	}, http.StatusBadRequest)
+	ts.Equal("AGT-1049", code)
+}
+
+func (ts *AgentAPITestSuite) TestCreateAgent_OwnerValuesAreChecked() {
+	cases := map[string]*testutils.AgentOwner{
+		"email that is not an address": testutils.ExternalAgentOwner("not-an-email", "email"),
+		"mobile not in E.164 form":     testutils.ExternalAgentOwner("0771234567", "mobile"),
+		// Longer than the owner index allows a row on PostgreSQL, which failed the insert with a 500.
+		"id too long": testutils.ExternalAgentOwner(strings.Repeat("a", 4096), "uuid"),
+	}
+	for name, owner := range cases {
+		ts.Run(name, func() {
+			_, code := ts.createAgentWithStatus(Agent{
+				OUID: testOUID, Type: "default", Owner: owner, Attributes: agentAttrs("owner-value-checked", nil),
+			}, http.StatusBadRequest)
+			ts.Equal("AGT-1049", code)
+		})
+	}
+}
+
+// An external owner names a person in another identity system, so it is stored as given and never looked
+// up, even when its ID is also an entity of this deployment.
+func (ts *AgentAPITestSuite) TestExternalOwnerIsNotLookedUp() {
+	entity, _ := ts.createAgentWithStatus(Agent{
+		OUID: testOUID, Type: "default", Attributes: agentAttrs("owner-external-entity", nil),
+	}, http.StatusCreated)
+	owner := testutils.ExternalAgentOwner(entity.ID, "uuid")
+
+	created, _ := ts.createAgentWithStatus(Agent{
+		OUID: testOUID, Type: "default", Owner: owner, Attributes: agentAttrs("owner-external-create", nil),
+	}, http.StatusCreated)
+	ts.Require().NotNil(created.Owner)
+	ts.Equal(entity.ID, created.Owner.ID)
+	ts.Require().NotNil(created.Owner.IsLocal)
+	ts.False(*created.Owner.IsLocal)
+
+	other, _ := ts.createAgentWithStatus(Agent{
+		OUID: testOUID, Type: "default", Attributes: agentAttrs("owner-external-update", nil),
+	}, http.StatusCreated)
+	updated, _ := ts.updateAgentWithStatus(other.ID, Agent{
+		OUID: testOUID, Type: "default", Owner: owner, Attributes: agentAttrs("owner-external-update", nil),
+	}, http.StatusOK)
+	ts.Require().NotNil(updated.Owner)
+	ts.Equal(entity.ID, updated.Owner.ID)
+	ts.Require().NotNil(updated.Owner.IsLocal)
+	ts.False(*updated.Owner.IsLocal)
+}
+
+func (ts *AgentAPITestSuite) TestCreateAgent_WithoutOwnerTheCallerIsALocalOwner() {
+	created, _ := ts.createAgentWithStatus(Agent{
+		OUID: testOUID, Type: "default", Attributes: agentAttrs("owner-caller-default", nil),
+	}, http.StatusCreated)
+
+	ts.Require().NotNil(created.Owner, "the caller becomes the owner")
+	ts.NotEmpty(created.Owner.ID)
+	ts.Equal("uuid", created.Owner.IDType)
+	ts.Require().NotNil(created.Owner.IsLocal)
+	ts.True(*created.Owner.IsLocal, "a caller that is a user here is a local owner")
+}
+
+func (ts *AgentAPITestSuite) TestUpdateAgent_ToAnExternalOwner() {
+	created, _ := ts.createAgentWithStatus(Agent{
+		OUID: testOUID, Type: "default", Attributes: agentAttrs("owner-update-external", nil),
+	}, http.StatusCreated)
+
+	owner := testutils.ExternalAgentOwner("0199a1b2-7c3d-7e4f-9a8b-123456789abc", "uuid")
+	updated, _ := ts.updateAgentWithStatus(created.ID, Agent{
+		OUID: testOUID, Type: "default", Owner: owner, Attributes: agentAttrs("owner-update-external", nil),
+	}, http.StatusOK)
+
+	ts.Require().NotNil(updated.Owner)
+	ts.Equal(owner.ID, updated.Owner.ID)
+	ts.Require().NotNil(updated.Owner.IsLocal)
+	ts.False(*updated.Owner.IsLocal)
+}
+
 // --- creation mode: entity + inbound ---
 
 func (ts *AgentAPITestSuite) TestCreateAgentWithInboundProfile() {
@@ -560,6 +695,49 @@ func (ts *AgentAPITestSuite) TestCreateAgent_DelegatedGetsTheDefaultGrants() {
 	ts.Assert().Equal([]string{"code"}, cfg.ResponseTypes)
 	ts.Assert().True(cfg.PKCERequired)
 	ts.Assert().NotEmpty(cfg.ClientSecret)
+}
+
+func (ts *AgentAPITestSuite) TestCreateAgent_DeviceGrantFlowIsPersistedAndReturned() {
+	agent := delegatedAgent("device-grant-flow-create", deviceCodeGrant)
+	agent.DeviceGrantFlowID = defaultDeviceGrantFlowID
+
+	created, _ := ts.createAgentWithStatus(agent, http.StatusCreated)
+	ts.Require().NotEmpty(created.ID)
+	ts.Assert().Equal(defaultDeviceGrantFlowID, created.DeviceGrantFlowID)
+	ts.Require().Len(created.InboundAuthConfig, 1)
+	cfg := created.InboundAuthConfig[0].Config
+	ts.Require().NotNil(cfg)
+	ts.Assert().Contains(cfg.GrantTypes, deviceCodeGrant)
+
+	fetchedResp, err := doGet(testServerURL + agentBasePath + "/" + created.ID)
+	ts.Require().NoError(err)
+	defer fetchedResp.Body.Close()
+	ts.Require().Equal(http.StatusOK, fetchedResp.StatusCode)
+	var fetched Agent
+	ts.Require().NoError(json.NewDecoder(fetchedResp.Body).Decode(&fetched))
+	ts.Assert().Equal(defaultDeviceGrantFlowID, fetched.DeviceGrantFlowID)
+}
+
+func (ts *AgentAPITestSuite) TestCreateAgent_DeviceGrantFlowIsRequired() {
+	missingFlow := delegatedAgent("device-grant-flow-required", deviceCodeGrant)
+	_, code := ts.createAgentWithStatus(missingFlow, http.StatusBadRequest)
+	ts.Assert().Equal("AGT-1065", code)
+}
+
+func (ts *AgentAPITestSuite) TestCreateAgent_DeviceGrantFlowIDMustBeValid() {
+	invalidFlow := delegatedAgent("device-grant-flow-invalid", deviceCodeGrant)
+	invalidFlow.DeviceGrantFlowID = "missing-device-grant-flow"
+	_, code := ts.createAgentWithStatus(invalidFlow, http.StatusBadRequest)
+	ts.Assert().Equal("AGT-1066", code)
+}
+
+func (ts *AgentAPITestSuite) TestCreateAgent_DeviceGrantFlowMustCallConfiguredAuthenticationFlow() {
+	agent := delegatedAgent("device-grant-flow-mismatch", deviceCodeGrant)
+	agent.AuthFlowID = handleAuthFlowID1
+	agent.DeviceGrantFlowID = defaultDeviceGrantFlowID
+
+	_, code := ts.createAgentWithStatus(agent, http.StatusBadRequest)
+	ts.Assert().Equal("AGT-1067", code)
 }
 
 func (ts *AgentAPITestSuite) TestCreateAgent_DelegatedWithoutAnOAuthConfigNeedsARedirectURI() {
@@ -1080,6 +1258,29 @@ func (ts *AgentAPITestSuite) TestUpdateAgent_DelegatedGetsTheDefaultGrants() {
 	ts.Assert().Equal([]string{"client_credentials", "authorization_code", "refresh_token"}, cfg.GrantTypes)
 	ts.Assert().Equal([]string{"code"}, cfg.ResponseTypes)
 	ts.Assert().True(cfg.PKCERequired)
+}
+
+func (ts *AgentAPITestSuite) TestUpdateAgent_DeviceGrantFlowIsPersistedAndReturned() {
+	agentID, err := createAgent(Agent{OUID: testOUID, Type: "default", Attributes: agentAttrs("device-grant-flow-update", nil)})
+	ts.Require().NoError(err)
+	defer func() { _ = deleteAgent(agentID) }()
+
+	agent := delegatedAgent("device-grant-flow-update", deviceCodeGrant)
+	agent.DeviceGrantFlowID = defaultDeviceGrantFlowID
+	updated, _ := ts.updateAgentWithStatus(agentID, agent, http.StatusOK)
+	ts.Assert().Equal(defaultDeviceGrantFlowID, updated.DeviceGrantFlowID)
+	ts.Require().Len(updated.InboundAuthConfig, 1)
+	cfg := updated.InboundAuthConfig[0].Config
+	ts.Require().NotNil(cfg)
+	ts.Assert().Contains(cfg.GrantTypes, deviceCodeGrant)
+
+	fetchedResp, err := doGet(testServerURL + agentBasePath + "/" + agentID)
+	ts.Require().NoError(err)
+	defer fetchedResp.Body.Close()
+	ts.Require().Equal(http.StatusOK, fetchedResp.StatusCode)
+	var fetched Agent
+	ts.Require().NoError(json.NewDecoder(fetchedResp.Body).Decode(&fetched))
+	ts.Assert().Equal(defaultDeviceGrantFlowID, fetched.DeviceGrantFlowID)
 }
 
 func (ts *AgentAPITestSuite) TestUpdateAgent_NotDelegatedAlwaysHoldsClientCredentials() {

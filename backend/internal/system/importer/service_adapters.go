@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"sort"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -19,6 +20,7 @@ import (
 	layoutmgt "github.com/thunder-id/thunderid/internal/design/layout/mgt"
 	thememgt "github.com/thunder-id/thunderid/internal/design/theme/mgt"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	"github.com/thunder-id/thunderid/internal/ou"
@@ -28,6 +30,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/user"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
 	"github.com/thunder-id/thunderid/internal/vc/presentation"
@@ -78,6 +81,7 @@ type roleDeclarativeYAML struct {
 	Description     string                     `yaml:"description,omitempty"`
 	OUID            string                     `yaml:"ouId,omitempty"`
 	OUHandle        string                     `yaml:"ouHandle,omitempty"`
+	ProjectID       string                     `yaml:"projectId,omitempty"`
 	Permissions     []role.ResourcePermissions `yaml:"permissions"`
 	SharingPolicies []sharing.PolicyRequest    `yaml:"sharingPolicies,omitempty"`
 	Assignments     []role.RoleAssignment      `yaml:"assignments,omitempty"`
@@ -88,6 +92,7 @@ type userDeclarativeYAML struct {
 	Type            string                  `yaml:"type"`
 	OUID            string                  `yaml:"ouId,omitempty"`
 	OUHandle        string                  `yaml:"ouHandle,omitempty"`
+	ProjectID       string                  `yaml:"projectId,omitempty"`
 	Attributes      map[string]interface{}  `yaml:"attributes"`
 	Credentials     map[string]interface{}  `yaml:"credentials,omitempty"`
 	SharingPolicies []sharing.PolicyRequest `yaml:"sharingPolicies,omitempty"`
@@ -110,6 +115,7 @@ type themeDeclarativeYAML struct {
 	Handle      string      `yaml:"handle"`
 	DisplayName string      `yaml:"displayName"`
 	Description string      `yaml:"description,omitempty"`
+	ProjectID   string      `yaml:"projectId,omitempty"`
 	Theme       interface{} `yaml:"theme"`
 }
 
@@ -118,6 +124,7 @@ type layoutDeclarativeYAML struct {
 	Handle      string      `yaml:"handle"`
 	DisplayName string      `yaml:"displayName"`
 	Description string      `yaml:"description,omitempty"`
+	ProjectID   string      `yaml:"projectId,omitempty"`
 	Layout      interface{} `yaml:"layout"`
 }
 
@@ -129,6 +136,7 @@ type notificationTemplateDeclarativeYAML struct {
 	Handle      string `yaml:"handle"`
 	OUID        string `yaml:"ouId,omitempty"`
 	OUHandle    string `yaml:"ouHandle,omitempty"`
+	ProjectID   string `yaml:"projectId,omitempty"`
 	DisplayName string `yaml:"displayName"`
 	Description string `yaml:"description"`
 	Content     struct {
@@ -158,6 +166,7 @@ func (s *importService) importOrganizationUnit(
 		Name:                      req.Name,
 		Description:               req.Description,
 		Parent:                    req.Parent,
+		ProjectID:                 req.ProjectID,
 		ThemeID:                   req.ThemeID,
 		LayoutID:                  req.LayoutID,
 		AuthFlowID:                req.AuthFlowID,
@@ -173,37 +182,30 @@ func (s *importService) importOrganizationUnit(
 	}
 	updateReq := createReq
 
-	if dryRun {
-		if options.IsUpsertEnabled() && req.ID != "" {
-			_, svcErr := s.ouService.GetOrganizationUnit(ctx, req.ID)
-			if svcErr == nil {
-				return successOutcome(resourceTypeOrganizationUnit, req.ID, req.Name, operationUpdate)
-			}
-
-			if !isNotFoundServiceError(svcErr) {
-				return serviceErrorOutcome(resourceTypeOrganizationUnit, req.ID, req.Name, operationUpdate, svcErr)
-			}
+	// The upsert looks the organization unit up rather than attempting an update, so a create is not
+	// preceded by an audited failed update.
+	exists := false
+	if options.IsUpsertEnabled() && req.ID != "" {
+		_, svcErr := s.ouService.GetOrganizationUnit(ctx, req.ID)
+		if svcErr != nil && !isNotFoundServiceError(svcErr) {
+			return serviceErrorOutcome(resourceTypeOrganizationUnit, req.ID, req.Name, operationUpdate, svcErr)
 		}
+		exists = svcErr == nil
+	}
 
+	if dryRun {
+		if exists {
+			return successOutcome(resourceTypeOrganizationUnit, req.ID, req.Name, operationUpdate)
+		}
 		return successOutcome(resourceTypeOrganizationUnit, req.ID, req.Name, operationCreate)
 	}
 
-	if options.IsUpsertEnabled() && req.ID != "" {
+	if exists {
 		updated, svcErr := s.ouService.UpdateOrganizationUnit(ctx, req.ID, updateReq)
-		if svcErr == nil {
-			return successOutcome(resourceTypeOrganizationUnit, updated.ID, updated.Name, operationUpdate)
-		}
-
-		if !isNotFoundServiceError(svcErr) {
+		if svcErr != nil {
 			return serviceErrorOutcome(resourceTypeOrganizationUnit, req.ID, req.Name, operationUpdate, svcErr)
 		}
-
-		created, createErr := s.ouService.CreateOrganizationUnit(ctx, createReq)
-		if createErr != nil {
-			return serviceErrorOutcome(resourceTypeOrganizationUnit, req.ID, req.Name, operationCreate, createErr)
-		}
-
-		return successOutcome(resourceTypeOrganizationUnit, created.ID, created.Name, operationCreate)
+		return successOutcome(resourceTypeOrganizationUnit, updated.ID, updated.Name, operationUpdate)
 	}
 
 	created, svcErr := s.ouService.CreateOrganizationUnit(ctx, createReq)
@@ -286,36 +288,30 @@ func (s *importService) importEntityType(
 		Schema:                createReq.Schema,
 	}
 
-	if dryRun {
-		if options.IsUpsertEnabled() && req.ID != "" {
-			_, svcErr := s.entityTypeService.GetEntityType(ctx, category, req.ID, false)
-			if svcErr == nil {
-				return successOutcome(resourceTypeEntityType, req.ID, req.DisplayName, operationUpdate)
-			}
-
-			if !isNotFoundServiceError(svcErr) {
-				return serviceErrorOutcome(resourceTypeEntityType, req.ID, req.DisplayName, operationUpdate, svcErr)
-			}
+	// The upsert looks the type up rather than attempting an update, so a create is not preceded by an
+	// audited failed update.
+	exists := false
+	if options.IsUpsertEnabled() && req.ID != "" {
+		_, svcErr := s.entityTypeService.GetEntityType(ctx, category, req.ID, false)
+		if svcErr != nil && !isNotFoundServiceError(svcErr) {
+			return serviceErrorOutcome(resourceTypeEntityType, req.ID, req.DisplayName, operationUpdate, svcErr)
 		}
+		exists = svcErr == nil
+	}
 
+	if dryRun {
+		if exists {
+			return successOutcome(resourceTypeEntityType, req.ID, req.DisplayName, operationUpdate)
+		}
 		return successOutcome(resourceTypeEntityType, req.ID, req.DisplayName, operationCreate)
 	}
 
-	if options.IsUpsertEnabled() && req.ID != "" {
+	if exists {
 		updated, svcErr := s.entityTypeService.UpdateEntityType(ctx, category, req.ID, updateReq)
-		if svcErr == nil {
-			return successOutcome(resourceTypeEntityType, updated.ID, updated.DisplayName, operationUpdate)
-		}
-
-		if !isNotFoundServiceError(svcErr) {
+		if svcErr != nil {
 			return serviceErrorOutcome(resourceTypeEntityType, req.ID, req.DisplayName, operationUpdate, svcErr)
 		}
-
-		created, createErr := s.entityTypeService.CreateEntityType(ctx, category, createReq)
-		if createErr != nil {
-			return serviceErrorOutcome(resourceTypeEntityType, req.ID, req.DisplayName, operationCreate, createErr)
-		}
-		return successOutcome(resourceTypeEntityType, created.ID, created.DisplayName, operationCreate)
+		return successOutcome(resourceTypeEntityType, updated.ID, updated.DisplayName, operationUpdate)
 	}
 
 	created, svcErr := s.entityTypeService.CreateEntityType(ctx, category, createReq)
@@ -344,19 +340,21 @@ func (s *importService) importRole(
 	}
 	req.OUID = resolvedOUID
 
-	// Assignments are added once the sharing policies are in place, since one may be made in an
-	// organization unit only a policy lets the role reach.
+	// Assignments are added by linkRoleAssignments, after the applications they may name, so a flow imported in
+	// between can name the role.
 	createReq := role.RoleCreationDetail{
 		ID:          req.ID,
 		Name:        req.Name,
 		Description: req.Description,
 		OUID:        req.OUID,
+		ProjectID:   req.ProjectID,
 		Permissions: req.Permissions,
 	}
 	updateReq := role.RoleUpdateDetail{
 		Name:        req.Name,
 		Description: req.Description,
 		OUID:        req.OUID,
+		ProjectID:   req.ProjectID,
 		Permissions: req.Permissions,
 	}
 
@@ -386,9 +384,6 @@ func (s *importService) importRole(
 				updated.ID, updated.Name, updated.OUID, req.SharingPolicies, operationUpdate); outcome != nil {
 				return *outcome
 			}
-			if assignErr := s.addRoleAssignments(ctx, updated.ID, req.Assignments); assignErr != nil {
-				return serviceErrorOutcome(resourceTypeRole, updated.ID, updated.Name, operationUpdate, assignErr)
-			}
 			return successOutcome(resourceTypeRole, updated.ID, updated.Name, operationUpdate)
 		}
 
@@ -402,20 +397,12 @@ func (s *importService) importRole(
 		return serviceErrorOutcome(resourceTypeRole, req.ID, req.Name, operationCreate, svcErr)
 	}
 
-	// A policy names the role it governs, so the policies are replayed once the role exists, and the
-	// assignments after them. A refusal of either undoes the create, so a retry does not meet a
-	// half-imported role.
-	outcome := s.applySharingPolicies(ctx, role.RoleSharingType, resourceTypeRole,
-		created.ID, created.Name, created.OUID, req.SharingPolicies, operationCreate)
-	if outcome == nil {
-		if assignErr := s.addRoleAssignments(ctx, created.ID, req.Assignments); assignErr != nil {
-			refused := serviceErrorOutcome(resourceTypeRole, created.ID, created.Name, operationCreate, assignErr)
-			outcome = &refused
-		}
-	}
-	if outcome != nil {
+	// A policy names the role it governs, so the policies are replayed once the role exists. A refusal undoes the
+	// create, so a retry does not meet a half-imported role.
+	if outcome := s.applySharingPolicies(ctx, role.RoleSharingType, resourceTypeRole,
+		created.ID, created.Name, created.OUID, req.SharingPolicies, operationCreate); outcome != nil {
 		if delErr := s.roleService.DeleteRole(ctx, created.ID); delErr != nil {
-			log.GetLogger().Error(ctx, "Failed to remove a role whose sharing policies or assignments were refused",
+			log.GetLogger().Error(ctx, "Failed to remove a role whose sharing policies were refused",
 				log.String("roleID", created.ID), log.String("code", delErr.Code))
 		}
 		return *outcome
@@ -428,14 +415,28 @@ func (s *importService) importRole(
 func (s *importService) addRoleAssignments(
 	ctx context.Context, roleID string, assignments []role.RoleAssignment,
 ) *tidcommon.ServiceError {
-	if len(assignments) == 0 {
+	managed := s.managed != nil && managedresource.IsManagedImport(ctx)
+	if len(assignments) == 0 && !managed {
 		return nil
 	}
 	if s.roleAssignmentService == nil {
 		return tidcommon.CustomServiceError(tidcommon.InternalServerError,
 			tidcommon.I18nMessage{DefaultValue: "roleAssignmentService not configured"})
 	}
-	return s.roleAssignmentService.AddAssigneesToRoles(ctx, assignments, []string{roleID})
+	if len(assignments) > 0 {
+		if managed {
+			// Placed now, as the add places them, so each is recorded under the unit it is made in.
+			resolved, svcErr := s.roleAssignmentService.ResolveAssignmentOUs(ctx, assignments)
+			if svcErr != nil {
+				return svcErr
+			}
+			assignments = resolved
+		}
+		if svcErr := s.roleAssignmentService.AddAssigneesToRoles(ctx, assignments, []string{roleID}); svcErr != nil {
+			return svcErr
+		}
+	}
+	return s.reconcileManagedAssignments(ctx, roleID, assignments)
 }
 
 func (s *importService) importGroup(
@@ -453,6 +454,7 @@ func (s *importService) importGroup(
 		Description string         `yaml:"description,omitempty"`
 		OUID        string         `yaml:"ouId,omitempty"`
 		OUHandle    string         `yaml:"ouHandle,omitempty"`
+		ProjectID   string         `yaml:"projectId,omitempty"`
 		Members     []group.Member `yaml:"members,omitempty"`
 	}
 	if err := doc.Node.Decode(&raw); err != nil {
@@ -471,12 +473,14 @@ func (s *importService) importGroup(
 		Name:        raw.Name,
 		Description: raw.Description,
 		OUID:        raw.OUID,
+		ProjectID:   raw.ProjectID,
 	}
 
 	updateReq := group.UpdateGroupRequest{
 		Name:        raw.Name,
 		Description: raw.Description,
 		OUID:        raw.OUID,
+		ProjectID:   raw.ProjectID,
 	}
 
 	if dryRun {
@@ -493,16 +497,15 @@ func (s *importService) importGroup(
 	}
 
 	if options.IsUpsertEnabled() && raw.ID != "" {
-		_, svcErr := s.groupService.GetGroup(ctx, raw.ID, false)
+		existing, svcErr := s.groupService.GetGroup(ctx, raw.ID, false)
 		if svcErr == nil {
+			// A document that names a project and no organization unit keeps the group in its own.
+			if updateReq.OUID == "" {
+				updateReq.OUID = existing.OUID
+			}
 			updated, updateErr := s.groupService.UpdateGroup(ctx, raw.ID, updateReq)
 			if updateErr != nil {
 				return serviceErrorOutcome(resourceTypeGroup, raw.ID, raw.Name, operationUpdate, updateErr)
-			}
-			if len(raw.Members) > 0 {
-				if _, memberErr := s.groupService.AddGroupMembers(ctx, updated.ID, raw.Members); memberErr != nil {
-					return serviceErrorOutcome(resourceTypeGroup, updated.ID, updated.Name, operationUpdate, memberErr)
-				}
 			}
 			return successOutcome(resourceTypeGroup, updated.ID, updated.Name, operationUpdate)
 		}
@@ -515,12 +518,38 @@ func (s *importService) importGroup(
 	if svcErr != nil {
 		return serviceErrorOutcome(resourceTypeGroup, raw.ID, raw.Name, operationCreate, svcErr)
 	}
+	return successOutcome(resourceTypeGroup, grp.ID, grp.Name, operationCreate)
+}
+
+// linkGroupMembers adds a group document's members and, in a managed import, reconciles them. It runs after the
+// applications, users and agents the members may name, which is why importGroup leaves them out.
+func (s *importService) linkGroupMembers(
+	ctx context.Context, doc parsedDocument, groupID string,
+) *tidcommon.ServiceError {
+	var raw struct {
+		Members []group.Member `yaml:"members,omitempty"`
+	}
+	if err := doc.Node.Decode(&raw); err != nil {
+		return &tidcommon.InternalServerError
+	}
 	if len(raw.Members) > 0 {
-		if _, memberErr := s.groupService.AddGroupMembers(ctx, grp.ID, raw.Members); memberErr != nil {
-			return serviceErrorOutcome(resourceTypeGroup, grp.ID, grp.Name, operationCreate, memberErr)
+		if _, svcErr := s.groupService.AddGroupMembers(ctx, groupID, raw.Members); svcErr != nil {
+			return svcErr
 		}
 	}
-	return successOutcome(resourceTypeGroup, grp.ID, grp.Name, operationCreate)
+	return s.reconcileManagedMembers(ctx, groupID, raw.Members)
+}
+
+// linkRoleAssignments adds a role document's assignments. It runs after the applications, users, agents and groups
+// the assignments may name, which is why importRole leaves them out.
+func (s *importService) linkRoleAssignments(
+	ctx context.Context, doc parsedDocument, roleID string,
+) *tidcommon.ServiceError {
+	var req roleDeclarativeYAML
+	if err := doc.Node.Decode(&req); err != nil {
+		return &tidcommon.InternalServerError
+	}
+	return s.addRoleAssignments(ctx, roleID, req.Assignments)
 }
 
 func (s *importService) importResourceServer(
@@ -558,9 +587,15 @@ func (s *importService) importResourceServer(
 	}
 
 	if options.IsUpsertEnabled() && req.ID != "" {
-		updated, svcErr := s.resourceService.UpdateResourceServer(ctx, req.ID, req)
+		// The upsert looks the resource server up rather than attempting an update, so a create is not
+		// preceded by an audited failed update.
+		_, svcErr := s.resourceService.GetResourceServer(ctx, req.ID)
 		if svcErr == nil {
-			if err := s.importResourceServerChildren(ctx, updated.ID, req); err != nil {
+			var updated *providers.ResourceServer
+			if updated, svcErr = s.resourceService.UpdateResourceServer(ctx, req.ID, req); svcErr != nil {
+				return serviceErrorOutcome(resourceTypeResourceServer, req.ID, req.Name, operationUpdate, svcErr)
+			}
+			if err := s.importResourceServerChildren(ctx, updated.ID, req, true); err != nil {
 				return serviceErrorOutcome(resourceTypeResourceServer, updated.ID, updated.Name, operationUpdate, err)
 			}
 			return successOutcome(resourceTypeResourceServer, updated.ID, updated.Name, operationUpdate)
@@ -576,7 +611,7 @@ func (s *importService) importResourceServer(
 		return serviceErrorOutcome(resourceTypeResourceServer, req.ID, req.Name, operationCreate, svcErr)
 	}
 
-	if err := s.importResourceServerChildren(ctx, created.ID, req); err != nil {
+	if err := s.importResourceServerChildren(ctx, created.ID, req, false); err != nil {
 		return serviceErrorOutcome(resourceTypeResourceServer, created.ID, created.Name, operationCreate, err)
 	}
 
@@ -612,46 +647,41 @@ func (s *importService) importTheme(
 		Handle:      req.Handle,
 		DisplayName: req.DisplayName,
 		Description: req.Description,
+		ProjectID:   req.ProjectID,
 		Theme:       themeBytes,
 	}
 	updateReq := thememgt.UpdateThemeRequest{
 		Handle:      req.Handle,
 		DisplayName: req.DisplayName,
 		Description: req.Description,
+		ProjectID:   req.ProjectID,
 		Theme:       themeBytes,
 	}
 
-	if dryRun {
-		if options.IsUpsertEnabled() && req.ID != "" {
-			_, svcErr := s.themeService.GetTheme(ctx, req.ID)
-			if svcErr == nil {
-				return successOutcome(resourceTypeTheme, req.ID, req.DisplayName, operationUpdate)
-			}
-
-			if !isNotFoundServiceError(svcErr) {
-				return serviceErrorOutcome(resourceTypeTheme, req.ID, req.DisplayName, operationUpdate, svcErr)
-			}
+	// The upsert looks the theme up rather than attempting an update, so a create is not preceded by an
+	// audited failed update.
+	exists := false
+	if options.IsUpsertEnabled() && req.ID != "" {
+		_, svcErr := s.themeService.GetTheme(ctx, req.ID)
+		if svcErr != nil && !isNotFoundServiceError(svcErr) {
+			return serviceErrorOutcome(resourceTypeTheme, req.ID, req.DisplayName, operationUpdate, svcErr)
 		}
+		exists = svcErr == nil
+	}
 
+	if dryRun {
+		if exists {
+			return successOutcome(resourceTypeTheme, req.ID, req.DisplayName, operationUpdate)
+		}
 		return successOutcome(resourceTypeTheme, req.ID, req.DisplayName, operationCreate)
 	}
 
-	if options.IsUpsertEnabled() && req.ID != "" {
+	if exists {
 		updated, svcErr := s.themeService.UpdateTheme(ctx, req.ID, updateReq)
-		if svcErr == nil {
-			return successOutcome(resourceTypeTheme, updated.ID, updated.DisplayName, operationUpdate)
-		}
-
-		if !isNotFoundServiceError(svcErr) {
+		if svcErr != nil {
 			return serviceErrorOutcome(resourceTypeTheme, req.ID, req.DisplayName, operationUpdate, svcErr)
 		}
-
-		created, createErr := s.themeService.CreateTheme(ctx, createReq)
-		if createErr != nil {
-			return serviceErrorOutcome(resourceTypeTheme, req.ID, req.DisplayName, operationCreate, createErr)
-		}
-
-		return successOutcome(resourceTypeTheme, created.ID, created.DisplayName, operationCreate)
+		return successOutcome(resourceTypeTheme, updated.ID, updated.DisplayName, operationUpdate)
 	}
 
 	created, svcErr := s.themeService.CreateTheme(ctx, createReq)
@@ -691,46 +721,41 @@ func (s *importService) importLayout(
 		Handle:      req.Handle,
 		DisplayName: req.DisplayName,
 		Description: req.Description,
+		ProjectID:   req.ProjectID,
 		Layout:      layoutBytes,
 	}
 	updateReq := layoutmgt.UpdateLayoutRequest{
 		Handle:      req.Handle,
 		DisplayName: req.DisplayName,
 		Description: req.Description,
+		ProjectID:   req.ProjectID,
 		Layout:      layoutBytes,
 	}
 
-	if dryRun {
-		if options.IsUpsertEnabled() && req.ID != "" {
-			_, svcErr := s.layoutService.GetLayout(ctx, req.ID)
-			if svcErr == nil {
-				return successOutcome(resourceTypeLayout, req.ID, req.DisplayName, operationUpdate)
-			}
-
-			if !isNotFoundServiceError(svcErr) {
-				return serviceErrorOutcome(resourceTypeLayout, req.ID, req.DisplayName, operationUpdate, svcErr)
-			}
+	// The upsert looks the layout up rather than attempting an update, so a create is not preceded by an
+	// audited failed update.
+	exists := false
+	if options.IsUpsertEnabled() && req.ID != "" {
+		_, svcErr := s.layoutService.GetLayout(ctx, req.ID)
+		if svcErr != nil && !isNotFoundServiceError(svcErr) {
+			return serviceErrorOutcome(resourceTypeLayout, req.ID, req.DisplayName, operationUpdate, svcErr)
 		}
+		exists = svcErr == nil
+	}
 
+	if dryRun {
+		if exists {
+			return successOutcome(resourceTypeLayout, req.ID, req.DisplayName, operationUpdate)
+		}
 		return successOutcome(resourceTypeLayout, req.ID, req.DisplayName, operationCreate)
 	}
 
-	if options.IsUpsertEnabled() && req.ID != "" {
+	if exists {
 		updated, svcErr := s.layoutService.UpdateLayout(ctx, req.ID, updateReq)
-		if svcErr == nil {
-			return successOutcome(resourceTypeLayout, updated.ID, updated.DisplayName, operationUpdate)
-		}
-
-		if !isNotFoundServiceError(svcErr) {
+		if svcErr != nil {
 			return serviceErrorOutcome(resourceTypeLayout, req.ID, req.DisplayName, operationUpdate, svcErr)
 		}
-
-		created, createErr := s.layoutService.CreateLayout(ctx, createReq)
-		if createErr != nil {
-			return serviceErrorOutcome(resourceTypeLayout, req.ID, req.DisplayName, operationCreate, createErr)
-		}
-
-		return successOutcome(resourceTypeLayout, created.ID, created.DisplayName, operationCreate)
+		return successOutcome(resourceTypeLayout, updated.ID, updated.DisplayName, operationUpdate)
 	}
 
 	created, svcErr := s.layoutService.CreateLayout(ctx, createReq)
@@ -739,6 +764,93 @@ func (s *importService) importLayout(
 	}
 
 	return successOutcome(resourceTypeLayout, created.ID, created.DisplayName, operationCreate)
+}
+
+// credentialsToWrite is a document's credentials as the user service takes them, or nil when there
+// are none to write. For an update, a credential the document carries no value for is left out.
+func credentialsToWrite(credentials map[string]interface{}, update bool) (json.RawMessage, error) {
+	kept := make(map[string]interface{}, len(credentials))
+	for name, value := range credentials {
+		if text, ok := value.(string); ok && text == "" && update {
+			continue
+		}
+		kept[name] = value
+	}
+	if len(kept) == 0 {
+		return nil, nil
+	}
+	encoded, err := json.Marshal(kept)
+	if err != nil {
+		return nil, err
+	}
+	return encoded, nil
+}
+
+// withDeclaredCredentials moves the credentials the type declares into the attributes, so a create
+// that requires them finds them. The rest are returned to write after the create.
+func (s *importService) withDeclaredCredentials(
+	ctx context.Context, category entitytype.TypeCategory, typeHandle string,
+	attributes, credentials map[string]interface{},
+) (map[string]interface{}, map[string]interface{}) {
+	declared := s.declaredCredentials(ctx, category, typeHandle)
+	var withCredentials map[string]interface{}
+	remaining := make(map[string]interface{}, len(credentials))
+	for name, value := range credentials {
+		if text, ok := value.(string); !ok || text == "" || !declared[name] {
+			remaining[name] = value
+			continue
+		}
+		if withCredentials == nil {
+			withCredentials = make(map[string]interface{}, len(attributes)+len(credentials))
+			for attribute, attributeValue := range attributes {
+				withCredentials[attribute] = attributeValue
+			}
+		}
+		withCredentials[name] = value
+	}
+	if withCredentials == nil {
+		return attributes, credentials
+	}
+	return withCredentials, remaining
+}
+
+// declaredCredentials names the credentials a type declares, or none when the type cannot be read.
+func (s *importService) declaredCredentials(
+	ctx context.Context, category entitytype.TypeCategory, handle string,
+) map[string]bool {
+	declared, _ := s.readDeclaredCredentials(ctx, category, handle)
+	return declared
+}
+
+// readDeclaredCredentials names the credentials a type declares, and reports whether that answer can be relied on.
+// It cannot when reading the type failed, because an unread type could hide a credential, and a caller that must
+// not proceed on a guess checks the second value. A type that is not named, or does not exist, declares none: the
+// create refuses it with an error of its own.
+func (s *importService) readDeclaredCredentials(
+	ctx context.Context, category entitytype.TypeCategory, handle string,
+) (map[string]bool, bool) {
+	if handle == "" {
+		return nil, true
+	}
+	if s.entityTypeService == nil {
+		return nil, false
+	}
+	entityType, svcErr := s.entityTypeService.GetEntityTypeByHandle(ctx, category, handle)
+	if svcErr != nil {
+		return nil, svcErr.Code == entitytype.ErrorEntityTypeNotFound.Code
+	}
+	if entityType == nil {
+		return nil, false
+	}
+	schema, err := entitytypemodel.CompileSchema(entityType.Schema)
+	if err != nil {
+		return nil, false
+	}
+	declared := make(map[string]bool)
+	for _, attribute := range schema.GetAttributes(entitytypemodel.AttributeFilter{AllowCredential: true}) {
+		declared[attribute.Attribute] = true
+	}
+	return declared, true
 }
 
 // credentialRollbackError reports a resource whose credentials could not be written after it was
@@ -793,39 +905,47 @@ func (s *importService) importUser(
 	userReq := &providers.User{
 		ID:         req.ID,
 		OUID:       req.OUID,
+		ProjectID:  req.ProjectID,
 		Type:       req.Type,
 		Attributes: attributesJSON,
 	}
 
-	credentialsJSON, err := json.Marshal(req.Credentials)
+	// A credential the document names but carries no value for is left as the user has it: a stored
+	// credential is a hash that never leaves an export, so a server importing its own export, or one
+	// that fills the placeholder with nothing, has nothing new to set. A new user is different:
+	// without a credential they could never sign in, so an empty one is refused on a create.
+	credentialsToKeep, err := credentialsToWrite(req.Credentials, true)
 	if err != nil {
 		return ImportItemOutcome{ResourceType: resourceTypeUser, ResourceID: req.ID, Status: statusFailed,
 			Code: ErrorInvalidYAMLContent.Code, Message: fmt.Sprintf("failed to marshal user credentials: %v", err)}
 	}
 
-	if dryRun {
-		if options.IsUpsertEnabled() && req.ID != "" {
-			_, svcErr := s.userService.GetUser(ctx, req.ID, false)
-			if svcErr == nil {
-				return successOutcome(resourceTypeUser, req.ID, "", operationUpdate)
-			}
-
-			if !isNotFoundServiceError(svcErr) {
-				return serviceErrorOutcome(resourceTypeUser, req.ID, "", operationUpdate, svcErr)
-			}
+	// The upsert looks the user up rather than attempting an update, so a create is not preceded by an
+	// audited failed update.
+	exists := false
+	if options.IsUpsertEnabled() && req.ID != "" {
+		_, svcErr := s.userService.GetUser(ctx, req.ID, false)
+		if svcErr != nil && !isNotFoundServiceError(svcErr) {
+			return serviceErrorOutcome(resourceTypeUser, req.ID, "", operationUpdate, svcErr)
 		}
+		exists = svcErr == nil
+	}
 
+	if dryRun {
+		if exists {
+			return successOutcome(resourceTypeUser, req.ID, "", operationUpdate)
+		}
 		return successOutcome(resourceTypeUser, req.ID, "", operationCreate)
 	}
 
-	if options.IsUpsertEnabled() && req.ID != "" {
+	if exists {
 		updated, svcErr := s.userService.UpdateUser(ctx, req.ID, userReq)
 		if svcErr == nil {
-			if len(credentialsJSON) > 0 && string(credentialsJSON) != "null" && string(credentialsJSON) != "{}" {
+			if credentialsToKeep != nil {
 				if credErr := s.userService.UpdateUserCredentials(
 					ctx,
 					req.ID,
-					json.RawMessage(credentialsJSON),
+					credentialsToKeep,
 				); credErr != nil {
 					// Profile is already committed; emit a clear partial-failure outcome.
 					return ImportItemOutcome{
@@ -852,21 +972,32 @@ func (s *importService) importUser(
 			}
 			return successOutcome(resourceTypeUser, updated.ID, "", operationUpdate)
 		}
-
-		if !isNotFoundServiceError(svcErr) {
-			return serviceErrorOutcome(resourceTypeUser, req.ID, "", operationUpdate, svcErr)
-		}
+		return serviceErrorOutcome(resourceTypeUser, req.ID, "", operationUpdate, svcErr)
 	}
 
-	created, svcErr := s.userService.CreateUser(ctx, userReq)
+	createAttributes, createCredentials := s.withDeclaredCredentials(
+		ctx, entitytype.TypeCategoryUser, req.Type, req.Attributes, req.Credentials)
+	createAttributesJSON, err := json.Marshal(createAttributes)
+	if err != nil {
+		return ImportItemOutcome{ResourceType: resourceTypeUser, ResourceID: req.ID, Status: statusFailed,
+			Code: ErrorInvalidYAMLContent.Code, Message: fmt.Sprintf("failed to marshal user attributes: %v", err)}
+	}
+	credentialsJSON, err := credentialsToWrite(createCredentials, false)
+	if err != nil {
+		return ImportItemOutcome{ResourceType: resourceTypeUser, ResourceID: req.ID, Status: statusFailed,
+			Code: ErrorInvalidYAMLContent.Code, Message: fmt.Sprintf("failed to marshal user credentials: %v", err)}
+	}
+	createReq := *userReq
+	createReq.Attributes = createAttributesJSON
+	created, svcErr := s.userService.CreateUser(ctx, &createReq)
 	if svcErr != nil {
 		return serviceErrorOutcome(resourceTypeUser, req.ID, "", operationCreate, svcErr)
 	}
-	if len(credentialsJSON) > 0 && string(credentialsJSON) != "null" && string(credentialsJSON) != "{}" {
+	if credentialsJSON != nil {
 		if credErr := s.userService.UpdateUserCredentials(
 			ctx,
 			created.ID,
-			json.RawMessage(credentialsJSON),
+			credentialsJSON,
 		); credErr != nil {
 			if rollbackErr := s.userService.DeleteUser(ctx, created.ID); rollbackErr != nil {
 				return serviceErrorOutcome(resourceTypeUser, created.ID, "", operationCreate,
@@ -899,15 +1030,60 @@ func (s *importService) importUser(
 	return successOutcome(resourceTypeUser, created.ID, "", operationCreate)
 }
 
+// linkedDocument is a group or role document imported without its members or assignments, and the result its
+// outcome was recorded at.
+type linkedDocument struct {
+	doc         parsedDocument
+	resultIndex int
+}
+
+// needsLinking reports whether an imported document is a group or role whose members or assignments are still to be
+// added.
+func needsLinking(doc parsedDocument, outcome ImportItemOutcome, dryRun bool) bool {
+	return !dryRun && outcome.Status == statusSuccess &&
+		(doc.ResourceType == resourceTypeGroup || doc.ResourceType == resourceTypeRole)
+}
+
+// linkGroupsAndRoles adds the members of the imported groups and the assignments of the imported roles, returning
+// how many failed. A failure turns the outcome of the group or role into one but leaves the group or role in place,
+// since a flow imported meanwhile may already assign it. Importing again adds what was refused.
+func (s *importService) linkGroupsAndRoles(
+	ctx context.Context, links []linkedDocument, results []ImportItemOutcome,
+) int {
+	failed := 0
+	for _, link := range links {
+		outcome := results[link.resultIndex]
+		var svcErr *tidcommon.ServiceError
+		if link.doc.ResourceType == resourceTypeGroup {
+			svcErr = s.linkGroupMembers(ctx, link.doc, outcome.ResourceID)
+		} else {
+			svcErr = s.linkRoleAssignments(ctx, link.doc, outcome.ResourceID)
+		}
+		if svcErr == nil {
+			continue
+		}
+		results[link.resultIndex] = serviceErrorOutcome(
+			link.doc.ResourceType, outcome.ResourceID, outcome.ResourceName, outcome.Operation, svcErr)
+		failed++
+	}
+	return failed
+}
+
 // replayMandatingUserSharing replays the role-mandating user shares after the roles, returning how many failed.
 func (s *importService) replayMandatingUserSharing(
 	ctx context.Context, mandating []userSharingReplay, results []ImportItemOutcome,
 ) int {
 	refused := 0
 	for _, r := range mandating {
-		outcome := s.applySharingPolicies(ctx, user.UserSharingType, resourceTypeUser,
+		replayCtx, report := sharing.WithReplayReport(ctx)
+		outcome := s.applySharingPolicies(replayCtx, user.UserSharingType, resourceTypeUser,
 			r.userID, "", r.owningOUID, r.policies, r.operation)
 		if outcome == nil {
+			for _, removed := range report.Removed() {
+				results[r.resultIndex].RemovedSharing = append(results[r.resultIndex].RemovedSharing,
+					RemovedSharingPolicy{PolicyID: removed.PolicyID, InitiatingOUID: removed.InitiatingOUID,
+						Reshare: removed.Reshare})
+			}
 			continue
 		}
 		if r.operation == operationCreate {
@@ -1034,11 +1210,12 @@ func (s *importService) importTranslation(ctx context.Context, doc parsedDocumen
 // importResourceServerChildren creates the actions of a resource server and the resources and actions
 // nested under it. It first computes permission strings via ProcessResourceServer, then calls the
 // resource service for each resource and action.  Existing resources/actions (on upsert paths) are
-// silently skipped.
+// silently skipped. When prune is set, the resources and actions the document no longer holds are
+// deleted afterwards.
 func (s *importService) importResourceServerChildren(
-	ctx context.Context, serverID string, rs providers.ResourceServer,
+	ctx context.Context, serverID string, rs providers.ResourceServer, prune bool,
 ) *tidcommon.ServiceError {
-	if len(rs.Actions) == 0 && len(rs.Resources) == 0 {
+	if len(rs.Actions) == 0 && len(rs.Resources) == 0 && !prune {
 		return nil
 	}
 
@@ -1061,6 +1238,10 @@ func (s *importService) importResourceServerChildren(
 
 	// pathToID maps a resource path (its permission) → created/resolved ID for parent resolution.
 	pathToID := make(map[string]string)
+	// existingIDs maps a parent ID, empty for the top level, to the handles of the resources that
+	// already exist under it and their IDs. A parent's resources are listed on the first handle
+	// conflict under it, so an upsert re-import lists each parent's resources only once.
+	existingIDs := make(map[string]map[string]string)
 
 	// A child is written after its parent, whichever order the document lists them in, so its
 	// parent path always resolves to an id already created or found. An export lists resources
@@ -1088,18 +1269,30 @@ func (s *importService) importResourceServerChildren(
 					parentID = &pid
 				}
 			}
-			list, listErr := s.resourceService.GetResourceList(ctx, serverID, parentID, serverconst.MaxPageSize, 0)
-			if listErr != nil {
-				return listErr
+			parentKey := ""
+			if parentID != nil {
+				parentKey = *parentID
 			}
-			var existingID string
-			for j := range list.Resources {
-				if list.Resources[j].Handle == res.Handle {
-					existingID = list.Resources[j].ID
-					break
+			handleToID, listed := existingIDs[parentKey]
+			if !listed {
+				handleToID = make(map[string]string)
+				for offset := 0; ; offset += serverconst.MaxPageSize {
+					list, listErr := s.resourceService.GetResourceList(
+						ctx, serverID, parentID, serverconst.MaxPageSize, offset)
+					if listErr != nil {
+						return listErr
+					}
+					for j := range list.Resources {
+						handleToID[list.Resources[j].Handle] = list.Resources[j].ID
+					}
+					if len(list.Resources) < serverconst.MaxPageSize {
+						break
+					}
 				}
+				existingIDs[parentKey] = handleToID
 			}
-			if existingID == "" {
+			existingID, ok := handleToID[res.Handle]
+			if !ok {
 				continue
 			}
 			created = &providers.Resource{ID: existingID}
@@ -1114,6 +1307,9 @@ func (s *importService) importResourceServerChildren(
 		}
 	}
 
+	if prune {
+		return s.pruneResourceServerChildren(ctx, serverID, rs)
+	}
 	return nil
 }
 
@@ -1125,6 +1321,102 @@ func (s *importService) importResourceServerAction(
 	_, svcErr := s.resourceService.CreateAction(ctx, serverID, resourceID, action)
 	if svcErr != nil && svcErr.Code != resource.ErrorHandleConflict.Code {
 		return svcErr
+	}
+	return nil
+}
+
+// deleteResourceServer removes a resource server together with its resources and actions. A promotion
+// carries a resource server as one document, so its children have no deletions of their own.
+func (s *importService) deleteResourceServer(ctx context.Context, id string) *tidcommon.ServiceError {
+	if svcErr := s.pruneResourceServerChildren(ctx, id, providers.ResourceServer{}); svcErr != nil {
+		return svcErr
+	}
+	return s.resourceService.DeleteResourceServer(ctx, id)
+}
+
+// pruneResourceServerChildren deletes the resources and actions of a resource server that the given
+// document, with its permissions already computed, no longer holds. Children are matched by
+// permission. A resource is deleted after the resources nested under it.
+func (s *importService) pruneResourceServerChildren(
+	ctx context.Context, serverID string, doc providers.ResourceServer,
+) *tidcommon.ServiceError {
+	keptResources := make(map[string]bool, len(doc.Resources))
+	keptActions := make(map[string]bool, len(doc.Actions))
+	for _, action := range doc.Actions {
+		keptActions[action.Permission] = true
+	}
+	for _, res := range doc.Resources {
+		keptResources[res.Permission] = true
+		for _, action := range res.Actions {
+			keptActions[action.Permission] = true
+		}
+	}
+
+	resources, svcErr := s.resourceService.GetAllResourceList(ctx, serverID)
+	if svcErr != nil {
+		return svcErr
+	}
+
+	if svcErr := s.pruneActions(ctx, serverID, nil, keptActions); svcErr != nil {
+		return svcErr
+	}
+	for i := range resources {
+		if svcErr := s.pruneActions(ctx, serverID, &resources[i].ID, keptActions); svcErr != nil {
+			return svcErr
+		}
+	}
+
+	parentByID := make(map[string]*string, len(resources))
+	for _, res := range resources {
+		parentByID[res.ID] = res.Parent
+	}
+	depth := func(id string) int {
+		n := 0
+		for p := parentByID[id]; p != nil && n <= len(resources); p = parentByID[*p] {
+			n++
+		}
+		return n
+	}
+	sort.SliceStable(resources, func(i, j int) bool { return depth(resources[i].ID) > depth(resources[j].ID) })
+
+	for _, res := range resources {
+		if keptResources[res.Permission] {
+			continue
+		}
+		if svcErr := s.resourceService.DeleteResource(ctx, serverID, res.ID); svcErr != nil {
+			return svcErr
+		}
+	}
+	return nil
+}
+
+// pruneActions deletes the actions of a resource, or of the resource server itself when resourceID is
+// nil, whose permission is not in kept. They are listed in full before any is deleted so that deleting
+// does not shift the pages.
+func (s *importService) pruneActions(
+	ctx context.Context, serverID string, resourceID *string, kept map[string]bool,
+) *tidcommon.ServiceError {
+	var stale []string
+	for offset := 0; ; offset += serverconst.MaxPageSize {
+		list, svcErr := s.resourceService.GetActionList(
+			ctx, serverID, resourceID, "", serverconst.MaxPageSize, offset)
+		if svcErr != nil {
+			return svcErr
+		}
+		for _, action := range list.Actions {
+			if !kept[action.Permission] {
+				stale = append(stale, action.ID)
+			}
+		}
+		if len(list.Actions) < serverconst.MaxPageSize {
+			break
+		}
+	}
+
+	for _, id := range stale {
+		if svcErr := s.resourceService.DeleteAction(ctx, serverID, resourceID, id); svcErr != nil {
+			return svcErr
+		}
 	}
 	return nil
 }
@@ -1182,6 +1474,9 @@ func (s *importService) importAgent(
 	if mappedFlowID, ok := flowIDAliases[req.AuthFlowID]; ok {
 		req.AuthFlowID = mappedFlowID
 	}
+	if mappedFlowID, ok := flowIDAliases[req.DeviceGrantFlowID]; ok {
+		req.DeviceGrantFlowID = mappedFlowID
+	}
 	if mappedFlowID, ok := flowIDAliases[req.RegistrationFlowID]; ok {
 		req.RegistrationFlowID = mappedFlowID
 	}
@@ -1203,9 +1498,8 @@ func (s *importService) importAgent(
 
 	normalizeAgentOAuthConfigForImport(ctx, &req)
 
-	// Credentials are written after the agent, as a user's are, so a document's credentials are held
-	// to the ones the agent's type declares.
-	credentialsJSON, err := json.Marshal(req.Credentials)
+	// An update leaves a credential with no value as the agent has it, as for a user. A create refuses an empty one.
+	credentialsToKeep, err := credentialsToWrite(req.Credentials, true)
 	if err != nil {
 		return ImportItemOutcome{ResourceType: resourceTypeAgent, ResourceID: req.ID, Status: statusFailed,
 			Code: ErrorInvalidYAMLContent.Code, Message: fmt.Sprintf("failed to marshal agent credentials: %v", err)}
@@ -1215,14 +1509,18 @@ func (s *importService) importAgent(
 		ID:          req.ID,
 		OUID:        req.OUID,
 		OUHandle:    req.OUHandle,
+		ProjectID:   req.ProjectID,
 		Type:        req.Type,
 		Description: req.Description,
 		LogoURL:     req.LogoURL,
 		Owner:       req.Owner,
 		Attributes:  attributesJSON,
+		Kind:        req.Kind,
 		InboundAuthProfile: providers.InboundAuthProfile{
 			AuthFlowID:                req.AuthFlowID,
 			AuthFlowHandle:            req.AuthFlowHandle,
+			DeviceGrantFlowID:         req.DeviceGrantFlowID,
+			DeviceGrantFlowHandle:     req.DeviceGrantFlowHandle,
 			RegistrationFlowID:        req.RegistrationFlowID,
 			RegistrationFlowHandle:    req.RegistrationFlowHandle,
 			IsRegistrationFlowEnabled: req.IsRegistrationFlowEnabled,
@@ -1245,6 +1543,7 @@ func (s *importService) importAgent(
 	updateReq := &agentmodel.UpdateAgentRequest{
 		OUID:                  req.OUID,
 		OUHandle:              req.OUHandle,
+		ProjectID:             req.ProjectID,
 		Type:                  req.Type,
 		Description:           req.Description,
 		LogoURL:               req.LogoURL,
@@ -1267,42 +1566,13 @@ func (s *importService) importAgent(
 	ctx = agent.WithLifespanRestore(ctx)
 
 	if dryRun {
-		if options.IsUpsertEnabled() && req.ID != "" {
-			_, svcErr := s.agentService.GetAgent(ctx, req.ID, false)
-			if svcErr == nil {
-				return successOutcome(resourceTypeAgent, req.ID, "", operationUpdate)
-			}
-
-			if !isNotFoundServiceError(svcErr) {
-				return serviceErrorOutcome(resourceTypeAgent, req.ID, "", operationUpdate, svcErr)
-			}
-		}
-
-		return successOutcome(resourceTypeAgent, req.ID, "", operationCreate)
+		return s.dryRunAgent(ctx, &req, options, credentialsToKeep)
 	}
 
 	if options.IsUpsertEnabled() && req.ID != "" {
-		_, svcErr := s.agentService.GetAgent(ctx, req.ID, false)
+		existing, svcErr := s.agentService.GetAgent(ctx, req.ID, false)
 		if svcErr == nil {
-			updated, updateErr := s.agentService.UpdateAgent(ctx, req.ID, updateReq)
-			if updateErr != nil {
-				return serviceErrorOutcome(resourceTypeAgent, req.ID, "", operationUpdate, updateErr)
-			}
-			if len(req.Credentials) > 0 {
-				if credErr := s.agentService.UpdateAgentCredentials(ctx, req.ID, credentialsJSON); credErr != nil {
-					// The profile is already committed, so this is a partial failure.
-					return ImportItemOutcome{
-						ResourceType: resourceTypeAgent,
-						ResourceID:   req.ID,
-						Operation:    operationUpdate,
-						Status:       statusFailed,
-						Code:         credErr.Code,
-						Message: "agent profile updated but credential update failed: " +
-							credErr.Error.DefaultValue,
-					}
-				}
-			}
-			return successOutcome(resourceTypeAgent, updated.ID, "", operationUpdate)
+			return s.updateExistingAgent(ctx, existing, req.ID, updateReq, credentialsToKeep)
 		}
 
 		if !isNotFoundServiceError(svcErr) {
@@ -1310,11 +1580,29 @@ func (s *importService) importAgent(
 		}
 	}
 
+	if svcErr := s.refusePersonalAgentCredentials(ctx, &req); svcErr != nil {
+		return serviceErrorOutcome(resourceTypeAgent, req.ID, "", operationCreate, svcErr)
+	}
+	createAttributes, createCredentials := s.withDeclaredCredentials(
+		ctx, entitytype.TypeCategoryAgent, req.Type, req.Attributes, req.Credentials)
+	if len(createCredentials) < len(req.Credentials) {
+		raw, err := json.Marshal(createAttributes)
+		if err != nil {
+			return ImportItemOutcome{ResourceType: resourceTypeAgent, ResourceID: req.ID, Status: statusFailed,
+				Code: ErrorInvalidYAMLContent.Code, Message: fmt.Sprintf("failed to marshal agent attributes: %v", err)}
+		}
+		createReq.Attributes = raw
+	}
+	credentialsJSON, err := credentialsToWrite(createCredentials, false)
+	if err != nil {
+		return ImportItemOutcome{ResourceType: resourceTypeAgent, ResourceID: req.ID, Status: statusFailed,
+			Code: ErrorInvalidYAMLContent.Code, Message: fmt.Sprintf("failed to marshal agent credentials: %v", err)}
+	}
 	created, svcErr := s.agentService.CreateAgent(ctx, createReq)
 	if svcErr != nil {
 		return serviceErrorOutcome(resourceTypeAgent, req.ID, "", operationCreate, svcErr)
 	}
-	if len(req.Credentials) > 0 {
+	if credentialsJSON != nil {
 		if credErr := s.agentService.UpdateAgentCredentials(ctx, created.ID, credentialsJSON); credErr != nil {
 			if rollbackErr := s.agentService.DeleteAgent(ctx, created.ID); rollbackErr != nil {
 				return serviceErrorOutcome(resourceTypeAgent, created.ID, "", operationCreate,
@@ -1324,6 +1612,31 @@ func (s *importService) importAgent(
 		}
 	}
 	return successOutcome(resourceTypeAgent, created.ID, "", operationCreate)
+}
+
+// dryRunAgent predicts the outcome of importing an agent, refusing what the import refuses about a personal agent's
+// credentials so that a dry run does not report success for a document the real import would reject.
+func (s *importService) dryRunAgent(
+	ctx context.Context, req *agentmodel.AgentRequestWithID, options *ImportOptions, credentials json.RawMessage,
+) ImportItemOutcome {
+	if options.IsUpsertEnabled() && req.ID != "" {
+		existing, svcErr := s.agentService.GetAgent(ctx, req.ID, false)
+		if svcErr == nil {
+			if refused := refusePersonalAgentCredentialUpdate(existing, credentials); refused != nil {
+				return serviceErrorOutcome(resourceTypeAgent, req.ID, "", operationUpdate, refused)
+			}
+			return successOutcome(resourceTypeAgent, req.ID, "", operationUpdate)
+		}
+
+		if !isNotFoundServiceError(svcErr) {
+			return serviceErrorOutcome(resourceTypeAgent, req.ID, "", operationUpdate, svcErr)
+		}
+	}
+
+	if svcErr := s.refusePersonalAgentCredentials(ctx, req); svcErr != nil {
+		return serviceErrorOutcome(resourceTypeAgent, req.ID, "", operationCreate, svcErr)
+	}
+	return successOutcome(resourceTypeAgent, req.ID, "", operationCreate)
 }
 
 func getAgentOAuthConfigForImport(req *agentmodel.AgentRequestWithID) *providers.OAuthConfigWithSecret {
@@ -1346,14 +1659,11 @@ func normalizeAgentOAuthConfigForImport(ctx context.Context, req *agentmodel.Age
 		return
 	}
 
-	if oauthConfig.PublicClient &&
-		oauthConfig.TokenEndpointAuthMethod == providers.TokenEndpointAuthMethodNone &&
-		oauthConfig.ClientSecret != "" {
-		log.GetLogger().Debug(ctx,
-			"Dropping client_secret for public agent import with token endpoint auth method 'none'",
+	if dropUnusedClientSecret(oauthConfig) {
+		log.GetLogger().Debug(ctx, "Dropping client_secret for agent import that does not use a client secret",
 			log.String("agentID", req.ID),
-			log.String("clientID", oauthConfig.ClientID))
-		oauthConfig.ClientSecret = ""
+			log.String("clientID", oauthConfig.ClientID),
+			log.String("tokenEndpointAuthMethod", string(oauthConfig.TokenEndpointAuthMethod)))
 	}
 }
 
@@ -1380,6 +1690,12 @@ func (s *importService) applySharingPolicies(
 			log.Int("policyIndex", skipped.Index+1),
 			log.String("initiatingOUID", skipped.InitiatingOUID),
 			log.String("declaredPolicyID", skipped.DeclaredPolicyID))
+	}
+	for _, removed := range replay.Removed {
+		logger.Info(ctx, "Sharing policy removed to match the document",
+			log.String("resourceType", resourceType), log.String("resourceID", resourceID),
+			log.String("policyID", removed.PolicyID), log.String("initiatingOUID", removed.InitiatingOUID),
+			log.Bool("reshare", removed.Reshare))
 	}
 	if replayErr == nil {
 		return nil
@@ -1415,6 +1731,69 @@ func decodeErrorOutcome(resourceType, id, name string, err error) ImportItemOutc
 		Code:         ErrorInvalidYAMLContent.Code,
 		Message:      fmt.Sprintf("failed to decode %s document: %v", resourceType, err),
 	}
+}
+
+// refusePersonalAgentCredentialUpdate refuses a document that carries credentials for an existing personal agent,
+// since only its owner sets them.
+func refusePersonalAgentCredentialUpdate(
+	existing *agentmodel.AgentGetResponse, credentials json.RawMessage,
+) *tidcommon.ServiceError {
+	if credentials != nil && existing.Kind == providers.AgentKindPersonalAssistant {
+		return &agent.ErrorPersonalAgentCredentialsNotUpdatable
+	}
+	return nil
+}
+
+// refusePersonalAgentCredentials refuses a personal agent document that sets a credential, either under credentials
+// or as an attribute its type declares as one, since only the owner sets a personal agent's credentials. When
+// reading the type fails the document could still hide a credential, so it is refused too rather than created. A
+// type that does not exist is left to the create, which reports it.
+func (s *importService) refusePersonalAgentCredentials(
+	ctx context.Context, req *agentmodel.AgentRequestWithID,
+) *tidcommon.ServiceError {
+	if req.Kind != providers.AgentKindPersonalAssistant {
+		return nil
+	}
+	if len(req.Credentials) > 0 {
+		return &agent.ErrorPersonalAgentCredentialsNotUpdatable
+	}
+	declared, readable := s.readDeclaredCredentials(ctx, entitytype.TypeCategoryAgent, req.Type)
+	if !readable {
+		return &tidcommon.InternalServerError
+	}
+	for name := range req.Attributes {
+		if declared[name] {
+			return &agent.ErrorPersonalAgentCredentialsNotUpdatable
+		}
+	}
+	return nil
+}
+
+// updateExistingAgent updates an agent the import found, then its credentials. Only the owner sets a personal
+// agent's credentials, so a document that carries one is refused before the profile is written.
+func (s *importService) updateExistingAgent(ctx context.Context, existing *agentmodel.AgentGetResponse, id string,
+	updateReq *agentmodel.UpdateAgentRequest, credentials json.RawMessage) ImportItemOutcome {
+	if refused := refusePersonalAgentCredentialUpdate(existing, credentials); refused != nil {
+		return serviceErrorOutcome(resourceTypeAgent, id, "", operationUpdate, refused)
+	}
+	updated, updateErr := s.agentService.UpdateAgent(ctx, id, updateReq)
+	if updateErr != nil {
+		return serviceErrorOutcome(resourceTypeAgent, id, "", operationUpdate, updateErr)
+	}
+	if credentials != nil {
+		if credErr := s.agentService.UpdateAgentCredentials(ctx, id, credentials); credErr != nil {
+			// The profile is already committed, so this is a partial failure.
+			return ImportItemOutcome{
+				ResourceType: resourceTypeAgent,
+				ResourceID:   id,
+				Operation:    operationUpdate,
+				Status:       statusFailed,
+				Code:         credErr.Code,
+				Message:      "agent profile updated but credential update failed: " + credErr.Error.DefaultValue,
+			}
+		}
+	}
+	return successOutcome(resourceTypeAgent, updated.ID, "", operationUpdate)
 }
 
 func serviceErrorOutcome(
@@ -1567,6 +1946,23 @@ func (s *importService) importCredentialConfiguration(
 	return successOutcome(resourceTypeCredentialConfiguration, created.ID, created.Handle, operationCreate)
 }
 
+// validateImportedTemplate validates a notification template document as a create. A template exported
+// before templates had projects names none; when the import may update an existing template, which keeps
+// its project as UpdateTemplate does, the document is validated in that project.
+func (s *importService) validateImportedTemplate(ctx context.Context, channel notificationtemplate.ChannelType,
+	createReq notificationtemplate.CreateTemplateRequest, mayUpdate bool) *tidcommon.ServiceError {
+	svcErr := s.notifTemplateService.ValidateTemplate(ctx, channel, createReq)
+	if svcErr == nil || !mayUpdate || svcErr.Code != notificationtemplate.ErrorProjectRequired.Code {
+		return svcErr
+	}
+	existing, lookupErr := s.notifTemplateService.GetTemplateByHandle(ctx, channel, createReq.Handle)
+	if lookupErr != nil || existing == nil || existing.ProjectID == "" {
+		return svcErr
+	}
+	createReq.ProjectID = existing.ProjectID
+	return s.notifTemplateService.ValidateTemplate(ctx, channel, createReq)
+}
+
 // importNotificationTemplate imports a notification_template document.
 // Templates are keyed by (channel, handle); with upsert, existing templates are matched by handle and updated.
 func (s *importService) importNotificationTemplate(
@@ -1598,6 +1994,7 @@ func (s *importService) importNotificationTemplate(
 		ID:          raw.ID,
 		Handle:      raw.Handle,
 		OUID:        raw.OUID,
+		ProjectID:   raw.ProjectID,
 		DisplayName: raw.DisplayName,
 		Description: raw.Description,
 		Design:      design,
@@ -1607,7 +2004,8 @@ func (s *importService) importNotificationTemplate(
 	// Validate before the handle lookup so an invalid or missing handle surfaces as a validation
 	// failure, consistently between a dry run and the real apply, rather than being reported by the
 	// handle-based lookup (which would otherwise mislabel it as an update).
-	if svcErr := s.notifTemplateService.ValidateTemplate(ctx, channel, createReq); svcErr != nil {
+	if svcErr := s.validateImportedTemplate(
+		ctx, channel, createReq, dryRun || options.IsUpsertEnabled()); svcErr != nil {
 		return serviceErrorOutcome(resourceTypeNotificationTemplate, "", raw.Handle, operationCreate, svcErr)
 	}
 
@@ -1678,6 +2076,7 @@ func (s *importService) importNotificationTemplate(
 
 	updated, updErr := s.notifTemplateService.UpdateTemplate(ctx, channel, existingID,
 		notificationtemplate.UpdateTemplateRequest{
+			ProjectID:   raw.ProjectID,
 			DisplayName: raw.DisplayName,
 			Description: raw.Description,
 			Design:      design,
@@ -1725,6 +2124,40 @@ func (s *importService) importAuthorizationDetailType(
 	return successOutcome(resourceTypeAuthorizationDetailType, created.ID, created.Name, operationCreate)
 }
 
+// refuseReadOnlyType refuses an update to a type read as read only as the update would: one a control plane
+// deployed only when the managed import does not make the update, and one declared in a file always.
+func (s *importService) refuseReadOnlyType(ctx context.Context, id string) *tidcommon.ServiceError {
+	deployed := false
+	if s.managed != nil {
+		var err error
+		deployed, err = s.managed.IsManaged(ctx, id, managedresource.TypeAuthorizationDetailType)
+		if err != nil {
+			log.GetLogger().Error(ctx, "Failed to read whether a control plane deployed the authorization details type",
+				log.String("id", id), log.Error(err))
+			return &tidcommon.InternalServerError
+		}
+	}
+	if !deployed {
+		return &authzdetailmgt.ErrorImmutableType
+	}
+	if !managedresource.IsManagedImport(ctx) {
+		return &authzdetailmgt.ErrorManagedType
+	}
+	return nil
+}
+
+// validateImportedType validates a type as the import would write it. The project is the last thing the
+// validation checks, so one the same dry run creates first is taken as there, as the real import finds it.
+func (s *importService) validateImportedType(ctx context.Context,
+	t providers.AuthorizationDetailType) *tidcommon.ServiceError {
+	svcErr := s.authorizationDetailTypeService.ValidateAuthorizationDetailType(ctx, t)
+	if svcErr != nil && svcErr.Code == authzdetailmgt.ErrorInvalidProject.Code &&
+		plannedUnitsOf(ctx).hasProject(t.ProjectID) {
+		return nil
+	}
+	return svcErr
+}
+
 // dryRunAuthorizationDetailType predicts the outcome of importing a type, refusing it in the order the
 // real update or create would.
 func (s *importService) dryRunAuthorizationDetailType(ctx context.Context, t *providers.AuthorizationDetailType,
@@ -1738,15 +2171,18 @@ func (s *importService) dryRunAuthorizationDetailType(ctx context.Context, t *pr
 		existing = found
 	}
 	if existing != nil && options.IsUpsertEnabled() {
+		// A read reports both a type declared in a file and one a control plane deployed as read only. The
+		// update refuses the first always and the second unless the managed import makes it, and so does this.
 		if existing.IsReadOnly {
-			return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate,
-				&authzdetailmgt.ErrorImmutableType)
+			if svcErr := s.refuseReadOnlyType(ctx, existing.ID); svcErr != nil {
+				return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate, svcErr)
+			}
 		}
 		if existing.Type != t.Type {
 			return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate,
 				&authzdetailmgt.ErrorTypeValueImmutable)
 		}
-		if svcErr := s.authorizationDetailTypeService.ValidateAuthorizationDetailType(ctx, *t); svcErr != nil {
+		if svcErr := s.validateImportedType(ctx, *t); svcErr != nil {
 			return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate, svcErr)
 		}
 		return successOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationUpdate)
@@ -1759,7 +2195,7 @@ func (s *importService) dryRunAuthorizationDetailType(ctx context.Context, t *pr
 	// A create takes the credential as sent, so it is not checked against a stored type that holds the id.
 	candidate := *t
 	candidate.ID = ""
-	if svcErr := s.authorizationDetailTypeService.ValidateAuthorizationDetailType(ctx, candidate); svcErr != nil {
+	if svcErr := s.validateImportedType(ctx, candidate); svcErr != nil {
 		return serviceErrorOutcome(resourceTypeAuthorizationDetailType, t.ID, t.Name, operationCreate, svcErr)
 	}
 	byValue, svcErr := s.authorizationDetailTypeService.GetAuthorizationDetailTypeByValue(ctx, t.Type)

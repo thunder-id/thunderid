@@ -628,6 +628,9 @@ function prepare_cp_backend_for_packaging() {
     cp -r "$BACKEND_DIR/bootstrap" "$DIST_DIR/$CP_PRODUCT_FOLDER/"
     # Never ship the dev-only CORS seed that `run` stages into the source bootstrap dir.
     rm -f "$DIST_DIR/$CP_PRODUCT_FOLDER/bootstrap/03-dev-server-configurations.yaml"
+    # Ship the Control Plane resource server for the identity provider that signs operators into the
+    # Control Plane. It sits outside bootstrap/ because the Control Plane must not import it.
+    cp -r "$CPSERVER_DIR/idp-bootstrap" "$DIST_DIR/$CP_PRODUCT_FOLDER/"
 
     # Key material is not generated into the distribution; setup-cp.sh generates it per deployment.
 }
@@ -694,6 +697,19 @@ function prepare_cp_frontend_for_packaging() {
         shopt -s dotglob
         cp -r "$FRONTEND_CONSOLE_CP_APP_SOURCE_DIR/dist/"* "$DIST_DIR/$CP_PRODUCT_FOLDER/$CONSOLE_APP_DIST_DIR"
         shopt -u dotglob
+
+        # The Control Plane console gives the administrators it creates the bootstrap's Administrator role.
+        local cp_console_config="$DIST_DIR/$CP_PRODUCT_FOLDER/$CONSOLE_APP_DIST_DIR/config.js"
+        awk '
+            /^};$/ {
+                print "  administrators: {"
+                print "    role_ids: [\"01900000-0000-7000-8000-000000000050\"],"
+                print "  },"
+            }
+            { print }
+        ' "$cp_console_config" > "$cp_console_config.tmp"
+        mv "$cp_console_config.tmp" "$cp_console_config"
+        assert_patched "$cp_console_config" "01900000-0000-7000-8000-000000000050"
     else
         echo "Warning: Control Plane console build output not found at $FRONTEND_CONSOLE_CP_APP_SOURCE_DIR/dist"
     fi
@@ -932,11 +948,10 @@ function stage_quickstart_pack() {
 
     # The Control Plane's console signs in through auth-dp as a trusted issuer, and asks for a token
     # for the Control Plane's own URL (the RFC 8707 "resource" parameter). auth-dp refuses a resource
-    # no resource server is registered for, so its System resource server, whose permissions the
-    # admin role already holds, is identified by that URL instead of the default Data Plane one.
-    sed -i.bak "s#^identifier: https://localhost:8090/mcp\$#identifier: https://localhost:$QUICKSTART_CP_PORT#" \
-        "$auth_dp_dir/bootstrap/01-default-resources.yaml"
-    rm -f "$auth_dp_dir/bootstrap/01-default-resources.yaml.bak"
+    # no resource server is registered for, so it imports the Control Plane resource server, which
+    # is identified by that URL and declares the permissions the Control Plane enforces. The
+    # quickstart's 05-quickstart-cp-administrator.yaml grants its system root to the admin group.
+    cp "$CPSERVER_DIR/idp-bootstrap"/*.yaml "$auth_dp_dir/bootstrap/"
     rm -rf "${auth_dp_dir:?}/$CONSOLE_APP_DIST_DIR"
 
     # Layer the Data Plane's own admin console application onto the managed dp and the cp. It is
@@ -949,6 +964,11 @@ function stage_quickstart_pack() {
     # CONSOLE one every other copy of this app (auth-dp, a standalone Data Plane) uses.
     sed -i.bak "s/client_id: 'CONSOLE'/client_id: 'ADMIN_CONSOLE'/" "$dp_dir/$CONSOLE_APP_DIST_DIR/config.js"
     rm -f "$dp_dir/$CONSOLE_APP_DIST_DIR/config.js.bak"
+
+    # The Control Plane's console gives the administrators it creates the Administrator role, which
+    # rename_quickstart_service_desk_admin above moved to the Service Desk Administrator role's ID.
+    sed -i.bak "s/01900000-0000-7000-8000-000000000050/01900000-0000-7000-8000-0000000000f5/" "$cp_dir/$CONSOLE_APP_DIST_DIR/config.js"
+    rm -f "$cp_dir/$CONSOLE_APP_DIST_DIR/config.js.bak"
 
     # auth-dp runs on its own port, distinct from the managed dp it shares a generated
     # certificate and signing keys with (see quickstart/setup.sh). Patched into this copy of
@@ -978,14 +998,21 @@ function stage_quickstart_pack() {
     # /oauth2/token calls there, while every management-API call it makes (applications, roles,
     # users, ...) is automatically repointed back to wherever the console itself is served from —
     # see frontend/packages/contexts/src/Config/ConfigProvider.tsx and withConfig.tsx. Inserted
-    # right before the file's closing "};" so it lands inside the top-level config object.
-    awk -v port="$QUICKSTART_AUTH_DP_PORT" '
+    # right before the file's closing "};" so it lands inside the top-level config object. The
+    # same block adds gate_client naming the managed Data Plane: the CP serves no Gate app, so
+    # without it the console would build redirect URIs (e.g. for Google and GitHub connections)
+    # on its own origin instead of the Data Plane's.
+    awk -v port="$QUICKSTART_AUTH_DP_PORT" -v dp_port="$QUICKSTART_DP_PORT" '
         /^};$/ {
             print "  trusted_issuer: {"
             print "    hostname: \"localhost\","
             print "    port: " port ","
             print "    http_only: false,"
             print "    client_id: \"CP_CONSOLE\","
+            print "  },"
+            print "  gate_client: {"
+            print "    hostname: \"localhost\","
+            print "    port: " dp_port ","
             print "  },"
         }
         { print }
@@ -1021,7 +1048,7 @@ function stage_quickstart_pack() {
         echo "  allow_private_addresses: true"
     } >> "$cp_dir/deployment.yaml"
 
-    assert_patched "$auth_dp_dir/bootstrap/01-default-resources.yaml" "identifier: https://localhost:$QUICKSTART_CP_PORT"
+    assert_patched "$auth_dp_dir/bootstrap/control-plane-resource-server.yaml" "identifier: https://localhost:$QUICKSTART_CP_PORT"
     assert_patched "$auth_dp_dir/deployment.yaml" "port: $QUICKSTART_AUTH_DP_PORT"
     assert_patched "$dp_dir/bootstrap/01-default-resources.yaml" "Service Desk Administrators"
     assert_patched "$cp_dir/bootstrap/01-default-resources.yaml" "Service Desk Administrators"
@@ -1029,6 +1056,8 @@ function stage_quickstart_pack() {
     assert_patched "$dp_dir/deployment.yaml" "  security:"
     assert_patched "$cp_dir/deployment.yaml" "issuer: \"https://localhost:$QUICKSTART_AUTH_DP_PORT\""
     assert_patched "$cp_dir/$CONSOLE_APP_DIST_DIR/config.js" "trusted_issuer"
+    assert_patched "$cp_dir/$CONSOLE_APP_DIST_DIR/config.js" "01900000-0000-7000-8000-0000000000f5"
+    assert_patched "$cp_dir/$CONSOLE_APP_DIST_DIR/config.js" "  gate_client: {"
     assert_patched "$cp_dir/config/resources/server_configs/csp.yaml" "https://localhost:$QUICKSTART_AUTH_DP_PORT"
 
     if [ "$GO_OS" = "windows" ]; then
@@ -1567,8 +1596,12 @@ function apply_dev_quickstart_overrides() {
 
     write_cors_bootstrap "$root/dp/bootstrap/03-dev-cors.yaml" \
         "https://localhost:$GATE_APP_DEFAULT_PORT" "https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT"
+    # The Control Plane deploys its own cors list to the managed Data Plane (replacing the Data Plane's
+    # and marking it read-only), so the Control Plane list must also include the Data Plane dev origins.
     write_cors_bootstrap "$root/cp/bootstrap/03-dev-cors.yaml" \
-        "https://localhost:$CONSOLE_CP_APP_DEFAULT_PORT"
+        "https://localhost:$CONSOLE_CP_APP_DEFAULT_PORT" \
+        "https://localhost:$GATE_APP_DEFAULT_PORT" \
+        "https://localhost:$ADMIN_CONSOLE_APP_DEFAULT_PORT"
     # auth-dp keeps the pack's allowance for the Control Plane's own origin and gains the dev one:
     # the console calls its /oauth2/token and discovery endpoints from the browser.
     write_cors_bootstrap "$root/auth-dp/bootstrap/03-quickstart-cors.yaml" \
@@ -1706,6 +1739,7 @@ function run_quickstart() {
     fi
     if [ "$run_cp" = "true" ]; then
         THUNDERID_DEV_SERVER_URL="$cp_url" THUNDERID_DEV_TRUSTED_ISSUER_URL="$auth_dp_url" \
+            THUNDERID_DEV_ADMINISTRATOR_ROLE_ID=01900000-0000-7000-8000-0000000000f5 \
             pnpm --filter "@thunderid/console-cp" dev &
         DEV_PIDS+=($!)
     fi

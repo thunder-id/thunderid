@@ -9,20 +9,23 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/thunder-id/thunderid/internal/agent"
 	agentmodel "github.com/thunder-id/thunderid/internal/agent/model"
 	"github.com/thunder-id/thunderid/internal/application"
+	"github.com/thunder-id/thunderid/internal/entity"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/applicationmock"
+	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 )
 
 // confidentialApp is an application as its create returns it: the client secret still in the clear.
 func confidentialApp(clientID, clientSecret string) *providers.Application {
 	return &providers.Application{
-		ID:   "app-1",
+		ID:   testResourceID,
 		Name: "My App",
 		InboundAuthConfig: []providers.InboundAuthConfigWithSecret{{
 			Type: providers.OAuthInboundAuthType,
@@ -38,7 +41,7 @@ func confidentialApp(clientID, clientSecret string) *providers.Application {
 func referenceExportService(t *testing.T,
 	exporters ...declarativeresource.ResourceExporter) ExportServiceInterface {
 	t.Helper()
-	return newExportService(exporters, newParameterizer(templatingRules{}, ValueReferences))
+	return newExportService(exporters, newParameterizer(templatingRules{}, ValueReferences), discardingBus{})
 }
 
 // The names a capture keeps values under are the ones the reference export of the same application
@@ -46,19 +49,20 @@ func referenceExportService(t *testing.T,
 func TestPlaceholderValuesNameWhatTheReferenceExportWrites(t *testing.T) {
 	appService := applicationmock.NewApplicationServiceInterfaceMock(t)
 	// A read returns no secret: it is hashed when stored.
-	appService.On("GetApplication", context.Background(), "app-1").Return(confidentialApp("the-id", ""), nil)
-	svc := referenceExportService(t, application.NewApplicationExporterForTest(appService, sharingWithNoPolicies(t)))
+	appService.On("GetApplication", context.Background(), testResourceID).Return(confidentialApp("the-id", ""), nil)
+	svc := referenceExportService(t, application.NewApplicationExporterForTest(appService,
+		entitiesWithNoFlowSecrets(t), sharingWithNoPolicies(t)))
 
 	variables, secrets, err := svc.PlaceholderValues(context.Background(), resourceTypeApplication,
 		confidentialApp("the-id", "the-secret"))
 	require.NoError(t, err)
 
-	assert.Equal(t, map[string]string{"APPLICATION_MY_APP_CLIENT_ID": "the-id",
-		"APPLICATION_MY_APP_REDIRECT_URIS": `["https://app.test/callback"]`}, variables)
-	assert.Equal(t, map[string]string{"APPLICATION_MY_APP_CLIENT_SECRET": "the-secret"}, secrets)
+	assert.Equal(t, map[string]string{tv("APPLICATION", "CLIENT_ID"): "the-id",
+		tv("APPLICATION", "REDIRECT_URIS"): `["https://app.test/callback"]`}, variables)
+	assert.Equal(t, map[string]string{tv("APPLICATION", "CLIENT_SECRET"): "the-secret"}, secrets)
 
 	exported, svcErr := svc.ExportResources(context.Background(),
-		&ExportRequest{Applications: []string{"app-1"}})
+		&ExportRequest{Applications: []string{testResourceID}})
 	require.Nil(t, svcErr)
 	require.Len(t, exported.Files, 1)
 	for name := range variables {
@@ -72,7 +76,7 @@ func TestPlaceholderValuesNameWhatTheReferenceExportWrites(t *testing.T) {
 // A list is kept as the JSON list of its items, which the reference the export writes for it expands
 // from on import, and it is never a credential.
 func TestPlaceholderValuesReportAListAsAJSONList(t *testing.T) {
-	svc := referenceExportService(t, application.NewApplicationExporterForTest(nil, nil))
+	svc := referenceExportService(t, application.NewApplicationExporterForTest(nil, nil, nil))
 	app := confidentialApp("the-id", "the-secret")
 	app.InboundAuthConfig[0].OAuthConfig.RedirectURIs = []string{"https://app.test/callback", "https://app.test/alt"}
 
@@ -80,8 +84,8 @@ func TestPlaceholderValuesReportAListAsAJSONList(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, `["https://app.test/callback","https://app.test/alt"]`,
-		variables["APPLICATION_MY_APP_REDIRECT_URIS"])
-	assert.NotContains(t, secrets, "APPLICATION_MY_APP_REDIRECT_URIS")
+		variables[tv("APPLICATION", "REDIRECT_URIS")])
+	assert.NotContains(t, secrets, tv("APPLICATION", "REDIRECT_URIS"))
 }
 
 // An empty list, or none at all, as a client that signs no user in has, holds nothing a gateway
@@ -91,18 +95,20 @@ func TestPlaceholderValuesLeaveOutAnEmptyList(t *testing.T) {
 		appService := applicationmock.NewApplicationServiceInterfaceMock(t)
 		app := confidentialApp("the-id", "")
 		app.InboundAuthConfig[0].OAuthConfig.RedirectURIs = list
-		appService.On("GetApplication", context.Background(), "app-1").Return(app, nil)
-		exporter := application.NewApplicationExporterForTest(appService, sharingWithNoPolicies(t))
+		appService.On("GetApplication", context.Background(), testResourceID).Return(app, nil)
+		exporter := application.NewApplicationExporterForTest(appService, entitiesWithNoFlowSecrets(t),
+			sharingWithNoPolicies(t))
 		svc := referenceExportService(t, exporter)
 
 		variables, _, err := svc.PlaceholderValues(context.Background(), resourceTypeApplication, app)
 		require.NoError(t, err)
 
-		assert.NotContains(t, variables, "APPLICATION_MY_APP_REDIRECT_URIS")
-		exported, svcErr := svc.ExportResources(context.Background(), &ExportRequest{Applications: []string{"app-1"}})
+		assert.NotContains(t, variables, tv("APPLICATION", "REDIRECT_URIS"))
+		exported, svcErr := svc.ExportResources(context.Background(),
+			&ExportRequest{Applications: []string{testResourceID}})
 		require.Nil(t, svcErr)
 		require.Len(t, exported.Files, 1)
-		assert.NotContains(t, exported.Files[0].Content, "APPLICATION_MY_APP_REDIRECT_URIS")
+		assert.NotContains(t, exported.Files[0].Content, tv("APPLICATION", "REDIRECT_URIS"))
 	}
 }
 
@@ -110,11 +116,11 @@ func TestPlaceholderValuesLeaveOutAnEmptyList(t *testing.T) {
 // under its name, and no reference is copied into a store that holds values. That holds for a list
 // of references alone, for one mixing a reference with literal items, and for a secret reference.
 func TestPlaceholderValuesLeaveOutAListHoldingAReference(t *testing.T) {
-	svc := referenceExportService(t, application.NewApplicationExporterForTest(nil, nil))
+	svc := referenceExportService(t, application.NewApplicationExporterForTest(nil, nil, nil))
 	lists := map[string][]string{
-		"a reference":                 {"var:APPLICATION_MY_APP_REDIRECT_URIS"},
-		"a reference beside literals": {"https://app.test/callback", "var:APPLICATION_OTHER_REDIRECT_URIS"},
-		"a secret reference":          {"sec:APPLICATION_MY_APP_REDIRECT_URIS"},
+		"a reference":                 {"var:" + tv("APPLICATION", "REDIRECT_URIS")},
+		"a reference beside literals": {"https://app.test/callback", "var:" + tv("APPLICATION", "REDIRECT_URIS")},
+		"a secret reference":          {"sec:" + tv("APPLICATION", "REDIRECT_URIS")},
 	}
 	for holding, list := range lists {
 		app := confidentialApp("the-id", "the-secret")
@@ -123,58 +129,112 @@ func TestPlaceholderValuesLeaveOutAListHoldingAReference(t *testing.T) {
 		variables, secrets, err := svc.PlaceholderValues(context.Background(), resourceTypeApplication, app)
 		require.NoError(t, err)
 
-		assert.NotContains(t, variables, "APPLICATION_MY_APP_REDIRECT_URIS", "a list holding %s was kept", holding)
-		assert.NotContains(t, secrets, "APPLICATION_MY_APP_REDIRECT_URIS", "a list holding %s was kept", holding)
-		assert.Equal(t, "the-id", variables["APPLICATION_MY_APP_CLIENT_ID"])
+		assert.NotContains(t, variables, tv("APPLICATION", "REDIRECT_URIS"), "a list holding %s was kept",
+			holding)
+		assert.NotContains(t, secrets, tv("APPLICATION", "REDIRECT_URIS"), "a list holding %s was kept",
+			holding)
+		assert.Equal(t, "the-id", variables[tv("APPLICATION", "CLIENT_ID")])
 	}
 }
 
 // A public client has no secret, and its export names none.
 func TestPlaceholderValuesOfAPublicClientCarryNoSecret(t *testing.T) {
-	svc := referenceExportService(t, application.NewApplicationExporterForTest(nil, nil))
+	svc := referenceExportService(t, application.NewApplicationExporterForTest(nil, nil, nil))
 	app := confidentialApp("the-id", "")
 	app.InboundAuthConfig[0].OAuthConfig.PublicClient = true
 
 	variables, secrets, err := svc.PlaceholderValues(context.Background(), resourceTypeApplication, app)
 	require.NoError(t, err)
 
-	assert.Equal(t, map[string]string{"APPLICATION_MY_APP_CLIENT_ID": "the-id",
-		"APPLICATION_MY_APP_REDIRECT_URIS": `["https://app.test/callback"]`}, variables)
+	assert.Equal(t, map[string]string{tv("APPLICATION", "CLIENT_ID"): "the-id",
+		tv("APPLICATION", "REDIRECT_URIS"): `["https://app.test/callback"]`}, variables)
 	assert.Empty(t, secrets)
+}
+
+// A confidential client that authenticates without a secret (private_key_jwt or none) has no secret
+// to vary, so its export names none even when the resource still carries one.
+func TestExportOfAClientWithoutASecretNamesNone(t *testing.T) {
+	methods := []providers.TokenEndpointAuthMethod{
+		providers.TokenEndpointAuthMethodPrivateKeyJWT,
+		providers.TokenEndpointAuthMethodNone,
+	}
+	for _, method := range methods {
+		t.Run("application "+string(method), func(t *testing.T) {
+			app := confidentialApp("the-id", "the-secret")
+			app.InboundAuthConfig[0].OAuthConfig.TokenEndpointAuthMethod = method
+			appService := applicationmock.NewApplicationServiceInterfaceMock(t)
+			appService.On("GetApplication", context.Background(), testResourceID).Return(app, nil)
+			svc := referenceExportService(t,
+				application.NewApplicationExporterForTest(appService, entitiesWithNoFlowSecrets(t),
+					sharingWithNoPolicies(t)))
+
+			variables, secrets, err := svc.PlaceholderValues(context.Background(), resourceTypeApplication, app)
+			require.NoError(t, err)
+			assert.Equal(t, "the-id", variables[tv("APPLICATION", "CLIENT_ID")])
+			assert.Empty(t, secrets)
+
+			exported, svcErr := svc.ExportResources(context.Background(),
+				&ExportRequest{Applications: []string{testResourceID}})
+			require.Nil(t, svcErr)
+			require.Len(t, exported.Files, 1)
+			assert.NotContains(t, exported.Files[0].Content, tv("APPLICATION", "CLIENT_SECRET"))
+		})
+
+		t.Run("agent "+string(method), func(t *testing.T) {
+			svc := referenceExportService(t, agent.NewAgentExporterForTest(nil, nil, nil))
+
+			variables, secrets, err := svc.PlaceholderValues(context.Background(), resourceTypeAgent,
+				&agentmodel.AgentGetResponse{
+					ID:      testResourceID,
+					Display: "My Agent",
+					InboundAuthConfig: []providers.InboundAuthConfigWithSecret{{
+						Type: providers.OAuthInboundAuthType,
+						OAuthConfig: &providers.OAuthConfigWithSecret{
+							ClientID:                "agent-id",
+							ClientSecret:            "agent-secret",
+							TokenEndpointAuthMethod: method,
+						},
+					}},
+				})
+			require.NoError(t, err)
+			assert.Equal(t, map[string]string{tv("AGENT", "CLIENT_ID"): "agent-id"}, variables)
+			assert.Empty(t, secrets)
+		})
+	}
 }
 
 // An update that leaves the secret alone carries none, and an empty value is nothing to keep.
 func TestPlaceholderValuesLeaveOutAnEmptyValue(t *testing.T) {
-	svc := referenceExportService(t, application.NewApplicationExporterForTest(nil, nil))
+	svc := referenceExportService(t, application.NewApplicationExporterForTest(nil, nil, nil))
 
 	variables, secrets, err := svc.PlaceholderValues(context.Background(), resourceTypeApplication,
 		confidentialApp("", ""))
 	require.NoError(t, err)
 
-	assert.NotContains(t, variables, "APPLICATION_MY_APP_CLIENT_ID")
+	assert.NotContains(t, variables, tv("APPLICATION", "CLIENT_ID"))
 	assert.Empty(t, secrets)
 }
 
 // A value that is already a reference is kept by the export as it stands. Keeping it in a store
 // would put a reference where the value it names belongs.
 func TestPlaceholderValuesLeaveOutAStoredReference(t *testing.T) {
-	svc := referenceExportService(t, application.NewApplicationExporterForTest(nil, nil))
+	svc := referenceExportService(t, application.NewApplicationExporterForTest(nil, nil, nil))
 
 	variables, secrets, err := svc.PlaceholderValues(context.Background(), resourceTypeApplication,
-		confidentialApp("var:APPLICATION_OLD_NAME_CLIENT_ID", "sec:APPLICATION_OLD_NAME_CLIENT_SECRET"))
+		confidentialApp("var:"+tv("APPLICATION", "CLIENT_ID"), "sec:"+tv("APPLICATION", "CLIENT_SECRET")))
 	require.NoError(t, err)
 
-	assert.NotContains(t, variables, "APPLICATION_MY_APP_CLIENT_ID")
+	assert.NotContains(t, variables, tv("APPLICATION", "CLIENT_ID"))
 	assert.Empty(t, secrets)
 }
 
 // An agent is named under its own type, so it cannot collide with an application of the same name.
 func TestPlaceholderValuesOfAnAgent(t *testing.T) {
-	svc := referenceExportService(t, agent.NewAgentExporterForTest(nil, nil))
+	svc := referenceExportService(t, agent.NewAgentExporterForTest(nil, nil, nil))
 
 	variables, secrets, err := svc.PlaceholderValues(context.Background(), resourceTypeAgent,
 		&agentmodel.AgentGetResponse{
-			ID:      "agent-1",
+			ID:      testResourceID,
 			Display: "My App",
 			InboundAuthConfig: []providers.InboundAuthConfigWithSecret{{
 				Type: providers.OAuthInboundAuthType,
@@ -186,8 +246,8 @@ func TestPlaceholderValuesOfAnAgent(t *testing.T) {
 		})
 	require.NoError(t, err)
 
-	assert.Equal(t, map[string]string{"AGENT_MY_APP_CLIENT_ID": "agent-id"}, variables)
-	assert.Equal(t, map[string]string{"AGENT_MY_APP_CLIENT_SECRET": "agent-secret"}, secrets)
+	assert.Equal(t, map[string]string{tv("AGENT", "CLIENT_ID"): "agent-id"}, variables)
+	assert.Equal(t, map[string]string{tv("AGENT", "CLIENT_SECRET"): "agent-secret"}, secrets)
 }
 
 // A resource of a type nothing exports has no export to name its values after.
@@ -202,7 +262,7 @@ func TestPlaceholderValuesRefuseAnUnregisteredType(t *testing.T) {
 // A resource in a shape its exporter does not read back would be named after nothing the export
 // writes, so it is refused rather than guessed at.
 func TestPlaceholderValuesRefuseAResourceOfTheWrongShape(t *testing.T) {
-	svc := referenceExportService(t, application.NewApplicationExporterForTest(nil, nil))
+	svc := referenceExportService(t, application.NewApplicationExporterForTest(nil, nil, nil))
 
 	_, _, err := svc.PlaceholderValues(context.Background(), resourceTypeApplication,
 		&agentmodel.AgentGetResponse{Display: "My App"})
@@ -228,15 +288,15 @@ func TestPlaceholderValuesReadCredentialsHeldAsAMap(t *testing.T) {
 			Name: "alice@example.com",
 			Credentials: map[string]interface{}{
 				"password": "s3cret",
-				"pin":      "sec:USER_ALICE_EXAMPLE_COM_PIN",
+				"pin":      "sec:" + tv("USER", "PIN"),
 				"empty":    "",
 			},
 			ClaimValues: map[string][]string{"country": {"LK"}},
-		}, "User", "alice@example.com", rules)
+		}, "User", testResourceID, rules)
 	require.NoError(t, err)
 
 	assert.Empty(t, variables)
-	assert.Equal(t, map[string]string{"USER_ALICE_EXAMPLE_COM_PASSWORD": "s3cret"}, secrets)
+	assert.Equal(t, map[string]string{tv("USER", "PASSWORD"): "s3cret"}, secrets)
 }
 
 // A dynamic property is a credential or not by what it says of itself.
@@ -250,17 +310,17 @@ func TestPlaceholderValuesSplitDynamicPropertiesByWhetherTheyAreSecret(t *testin
 				propertySpec{name: "host", value: "https://idp.test"},
 				propertySpec{name: "apiKey", value: "the-key", isSecret: true},
 			),
-		}, "Connection", "My Connection", rules)
+		}, "Connection", testResourceID, rules)
 	require.NoError(t, err)
 
-	assert.Equal(t, map[string]string{"CONNECTION_MY_CONNECTION_HOST": "https://idp.test"}, variables)
-	assert.Equal(t, map[string]string{"CONNECTION_MY_CONNECTION_API_KEY": "the-key"}, secrets)
+	assert.Equal(t, map[string]string{tv("CONNECTION", "HOST"): "https://idp.test"}, variables)
+	assert.Equal(t, map[string]string{tv("CONNECTION", "API_KEY"): "the-key"}, secrets)
 }
 
 // Without rules there is nothing an export would refer to.
 func TestPlaceholderValuesWithoutRulesAreEmpty(t *testing.T) {
 	variables, secrets, err := newParameterizer(templatingRules{}, ValueReferences).PlaceholderValues(
-		context.Background(), &userShaped{Name: "x"}, "User", "x", nil)
+		context.Background(), &userShaped{Name: "x"}, "User", testResourceID, nil)
 	require.NoError(t, err)
 
 	assert.Empty(t, variables)
@@ -273,15 +333,15 @@ func TestPlaceholderValuesOfAResourceServer(t *testing.T) {
 	p := newParameterizer(templatingRules{}, ValueReferences)
 	rs := &providers.ResourceServer{Name: "Orders API", Identifier: "https://orders.example.com", Delimiter: ":"}
 
-	variables, secrets, err := p.PlaceholderValues(context.Background(), rs, "ResourceServer", rs.Name,
+	variables, secrets, err := p.PlaceholderValues(context.Background(), rs, "ResourceServer", testResourceID,
 		resourceServerRules)
 	require.NoError(t, err)
-	assert.Equal(t, map[string]string{"RESOURCE_SERVER_ORDERS_API_IDENTIFIER": "https://orders.example.com"},
+	assert.Equal(t, map[string]string{tv("RESOURCE_SERVER", "IDENTIFIER"): "https://orders.example.com"},
 		variables)
 	assert.Empty(t, secrets)
 
-	rs.Identifier = "var:RESOURCE_SERVER_ORDERS_API_IDENTIFIER"
-	variables, secrets, err = p.PlaceholderValues(context.Background(), rs, "ResourceServer", rs.Name,
+	rs.Identifier = "var:" + tv("RESOURCE_SERVER", "IDENTIFIER")
+	variables, secrets, err = p.PlaceholderValues(context.Background(), rs, "ResourceServer", testResourceID,
 		resourceServerRules)
 	require.NoError(t, err)
 	assert.Empty(t, variables)
@@ -296,13 +356,48 @@ func TestSecretFieldsMatchWhereTheExportWritesSecrets(t *testing.T) {
 		exporter declarativeresource.ResourceExporter
 		model    interface{}
 	}{
-		"application": {application.NewApplicationExporterForTest(nil, nil), &providers.Application{}},
-		"agent":       {agent.NewAgentExporterForTest(nil, nil), &agentmodel.AgentGetResponse{}},
+		"application": {application.NewApplicationExporterForTest(nil, nil, nil), &providers.Application{}},
+		"agent":       {agent.NewAgentExporterForTest(nil, nil, nil), &agentmodel.AgentGetResponse{}},
 	} {
 		lister, ok := tc.exporter.(declarativeresource.SecretFieldLister)
 		require.True(t, ok, name)
 		for _, path := range tc.exporter.GetResourceRules().SecretVariables {
 			assert.Contains(t, lister.SecretFields(), p.convertPathToYAMLPath(reflect.TypeOf(tc.model), path), name)
 		}
+	}
+}
+
+// An application that holds a Flow Secret is exported referring to it from flowSecret, under the name
+// its capture keeps the value by, and one that holds none is exported without the field.
+func TestReferenceExportRefersToAHeldFlowSecret(t *testing.T) {
+	cases := []struct {
+		name string
+		held []entity.StoredCredential
+	}{
+		{name: "an application that holds one", held: []entity.StoredCredential{{Value: "hashed"}}},
+		{name: "an application that holds none"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			app := &providers.Application{ID: testResourceID, Name: "Embedded App", Type: "custom"}
+			appService := applicationmock.NewApplicationServiceInterfaceMock(t)
+			appService.On("GetApplication", context.Background(), testResourceID).Return(app, nil)
+			entityService := entitymock.NewEntityServiceInterfaceMock(t)
+			entityService.EXPECT().GetCredentialsByType(mock.Anything, testResourceID, "flowSecret").
+				Return(tc.held, nil)
+			svc := referenceExportService(t,
+				application.NewApplicationExporterForTest(appService, entityService, sharingWithNoPolicies(t)))
+
+			exported, svcErr := svc.ExportResources(context.Background(),
+				&ExportRequest{Applications: []string{testResourceID}})
+			require.Nil(t, svcErr)
+			require.Len(t, exported.Files, 1)
+
+			if len(tc.held) > 0 {
+				assert.Contains(t, exported.Files[0].Content, "flowSecret: sec:"+tv("APPLICATION", "FLOW_SECRET"))
+			} else {
+				assert.NotContains(t, exported.Files[0].Content, "flowSecret")
+			}
+		})
 	}
 }

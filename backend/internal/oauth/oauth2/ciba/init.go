@@ -13,6 +13,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/discovery"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
@@ -21,7 +22,8 @@ import (
 
 // Initialize initializes the CIBA backchannel authentication handler, registers its routes,
 // and returns the CIBAServiceInterface. The store is created internally and never exposed.
-// The returned service is used by both the callback dispatcher and the token grant handler.
+// The returned service is used by both the callback dispatcher and the token grant handler. Every
+// refused client authentication is audited on bus.
 func Initialize(
 	mux *http.ServeMux,
 	jwtService jwt.JWTServiceInterface,
@@ -35,13 +37,14 @@ func Initialize(
 	governance providers.IdentityGovernanceProvider,
 	authzDetails providers.AuthorizationDetailProvider,
 	cfg oauthconfig.Config,
+	bus eventbus.EventBusInterface,
 ) CIBAServiceInterface {
 	store := newCIBAStore(runtimeStore)
 	cibaSvc := newCIBAService(store, flowExecService, jwtService, actorProvider, resourceService, governance,
 		authzDetails, cfg)
 	cibaHandler := newCIBAHandler(cibaSvc)
 	registerRoutes(mux, cibaHandler, actorProvider, authnProvider, jwtService, discoveryService,
-		jtiStore, governance, cfg.OAuth.ClientAssertion, cfg.JWT.Leeway)
+		jtiStore, governance, cfg.OAuth.ClientAssertion, cfg.JWT.Leeway, bus)
 	return cibaSvc
 }
 
@@ -58,6 +61,7 @@ func registerRoutes(
 	governance providers.IdentityGovernanceProvider,
 	assertionCfg engineconfig.ClientAssertionConfig,
 	jwtLeeway int64,
+	bus eventbus.EventBusInterface,
 ) {
 	corsOpts := middleware.CORSOptions{
 		AllowedMethods:   []string{"POST"},
@@ -68,7 +72,7 @@ func registerRoutes(
 
 	issuer := discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background()).Issuer
 	clientAuthMiddleware := clientauth.ClientAuthMiddleware(actorProvider, authnProvider, governance, jwtService,
-		jtiStore, issuer, assertionCfg, jwtLeeway)
+		jtiStore, issuer, assertionCfg, jwtLeeway, bus)
 	authHandler := clientAuthMiddleware(http.HandlerFunc(cibaHandler.HandleBackchannelAuthRequest))
 
 	authPattern, wrappedAuthHandler := middleware.WithCORS(

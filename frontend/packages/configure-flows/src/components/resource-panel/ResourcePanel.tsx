@@ -58,6 +58,8 @@ export interface ResourcePanelPropsInterface extends HTMLAttributes<HTMLDivEleme
    * Flow title to display.
    */
   flowTitle?: string;
+  /** Shown under the flow's name, such as where the flow is along the deploy path. */
+  flowStatus?: ReactNode;
   /**
    * Flow handle (URL-friendly identifier).
    */
@@ -99,6 +101,7 @@ function ResourcePanel({
   onAdd,
   disabled = false,
   flowTitle = '',
+  flowStatus = undefined,
   flowHandle = '',
   onFlowTitleChange = undefined,
   rightPanel = undefined,
@@ -185,6 +188,7 @@ function ResourcePanel({
           saveTitleTooltip={t('flows:core.headerPanel.saveTitle')}
           cancelEditTooltip={t('flows:core.headerPanel.cancelEdit')}
         />
+        {flowStatus && <Box sx={{pb: 1.5, flexShrink: 0}}>{flowStatus}</Box>}
 
         <Box sx={{pb: 1.5, flexShrink: 0}}>
           <TextField
@@ -329,6 +333,7 @@ function ResourcePanel({
       isSearching,
       searchQuery,
       flowTitle,
+      flowStatus,
       flowHandle,
       onFlowTitleChange,
       handleTogglePanel,

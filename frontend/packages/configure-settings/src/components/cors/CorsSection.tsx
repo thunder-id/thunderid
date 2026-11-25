@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {QueryErrorNotice, SettingsCard, UnsavedChangesBar} from '@thunderid/components';
+import {useCapabilitiesContext} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
 import {Box, Button, Divider, Skeleton, Stack, Typography} from '@wso2/oxygen-ui';
 import {InfoIcon, Plus} from '@wso2/oxygen-ui-icons-react';
@@ -19,6 +20,8 @@ export default function CorsSection(): JSX.Element {
   const {data, isLoading, error, refetch} = useGetCorsConfig();
   const updateCors = useUpdateCorsConfig();
   const origins = useAllowedOriginsDraft(data);
+  const {can} = useCapabilitiesContext();
+  const canUpdate = can('serverconfig', 'update');
 
   // Resolves an error through the `settings` catalog. `t` defaults to the `common` namespace, so
   // this forwards explicit `ns:` prefixes unchanged and prefixes bare keys with `settings:`, per
@@ -103,6 +106,7 @@ export default function CorsSection(): JSX.Element {
             <AllowedOriginRow
               key={row.id}
               testId="cors-origin-row"
+              locked={!canUpdate}
               type={row.type}
               value={row.value}
               error={origins.errors[row.id]}
@@ -125,18 +129,20 @@ export default function CorsSection(): JSX.Element {
           ))}
         </Stack>
 
-        <Button
-          variant="text"
-          color="primary"
-          startIcon={<Plus size={18} />}
-          onClick={() => {
-            clearSaveError();
-            origins.addRow();
-          }}
-          sx={{mt: 2}}
-        >
-          {t('settings:cors.addOrigin')}
-        </Button>
+        {canUpdate && (
+          <Button
+            variant="text"
+            color="primary"
+            startIcon={<Plus size={18} />}
+            onClick={() => {
+              clearSaveError();
+              origins.addRow();
+            }}
+            sx={{mt: 2}}
+          >
+            {t('settings:cors.addOrigin')}
+          </Button>
+        )}
 
         {hasReadOnlyOrigins && (
           <>
@@ -160,14 +166,14 @@ export default function CorsSection(): JSX.Element {
       <SettingsCard title={t('settings:cors.card.title')} description={t('settings:cors.card.description')}>
         {body}
       </SettingsCard>
-      {origins.dirty && (
+      {origins.dirty && canUpdate && (
         <UnsavedChangesBar
           message={t('settings:cors.unsavedChanges', 'You have unsaved changes')}
           resetLabel={t('settings:cors.reset', 'Reset')}
           saveLabel={t('settings:cors.save', 'Save changes')}
           savingLabel={t('settings:cors.saving', 'Saving...')}
           isSaving={updateCors.isPending}
-          saveDisabled={origins.hasErrors}
+          saveDisabled={origins.hasErrors || !can('serverconfig', 'update')}
           error={
             updateCors.error
               ? getErrorMessage(updateCors.error, tForErrors, 'cors.save.error', 'Failed to update allowed origins.')

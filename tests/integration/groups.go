@@ -24,8 +24,14 @@ import (
 
 const (
 	// groupsFile lists the test groups. Each group runs against its own server and databases, and the
-	// groups run at the same time. The suites of a group run one after another.
-	groupsFile = "groups.yaml"
+	// groups run at the same time. The suites of a group run one after another. The pack run has a
+	// file of its own, packGroupsFile, because each group there runs a pack of three planes.
+	groupsFile     = "groups.yaml"
+	packGroupsFile = "pack/groups.yaml"
+
+	// packGroupPortStep separates the ports of the packs of the groups: each plane of a group's pack
+	// answers this many ports above the same plane of the previous group's.
+	packGroupPortStep = 100
 
 	// defaultGroup runs every suite no group in groupsFile lists.
 	defaultGroup = "default"
@@ -72,15 +78,20 @@ func shouldRunGroups() bool {
 	return testutils.TestGroup() == "" && !controlPlane && testRun == "" && testPackage == "./..."
 }
 
-// loadGroups reads groupsFile and returns the default group followed by the groups it lists.
+// loadGroups reads the groups file of this run and returns the default group followed by the groups
+// it lists.
 func loadGroups() ([]testGroup, error) {
-	data, err := os.ReadFile(groupsFile)
+	file := groupsFile
+	if testutils.IsPackRun() {
+		file = packGroupsFile
+	}
+	data, err := os.ReadFile(file)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read %s: %w", groupsFile, err)
+		return nil, fmt.Errorf("failed to read %s: %w", file, err)
 	}
 	var manifest groupsManifest
 	if err := yaml.Unmarshal(data, &manifest); err != nil {
-		return nil, fmt.Errorf("failed to parse %s: %w", groupsFile, err)
+		return nil, fmt.Errorf("failed to parse %s: %w", file, err)
 	}
 
 	groups := []testGroup{{Name: defaultGroup}}
@@ -223,14 +234,20 @@ func runGroups() int {
 	var wg sync.WaitGroup
 	for i, group := range groups {
 		port := strconv.Itoa(defaultPort + i*groupPortStep)
+		env := []string{}
+		if testutils.IsPackRun() {
+			// Each group runs a pack of its own, three planes on ports the group's offset moves up.
+			env = append(env, fmt.Sprintf("%s=%d", testutils.PackPortOffsetEnv, i*packGroupPortStep))
+			port = strconv.Itoa(testutils.PackDPPort + i*packGroupPortStep)
+		}
 		fmt.Printf("Starting test group %s on port %s\n", group.Name, port)
 		wg.Add(1)
-		go func(i int, name, port string) {
+		go func(i int, name, port string, env []string) {
 			defer wg.Done()
 			started := time.Now()
-			err := runGroupProcess(executable, name, port, &output)
+			err := runGroupProcess(executable, name, port, env, &output)
 			results[i] = groupResult{name: name, duration: time.Since(started), err: err}
-		}(i, group.Name, port)
+		}(i, group.Name, port, env)
 	}
 	wg.Wait()
 
@@ -253,10 +270,11 @@ func runGroups() int {
 
 // runGroupProcess runs the runner again for one group and prefixes each line it prints with the
 // group's name.
-func runGroupProcess(executable, group, port string, output *sync.Mutex) error {
+func runGroupProcess(executable, group, port string, extraEnv []string, output *sync.Mutex) error {
 	reader, writer := io.Pipe()
 	cmd := exec.Command(executable, os.Args[1:]...)
 	cmd.Env = append(os.Environ(), testutils.TestGroupEnv+"="+group, "SERVER_PORT="+port)
+	cmd.Env = append(cmd.Env, extraEnv...)
 	cmd.Stdout = writer
 	cmd.Stderr = writer
 

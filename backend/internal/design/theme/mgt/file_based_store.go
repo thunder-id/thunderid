@@ -28,6 +28,7 @@ func (f *themeFileBasedStore) Create(id string, data interface{}) error {
 		Handle:      theme.Handle,
 		DisplayName: theme.DisplayName,
 		Description: theme.Description,
+		ProjectID:   theme.ProjectID,
 		Theme:       theme.Theme,
 	}
 	return f.CreateTheme(ctx, id, createReq)
@@ -40,6 +41,7 @@ func (f *themeFileBasedStore) CreateTheme(ctx context.Context, id string, theme 
 		Handle:      theme.Handle,
 		DisplayName: theme.DisplayName,
 		Description: theme.Description,
+		ProjectID:   theme.ProjectID,
 		Theme:       theme.Theme,
 		CreatedAt:   "",
 		UpdatedAt:   "",
@@ -108,6 +110,47 @@ func (f *themeFileBasedStore) GetThemeListCount(ctx context.Context) (int, error
 		return 0, err
 	}
 	return count, nil
+}
+
+// GetThemeListByProject implements themeMgtStoreInterface.
+func (f *themeFileBasedStore) GetThemeListByProject(ctx context.Context, projectID string, limit, offset int) (
+	[]Theme, error) {
+	themes, err := f.themesByProject(projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	start := max(offset, 0)
+	if start >= len(themes) {
+		return []Theme{}, nil
+	}
+	end := min(start+max(limit, 0), len(themes))
+	return themes[start:end], nil
+}
+
+// GetThemeListCountByProject implements themeMgtStoreInterface.
+func (f *themeFileBasedStore) GetThemeListCountByProject(ctx context.Context, projectID string) (int, error) {
+	themes, err := f.themesByProject(projectID)
+	if err != nil {
+		return 0, err
+	}
+	return len(themes), nil
+}
+
+// themesByProject returns the declarative themes of a project.
+func (f *themeFileBasedStore) themesByProject(projectID string) ([]Theme, error) {
+	list, err := f.GenericFileBasedStore.List()
+	if err != nil {
+		return nil, err
+	}
+
+	themes := make([]Theme, 0, len(list))
+	for _, item := range list {
+		if theme, ok := item.Data.(*Theme); ok && theme.ProjectID == projectID {
+			themes = append(themes, *theme)
+		}
+	}
+	return themes, nil
 }
 
 // IsThemeExist implements themeMgtStoreInterface.

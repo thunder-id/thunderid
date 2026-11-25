@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Agent Management API
   version: "1.0"
-  description: Manage AI agents and their configuration schemas. Agents are autonomous components assigned to applications to extend identity flows with AI-driven capabilities.
+  description: Manage agent identities, OAuth profiles, and the agent type schema. Direct agent creation uses the management service and does not run the Console onboarding flow.
   license:
     name: Apache 2.0
     url: https://www.apache.org/licenses/LICENSE-2.0.html
@@ -32,9 +32,10 @@ paths:
       summary: List agents
       description: |
         Retrieve a paginated list of agents. An `ouId` filter lists the agents the organization unit
-        owns, followed by the agents shared into it. A `projectId` lists the same for the project's
-        root organization unit, or for the organization unit in the `ouId` filter when it belongs to
-        the project.
+        owns, followed by the agents shared into it. A caller that may list agents in one organization
+        unit only gets the same list without a filter. A filter on other attributes narrows that
+        caller's list to the agents the organization unit owns. A `projectId` lists the project's
+        agents, narrowed to the organization unit in the `ouId` filter when one is given.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
@@ -56,25 +57,29 @@ paths:
                   - id: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
                     ouId: "456e8400-e29b-41d4-a716-446655440001"
                     ouHandle: "platform/automations"
-                    type: "automation"
+                    type: "default"
                     description: "Runs nightly data sync jobs"
-                    owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                    owner:
+                      id: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                      idType: uuid
+                      isLocal: true
                     attributes:
                       name: "Nightly Sync Worker"
-                      llmModel: "claude-3-5-sonnet"
-                      team: "platform"
+                      modelProvider: "anthropic"
                     isOwnedByOU: true
                   - id: "039bda67-a80d-4b7b-ac0f-36db85332089"
                     ouId: "456e8400-e29b-41d4-a716-446655440001"
                     ouHandle: "platform/automations"
-                    type: "service-agent"
+                    type: "default"
                     description: "Agent exposing calendar tools"
                     clientId: "calendar_agent_client"
-                    owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                    owner:
+                      id: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                      idType: uuid
+                      isLocal: true
                     attributes:
                       name: "Calendar Agent"
-                      llmModel: "claude-3-5-sonnet"
-                      environment: "production"
+                      modelProvider: "anthropic"
                     isOwnedByOU: true
                 links:
                   - href: "agents?offset=2&limit=2"
@@ -130,7 +135,17 @@ paths:
         An inbound auth profile is created when any inbound auth config fields are supplied.
         An OAuth profile is created when `inboundAuthConfig` is supplied.
 
-        The `clientSecret` is returned once in the response and never again — store it securely.
+        Send the name inside `attributes.name`. The default agent schema defines it as a required,
+        unique string. Missing required attributes fail schema validation (`AGT-1015`); duplicate
+        unique attributes produce an attribute conflict (`AGT-1014`).
+        This endpoint does not execute the Console's configured agent onboarding flow.
+
+        The agent's organization unit must be the organization unit of its agent type (`type`) or one of
+        its descendants; otherwise the request is rejected with `AGT-1053`. The check reads the agent type,
+        so the caller also needs permission to view it (`system:agenttype:view`). An agent type that does
+        not exist, or that the caller cannot read, is rejected with `AGT-1054`.
+
+        When an OAuth client secret is generated, `clientSecret` is returned in this response only. Store it securely.
       requestBody:
         required: true
         content:
@@ -142,24 +157,30 @@ paths:
                 summary: Entity only (minimal)
                 value:
                   ouId: "456e8400-e29b-41d4-a716-446655440001"
-                  type: "automation"
+                  projectId: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+                  type: "default"
                   description: "Runs nightly data sync jobs"
-                  owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                  owner:
+                    id: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                    idType: uuid
+                    isLocal: true
                   attributes:
                     name: "Nightly Sync Worker"
-                    llmModel: "claude-3-5-sonnet"
-                    team: "platform"
+                    modelProvider: "anthropic"
               entity-and-inbound:
                 summary: Entity + inbound auth profile (no OAuth)
                 value:
                   ouId: "456e8400-e29b-41d4-a716-446655440001"
-                  type: "service-agent"
+                  projectId: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+                  type: "default"
                   description: "Agent exposing calendar tools"
-                  owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                  owner:
+                    id: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                    idType: uuid
+                    isLocal: true
                   attributes:
                     name: "Calendar Agent"
-                    llmModel: "claude-3-5-sonnet"
-                    environment: "production"
+                    modelProvider: "anthropic"
                   authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                   registrationFlowId: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
                   isRegistrationFlowEnabled: false
@@ -175,13 +196,16 @@ paths:
                 summary: Agent with client_credentials OAuth (M2M)
                 value:
                   ouId: "456e8400-e29b-41d4-a716-446655440001"
-                  type: "worker"
+                  projectId: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+                  type: "default"
                   description: "Processes ETL jobs"
-                  owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                  owner:
+                    id: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                    idType: uuid
+                    isLocal: true
                   attributes:
                     name: "Data Pipeline Worker"
-                    pipeline: "etl-daily"
-                    team: "data-engineering"
+                    modelProvider: "custom"
                   authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                   inboundAuthConfig:
                     - type: "oauth2"
@@ -197,13 +221,16 @@ paths:
                 summary: Agent with authorization_code OAuth (all fields)
                 value:
                   ouId: "456e8400-e29b-41d4-a716-446655440001"
-                  type: "service-agent"
+                  projectId: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+                  type: "default"
                   description: "Agent exposing calendar tools"
-                  owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                  owner:
+                    id: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                    idType: uuid
+                    isLocal: true
                   attributes:
                     name: "Calendar Agent"
-                    llmModel: "claude-3-5-sonnet"
-                    environment: "production"
+                    modelProvider: "anthropic"
                   authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                   registrationFlowId: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
                   isRegistrationFlowEnabled: false
@@ -264,13 +291,15 @@ paths:
                 id: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
                 ouId: "456e8400-e29b-41d4-a716-446655440001"
                 ouHandle: "platform/automations"
-                type: "service-agent"
+                type: "default"
                 description: "Agent exposing calendar tools"
-                owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                owner:
+                  id: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                  idType: uuid
+                  isLocal: true
                 attributes:
                   name: "Calendar Agent"
-                  llmModel: "claude-3-5-sonnet"
-                  environment: "production"
+                  modelProvider: "anthropic"
                 authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                 registrationFlowId: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
                 isRegistrationFlowEnabled: false
@@ -388,6 +417,46 @@ paths:
                     description:
                       key: "error.agentservice.missing_delegation_grant_type_description"
                       defaultValue: "A delegated agent needs at least one of these grant types: {{param(grantTypes)}}"
+                device-grant-flow-required:
+                  summary: Device Code is enabled without a Device Grant flow
+                  value:
+                    code: "AGT-1065"
+                    message:
+                      key: "error.agentservice.device_grant_flow_required"
+                      defaultValue: "Device Grant flow is required"
+                    description:
+                      key: "error.agentservice.device_grant_flow_required_description"
+                      defaultValue: "Assign a Device Grant flow before enabling the Device Code grant type"
+                invalid-device-grant-flow:
+                  summary: The assigned flow is invalid
+                  value:
+                    code: "AGT-1066"
+                    message:
+                      key: "error.agentservice.invalid_device_grant_flow_id"
+                      defaultValue: "Invalid Device Grant flow ID"
+                    description:
+                      key: "error.agentservice.invalid_device_grant_flow_id_description"
+                      defaultValue: "The assigned flow must be a valid Device Grant flow"
+                conflicting-flow-references:
+                  summary: A configured flow invokes a different flow than the agent assignment
+                  value:
+                    code: "AGT-1067"
+                    message:
+                      key: "error.agentservice.agent_flow_mismatch"
+                      defaultValue: "Conflicting flow references"
+                    description:
+                      key: "error.agentservice.agent_flow_mismatch_description"
+                      defaultValue: "The {{param(sourceFlowType)}} flow references a different {{param(flowType)}} flow than the one configured on the agent. Both must point to the same {{param(flowType)}} flow."
+                project-required:
+                  summary: No project was given on a deployment that requires one, such as the Control Plane
+                  value:
+                    code: "AGT-1050"
+                    message:
+                      key: "error.agentservice.project_required"
+                      defaultValue: "Project required"
+                    description:
+                      key: "error.agentservice.project_required_description"
+                      defaultValue: "Set projectId to the project the agent belongs to"
                 invalid-project:
                   summary: The project does not exist
                   value:
@@ -407,7 +476,27 @@ paths:
                       defaultValue: "Organization unit not in project"
                     description:
                       key: "error.agentservice.ou_not_in_project_description"
-                      defaultValue: "The organization unit must be the project's root organization unit or one below it"
+                      defaultValue: "The organization unit must belong to the project"
+                ou-mismatch:
+                  summary: The organization unit is outside the agent type's organization unit tree
+                  value:
+                    code: "AGT-1053"
+                    message:
+                      key: "error.agentservice.organization_unit_mismatch"
+                      defaultValue: "Organization unit mismatch"
+                    description:
+                      key: "error.agentservice.organization_unit_mismatch_description"
+                      defaultValue: "The organization unit does not match the agent type configuration: it must be the agent type's organization unit or one of its descendants"
+                agent-type-not-found:
+                  summary: The agent type does not exist, or the caller cannot read it
+                  value:
+                    code: "AGT-1054"
+                    message:
+                      key: "error.agentservice.agent_type_not_found"
+                      defaultValue: "Agent type not found"
+                    description:
+                      key: "error.agentservice.agent_type_not_found_description"
+                      defaultValue: "No agent type with that handle exists, or the caller cannot view it"
                 ou-not-found:
                   summary: Organization unit not found
                   value:
@@ -608,6 +697,56 @@ paths:
                     description:
                       key: "error.agentservice.owner_not_found_description"
                       defaultValue: "The specified owner does not match any known user, application, or agent"
+                invalid-owner:
+                  summary: Owner has no id, an id too long or not matching its id type, an unknown id type, or is local but not a uuid
+                  value:
+                    code: "AGT-1049"
+                    message:
+                      key: "error.agentservice.invalid_owner"
+                      defaultValue: "Invalid owner"
+                    description:
+                      key: "error.agentservice.invalid_owner_description"
+                      defaultValue: "An owner needs an id of at most 256 characters matching its type, and a local owner a uuid"
+                owner-suspended:
+                  summary: The personal agent's owner is suspended
+                  value:
+                    code: "AGT-1062"
+                    message:
+                      key: "error.agentservice.owner_suspended"
+                      defaultValue: "Owner suspended"
+                    description:
+                      key: "error.agentservice.owner_suspended_description"
+                      defaultValue: "A personal agent cannot be created for a user whose account is suspended"
+                grant-type-not-allowed-for-personal-agent:
+                  summary: A personal agent is given a grant type it cannot use
+                  value:
+                    code: "AGT-1056"
+                    message:
+                      key: "error.agentservice.grant_type_not_allowed_for_personal_agent"
+                      defaultValue: "Grant type not allowed"
+                    description:
+                      key: "error.agentservice.grant_type_not_allowed_for_personal_agent_description"
+                      defaultValue: "A personal agent can only use the authorization code, CIBA, and refresh token grants"
+                invalid-kind:
+                  summary: The kind is not a known agent kind
+                  value:
+                    code: "AGT-1057"
+                    message:
+                      key: "error.agentservice.invalid_kind"
+                      defaultValue: "Invalid kind"
+                    description:
+                      key: "error.agentservice.invalid_kind_description"
+                      defaultValue: "The agent kind is not a known kind"
+                invalid-public-key:
+                  summary: A personal agent's public key is not a JWKS document with a key
+                  value:
+                    code: "AGT-1058"
+                    message:
+                      key: "error.agentservice.invalid_public_key"
+                      defaultValue: "Invalid public key"
+                    description:
+                      key: "error.agentservice.invalid_public_key_description"
+                      defaultValue: "The public key must be a JWKS document with at least one key"
                 invalid-user-attribute:
                   summary: User attribute not valid for any allowed user type
                   value:
@@ -669,6 +808,11 @@ paths:
       tags:
         - Agents
       summary: Get an agent by id
+      description: |
+        Retrieve an agent. A caller confined to an organization unit other than the one that owns the
+        agent reads it when the agent is shared into the caller's organization unit. The agent is then
+        returned under that organization unit, with `isOwnedByOU` set to `false` and `isReadOnly` set to
+        `true`.
       parameters:
         - in: path
           name: id
@@ -689,14 +833,18 @@ paths:
                 id: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
                 ouId: "456e8400-e29b-41d4-a716-446655440001"
                 ouHandle: "platform/automations"
-                type: "service-agent"
+                type: "default"
                 description: "Agent exposing calendar tools"
                 clientId: "calendar_agent_client"
-                owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                owner:
+                  id: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                  idType: uuid
+                  isLocal: true
                 attributes:
                   name: "Calendar Agent"
-                  llmModel: "claude-3-5-sonnet"
-                  environment: "production"
+                  modelProvider: "anthropic"
+                isReadOnly: false
+                isOwnedByOU: true
                 authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                 registrationFlowId: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
                 isRegistrationFlowEnabled: false
@@ -762,6 +910,8 @@ paths:
                   defaultValue: "The agent with the specified id does not exist"
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
         "500":
           description: Internal server error
 
@@ -774,8 +924,32 @@ paths:
         and OAuth profile fields are applied according to the same rules as
         CreateAgentRequest. Omitting an inbound auth or OAuth field clears it.
 
+        Send the complete `attributes` object to preserve its values. The default agent schema
+        requires a unique string `attributes.name`. Missing required attributes fail schema
+        validation (`AGT-1015`); duplicate unique attributes produce an attribute conflict (`AGT-1014`).
+
         If `ouId` is provided and differs from the current value, the agent is moved to the
-        new organization unit (which must exist).
+        new organization unit (which must exist). When the update changes the organization unit or the
+        `type`, the organization unit must be the agent type's organization unit or one of its descendants;
+        otherwise the request is rejected with `AGT-1053`. As on create, the caller also needs permission
+        to view the agent type (`system:agenttype:view`), and an agent type that does not exist, or that the
+        caller cannot read, is rejected with `AGT-1054`.
+
+        A personal agent keeps the owner it was registered for. Leave `owner` out, or send the current owner;
+        a different owner is rejected with `AGT-1064`.
+
+        An update that sends a client secret other than the stored one replaces it, as a regeneration does.
+        When token revocation is on (`oauth.token_revocation.enabled`, the default), the tokens issued
+        through the agent's client ID up to the change are revoked, including tokens issued to users
+        through it: before the update is written, and again once it is. Sending the stored secret again
+        revokes nothing. With token revocation off, or on a control plane, nothing is revoked. If the
+        revocation before the write fails, the agent is not changed. If the one after the write fails, the
+        update is stored but the request returns an error, and a token issued while it was being written
+        may stay valid until it expires; regenerating the secret revokes it.
+
+        An attribute the agent type marks as a credential is rejected with `AGT-1068`: credentials are set when
+        the agent is created, and changed with `POST /agents/{id}/update-credentials`, or by the owner of a personal
+        agent with `POST /users/me/agents/{id}/update-credentials`.
       parameters:
         - in: path
           name: id
@@ -792,9 +966,9 @@ paths:
               $ref: '#/components/schemas/UpdateAgentRequest'
             examples:
               update-name-description:
-                summary: Update name and description only
+                summary: Replace agent attributes and clear omitted profile settings
                 value:
-                  type: "service-agent"
+                  type: "default"
                   description: "Updated agent with v2 APIs"
                   attributes:
                     name: "Calendar Agent v2"
@@ -802,13 +976,15 @@ paths:
                 summary: Full update (all fields)
                 value:
                   ouId: "456e8400-e29b-41d4-a716-446655440001"
-                  type: "service-agent"
+                  type: "default"
                   description: "Agent exposing calendar tools"
-                  owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                  owner:
+                    id: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                    idType: uuid
+                    isLocal: true
                   attributes:
                     name: "Calendar Agent"
-                    llmModel: "claude-3-5-sonnet"
-                    environment: "production"
+                    modelProvider: "anthropic"
                   authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                   registrationFlowId: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
                   isRegistrationFlowEnabled: false
@@ -871,13 +1047,15 @@ paths:
                 id: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
                 ouId: "456e8400-e29b-41d4-a716-446655440001"
                 ouHandle: "platform/automations"
-                type: "service-agent"
+                type: "default"
                 description: "Agent exposing calendar tools"
-                owner: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                owner:
+                  id: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+                  idType: uuid
+                  isLocal: true
                 attributes:
                   name: "Calendar Agent"
-                  llmModel: "claude-3-5-sonnet"
-                  environment: "production"
+                  modelProvider: "anthropic"
                 authFlowId: "edc013d0-e893-4dc0-990c-3e1d203e005b"
                 registrationFlowId: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
                 isRegistrationFlowEnabled: false
@@ -966,6 +1144,36 @@ paths:
                     description:
                       key: "error.agentservice.invalid_redirect_uri_description"
                       defaultValue: "One or more redirect URIs are not valid"
+                device-grant-flow-required:
+                  summary: Device Code is enabled without a Device Grant flow
+                  value:
+                    code: "AGT-1065"
+                    message:
+                      key: "error.agentservice.device_grant_flow_required"
+                      defaultValue: "Device Grant flow is required"
+                    description:
+                      key: "error.agentservice.device_grant_flow_required_description"
+                      defaultValue: "Assign a Device Grant flow before enabling the Device Code grant type"
+                invalid-device-grant-flow:
+                  summary: The assigned flow is invalid
+                  value:
+                    code: "AGT-1066"
+                    message:
+                      key: "error.agentservice.invalid_device_grant_flow_id"
+                      defaultValue: "Invalid Device Grant flow ID"
+                    description:
+                      key: "error.agentservice.invalid_device_grant_flow_id_description"
+                      defaultValue: "The assigned flow must be a valid Device Grant flow"
+                conflicting-flow-references:
+                  summary: A configured flow invokes a different flow than the agent assignment
+                  value:
+                    code: "AGT-1067"
+                    message:
+                      key: "error.agentservice.agent_flow_mismatch"
+                      defaultValue: "Conflicting flow references"
+                    description:
+                      key: "error.agentservice.agent_flow_mismatch_description"
+                      defaultValue: "The {{param(sourceFlowType)}} flow references a different {{param(flowType)}} flow than the one configured on the agent. Both must point to the same {{param(flowType)}} flow."
                 invalid-project:
                   summary: The project does not exist
                   value:
@@ -985,7 +1193,27 @@ paths:
                       defaultValue: "Organization unit not in project"
                     description:
                       key: "error.agentservice.ou_not_in_project_description"
-                      defaultValue: "The organization unit must be the project's root organization unit or one below it"
+                      defaultValue: "The organization unit must belong to the project"
+                ou-mismatch:
+                  summary: The organization unit is outside the agent type's organization unit tree
+                  value:
+                    code: "AGT-1053"
+                    message:
+                      key: "error.agentservice.organization_unit_mismatch"
+                      defaultValue: "Organization unit mismatch"
+                    description:
+                      key: "error.agentservice.organization_unit_mismatch_description"
+                      defaultValue: "The organization unit does not match the agent type configuration: it must be the agent type's organization unit or one of its descendants"
+                agent-type-not-found:
+                  summary: The agent type does not exist, or the caller cannot read it
+                  value:
+                    code: "AGT-1054"
+                    message:
+                      key: "error.agentservice.agent_type_not_found"
+                      defaultValue: "Agent type not found"
+                    description:
+                      key: "error.agentservice.agent_type_not_found_description"
+                      defaultValue: "No agent type with that handle exists, or the caller cannot view it"
                 ou-not-found:
                   summary: New organization unit not found
                   value:
@@ -1176,6 +1404,16 @@ paths:
                     description:
                       key: "error.agentservice.owner_not_found_description"
                       defaultValue: "The specified owner does not match any known user, application, or agent"
+                invalid-owner:
+                  summary: Owner has no id, an id too long or not matching its id type, an unknown id type, or is local but not a uuid
+                  value:
+                    code: "AGT-1049"
+                    message:
+                      key: "error.agentservice.invalid_owner"
+                      defaultValue: "Invalid owner"
+                    description:
+                      key: "error.agentservice.invalid_owner_description"
+                      defaultValue: "An owner needs an id of at most 256 characters matching its type, and a local owner a uuid"
                 invalid-user-attribute:
                   summary: User attribute not valid for any allowed user type
                   value:
@@ -1186,9 +1424,21 @@ paths:
                     description:
                       key: "error.agentservice.invalid_user_attribute_description"
                       defaultValue: "One or more user attributes are not valid for the configured allowed user types"
+                personal-agent-owner-immutable:
+                  summary: The update names a different owner for a personal agent
+                  value:
+                    code: "AGT-1064"
+                    message:
+                      key: "error.agentservice.personal_agent_owner_immutable"
+                      defaultValue: "Owner cannot be changed"
+                    description:
+                      key: "error.agentservice.personal_agent_owner_immutable_description"
+                      defaultValue: "A personal agent keeps the owner it was registered for"
 
         "403":
-          description: Forbidden
+          description: >
+            Forbidden. The agent is declared in a file (`AGT-1027`), or was deployed by a control plane,
+            which only a later deploy from the control plane changes (`AGT-1063`).
           content:
             application/json:
               schema:
@@ -1232,6 +1482,16 @@ paths:
                     description:
                       key: "error.agentservice.agent_already_exists_with_client_id_description"
                       defaultValue: "An entity with the same client ID already exists"
+                attribute-conflict:
+                  summary: Unique attribute value already in use
+                  value:
+                    code: "AGT-1014"
+                    message:
+                      key: "error.agentservice.attribute_conflict"
+                      defaultValue: "Attribute conflict"
+                    description:
+                      key: "error.agentservice.attribute_conflict_description"
+                      defaultValue: "An agent with the same unique attribute value already exists"
         "401":
           $ref: '#/components/responses/Unauthorized'
         "500":
@@ -1246,6 +1506,10 @@ paths:
         memberships and role assignments are automatically removed by cascade. The delete is
         fail-closed and retriable: if dependency cleanup fails, the agent is left intact and the
         operation can be retried.
+
+        When token revocation is on (`oauth.token_revocation.enabled`, the default), the tokens issued
+        to the agent and those issued through its client ID, including tokens issued to users through
+        it, are revoked, and its sessions end.
       parameters:
         - in: path
           name: id
@@ -1258,7 +1522,9 @@ paths:
         "204":
           description: Agent deleted
         "403":
-          description: Forbidden
+          description: >
+            Forbidden. The agent is declared in a file (`AGT-1027`), or was deployed by a control plane,
+            which only a later deploy from the control plane changes (`AGT-1063`).
           content:
             application/json:
               schema:
@@ -1287,6 +1553,225 @@ paths:
                   defaultValue: "The agent with the specified id does not exist"
         "401":
           $ref: '#/components/responses/Unauthorized'
+        "500":
+          description: Internal server error
+
+  /agents/{id}/client-secret/regenerate:
+    post:
+      tags:
+        - Agents
+      summary: Regenerate an agent's client secret
+      description: |
+        Replaces the client secret of an agent that authenticates with one with a newly generated
+        secret, and returns it. The response is the only time the new secret can be read: it is stored
+        hashed and no read returns it.
+
+        The old secret stops working at once. When token revocation is on
+        (`oauth.token_revocation.enabled`, the default), the tokens issued through the agent's client ID
+        up to the change are revoked, including tokens issued to users through it, as for an update that
+        replaces the secret: before the new secret is written, and again once it is, so a token issued
+        while it was being written is revoked too. With token revocation off, or on a control plane,
+        which issues no tokens, nothing is revoked. If the revocation before the write fails, the secret
+        is not changed. If the one after the write fails, the new secret is stored and still returned, with
+        `revocationIncomplete: true`: a token issued while it was being written may stay valid until it
+        expires, and regenerating again revokes it. The attempt is recorded as failed in the audit log.
+
+        An agent that authenticates without a client secret (a public client, `none` or
+        `private_key_jwt`), a personal agent, one declared in a file, and one a control plane deployed
+        are refused. The caller needs the same permissions as for updating the agent, and every
+        permission the agent holds, since the new secret lets the caller act as the agent.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+      responses:
+        "200":
+          description: Client secret regenerated
+          headers:
+            Cache-Control:
+              description: Always `no-store`, since the body carries a secret.
+              schema:
+                type: string
+                example: no-store
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientSecretResponse'
+              example:
+                clientSecret: "pD3fXq9sT7wLk2vB8nR4mZ6cY1hJ5gA0"
+        "400":
+          description: The agent's client secret cannot be regenerated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                no-client-secret:
+                  summary: The agent authenticates without a client secret
+                  value:
+                    code: "AGT-1052"
+                    message:
+                      key: "error.agentservice.client_secret_not_used"
+                      defaultValue: "Agent has no client secret"
+                    description:
+                      key: "error.agentservice.client_secret_not_used_description"
+                      defaultValue: "Only an agent that authenticates with a client secret can have its secret regenerated"
+                personal-agent:
+                  summary: The agent is a personal agent
+                  value:
+                    code: "AGT-1059"
+                    message:
+                      key: "error.agentservice.personal_agent_secret_not_regenerable"
+                      defaultValue: "Secret cannot be regenerated"
+                    description:
+                      key: "error.agentservice.personal_agent_secret_not_regenerable_description"
+                      defaultValue: "A personal agent's client secret cannot be regenerated"
+        "403":
+          description: >
+            Forbidden. The caller may not update the agent, lacks a permission the agent holds
+            (`SAZ-4030`), the agent is declared in a file (`AGT-1027`), or it was deployed by a control
+            plane, which only a later deploy from the control plane changes (`AGT-1063`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                managed-agent:
+                  summary: The agent was deployed by a control plane
+                  value:
+                    code: "AGT-1063"
+                    message:
+                      key: "error.agentservice.managed_agent"
+                      defaultValue: "Cannot modify an agent deployed by the control plane"
+                    description:
+                      key: "error.agentservice.managed_agent_description"
+                      defaultValue: "The agent was deployed by the control plane and can only be changed there"
+                grant-not-permitted:
+                  summary: The caller lacks a permission the agent holds
+                  value:
+                    code: "SAZ-4030"
+                    message:
+                      key: "error.sysauthz.grant_not_permitted"
+                      defaultValue: "Insufficient privileges to grant these permissions"
+                    description:
+                      key: "error.sysauthz.grant_not_permitted_description"
+                      defaultValue: "The operation would grant permissions that the caller does not hold"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1004"
+                message:
+                  key: "error.agentservice.agent_not_found"
+                  defaultValue: "Agent not found"
+                description:
+                  key: "error.agentservice.agent_not_found_description"
+                  defaultValue: "The agent with the specified id does not exist"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          description: Internal server error
+
+  /agents/{id}/update-credentials:
+    post:
+      tags:
+        - Agents
+      summary: Update an agent's credentials
+      description: |
+        Sets new values for credentials the agent type's schema declares, such as a password. Only the
+        credentials present in the request body are updated, and the others keep their value. The values are
+        stored hashed and no read returns them.
+
+        Replacing a credential the agent already holds revokes the tokens issued with the agent as their subject
+        and ends its sessions, as a user's credential update does, up to the change and again once it is written.
+        Setting one the agent does not hold yet revokes nothing. Sending the value the agent already holds
+        still revokes, so a reset ends a session that was taken without the credential. If the revocation before
+        the write fails, the credential is not changed. If the one after the write fails, the credential is
+        stored but the request returns an error, and a token issued while it was being written may stay valid
+        until it expires; setting the credential again revokes it. The client secret is not a credential
+        attribute, and this request cannot change it.
+
+        A personal agent's credentials are its owner's to set with `POST /users/me/agents/{id}/update-credentials`,
+        so a request for one is refused (`AGT-1069`). An agent declared in a file, and one a control plane
+        deployed, are refused too. The caller needs the same permissions as for updating the agent, and must
+        hold every permission the agent holds.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "9a475e1e-b0cb-4b29-8df5-2e5b24fb0ed3"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAgentCredentialsRequest'
+            example:
+              credentials:
+                password: "n3wP@ssword!"
+      responses:
+        "204":
+          description: Credentials updated
+        "400":
+          description: >
+            Bad request. The body has no credentials (`AGT-1001`), names one the agent type does not declare or
+            gives it an empty value (`AGT-1016`), gives one a value its schema refuses (`AGT-1015`), or is for a
+            personal agent (`AGT-1069`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1069"
+                message:
+                  key: "error.agentservice.personal_agent_credentials_not_updatable"
+                  defaultValue: "Credentials cannot be updated"
+                description:
+                  key: "error.agentservice.personal_agent_credentials_not_updatable_description"
+                  defaultValue: "A personal agent's credentials can only be set by its owner"
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          description: >
+            Forbidden. The caller may not update the agent or does not hold every permission it holds, the agent is
+            declared in a file (`AGT-1027`), or it was deployed by a control plane, which only a later deploy from
+            the control plane changes (`AGT-1063`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1063"
+                message:
+                  key: "error.agentservice.managed_agent"
+                  defaultValue: "Cannot modify an agent deployed by the control plane"
+                description:
+                  key: "error.agentservice.managed_agent_description"
+                  defaultValue: "The agent was deployed by the control plane and can only be changed there"
+        "404":
+          description: Agent not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                code: "AGT-1004"
+                message:
+                  key: "error.agentservice.agent_not_found"
+                  defaultValue: "Agent not found"
+                description:
+                  key: "error.agentservice.agent_not_found_description"
+                  defaultValue: "The agent with the specified id does not exist"
         "500":
           description: Internal server error
 
@@ -1440,8 +1925,8 @@ paths:
         - Agent Types
       summary: List agent type schemas
       description: |
-        Retrieves the list of agent type schemas. Agent types are restricted to a single
-        bootstrap-provisioned `default` schema; this endpoint returns that one schema.
+        Retrieves the list of agent type schemas. Each organization unit can have at most one
+        agent type.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
@@ -1502,11 +1987,11 @@ paths:
     post:
       tags:
         - Agent Types
-      summary: Create the default agent type schema
+      summary: Create an agent type schema
       description: |
-        Creates the agent type schema. The `handle` must be `default`. Agent types are
-        restricted to a single `default` schema per deployment, so any other handle is
-        rejected with `USRS-1014`.
+        Creates an agent type schema in an organization unit. The `handle` must be unique among
+        agent types. An organization unit can have only one agent type, so creating an agent type
+        in an organization unit that already has one is rejected with `409` and `USRS-1021`.
       requestBody:
         required: true
         content:
@@ -1514,24 +1999,22 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateAgentTypeRequest'
             example:
-              handle: "default"
-              displayName: "Default"
-              ouId: "26eec421-f1bb-4deb-a5d3-9ab6554c2ae6"
+              handle: "support-agents"
+              displayName: "Support Agents"
+              ouId: "7b2c1f3e-4a5d-4e6f-8a9b-0c1d2e3f4a5b"
               allowSelfRegistration: false
               systemAttributes:
                 display: "name"
               schema:
+                name:
+                  type: "string"
+                  displayName: "Name"
+                  required: true
+                  unique: true
                 modelProvider:
                   type: "string"
                   required: false
                   enum: ["openai", "anthropic", "gemini", "mistral", "custom"]
-                model:
-                  type: "string"
-                  required: false
-                function:
-                  type: "string"
-                  required: false
-                  enum: ["task-automation", "rag-retrieval", "code-gen", "data-analysis", "orchestrator", "sub-agent", "assistant", "custom"]
       responses:
         "201":
           description: Agent type created
@@ -1541,24 +2024,22 @@ paths:
                 $ref: '#/components/schemas/AgentType'
               example:
                 id: "880e8400-e29b-41d4-a716-446655440003"
-                handle: "default"
-                displayName: "Default"
-                ouId: "26eec421-f1bb-4deb-a5d3-9ab6554c2ae6"
+                handle: "support-agents"
+                displayName: "Support Agents"
+                ouId: "7b2c1f3e-4a5d-4e6f-8a9b-0c1d2e3f4a5b"
                 allowSelfRegistration: false
                 systemAttributes:
                   display: "name"
                 schema:
+                  name:
+                    type: "string"
+                    displayName: "Name"
+                    required: true
+                    unique: true
                   modelProvider:
                     type: "string"
                     required: false
                     enum: ["openai", "anthropic", "gemini", "mistral", "custom"]
-                  model:
-                    type: "string"
-                    required: false
-                  function:
-                    type: "string"
-                    required: false
-                    enum: ["task-automation", "rag-retrieval", "code-gen", "data-analysis", "orchestrator", "sub-agent", "assistant", "custom"]
         "400":
           description: Bad request
           content:
@@ -1586,30 +2067,33 @@ paths:
                     description:
                       key: "error.entitytypeservice.invalid_agent_type_request_description"
                       defaultValue: "The agent type request contains invalid or missing required fields"
-                only-default-allowed:
-                  summary: Non-default agent type handle
-                  value:
-                    code: "USRS-1014"
-                    message:
-                      key: "error.entitytypeservice.agent_type_only_default_allowed"
-                      defaultValue: "Only the default agent type is allowed"
-                    description:
-                      key: "error.entitytypeservice.agent_type_only_default_allowed_description"
-                      defaultValue: "Agent types are restricted to a single 'default' schema; other handles are not permitted"
         "409":
           description: Conflict
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                code: "USRS-1003"
-                message:
-                  key: "error.entitytypeservice.agent_type_handle_conflict"
-                  defaultValue: "Agent type handle conflict"
-                description:
-                  key: "error.entitytypeservice.agent_type_handle_conflict_description"
-                  defaultValue: "An agent type with the same handle already exists"
+              examples:
+                handle-conflict:
+                  summary: Handle already taken
+                  value:
+                    code: "USRS-1003"
+                    message:
+                      key: "error.entitytypeservice.agent_type_handle_conflict"
+                      defaultValue: "Agent type handle conflict"
+                    description:
+                      key: "error.entitytypeservice.agent_type_handle_conflict_description"
+                      defaultValue: "An agent type with the same handle already exists"
+                agent-type-exists-in-ou:
+                  summary: Organization unit already has an agent type
+                  value:
+                    code: "USRS-1021"
+                    message:
+                      key: "error.entitytypeservice.agent_type_already_exists_in_ou"
+                      defaultValue: "Organization unit already has an agent type"
+                    description:
+                      key: "error.entitytypeservice.agent_type_already_exists_in_ou_description"
+                      defaultValue: "An organization unit can have only one agent type. Choose an organization unit that has no agent type"
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
@@ -1649,17 +2133,15 @@ paths:
                 systemAttributes:
                   display: "name"
                 schema:
+                  name:
+                    type: "string"
+                    displayName: "Name"
+                    required: true
+                    unique: true
                   modelProvider:
                     type: "string"
                     required: false
                     enum: ["openai", "anthropic", "gemini", "mistral", "custom"]
-                  model:
-                    type: "string"
-                    required: false
-                  function:
-                    type: "string"
-                    required: false
-                    enum: ["task-automation", "rag-retrieval", "code-gen", "data-analysis", "orchestrator", "sub-agent", "assistant", "custom"]
         "404":
           description: Agent type not found
           content:
@@ -1684,10 +2166,13 @@ paths:
     put:
       tags:
         - Agent Types
-      summary: Update the default agent type schema by ID
+      summary: Update an agent type schema by ID
       description: |
-        Updates the agent type schema with new attribute definitions. The `handle` is optional
-        and must be `default` when provided. Sending a different handle is rejected with `USRS-1014`.
+        Updates the agent type schema with new attribute definitions. The `handle` is optional and
+        cannot be changed: sending a different handle is rejected with `USRS-1017`. Moving the agent
+        type to an organization unit that already has another agent type is rejected with `409` and `USRS-1021`.
+        Moving the agent type does not move its agents or check their placement again; the placement
+        rule applies when an agent is created, or when an update changes its organization unit or type.
         The `displayName` can be changed at any time. This operation replaces the entire schema
         definition.
       parameters:
@@ -1712,17 +2197,15 @@ paths:
               systemAttributes:
                 display: "name"
               schema:
+                name:
+                  type: "string"
+                  displayName: "Name"
+                  required: true
+                  unique: true
                 modelProvider:
                   type: "string"
                   required: false
                   enum: ["openai", "anthropic", "gemini", "mistral", "custom"]
-                model:
-                  type: "string"
-                  required: false
-                function:
-                  type: "string"
-                  required: false
-                  enum: ["task-automation", "rag-retrieval", "code-gen", "data-analysis", "orchestrator", "sub-agent", "assistant", "custom"]
       responses:
         "200":
           description: Agent type updated
@@ -1757,16 +2240,33 @@ paths:
                     description:
                       key: "error.entitytypeservice.invalid_agent_type_request_description"
                       defaultValue: "The agent type request contains invalid or missing required fields"
-                only-default-allowed:
-                  summary: Non-default agent type handle
+                handle-change-not-allowed:
+                  summary: Handle change
                   value:
-                    code: "USRS-1014"
+                    code: "USRS-1017"
                     message:
-                      key: "error.entitytypeservice.agent_type_only_default_allowed"
-                      defaultValue: "Only the default agent type is allowed"
+                      key: "error.entitytypeservice.entity_type_handle_update_not_allowed"
+                      defaultValue: "Entity type handle cannot be changed"
                     description:
-                      key: "error.entitytypeservice.agent_type_only_default_allowed_description"
-                      defaultValue: "Agent types are restricted to a single 'default' schema; other handles are not permitted"
+                      key: "error.entitytypeservice.entity_type_handle_update_not_allowed_description"
+                      defaultValue: "The handle of an entity type cannot be changed once it is created"
+        "409":
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                agent-type-exists-in-ou:
+                  summary: Organization unit already has an agent type
+                  value:
+                    code: "USRS-1021"
+                    message:
+                      key: "error.entitytypeservice.agent_type_already_exists_in_ou"
+                      defaultValue: "Organization unit already has an agent type"
+                    description:
+                      key: "error.entitytypeservice.agent_type_already_exists_in_ou_description"
+                      defaultValue: "An organization unit can have only one agent type. Choose an organization unit that has no agent type"
         "404":
           description: Agent type not found
           content:
@@ -1791,11 +2291,14 @@ paths:
     delete:
       tags:
         - Agent Types
-      summary: Delete an agent type schema by ID (not supported)
+      summary: Delete an agent type schema by ID
       description: |
-        Deleting agent type schemas is not supported. The `default` agent type cannot be
-        removed; agent creation depends on it. Update the schema in place instead.
-        This endpoint always returns `USRS-1015`.
+        Deletes an agent type schema. The deletion is rejected with `409` and `USRS-1022` while any agent is of
+        this agent type, or while any application, MCP server, agent or `AgentTypeResolver` flow node lists
+        it in its allowed agent types (an `allowedAgentTypes` of `["*"]` names no type and does not block).
+        Delete or change those agents and remove the type from those lists first. An agent type defined in
+        declarative resources cannot be deleted and is rejected with `403` and `USRS-1008`. Deleting an
+        agent type that does not exist succeeds.
       parameters:
         - in: path
           name: id
@@ -1807,20 +2310,20 @@ paths:
       responses:
         "204":
           description: Agent type deleted
-        "400":
-          description: Bad request
+        "409":
+          description: Agent type in use
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
               example:
-                code: "USRS-1015"
+                code: "USRS-1022"
                 message:
-                  key: "error.entitytypeservice.agent_type_cannot_delete"
-                  defaultValue: "Agent type cannot be deleted"
+                  key: "error.entitytypeservice.agent_type_in_use"
+                  defaultValue: "Agent type is in use"
                 description:
-                  key: "error.entitytypeservice.agent_type_cannot_delete_description"
-                  defaultValue: "The default agent type cannot be deleted. Edit the schema instead"
+                  key: "error.entitytypeservice.agent_type_in_use_description"
+                  defaultValue: "Delete or change the agents of this type, and remove the type from applications', agents' and flows' allowed agent types, first"
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
@@ -1908,11 +2411,9 @@ components:
       name: projectId
       required: false
       description: |
-        Lists the agents the project's root organization unit owns, followed by the agents shared
-        into it. With an `ouId` filter, lists that organization unit instead when it is the
-        project's root organization unit or one below it. No other filter expression can be
-        combined with it. A project that does not exist, or an organization unit outside it, has no
-        agents.
+        Lists the agents of the project. With an `ouId` filter, lists only the project's agents that
+        organization unit owns. No other filter expression can be combined with it. A project that
+        does not exist has no agents.
       schema:
         type: string
     agentFilterParam:
@@ -1920,14 +2421,15 @@ components:
       name: filter
       required: false
       description: |
-        Filter agents by a custom attribute value or by organization unit. Keys inside the
-        `attributes` JSON object are filterable, including `name`. Of the system fields, only
-        `ouId` is supported: `ouId eq "<id>"` lists the agents the organization unit owns, followed
-        by the agents shared into it, and cannot be combined with another expression. The other
-        system fields (`description`, `type`, `owner`, `clientId`) are not supported.
+        Filter agents by a custom attribute value, by `kind`, by `owner`, or by organization unit. Keys
+        inside the `attributes` JSON object are filterable, including `name`; `kind` matches the agent's
+        kind and `owner` the ID of its owner. Of the other system fields, only `ouId` is supported:
+        `ouId eq "<id>"` lists the agents the organization unit owns, followed by the agents shared into
+        it, and cannot be combined with another expression. The other system fields (`description`,
+        `type`, `clientId`) are not supported.
         Supported operators: `eq`.
         Format: `attribute operator "value"`. The value must be wrapped in double quotes.
-        Example: `name eq "Calendar Agent"`.
+        Terms on `kind`, `owner`, and `name` can be joined with `and`, each at most once.
       schema:
         type: string
       examples:
@@ -1937,6 +2439,9 @@ components:
         organization-unit:
           summary: Agents owned by or shared into an organization unit
           value: 'ouId eq "456e8400-e29b-41d4-a716-446655440001"'
+        personal-agents-of-an-owner:
+          summary: The personal agents of an owner
+          value: 'kind eq "personal-assistant" and owner eq "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"'
 
   schemas:
     Agent:
@@ -1952,6 +2457,11 @@ components:
           type: string
           format: uuid
           example: "456e8400-e29b-41d4-a716-446655440001"
+        projectId:
+          type: string
+          readOnly: true
+          description: The ID of the project this agent belongs to, if any.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         ouHandle:
           type: string
           readOnly: true
@@ -1959,7 +2469,7 @@ components:
           example: "platform/automations"
         type:
           type: string
-          description: The handle of the agent type. Only `default` is supported.
+          description: The handle of the agent type.
           example: "default"
         display:
           type: string
@@ -1982,12 +2492,7 @@ components:
           description: OAuth client ID. Present only when the agent has an OAuth profile.
           example: "calendar_agent_client"
         owner:
-          type: string
-          format: uuid
-          description: |
-            ID of the entity that owns this agent. Defaults to the authenticated principal at
-            creation time. Can be transferred by an administrator.
-          example: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+          $ref: '#/components/schemas/AgentOwner'
         validUntil:
           type: string
           format: date-time
@@ -1996,6 +2501,13 @@ components:
           example: "2027-03-31T00:00:00Z"
         lifespan:
           $ref: '#/components/schemas/Lifespan'
+        kind:
+          type: string
+          readOnly: true
+          description: |
+            The agent kind, set when the agent is created and never changed.
+            `personal-assistant` marks a personal agent, which acts only for its owner, a user.
+          example: "personal-assistant"
         attributes:
           type: object
           additionalProperties: true
@@ -2006,15 +2518,15 @@ components:
             are extracted and stored as hashed credentials, not returned in read responses.
           example:
             name: "Calendar Agent"
-            llmModel: "claude-3-5-sonnet"
-            environment: "production"
+            modelProvider: "anthropic"
         isReadOnly:
           type: boolean
           readOnly: true
           description: |
             Indicates whether the agent is immutable. When `true`, update and delete
             operations are rejected. Set by the system for declaratively provisioned agents, and
-            for agents listed in an organization unit they are shared into.
+            for agents listed in an organization unit they are shared into, and for agents a control plane
+            deployed to a data plane.
           example: false
         status:
           $ref: '#/components/schemas/AgentAccessStatus'
@@ -2034,8 +2546,10 @@ components:
           type: boolean
           readOnly: true
           description: |
-            Whether the listed organization unit owns the agent rather than being shared it. Present
-            only in agent lists. Without an `ouId` filter or a `projectId`, every listed agent is owned.
+            Whether the listed organization unit owns the agent rather than being shared it. Agents
+            shared into an organization unit are listed under an `ouId` filter, and in the unfiltered list
+            of a caller that may list agents in one organization unit only. In any other list, every
+            listed agent is owned.
 
     AgentListResponse:
       type: object
@@ -2066,7 +2580,8 @@ components:
       required: [type]
       description: |
         Request to create an agent. What gets persisted depends on which fields are provided:
-        - Always: entity row (`id`, `ouId`, `type`, `description`, `attributes`, `owner`).
+        - Always: entity row (`id`, `ouId`, `type`, `description`, `attributes`, `owner`,
+          `kind`).
         - When any inbound auth field is set: inbound client row (`authFlowId` defaults to the
           system default when omitted).
         - When `inboundAuthConfig` is set: OAuth profile row.
@@ -2075,19 +2590,21 @@ components:
           type: string
           format: uuid
           description: |
-            The organization unit ID where the agent will be created. Required unless `projectId`
-            is given.
+            The organization unit ID where the agent will be created. When omitted, the agent is
+            created in the system organization unit that the `server.system_ou_id` deployment
+            configuration names.
           example: "456e8400-e29b-41d4-a716-446655440001"
         projectId:
           type: string
           description: |
-            The ID of the project the agent belongs to. Without `ouId`, the agent is created in the
-            project's root organization unit. With `ouId`, that organization unit must be the
-            project's root organization unit or one below it.
+            The ID of the project the agent belongs to. On a deployment that serves projects, such
+            as the Control Plane, creating an agent without one is refused (`AGT-1050`). The agent's
+            organization unit, the given `ouId` or the
+            default one, must belong to the project.
           example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         type:
           type: string
-          description: The handle of the agent type. Only `default` is supported.
+          description: The handle of the agent type.
           example: "default"
         description:
           type: string
@@ -2100,12 +2617,13 @@ components:
             client so the console and login flows can display it. Defaults to no logo when omitted.
           example: "avatar:shape=circle,variant=anonymous_entity,content=bot_head,colors=0"
         owner:
-          type: string
-          format: uuid
+          allOf:
+            - $ref: '#/components/schemas/AgentOwner'
           description: |
-            Optional ID of the entity that should own this agent. Defaults to the authenticated
-            principal creating the agent.
-          example: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+            Optional owner of the agent. Defaults to the authenticated principal creating the agent:
+            a local owner when its subject is an entity of this deployment, otherwise an external one,
+            such as a principal holding a token from the trusted issuer. An agent created with the
+            management API key and no owner has no owner.
         delegated:
           type: boolean
           default: false
@@ -2120,6 +2638,17 @@ components:
             time. Omit it, or send `null`, to register an agent that does not expire. From this
             instant the agent obtains no new tokens, and no token issued to or for it outlives it.
           example: "2027-03-31T00:00:00Z"
+        kind:
+          type: string
+          enum: ["", personal-assistant]
+          description: |
+            Optional agent kind, fixed once the agent is created. Omit it, or send an empty string, for an
+            ordinary agent; any other value than the listed ones is refused. `personal-assistant` registers a
+            personal agent for the user named in `owner`, which is then required and must be a local user; the
+            agent may use only the authorization code (the default), CIBA and refresh token grants. Its OAuth
+            client gets response type `code` and PKCE with the authorization code grant, `private_key_jwt` when a
+            key is given and a client secret otherwise, and the personal agent login flow when no `authFlowId` is
+            given. `delegated` does not apply to a personal agent.
         attributes:
           type: object
           additionalProperties: true
@@ -2131,14 +2660,17 @@ components:
             as hashed credentials, not returned in read responses.
           example:
             name: "Calendar Agent"
-            llmModel: "claude-3-5-sonnet"
-            environment: "production"
+            modelProvider: "anthropic"
         authFlowId:
           type: string
           description: |
             Auth flow to use when users authenticate against this agent. When omitted and
             other inbound auth fields are present, the system default auth flow is used.
           example: "edc013d0-e893-4dc0-990c-3e1d203e005b"
+        deviceGrantFlowId:
+          type: string
+          description: Flow used to authorize this agent through the Device Code grant. Required when `inboundAuthConfig` enables `urn:ietf:params:oauth:grant-type:device_code`.
+          example: "4ca080dc-8bd7-44bd-92f1-0b6509026d22"
         registrationFlowId:
           type: string
           description: Registration flow for this agent.
@@ -2169,11 +2701,7 @@ components:
           description: Handles of the user types that can sign up through this agent.
           example: ["employee", "contractor"]
         allowedAgentTypes:
-          type: array
-          items:
-            type: string
-          description: Handles of the agent types allowed to sign in to this agent. An agent can authenticate only when its agent type handle is listed here; when the list is empty no agent can sign in.
-          example: ["default"]
+          $ref: '#/components/schemas/AgentAllowedAgentTypes'
         inboundAuthConfig:
           type: array
           items:
@@ -2182,7 +2710,7 @@ components:
             OAuth/OIDC configuration for the agent. Providing this also creates an inbound client row (inbound auth profile fields are not required to be explicitly set).
 
             The `client_credentials` grant type is always granted: it is added when missing, and is the default when no grant types are given. A public client, which has no secret, is not given it. All other requested grant types are accepted as given. When `delegated` is `true`, an OAuth configuration is created if none is given, and the grant types are checked:
-            - When any grant type beyond `client_credentials` is given, at least one of `authorization_code`, `urn:openid:params:grant-type:ciba`, `urn:ietf:params:oauth:grant-type:token-exchange` and `urn:ietf:params:oauth:grant-type:jwt-bearer` must be among them.
+            - When any grant type beyond `client_credentials` is given, at least one of `authorization_code`, `urn:openid:params:grant-type:ciba`, `urn:ietf:params:oauth:grant-type:device_code`, `urn:ietf:params:oauth:grant-type:token-exchange` and `urn:ietf:params:oauth:grant-type:jwt-bearer` must be among them.
             - When none beyond `client_credentials` is given, `authorization_code` and `refresh_token` are added, with the `code` response type and PKCE required.
 
     UpdateAgentRequest:
@@ -2203,13 +2731,14 @@ components:
         projectId:
           type: string
           description: |
-            The ID of the project the agent belongs to. The agent's organization unit, the new one
-            when `ouId` is given or the current one otherwise, must be the project's root
-            organization unit or one below it. A project never moves the agent on its own.
+            The ID of the project the agent belongs to. Leaving it out keeps the agent in its project,
+            and an agent can't be taken out of a project.
+            The agent's organization unit, the new one when `ouId` is given or the current one
+            otherwise, must belong to the project. A project never moves the agent on its own.
           example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         type:
           type: string
-          example: "service-agent"
+          example: "default"
         description:
           type: string
           example: "Agent exposing calendar tools"
@@ -2221,10 +2750,9 @@ components:
             it clears the logo.
           example: "avatar:shape=circle,variant=anonymous_entity,content=bot_head,colors=0"
         owner:
-          type: string
-          format: uuid
-          description: Admins can transfer ownership by setting this to a different entity ID.
-          example: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+          allOf:
+            - $ref: '#/components/schemas/AgentOwner'
+          description: Admins can transfer ownership by setting a different owner, except for a personal agent, which keeps the owner it was registered for. Omit it to keep the current owner.
         delegated:
           type: boolean
           default: false
@@ -2244,11 +2772,14 @@ components:
           additionalProperties: true
           example:
             name: "Calendar Agent"
-            llmModel: "claude-3-5-sonnet"
-            environment: "production"
+            modelProvider: "anthropic"
         authFlowId:
           type: string
           example: "edc013d0-e893-4dc0-990c-3e1d203e005b"
+        deviceGrantFlowId:
+          type: string
+          description: Flow used to authorize this agent through the Device Code grant. Required when `inboundAuthConfig` enables `urn:ietf:params:oauth:grant-type:device_code`.
+          example: "4ca080dc-8bd7-44bd-92f1-0b6509026d22"
         registrationFlowId:
           type: string
           example: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
@@ -2273,10 +2804,7 @@ components:
             type: string
           example: ["employee", "contractor"]
         allowedAgentTypes:
-          type: array
-          items:
-            type: string
-          example: ["default"]
+          $ref: '#/components/schemas/AgentAllowedAgentTypes'
         inboundAuthConfig:
           type: array
           items:
@@ -2297,6 +2825,11 @@ components:
           type: string
           format: uuid
           example: "456e8400-e29b-41d4-a716-446655440001"
+        projectId:
+          type: string
+          readOnly: true
+          description: The ID of the project this agent belongs to, if any.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         ouHandle:
           type: string
           readOnly: true
@@ -2304,7 +2837,7 @@ components:
           example: "platform/automations"
         type:
           type: string
-          example: "service-agent"
+          example: "default"
         description:
           type: string
           example: "Agent exposing calendar tools"
@@ -2313,9 +2846,7 @@ components:
           description: Logo URL or avatar spec for the agent, shown in the console and login flows.
           example: "avatar:shape=circle,variant=anonymous_entity,content=bot_head,colors=0"
         owner:
-          type: string
-          format: uuid
-          example: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+          $ref: '#/components/schemas/AgentOwner'
         validUntil:
           type: string
           format: date-time
@@ -2324,13 +2855,19 @@ components:
           example: "2027-03-31T00:00:00Z"
         lifespan:
           $ref: '#/components/schemas/Lifespan'
+        kind:
+          type: string
+          readOnly: true
+          description: |
+            The agent kind, set when the agent is created and never changed.
+            `personal-assistant` marks a personal agent, which acts only for its owner, a user.
+          example: "personal-assistant"
         attributes:
           type: object
           additionalProperties: true
           example:
             name: "Calendar Agent"
-            llmModel: "claude-3-5-sonnet"
-            environment: "production"
+            modelProvider: "anthropic"
         status:
           allOf:
             - $ref: '#/components/schemas/AgentAccessStatus'
@@ -2346,6 +2883,11 @@ components:
         authFlowId:
           type: string
           example: "edc013d0-e893-4dc0-990c-3e1d203e005b"
+        deviceGrantFlowId:
+          type: string
+          readOnly: true
+          description: Device Grant flow assigned to this agent.
+          example: "4ca080dc-8bd7-44bd-92f1-0b6509026d22"
         registrationFlowId:
           type: string
           example: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
@@ -2370,10 +2912,7 @@ components:
             type: string
           example: ["employee", "contractor"]
         allowedAgentTypes:
-          type: array
-          items:
-            type: string
-          example: ["default"]
+          $ref: '#/components/schemas/AgentAllowedAgentTypes'
         inboundAuthConfig:
           type: array
           items:
@@ -2393,6 +2932,11 @@ components:
           type: string
           format: uuid
           example: "456e8400-e29b-41d4-a716-446655440001"
+        projectId:
+          type: string
+          readOnly: true
+          description: The ID of the project this agent belongs to, if any.
+          example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
         ouHandle:
           type: string
           readOnly: true
@@ -2400,7 +2944,7 @@ components:
           example: "platform/automations"
         type:
           type: string
-          example: "service-agent"
+          example: "default"
         display:
           type: string
           readOnly: true
@@ -2421,9 +2965,7 @@ components:
           description: OAuth client ID. Present only when the agent has an OAuth profile.
           example: "calendar_agent_client"
         owner:
-          type: string
-          format: uuid
-          example: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+          $ref: '#/components/schemas/AgentOwner'
         validUntil:
           type: string
           format: date-time
@@ -2432,16 +2974,27 @@ components:
           example: "2027-03-31T00:00:00Z"
         lifespan:
           $ref: '#/components/schemas/Lifespan'
+        kind:
+          type: string
+          readOnly: true
+          description: |
+            The agent kind, set when the agent is created and never changed.
+            `personal-assistant` marks a personal agent, which acts only for its owner, a user.
+          example: "personal-assistant"
         attributes:
           type: object
           additionalProperties: true
           example:
             name: "Calendar Agent"
-            llmModel: "claude-3-5-sonnet"
-            environment: "production"
+            modelProvider: "anthropic"
         authFlowId:
           type: string
           example: "edc013d0-e893-4dc0-990c-3e1d203e005b"
+        deviceGrantFlowId:
+          type: string
+          readOnly: true
+          description: Device Grant flow assigned to this agent.
+          example: "4ca080dc-8bd7-44bd-92f1-0b6509026d22"
         registrationFlowId:
           type: string
           example: "f1c2d3e4-f5a6-7b8c-9d0e-1f2a3b4c5d6e"
@@ -2466,10 +3019,7 @@ components:
             type: string
           example: ["employee", "contractor"]
         allowedAgentTypes:
-          type: array
-          items:
-            type: string
-          example: ["default"]
+          $ref: '#/components/schemas/AgentAllowedAgentTypes'
         inboundAuthConfig:
           type: array
           items:
@@ -2489,7 +3039,48 @@ components:
             `accountAccess.agent.recordLastLogin` is enabled, and the value can lag the latest
             sign-in by up to `accountAccess.agent.lastLoginResolutionSeconds` (one hour by default).
           example: "2026-09-09T18:22:04Z"
+        isReadOnly:
+          type: boolean
+          readOnly: true
+          description: |
+            Indicates whether the agent is immutable. When `true`, update and delete operations are
+            rejected. Set by the system for declaratively provisioned agents, and for agents read in an
+            organization unit they are shared into.
+          example: false
+        isOwnedByOU:
+          type: boolean
+          readOnly: true
+          description: |
+            Whether the organization unit the agent is read in owns it rather than being shared it.
+            `false` when the agent is read in an organization unit it is shared into, where `ouId` names
+            that organization unit.
+          example: true
 
+    UpdateAgentCredentialsRequest:
+      type: object
+      required: [credentials]
+      properties:
+        credentials:
+          type: object
+          description: "Credential key-value pairs to update. Keys must match credential attributes defined in the agent type schema."
+          additionalProperties:
+            type: string
+
+    ClientSecretResponse:
+      type: object
+      description: A newly generated client secret, returned only when it is generated.
+      required:
+        - clientSecret
+      properties:
+        clientSecret:
+          type: string
+          description: The new client secret.
+        revocationIncomplete:
+          type: boolean
+          description: |
+            Present and `true` when the secret is stored but revoking the tokens issued while it was
+            being written failed. Those tokens may stay valid until they expire; regenerate again to
+            revoke them.
     AgentGroup:
       type: object
       required: [id, name, ouId]
@@ -2578,6 +3169,12 @@ components:
           type: integer
           description: Consent validity period in seconds. `0` means no expiration.
           example: 86400
+        alwaysPrompt:
+          type: boolean
+          description: |
+            Ask for consent on every authorization, even when an earlier consent covers it. Defaults to
+            false, and to true for a personal agent created without a value.
+          example: true
 
     AccessTokenConfig:
       type: object
@@ -2809,6 +3406,7 @@ components:
               - "client_credentials"
               - "refresh_token"
               - "urn:openid:params:grant-type:ciba"
+              - "urn:ietf:params:oauth:grant-type:device_code"
               - "urn:ietf:params:oauth:grant-type:token-exchange"
               - "urn:ietf:params:oauth:grant-type:jwt-bearer"
           description: >-
@@ -2899,21 +3497,32 @@ components:
                 (`tokenEndpointAuthMethod: none`) and `private_key_jwt` clients.
               example: "s3cr3t_only_shown_once"
 
+    AgentAllowedAgentTypes:
+      type: array
+      items:
+        type: string
+      description: Handles of the agent types allowed to sign in to this agent. An agent can authenticate only when its agent type handle is listed here; when the list is empty no agent can sign in. `["*"]` allows an agent of any agent type; `*` cannot be combined with other entries (`AGT-1055`).
+      example: ["default"]
     AgentType:
       type: object
       required: [id, handle, displayName, ouId, schema]
       properties:
+        isReadOnly:
+          type: boolean
+          readOnly: true
+          description: |
+            Whether the agent type is read only: declared in a resource file, or deployed by a control
+            plane, which only a later deploy from the control plane changes.
+          example: false
         id:
           type: string
           format: uuid
           description: "The unique identifier of the agent type"
         handle:
           type: string
-          enum: ["default"]
           description: |
             Unique handle of the agent type (lowercase letters, numbers, hyphens, and underscores only).
-            Restricted to `default`, the only agent type schema permitted. Agents and applications refer to
-            the agent type by this handle.
+            Agents and applications refer to the agent type by this handle.
             Once set, the handle cannot be changed.
           pattern: '^[a-z0-9][a-z0-9_-]*[a-z0-9]$|^[a-z0-9]$'
           maxLength: 100
@@ -2938,6 +3547,8 @@ components:
         systemAttributes:
           type: object
           description: "System-level metadata for the agent type"
+          example:
+            display: "name"
           properties:
             display:
               type: string
@@ -2960,6 +3571,8 @@ components:
                     type: boolean
                     default: false
                     description: "Whether this attribute must be provided for the agent type"
+                  display:
+                    $ref: "#/components/schemas/AgentTypeAttributeDisplay"
                   unique:
                     type: boolean
                     default: false
@@ -2992,6 +3605,8 @@ components:
                     type: boolean
                     default: false
                     description: "Whether this attribute must be provided for the agent type"
+                  display:
+                    $ref: "#/components/schemas/AgentTypeAttributeDisplay"
                   displayName:
                     type: string
                     description: "Human-readable label shown in the UI for this property"
@@ -3008,6 +3623,8 @@ components:
                     type: boolean
                     default: false
                     description: "Whether this attribute must be provided for the agent type"
+                  display:
+                    $ref: "#/components/schemas/AgentTypeAttributeDisplay"
                   displayName:
                     type: string
                     description: "Human-readable label shown in the UI for this property"
@@ -3015,7 +3632,7 @@ components:
                     type: object
                     description: "Nested properties of the object"
                     additionalProperties:
-                      $ref: "#/components/schemas/AgentType/properties/schema/additionalProperties"
+                      $ref: "#/components/schemas/AgentTypeNestedProperty"
                 additionalProperties: false
               - type: object
                 description: "Array property definition"
@@ -3029,6 +3646,8 @@ components:
                     type: boolean
                     default: false
                     description: "Whether this attribute must be provided for the agent type"
+                  display:
+                    $ref: "#/components/schemas/AgentTypeAttributeDisplay"
                   displayName:
                     type: string
                     description: "Human-readable label shown in the UI for this property"
@@ -3068,21 +3687,165 @@ components:
                           properties:
                             type: object
                             additionalProperties:
-                              $ref: "#/components/schemas/AgentType/properties/schema/additionalProperties"
+                              $ref: "#/components/schemas/AgentTypeNestedProperty"
                         additionalProperties: false
                 additionalProperties: false
           example:
+            name:
+              type: "string"
+              displayName: "Name"
+              required: true
+              unique: true
             modelProvider:
               type: "string"
               required: false
               enum: ["openai", "anthropic", "gemini", "mistral", "custom"]
-            model:
-              type: "string"
-              required: false
-            function:
-              type: "string"
-              required: false
-              enum: ["task-automation", "rag-retrieval", "code-gen", "data-analysis", "orchestrator", "sub-agent", "assistant", "custom"]
+
+    AgentTypeNestedProperty:
+      description: "A property nested in an object or an array of objects. Same as a top-level agent type property, without display settings."
+      oneOf:
+        - type: object
+          description: "Leaf property - string, email, mobile, or number"
+          required: [type]
+          properties:
+            type:
+              type: string
+              enum: ["string", "email", "mobile", "number"]
+              description: "Data type of the property"
+            required:
+              type: boolean
+              default: false
+              description: "Whether this attribute must be provided for the agent type"
+            unique:
+              type: boolean
+              default: false
+              description: "Whether this property must be unique across all agents"
+            credential:
+              type: boolean
+              default: false
+              description: "Whether this property should be treated as a credential attribute. Not supported for email or mobile types."
+            displayName:
+              type: string
+              description: "Human-readable label shown in the UI for this property"
+            enum:
+              type: array
+              items:
+                type: string
+              description: "List of allowed values for this property. Not supported for email or mobile types."
+            regex:
+              type: string
+              description: "Regular expression pattern for validating the property value"
+          additionalProperties: false
+        - type: object
+          description: "Leaf property - boolean"
+          required: [type]
+          properties:
+            type:
+              type: string
+              enum: ["boolean"]
+              description: "Data type of the property"
+            required:
+              type: boolean
+              default: false
+              description: "Whether this attribute must be provided for the agent type"
+            displayName:
+              type: string
+              description: "Human-readable label shown in the UI for this property"
+          additionalProperties: false
+        - type: object
+          description: "Object property definition"
+          required: [type, properties]
+          properties:
+            type:
+              type: string
+              enum: ["object"]
+              description: "Data type (object)"
+            required:
+              type: boolean
+              default: false
+              description: "Whether this attribute must be provided for the agent type"
+            displayName:
+              type: string
+              description: "Human-readable label shown in the UI for this property"
+            properties:
+              type: object
+              description: "Nested properties of the object"
+              additionalProperties:
+                $ref: "#/components/schemas/AgentTypeNestedProperty"
+          additionalProperties: false
+        - type: object
+          description: "Array property definition"
+          required: [type, items]
+          properties:
+            type:
+              type: string
+              enum: ["array"]
+              description: "Data type (array)"
+            required:
+              type: boolean
+              default: false
+              description: "Whether this attribute must be provided for the agent type"
+            displayName:
+              type: string
+              description: "Human-readable label shown in the UI for this property"
+            items:
+              oneOf:
+                - type: object
+                  description: "Array of strings, emails, mobiles, or numbers"
+                  required: [type]
+                  properties:
+                    type:
+                      type: string
+                      enum: ["string", "email", "mobile", "number"]
+                    enum:
+                      type: array
+                      items:
+                        type: string
+                      description: "List of allowed values. Not supported for email or mobile types."
+                    regex:
+                      type: string
+                      description: "Custom validation pattern. Contact types use their default when omitted or empty."
+                  additionalProperties: false
+                - type: object
+                  description: "Array of booleans"
+                  required: [type]
+                  properties:
+                    type:
+                      type: string
+                      enum: ["boolean"]
+                  additionalProperties: false
+                - type: object
+                  description: "Array of objects"
+                  required: [type, properties]
+                  properties:
+                    type:
+                      type: string
+                      enum: ["object"]
+                    properties:
+                      type: object
+                      additionalProperties:
+                        $ref: "#/components/schemas/AgentTypeNestedProperty"
+                  additionalProperties: false
+          additionalProperties: false
+
+    AgentTypeAttributeDisplay:
+      type: object
+      description: "How a top-level attribute is presented when attributes are listed or collected. Nested properties don't accept it."
+      properties:
+        order:
+          type: integer
+          minimum: 0
+          description: "Position of the attribute when agent attributes are listed or collected, lowest first, and by attribute name for the same order. Attributes without one follow the ordered ones."
+        onCreate:
+          type: object
+          description: "Settings for when an agent is created."
+          properties:
+            hidden:
+              type: boolean
+              default: false
+              description: "Whether an optional attribute is left out when an agent is created. A flow asks for optional attributes only when its Provisioning step enables includeOptional, or includeOptionalCredentials for optional credentials, and asks for an attribute the step declares in its own inputs even when it's hidden. Required attributes are always asked for."
+          additionalProperties: false
+      additionalProperties: false
 
     AgentTypeListResponse:
       type: object
@@ -3144,11 +3907,9 @@ components:
       properties:
         handle:
           type: string
-          enum: ["default"]
           description: |
             Unique handle for the agent type (lowercase letters, numbers, hyphens, and underscores only).
-            Must be `default`. Agent types are restricted to a single `default` schema and any other
-            handle is rejected. Once set, the handle cannot be changed.
+            Once set, the handle cannot be changed.
           pattern: '^[a-z0-9][a-z0-9_-]*[a-z0-9]$|^[a-z0-9]$'
           maxLength: 100
         displayName:
@@ -3160,7 +3921,9 @@ components:
         ouId:
           type: string
           format: uuid
-          description: "The organization unit ID where this agent type schema is applicable"
+          description: |
+            The organization unit ID where this agent type schema is applicable. An organization unit can
+            have only one agent type.
         allowSelfRegistration:
           type: boolean
           description: "Whether the agent type supports self-initiated registration"
@@ -3179,10 +3942,9 @@ components:
       properties:
         handle:
           type: string
-          enum: ["default"]
           description: |
-            Optional. The handle cannot be changed, so when provided it must be `default`. When omitted,
-            the existing handle is kept.
+            Optional. The handle cannot be changed, so when provided it must be the current handle. When
+            omitted, the existing handle is kept.
           pattern: '^[a-z0-9][a-z0-9_-]*[a-z0-9]$|^[a-z0-9]$'
           maxLength: 100
         displayName:
@@ -3194,7 +3956,9 @@ components:
         ouId:
           type: string
           format: uuid
-          description: "The root organization unit ID where this agent type schema is applicable"
+          description: |
+            The root organization unit ID where this agent type schema is applicable. Moving the agent type
+            to an organization unit that already has another agent type is rejected.
         allowSelfRegistration:
           type: boolean
           description: "Whether the agent type supports self-initiated registration"
@@ -3261,20 +4025,36 @@ components:
             reason:
               type: string
               readOnly: true
-              enum: [FAILED_ATTEMPTS, ADMINISTRATIVE_SUSPENSION, LIFESPAN_ENDED]
+              enum: [FAILED_ATTEMPTS, ADMINISTRATIVE_SUSPENSION, LIFESPAN_ENDED, OWNER_SUSPENSION, CASCADED_SUSPENSION]
               description: |
                 What caused the status. `FAILED_ATTEMPTS` is an automatic lock after repeated failed
                 sign-ins. `ADMINISTRATIVE_SUSPENSION` is a suspension placed by an operator.
-                `LIFESPAN_ENDED` is an agent whose `validUntil` has passed. One reason covers every
-                entry in `lockedMethods`.
+                `LIFESPAN_ENDED` is an agent whose `validUntil` has passed. `OWNER_SUSPENSION` is a
+                suspension placed by the agent's owner. `CASCADED_SUSPENSION` is the suspension an agent
+                carries while its owner's account is suspended. One reason covers every entry in
+                `lockedMethods`.
               example: "FAILED_ATTEMPTS"
+            appliedBy:
+              type: array
+              readOnly: true
+              items:
+                type: string
+                enum: [organization, owner, cascade]
+              description: |
+                Every party holding the agent suspended: `organization` for an operator's suspension,
+                `owner` for the agent owner's, `cascade` while the owner's account is suspended. Present
+                only when the status is `SUSPENDED`. Each is independent and lifted on its own: `cascade`
+                lifts when the owner's account is unsuspended, and the agent stays suspended while any
+                remains. `reason`, `since` and `operatorNote` describe the organization's suspension
+                when there is one, otherwise the owner's, otherwise the cascade.
+              example: ["organization"]
             since:
               type: string
               format: date-time
               readOnly: true
               description: |
-                When the operator placed the hold, or for `LIFESPAN_ENDED` the agent's `validUntil`.
-                Absent for an automatic lock.
+                When the hold was placed, or for `LIFESPAN_ENDED` the agent's `validUntil`. Absent for an
+                automatic lock.
             operatorNote:
               type: string
               readOnly: true
@@ -3311,6 +4091,54 @@ components:
                       When the lock expires. **Absent when it does not expire**: only the unlock flow
                       clears it.
                     example: "2026-09-08T10:15:00Z"
+
+    AgentOwner:
+      type: object
+      description: |
+        Who is accountable for the agent. A local owner is an entity of this deployment and must exist.
+        Any other owner is managed in another identity system and is stored as given, without a lookup.
+
+        On a control plane, which keeps configuration as references, any of the three values may be a
+        variable reference such as `var:AGENT__<id>__IS_LOCAL`, kept as given for each gateway to resolve
+        when a version is applied to it. Such an owner is never looked up. No value may be a secret
+        reference (`sec:`).
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          maxLength: 256
+          description: |
+            The owner's ID, of the kind `idType` names: a bare email address for `email`, and an E.164
+            number such as `+94771234567` for `mobile`. On a control plane, a variable reference.
+          example: "e1b6ba6c-deb2-4d24-87b0-bbf79fa4487c"
+        idType:
+          anyOf:
+            - type: string
+              enum: [uuid, email, mobile]
+            - $ref: '#/components/schemas/OwnerValueReference'
+          default: uuid
+          description: |
+            What the ID holds. A local owner is always identified by `uuid`. On a control plane, a
+            variable reference.
+          example: "uuid"
+        isLocal:
+          anyOf:
+            - type: boolean
+            - $ref: '#/components/schemas/OwnerValueReference'
+          default: true
+          description: |
+            Whether the owner is an entity of this deployment. A boolean, or on a control plane, a
+            variable reference; it is text only when it is itself a reference.
+          example: true
+
+    OwnerValueReference:
+      type: string
+      pattern: '^var:[A-Z_][A-Z0-9_]*$'
+      description: |
+        A reference to a variable each gateway holds, kept by a control plane in place of an owner's
+        value and resolved by the gateway a version is applied to.
+      example: "var:AGENT__0198F3A17C2E7B109A445D3E8F21C6B7__IS_LOCAL"
 
     Lifespan:
       type: object

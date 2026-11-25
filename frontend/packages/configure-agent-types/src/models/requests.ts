@@ -5,9 +5,10 @@ import type {SystemAttributes} from './agent-type';
 import type {AgentTypeDefinition} from './property-definition';
 
 /**
- * Request body for `PUT /agent-types/{id}` (update).
+ * Request body for `POST /agent-types` (create).
  */
-export interface UpdateAgentTypeRequest {
+export interface CreateAgentTypeRequest {
+  handle: string;
   displayName: string;
   ouId: string;
   systemAttributes?: SystemAttributes;
@@ -15,9 +16,11 @@ export interface UpdateAgentTypeRequest {
 }
 
 /**
- * Query parameters for listing agent types.
+ * Request body for `PUT /agent-types/{id}` (update).
  */
-export interface AgentTypeListParams {
-  limit?: number;
-  offset?: number;
+export interface UpdateAgentTypeRequest {
+  displayName: string;
+  ouId: string;
+  systemAttributes?: SystemAttributes;
+  schema: AgentTypeDefinition;
 }

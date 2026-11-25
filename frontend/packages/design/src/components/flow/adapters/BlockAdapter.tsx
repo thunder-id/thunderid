@@ -7,6 +7,7 @@ import {Box, Button} from '@wso2/oxygen-ui';
 import {Fragment, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import CheckboxAdapter from './CheckboxAdapter';
+import DateTimeInputAdapter from './DateTimeInputAdapter';
 import DividerAdapter from './DividerAdapter';
 import OtpInputAdapter from './OtpInputAdapter';
 import PasswordInputAdapter from './PasswordInputAdapter';
@@ -44,6 +45,8 @@ interface BlockContext {
   isSubmitDisabled?: boolean;
   /** Draws the inputs of a block that has no submit action. Off by default, where such a block shows nothing. */
   rendersInputsWithoutSubmit?: boolean;
+  /** Stops the inputs from taking focus when they mount */
+  isAutoFocusDisabled?: boolean;
 }
 
 // The primary submit action approves a consent prompt; any other submit action denies it.
@@ -139,10 +142,18 @@ function flattenThroughStacks(components: EmbeddedFlowComponent[]): EmbeddedFlow
   );
 }
 
+function isSubmitAction(component: EmbeddedFlowComponent | undefined): boolean {
+  return (
+    (component?.type as EmbeddedFlowComponentType | undefined) === EmbeddedFlowComponentType.Action &&
+    component?.eventType === EmbeddedFlowEventType.Submit
+  );
+}
+
 function renderFormSubComponent(
   subComponent: EmbeddedFlowComponent,
   compIndex: number,
   ctx: BlockContext,
+  siblings: EmbeddedFlowComponent[] = ctx.blockComponents ?? [],
 ): JSX.Element | null {
   const sub = subComponent as FlowComponent;
 
@@ -152,7 +163,7 @@ function renderFormSubComponent(
     return (
       <StackContainer key={sub.id ?? compIndex} component={sub}>
         {(sub.components ?? []).map((nested: EmbeddedFlowComponent, nestedIndex: number) =>
-          renderFormSubComponent(nested, nestedIndex, ctx),
+          renderFormSubComponent(nested, nestedIndex, ctx, []),
         )}
       </StackContainer>
     );
@@ -167,6 +178,7 @@ function renderFormSubComponent(
     onInputChange: ctx.onInputChange,
     onBlur: ctx.onBlur,
     additionalData: ctx.additionalData,
+    isAutoFocusDisabled: ctx.isAutoFocusDisabled,
   };
 
   const customField = ctx.renderField?.(sub, fieldProps);
@@ -183,6 +195,10 @@ function renderFormSubComponent(
     sub.type === 'NUMBER_INPUT'
   ) {
     return <TextInputAdapter key={sub.id ?? compIndex} {...fieldProps} />;
+  }
+
+  if (sub.type === 'DATE_TIME_INPUT') {
+    return <DateTimeInputAdapter key={sub.id ?? compIndex} {...fieldProps} />;
   }
 
   if (
@@ -234,6 +250,7 @@ function renderFormSubComponent(
           ctx.isLoading || ctx.isSubmitDisabled === true || (ctx.approvalBlocked === true && isApprovalAction(sub))
         }
         resolve={ctx.resolve}
+        followsSubmit={isSubmitAction(siblings[compIndex - 1])}
         onClick={
           ctx.hasMultipleSubmits && sub.id !== ctx.primarySubmitId
             ? () => {

@@ -1312,3 +1312,55 @@ func (s *LineageTestSuite) TestRequestedGrantsNameEveryGrantTheRequestCarriesTer
 
 	s.Empty(PolicyRequest{}.requestedGrants())
 }
+
+func (s *ContainmentTestSuite) TestChildUnitShareRequest() {
+	const child, other = "child-ou", "other-ou"
+	selected := func(units ...ChildUnit) *ChildUnits { return &ChildUnits{Mode: ChildUnitsSelected, Units: units} }
+	unit := func(id string) ChildUnit { return ChildUnit{OUID: id, Reach: ReachUnit} }
+	unitReq := func(id string) ChildUnitRequest { return ChildUnitRequest{OUID: id, Reach: ReachUnit} }
+
+	s.Run("NoOwnerPolicyCreatesOne", func() {
+		req, create, svcErr := childUnitShareRequest(nil, child)
+		s.Require().Nil(svcErr)
+		s.True(create)
+		s.Equal(PolicyRequest{ChildUnits: &ChildUnitsRequest{
+			Mode: ChildUnitsSelected, Units: []ChildUnitRequest{unitReq(child)},
+		}}, req)
+	})
+	s.Run("SelectedPolicyGainsTheChild", func() {
+		owner := &Policy{ID: "p-1", InitiatingOUID: "root-ou", Version: 3, ChildUnits: selected(unit(other))}
+		req, create, svcErr := childUnitShareRequest(owner, child)
+		s.Require().Nil(svcErr)
+		s.False(create)
+		s.Equal("p-1", req.ID)
+		s.Equal(3, req.Version)
+		s.Equal([]ChildUnitRequest{unitReq(other), unitReq(child)}, req.ChildUnits.Units)
+	})
+	s.Run("RootsOnlyPolicyGainsAChildSection", func() {
+		owner := &Policy{ID: "p-1", Version: 1,
+			OtherTreeRoots: &OtherTreeRoots{Mode: OtherTreeRootsSelected, Units: []string{other}}}
+		req, create, svcErr := childUnitShareRequest(owner, child)
+		s.Require().Nil(svcErr)
+		s.False(create)
+		s.Equal(&ChildUnitsRequest{Mode: ChildUnitsSelected, Units: []ChildUnitRequest{unitReq(child)}}, req.ChildUnits)
+		s.Require().NotNil(req.OtherTreeRoots)
+		s.Equal([]RootUnitRequest{{OUID: other}}, req.OtherTreeRoots.Units)
+	})
+	s.Run("AlreadyNamedIsUnchanged", func() {
+		owner := &Policy{ID: "p-1", Version: 2, ChildUnits: selected(unit(child))}
+		req, create, svcErr := childUnitShareRequest(owner, child)
+		s.Require().Nil(svcErr)
+		s.False(create)
+		s.Equal([]ChildUnitRequest{unitReq(child)}, req.ChildUnits.Units)
+	})
+	for name, owner := range map[string]*Policy{
+		"AllChildren": {ID: "p-1", ChildUnits: &ChildUnits{Mode: ChildUnitsAll, ExcludedOUIDs: []string{child}}},
+		"AllUnits":    {ID: "p-1", AllUnits: &AllUnits{ExcludedOUIDs: []string{child}}},
+	} {
+		s.Run(name+"Withholds", func() {
+			_, _, svcErr := childUnitShareRequest(owner, child)
+			s.Require().NotNil(svcErr)
+			s.Equal(ErrorChildUnitWithheld.Code, svcErr.Code)
+		})
+	}
+}

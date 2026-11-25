@@ -184,6 +184,20 @@ describe('useFlowSave', () => {
       expect(onCreated).toHaveBeenCalledWith('created-flow-id');
     });
 
+    it('creates the flow in the project it was drafted in', () => {
+      const {result} = renderUseFlowSave({ouId: undefined, projectId: 'project-1'});
+
+      act(() => {
+        result.current.handleSave(createMockCanvasData());
+      });
+
+      expect(mockCreateFlowMutate).toHaveBeenCalledWith(
+        expect.objectContaining({projectId: 'project-1'}),
+        expect.any(Object),
+      );
+      expect((mockCreateFlowMutate.mock.calls[0] as [object])[0]).not.toHaveProperty('ouId');
+    });
+
     it('should show success message on create success', () => {
       mockCreateFlowMutate.mockImplementation((_, options: {onSuccess: () => void}) => {
         options.onSuccess();

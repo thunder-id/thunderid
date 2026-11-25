@@ -11,6 +11,8 @@ import {
   ancestorPermissions,
   getSubtreeSelectionState,
   arePermissionsEqual,
+  isPermissionCovered,
+  toggleSubtreePermission,
 } from '../permissionSelection';
 
 describe('permissionSelection utils', () => {
@@ -210,5 +212,60 @@ describe('arePermissionsEqual', () => {
 
   it('treats two empty lists as equal', () => {
     expect(arePermissionsEqual([], [])).toBe(true);
+  });
+});
+
+describe('isPermissionCovered', () => {
+  const selected: ResourcePermissions[] = [{resourceServerId: 'rs-1', permissions: ['bookings', 'health:ping']}];
+
+  it('reports a permission that is listed', () => {
+    expect(isPermissionCovered(selected, 'rs-1', 'bookings', ':')).toBe(true);
+  });
+
+  it('reports a permission a listed ancestor confers', () => {
+    expect(isPermissionCovered(selected, 'rs-1', 'bookings:reservations:update', ':')).toBe(true);
+  });
+
+  it('does not report a permission that only shares a prefix', () => {
+    expect(isPermissionCovered(selected, 'rs-1', 'bookingsarchive', ':')).toBe(false);
+  });
+
+  it('does not let a descendant confer the resource it sits under', () => {
+    expect(isPermissionCovered(selected, 'rs-1', 'health', ':')).toBe(false);
+  });
+
+  it('is scoped to one resource server', () => {
+    expect(isPermissionCovered(selected, 'rs-2', 'bookings:create', ':')).toBe(false);
+  });
+});
+
+describe('toggleSubtreePermission', () => {
+  it('adds the resource alone rather than an expansion', () => {
+    expect(toggleSubtreePermission([], 'rs-1', 'bookings', ':')).toEqual([
+      {resourceServerId: 'rs-1', permissions: ['bookings']},
+    ]);
+  });
+
+  it('drops descendants the resource now confers', () => {
+    const selected: ResourcePermissions[] = [
+      {resourceServerId: 'rs-1', permissions: ['bookings:create', 'bookings:reservations', 'health:ping']},
+    ];
+    expect(toggleSubtreePermission(selected, 'rs-1', 'bookings', ':')).toEqual([
+      {resourceServerId: 'rs-1', permissions: ['health:ping', 'bookings']},
+    ]);
+  });
+
+  it('clearing a resource also clears its ancestors and descendants', () => {
+    const selected: ResourcePermissions[] = [
+      {resourceServerId: 'rs-1', permissions: ['bookings', 'bookings:reservations', 'bookings:reservations:update']},
+    ];
+    expect(toggleSubtreePermission(selected, 'rs-1', 'bookings:reservations', ':')).toEqual([]);
+  });
+
+  it('leaves other resource servers alone', () => {
+    const selected: ResourcePermissions[] = [{resourceServerId: 'rs-2', permissions: ['payments:refund']}];
+    expect(toggleSubtreePermission(selected, 'rs-2', 'payments', ':')).toEqual([
+      {resourceServerId: 'rs-2', permissions: ['payments']},
+    ]);
   });
 });

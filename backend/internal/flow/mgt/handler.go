@@ -33,6 +33,7 @@ const (
 	pathParamVersion   = "version"
 	queryParamFlowType = "flowType"
 	queryParamOUID     = "ouId"
+	queryParamProject  = "projectId"
 	queryParamLimit    = "limit"
 	queryParamOffset   = "offset"
 )
@@ -73,10 +74,14 @@ func (h *flowMgtHandler) listFlows(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// With an organization unit filter, the list is of the flows it owns and the ones shared with it. Without one, it
-	// is of every flow.
+	// With a project, the list is of the project's flows, narrowed to the ones an organization unit owns when the
+	// filter names one. With only an organization unit filter, the list is of the flows it owns and the ones shared
+	// with it. Without either, it is of every flow.
 	var flowList *FlowListResponse
-	if ouID != "" {
+	if query := r.URL.Query(); query.Has(queryParamProject) {
+		flowList, svcErr = h.service.ListFlowsByProject(
+			ctx, query.Get(queryParamProject), ouID, flowType, limit, offset)
+	} else if ouID != "" {
 		flowList, svcErr = h.service.ListFlowsForOU(ctx, ouID, flowType, limit, offset)
 	} else {
 		flowList, svcErr = h.service.ListFlows(ctx, limit, offset, flowType)
@@ -120,27 +125,22 @@ func (h *flowMgtHandler) getFlow(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// With an organization unit, the flow is as that unit sees it. Without one, it is the whole definition.
+	var view *FlowView
+	var svcErr *tidcommon.ServiceError
 	if ouID := r.URL.Query().Get(queryParamOUID); ouID != "" {
-		view, svcErr := h.service.GetFlowForOU(ctx, flowID, ouID)
-		if svcErr != nil {
-			handleError(ctx, w, svcErr)
-			return
-		}
-		if view.Shared != nil {
-			utils.WriteSuccessResponse(ctx, w, http.StatusOK, view.Shared)
-		} else {
-			utils.WriteSuccessResponse(ctx, w, http.StatusOK, view.Owned)
-		}
-		h.logger.Debug(ctx, "Flow retrieved successfully", log.String(logKeyFlowID, flowID))
-		return
+		view, svcErr = h.service.GetFlowForOU(ctx, flowID, ouID)
+	} else {
+		view, svcErr = h.service.GetFlowView(ctx, flowID)
 	}
-
-	flow, svcErr := h.service.GetFlow(ctx, flowID)
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return
 	}
-	utils.WriteSuccessResponse(ctx, w, http.StatusOK, flow)
+	if view.Shared != nil {
+		utils.WriteSuccessResponse(ctx, w, http.StatusOK, view.Shared)
+	} else {
+		utils.WriteSuccessResponse(ctx, w, http.StatusOK, view.Owned)
+	}
 	h.logger.Debug(ctx, "Flow retrieved successfully", log.String(logKeyFlowID, flowID))
 }
 
@@ -377,6 +377,7 @@ func sanitizeFlowDefinitionRequest(req *FlowDefinitionRequest) *FlowDefinition {
 		Interceptors: interceptors,
 		Nodes:        req.Nodes,
 		OUID:         utils.SanitizeString(req.OUID),
+		ProjectID:    utils.SanitizeString(req.ProjectID),
 	}
 
 	return sanitized

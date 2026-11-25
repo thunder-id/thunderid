@@ -78,6 +78,7 @@ func (s *AuthzTestSuite) TestGetEntityTypeList_AllAllowed() {
 	}, nil)
 
 	svc := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 		authzService:    newAllowAllAuthz(s.T()),
@@ -104,6 +105,7 @@ func (s *AuthzTestSuite) TestGetEntityTypeList_FilteredByOUIDs() {
 		Return(&sysauthz.AccessibleResources{AllAllowed: false, IDs: []string{testOUID1}}, nil)
 
 	svc := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 		authzService:    authzMock,
@@ -124,6 +126,7 @@ func (s *AuthzTestSuite) TestGetEntityTypeList_EmptyAccessibleOUIDs() {
 		Return(&sysauthz.AccessibleResources{AllAllowed: false, IDs: []string{}}, nil)
 
 	svc := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: newEntityTypeStoreInterfaceMock(s.T()),
 		transactioner:   &mockTransactioner{},
 		authzService:    authzMock,
@@ -138,6 +141,7 @@ func (s *AuthzTestSuite) TestGetEntityTypeList_EmptyAccessibleOUIDs() {
 
 func (s *AuthzTestSuite) TestGetEntityTypeList_AuthzServiceError() {
 	svc := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: newEntityTypeStoreInterfaceMock(s.T()),
 		transactioner:   &mockTransactioner{},
 		authzService:    newAuthzError(s.T()),
@@ -157,6 +161,7 @@ func (s *AuthzTestSuite) TestGetEntityTypeList_NilAuthzService() {
 	}, nil)
 
 	svc := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 		authzService:    nil,
@@ -184,6 +189,7 @@ func (s *AuthzTestSuite) TestCreateEntityType_Denied() {
 		Return(false, nil)
 
 	svc := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		ouService:       ouMock,
 		transactioner:   &mockTransactioner{},
@@ -210,6 +216,7 @@ func (s *AuthzTestSuite) TestCreateEntityType_AuthzError() {
 		Return(true, (*tidcommon.ServiceError)(nil))
 
 	svc := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		ouService:       ouMock,
 		transactioner:   &mockTransactioner{},
@@ -240,6 +247,7 @@ func (s *AuthzTestSuite) TestGetEntityType_Denied() {
 		Return(false, nil)
 
 	svc := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 		authzService:    authzMock,
@@ -257,6 +265,7 @@ func (s *AuthzTestSuite) TestGetEntityType_AuthzError() {
 		Return(EntityType{ID: "schema-1", OUID: testOUID1}, nil)
 
 	svc := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 		authzService:    newAuthzError(s.T()),
@@ -281,6 +290,7 @@ func (s *AuthzTestSuite) TestGetEntityTypeByHandle_Denied() {
 		Return(false, nil)
 
 	svc := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 		authzService:    authzMock,
@@ -298,6 +308,7 @@ func (s *AuthzTestSuite) TestGetEntityTypeByHandle_AuthzError() {
 		Return(EntityType{ID: "schema-1", Handle: "employee", DisplayName: "employee", OUID: testOUID2}, nil)
 
 	svc := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 		authzService:    newAuthzError(s.T()),
@@ -335,6 +346,7 @@ func (s *AuthzTestSuite) TestUpdateEntityType_Denied() {
 		Return(false, nil)
 
 	svc := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		ouService:       ouMock,
 		transactioner:   &mockTransactioner{},
@@ -371,6 +383,7 @@ func (s *AuthzTestSuite) TestUpdateEntityType_AuthzError() {
 		Return(true, (*tidcommon.ServiceError)(nil))
 
 	svc := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		ouService:       ouMock,
 		transactioner:   &mockTransactioner{},
@@ -407,6 +420,7 @@ func (s *AuthzTestSuite) TestDeleteEntityType_Denied() {
 		Return(false, nil)
 
 	svc := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 		authzService:    authzMock,
@@ -429,6 +443,7 @@ func (s *AuthzTestSuite) TestDeleteEntityType_AuthzError() {
 		}, nil)
 
 	svc := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 		authzService:    newAuthzError(s.T()),
@@ -454,6 +469,7 @@ func (s *AuthzTestSuite) TestDeleteEntityType_NotFound_StillChecksAuthz() {
 		Return(false, nil)
 
 	svc := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 		authzService:    authzMock,
@@ -479,6 +495,7 @@ func (s *AuthzTestSuite) TestDeleteEntityType_NotFound_Authorized_ReturnsNil() {
 		Return(true, nil)
 
 	svc := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 		authzService:    authzMock,
@@ -496,6 +513,7 @@ func (s *AuthzTestSuite) TestGetEntityType_NilAuthz_NoError() {
 		Return(EntityType{ID: "schema-1", Handle: "test", DisplayName: "test", OUID: testOUID1}, nil)
 
 	svc := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 		authzService:    nil,
@@ -520,6 +538,7 @@ func (s *AuthzTestSuite) TestGetEntityType_WithIncludeDisplay() {
 		).Return(map[string]string{testOUID1: "root"}, nil).Once()
 
 		svc := &entityTypeService{
+			bus:             discardingBus{},
 			entityTypeStore: storeMock,
 			transactioner:   &mockTransactioner{},
 			authzService:    nil,
@@ -540,6 +559,7 @@ func (s *AuthzTestSuite) TestGetEntityType_WithIncludeDisplay() {
 			Return(EntityType{ID: "schema-1", Handle: "test", DisplayName: "test", OUID: testOUID1}, nil)
 
 		svc := &entityTypeService{
+			bus:             discardingBus{},
 			entityTypeStore: storeMock,
 			transactioner:   &mockTransactioner{},
 			authzService:    nil,
@@ -567,6 +587,7 @@ func (s *AuthzTestSuite) TestGetEntityType_WithIncludeDisplay() {
 		).Once()
 
 		svc := &entityTypeService{
+			bus:             discardingBus{},
 			entityTypeStore: storeMock,
 			transactioner:   &mockTransactioner{},
 			authzService:    nil,
@@ -608,6 +629,7 @@ func (s *AuthzTestSuite) TestGetEntityTypeList_WithIncludeDisplay() {
 	}, nil).Once()
 
 	svc := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 		authzService:    newAllowAllAuthz(s.T()),
@@ -630,6 +652,7 @@ func (s *AuthzTestSuite) TestGetEntityTypeByHandle_NilAuthz_NoError() {
 		Return(EntityType{ID: "schema-1", Handle: "employee", DisplayName: "employee"}, nil)
 
 	svc := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 		authzService:    nil,
@@ -650,6 +673,7 @@ func (s *AuthzTestSuite) TestDeleteEntityType_NilAuthz_NoError() {
 	storeMock.On("DeleteEntityTypeByID", mock.Anything, mock.Anything, "schema-1").Return(nil)
 
 	svc := &entityTypeService{
+		bus:             discardingBus{},
 		entityTypeStore: storeMock,
 		transactioner:   &mockTransactioner{},
 		authzService:    nil,

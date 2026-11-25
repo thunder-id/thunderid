@@ -32,6 +32,10 @@ import (
 type UserOUFilterTestSuite struct {
 	suite.Suite
 
+	// The child administrator signs in through an application in the child, since a sign-in is bounded to
+	// its application's OU.
+	signIn testutils.OUSignInApps
+
 	parentOUID     string
 	childOUID      string
 	grandchildOUID string
@@ -156,6 +160,9 @@ func (ts *UserOUFilterTestSuite) SetupSuite() {
 }
 
 func (ts *UserOUFilterTestSuite) TearDownSuite() {
+	if err := ts.signIn.DeleteAll(); err != nil {
+		ts.T().Logf("teardown: delete sign-in applications: %v", err)
+	}
 	if ts.adminRoleID != "" {
 		if err := testutils.DeleteRole(ts.adminRoleID); err != nil {
 			ts.T().Logf("teardown: delete role: %v", err)
@@ -259,12 +266,12 @@ func (ts *UserOUFilterTestSuite) importUser(name, policies string) {
 	ts.users[name] = imported.Results[0].ResourceID
 }
 
-// childAdminClient creates a child user holding system:user in the child only, and returns a client
+// childAdminClient creates a child user holding org:user in the child only, and returns a client
 // carrying its token.
 func (ts *UserOUFilterTestSuite) childAdminClient() *http.Client {
 	ts.T().Helper()
 	userID := ts.createUser("child-admin", ts.childOUID)
-	client, rsID, roleID := scopedAdminClient(ts.T(), ts.childOUID, userID, "ou-filter-child-admin",
+	client, rsID, roleID := scopedAdminClient(ts.T(), &ts.signIn, ts.childOUID, userID, "ou-filter-child-admin",
 		"OU Filter Child", "https://ou-filter-test.example.com/child")
 	ts.adminRSID, ts.adminRoleID = rsID, roleID
 	return client
@@ -503,5 +510,121 @@ func (ts *UserOUFilterTestSuite) TestAMalformedUnitFilterIsRefused() {
 			ts.Require().NoError(json.Unmarshal(raw, &e))
 			ts.Equal("USR-1020", e.Code)
 		})
+	}
+}
+
+// readIn reads a user with ouId and returns the status and, on success, the user.
+func (ts *UserOUFilterTestSuite) readIn(client *http.Client, userID, ouID, query string) (int, testutils.User) {
+	ts.T().Helper()
+	status, raw := sendRequest(ts.T(), client, http.MethodGet,
+		"/users/"+userID+"?ouId="+url.QueryEscape(ouID)+query, nil)
+	var user testutils.User
+	if status == http.StatusOK {
+		ts.Require().NoError(json.Unmarshal(raw, &user), string(raw))
+	}
+	return status, user
+}
+
+// Reading a user with ouId finds the users the unit owns and the ones shared into it, and no other.
+func (ts *UserOUFilterTestSuite) TestReadingAUserInAUnitFollowsWhatItOwnsAndIsShared() {
+	for ouID, want := range ts.expected {
+		for name, userID := range ts.users {
+			status, user := ts.readIn(ts.rootClient, userID, ouID, "")
+			switch {
+			case slices.Contains(want.owned, name), slices.Contains(want.shared, name):
+				ts.Require().Equal(http.StatusOK, status, "%s in %s", name, ts.ouHandleFor[ouID])
+				ts.Equal(userID, user.ID)
+				ts.Equal(ouID, user.OUID, "%s is read under %s", name, ts.ouHandleFor[ouID])
+				ts.Require().NotNil(user.IsOwnedByOU, "%s in %s", name, ts.ouHandleFor[ouID])
+				ts.Equal(slices.Contains(want.owned, name), *user.IsOwnedByOU, "%s in %s", name, ts.ouHandleFor[ouID])
+			default:
+				ts.Equal(http.StatusNotFound, status, "%s in %s", name, ts.ouHandleFor[ouID])
+			}
+		}
+	}
+}
+
+// A shared user read with ouId carries the attributes and display of the user, and the handle of the
+// unit it is shared into.
+func (ts *UserOUFilterTestSuite) TestASharedUserReadInAUnitCarriesThatUnitsHandle() {
+	status, user := ts.readIn(ts.rootClient, ts.users["named-unit"], ts.childOUID, "&include=display")
+
+	ts.Require().Equal(http.StatusOK, status)
+	ts.Equal("ou-filter-child", user.OUHandle)
+	ts.NotEmpty(user.Display)
+	ts.Contains(string(user.Attributes), "ou-filter-named-unit")
+}
+
+// A caller allowed to read users in the child reads a user shared into it, with ouId or without: a read
+// that names no unit reads in the unit the caller is confined to.
+func (ts *UserOUFilterTestSuite) TestAScopedCallerReadsAUserSharedIntoItsUnit() {
+	status, user := ts.readIn(ts.childAdmin, ts.users["named-unit"], ts.childOUID, "")
+	ts.Require().Equal(http.StatusOK, status)
+	ts.Require().NotNil(user.IsOwnedByOU)
+	ts.False(*user.IsOwnedByOU)
+
+	status, raw := sendRequest(ts.T(), ts.childAdmin, http.MethodGet, "/users/"+ts.users["named-unit"], nil)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	ts.Require().NoError(json.Unmarshal(raw, &user))
+	ts.Require().NotNil(user.IsOwnedByOU)
+	ts.False(*user.IsOwnedByOU)
+	ts.Equal(ts.childOUID, user.OUID, "a shared user is read under the unit it is shared into")
+
+	status, raw = sendRequest(ts.T(), ts.childAdmin, http.MethodGet, "/users/"+ts.users["child-owned"], nil)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	ts.Require().NoError(json.Unmarshal(raw, &user))
+	ts.Require().NotNil(user.IsOwnedByOU)
+	ts.True(*user.IsOwnedByOU)
+}
+
+// Without a filter, a caller confined to the child lists what the child owns and is shared, as the filter
+// on the child does.
+func (ts *UserOUFilterTestSuite) TestAScopedCallerListsItsUnitWithoutAFilter() {
+	ts.assertListed(ts.childOUID, ts.everyPage(ts.childAdmin, fmt.Sprintf("/users?limit=%d", ouFilterPageSize)),
+		true)
+}
+
+// A user shared into the child stays the owner's to change: the child may neither update nor delete it.
+func (ts *UserOUFilterTestSuite) TestAScopedCallerCannotChangeAUserSharedIntoItsUnit() {
+	userID := ts.users["named-unit"]
+	status, raw := sendRequest(ts.T(), ts.childAdmin, http.MethodPut, "/users/"+userID, map[string]interface{}{
+		"ouId": ts.parentOUID, "type": ouFilterTestUserType, "attributes": map[string]string{"username": "renamed"},
+	})
+	ts.Equal(http.StatusForbidden, status, string(raw))
+	ts.Contains(string(raw), "USR-1045")
+
+	status, raw = sendRequest(ts.T(), ts.childAdmin, http.MethodDelete, "/users/"+userID, nil)
+	ts.Equal(http.StatusForbidden, status, string(raw))
+	ts.Contains(string(raw), "USR-1045")
+
+	status, _ = sendRequest(ts.T(), ts.rootClient, http.MethodGet, "/users/"+userID, nil)
+	ts.Equal(http.StatusOK, status, "the shared user is still there")
+}
+
+// A caller not allowed to read users in a unit is refused there, even for a user the unit can see.
+func (ts *UserOUFilterTestSuite) TestAScopedCallerCannotReadInAUnitItMayNotRead() {
+	for _, ouID := range []string{ts.parentOUID, ts.grandchildOUID} {
+		status, _ := ts.readIn(ts.childAdmin, ts.users["named-subtree"], ouID, "")
+		ts.Equal(http.StatusForbidden, status, ts.ouHandleFor[ouID])
+	}
+}
+
+// A unit that does not exist sees no user.
+func (ts *UserOUFilterTestSuite) TestReadingInAnUnknownUnitIsNotFound() {
+	status, _ := ts.readIn(ts.rootClient, ts.users["named-unit"], "00000000-0000-0000-0000-000000000000", "")
+	ts.Equal(http.StatusNotFound, status)
+}
+
+// Reading one's own record does not stand in for access to the unit named in ouId. The child admin may
+// read users in the child only, so reading itself in a unit outside that is refused, as reading any
+// other user there is, rather than answering whether it is there.
+func (ts *UserOUFilterTestSuite) TestAScopedCallerCannotReadItselfInAUnitItMayNotRead() {
+	self := ts.users["child-admin"]
+	status, raw := sendRequest(ts.T(), ts.childAdmin, http.MethodGet, "/users/"+self, nil)
+	ts.Require().Equal(http.StatusOK, status, "the child admin reads its own record without ouId: %s", raw)
+
+	for _, ouID := range []string{ts.parentOUID, ts.grandchildOUID, ts.otherRootOUID} {
+		status, _ := ts.readIn(ts.childAdmin, self, ouID, "&include=display")
+		ts.Equal(http.StatusForbidden, status, ts.ouHandleFor[ouID])
 	}
 }

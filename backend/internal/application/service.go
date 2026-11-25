@@ -27,10 +27,16 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cors"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
+	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -55,10 +61,8 @@ type ApplicationServiceInterface interface {
 	DeleteApplication(ctx context.Context, appID string) *tidcommon.ServiceError
 	ValidateDeleteApplication(ctx context.Context, appID string) (
 		*model.ApplicationArtifactProfile, *tidcommon.ServiceError)
-	ValidateCredentialAction(ctx context.Context, appID string, action model.CredentialAction) (
-		*model.ApplicationArtifactProfile, *tidcommon.ServiceError)
-	ApplyCredentialAction(ctx context.Context, appID string, action model.CredentialAction) (
-		string, *tidcommon.ServiceError)
+	ValidateClientSecretRegeneration(ctx context.Context, appID string) *tidcommon.ServiceError
+	RegenerateClientSecret(ctx context.Context, appID string) (*model.ClientSecretResponse, *tidcommon.ServiceError)
 	GetResourceDependencies(
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 	SetDependencyRegistry(r resourcedependency.Registry)
@@ -84,9 +88,9 @@ type ApplicationServiceInterface interface {
 // duration, leaves the revocation service on its configured default.
 type artifactLifetimeResolver func(client *providers.OAuthClient) time.Duration
 
-// projectOUResolver finds the organization unit that a resource scoped to a project belongs to.
-type projectOUResolver interface {
-	ResolveProjectOU(ctx context.Context, projectID, ouID string) (string, *tidcommon.ServiceError)
+// projectOUValidator checks that the organization unit of a resource scoped to a project belongs to it.
+type projectOUValidator interface {
+	ValidateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError
 }
 
 // ApplicationService is the default implementation of the ApplicationServiceInterface.
@@ -102,10 +106,18 @@ type applicationService struct {
 	resolveLifetime      artifactLifetimeResolver
 	valueCapturer        declarativeresource.ValueCapturer
 	sharingService       sharing.SharingServiceInterface
+	authzService         sysauthz.SystemAuthorizationServiceInterface
 	// governance derives the access status.
 	governance identitygovernance.IdentityGovernanceServiceInterface
-	// projectResolver is nil on a deployment that serves no projects.
-	projectResolver projectOUResolver
+	// projectValidator is nil on a deployment that serves no projects.
+	projectValidator projectOUValidator
+	// projectRequired is set when a deployment that serves projects refuses an application created without
+	// one.
+	projectRequired bool
+	bus             eventbus.EventBusInterface
+	// managed says which applications a control plane deployed, which stay read only here. Nil where
+	// nothing is deployed from one.
+	managed managedresource.StoreInterface
 }
 
 // newApplicationService creates a new instance of ApplicationService.
@@ -119,8 +131,10 @@ func newApplicationService(
 	artifactLifetime artifactLifetimeResolver,
 	valueCapturer declarativeresource.ValueCapturer,
 	sharingService sharing.SharingServiceInterface,
+	authzService sysauthz.SystemAuthorizationServiceInterface,
 	governance identitygovernance.IdentityGovernanceServiceInterface,
-	projectResolver projectOUResolver,
+	projectValidator projectOUValidator,
+	bus eventbus.EventBusInterface,
 ) ApplicationServiceInterface {
 	return &applicationService{
 		logger:               log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ApplicationService")),
@@ -133,8 +147,11 @@ func newApplicationService(
 		resolveLifetime:      artifactLifetime,
 		valueCapturer:        valueCapturer,
 		sharingService:       sharingService,
+		authzService:         authzService,
 		governance:           governance,
-		projectResolver:      projectResolver,
+		projectValidator:     projectValidator,
+		projectRequired:      projectValidator != nil && projectscope.ProjectRequired(security.ResourceTypeApplication),
+		bus:                  bus,
 	}
 }
 
@@ -148,12 +165,27 @@ func (as *applicationService) deleteEntityCompensation(ctx context.Context, appI
 // CreateApplication creates the application.
 func (as *applicationService) CreateApplication(ctx context.Context, app *model.ApplicationDTO) (*model.ApplicationDTO,
 	*tidcommon.ServiceError) {
+	created, svcErr := as.createApplication(ctx, app)
+	var appID string
+	if svcErr == nil {
+		appID = created.ID
+	}
+	as.publishApplicationEvent(ctx, audit.EventApplicationCreate, audit.ActionCreate, appID, svcErr)
+	return created, svcErr
+}
+
+// createApplication creates the application without publishing its audit event.
+func (as *applicationService) createApplication(ctx context.Context, app *model.ApplicationDTO) (
+	*model.ApplicationDTO, *tidcommon.ServiceError) {
 	if app == nil {
 		return nil, &ErrorApplicationNil
 	}
 	// Check if store is in pure declarative mode
 	if isDeclarativeModeEnabled() {
 		return nil, &ErrorCannotModifyDeclarativeResource
+	}
+	if svcErr := as.checkProjectGiven(app.ProjectID); svcErr != nil {
+		return nil, svcErr
 	}
 
 	// Check if an application with the same ID exists and is declarative (in composite mode). An id
@@ -167,6 +199,10 @@ func (as *applicationService) CreateApplication(ctx context.Context, app *model.
 
 	processedDTO, inboundAuthConfig, svcErr := as.ValidateApplication(ctx, app)
 	if svcErr != nil {
+		return nil, svcErr
+	}
+	// Validation resolves the organization unit the application is created in.
+	if svcErr := as.checkApplicationAccess(ctx, security.ActionCreateApplication, app.OUID); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -262,7 +298,7 @@ func (as *applicationService) CreateApplication(ctx context.Context, app *model.
 	// Surface the Flow Secret once, on creation only.
 	returnDTO.FlowSecret = flowSecret
 
-	as.captureValues(ctx, returnDTO)
+	as.captureValues(ctx, returnDTO, flowSecret)
 	return returnDTO, nil
 }
 
@@ -343,12 +379,21 @@ func (as *applicationService) ValidateApplication(ctx context.Context, app *mode
 }
 
 // GetApplicationList list the applications. An organization unit filter lists the applications that
-// unit owns, followed by the ones shared into it.
+// unit owns, followed by the ones shared into it, as does a list without the filter by a caller confined to
+// an organization unit.
 func (as *applicationService) GetApplicationList(
 	ctx context.Context, filters map[string]interface{}) (*model.ApplicationListResponse, *tidcommon.ServiceError) {
-	ouID, rest, err := filter.SplitOUIDFilter(filters)
+	requestedOUID, rest, err := filter.SplitOUIDFilter(filters)
 	if err != nil || len(rest) > 0 {
 		return nil, &ErrorInvalidFilter
+	}
+	ouID, visible, svcErr := sysauthz.ResolveListOU(ctx, as.authzService, as.logger, security.ActionListApplications,
+		requestedOUID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if !visible {
+		return as.buildApplicationList(ctx, nil, 0, 0)
 	}
 	if ouID != "" {
 		return as.listApplicationsInOU(ctx, ouID)
@@ -369,49 +414,74 @@ func (as *applicationService) GetApplicationList(
 	return as.buildApplicationList(ctx, entities, len(entities), totalResults)
 }
 
-// GetApplicationListByProject lists the applications an organization unit of the project owns, followed
-// by the ones shared into it. Without an organization unit filter it lists the project's root
-// organization unit. A project that does not exist, or an organization unit outside it, has none.
+// GetApplicationListByProject lists the applications of a project, narrowed to those an organization
+// unit owns when the filter names one. A project that does not exist has none.
 func (as *applicationService) GetApplicationListByProject(ctx context.Context, projectID string,
 	filters map[string]interface{}) (*model.ApplicationListResponse, *tidcommon.ServiceError) {
 	ouID, rest, err := filter.SplitOUIDFilter(filters)
 	if err != nil || len(rest) > 0 {
 		return nil, &ErrorInvalidFilter
 	}
-
-	ouID, svcErr := as.resolveProjectOU(ctx, projectID, ouID)
+	if projectID == "" {
+		return as.buildApplicationList(ctx, nil, 0, 0)
+	}
+	ouID, visible, svcErr := sysauthz.ResolveListOU(ctx, as.authzService, as.logger, security.ActionListApplications,
+		ouID)
 	if svcErr != nil {
-		if svcErr.Type == tidcommon.ClientErrorType {
-			return as.buildApplicationList(ctx, nil, 0, 0)
-		}
 		return nil, svcErr
 	}
-	return as.listApplicationsInOU(ctx, ouID)
+	if !visible {
+		return as.buildApplicationList(ctx, nil, 0, 0)
+	}
+	var ouIDs []string
+	if ouID != "" {
+		ouIDs = []string{ouID}
+	}
+
+	total, err := as.entityService.GetEntityListCountByProject(ctx, providers.EntityCategoryApp, projectID, ouIDs)
+	if err != nil {
+		as.logger.Error(ctx, "Failed to count project application entities",
+			log.String("projectID", projectID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	entities, err := as.entityService.GetEntityListByProject(ctx, providers.EntityCategoryApp, projectID, ouIDs,
+		serverconst.MaxCompositeStoreRecords, 0)
+	if err != nil {
+		as.logger.Error(ctx, "Failed to list project application entities",
+			log.String("projectID", projectID), log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	return as.buildApplicationList(ctx, entities, len(entities), total)
 }
 
-// resolveProjectOU returns the organization unit of the project that an application belongs to: the
-// project's root organization unit when ouID is empty, or ouID when it is in the project. It returns
-// ErrorInvalidProject when no such project exists, ErrorOUNotInProject when the organization unit is
-// outside the project, and ErrorInvalidRequestFormat when the organization unit does not exist.
-func (as *applicationService) resolveProjectOU(
-	ctx context.Context, projectID, ouID string) (string, *tidcommon.ServiceError) {
-	if projectID == "" || as.projectResolver == nil {
-		return "", &ErrorInvalidProject
+// checkProjectGiven refuses an application created without a project where one is required.
+func (as *applicationService) checkProjectGiven(projectID string) *tidcommon.ServiceError {
+	if projectID == "" && as.projectRequired {
+		return &ErrorProjectRequired
 	}
-	resolved, svcErr := as.projectResolver.ResolveProjectOU(ctx, projectID, ouID)
-	if svcErr == nil {
-		return resolved, nil
+	return nil
+}
+
+// validateProjectOU checks that an application's organization unit belongs to its project. It returns
+// ErrorInvalidProject when no such project exists, and ErrorOUNotInProject when the organization unit is
+// outside the project.
+//
+// A deployment that serves no projects, such as a Data Plane, cannot check the project. It keeps the
+// project ID and organization unit as given so that imported configuration retains them.
+func (as *applicationService) validateProjectOU(ctx context.Context, projectID, ouID string) *tidcommon.ServiceError {
+	if as.projectValidator == nil {
+		return nil
 	}
-	if svcErr.Type != tidcommon.ClientErrorType {
-		return "", &tidcommon.InternalServerError
-	}
-	switch svcErr.Code {
-	case projectNotFoundErrorCode:
-		return "", &ErrorInvalidProject
-	case ouNotInProjectErrorCode:
-		return "", &ErrorOUNotInProject
+	svcErr := as.projectValidator.ValidateProjectOU(ctx, projectID, ouID)
+	switch {
+	case svcErr == nil:
+		return nil
+	case svcErr.Code == projectscope.ProjectNotFoundErrorCode:
+		return &ErrorInvalidProject
+	case svcErr.Code == projectscope.OUNotInProjectErrorCode:
+		return &ErrorOUNotInProject
 	default:
-		return "", &ErrorInvalidRequestFormat
+		return &tidcommon.InternalServerError
 	}
 }
 
@@ -484,6 +554,15 @@ func (as *applicationService) buildApplicationList(ctx context.Context, entities
 		applicationList = append(applicationList, resp)
 	}
 
+	if err := managedresource.MarkDeployed(ctx, as.managed, applicationList,
+		func(a *model.BasicApplicationResponse) string { return a.ID },
+		func(a *model.BasicApplicationResponse) { a.IsReadOnly = true },
+		managedresource.TypeApplication); err != nil {
+		// Every write to such an application is refused whatever the list says, so it is served without the
+		// flag.
+		as.logger.Error(ctx, "Failed to read which applications a control plane deployed", log.Error(err))
+	}
+
 	return &model.ApplicationListResponse{
 		TotalResults: totalResults,
 		Count:        len(applicationList),
@@ -511,7 +590,7 @@ func (as *applicationService) GetOAuthApplication(
 	appEntity, entErr := as.entityService.GetEntityProfile(ctx, client.ID)
 	if entErr != nil && !errors.Is(entErr, entity.ErrEntityNotFound) {
 		as.logger.Error(ctx, "Failed to load entity for OAuth client",
-			log.String("entityID", client.ID), log.Error(entErr))
+			log.MaskedString(log.LoggerKeyEntityID, client.ID), log.Error(entErr))
 		return nil, &tidcommon.InternalServerError
 	}
 	if appEntity == nil || appEntity.Category != providers.EntityCategoryApp {
@@ -531,7 +610,59 @@ func (as *applicationService) GetApplication(ctx context.Context, appID string) 
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	return as.enrichApplicationWithCertificate(ctx, buildApplicationResponse(fullApp))
+	if svcErr := as.checkApplicationAccess(ctx, security.ActionReadApplication, fullApp.OUID); svcErr != nil {
+		return as.getSharedApplication(ctx, fullApp, svcErr)
+	}
+	app, svcErr := as.enrichApplicationWithCertificate(ctx, buildApplicationResponse(fullApp))
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	// Read in its owning organization unit, as a shared application is read in the one it is shared into.
+	app.IsOwnedByOU = new(true)
+	return app, nil
+}
+
+// getSharedApplication answers a read refused in the application's owning organization unit with the
+// application as the organization unit the caller is confined to sees it, when the application is shared
+// there, and with the refusal otherwise. That unit cannot change it, as applications declare no fields it
+// may override.
+func (as *applicationService) getSharedApplication(ctx context.Context, fullApp *model.ApplicationProcessedDTO,
+	refusal *tidcommon.ServiceError) (*providers.Application, *tidcommon.ServiceError) {
+	ouID, svcErr := sharing.SharedIntoCallerOU(ctx, as.authzService, as.sharingService, as.logger,
+		ApplicationSharingType, fullApp.ID, fullApp.OUID, refusal)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if ouID == "" {
+		return nil, refusal
+	}
+	if svcErr := as.checkApplicationAccess(ctx, security.ActionReadApplication, ouID); svcErr != nil {
+		return nil, svcErr
+	}
+	app, svcErr := as.enrichApplicationWithCertificate(ctx, buildApplicationResponse(fullApp))
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	app.OUID = ouID
+	app.IsOwnedByOU = new(false)
+	app.IsReadOnly = true
+	return app, nil
+}
+
+// sharedApplicationRefusal answers a write refused in the application's owning organization unit with
+// ErrorSharedApplicationReadOnly when the application is shared into the organization unit the caller is
+// confined to, and with the refusal otherwise.
+func (as *applicationService) sharedApplicationRefusal(ctx context.Context, appID, ownerOUID string,
+	refusal *tidcommon.ServiceError) *tidcommon.ServiceError {
+	ouID, svcErr := sharing.SharedIntoCallerOU(ctx, as.authzService, as.sharingService, as.logger,
+		ApplicationSharingType, appID, ownerOUID, refusal)
+	if svcErr != nil {
+		return svcErr
+	}
+	if ouID == "" {
+		return refusal
+	}
+	return &ErrorSharedApplicationReadOnly
 }
 
 // checkApplicationDeclarative refuses an application declared in a resource file, which cannot be
@@ -554,13 +685,52 @@ func (as *applicationService) checkApplicationDeclarative(
 	return nil
 }
 
+// checkApplicationMutable refuses a change to an application declared in a file, or deployed by a control
+// plane unless the change is the managed import's. An id no entity holds is answered as not found.
+func (as *applicationService) checkApplicationMutable(
+	ctx context.Context, appID string,
+) *tidcommon.ServiceError {
+	if svcErr := as.checkApplicationDeclarative(ctx, appID); svcErr != nil {
+		return svcErr
+	}
+	return as.refuseManaged(ctx, appID)
+}
+
+// refuseManaged refuses a change to an application a control plane deployed, unless the change is the
+// managed import's: only a deploy from the control plane changes or removes it.
+func (as *applicationService) refuseManaged(ctx context.Context, appID string) *tidcommon.ServiceError {
+	managed, err := managedresource.IsReadOnly(ctx, as.managed, appID, managedresource.TypeApplication)
+	if err != nil {
+		as.logger.Error(ctx, "Failed to read whether a control plane deployed the application",
+			log.String("appID", appID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if managed {
+		return &ErrorManagedApplication
+	}
+	return nil
+}
+
 // UpdateApplication update the application for given app id.
 func (as *applicationService) UpdateApplication(ctx context.Context, appID string, app *model.ApplicationDTO) (
+	*model.ApplicationDTO, *tidcommon.ServiceError) {
+	updated, svcErr := as.updateApplication(ctx, appID, app)
+	as.publishApplicationEvent(ctx, audit.EventApplicationUpdate, audit.ActionUpdate, appID, svcErr)
+	return updated, svcErr
+}
+
+// updateApplication updates the application for the given app id without publishing its audit event.
+func (as *applicationService) updateApplication(ctx context.Context, appID string, app *model.ApplicationDTO) (
 	*model.ApplicationDTO, *tidcommon.ServiceError) {
 	if appID == "" {
 		return nil, &ErrorInvalidApplicationID
 	}
-	if svcErr := as.checkApplicationDeclarative(ctx, appID); svcErr != nil {
+	if svcErr := as.checkApplicationMutable(ctx, appID); svcErr != nil {
+		return nil, svcErr
+	}
+	// An update can set the client secret, switch the authentication method or replace the
+	// certificate, so it is control over the application.
+	if svcErr := as.authzService.CanControlEntity(ctx, appID); svcErr != nil {
 		return nil, svcErr
 	}
 	existingApp, inboundAuthConfig, svcErr := as.validateApplicationForUpdate(ctx, appID, app)
@@ -569,6 +739,10 @@ func (as *applicationService) UpdateApplication(ctx context.Context, appID strin
 		return nil, svcErr
 	}
 
+	secretChange, svcErr := as.resolveClientSecretDisposition(ctx, appID, existingApp, inboundAuthConfig)
+	if svcErr != nil {
+		return nil, svcErr
+	}
 	processedDTO := as.buildProcessedDTOForUpdate(appID, app, inboundAuthConfig)
 
 	inboundClient := toInboundClient(processedDTO)
@@ -585,19 +759,31 @@ func (as *applicationService) UpdateApplication(ctx context.Context, appID strin
 		inboundAuthConfig.OAuthConfig != nil &&
 		inboundAuthConfig.OAuthConfig.ClientSecret != ""
 
-	// Update config first, while entity attributes still hold the previous client_id so the
-	// inbound client service can clean up the old OAuth-app cert.
-	if err := as.inboundClientService.UpdateInboundClient(
-		ctx, &inboundClient, oauthProfile, oauthSecretSupplied, newOAuthClientID,
-	); err != nil {
-		if svcErr := as.translateInboundClientError(ctx, err); svcErr != nil {
-			return nil, svcErr
+	write := func() *tidcommon.ServiceError {
+		// Update config first, while entity attributes still hold the previous client_id so the
+		// inbound client service can clean up the old OAuth-app cert.
+		if err := as.inboundClientService.UpdateInboundClient(
+			ctx, &inboundClient, oauthProfile, oauthSecretSupplied, newOAuthClientID,
+		); err != nil {
+			if svcErr := as.translateInboundClientError(ctx, err); svcErr != nil {
+				return svcErr
+			}
+			as.logger.Error(ctx, "Failed to update application", log.Error(err), log.String("appID", appID))
+			return &tidcommon.InternalServerError
 		}
-		as.logger.Error(ctx, "Failed to update application", log.Error(err), log.String("appID", appID))
-		return nil, &tidcommon.InternalServerError
+		return as.updateEntityDataForApplicationUpdate(ctx, appID, app, inboundAuthConfig,
+			secretChange != clientSecretUnchanged)
 	}
-
-	if svcErr := as.updateEntityDataForApplicationUpdate(ctx, appID, app, inboundAuthConfig); svcErr != nil {
+	if secretChange == clientSecretRotated {
+		// The caller chose the secret, so a failed post flow is reported as the update's failure.
+		var postErr *tidcommon.ServiceError
+		if svcErr, postErr = as.entityService.RotateClientSecret(ctx, appID, write); svcErr == nil {
+			svcErr = postErr
+		}
+	} else {
+		svcErr = write()
+	}
+	if svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -632,7 +818,7 @@ func (as *applicationService) UpdateApplication(ctx context.Context, appID strin
 	// The update changes no runtime state, so the status read before the write still holds.
 	returnDTO.Status = existingApp.Status
 
-	as.captureValues(ctx, returnDTO)
+	as.captureValues(ctx, returnDTO, flowSecretToSet(app, inboundAuthConfig))
 	return returnDTO, nil
 }
 
@@ -640,6 +826,7 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 	appID string,
 	app *model.ApplicationDTO,
 	inboundAuthConfig *providers.InboundAuthConfigWithSecret,
+	writeClientSecret bool,
 ) *tidcommon.ServiceError {
 	var clientID string
 	if inboundAuthConfig != nil && inboundAuthConfig.OAuthConfig != nil {
@@ -661,13 +848,22 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 		return &tidcommon.InternalServerError
 	}
 
+	if entErr := as.entityService.UpdateOwnership(ctx, appID, app.OUID, app.ProjectID); entErr != nil {
+		if svcErr := mapEntityError(entErr); svcErr != nil {
+			return svcErr
+		}
+		as.logger.Error(ctx, "Failed to update entity organization unit and project",
+			log.String("appID", appID), log.Error(entErr))
+		return &tidcommon.InternalServerError
+	}
+
 	// Rotate the Flow Secret when a new value is supplied (e.g. a regenerate request). Only
 	// applications eligible to hold an Flow Secret — backend / server-side apps that are neither
 	// public nor redirect-based and have the token-exchange grant — may have one set; a value
 	// supplied for an ineligible app is ignored. Credential updates merge, so this preserves the
 	// stored client secret, and an empty value leaves the existing Flow Secret intact.
-	if app.FlowSecret != "" && isFlowSecretEligible(app.Type, inboundAuthConfig) {
-		flowSecretJSON, marshalErr := buildSystemCredentials("", app.FlowSecret)
+	if flowSecret := flowSecretToSet(app, inboundAuthConfig); flowSecret != "" {
+		flowSecretJSON, marshalErr := buildSystemCredentials("", flowSecret)
 		if marshalErr != nil {
 			as.logger.Error(ctx, "Failed to build flow secret credentials for update", log.Error(marshalErr))
 			return &tidcommon.InternalServerError
@@ -682,16 +878,13 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 		}
 	}
 
-	// Decide client-secret disposition:
-	// - No OAuth config, or OAuth method that doesn't use a client secret → leave credentials as-is.
-	// - OAuth method requires a secret + new secret supplied → store the new secret.
-	// - OAuth method requires a secret + no new secret supplied → leave existing secret intact (no rotation).
+	// The secret is written only when the client uses one and the caller decided it changed.
 	if inboundAuthConfig == nil || inboundAuthConfig.OAuthConfig == nil ||
-		!authMethodRequiresClientSecret(inboundAuthConfig.OAuthConfig.PublicClient,
+		!inboundclient.AuthMethodUsesClientSecret(inboundAuthConfig.OAuthConfig.PublicClient,
 			inboundAuthConfig.OAuthConfig.TokenEndpointAuthMethod) {
 		return nil
 	}
-	if inboundAuthConfig.OAuthConfig.ClientSecret == "" {
+	if inboundAuthConfig.OAuthConfig.ClientSecret == "" || !writeClientSecret {
 		return nil
 	}
 
@@ -711,6 +904,16 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 	}
 
 	return nil
+}
+
+// flowSecretToSet returns the Flow Secret an update sets: the one supplied, when the application may
+// hold one, and empty otherwise.
+func flowSecretToSet(app *model.ApplicationDTO,
+	inboundAuthConfig *providers.InboundAuthConfigWithSecret) string {
+	if app.FlowSecret == "" || !isFlowSecretEligible(app.Type, inboundAuthConfig) {
+		return ""
+	}
+	return app.FlowSecret
 }
 
 // isFlowSecretEligible reports whether an application may hold a Flow Secret. Browser (public
@@ -748,24 +951,6 @@ func seedClientSubTypeAttribute(processedDTO *model.ApplicationProcessedDTO) {
 	oauthProcessed.OAuthConfig.Token = oauthutils.EnsureClientSubTypeAttribute(oauthProcessed.OAuthConfig.Token)
 }
 
-// authMethodRequiresClientSecret reports whether a client authenticating this way holds a client secret.
-func authMethodRequiresClientSecret(publicClient bool, method providers.TokenEndpointAuthMethod) bool {
-	if publicClient {
-		return false
-	}
-	switch method {
-	case providers.TokenEndpointAuthMethodClientSecretBasic,
-		providers.TokenEndpointAuthMethodClientSecretPost:
-		return true
-	case providers.TokenEndpointAuthMethodNone,
-		providers.TokenEndpointAuthMethodPrivateKeyJWT:
-		return false
-	}
-	// Default to requiring a secret when method is unspecified: the write path defaults an unset method
-	// to client_secret_basic, so such a client does have one.
-	return true
-}
-
 // DeleteApplication delete the application for given app id.
 // SetDependencyRegistry injects the dependency registry. Called by servicemanager after the
 // provider services are initialized to avoid a cyclic import.
@@ -774,10 +959,23 @@ func (as *applicationService) SetDependencyRegistry(r resourcedependency.Registr
 }
 
 func (as *applicationService) DeleteApplication(ctx context.Context, appID string) *tidcommon.ServiceError {
+	svcErr := as.deleteApplication(ctx, appID)
+	// A delete that found nothing to remove succeeds without an event, so no caller can record a
+	// deletion of an ID it made up.
+	if svcErr == errApplicationNotFoundNoop {
+		return nil
+	}
+	as.publishApplicationEvent(ctx, audit.EventApplicationDelete, audit.ActionDelete, appID, svcErr)
+	return svcErr
+}
+
+// deleteApplication deletes the application for the given app id without publishing its audit event.
+func (as *applicationService) deleteApplication(ctx context.Context, appID string) *tidcommon.ServiceError {
 	if appID == "" {
 		return &ErrorInvalidApplicationID
 	}
 
+	found := false
 	if existing, entErr := as.entityService.GetEntityProfile(ctx, appID); entErr != nil {
 		if !errors.Is(entErr, entity.ErrEntityNotFound) {
 			as.logger.Error(ctx, "Failed to load entity before delete",
@@ -788,10 +986,18 @@ func (as *applicationService) DeleteApplication(ctx context.Context, appID strin
 		if existing.Category != providers.EntityCategoryApp {
 			return &ErrorApplicationNotFound
 		}
+		if svcErr := as.checkApplicationAccess(ctx, security.ActionDeleteApplication,
+			existing.OUID); svcErr != nil {
+			return as.sharedApplicationRefusal(ctx, appID, existing.OUID, svcErr)
+		}
 		// Refused before anything is removed. Only an entity that exists can be declared.
-		if svcErr := as.checkApplicationDeclarative(ctx, appID); svcErr != nil {
+		if svcErr := as.checkApplicationMutable(ctx, appID); svcErr != nil {
 			return svcErr
 		}
+		if svcErr := as.authzService.CanControlEntity(ctx, appID); svcErr != nil {
+			return svcErr
+		}
+		found = true
 	}
 
 	// Remove dependents that must be deleted with the application (e.g. its role assignments and
@@ -819,8 +1025,8 @@ func (as *applicationService) DeleteApplication(ctx context.Context, appID strin
 		return translateSharingError(svcErr)
 	}
 
-	// Delete config. A missing inbound client is non-fatal (e.g. on a retry after a partial
-	// delete) so the remaining delete steps still run.
+	// Delete config, which revokes what the client issued. A missing inbound client is non-fatal (e.g.
+	// on a retry after a partial delete) so the remaining delete steps still run.
 	if appErr := as.inboundClientService.DeleteInboundClient(ctx, appID); appErr != nil &&
 		!errors.Is(appErr, inboundclient.ErrInboundClientNotFound) {
 		if svcErr := as.translateInboundClientError(ctx, appErr); svcErr != nil {
@@ -829,9 +1035,8 @@ func (as *applicationService) DeleteApplication(ctx context.Context, appID strin
 		as.logger.Error(ctx, "Failed to delete application", log.Error(appErr), log.String("appID", appID))
 		return &tidcommon.InternalServerError
 	}
-
-	// Delete entity. A missing entity is non-fatal (e.g. on a retry after a partial delete) so the
-	// remaining delete steps still run.
+	// Delete entity, which revokes what was issued to it as a subject. A missing entity is non-fatal (e.g. on a
+	// retry after a partial delete) so the remaining delete steps still run.
 	if entErr := as.entityService.DeleteEntity(ctx, appID); entErr != nil &&
 		!errors.Is(entErr, entity.ErrEntityNotFound) {
 		if svcErr := mapEntityError(entErr); svcErr != nil {
@@ -842,7 +1047,24 @@ func (as *applicationService) DeleteApplication(ctx context.Context, appID strin
 		return &tidcommon.InternalServerError
 	}
 
-	return as.deleteLocalizedVariants(ctx, appID)
+	if svcErr := as.deleteLocalizedVariants(ctx, appID); svcErr != nil || found {
+		return svcErr
+	}
+	return errApplicationNotFoundNoop
+}
+
+// publishApplicationEvent publishes the audit event of an attempt on the application with appID, after
+// the change committed or was refused. An update or a delete is refused by a system flow only once the
+// application is found. An update or a delete that fails after part of it is stored, a rotated client
+// secret whose revocation flow then fails or localized variants left after the entity is deleted, is
+// recorded as failed: a known limitation.
+func (as *applicationService) publishApplicationEvent(ctx context.Context, name string, action audit.Action,
+	appID string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the ID the caller asked for, even one that matches no application, as
+	// forensic evidence of what was probed; the payload caps it and the sink escapes it.
+	target := audit.Ref{Type: audit.TargetTypeApplication, ID: appID}
+	eventbus.TryPublish(ctx, as.bus,
+		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
 }
 
 // ValidateDeleteApplication reports whether the application may be deleted and returns the profile of
@@ -854,7 +1076,13 @@ func (as *applicationService) ValidateDeleteApplication(ctx context.Context, app
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	if svcErr := as.checkApplicationDeclarative(ctx, appID); svcErr != nil {
+	if svcErr := as.checkApplicationAccess(ctx, security.ActionDeleteApplication, existing.OUID); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := as.checkApplicationMutable(ctx, appID); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := as.authzService.CanControlEntity(ctx, appID); svcErr != nil {
 		return nil, svcErr
 	}
 	if as.dependencyRegistry == nil {
@@ -905,72 +1133,123 @@ func (as *applicationService) ensureNoBlockingDependencies(
 	})
 }
 
-// ValidateCredentialAction reports whether the action may be performed on the application's credential
-// and returns the profile of the artifacts it has issued, without changing state. A client that
-// authenticates without a secret has nothing to rotate.
-func (as *applicationService) ValidateCredentialAction(
-	ctx context.Context, appID string, action model.CredentialAction) (
-	*model.ApplicationArtifactProfile, *tidcommon.ServiceError) {
-	if action != model.CredentialActionRegenerate {
-		return nil, &ErrorUnsupportedCredentialAction
-	}
+// ValidateClientSecretRegeneration reports whether the caller may regenerate the application's client
+// secret, without changing state. A client that authenticates without a secret has nothing to rotate. The
+// entity service asks it before a regeneration.
+func (as *applicationService) ValidateClientSecretRegeneration(ctx context.Context,
+	appID string) *tidcommon.ServiceError {
 	existing, svcErr := as.loadApplicationEntity(ctx, appID)
 	if svcErr != nil {
-		return nil, svcErr
+		return svcErr
 	}
-	if svcErr := as.checkApplicationDeclarative(ctx, appID); svcErr != nil {
-		return nil, svcErr
+	if svcErr := as.checkApplicationAccess(ctx, security.ActionUpdateApplication, existing.OUID); svcErr != nil {
+		return svcErr
+	}
+	if svcErr := as.checkApplicationMutable(ctx, appID); svcErr != nil {
+		return svcErr
+	}
+	if svcErr := as.authzService.CanControlEntity(ctx, appID); svcErr != nil {
+		return svcErr
 	}
 
 	clientID, err := clientIDFromEntity(existing)
 	if err != nil {
 		as.logger.Error(ctx, "Failed to read the application's OAuth client id",
 			log.String("appID", appID), log.Error(err))
-		return nil, &tidcommon.InternalServerError
+		return &tidcommon.InternalServerError
 	}
 	if clientID == "" {
-		return nil, &ErrorApplicationHasNoClientSecret
+		return &ErrorApplicationHasNoClientSecret
 	}
 	client, err := as.inboundClientService.GetOAuthClientByClientID(ctx, clientID)
 	if err != nil || client == nil {
 		as.logger.Error(ctx, "Failed to load OAuth client before secret regeneration",
 			log.String("appID", appID))
-		return nil, &tidcommon.InternalServerError
+		return &tidcommon.InternalServerError
 	}
-	if !authMethodRequiresClientSecret(client.PublicClient, client.TokenEndpointAuthMethod) {
-		return nil, &ErrorApplicationHasNoClientSecret
+	if !inboundclient.AuthMethodUsesClientSecret(client.PublicClient, client.TokenEndpointAuthMethod) {
+		return &ErrorApplicationHasNoClientSecret
 	}
-	return as.artifactProfileForClient(clientID, client), nil
+	return nil
 }
 
-// ApplyCredentialAction performs the action and returns the new credential value. The secret is
-// generated server-side, and this return is the only time it is readable: it is hashed on write and no
-// read path returns it.
-func (as *applicationService) ApplyCredentialAction(
-	ctx context.Context, appID string, action model.CredentialAction) (
-	string, *tidcommon.ServiceError) {
-	if _, svcErr := as.ValidateCredentialAction(ctx, appID, action); svcErr != nil {
-		return "", svcErr
+// RegenerateClientSecret replaces the application's client secret with one generated server-side and
+// returns it. This return is the only time it is readable: it is hashed on write and no read path
+// returns it. The entity service generates and stores it, revoking what the old secret issued.
+func (as *applicationService) RegenerateClientSecret(ctx context.Context, appID string) (
+	*model.ClientSecretResponse, *tidcommon.ServiceError) {
+	regenerated, svcErr := as.entityService.RegenerateClientSecret(ctx, providers.EntityCategoryApp, appID)
+	// A failed revocation after the write is audited as the failure it is, but the secret is still
+	// returned: it is already stored, and nobody could read it again, so withholding it would leave the
+	// application with a secret no one holds. The response says the revocation is incomplete, so the
+	// caller can regenerate again.
+	audited := svcErr
+	if audited == nil {
+		audited = regenerated.RevocationError
 	}
+	as.publishApplicationEvent(ctx, audit.EventApplicationUpdate, audit.ActionUpdate, appID, audited)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	as.captureRegeneratedSecret(ctx, appID, regenerated.ClientSecret)
+	return &model.ClientSecretResponse{ClientSecret: regenerated.ClientSecret,
+		RevocationIncomplete: regenerated.RevocationError != nil, Revoked: regenerated.Revoked}, nil
+}
 
-	secret, err := oauthutils.GenerateOAuth2ClientSecret()
-	if err != nil {
-		as.logger.Error(ctx, "Failed to generate OAuth client secret", log.Error(err),
-			log.String("appID", appID))
-		return "", &tidcommon.InternalServerError
+// captureRegeneratedSecret hands the application, with the secret just written, to the value capturer, as
+// an update that sets the secret does. Only the regeneration still holds the secret, since it is hashed on
+// write. A failure to read the application back is logged and leaves the capture out, as any failure to
+// capture does: the apply that later needs the value reports it missing.
+func (as *applicationService) captureRegeneratedSecret(ctx context.Context, appID, secret string) {
+	if as.valueCapturer == nil {
+		return
 	}
-	credentials, marshalErr := buildSystemCredentials(secret, "")
-	if marshalErr != nil {
-		as.logger.Error(ctx, "Failed to build system credentials", log.Error(marshalErr),
+	fullApp, svcErr := as.getApplication(ctx, appID)
+	if svcErr != nil {
+		as.logger.Warn(ctx, "Failed to read the application back, so its regenerated secret was not captured",
 			log.String("appID", appID))
-		return "", &tidcommon.InternalServerError
+		return
 	}
-	if entErr := as.entityService.UpdateSystemCredentials(ctx, appID, credentials); entErr != nil {
-		as.logger.Error(ctx, "Failed to persist regenerated client secret", log.Error(entErr),
-			log.String("appID", appID))
-		return "", &tidcommon.InternalServerError
+	app := buildApplicationResponse(fullApp)
+	for i := range app.InboundAuthConfig {
+		if app.InboundAuthConfig[i].OAuthConfig != nil {
+			app.InboundAuthConfig[i].OAuthConfig.ClientSecret = secret
+		}
 	}
-	return secret, nil
+	as.valueCapturer.CaptureValues(ctx, resourceTypeApplication, app)
+}
+
+// resolveClientSecretDisposition tells what an update does with the supplied client secret. The stored
+// secret is a hash, so the supplied value is verified against it the way the token endpoint
+// authenticates the client. A client that authenticated without a secret is given one as its first,
+// whatever an earlier configuration left stored.
+func (as *applicationService) resolveClientSecretDisposition(ctx context.Context, appID string,
+	existing *model.ApplicationProcessedDTO, inboundAuthConfig *providers.InboundAuthConfigWithSecret,
+) (clientSecretDisposition, *tidcommon.ServiceError) {
+	if inboundAuthConfig == nil || inboundAuthConfig.OAuthConfig == nil ||
+		inboundAuthConfig.OAuthConfig.ClientSecret == "" ||
+		!inboundclient.AuthMethodUsesClientSecret(inboundAuthConfig.OAuthConfig.PublicClient,
+			inboundAuthConfig.OAuthConfig.TokenEndpointAuthMethod) {
+		return clientSecretUnchanged, nil
+	}
+	current := getOAuthInboundAuthConfigProcessedDTO(existing.InboundAuthConfig)
+	if current == nil || current.OAuthConfig == nil ||
+		!inboundclient.AuthMethodUsesClientSecret(current.OAuthConfig.PublicClient,
+			current.OAuthConfig.TokenEndpointAuthMethod) {
+		return clientSecretSet, nil
+	}
+	_, _, err := as.entityService.AuthenticateEntityByID(ctx, appID,
+		map[string]interface{}{fieldClientSecret: inboundAuthConfig.OAuthConfig.ClientSecret})
+	switch {
+	case err == nil:
+		return clientSecretUnchanged, nil
+	case errors.Is(err, entity.ErrAuthenticationFailed):
+		return clientSecretRotated, nil
+	default:
+		as.logger.Error(ctx, "Failed to compare the supplied client secret with the application's",
+			log.String("appID", appID), log.Error(err))
+		return clientSecretUnchanged, &tidcommon.InternalServerError
+	}
 }
 
 // loadApplicationEntity returns the application's entity, mapping a missing or non-application record to
@@ -1006,15 +1285,6 @@ func (as *applicationService) artifactProfile(
 	return &model.ApplicationArtifactProfile{
 		ClientKey:          clientID,
 		MaxLifetimeSeconds: int64(as.resolveArtifactLifetime(ctx, clientID) / time.Second),
-	}
-}
-
-// artifactProfileForClient builds the same profile from a client the caller has already resolved.
-func (as *applicationService) artifactProfileForClient(
-	clientID string, client *providers.OAuthClient) *model.ApplicationArtifactProfile {
-	return &model.ApplicationArtifactProfile{
-		ClientKey:          clientID,
-		MaxLifetimeSeconds: int64(as.artifactLifetime(client) / time.Second),
 	}
 }
 
@@ -1071,11 +1341,16 @@ func clientIDFromEntity(e *providers.Entity) (string, error) {
 
 // GetResourceDependencies returns the applications that reference the resource identified
 // by (resourceType, id). It implements the resourcedependency.Provider interface. The
-// inbound-client store resolves which reference types are tracked, so no per-type handling is
-// needed here. The number of referencing entities is bounded by MaxCompositeStoreRecords
-// (the inbound-client store limit).
+// inbound-client store resolves which reference types are tracked. An application falls back from
+// a reference it loses, except from an agent type it allows: a deleted handle could be recreated
+// in another organization unit and inherit the allowance, so that reference blocks the delete. The
+// number of referencing entities is bounded by MaxCompositeStoreRecords (the inbound-client store
+// limit).
 func (as *applicationService) GetResourceDependencies(
 	ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error) {
+	if resourceType == resourcedependency.ResourceTypeOU {
+		return as.organizationUnitUsages(ctx, id)
+	}
 	ids, _, err := as.inboundClientService.GetEntityIDsByReference(
 		ctx, resourceType, id, serverconst.MaxCompositeStoreRecords, 0)
 	if err != nil {
@@ -1092,30 +1367,59 @@ func (as *applicationService) GetResourceDependencies(
 		return nil, entErr
 	}
 
+	behavior := resourcedependency.BehaviorFallback
+	if resourceType == resourcedependency.ResourceTypeAgentType {
+		behavior = resourcedependency.BehaviorRestrict
+	}
 	usages := make([]resourcedependency.ResourceDependency, 0, len(entities))
 	for _, e := range entities {
 		// Applications and agents share the inbound-client store; only report applications.
 		if e.Category != providers.EntityCategoryApp {
 			continue
 		}
-		name := ""
-		var sysAttrs map[string]interface{}
-		if len(e.SystemAttributes) > 0 {
-			_ = json.Unmarshal(e.SystemAttributes, &sysAttrs)
-		}
-		if sysAttrs != nil {
-			if n, ok := sysAttrs[fieldName].(string); ok {
-				name = n
-			}
-		}
 		usages = append(usages, resourcedependency.ResourceDependency{
 			ResourceType:     resourcedependency.ResourceTypeApplication,
 			ID:               e.ID,
-			DisplayName:      name,
-			BehaviorOnDelete: resourcedependency.BehaviorFallback,
+			DisplayName:      applicationName(e),
+			BehaviorOnDelete: behavior,
 		})
 	}
 	return usages, nil
+}
+
+// organizationUnitUsages reports the applications an organization unit owns, which block its deletion. The
+// number scanned is bounded by MaxCompositeStoreRecords.
+func (as *applicationService) organizationUnitUsages(
+	ctx context.Context, ouID string) ([]resourcedependency.ResourceDependency, error) {
+	entities, err := as.entityService.GetEntityListByOUIDs(
+		ctx, providers.EntityCategoryApp, []string{ouID}, serverconst.MaxCompositeStoreRecords, 0, nil)
+	if err != nil {
+		as.logger.Error(ctx, "Failed to list applications in organization unit", log.Error(err))
+		return nil, err
+	}
+	usages := make([]resourcedependency.ResourceDependency, 0, len(entities))
+	for _, e := range entities {
+		usages = append(usages, resourcedependency.ResourceDependency{
+			ResourceType:     resourcedependency.ResourceTypeApplication,
+			ID:               e.ID,
+			DisplayName:      applicationName(e),
+			BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+		})
+	}
+	return usages, nil
+}
+
+// applicationName reads an application's name from its entity's system attributes, or returns an empty string
+// when it has none.
+func applicationName(e providers.Entity) string {
+	var sysAttrs map[string]interface{}
+	if len(e.SystemAttributes) > 0 {
+		_ = json.Unmarshal(e.SystemAttributes, &sysAttrs)
+	}
+	if name, ok := sysAttrs[fieldName].(string); ok {
+		return name
+	}
+	return ""
 }
 
 // ValidateReferenceUpdate re-validates every application that references (resourceType, id) after
@@ -1327,6 +1631,7 @@ func toProcessedDTO(
 	// Extract identity fields from entity system attributes.
 	if e != nil {
 		dto.OUID = e.OUID
+		dto.ProjectID = e.ProjectID
 		var sysAttrs map[string]interface{}
 		if len(e.SystemAttributes) > 0 {
 			_ = json.Unmarshal(e.SystemAttributes, &sysAttrs)
@@ -1477,6 +1782,7 @@ func buildAppEntity(appID string, app *model.ApplicationDTO, clientID string, pl
 		Type:             "application",
 		State:            providers.EntityStateActive,
 		OUID:             app.OUID,
+		ProjectID:        app.ProjectID,
 		SystemAttributes: sysAttrsJSON,
 	}
 	return e, sysCredsJSON, nil
@@ -1545,6 +1851,10 @@ func (as *applicationService) validateApplicationForUpdate(
 	if existingAppErr != nil {
 		return nil, nil, existingAppErr
 	}
+	if svcErr := as.checkApplicationAccess(ctx, security.ActionUpdateApplication,
+		existingApp.OUID); svcErr != nil {
+		return nil, nil, as.sharedApplicationRefusal(ctx, appID, existingApp.OUID, svcErr)
+	}
 
 	// If the application name is changed, check if an application with the new name already exists.
 	if existingApp.Name != app.Name {
@@ -1557,8 +1867,28 @@ func (as *applicationService) validateApplicationForUpdate(
 		}
 	}
 
+	// An update that names no organization unit keeps the application in its own.
+	if app.OUID == "" && app.OUHandle == "" {
+		app.OUID = existingApp.OUID
+	}
+	requestedProjectID := app.ProjectID
 	if svcErr := as.validateApplicationFields(ctx, app); svcErr != nil {
 		return nil, nil, svcErr
+	}
+	// Moving the application places it in another organization unit, which the caller must be allowed
+	// to act for too.
+	if app.OUID != existingApp.OUID {
+		if svcErr := as.checkApplicationAccess(ctx, security.ActionUpdateApplication, app.OUID); svcErr != nil {
+			return nil, nil, svcErr
+		}
+	}
+	// An update that names no project keeps the application in its project, so the organization unit
+	// must still belong to it.
+	if requestedProjectID == "" && existingApp.ProjectID != "" {
+		app.ProjectID = existingApp.ProjectID
+		if svcErr := as.validateProjectOU(ctx, app.ProjectID, app.OUID); svcErr != nil {
+			return nil, nil, svcErr
+		}
 	}
 
 	// The application type is immutable. Reject a request that attempts to change it; inherit the
@@ -1568,8 +1898,9 @@ func (as *applicationService) validateApplicationForUpdate(
 	}
 	app.Type = existingApp.Type
 
-	// A shared application stays in its organization unit: its policies were issued against that unit.
-	if app.OUID != existingApp.OUID {
+	// A shared application stays in its organization unit and project: its policies were issued
+	// against that unit.
+	if app.OUID != existingApp.OUID || app.ProjectID != existingApp.ProjectID {
 		policies, svcErr := as.sharingService.ListPolicies(ctx, ApplicationSharingType, appID)
 		if svcErr != nil {
 			return nil, nil, translateSharingError(svcErr)
@@ -1602,14 +1933,18 @@ func (as *applicationService) validateApplicationFields(
 		}
 		app.OUID = ou.ID
 	}
-	// A project places the application in its root organization unit, or checks that the one named
-	// belongs to it.
-	if app.ProjectID != "" {
-		ouID, svcErr := as.resolveProjectOU(ctx, app.ProjectID, app.OUID)
+	if app.OUID == "" {
+		systemOUID, svcErr := as.ouService.GetSystemOUID(ctx)
 		if svcErr != nil {
 			return svcErr
 		}
-		app.OUID = ouID
+		app.OUID = systemOUID
+	}
+	// A project checks that the application's organization unit belongs to it.
+	if app.ProjectID != "" {
+		if svcErr := as.validateProjectOU(ctx, app.ProjectID, app.OUID); svcErr != nil {
+			return svcErr
+		}
 	}
 	// Resolve flow handles to IDs when the direct IDs are absent.
 	if err := as.inboundClientService.ResolveInboundAuthProfileHandles(ctx, &app.InboundAuthProfile); err != nil {
@@ -2083,6 +2418,8 @@ func translateInboundClientFKError(err error) *tidcommon.ServiceError {
 		return &ErrorInvalidUserType
 	case errors.Is(err, inboundclient.ErrFKInvalidAgentType):
 		return &ErrorInvalidAgentType
+	case errors.Is(err, inboundclient.ErrFKAnyAgentTypeNotAlone):
+		return &ErrorAnyAgentTypeNotAlone
 	case errors.Is(err, inboundclient.ErrUserSchemaLookupFailed):
 		return &tidcommon.InternalServerError
 	case errors.Is(err, inboundclient.ErrAgentSchemaLookupFailed):
@@ -2335,6 +2672,7 @@ func buildApplicationResponse(dto *model.ApplicationProcessedDTO) *providers.App
 	application := &providers.Application{
 		ID:          dto.ID,
 		OUID:        dto.OUID,
+		ProjectID:   dto.ProjectID,
 		Name:        dto.Name,
 		Description: dto.Description,
 		Status:      dto.Status,
@@ -2428,6 +2766,7 @@ func buildBasicApplicationResponse(
 	}
 	// Enrich from entity system attributes.
 	if e != nil {
+		resp.ProjectID = e.ProjectID
 		var sysAttrs map[string]interface{}
 		if len(e.SystemAttributes) > 0 {
 			_ = json.Unmarshal(e.SystemAttributes, &sysAttrs)
@@ -2454,6 +2793,7 @@ func buildBaseApplicationProcessedDTO(appID string, app *model.ApplicationDTO,
 	return &model.ApplicationProcessedDTO{
 		ID:          appID,
 		OUID:        app.OUID,
+		ProjectID:   app.ProjectID,
 		Name:        app.Name,
 		Description: app.Description,
 		InboundAuthProfile: providers.InboundAuthProfile{
@@ -2544,6 +2884,7 @@ func buildReturnApplicationDTO(
 	returnApp := &model.ApplicationDTO{
 		ID:          appID,
 		OUID:        app.OUID,
+		ProjectID:   app.ProjectID,
 		Name:        app.Name,
 		Description: app.Description,
 		InboundAuthProfile: providers.InboundAuthProfile{
@@ -2677,7 +3018,9 @@ func (as *applicationService) cleanupStaleI18nKeys(
 
 // syncPasskeyOriginsToCORS merges the application's passkey allowed origins into the CORS writable
 // layer so the browser can reach the ThunderID server from those origins. This is additive: origins
-// already present are skipped; origins removed from an application are not pruned here.
+// already present are skipped; origins removed from an application are not pruned here. The write runs as
+// an internal operation of the application write the caller is already authorized for, since a data plane
+// refuses a token's own write to the server configuration.
 func (as *applicationService) syncPasskeyOriginsToCORS(ctx context.Context, origins []string) {
 	if as.serverConfigService == nil || len(origins) == 0 {
 		return
@@ -2738,7 +3081,7 @@ func (as *applicationService) syncPasskeyOriginsToCORS(ctx context.Context, orig
 		return
 	}
 	if svcErr := as.serverConfigService.SetConfig(
-		ctx, serverconfig.ConfigNameCORS, json.RawMessage(newConfigJSON),
+		security.WithRuntimeContext(ctx), serverconfig.ConfigNameCORS, json.RawMessage(newConfigJSON),
 	); svcErr != nil {
 		as.logger.Warn(ctx, "Failed to update CORS config with passkey allowed origins",
 			log.String("error", svcErr.ErrorDescription.DefaultValue))
@@ -2762,14 +3105,16 @@ func translateSharingError(svcErr *tidcommon.ServiceError) *tidcommon.ServiceErr
 }
 
 // requireSharing resolves the application a sharing call names and returns its owning organization
-// unit, so an unknown application answers as one rather than as a sharing failure.
+// unit, so an unknown application answers as one rather than as a sharing failure. The application is
+// read without the caller's authorization, because a sharing call is authorized against the
+// organization unit whose decision it concerns, which need not be the application's own.
 func (as *applicationService) requireSharing(
 	ctx context.Context, appID string,
 ) (string, *tidcommon.ServiceError) {
 	if appID == "" {
 		return "", &ErrorInvalidApplicationID
 	}
-	app, svcErr := as.GetApplication(ctx, appID)
+	app, svcErr := as.getApplication(ctx, appID)
 	if svcErr != nil {
 		return "", svcErr
 	}
@@ -2780,26 +3125,50 @@ func (as *applicationService) requireSharing(
 // policy id alone would reach any policy in the deployment through any application's path.
 func (as *applicationService) requireOwnPolicy(
 	ctx context.Context, appID, policyID string,
-) (sharing.Policy, *tidcommon.ServiceError) {
-	if _, svcErr := as.requireSharing(ctx, appID); svcErr != nil {
-		return sharing.Policy{}, svcErr
+) (string, sharing.Policy, *tidcommon.ServiceError) {
+	owningOUID, svcErr := as.requireSharing(ctx, appID)
+	if svcErr != nil {
+		return "", sharing.Policy{}, svcErr
 	}
 	policy, svcErr := as.sharingService.GetPolicy(ctx, policyID)
 	if svcErr != nil {
-		return sharing.Policy{}, translateSharingError(svcErr)
+		return "", sharing.Policy{}, translateSharingError(svcErr)
 	}
 	if policy.ResourceType != ApplicationSharingType || policy.ResourceID != appID {
-		return sharing.Policy{}, &ErrorSharingPolicyNotFound
+		return "", sharing.Policy{}, &ErrorSharingPolicyNotFound
 	}
-	return policy, nil
+	return owningOUID, policy, nil
 }
 
-// CreateSharingPolicy records which organization units may act for an application.
+// CreateSharingPolicy records which organization units may act for an application. A policy is the
+// initiating organization unit's decision, so that unit is the one the caller must be allowed to act
+// for.
 func (as *applicationService) CreateSharingPolicy(
+	ctx context.Context, appID string, req sharing.PolicyRequest,
+) (sharing.Policy, *tidcommon.ServiceError) {
+	policy, svcErr := as.createSharingPolicy(ctx, appID, req)
+	var policyID string
+	if svcErr == nil {
+		policyID = policy.ID
+	}
+	as.publishSharingPolicyEvent(ctx, audit.EventApplicationSharingPolicyCreate, audit.ActionCreate, appID,
+		policyID, svcErr)
+	return policy, svcErr
+}
+
+// createSharingPolicy records a sharing policy of an application without publishing its audit event.
+func (as *applicationService) createSharingPolicy(
 	ctx context.Context, appID string, req sharing.PolicyRequest,
 ) (sharing.Policy, *tidcommon.ServiceError) {
 	owningOUID, svcErr := as.requireSharing(ctx, appID)
 	if svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	initiatingOUID := req.InitiatingOUID
+	if initiatingOUID == "" {
+		initiatingOUID = owningOUID
+	}
+	if svcErr := as.checkApplicationAccess(ctx, security.ActionUpdateApplication, initiatingOUID); svcErr != nil {
 		return sharing.Policy{}, svcErr
 	}
 	// Applications that load from resource files only have all their sharing declared there.
@@ -2808,7 +3177,7 @@ func (as *applicationService) CreateSharingPolicy(
 	}
 	// A declared application's own sharing is declared with it.
 	if req.InitiatingOUID == "" || req.InitiatingOUID == owningOUID {
-		if svcErr := as.checkApplicationDeclarative(ctx, appID); svcErr != nil {
+		if svcErr := as.checkApplicationMutable(ctx, appID); svcErr != nil {
 			return sharing.Policy{}, svcErr
 		}
 	}
@@ -2818,51 +3187,111 @@ func (as *applicationService) CreateSharingPolicy(
 	return policy, translateSharingError(svcErr)
 }
 
-// GetSharingPolicy returns one of the application's sharing policies.
+// GetSharingPolicy returns one of the application's sharing policies. The owner sees every decision
+// about its application; any other organization unit sees its own.
 func (as *applicationService) GetSharingPolicy(
 	ctx context.Context, appID, policyID string,
 ) (sharing.Policy, *tidcommon.ServiceError) {
-	return as.requireOwnPolicy(ctx, appID, policyID)
+	owningOUID, policy, svcErr := as.requireOwnPolicy(ctx, appID, policyID)
+	if svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	if svcErr := sysauthz.CheckActionInAnyOU(ctx, as.authzService, as.logger, security.ActionReadApplication,
+		security.ResourceTypeApplication, owningOUID, policy.InitiatingOUID); svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	return policy, nil
 }
 
-// ListSharingPolicies returns one page of the application's sharing policies.
+// ListSharingPolicies returns one page of the application's sharing policies. A caller who may read
+// applications in the owning organization unit sees them all; any other caller sees the ones its own
+// organization units made.
 func (as *applicationService) ListSharingPolicies(
 	ctx context.Context, appID string, limit, offset int,
 ) (sharing.PolicyList, *tidcommon.ServiceError) {
-	if _, svcErr := as.requireSharing(ctx, appID); svcErr != nil {
+	owningOUID, svcErr := as.requireSharing(ctx, appID)
+	if svcErr != nil {
 		return sharing.PolicyList{}, svcErr
 	}
-	list, svcErr := as.sharingService.GetPolicyList(ctx, ApplicationSharingType, appID, limit, offset)
-	return list, translateSharingError(svcErr)
+	return sharing.ListReadablePolicies(ctx, as.sharingService, ApplicationSharingType, appID, owningOUID, limit,
+		offset, func(ouID string) *tidcommon.ServiceError {
+			return as.checkApplicationAccess(ctx, security.ActionReadApplication, ouID)
+		}, translateSharingError)
 }
 
-// UpdateSharingPolicy replaces a sharing policy's contents.
+// UpdateSharingPolicy replaces a sharing policy's contents. Only the organization unit whose decision
+// it is may change it.
 func (as *applicationService) UpdateSharingPolicy(
 	ctx context.Context, appID, policyID string, req sharing.PolicyRequest,
 ) (sharing.Policy, *tidcommon.ServiceError) {
-	if _, svcErr := as.requireOwnPolicy(ctx, appID, policyID); svcErr != nil {
+	updated, svcErr := as.updateSharingPolicy(ctx, appID, policyID, req)
+	as.publishSharingPolicyEvent(ctx, audit.EventApplicationSharingPolicyUpdate, audit.ActionUpdate, appID,
+		policyID, svcErr)
+	return updated, svcErr
+}
+
+// updateSharingPolicy replaces a sharing policy of an application without publishing its audit event.
+func (as *applicationService) updateSharingPolicy(
+	ctx context.Context, appID, policyID string, req sharing.PolicyRequest,
+) (sharing.Policy, *tidcommon.ServiceError) {
+	owningOUID, policy, svcErr := as.requireOwnPolicy(ctx, appID, policyID)
+	if svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	if svcErr := as.checkApplicationAccess(ctx, security.ActionUpdateApplication,
+		policy.InitiatingOUID); svcErr != nil {
 		return sharing.Policy{}, svcErr
 	}
 	if isDeclarativeModeEnabled() {
 		return sharing.Policy{}, &ErrorCannotModifyDeclarativeResource
 	}
-	policy, svcErr := as.sharingService.UpdatePolicy(ctx, policyID, req)
-	return policy, translateSharingError(svcErr)
+	// A deployed application's own sharing is deployed with it; a unit it is shared into may still reshare.
+	if policy.InitiatingOUID == owningOUID {
+		if svcErr := as.refuseManaged(ctx, appID); svcErr != nil {
+			return sharing.Policy{}, svcErr
+		}
+	}
+	updated, svcErr := as.sharingService.UpdatePolicy(ctx, policyID, req)
+	return updated, translateSharingError(svcErr)
 }
 
 // DeleteSharingPolicy removes a sharing policy and everything that depended on it.
 func (as *applicationService) DeleteSharingPolicy(
 	ctx context.Context, appID, policyID string,
 ) *tidcommon.ServiceError {
-	policy, svcErr := as.requireOwnPolicy(ctx, appID, policyID)
+	svcErr := as.deleteSharingPolicy(ctx, appID, policyID)
+	// A delete that found no policy of the application succeeds without an event, so no caller can record
+	// a deletion of an ID it made up.
+	if svcErr == errSharingPolicyNotFoundNoop {
+		return nil
+	}
+	as.publishSharingPolicyEvent(ctx, audit.EventApplicationSharingPolicyDelete, audit.ActionDelete, appID,
+		policyID, svcErr)
+	return svcErr
+}
+
+// deleteSharingPolicy removes a sharing policy of an application without publishing its audit event.
+func (as *applicationService) deleteSharingPolicy(
+	ctx context.Context, appID, policyID string,
+) *tidcommon.ServiceError {
+	owningOUID, policy, svcErr := as.requireOwnPolicy(ctx, appID, policyID)
 	if svcErr != nil {
 		if svcErr.Code == ErrorSharingPolicyNotFound.Code {
-			return nil
+			return errSharingPolicyNotFoundNoop
 		}
+		return svcErr
+	}
+	if svcErr := as.checkApplicationAccess(ctx, security.ActionUpdateApplication,
+		policy.InitiatingOUID); svcErr != nil {
 		return svcErr
 	}
 	if isDeclarativeModeEnabled() {
 		return &ErrorCannotModifyDeclarativeResource
+	}
+	if policy.InitiatingOUID == owningOUID {
+		if svcErr := as.refuseManaged(ctx, appID); svcErr != nil {
+			return svcErr
+		}
 	}
 	if policy.Declared {
 		return &ErrorSharingPolicyDeclared
@@ -2870,16 +3299,36 @@ func (as *applicationService) DeleteSharingPolicy(
 	return translateSharingError(as.sharingService.DeletePolicy(ctx, policyID))
 }
 
+// publishSharingPolicyEvent publishes the audit event of an attempt on the sharing policy with policyID
+// of the application with appID, after the change committed or was refused. The policy is the target and
+// the application the subject, which a succeeded or denied attempt names: a sharing call is refused only
+// once the application is found. Reshares the framework re-narrows or removes beneath a changed policy
+// write no event of their own.
+func (as *applicationService) publishSharingPolicyEvent(ctx context.Context, name string,
+	action audit.Action, appID, policyID string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the IDs the caller asked for, even ones that match nothing, as forensic
+	// evidence of what was probed; the payload caps them and the sink escapes them.
+	target := audit.Ref{Type: audit.TargetTypeApplicationSharingPolicy, ID: policyID}
+	subject := audit.Ref{Type: audit.TargetTypeApplication, ID: appID}
+	eventbus.TryPublish(ctx, as.bus, eventbus.NewEvent(ctx, name).With(
+		audit.ChangePayloadWithSubject(ctx, target, subject, action, svcErr)))
+}
+
 // ResolveSharingOverlay answers what one organization unit may do with the application. An
 // application declares no overlay fields, so the answer is visibility.
 func (as *applicationService) ResolveSharingOverlay(
 	ctx context.Context, appID, ouID string,
 ) (sharing.ResolvedOverlay, *tidcommon.ServiceError) {
-	if _, svcErr := as.requireSharing(ctx, appID); svcErr != nil {
+	owningOUID, svcErr := as.requireSharing(ctx, appID)
+	if svcErr != nil {
 		return sharing.ResolvedOverlay{}, svcErr
 	}
 	if ouID == "" {
 		return sharing.ResolvedOverlay{}, &ErrorMissingOUIDParameter
+	}
+	if svcErr := sysauthz.CheckActionInAnyOU(ctx, as.authzService, as.logger, security.ActionReadApplication,
+		security.ResourceTypeApplication, owningOUID, ouID); svcErr != nil {
+		return sharing.ResolvedOverlay{}, svcErr
 	}
 	overlay, svcErr := as.sharingService.ResolveOverlayRules(ctx, ApplicationSharingType, appID, ouID)
 	if svcErr != nil {
@@ -2895,4 +3344,21 @@ func (as *applicationService) ResolveSharingOverlay(
 		return sharing.ResolvedOverlay{}, &ErrorApplicationNotSharedToOU
 	}
 	return overlay, nil
+}
+
+// checkApplicationAccess checks the caller may perform the action on an application of the
+// organization unit.
+func (as *applicationService) checkApplicationAccess(ctx context.Context, action security.Action,
+	ouID string) *tidcommon.ServiceError {
+	allowed, svcErr := as.authzService.IsActionAllowed(ctx, action,
+		&sysauthz.ActionContext{ResourceType: security.ResourceTypeApplication, OUID: ouID})
+	if svcErr != nil {
+		as.logger.Error(ctx, "Failed to check authorization for action",
+			log.String("action", string(action)), log.Any("error", svcErr))
+		return &tidcommon.InternalServerError
+	}
+	if !allowed {
+		return &tidcommon.ErrorUnauthorized
+	}
+	return nil
 }

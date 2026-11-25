@@ -51,6 +51,9 @@ on:
         type: string
         default: "thunder-automation-bot"
 
+permissions:
+  contents: read
+
 jobs:
   parity:
     name: 🏷️ Parity Decision

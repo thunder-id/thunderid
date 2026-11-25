@@ -10,6 +10,8 @@ import type {ThemeListResponse} from '../models/responses';
 interface UseGetThemesParams {
   limit?: number;
   offset?: number;
+  /** List only the themes of this project. Without it, every theme is listed. */
+  projectId?: string;
 }
 
 /**
@@ -18,21 +20,25 @@ interface UseGetThemesParams {
  * @param params - Optional query parameters
  * @param params.limit - Maximum number of records to return (default: 30)
  * @param params.offset - Number of records to skip for pagination (default: 0)
+ * @param params.projectId - List only the themes of this project
  * @returns TanStack Query result object with theme list data
  */
 export default function useGetThemes(params?: UseGetThemesParams): UseQueryResult<ThemeListResponse> {
   const {http} = useThunderID();
   const {getServerUrl} = useConfig();
-  const {limit = 30, offset = 0} = params ?? {};
+  const {limit = 30, offset = 0, projectId} = params ?? {};
 
   return useQuery<ThemeListResponse>({
-    queryKey: [DesignQueryKeys.THEMES, {limit, offset}],
+    queryKey: [DesignQueryKeys.THEMES, {limit, offset, ...(projectId ? {projectId} : {})}],
     queryFn: async (): Promise<ThemeListResponse> => {
       const serverUrl: string = getServerUrl();
       const queryParams: URLSearchParams = new URLSearchParams({
         limit: limit.toString(),
         offset: offset.toString(),
       });
+      if (projectId) {
+        queryParams.append('projectId', projectId);
+      }
 
       const response: {
         data: ThemeListResponse;

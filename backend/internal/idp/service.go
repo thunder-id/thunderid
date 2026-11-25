@@ -16,11 +16,15 @@ import (
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/internal/system/valuecompare"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -44,9 +48,10 @@ type IDPServiceInterface interface {
 	SetDependencyRegistry(r resourcedependency.Registry)
 	ApplySchemaAwareDefaults(ctx context.Context, idp *providers.IDPDTO)
 	ResolveIdentityProviderOU(ctx context.Context, idp *providers.IDPDTO) *tidcommon.ServiceError
-	GetDirectAuthorizationTargets(
+	ValidateAuthorizationRuleMappingTargets(ctx context.Context, idp *providers.IDPDTO) *tidcommon.ServiceError
+	ResolveDirectAuthorizationTargets(
 		ctx context.Context, idp *providers.IDPDTO, claims map[string]interface{},
-	) ([]providers.AuthorizationTarget, *tidcommon.ServiceError)
+	) ([]providers.AuthorizationTarget, []providers.AuthorizationTarget, *tidcommon.ServiceError)
 }
 
 // ownerErrors are the errors given when the organization unit of an identity provider is refused.
@@ -68,6 +73,7 @@ type idpService struct {
 	dependencyRegistry resourcedependency.Registry
 	logger             *log.Logger
 	uuidGenerator      func() (string, error)
+	bus                eventbus.EventBusInterface
 }
 
 // userTypeAttributes holds a user type's non-credential schema attributes.
@@ -94,7 +100,7 @@ func (u userTypeAttributes) isRequired(attr string) bool {
 func newIDPService(idpStore idpStoreInterface, entityTypeService entitytype.EntityTypeServiceInterface,
 	roleService role.RoleServiceInterface, groupService group.GroupServiceInterface,
 	resourceService providers.ResourceServerProvider, transactioner providers.Transactioner,
-	ouService ou.OrganizationUnitServiceInterface) IDPServiceInterface {
+	ouService ou.OrganizationUnitServiceInterface, bus eventbus.EventBusInterface) IDPServiceInterface {
 	return &idpService{
 		idpStore:          idpStore,
 		entityTypeService: entityTypeService,
@@ -105,11 +111,24 @@ func newIDPService(idpStore idpStoreInterface, entityTypeService entitytype.Enti
 		ouService:         ouService,
 		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, "IdPService")),
 		uuidGenerator:     utils.GenerateUUIDv7,
+		bus:               bus,
 	}
 }
 
 // CreateIdentityProvider creates a new Identity Provider.
 func (is *idpService) CreateIdentityProvider(
+	ctx context.Context, idp *providers.IDPDTO) (*providers.IDPDTO, *tidcommon.ServiceError) {
+	created, svcErr := is.createIdentityProvider(ctx, idp)
+	var idpID string
+	if svcErr == nil {
+		idpID = created.ID
+	}
+	is.publishConnectionEvent(ctx, audit.EventConnectionCreate, audit.ActionCreate, idpID, svcErr)
+	return created, svcErr
+}
+
+// createIdentityProvider creates a new Identity Provider without publishing its audit event.
+func (is *idpService) createIdentityProvider(
 	ctx context.Context, idp *providers.IDPDTO) (*providers.IDPDTO, *tidcommon.ServiceError) {
 	logger := is.logger
 	if isDeclarativeModeEnabled() {
@@ -126,6 +145,9 @@ func (is *idpService) CreateIdentityProvider(
 		return nil, svcErr
 	}
 	if svcErr := is.ResolveIdentityProviderOU(ctx, idp); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := is.ValidateAuthorizationRuleMappingTargets(ctx, idp); svcErr != nil {
 		return nil, svcErr
 	}
 
@@ -218,7 +240,7 @@ func (is *idpService) GetIdentityProvider(
 		if errors.Is(err, ErrIDPNotFound) {
 			return nil, &ErrorIDPNotFound
 		}
-		logger.Error(ctx, "Failed to get identity provider", log.String("idpID", idpID), log.Error(err))
+		logger.Error(ctx, "Failed to get identity provider", log.String(log.LoggerKeyIDPID, idpID), log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
 
@@ -275,6 +297,18 @@ func (is *idpService) UpdateIdentityProvider(
 	idp *providers.IDPDTO,
 ) (*providers.IDPDTO,
 	*tidcommon.ServiceError) {
+	updated, svcErr := is.updateIdentityProvider(ctx, idpID, idp)
+	is.publishConnectionEvent(ctx, audit.EventConnectionUpdate, audit.ActionUpdate, idpID, svcErr)
+	return updated, svcErr
+}
+
+// updateIdentityProvider updates an existing Identity Provider without publishing its audit event.
+func (is *idpService) updateIdentityProvider(
+	ctx context.Context,
+	idpID string,
+	idp *providers.IDPDTO,
+) (*providers.IDPDTO,
+	*tidcommon.ServiceError) {
 	logger := is.logger
 	// Block updates only in declarative-only mode; allow in composite and mutable modes
 	// In composite mode, the store will check if the resource is immutable and return appropriate error
@@ -317,6 +351,11 @@ func (is *idpService) UpdateIdentityProvider(
 		}
 		idp.OUID = ouID
 
+		if targetErr := is.ValidateAuthorizationRuleMappingTargets(txCtx, idp); targetErr != nil {
+			svcErr = targetErr
+			return errors.New("authorization rule mapping names an unavailable target")
+		}
+
 		// If the name is being updated, check whether another IdP with the same name exists
 		if existingIDP.Name != idp.Name {
 			existingIDPByName, err := is.idpStore.GetIdentityProviderByName(txCtx, idp.Name)
@@ -345,7 +384,7 @@ func (is *idpService) UpdateIdentityProvider(
 		return nil, svcErr
 	}
 	if err != nil {
-		logger.Error(ctx, "Failed to update identity provider", log.Error(err), log.String("idpID", idpID))
+		logger.Error(ctx, "Failed to update identity provider", log.Error(err), log.String(log.LoggerKeyIDPID, idpID))
 		return nil, &tidcommon.InternalServerError
 	}
 
@@ -354,6 +393,18 @@ func (is *idpService) UpdateIdentityProvider(
 
 // DeleteIdentityProvider deletes an identity provider.
 func (is *idpService) DeleteIdentityProvider(ctx context.Context, idpID string) *tidcommon.ServiceError {
+	svcErr := is.deleteIdentityProvider(ctx, idpID)
+	// A delete that found nothing to remove succeeds without an event, so no caller can record a
+	// deletion of an ID it made up.
+	if svcErr == errIDPNotFoundNoop {
+		return nil
+	}
+	is.publishConnectionEvent(ctx, audit.EventConnectionDelete, audit.ActionDelete, idpID, svcErr)
+	return svcErr
+}
+
+// deleteIdentityProvider deletes an identity provider without publishing its audit event.
+func (is *idpService) deleteIdentityProvider(ctx context.Context, idpID string) *tidcommon.ServiceError {
 	logger := is.logger
 	// Block deletes only in declarative-only mode; allow in composite and mutable modes
 	// In composite mode, the store will check if the resource is immutable and return appropriate error
@@ -376,6 +427,7 @@ func (is *idpService) DeleteIdentityProvider(ctx context.Context, idpID string) 
 		_, err := is.idpStore.GetIdentityProvider(txCtx, idpID)
 		if err != nil {
 			if errors.Is(err, ErrIDPNotFound) {
+				svcErr = errIDPNotFoundNoop
 				return nil
 			}
 			return err
@@ -397,11 +449,24 @@ func (is *idpService) DeleteIdentityProvider(ctx context.Context, idpID string) 
 		return svcErr
 	}
 	if err != nil {
-		logger.Error(ctx, "Failed to delete identity provider", log.Error(err), log.String("idpID", idpID))
+		logger.Error(ctx, "Failed to delete identity provider", log.Error(err), log.String(log.LoggerKeyIDPID, idpID))
 		return &tidcommon.InternalServerError
 	}
 
 	return nil
+}
+
+// publishConnectionEvent publishes the audit event of an attempt on the identity provider connection with
+// idpID, after the change committed or was refused. Properties, client secrets and keys are never
+// recorded. A delete through the connection API that removes the identity provider but then fails to
+// remove its sharing policies is recorded as succeeded: a known limitation.
+func (is *idpService) publishConnectionEvent(ctx context.Context, name string, action audit.Action,
+	idpID string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the ID the caller asked for, even one that matches no identity provider, as
+	// forensic evidence of what was probed; the payload caps it and the sink escapes it.
+	target := audit.Ref{Type: audit.TargetTypeConnection, ID: idpID}
+	eventbus.TryPublish(ctx, is.bus,
+		eventbus.NewEvent(ctx, name).With(audit.ChangePayload(ctx, target, action, svcErr)))
 }
 
 // ApplySchemaAwareDefaults seeds account-linking and username-mapping defaults derived from user-type
@@ -592,13 +657,14 @@ func (is *idpService) GetIDPUsages(
 		if errors.Is(err, ErrIDPNotFound) {
 			return nil, &ErrorIDPNotFound
 		}
-		is.logger.Error(ctx, "Failed to retrieve identity provider", log.Error(err), log.String("idpID", idpID))
+		is.logger.Error(ctx, "Failed to retrieve identity provider", log.Error(err),
+			log.String(log.LoggerKeyIDPID, idpID))
 		return nil, &tidcommon.InternalServerError
 	}
 
 	if is.dependencyRegistry == nil {
 		is.logger.Warn(ctx, "Dependency registry not set; returning unknown dependencies",
-			log.String("idpID", idpID))
+			log.String(log.LoggerKeyIDPID, idpID))
 		return &resourcedependency.DependenciesResponse{
 			TotalResults: nil,
 			Count:        0,
@@ -609,7 +675,8 @@ func (is *idpService) GetIDPUsages(
 
 	result, err := is.dependencyRegistry.GetDependencies(ctx, resourcedependency.ResourceTypeIDP, idpID)
 	if err != nil {
-		is.logger.Error(ctx, "Failed to get identity provider usages", log.Error(err), log.String("idpID", idpID))
+		is.logger.Error(ctx, "Failed to get identity provider usages", log.Error(err),
+			log.String(log.LoggerKeyIDPID, idpID))
 		return nil, &tidcommon.InternalServerError
 	}
 
@@ -623,20 +690,20 @@ func (is *idpService) GetIDPUsages(
 func (is *idpService) ensureNoBlockingDependencies(ctx context.Context, idpID string) *tidcommon.ServiceError {
 	if is.dependencyRegistry == nil {
 		is.logger.Error(ctx, "Dependency registry not set; refusing to delete identity provider",
-			log.String("idpID", idpID))
+			log.String(log.LoggerKeyIDPID, idpID))
 		return &tidcommon.InternalServerError
 	}
 
 	deps, err := is.dependencyRegistry.GetDependencies(ctx, resourcedependency.ResourceTypeIDP, idpID)
 	if err != nil {
 		is.logger.Error(ctx, "Failed to evaluate identity provider dependencies",
-			log.Error(err), log.String("idpID", idpID))
+			log.Error(err), log.String(log.LoggerKeyIDPID, idpID))
 		return &tidcommon.InternalServerError
 	}
 	// Fail closed: nil TotalResults means a provider failed to report, so usage is unknown.
 	if deps == nil || deps.TotalResults == nil {
 		is.logger.Error(ctx, "Identity provider dependency data unavailable; refusing to delete",
-			log.String("idpID", idpID))
+			log.String(log.LoggerKeyIDPID, idpID))
 		return &tidcommon.InternalServerError
 	}
 
@@ -646,7 +713,7 @@ func (is *idpService) ensureNoBlockingDependencies(ctx context.Context, idpID st
 	}
 
 	is.logger.Debug(ctx, "Identity provider has blocking dependencies; deletion refused",
-		log.String("idpID", idpID), log.Int("blockingCount", len(blocking)))
+		log.String(log.LoggerKeyIDPID, idpID), log.Int("blockingCount", len(blocking)))
 	return tidcommon.CustomServiceError(ErrorIDPHasBlockingDependencies, tidcommon.I18nMessage{
 		Key: "error.idpservice.idp_has_blocking_dependencies_description",
 		DefaultValue: fmt.Sprintf(
@@ -686,9 +753,6 @@ func (is *idpService) validateAttributeConfiguration(
 	}
 
 	if svcErr := validateAuthorizationRuleMappings(ruleMappings); svcErr != nil {
-		return svcErr
-	}
-	if svcErr := is.validateAuthorizationRuleMappingTargetsExist(ctx, ruleMappings); svcErr != nil {
 		return svcErr
 	}
 	if svcErr := is.validateAuthorizationDirectMappings(ctx, directMappings); svcErr != nil {
@@ -801,22 +865,23 @@ func (is *idpService) validateUserTypeResolution(
 	return nil
 }
 
-// GetDirectAuthorizationTargets resolves the IDP's AuthorizationMapping.Direct entries for claims.
+// ResolveDirectAuthorizationTargets resolves the IDP's AuthorizationMapping.Direct entries for claims.
 // Each claim value is looked up by exact name (role, group) or validated permission string
-// (permission) against live data, with no organization unit restriction. A value that resolves to
-// more than one role or group, or to none, is skipped rather than granted.
-func (is *idpService) GetDirectAuthorizationTargets(
+// (permission) against live data. A name matches only the roles the IDP's organization unit owns or
+// has shared with it, and the groups it owns. A value that resolves to none is skipped. A value that
+// resolves to more than one role or group isn't granted: its matches are returned as ambiguous instead.
+func (is *idpService) ResolveDirectAuthorizationTargets(
 	ctx context.Context, idp *providers.IDPDTO, claims map[string]interface{},
-) ([]providers.AuthorizationTarget, *tidcommon.ServiceError) {
+) ([]providers.AuthorizationTarget, []providers.AuthorizationTarget, *tidcommon.ServiceError) {
 	if idp == nil || idp.AttributeConfiguration == nil || idp.AttributeConfiguration.AuthorizationMapping == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
 	mappings := idp.AttributeConfiguration.AuthorizationMapping.Direct
 	if len(mappings) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 
-	var targets []providers.AuthorizationTarget
+	var targets, ambiguous []providers.AuthorizationTarget
 	for _, mapping := range mappings {
 		value, ok := utils.GetNestedValue(claims, mapping.Claim)
 		if !ok {
@@ -829,33 +894,46 @@ func (is *idpService) GetDirectAuthorizationTargets(
 
 		switch mapping.TargetType {
 		case providers.AuthorizationTargetRole:
-			found, svcErr := is.roleService.GetRolesByNames(ctx, tokens)
+			found, svcErr := is.roleService.GetRolesByNames(ctx, tokens, idp.OUID)
 			if svcErr != nil {
-				return nil, svcErr
+				return nil, nil, svcErr
 			}
 			for _, token := range tokens {
-				if matches := found[token]; len(matches) == 1 {
-					targets = append(targets, providers.AuthorizationTarget{
-						Type: providers.AuthorizationTargetRole, ID: matches[0].ID,
-					})
+				for _, match := range found[token] {
+					target := providers.AuthorizationTarget{Type: providers.AuthorizationTargetRole, ID: match.ID}
+					if len(found[token]) == 1 {
+						targets = append(targets, target)
+					} else {
+						ambiguous = append(ambiguous, target)
+					}
 				}
 			}
 		case providers.AuthorizationTargetGroup:
-			found, svcErr := is.groupService.GetGroupsByNames(ctx, tokens)
+			found, svcErr := is.groupService.GetGroupsByNames(ctx, tokens, idp.OUID)
 			if svcErr != nil {
-				return nil, svcErr
+				return nil, nil, svcErr
 			}
 			for _, token := range tokens {
-				if matches := found[token]; len(matches) == 1 {
-					targets = append(targets, providers.AuthorizationTarget{
-						Type: providers.AuthorizationTargetGroup, ID: matches[0].ID,
-					})
+				for _, match := range found[token] {
+					target := providers.AuthorizationTarget{Type: providers.AuthorizationTargetGroup, ID: match.ID}
+					if len(found[token]) == 1 {
+						targets = append(targets, target)
+					} else {
+						ambiguous = append(ambiguous, target)
+					}
 				}
 			}
 		case providers.AuthorizationTargetPermission:
+			owned, svcErr := is.resourceServerOwnedByOU(ctx, mapping.ResourceServerID, idp.OUID)
+			if svcErr != nil {
+				return nil, nil, svcErr
+			}
+			if !owned {
+				continue
+			}
 			invalid, svcErr := is.resourceService.ValidatePermissions(ctx, mapping.ResourceServerID, tokens)
 			if svcErr != nil {
-				return nil, svcErr
+				return nil, nil, svcErr
 			}
 			for _, token := range tokens {
 				if !slices.Contains(invalid, token) {
@@ -869,15 +947,40 @@ func (is *idpService) GetDirectAuthorizationTargets(
 		}
 	}
 
-	return dedupeAuthorizationTargets(targets), nil
+	return dedupeAuthorizationTargets(targets), dedupeAuthorizationTargets(ambiguous), nil
 }
 
-// validateAuthorizationRuleMappingTargetsExist verifies every named role, group, and permission exists.
-// Structural shape is validated separately, by validateAuthorizationRuleMappings.
-func (is *idpService) validateAuthorizationRuleMappingTargetsExist(
+// ValidateAuthorizationRuleMappingTargets verifies every named role, group, and permission exists, and
+// that the IDP's organization unit can grant each of them: a role it owns or has shared with it, a group
+// it owns, and a permission of a resource server it owns. A direct mapping's resource server must be one
+// the unit owns as well. Structural shape is validated separately, by validateAuthorizationRuleMappings.
+func (is *idpService) ValidateAuthorizationRuleMappingTargets(
 	ctx context.Context,
-	mappings []providers.AuthorizationRuleMapping,
+	idp *providers.IDPDTO,
 ) *tidcommon.ServiceError {
+	if idp.AttributeConfiguration == nil || idp.AttributeConfiguration.AuthorizationMapping == nil {
+		return nil
+	}
+	mappings := idp.AttributeConfiguration.AuthorizationMapping.Rules
+
+	for _, direct := range idp.AttributeConfiguration.AuthorizationMapping.Direct {
+		if direct.TargetType != providers.AuthorizationTargetPermission {
+			continue
+		}
+		owned, svcErr := is.resourceServerOwnedByOU(ctx, direct.ResourceServerID, idp.OUID)
+		if svcErr != nil {
+			return svcErr
+		}
+		if !owned {
+			return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
+				Key: "error.idpservice.authorization_direct_mapping_resource_server_not_in_ou_description",
+				DefaultValue: "authorization direct mapping for claim '{{param(claim)}}' names a resource " +
+					"server outside the identity provider's organization unit: '{{param(resourceServerId)}}'",
+				Params: map[string]string{"claim": direct.Claim, "resourceServerId": direct.ResourceServerID},
+			})
+		}
+	}
+
 	roleIDs := make(map[string]bool)
 	groupIDs := make(map[string]bool)
 	permissionsByResourceServer := make(map[string][]string)
@@ -898,9 +1001,17 @@ func (is *idpService) validateAuthorizationRuleMappingTargetsExist(
 	}
 
 	for roleID := range roleIDs {
-		if _, svcErr := is.roleService.GetRoleWithPermissions(ctx, roleID); svcErr != nil {
+		if _, svcErr := is.roleService.GetRoleInOU(security.WithRuntimeContext(ctx), roleID, idp.OUID); svcErr != nil {
 			if svcErr.Type == tidcommon.ServerErrorType {
 				return svcErr
+			}
+			if svcErr.Code == role.ErrorRoleNotSharedToOU.Code {
+				return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
+					Key: "error.idpservice.authorization_rule_mapping_role_not_in_ou_description",
+					DefaultValue: "authorization rule mapping names a role the identity provider's organization " +
+						"unit neither owns nor has shared with it: '{{param(roleId)}}'",
+					Params: map[string]string{"roleId": roleID},
+				})
 			}
 			return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
 				Key: "error.idpservice.authorization_rule_mapping_role_not_found_description",
@@ -921,7 +1032,8 @@ func (is *idpService) validateAuthorizationRuleMappingTargetsExist(
 			return svcErr
 		}
 		for _, id := range ids {
-			if _, ok := found[id]; !ok {
+			grp, ok := found[id]
+			if !ok {
 				return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
 					Key: "error.idpservice.authorization_rule_mapping_group_not_found_description",
 					DefaultValue: "authorization rule mapping names a group that does not exist: " +
@@ -929,10 +1041,31 @@ func (is *idpService) validateAuthorizationRuleMappingTargetsExist(
 					Params: map[string]string{"groupId": id},
 				})
 			}
+			// Groups are never shared, so only a group the organization unit owns can be granted.
+			if grp.OUID != idp.OUID {
+				return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
+					Key: "error.idpservice.authorization_rule_mapping_group_not_in_ou_description",
+					DefaultValue: "authorization rule mapping names a group outside the identity provider's " +
+						"organization unit: '{{param(groupId)}}'",
+					Params: map[string]string{"groupId": id},
+				})
+			}
 		}
 	}
 
 	for resourceServerID, permissions := range permissionsByResourceServer {
+		owned, svcErr := is.resourceServerOwnedByOU(ctx, resourceServerID, idp.OUID)
+		if svcErr != nil {
+			return svcErr
+		}
+		if !owned {
+			return tidcommon.CustomServiceError(ErrorInvalidAttributeConfiguration, tidcommon.I18nMessage{
+				Key: "error.idpservice.authorization_rule_mapping_permission_not_in_ou_description",
+				DefaultValue: "authorization rule mapping names a permission on a resource server outside the " +
+					"identity provider's organization unit: '{{param(resourceServerId)}}'",
+				Params: map[string]string{"resourceServerId": resourceServerID},
+			})
+		}
 		invalid, svcErr := is.resourceService.ValidatePermissions(ctx, resourceServerID, permissions)
 		if svcErr != nil {
 			return svcErr
@@ -950,8 +1083,24 @@ func (is *idpService) validateAuthorizationRuleMappingTargetsExist(
 	return nil
 }
 
+// resourceServerOwnedByOU reports whether the organization unit owns the resource server. Resource servers
+// are never shared, so only the permissions of a resource server the unit owns can be granted. A resource
+// server that does not exist is reported as owned, so the permission lookup reports it as missing.
+func (is *idpService) resourceServerOwnedByOU(
+	ctx context.Context, resourceServerID, ouID string,
+) (bool, *tidcommon.ServiceError) {
+	server, svcErr := is.resourceService.GetResourceServer(security.WithRuntimeContext(ctx), resourceServerID)
+	if svcErr != nil {
+		if svcErr.Code == resource.ErrorResourceServerNotFound.Code {
+			return true, nil
+		}
+		return false, svcErr
+	}
+	return server.OUID == ouID, nil
+}
+
 // validateAuthorizationRuleMappings validates structural shape, independently of whether the named
-// roles, groups, or permissions actually exist (see validateAuthorizationRuleMappingTargetsExist).
+// roles, groups, or permissions actually exist (see ValidateAuthorizationRuleMappingTargets).
 func validateAuthorizationRuleMappings(mappings []providers.AuthorizationRuleMapping) *tidcommon.ServiceError {
 	for _, mapping := range mappings {
 		if strings.TrimSpace(mapping.Claim) == "" {
@@ -1112,7 +1261,9 @@ func (is *idpService) validateAuthorizationDirectMappings(
 					Params: map[string]string{"claim": mapping.Claim},
 				})
 			}
-			if _, svcErr := is.resourceService.GetResourceServer(ctx, mapping.ResourceServerID); svcErr != nil {
+			// Only existence is checked here; the owner is not known yet, so ownership is checked afterwards.
+			if _, svcErr := is.resourceService.GetResourceServer(
+				security.WithRuntimeContext(ctx), mapping.ResourceServerID); svcErr != nil {
 				if svcErr.Type == tidcommon.ServerErrorType {
 					return svcErr
 				}

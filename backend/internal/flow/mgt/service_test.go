@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
@@ -27,12 +28,16 @@ import (
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/projectscope"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/executormock"
+	"github.com/thunder-id/thunderid/tests/mocks/flow/flowconfigmock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/interceptormock"
 	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
+	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
 const testFlowIDService = "test-flow-id"
@@ -82,6 +87,10 @@ func (r *stubDependencyRegistry) CascadeDelete(context.Context, string, string) 
 	return 0, nil
 }
 
+func (r *stubDependencyRegistry) SuspensionDependents(context.Context, string, string) ([]string, error) {
+	return nil, nil
+}
+
 func (r *stubDependencyRegistry) ValidateReferenceUpdate(
 	context.Context, string, string) *tidcommon.ServiceError {
 	return r.validateErr
@@ -114,7 +123,7 @@ func (s *FlowMgtServiceTestSuite) SetupTest() {
 		Return(false, nil).Maybe()
 	s.service = newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{}, nil, s.mockOU,
-		s.mockResolver, nil, s.mockSharing, nil)
+		s.mockResolver, nil, s.mockSharing, nil, discardingBus{}, nil, allowAllAuthz(s.T()))
 
 	// UpdateFlow / DeleteFlow / RestoreFlowVersion invalidate the store cache post-transaction.
 	// The mock is applied here so individual tests don't need to repeat the expectation.
@@ -1474,6 +1483,8 @@ func (s *FlowMgtServiceTestSuite) TestListFlowVersions_StoreError() {
 // GetFlowVersion tests
 
 func (s *FlowMgtServiceTestSuite) TestGetFlowVersion_Success() {
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).
+		Return(&providers.CompleteFlowDefinition{ID: testFlowIDService}, nil)
 	expectedVersion := &FlowVersion{Version: 1}
 	s.mockStore.EXPECT().GetFlowVersion(mock.Anything, testFlowIDService, 1).Return(expectedVersion, nil)
 
@@ -1498,7 +1509,7 @@ func (s *FlowMgtServiceTestSuite) TestGetFlowVersion_InvalidVersion() {
 }
 
 func (s *FlowMgtServiceTestSuite) TestGetFlowVersion_FlowNotFound() {
-	s.mockStore.EXPECT().GetFlowVersion(mock.Anything, testFlowIDService, 1).Return(nil, errFlowNotFound)
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).Return(nil, errFlowNotFound)
 
 	result, err := s.service.GetFlowVersion(context.Background(), testFlowIDService, 1)
 
@@ -1507,6 +1518,8 @@ func (s *FlowMgtServiceTestSuite) TestGetFlowVersion_FlowNotFound() {
 }
 
 func (s *FlowMgtServiceTestSuite) TestGetFlowVersion_VersionNotFound() {
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).
+		Return(&providers.CompleteFlowDefinition{ID: testFlowIDService}, nil)
 	s.mockStore.EXPECT().GetFlowVersion(mock.Anything, testFlowIDService, 1).Return(nil, errVersionNotFound)
 
 	result, err := s.service.GetFlowVersion(context.Background(), testFlowIDService, 1)
@@ -1516,6 +1529,8 @@ func (s *FlowMgtServiceTestSuite) TestGetFlowVersion_VersionNotFound() {
 }
 
 func (s *FlowMgtServiceTestSuite) TestGetFlowVersion_StoreError() {
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).
+		Return(&providers.CompleteFlowDefinition{ID: testFlowIDService}, nil)
 	s.mockStore.EXPECT().GetFlowVersion(mock.Anything, testFlowIDService, 1).Return(nil, errors.New("db error"))
 
 	result, err := s.service.GetFlowVersion(context.Background(), testFlowIDService, 1)
@@ -1556,7 +1571,7 @@ func (s *FlowMgtServiceTestSuite) TestRestoreFlowVersion_InvalidVersion() {
 }
 
 func (s *FlowMgtServiceTestSuite) TestRestoreFlowVersion_FlowNotFound() {
-	s.mockStore.EXPECT().GetFlowVersion(mock.Anything, testFlowIDService, 1).Return(nil, errFlowNotFound)
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).Return(nil, errFlowNotFound)
 
 	result, err := s.service.RestoreFlowVersion(context.Background(), testFlowIDService, 1)
 
@@ -1565,6 +1580,8 @@ func (s *FlowMgtServiceTestSuite) TestRestoreFlowVersion_FlowNotFound() {
 }
 
 func (s *FlowMgtServiceTestSuite) TestRestoreFlowVersion_VersionNotFound() {
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).
+		Return(&providers.CompleteFlowDefinition{ID: testFlowIDService}, nil)
 	s.mockStore.EXPECT().GetFlowVersion(mock.Anything, testFlowIDService, 1).Return(nil, errVersionNotFound)
 
 	result, err := s.service.RestoreFlowVersion(context.Background(), testFlowIDService, 1)
@@ -1695,7 +1712,7 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_Success() {
 	mockValidator := NewFlowValidatorInterfaceMock(s.T())
 	service := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		mockExecutorRegistry, mockInterceptorRegistry, mockValidator,
-		nil, &stubTransactioner{}, nil, nil, nil, nil, s.mockSharing, nil)
+		nil, &stubTransactioner{}, nil, nil, nil, nil, s.mockSharing, nil, discardingBus{}, nil, allowAllAuthz(s.T()))
 
 	authFlowDef := &FlowDefinition{
 		Handle:   "auth-flow",
@@ -1760,7 +1777,7 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_SkipsNonAuthFlow(
 	mockValidator := NewFlowValidatorInterfaceMock(s.T())
 	service := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		mockExecutorRegistry, mockInterceptorRegistry, mockValidator,
-		nil, &stubTransactioner{}, nil, nil, nil, nil, s.mockSharing, nil)
+		nil, &stubTransactioner{}, nil, nil, nil, nil, s.mockSharing, nil, discardingBus{}, nil, allowAllAuthz(s.T()))
 
 	regFlowDef := &FlowDefinition{
 		Handle:   "reg-flow",
@@ -1791,7 +1808,7 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_HandlesInferenceE
 	mockValidator := NewFlowValidatorInterfaceMock(s.T())
 	service := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		mockExecutorRegistry, mockInterceptorRegistry, mockValidator,
-		nil, &stubTransactioner{}, nil, nil, nil, nil, s.mockSharing, nil)
+		nil, &stubTransactioner{}, nil, nil, nil, nil, s.mockSharing, nil, discardingBus{}, nil, allowAllAuthz(s.T()))
 
 	authFlowDef := &FlowDefinition{
 		Handle:   "auth-flow",
@@ -1824,7 +1841,7 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_HandlesStoreError
 	mockValidator := NewFlowValidatorInterfaceMock(s.T())
 	service := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		mockExecutorRegistry, mockInterceptorRegistry, mockValidator,
-		nil, &stubTransactioner{}, nil, nil, nil, nil, s.mockSharing, nil)
+		nil, &stubTransactioner{}, nil, nil, nil, nil, s.mockSharing, nil, discardingBus{}, nil, allowAllAuthz(s.T()))
 
 	authFlowDef := &FlowDefinition{
 		Handle:   "auth-flow",
@@ -1867,7 +1884,7 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_DisabledAutoInfer
 	mockValidator := NewFlowValidatorInterfaceMock(s.T())
 	service := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		mockExecutorRegistry, mockInterceptorRegistry, mockValidator,
-		nil, &stubTransactioner{}, nil, nil, nil, nil, s.mockSharing, nil)
+		nil, &stubTransactioner{}, nil, nil, nil, nil, s.mockSharing, nil, discardingBus{}, nil, allowAllAuthz(s.T()))
 
 	authFlowDef := &FlowDefinition{
 		Handle:   "auth-flow",
@@ -1898,7 +1915,7 @@ func (s *FlowMgtServiceTestSuite) TestTryInferRegistrationFlow_SkipsPasskeyRegis
 	mockValidator := NewFlowValidatorInterfaceMock(s.T())
 	service := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		mockExecutorRegistry, mockInterceptorRegistry, mockValidator,
-		nil, &stubTransactioner{}, nil, nil, nil, nil, s.mockSharing, nil)
+		nil, &stubTransactioner{}, nil, nil, nil, nil, s.mockSharing, nil, discardingBus{}, nil, allowAllAuthz(s.T()))
 
 	// Auth flow with PasskeyAuthExecutor in register_start and register_finish modes
 	authFlowDef := &FlowDefinition{
@@ -2292,6 +2309,47 @@ func (s *FlowMgtServiceTestSuite) TestGetResourceDependencies_CountsAConnectionI
 	s.Equal("flow1", usages[0].ID)
 }
 
+func (s *FlowMgtServiceTestSuite) TestGetResourceDependencies_AgentTypeResolverListsAgentType() {
+	resolver := &providers.ExecutorDefinition{Name: "AgentTypeResolver"}
+	s.mockStore.EXPECT().ListActiveFlowsWithNodes(mock.Anything).Return([]*providers.CompleteFlowDefinition{
+		{
+			ID:   "flow1",
+			Name: "Onboarding",
+			Nodes: []providers.NodeDefinition{
+				{ID: "resolve", Type: "TASK_EXECUTION", Executor: resolver,
+					Properties: map[string]interface{}{
+						"allowedAgentTypes": []interface{}{"default", "support-agents"},
+					}},
+			},
+		},
+		{
+			ID:   "flow2",
+			Name: "Other types",
+			Nodes: []providers.NodeDefinition{
+				{ID: "resolve", Type: "TASK_EXECUTION", Executor: resolver,
+					Properties: map[string]interface{}{"allowedAgentTypes": []interface{}{"default", 7}}},
+			},
+		},
+		{
+			ID:   "flow3",
+			Name: "Not a resolver",
+			Nodes: []providers.NodeDefinition{
+				{ID: "other", Type: "TASK_EXECUTION", Executor: &providers.ExecutorDefinition{Name: "UserTypeResolver"},
+					Properties: map[string]interface{}{"allowedAgentTypes": []interface{}{"support-agents"}}},
+			},
+		},
+	}, nil)
+
+	usages, err := s.service.GetResourceDependencies(
+		context.Background(), resourcedependency.ResourceTypeAgentType, "support-agents")
+
+	s.NoError(err)
+	s.Equal([]resourcedependency.ResourceDependency{{
+		ResourceType: resourcedependency.ResourceTypeFlow, ID: "flow1", DisplayName: "Onboarding",
+		BehaviorOnDelete: resourcedependency.BehaviorRestrict,
+	}}, usages)
+}
+
 func (s *FlowMgtServiceTestSuite) TestGetResourceDependencies_ExtensionStepReferencesHTTPConnection() {
 	connectionID := "http-conn-1"
 	s.mockStore.EXPECT().ListActiveFlowsWithNodes(mock.Anything).Return([]*providers.CompleteFlowDefinition{
@@ -2612,7 +2670,7 @@ func (s *FlowMgtServiceTestSuite) TestGetReachableCallTargets_StoreErrorMapsToIn
 func (s *FlowMgtServiceTestSuite) TestResolveEffectiveFlowID_OverriddenIDWins() {
 	svc := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{},
-		nil, nil, nil, nil, s.mockSharing, nil)
+		nil, nil, nil, nil, s.mockSharing, nil, discardingBus{}, nil, allowAllAuthz(s.T()))
 
 	id, svcErr := svc.ResolveEffectiveFlowID(
 		context.Background(), "override-id", "ou-1", providers.FlowTypeAuthentication)
@@ -2625,7 +2683,7 @@ func (s *FlowMgtServiceTestSuite) TestResolveEffectiveFlowID_OUFlowIDUsedWhenNoO
 	mockOU := newOuProviderMock(s.T())
 	svc := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{},
-		nil, mockOU, nil, nil, s.mockSharing, nil)
+		nil, mockOU, nil, nil, s.mockSharing, nil, discardingBus{}, nil, allowAllAuthz(s.T()))
 
 	ou := ou.OrganizationUnit{AuthFlowID: "ou-auth-flow"}
 	mockOU.EXPECT().GetOrganizationUnit(mock.Anything, "ou-1").Return(ou, nil)
@@ -2638,10 +2696,10 @@ func (s *FlowMgtServiceTestSuite) TestResolveEffectiveFlowID_OUFlowIDUsedWhenNoO
 
 func (s *FlowMgtServiceTestSuite) TestResolveEffectiveFlowID_ServerDefaultUsedWhenOUHasNoFlowID() {
 	mockOU := newOuProviderMock(s.T())
-	mockSC := newServerConfigProviderMock(s.T())
+	mockSC := flowconfigmock.NewServerConfigReaderMock(s.T())
 	svc := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{},
-		mockSC, mockOU, nil, nil, s.mockSharing, nil)
+		mockSC, mockOU, nil, nil, s.mockSharing, nil, discardingBus{}, nil, allowAllAuthz(s.T()))
 
 	mockOU.EXPECT().GetOrganizationUnit(mock.Anything, "ou-1").Return(ou.OrganizationUnit{}, nil)
 
@@ -2664,10 +2722,10 @@ func (s *FlowMgtServiceTestSuite) TestResolveEffectiveFlowID_ServerDefaultUsedWh
 }
 
 func (s *FlowMgtServiceTestSuite) TestResolveEffectiveFlowID_EmptyWhenNoDefaultConfigured() {
-	mockSC := newServerConfigProviderMock(s.T())
+	mockSC := flowconfigmock.NewServerConfigReaderMock(s.T())
 	svc := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{},
-		mockSC, nil, nil, nil, s.mockSharing, nil)
+		mockSC, nil, nil, nil, s.mockSharing, nil, discardingBus{}, nil, allowAllAuthz(s.T()))
 
 	mockSC.EXPECT().GetMergedConfig(mock.Anything, "flow").Return(flowconfig.FlowSectionConfig{}, nil)
 
@@ -2679,10 +2737,10 @@ func (s *FlowMgtServiceTestSuite) TestResolveEffectiveFlowID_EmptyWhenNoDefaultC
 
 func (s *FlowMgtServiceTestSuite) TestResolveEffectiveFlowID_OULookupErrorFallsThrough() {
 	mockOU := newOuProviderMock(s.T())
-	mockSC := newServerConfigProviderMock(s.T())
+	mockSC := flowconfigmock.NewServerConfigReaderMock(s.T())
 	svc := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{},
-		mockSC, mockOU, nil, nil, s.mockSharing, nil)
+		mockSC, mockOU, nil, nil, s.mockSharing, nil, discardingBus{}, nil, allowAllAuthz(s.T()))
 
 	mockOU.EXPECT().GetOrganizationUnit(mock.Anything, "ou-1").
 		Return(ou.OrganizationUnit{}, &tidcommon.InternalServerError)
@@ -2713,51 +2771,13 @@ func (s *FlowMgtServiceTestSuite) TestOUFlowIDForType_AllTypes() {
 	s.Empty(ouFlowIDForType(ou, providers.FlowType("UNKNOWN")))
 }
 
-// ----- getFlowSectionConfig -----
-
-func (s *FlowMgtServiceTestSuite) TestGetFlowSectionConfig_NilServerConfigSvc() {
-	svc := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
-		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{},
-		nil, nil, nil, nil, s.mockSharing, nil)
-
-	cfg := svc.getFlowSectionConfig(context.Background())
-
-	s.Equal(flowconfig.FlowSectionConfig{}, cfg)
-}
-
-func (s *FlowMgtServiceTestSuite) TestGetFlowSectionConfig_ServerConfigError() {
-	mockSC := newServerConfigProviderMock(s.T())
-	svc := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
-		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{},
-		mockSC, nil, nil, nil, s.mockSharing, nil)
-
-	mockSC.EXPECT().GetMergedConfig(mock.Anything, "flow").Return(nil, &tidcommon.InternalServerError)
-
-	cfg := svc.getFlowSectionConfig(context.Background())
-
-	s.Equal(flowconfig.FlowSectionConfig{}, cfg)
-}
-
-func (s *FlowMgtServiceTestSuite) TestGetFlowSectionConfig_WrongType() {
-	mockSC := newServerConfigProviderMock(s.T())
-	svc := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
-		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{},
-		mockSC, nil, nil, nil, s.mockSharing, nil)
-
-	mockSC.EXPECT().GetMergedConfig(mock.Anything, "flow").Return("not-a-flow-section-config", nil)
-
-	cfg := svc.getFlowSectionConfig(context.Background())
-
-	s.Equal(flowconfig.FlowSectionConfig{}, cfg)
-}
-
 // ----- resolveDefaultFlowHandle -----
 
 func (s *FlowMgtServiceTestSuite) TestResolveDefaultFlowHandle_AllFlowTypes() {
-	mockSC := newServerConfigProviderMock(s.T())
+	mockSC := flowconfigmock.NewServerConfigReaderMock(s.T())
 	svc := newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
 		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{},
-		mockSC, nil, nil, nil, s.mockSharing, nil)
+		mockSC, nil, nil, nil, s.mockSharing, nil, discardingBus{}, nil, allowAllAuthz(s.T()))
 
 	section := flowconfig.FlowSectionConfig{
 		AuthFlow:           flowconfig.FlowTypeConfig{DefaultHandle: "h-auth"},
@@ -3047,6 +3067,35 @@ func (s *FlowMgtServiceTestSuite) withSharing(sharingSvc *sharingmock.SharingSer
 	impl.sharingSvc = sharingSvc
 }
 
+// The sharing framework answers for owner and sharee alike, asked as the runtime: the caller may not read the
+// units above its own.
+func (s *FlowMgtServiceTestSuite) TestIsFlowVisible_AsksTheSharingFrameworkAsTheRuntime() {
+	for _, visible := range []bool{true, false} {
+		sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
+		s.withSharing(sharingSvc)
+		sharingSvc.EXPECT().IsVisible(mock.MatchedBy(security.IsRuntimeContext), FlowSharingType, testFlowIDService,
+			"ou-child").Return(visible, nil).Once()
+
+		got, err := s.service.IsFlowVisible(context.Background(), testFlowIDService, "ou-child")
+
+		s.Nil(err)
+		s.Equal(visible, got)
+	}
+}
+
+func (s *FlowMgtServiceTestSuite) TestIsFlowVisible_TranslatesASharingError() {
+	sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.withSharing(sharingSvc)
+	sharingSvc.EXPECT().IsVisible(mock.Anything, FlowSharingType, testFlowIDService, "ou-child").
+		Return(false, &tidcommon.InternalServerError).Once()
+
+	got, err := s.service.IsFlowVisible(context.Background(), testFlowIDService, "ou-child")
+
+	s.False(got)
+	s.Require().NotNil(err)
+	s.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
 func (s *FlowMgtServiceTestSuite) TestUpdateFlow_AFlowSharedWithTheUnitInTheRequestIsReadOnlyThroughIt() {
 	sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
 	s.withSharing(sharingSvc)
@@ -3091,6 +3140,75 @@ func (s *FlowMgtServiceTestSuite) TestUpdateFlow_RefusesAChangeThatBreaksASharin
 	s.Require().NotNil(err)
 	s.Equal(ErrorFlowConflictsWithSharingPolicy.Code, err.Code)
 	s.Equal("p1", err.ErrorDescription.Params["policy"])
+}
+
+// localeNodes is a flow with one select variable that offers the given values.
+func localeNodes(options ...interface{}) []providers.NodeDefinition {
+	return []providers.NodeDefinition{
+		{ID: "start", Type: "START", OnSuccess: "vars"},
+		{ID: "vars", Type: "VARIABLES", OnSuccess: "end", Inputs: []providers.VariableDefinition{{
+			Identifier: "locale", Type: providers.InputTypeSelect, DefaultValue: options[0], Options: options}}},
+		{ID: "end", Type: "END"},
+	}
+}
+
+// pinningPolicy is a policy that gives the locale variable one value.
+func pinningPolicy(value string) sharing.Policy {
+	return sharing.Policy{
+		ID: "p-locale", InitiatingOUID: "ou-1", ChildUnits: &sharing.ChildUnits{Mode: sharing.ChildUnitsAll},
+		Rules: []sharing.StoredRule{{
+			FieldKey: sharingKey("locale"), Grant: sharing.GrantRef{Section: sharing.SectionChildUnits},
+			Requested: sharing.OverlayRule{Value: &[]string{value}},
+			Resolved:  sharing.OverlayRule{Value: &[]string{value}},
+		}},
+	}
+}
+
+// A variable a flow keeps can change so that the value a policy pins no longer fits it. The update is refused while the
+// policy is held, which is why an import removes a policy its document drops before it writes the flow.
+func (s *FlowMgtServiceTestSuite) TestUpdateFlow_RefusesAChangeThatInvalidatesAValueAPolicyPins() {
+	sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.withSharing(sharingSvc)
+	sharingSvc.EXPECT().ListPolicies(mock.Anything, FlowSharingType, testFlowIDService).
+		Return([]sharing.Policy{pinningPolicy("fr")}, nil)
+	existing := &providers.CompleteFlowDefinition{
+		ID: testFlowIDService, Handle: "test-handle", FlowType: providers.FlowTypeAuthentication, OUID: "ou-1",
+		Nodes: localeNodes("en", "fr"),
+	}
+	flowDef := s.newFlowDef("")
+	flowDef.Nodes = localeNodes("en")
+	s.mockValidator.EXPECT().ValidateFlowDefinition(mock.Anything, mock.Anything).Return(nil)
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).Return(existing, nil)
+
+	result, err := s.service.UpdateFlow(context.Background(), testFlowIDService, flowDef)
+
+	s.Nil(result)
+	s.Require().NotNil(err)
+	s.Equal(ErrorFlowConflictsWithSharingPolicy.Code, err.Code)
+	s.Equal("p-locale", err.ErrorDescription.Params["policy"])
+	s.Contains(err.ErrorDescription.Params["reason"], "fr")
+}
+
+// The same change goes through once the policy is gone, so removing the policy first is what lets it.
+func (s *FlowMgtServiceTestSuite) TestUpdateFlow_AcceptsThatChangeOnceThePolicyIsGone() {
+	sharingSvc := sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.withSharing(sharingSvc)
+	sharingSvc.EXPECT().ListPolicies(mock.Anything, FlowSharingType, testFlowIDService).
+		Return([]sharing.Policy{}, nil)
+	sharingSvc.EXPECT().ListOverlayValues(mock.Anything, FlowSharingType, testFlowIDService).
+		Return(map[string]map[string][]string{}, nil)
+	existing := &providers.CompleteFlowDefinition{
+		ID: testFlowIDService, Handle: "test-handle", FlowType: providers.FlowTypeAuthentication, OUID: "ou-1",
+		Nodes: localeNodes("en", "fr"),
+	}
+	flowDef := s.newFlowDef("")
+	flowDef.Nodes = localeNodes("en")
+	s.expectDocumentUpdate(existing, flowDef)
+
+	result, err := s.service.UpdateFlow(context.Background(), testFlowIDService, flowDef)
+
+	s.Nil(err)
+	s.NotNil(result)
 }
 
 func (s *FlowMgtServiceTestSuite) TestRestoreFlowVersion_RefusesAVersionThatBreaksASharingPolicy() {
@@ -3417,7 +3535,7 @@ func (s *SharingVariablesTestSuite) SetupTest() {
 	s.idps = newIdpProviderMock(s.T())
 
 	s.service = newFlowMgtService(s.store, nil, nil, nil, nil, nil, nil, &stubTransactioner{}, nil, s.ous, nil, nil,
-		s.sharing, s.idps)
+		s.sharing, s.idps, discardingBus{}, nil, allowAllAuthz(s.T()))
 
 	s.flow = &providers.CompleteFlowDefinition{
 		ID: flowIDVar, Handle: "acme-login", Name: "Acme Login", FlowType: providers.FlowTypeAuthentication,
@@ -4678,6 +4796,17 @@ func (s *SharingVariablesTestSuite) TestADocumentWithPoliciesNeedsAnOwner() {
 	s.Error(err)
 }
 
+func (s *SharingVariablesTestSuite) TestADocumentInAProjectDeclaresItsPoliciesAgainstTheSystemUnit() {
+	s.ous.EXPECT().GetSystemOUID(mock.Anything).Return(testSystemOUID, nil)
+	inProject := strings.Replace(declaredFlowDocument, "ouId: ou-owner\n", "projectId: project-1\n", 1)
+
+	declared, err := s.service.parseFlowSharing([]byte(inProject))
+
+	s.Require().NoError(err)
+	s.Equal(testSystemOUID, declared.OwningOUID)
+	s.Len(declared.Policies, 1)
+}
+
 func (s *SharingVariablesTestSuite) TestADocumentWhoseTermsDoNotFitItsVariablesFailsTheLoad() {
 	s.ous.EXPECT().ResolveOwner(mock.Anything, ownerOU, "", mock.Anything).Return(ownerOU, nil)
 	bad := declaredFlowDocumentWith("          allowedValues: [BOGUS]\n")
@@ -4834,4 +4963,348 @@ func (s *SharingVariablesTestSuite) TestAFlowExportsAsItsBareDefinitionToo() {
 	_, ok = flowOf("not a flow")
 	s.False(ok)
 	s.NotNil(exporter)
+}
+
+// ---------------------------------------------------------------------------
+// Projects
+// ---------------------------------------------------------------------------
+
+const (
+	testProjectID  = "project-1"
+	testSystemOUID = "system-ou"
+	testOUID       = "ou-1"
+)
+
+// serviceWithProjects builds the service under test over a project validator.
+func (s *FlowMgtServiceTestSuite) serviceWithProjects(validator projectOUValidator) *flowMgtService {
+	return newFlowMgtService(s.mockStore, s.mockInference, s.mockGraphBuilder,
+		s.mockExecutorRegistry, s.mockInterceptorRegistry, s.mockValidator, nil, &stubTransactioner{}, nil, s.mockOU,
+		s.mockResolver, nil, s.mockSharing, nil, discardingBus{}, validator, allowAllAuthz(s.T()))
+}
+
+func (s *FlowMgtServiceTestSuite) TestCreateFlow_ProjectWithoutOU_PlacesInSystemOU() {
+	s.mockOU.EXPECT().GetSystemOUID(mock.Anything).Return(testSystemOUID, nil)
+	projects := newProjectOUValidatorMock(s.T())
+	projects.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, testSystemOUID).Return(nil)
+	svc := s.serviceWithProjects(projects)
+	flowDef := &FlowDefinition{
+		ProjectID: testProjectID,
+		Handle:    "test-handle",
+		Name:      "Test Flow",
+		FlowType:  providers.FlowTypeAuthentication,
+		Nodes:     validFlowNodes(),
+	}
+	s.mockValidator.EXPECT().ValidateFlowDefinition(mock.Anything, mock.Anything).Return(nil)
+	s.mockStore.EXPECT().IsFlowExistsByHandle(mock.Anything, "test-handle",
+		providers.FlowTypeAuthentication).Return(false, nil)
+	s.mockStore.EXPECT().CreateFlow(mock.Anything, mock.Anything, mock.MatchedBy(func(def *FlowDefinition) bool {
+		return def.OUID == testSystemOUID && def.ProjectID == testProjectID
+	})).Return(&providers.CompleteFlowDefinition{OUID: testSystemOUID, ProjectID: testProjectID}, nil)
+
+	result, err := svc.CreateFlow(context.Background(), flowDef)
+
+	s.Nil(err)
+	s.Equal(testProjectID, result.ProjectID)
+	s.Equal(testSystemOUID, result.OUID)
+}
+
+func (s *FlowMgtServiceTestSuite) TestCreateFlow_ProjectSystemOUFailure() {
+	s.mockOU.EXPECT().GetSystemOUID(mock.Anything).Return("", &tidcommon.InternalServerError)
+	svc := s.serviceWithProjects(newProjectOUValidatorMock(s.T()))
+	s.mockValidator.EXPECT().ValidateFlowDefinition(mock.Anything, mock.Anything).Return(nil)
+
+	result, err := svc.CreateFlow(context.Background(), &FlowDefinition{
+		ProjectID: testProjectID,
+		Handle:    "test-handle",
+		Name:      "Test Flow",
+		FlowType:  providers.FlowTypeAuthentication,
+		Nodes:     validFlowNodes(),
+	})
+
+	s.Nil(result)
+	s.Require().NotNil(err)
+	s.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
+func (s *FlowMgtServiceTestSuite) TestCreateFlow_WithoutProject_RefusedWhenRequired() {
+	svc := s.serviceWithProjects(newProjectOUValidatorMock(s.T()))
+	s.True(svc.projectRequired)
+	s.mockValidator.EXPECT().ValidateFlowDefinition(mock.Anything, mock.Anything).Return(nil)
+
+	result, err := svc.CreateFlow(context.Background(), &FlowDefinition{
+		OUID:     "ou-1",
+		Handle:   "test-handle",
+		Name:     "Test Flow",
+		FlowType: providers.FlowTypeAuthentication,
+		Nodes:    validFlowNodes(),
+	})
+
+	s.Nil(result)
+	s.Require().NotNil(err)
+	s.Equal(ErrorProjectRequired.Code, err.Code)
+}
+
+func (s *FlowMgtServiceTestSuite) TestCreateFlow_ProjectWithOU_ChecksOUInProject() {
+	projects := newProjectOUValidatorMock(s.T())
+	projects.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, "ou-1").Return(nil)
+	svc := s.serviceWithProjects(projects)
+	flowDef := &FlowDefinition{
+		OUID:      "ou-1",
+		ProjectID: testProjectID,
+		Handle:    "test-handle",
+		Name:      "Test Flow",
+		FlowType:  providers.FlowTypeAuthentication,
+		Nodes:     validFlowNodes(),
+	}
+	s.mockValidator.EXPECT().ValidateFlowDefinition(mock.Anything, mock.Anything).Return(nil)
+	s.mockStore.EXPECT().IsFlowExistsByHandle(mock.Anything, "test-handle",
+		providers.FlowTypeAuthentication).Return(false, nil)
+	s.mockStore.EXPECT().CreateFlow(mock.Anything, mock.Anything, flowDef).
+		Return(&providers.CompleteFlowDefinition{OUID: "ou-1", ProjectID: testProjectID}, nil)
+
+	result, err := svc.CreateFlow(context.Background(), flowDef)
+
+	s.Nil(err)
+	s.Equal("ou-1", result.OUID)
+}
+
+func (s *FlowMgtServiceTestSuite) TestCreateFlow_ProjectResolutionErrors() {
+	cases := []struct {
+		name     string
+		resolved *tidcommon.ServiceError
+		expected string
+	}{
+		{"project not found",
+			&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: projectscope.ProjectNotFoundErrorCode},
+			ErrorInvalidProject.Code},
+		{"ou not in project",
+			&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: projectscope.OUNotInProjectErrorCode},
+			ErrorOUNotInProject.Code},
+		{"server error", &tidcommon.InternalServerError, tidcommon.InternalServerError.Code},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			validator := NewFlowValidatorInterfaceMock(s.T())
+			validator.EXPECT().ValidateFlowDefinition(mock.Anything, mock.Anything).Return(nil)
+			projects := newProjectOUValidatorMock(s.T())
+			projects.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, "ou-1").Return(tc.resolved)
+			svc := s.serviceWithProjects(projects)
+			svc.flowValidator = validator
+
+			result, err := svc.CreateFlow(context.Background(), &FlowDefinition{
+				OUID:      "ou-1",
+				ProjectID: testProjectID,
+				Handle:    "test-handle",
+				Name:      "Test Flow",
+				FlowType:  providers.FlowTypeAuthentication,
+				Nodes:     validFlowNodes(),
+			})
+
+			s.Nil(result)
+			s.Require().NotNil(err)
+			s.Equal(tc.expected, err.Code)
+		})
+	}
+}
+
+func (s *FlowMgtServiceTestSuite) TestResolveFlowOU_ProjectWithoutResolver_PlacesInSystemOU() {
+	s.mockOU.EXPECT().GetSystemOUID(mock.Anything).Return(testSystemOUID, nil)
+	flowDef := &FlowDefinition{ProjectID: testProjectID}
+
+	err := s.service.ResolveFlowOU(context.Background(), flowDef)
+
+	s.Nil(err)
+	s.Equal(testSystemOUID, flowDef.OUID)
+	s.Equal(testProjectID, flowDef.ProjectID)
+}
+
+func (s *FlowMgtServiceTestSuite) TestResolveFlowOU_ProjectWithOUWithoutResolver_KeepsOU() {
+	flowDef := &FlowDefinition{OUID: "ou-1", ProjectID: testProjectID}
+
+	err := s.service.ResolveFlowOU(context.Background(), flowDef)
+
+	s.Nil(err)
+	s.Equal("ou-1", flowDef.OUID)
+}
+
+// The kept project is not checked again, so a flow whose project was deleted can still be updated.
+func (s *FlowMgtServiceTestSuite) TestUpdateFlow_KeepsExistingProject() {
+	svc := s.serviceWithProjects(newProjectOUValidatorMock(s.T()))
+	existingFlow := &providers.CompleteFlowDefinition{
+		ID:        testFlowIDService,
+		Handle:    "test-handle",
+		FlowType:  providers.FlowTypeAuthentication,
+		OUID:      "ou-1",
+		ProjectID: testProjectID,
+	}
+	flowDef := &FlowDefinition{
+		Handle:   "test-handle",
+		Name:     "Updated",
+		FlowType: providers.FlowTypeAuthentication,
+		Nodes:    validFlowNodes(),
+	}
+	s.mockValidator.EXPECT().ValidateFlowDefinition(mock.Anything, mock.Anything).Return(nil)
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).Return(existingFlow, nil)
+	s.mockStore.EXPECT().UpdateFlow(mock.Anything, testFlowIDService, mock.MatchedBy(func(def *FlowDefinition) bool {
+		return def.ProjectID == testProjectID && def.OUID == testOUID
+	})).Return(&providers.CompleteFlowDefinition{ProjectID: testProjectID}, nil)
+	s.mockGraphBuilder.EXPECT().InvalidateCache(mock.Anything, testFlowIDService)
+
+	result, err := svc.UpdateFlow(context.Background(), testFlowIDService, flowDef)
+
+	s.Nil(err)
+	s.Equal(testProjectID, result.ProjectID)
+}
+
+func (s *FlowMgtServiceTestSuite) TestUpdateFlow_OUNotInProject() {
+	projects := newProjectOUValidatorMock(s.T())
+	projects.EXPECT().ValidateProjectOU(mock.Anything, "project-2", "ou-1").
+		Return(&tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: projectscope.OUNotInProjectErrorCode})
+	svc := s.serviceWithProjects(projects)
+	existingFlow := &providers.CompleteFlowDefinition{
+		ID:       testFlowIDService,
+		Handle:   "test-handle",
+		FlowType: providers.FlowTypeAuthentication,
+		OUID:     "ou-1",
+	}
+	flowDef := &FlowDefinition{
+		Handle:    "test-handle",
+		Name:      "Updated",
+		FlowType:  providers.FlowTypeAuthentication,
+		ProjectID: "project-2",
+		Nodes:     validFlowNodes(),
+	}
+	s.mockValidator.EXPECT().ValidateFlowDefinition(mock.Anything, mock.Anything).Return(nil)
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).Return(existingFlow, nil)
+
+	result, err := svc.UpdateFlow(context.Background(), testFlowIDService, flowDef)
+
+	s.Nil(result)
+	s.Require().NotNil(err)
+	s.Equal(ErrorOUNotInProject.Code, err.Code)
+	s.mockStore.AssertNotCalled(s.T(), "UpdateFlow", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *FlowMgtServiceTestSuite) TestUpdateFlow_ProjectResolverServerError() {
+	projects := newProjectOUValidatorMock(s.T())
+	projects.EXPECT().ValidateProjectOU(mock.Anything, testProjectID, "ou-1").Return(&tidcommon.InternalServerError)
+	svc := s.serviceWithProjects(projects)
+	s.mockValidator.EXPECT().ValidateFlowDefinition(mock.Anything, mock.Anything).Return(nil)
+	s.mockStore.EXPECT().GetFlowByID(mock.Anything, testFlowIDService).Return(&providers.CompleteFlowDefinition{
+		ID:       testFlowIDService,
+		Handle:   "test-handle",
+		FlowType: providers.FlowTypeAuthentication,
+		OUID:     "ou-1",
+	}, nil)
+
+	result, err := svc.UpdateFlow(context.Background(), testFlowIDService, &FlowDefinition{
+		Handle:    "test-handle",
+		Name:      "Updated",
+		FlowType:  providers.FlowTypeAuthentication,
+		ProjectID: testProjectID,
+		Nodes:     validFlowNodes(),
+	})
+
+	s.Nil(result)
+	s.Require().NotNil(err)
+	s.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
+func (s *FlowMgtServiceTestSuite) TestProjectHasFlows_WithFlows() {
+	s.mockStore.EXPECT().ListFlowsByProject(mock.Anything, testProjectID, "", 1, 0, "").
+		Return([]BasicFlowDefinition{{ID: "flow-1", ProjectID: testProjectID}}, 2, nil)
+
+	hasFlows, err := s.service.ProjectHasFlows(context.Background(), testProjectID)
+
+	s.Nil(err)
+	s.True(hasFlows)
+}
+
+func (s *FlowMgtServiceTestSuite) TestProjectHasFlows_WithoutFlows() {
+	s.mockStore.EXPECT().ListFlowsByProject(mock.Anything, testProjectID, "", 1, 0, "").
+		Return([]BasicFlowDefinition{}, 0, nil)
+
+	hasFlows, err := s.service.ProjectHasFlows(context.Background(), testProjectID)
+
+	s.Nil(err)
+	s.False(hasFlows)
+}
+
+func (s *FlowMgtServiceTestSuite) TestProjectHasFlows_StoreError() {
+	s.mockStore.EXPECT().ListFlowsByProject(mock.Anything, testProjectID, "", 1, 0, "").
+		Return(nil, 0, errors.New("db down"))
+
+	hasFlows, err := s.service.ProjectHasFlows(context.Background(), testProjectID)
+
+	s.False(hasFlows)
+	s.Equal(&tidcommon.InternalServerError, err)
+}
+
+func (s *FlowMgtServiceTestSuite) TestListFlowsByProject_Success() {
+	flows := []BasicFlowDefinition{{ID: "flow-1", OUID: "ou-1", ProjectID: testProjectID}}
+	s.mockStore.EXPECT().ListFlowsByProject(mock.Anything, testProjectID, "ou-1", 10, 0,
+		string(providers.FlowTypeAuthentication)).Return(flows, 1, nil)
+
+	result, err := s.service.ListFlowsByProject(context.Background(), testProjectID, "ou-1",
+		providers.FlowTypeAuthentication, 10, 0)
+
+	s.Nil(err)
+	s.Equal(1, result.TotalResults)
+	s.Equal(1, result.Count)
+	s.Equal(testProjectID, result.Flows[0].ProjectID)
+	s.Require().NotNil(result.Flows[0].IsOwnedByOU)
+	s.True(*result.Flows[0].IsOwnedByOU)
+}
+
+func (s *FlowMgtServiceTestSuite) TestListFlowsByProject_ClampsPagination() {
+	s.mockStore.EXPECT().ListFlowsByProject(mock.Anything, testProjectID, "", maxPageSize, 0, "").
+		Return([]BasicFlowDefinition{}, 0, nil)
+
+	result, err := s.service.ListFlowsByProject(context.Background(), testProjectID, "", "", maxPageSize+1, -1)
+
+	s.Nil(err)
+	s.Equal(0, result.TotalResults)
+	s.Equal(1, result.StartIndex)
+}
+
+func (s *FlowMgtServiceTestSuite) TestListFlowsByProject_EmptyProjectHasNoFlows() {
+	result, err := s.service.ListFlowsByProject(context.Background(), "", "", "", 0, 0)
+
+	s.Nil(err)
+	s.Equal(0, result.TotalResults)
+	s.Empty(result.Flows)
+	s.mockStore.AssertNotCalled(s.T(), "ListFlowsByProject",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *FlowMgtServiceTestSuite) TestListFlowsByProject_InvalidFlowType() {
+	result, err := s.service.ListFlowsByProject(context.Background(), testProjectID, "", "INVALID", 10, 0)
+
+	s.Nil(result)
+	s.Require().NotNil(err)
+	s.Equal(ErrorInvalidFlowType.Code, err.Code)
+}
+
+func (s *FlowMgtServiceTestSuite) TestListFlowsByProject_StoreError() {
+	s.mockStore.EXPECT().ListFlowsByProject(mock.Anything, testProjectID, "", defaultPageSize, 0, "").
+		Return(nil, 0, errors.New("db error"))
+
+	result, err := s.service.ListFlowsByProject(context.Background(), testProjectID, "", "", 0, 0)
+
+	s.Nil(result)
+	s.Require().NotNil(err)
+	s.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
+// allowAllAuthz returns an authorization mock that allows every action and every list, so tests not
+// about authorization reach the logic they cover.
+func allowAllAuthz(t interface {
+	mock.TestingT
+	Cleanup(func())
+}) *sysauthzmock.SystemAuthorizationServiceInterfaceMock {
+	m := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(t)
+	m.On("IsActionAllowed", mock.Anything, mock.Anything, mock.Anything).Return(true, nil).Maybe()
+	m.On("GetAccessibleResources", mock.Anything, mock.Anything, mock.Anything).
+		Return(&sysauthz.AccessibleResources{AllAllowed: true}, nil).Maybe()
+	return m
 }

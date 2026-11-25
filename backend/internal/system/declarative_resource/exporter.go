@@ -66,6 +66,16 @@ type PerResourceRuler interface {
 	GetResourceRulesForResource(resource interface{}) *ResourceRules
 }
 
+// ResourceIdentifier is implemented by an exporter whose export names values, so that the ID a name is
+// derived from can be read from a resource the exporter was handed rather than looked up.
+//
+// A value captured as the resource is written is named from the resource itself, and must get the
+// same name an export of that resource writes.
+type ResourceIdentifier interface {
+	// GetResourceID returns the ID of the resource, or "" when the value is not one the exporter reads.
+	GetResourceID(resource interface{}) string
+}
+
 // SecretFieldLister names the fields of an exported document that hold a credential: the only
 // places an import may put the value a "sec:" reference names.
 //
@@ -106,11 +116,11 @@ type ReferenceWriter interface {
 // and the importing deployment fills it from its own secrets or variables. An exporter whose
 // credentials sit in a map writes these itself, since the parameterizer only rewrites a slice of
 // properties and would export a map's values as they are.
-func CredentialPlaceholders(resourceType, resourceName string, credentials []string,
+func CredentialPlaceholders(resourceType, resourceID string, credentials []string,
 	references bool) map[string]interface{} {
 	placeholders := make(map[string]interface{}, len(credentials))
 	for _, credential := range credentials {
-		name := varname.DeriveVariableName(resourceType, resourceName, credential)
+		name := varname.DeriveVariableName(resourceType, resourceID, credential)
 		if references {
 			placeholders[credential] = valueref.SecretReference(name)
 			continue

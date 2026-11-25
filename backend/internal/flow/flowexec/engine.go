@@ -5,9 +5,12 @@ package flowexec
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,10 +22,12 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/flow/executor"
+	"github.com/thunder-id/thunderid/internal/flow/executormeta"
 	"github.com/thunder-id/thunderid/internal/flow/graphbuilder"
 	"github.com/thunder-id/thunderid/internal/flow/session"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -76,6 +81,17 @@ func newFlowEngine(
 
 // Execute executes a step in the flow
 func (fe *flowEngine) Execute(ctx *EngineContext) (FlowStep, *tidcommon.ServiceError) {
+	flowStep, svcErr := fe.executeRequest(ctx)
+	if svcErr == nil && flowStep.Status != providers.FlowStatusComplete {
+		requested := fe.pausedStepInputs(ctx, &flowStep)
+		fe.dropUnusedInputs(ctx, requested)
+		fe.recordRequestedInputs(ctx, &flowStep, requested)
+	}
+	return flowStep, svcErr
+}
+
+// executeRequest runs the flow from the current node until it needs the user, ends, or fails.
+func (fe *flowEngine) executeRequest(ctx *EngineContext) (FlowStep, *tidcommon.ServiceError) {
 	logger := fe.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
 	flowStep := FlowStep{
@@ -167,7 +183,7 @@ func (fe *flowEngine) executeNodePackage(ctx *EngineContext,
 	currentNode core.NodeInterface, flowStep *FlowStep, flowStartTime int64) (
 	core.NodeInterface, bool, *tidcommon.ServiceError) {
 	logger := fe.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID),
-		log.String("nodeID", currentNode.GetID()), log.String("nodeType", string(currentNode.GetType())))
+		log.String(log.LoggerKeyNodeID, currentNode.GetID()), log.String("nodeType", string(currentNode.GetType())))
 
 	logger.Debug(ctx.Context, "Executing node")
 
@@ -199,11 +215,19 @@ func (fe *flowEngine) executeNodePackage(ctx *EngineContext,
 		nodeCtxContext = authnprovidercm.WithSubjectTypeConstraints(ssoCtx, authnprovidercm.SubjectTypeConstraints{
 			AllowedUserTypes:  ctx.Application.AllowedUserTypes,
 			AllowedAgentTypes: ctx.Application.AllowedAgentTypes,
+			RequiredSubjectID: ctx.RequiredSubjectID,
 		})
 	}
-	// A recovery flow is marked too, so the default provider checks its proofs at the recovery plane.
-	if ctx.FlowType == providers.FlowTypeRecovery {
-		nodeCtxContext = authnprovidercm.WithRecoveryFlow(nodeCtxContext)
+	// A recovery flow is marked too, so the default provider checks its proofs at the recovery plane. So is an
+	// administrator-initiated flow, whose user recovers access through it, as in an administrator-started
+	// credential reset.
+	if ctx.FlowType == providers.FlowTypeRecovery || ctx.FlowType == providers.FlowTypeAdminInitiated {
+		nodeCtxContext = authnprovidercm.WithRecoveryProof(nodeCtxContext)
+	}
+	// A bounded flow carries its sign-in boundary the same way. It is read now so an ouId or a subject an
+	// earlier step set is picked up.
+	if ctx.SignInBounded {
+		nodeCtxContext = authnprovidercm.WithSignInBoundary(nodeCtxContext, signInBoundary(ctx))
 	}
 	fe.replayPromptInputs(ctx)
 
@@ -225,6 +249,7 @@ func (fe *flowEngine) executeNodePackage(ctx *EngineContext,
 		ExecutionHistory:  ctx.ExecutionHistory,
 	}
 	nodeCtx.SetInitiatorRequest(ctx.GetInitiatorRequest())
+	nodeCtx.SetBoundSubject(ctx.boundSubject)
 	if nodeCtx.NodeInputs == nil {
 		nodeCtx.NodeInputs = make([]providers.Input, 0)
 	}
@@ -244,14 +269,17 @@ func (fe *flowEngine) executeNodePackage(ctx *EngineContext,
 
 	// Check if the node should be executed based on its condition
 	if !currentNode.ShouldExecute(nodeCtx) {
-		logger.Debug(ctx.Context, "Skipping node due to unmet condition",
-			log.String("nodeID", currentNode.GetID()))
+		logger.Debug(ctx.Context, "Skipping node due to unmet condition")
 		nextNode, svcErr := fe.skipToNextNode(ctx, currentNode, logger)
 		if svcErr != nil {
 			return nil, false, svcErr
 		}
 		return nextNode, false, nil
 	}
+	if ctx.executedNodes == nil {
+		ctx.executedNodes = make(map[core.NodeInterface]struct{})
+	}
+	ctx.executedNodes[currentNode] = struct{}{}
 
 	if svcErr := fe.setNodeExecutor(ctx.Context, currentNode, logger); svcErr != nil {
 		return nil, false, svcErr
@@ -285,9 +313,7 @@ func (fe *flowEngine) executeNodePackage(ctx *EngineContext,
 	}
 	executionEndTime := time.Now().UnixMilli()
 
-	if consumed := nodeCtx.GetConsumedInputs(); len(consumed) > 0 {
-		ctx.consumedInputs = append(ctx.consumedInputs, consumed...)
-	}
+	ctx.recordConsumedInputs(nodeCtx.GetConsumedInputs())
 
 	// Clear sensitive inputs from context after executor has consumed them
 	fe.clearSensitiveInputs(ctx, currentNode)
@@ -405,9 +431,7 @@ func (fe *flowEngine) runInterceptors(
 		return false, svcErr
 	}
 
-	if consumed := execCtx.GetConsumedInputs(); len(consumed) > 0 {
-		ctx.consumedInputs = append(ctx.consumedInputs, consumed...)
-	}
+	ctx.recordConsumedInputs(execCtx.GetConsumedInputs())
 	fe.updateContextWithInterceptorResponse(ctx, resp)
 
 	continueExecution := fe.processInterceptorResponse(resp, flowStep)
@@ -468,7 +492,8 @@ func (fe *flowEngine) runPostRequestInterceptorsOnExit(
 // applyVariableValues makes a VARIABLES node resolve to the values its flow holds for the organization unit a prompt
 // picked, when the flow was shared with that unit. A flow resolves for no other unit: not the one that owns the flow
 // nor the one that owns the application. A flow the unit owns, or does not hold, runs on its own defaults. A connection
-// variable that is still without a connection then stops the flow.
+// variable that is still without a connection then goes on to the onFailure node of the VARIABLES node, a prompt that
+// shows the failure, or stops the flow when the node has none.
 func (fe *flowEngine) applyVariableValues(
 	ctx *EngineContext, node core.NodeInterface, nodeResp *common.NodeResponse, logger *log.Logger,
 ) *tidcommon.ServiceError {
@@ -485,9 +510,47 @@ func (fe *flowEngine) applyVariableValues(
 		logger.Warn(ctx.Context, "The flow needs a connection that is not set for the organization unit",
 			log.String("flowID", ctx.Graph.GetID()), log.String("ouID", ctx.RuntimeData[common.RuntimeKeyOUID]),
 			log.String("variables", strings.Join(unset, ",")))
-		return &ErrorFlowConnectionNotSet
+		onFailure := ""
+		if variablesNode, ok := node.(core.VariablesNodeInterface); ok {
+			onFailure = variablesNode.GetOnFailure()
+		}
+		if onFailure == "" {
+			return &ErrorFlowConnectionNotSet
+		}
+		fe.forgetOUSelection(ctx)
+		nodeResp.Status = common.NodeStatusForward
+		nodeResp.NextNodeID = onFailure
+		nodeResp.Error = &ErrorFlowConnectionNotSet
+		if jsonBytes, err := json.Marshal(&ErrorFlowConnectionNotSet); err == nil {
+			nodeResp.RuntimeData["failureReasonJSON"] = string(jsonBytes)
+		}
 	}
 	return nil
+}
+
+// forgetOUSelection drops the organization unit a step of the flow picked, and the selection the user submitted for it,
+// so that a flow that goes on to an onFailure node and then back to the OU resolver asks for the organization unit
+// again, instead of keeping the one that just failed. An organization unit fixed before the flow ran stays.
+func (fe *flowEngine) forgetOUSelection(ctx *EngineContext) {
+	if ctx.RuntimeData[common.RuntimeKeyOUFixed] != "true" {
+		delete(ctx.RuntimeData, common.RuntimeKeyOUID)
+	}
+	// TODO: The engine should not know the OU resolver executor or its input names. Have the node or executor layer
+	// expose the inputs to clear, instead of matching the executor name and the "ouHandle" literal here.
+	delete(ctx.UserInputs, common.RuntimeKeyOUID)
+	delete(ctx.UserInputs, "ouHandle")
+	if ctx.Graph == nil {
+		return
+	}
+	for _, n := range ctx.Graph.GetNodes() {
+		resolver, ok := n.(core.ExecutorBackedNodeInterface)
+		if !ok || resolver.GetExecutorName() != executormeta.ExecutorNameOUResolver {
+			continue
+		}
+		for _, input := range resolver.GetInputs() {
+			delete(ctx.UserInputs, input.Identifier)
+		}
+	}
 }
 
 // applyHeldValues puts the values the organization unit a prompt picked holds in place of the defaults.
@@ -597,8 +660,7 @@ func (fe *flowEngine) setNodeExecutor(
 	}
 	executableNode, ok := node.(core.ExecutorBackedNodeInterface)
 	if !ok {
-		logger.Error(ctx, "Task execution node does not implement ExecutorBackedNodeInterface",
-			log.String("nodeID", node.GetID()))
+		logger.Error(ctx, "Task execution node does not implement ExecutorBackedNodeInterface")
 		return &tidcommon.InternalServerError
 	}
 
@@ -607,20 +669,18 @@ func (fe *flowEngine) setNodeExecutor(
 		return nil
 	}
 
-	logger.Debug(ctx, "Executor not set for the node. Constructing executor.",
-		log.String("nodeID", node.GetID()))
+	logger.Debug(ctx, "Executor not set for the node. Constructing executor.")
 
 	executorName := executableNode.GetExecutorName()
 	if executorName == "" {
-		logger.Error(ctx, "Executor name not configured for executable node",
-			log.String("nodeID", node.GetID()))
+		logger.Error(ctx, "Executor name not configured for executable node")
 		return &tidcommon.InternalServerError
 	}
 
 	executor, err := fe.getExecutorByName(executorName)
 	if err != nil {
-		logger.Error(ctx, "Error constructing executor for node", log.String("nodeID", node.GetID()),
-			log.String("executorName", executorName), log.Error(err))
+		logger.Error(ctx, "Error constructing executor for node",
+			log.String(log.LoggerKeyExecutorName, executorName), log.Error(err))
 		return &tidcommon.InternalServerError
 	}
 
@@ -666,56 +726,106 @@ func (fe *flowEngine) clearSensitiveInputs(ctx *EngineContext, node core.NodeInt
 	}
 }
 
-// collectOneTimeUseIdentifiers appends identifiers declared as OneTimeUse from inputs into set.
-func (fe *flowEngine) collectOneTimeUseIdentifiers(inputs []providers.Input, set map[string]struct{}) {
+// pausedStepInputs returns the inputs the step the flow pauses on asks for: those of the step's response,
+// of its node package, and of the request interceptors.
+func (fe *flowEngine) pausedStepInputs(ctx *EngineContext, flowStep *FlowStep) map[string]struct{} {
+	requested := make(map[string]struct{})
+	addInputs(requested, flowStep.Data.Inputs)
+	if ctx.CurrentNode != nil {
+		// Without an executor only the node's declared inputs count. The next request fails on the same call
+		// before the node runs, so nothing it sends is used.
+		if svcErr := fe.setNodeExecutor(ctx.Context, ctx.CurrentNode, fe.logger); svcErr != nil {
+			fe.logger.Debug(ctx.Context, "Taking only the declared inputs of the paused node",
+				log.String(log.LoggerKeyExecutionID, ctx.ExecutionID),
+				log.String(log.LoggerKeyNodeID, ctx.CurrentNode.GetID()))
+		}
+		addInputs(requested, fe.nodePackageInputs(ctx, ctx.CurrentNode))
+	}
+	addInputs(requested, fe.interceptorInputs(ctx, providers.InterceptorModePreRequest,
+		providers.InterceptorModePostRequest))
+	return requested
+}
+
+// dropUnusedInputs removes the inputs this request added that nothing in it used, so the paused flow does not
+// hold them for a later step. An input is used when the paused step asks for it, it was consumed, or a node that
+// executed declares it. A prompt consumes the inputs of the action taken, so its declared inputs do not count. The
+// authorization params are kept, since only the request that starts a flow can set them and the authorization
+// step may run after a pause.
+func (fe *flowEngine) dropUnusedInputs(ctx *EngineContext, requested map[string]struct{}) {
+	if len(ctx.additionalInputs) == 0 {
+		return
+	}
+
+	used := maps.Clone(requested)
+	maps.Copy(used, ctx.consumedInputs)
+	for node := range ctx.executedNodes {
+		if _, ok := node.(core.PromptNodeInterface); !ok {
+			addInputs(used, fe.nodeOwnInputs(node))
+		}
+	}
+	for _, identifier := range authorizationParams {
+		used[identifier] = struct{}{}
+	}
+
+	for identifier := range ctx.additionalInputs {
+		if _, ok := used[identifier]; !ok {
+			delete(ctx.UserInputs, identifier)
+		}
+	}
+}
+
+// recordRequestedInputs records the inputs the next request may carry: those the paused step asks for, and those
+// of every node interceptor of the flow and its calling flows, since one can run on a node the next request
+// reaches past the paused step. A calling flow's POST_REQUEST interceptors count too, since they run when the
+// called flow returns in that request. A
+// redirection step is not limited, since its callback carries the external party's parameters.
+func (fe *flowEngine) recordRequestedInputs(ctx *EngineContext, flowStep *FlowStep,
+	requested map[string]struct{}) {
+	if flowStep.Type == common.StepTypeRedirection {
+		ctx.requestedInputs = nil
+		return
+	}
+	ctx.requestedInputs = maps.Clone(requested)
+	addInputs(ctx.requestedInputs,
+		fe.interceptorInputs(ctx, providers.InterceptorModePreNode, providers.InterceptorModePostNode))
+	for _, callerFrame := range ctx.frameStack {
+		addInputs(ctx.requestedInputs, graphInterceptorInputs(callerFrame.graph, providers.InterceptorModePreNode,
+			providers.InterceptorModePostNode, providers.InterceptorModePostRequest))
+	}
+}
+
+// addInputs adds the identifiers of inputs to set.
+func addInputs(set map[string]struct{}, inputs []providers.Input) {
 	for _, input := range inputs {
-		if input.OneTimeUse {
-			set[input.Identifier] = struct{}{}
-		}
+		set[input.Identifier] = struct{}{}
 	}
 }
 
-// clearOneTimeUseInputsScope removes identifiers from ctx.consumedInputs that are declared
-// OneTimeUse in scoped, deleting each matched identifier from ctx.UserInputs. Unmatched
-// entries are preserved in ctx.consumedInputs for a later scope to handle.
-func (fe *flowEngine) clearOneTimeUseInputsScope(ctx *EngineContext,
-	scoped map[string]struct{}) {
-	if len(ctx.consumedInputs) == 0 || len(scoped) == 0 {
-		return
-	}
-
-	remaining := ctx.consumedInputs[:0]
-	for _, id := range ctx.consumedInputs {
-		if _, ok := scoped[id]; ok {
-			delete(ctx.UserInputs, id)
-			continue
-		}
-		remaining = append(remaining, id)
-	}
-	ctx.consumedInputs = remaining
+// interceptorInputs returns the inputs of the graph's interceptors that run in the given modes.
+func (fe *flowEngine) interceptorInputs(ctx *EngineContext, modes ...providers.InterceptorMode) []providers.Input {
+	return graphInterceptorInputs(ctx.Graph, modes...)
 }
 
-// clearNodePackageOneTimeUseInputs removes any consumed identifier declared OneTimeUse on the
-// node or on an applicable PRE_NODE/POST_NODE interceptor from ctx.UserInputs, and drops it
-// from the shared consumed list.
-func (fe *flowEngine) clearNodePackageOneTimeUseInputs(ctx *EngineContext, node core.NodeInterface) {
-	if len(ctx.consumedInputs) == 0 || node == nil {
-		return
-	}
+// nodePackageInputs returns the inputs of a node package: the node's own inputs and those of the PRE_NODE and
+// POST_NODE interceptors that apply to it.
+func (fe *flowEngine) nodePackageInputs(ctx *EngineContext, node core.NodeInterface) []providers.Input {
+	return append(fe.nodeOwnInputs(node), fe.nodeInterceptorInputs(ctx, node)...)
+}
 
-	scoped := make(map[string]struct{})
-	if execNode, ok := node.(core.ExecutorBackedNodeInterface); ok {
-		// Use the node's declared inputs when present, falling back to the executor's default
-		// inputs otherwise.
-		inputs := execNode.GetInputs()
-		if len(inputs) == 0 {
-			if executor := execNode.GetExecutor(); executor != nil {
-				inputs = executor.GetDefaultInputs()
-			}
+// nodeOwnInputs returns the inputs a node declares, or its executor's default inputs when it declares none.
+func (fe *flowEngine) nodeOwnInputs(node core.NodeInterface) []providers.Input {
+	inputs := slices.Clone(getNodeInputs(node))
+	if execNode, ok := node.(core.ExecutorBackedNodeInterface); ok && len(inputs) == 0 {
+		if executor := execNode.GetExecutor(); executor != nil {
+			inputs = slices.Clone(executor.GetDefaultInputs())
 		}
-		fe.collectOneTimeUseIdentifiers(inputs, scoped)
 	}
+	return inputs
+}
 
+// nodeInterceptorInputs returns the inputs of the PRE_NODE and POST_NODE interceptors that apply to a node.
+func (fe *flowEngine) nodeInterceptorInputs(ctx *EngineContext, node core.NodeInterface) []providers.Input {
+	var inputs []providers.Input
 	if ctx.Graph != nil {
 		nodeID := node.GetID()
 		skipInterceptors := extractSkipInterceptors(node)
@@ -727,46 +837,44 @@ func (fe *flowEngine) clearNodePackageOneTimeUseInputs(ctx *EngineContext, node 
 				if !shouldApplyToNode(unit, nodeID, skipInterceptors) {
 					continue
 				}
-				ic := unit.GetInterceptor()
-				if ic == nil {
-					continue
+				if ic := unit.GetInterceptor(); ic != nil {
+					inputs = append(inputs, ic.GetInputs()...)
 				}
-				fe.collectOneTimeUseIdentifiers(ic.GetInputs(), scoped)
 			}
 		}
 	}
-
-	fe.clearOneTimeUseInputsScope(ctx, scoped)
+	return inputs
 }
 
-// clearRequestPackageOneTimeUseInputs removes any remaining consumed identifier declared
-// OneTimeUse on a PRE_REQUEST/POST_REQUEST interceptor from ctx.UserInputs, then drains the
-// consumed list.
+// clearConsumedOneTimeUseInputs removes each of inputs declared OneTimeUse that was consumed within the current
+// request from ctx.UserInputs.
+func (fe *flowEngine) clearConsumedOneTimeUseInputs(ctx *EngineContext, inputs []providers.Input) {
+	for _, input := range inputs {
+		if _, consumed := ctx.consumedInputs[input.Identifier]; consumed && input.OneTimeUse {
+			delete(ctx.UserInputs, input.Identifier)
+		}
+	}
+}
+
+// clearNodePackageOneTimeUseInputs removes each consumed input declared OneTimeUse on the node or on an
+// applicable PRE_NODE/POST_NODE interceptor from ctx.UserInputs.
+func (fe *flowEngine) clearNodePackageOneTimeUseInputs(ctx *EngineContext, node core.NodeInterface) {
+	if len(ctx.consumedInputs) == 0 || node == nil {
+		return
+	}
+
+	fe.clearConsumedOneTimeUseInputs(ctx, fe.nodePackageInputs(ctx, node))
+}
+
+// clearRequestPackageOneTimeUseInputs removes each consumed input declared OneTimeUse on a
+// PRE_REQUEST/POST_REQUEST interceptor from ctx.UserInputs.
 func (fe *flowEngine) clearRequestPackageOneTimeUseInputs(ctx *EngineContext) {
 	if len(ctx.consumedInputs) == 0 {
 		return
 	}
 
-	if ctx.Graph != nil {
-		scoped := make(map[string]struct{})
-		for _, mode := range []providers.InterceptorMode{
-			providers.InterceptorModePreRequest,
-			providers.InterceptorModePostRequest,
-		} {
-			for _, unit := range ctx.Graph.GetInterceptors(mode) {
-				ic := unit.GetInterceptor()
-				if ic == nil {
-					continue
-				}
-				fe.collectOneTimeUseIdentifiers(ic.GetInputs(), scoped)
-			}
-		}
-		fe.clearOneTimeUseInputsScope(ctx, scoped)
-	}
-
-	// Drop anything left over. Non-OneTimeUse signals are ignored by design; leftover entries
-	// have no declared scope in this graph and would otherwise leak across requests.
-	ctx.consumedInputs = nil
+	fe.clearConsumedOneTimeUseInputs(ctx, fe.interceptorInputs(ctx, providers.InterceptorModePreRequest,
+		providers.InterceptorModePostRequest))
 }
 
 // updateContextWithNodeResponse updates the engine context with the node response and authenticated user.
@@ -885,13 +993,22 @@ func (fe *flowEngine) processNodeResponse(ctx *EngineContext, nodeResp *common.N
 		return nil, false, &tidcommon.InternalServerError
 	}
 
-	// Carry any SSO handle minted by this node onto the flow step so the transport layer can emit
-	// it. The Session node emits the handle on the engine-only EngineData channel (never returned to
-	// the client and off the engine contract). Stamped here (not only at completion) so it survives
-	// an immediately following prompt step that returns the flow as incomplete.
+	// Carry any SSO handle this node minted or reused onto the flow step, with its session's end. The
+	// Session node emits them on the engine-only EngineData channel (off the engine contract). Stamped
+	// here (not only at completion) so they survive an immediately following prompt step that returns the
+	// flow as incomplete. The handle the request presented is marked reused.
 	if handle := nodeResp.EngineData[common.RuntimeKeySSOSessionHandle]; handle != "" {
 		flowStep.SSOHandleOut = handle
 		flowStep.SSOFlowID = ssoFlowID(ctx)
+		flowStep.SSOHandleReused = handle == ctx.SSOHandleIn
+		flowStep.SSOHandleExpiresAt = time.Time{}
+		if raw := nodeResp.EngineData[common.RuntimeKeySSOSessionExpiresAt]; raw != "" {
+			if seconds, err := strconv.ParseInt(raw, 10, 64); err == nil {
+				flowStep.SSOHandleExpiresAt = time.Unix(seconds, 0)
+			} else {
+				logger.Debug(ctx.Context, "Ignoring an unreadable SSO session end", log.String("value", raw))
+			}
+		}
 	}
 
 	// Carry a session-termination signal onto the flow step so the transport layer clears the
@@ -899,6 +1016,10 @@ func (fe *flowEngine) processNodeResponse(ctx *EngineContext, nodeResp *common.N
 	// it has ended the session.
 	if cleared := nodeResp.EngineData[common.RuntimeKeySSOSessionCleared]; cleared != "" {
 		flowStep.SSOClearFlowID = ssoFlowID(ctx)
+	}
+
+	if isSignInBoundaryRefusal(nodeResp.Error) {
+		dropRefusedSignIn(ctx, flowStep)
 	}
 
 	switch nodeResp.Status {
@@ -942,6 +1063,23 @@ func (fe *flowEngine) processNodeResponse(ctx *EngineContext, nodeResp *common.N
 			log.String("status", string(nodeResp.Status)))
 		return nil, false, &tidcommon.InternalServerError
 	}
+}
+
+// isSignInBoundaryRefusal reports whether a node refused a sign-in for its organization unit boundary.
+func isSignInBoundaryRefusal(err *tidcommon.ServiceError) bool {
+	return err != nil &&
+		(err.Code == executor.ErrOrganizationNotResolved.Code || err.Code == executor.ErrNoAccessToApplication.Code)
+}
+
+// dropRefusedSignIn drops the user, assertion and session handle of a refused sign-in, so none of them
+// reaches the client or a calling flow.
+func dropRefusedSignIn(ctx *EngineContext, flowStep *FlowStep) {
+	ctx.AuthUser = providers.AuthUser{}
+	ctx.Assertion = ""
+	flowStep.SSOHandleOut = ""
+	flowStep.SSOFlowID = ""
+	flowStep.SSOHandleReused = false
+	flowStep.SSOHandleExpiresAt = time.Time{}
 }
 
 // isDisplayOnlyPromptNode checks if the current node is a display-only prompt node.
@@ -1085,11 +1223,17 @@ func (fe *flowEngine) handleCallResponse(ctx *EngineContext,
 	}
 
 	targetFlowID := nodeResp.CallTargetFlowID
-	flow, svcErr := fe.flowProvider.GetFlow(ctx.Context, targetFlowID)
+	flow, svcErr := fe.flowProvider.GetFlow(security.WithRuntimeContext(ctx.Context), targetFlowID)
 	if svcErr != nil {
 		logger.Error(ctx.Context, "Failed to get call target flow",
 			log.String("targetFlowID", targetFlowID))
 		return nil, &tidcommon.InternalServerError
+	}
+	// A flow running with the system's authority would lend it to a callee that should act for its caller.
+	if !actsForCaller(ctx.rootFlowType()) && actsForCaller(flow.FlowType) {
+		logger.Debug(ctx.Context, "Call target acts for its caller", log.String("targetFlowID", targetFlowID),
+			log.String("targetFlowType", string(flow.FlowType)))
+		return nil, &ErrorCallTargetNotPermitted
 	}
 
 	calleeGraph, svcErr := fe.graphBuilder.GetGraph(ctx.Context, flow)
@@ -1109,6 +1253,11 @@ func (fe *flowEngine) switchContextToCallee(ctx *EngineContext,
 	calleeFlowVersion int,
 	logger *log.Logger) (
 	core.NodeInterface, *tidcommon.ServiceError) {
+	// The caller's boundedness and decided organization unit are read before the reset below.
+	callerBounded := ctx.SignInBounded
+	callerOUID := ctx.RuntimeData[common.RuntimeKeyOUID]
+	callerOUFixed := ctx.RuntimeData[common.RuntimeKeyOUFixed]
+
 	// Push the current frame before switching to the callee
 	resumeCallNodeID := ctx.CurrentNode.GetID()
 	ctx.pushFrame(resumeCallNodeID)
@@ -1121,6 +1270,8 @@ func (fe *flowEngine) switchContextToCallee(ctx *EngineContext,
 	// intentionally left in place
 	ctx.Graph = calleeGraph
 	ctx.FlowType = calleeGraph.GetType()
+	// Boundedness is per frame: a sign-in callee is bounded only inside a bounded caller.
+	ctx.SignInBounded = callerBounded && ctx.FlowType == providers.FlowTypeAuthentication
 	ctx.RuntimeData = make(map[string]string)
 	ctx.ForwardedData = nil
 	ctx.AdditionalData = make(map[string]string)
@@ -1128,6 +1279,14 @@ func (fe *flowEngine) switchContextToCallee(ctx *EngineContext,
 	ctx.CurrentSegmentID = ""
 	ctx.CurrentAction = ""
 	ctx.clearPausedPromptInputs()
+
+	// A bounded callee stays in the organization unit its caller decided, and keeps it fixed when the caller's was.
+	if ctx.SignInBounded && callerOUID != "" {
+		ctx.RuntimeData[common.RuntimeKeyOUID] = callerOUID
+		if callerOUFixed != "" {
+			ctx.RuntimeData[common.RuntimeKeyOUFixed] = callerOUFixed
+		}
+	}
 
 	// Set the current node to the start node of the callee graph
 	startNode, startErr := calleeGraph.GetStartNode()
@@ -1244,13 +1403,12 @@ func (fe *flowEngine) skipToNextNode(ctx *EngineContext, currentNode core.NodeIn
 
 	// Condition must specify where to skip to
 	if condition == nil || condition.OnSkip == "" {
-		logger.Error(ctx.Context, "Node has condition but onSkip is not specified",
-			log.String("nodeID", currentNode.GetID()))
+		logger.Error(ctx.Context, "Node has condition but onSkip is not specified")
 		return nil, &tidcommon.InternalServerError
 	}
 
 	logger.Debug(ctx.Context, "Using condition's onSkip for skipped node",
-		log.String("nodeID", currentNode.GetID()), log.String("onSkip", condition.OnSkip))
+		log.String("onSkip", condition.OnSkip))
 
 	nodeResp := &common.NodeResponse{NextNodeID: condition.OnSkip}
 
@@ -1425,7 +1583,8 @@ func (fe *flowEngine) isSegmentRestartAllowed(ctx *EngineContext, logger *log.Lo
 		return false
 	}
 
-	if svcErr := fe.setNodeExecutor(ctx.Context, segStartNode, logger); svcErr != nil {
+	nodeLogger := logger.With(log.String(log.LoggerKeyNodeID, seg.StartNodeID))
+	if svcErr := fe.setNodeExecutor(ctx.Context, segStartNode, nodeLogger); svcErr != nil {
 		return false
 	}
 
@@ -1529,7 +1688,7 @@ func publishNodeExecutionStartedEvent(
 	}
 
 	evt := event.NewEvent(
-		ctx.ExecutionID, // Use ExecutionID as TraceID
+		ctx.TraceID,
 		string(event.EventTypeFlowNodeExecutionStarted),
 		event.ComponentFlowEngine,
 	).
@@ -1600,7 +1759,7 @@ func publishNodeExecutionCompletedEvent(ctx *EngineContext, node core.NodeInterf
 	durationMs := executionEndTime - executionStartTime
 
 	evt := event.NewEvent(
-		ctx.ExecutionID, // Use ExecutionID as TraceID
+		ctx.TraceID,
 		string(eventType),
 		event.ComponentFlowEngine,
 	).
@@ -1637,7 +1796,7 @@ func publishFlowStartedEvent(ctx *EngineContext, obsSvc providers.ObservabilityP
 	}
 
 	evt := event.NewEvent(
-		ctx.ExecutionID, // Use ExecutionID as TraceID, so the whole flow shares one trace
+		ctx.TraceID,
 		string(event.EventTypeFlowStarted),
 		event.ComponentFlowEngine,
 	).
@@ -1664,7 +1823,7 @@ func publishFlowCompletedEvent(
 	durationMs := flowEndTime - flowStartTime
 
 	evt := event.NewEvent(
-		ctx.ExecutionID, // Use ExecutionID as TraceID
+		ctx.TraceID,
 		string(event.EventTypeFlowCompleted),
 		event.ComponentFlowEngine,
 	).
@@ -1688,7 +1847,7 @@ func publishFlowFailedEvent(ctx *EngineContext, svcErr *tidcommon.ServiceError,
 	durationMs := flowEndTime - flowStartTime
 
 	evt := event.NewEvent(
-		ctx.ExecutionID, // Use ExecutionID as TraceID, so the whole flow shares one trace
+		ctx.TraceID,
 		string(event.EventTypeFlowFailed),
 		event.ComponentFlowEngine,
 	).
@@ -1819,4 +1978,20 @@ func ssoFlowID(ctx *EngineContext) string {
 		return ""
 	}
 	return ctx.Graph.GetID()
+}
+
+// graphInterceptorInputs returns the inputs of the graph's interceptors of the given modes.
+func graphInterceptorInputs(graph core.GraphInterface, modes ...providers.InterceptorMode) []providers.Input {
+	if graph == nil {
+		return nil
+	}
+	var inputs []providers.Input
+	for _, mode := range modes {
+		for _, unit := range graph.GetInterceptors(mode) {
+			if ic := unit.GetInterceptor(); ic != nil {
+				inputs = append(inputs, ic.GetInputs()...)
+			}
+		}
+	}
+	return inputs
 }

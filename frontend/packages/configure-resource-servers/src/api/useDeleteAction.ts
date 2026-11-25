@@ -2,13 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useMutation, useQueryClient, type UseMutationResult} from '@tanstack/react-query';
-import {AdministrationModes, useAdministrationOperation, useConfig} from '@thunderid/contexts';
+import {useAdministrationOperation, useConfig} from '@thunderid/contexts';
 import {useThunderID} from '@thunderid/react';
 import ResourceServerQueryKeys from '../constants/resource-server-query-keys';
-import {deleteActionNatively, deleteActionViaFlow, type HttpLike} from '../utils/actionAdministrationFlow';
 
 /**
  * Custom React hook to delete an action of a resource server or one of its resources.
+ *
+ * The deletion calls the action's `DELETE` endpoint; the server revokes every token carrying the
+ * action's scope before the action is removed. A console that declares its own operation runs that
+ * instead.
  *
  * @returns TanStack Query mutation object for deleting actions
  */
@@ -26,17 +29,19 @@ export default function useDeleteAction(
 
   return useMutation<void, Error, string>({
     mutationFn: async (actionId: string): Promise<void> => {
-      const client = http as unknown as HttpLike;
-
       if (typeof mode === 'function') {
         await mode(resourceServerId, actionId, resourceId);
         return;
       }
-      if (mode === AdministrationModes.NATIVE) {
-        await deleteActionNatively(client, getServerUrl(), resourceServerId, actionId, resourceId);
-        return;
-      }
-      await deleteActionViaFlow(client, getServerUrl(), resourceServerId, actionId, resourceId);
+      const serverUrl = getServerUrl();
+      const url = resourceId
+        ? `${serverUrl}/resource-servers/${resourceServerId}/resources/${resourceId}/actions/${actionId}`
+        : `${serverUrl}/resource-servers/${resourceServerId}/actions/${actionId}`;
+
+      await http.request({
+        url,
+        method: 'DELETE',
+      } as unknown as Parameters<typeof http.request>[0]);
     },
     onSuccess: () => {
       if (resourceId) {

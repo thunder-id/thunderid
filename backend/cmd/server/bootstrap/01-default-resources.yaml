@@ -7,10 +7,9 @@ logoUrl: "avatar:shape=rounded,variant=anonymous_entity,content=pavilion,colors=
 ---
 resource_type: project
 id: 01900000-0000-7000-8000-000000000002
-rootOuId: 01900000-0000-7000-8000-000000000001
 handle: default
 displayName: Default
-description: Default organization unit
+description: Default project
 ---
 resource_type: user_type
 id: 01900000-0000-7000-8000-000000000010
@@ -27,42 +26,66 @@ schema:
   username:
     type: string
     displayName: Username
+    display:
+      order: 0
     required: true
     unique: true
   email:
     type: email
     displayName: Email
+    display:
+      order: 1
     required: true
     unique: true
     regex: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
   given_name:
     type: string
     displayName: First Name
+    display:
+      order: 2
     required: false
   family_name:
     type: string
     displayName: Last Name
+    display:
+      order: 3
     required: false
   mobile_number:
     type: mobile
     displayName: Mobile Number
+    display:
+      order: 4
     required: false
     regex: "^\\+[1-9]\\d{1,14}$"
   sub:
     type: string
     displayName: Subject
+    display:
+      order: 8
+      onCreate:
+        hidden: true
     required: false
   name:
     type: string
     displayName: Full Name
+    display:
+      order: 6
+      onCreate:
+        hidden: true
     required: false
   picture:
     type: string
     displayName: Picture
+    display:
+      order: 7
+      onCreate:
+        hidden: true
     required: false
   password:
     type: string
     displayName: Password
+    display:
+      order: 5
     required: false
     credential: true
 ---
@@ -89,23 +112,11 @@ schema:
       - gemini
       - mistral
       - custom
-  model:
+  password:
     type: string
-    displayName: Model
+    displayName: Password
     required: false
-  function:
-    type: string
-    displayName: Function
-    required: false
-    enum:
-      - task-automation
-      - rag-retrieval
-      - code-gen
-      - data-analysis
-      - orchestrator
-      - sub-agent
-      - assistant
-      - custom
+    credential: true
 ---
 resource_type: resource_server
 id: 01900000-0000-7000-8000-000000000020
@@ -113,14 +124,98 @@ name: System
 description: System resource server
 identifier: https://localhost:8090/mcp
 ouHandle: default
+hierarchicalPermissions: true
+delimiter: ":"
 resources:
   - name: System
     handle: system
     description: System resource
+  - name: Organization
+    handle: org
+    description: Resources of the organization unit the token names
+  - name: Organization Units
+    handle: ou
+    parent: org
+    description: Organization unit management
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
+  - name: Users
+    handle: user
+    parent: org
+    description: User management, including SCIM users
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
+  - name: Groups
+    handle: group
+    parent: org
+    description: Group management, including SCIM groups
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
+  - name: Agents
+    handle: agent
+    parent: org
+    description: Agent management
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
+  - name: User Types
+    handle: usertype
+    parent: org
+    description: User type management
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
+  - name: Agent Types
+    handle: agenttype
+    parent: org
+    description: Agent type management
+    actions:
+      - name: View
+        handle: view
+      - name: Create
+        handle: create
+      - name: Update
+        handle: update
+      - name: Delete
+        handle: delete
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000061
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 name: Default Authentication Flow
 handle: default-flow
 flowType: AUTHENTICATION
@@ -284,8 +379,613 @@ nodes:
       y: 509
 ---
 resource_type: flow
+id: 01900000-0000-7000-8000-000000000092
+ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
+name: Default Personal Agent Authentication Flow
+handle: default-personal-agent-auth-flow
+flowType: AUTHENTICATION
+nodes:
+- id: start
+  type: START
+  onSuccess: prompt_credentials
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 248
+      y: 711
+- id: prompt_credentials
+  type: PROMPT
+  meta:
+    components:
+    - alt: '{{ t(signin:images.app_logo.alt) }}'
+      category: DISPLAY
+      height: '60'
+      id: image
+      resourceType: ELEMENT
+      src: '{{ meta(application.logoUrl) }}'
+      type: IMAGE
+      width: ''
+    - align: center
+      type: TEXT
+      id: text_001
+      label: '{{ t(signin:forms.credentials.title) }}'
+      variant: HEADING_1
+    - type: BLOCK
+      id: block_001
+      components:
+      - id: input_001
+        ref: username
+        type: TEXT_INPUT
+        label: '{{ t(signin:forms.credentials.fields.username.label) }}'
+        required: true
+        placeholder: '{{ t(signin:forms.credentials.fields.username.placeholder) }}'
+      - id: input_002
+        ref: password
+        type: PASSWORD_INPUT
+        label: '{{ t(signin:forms.credentials.fields.password.label) }}'
+        required: true
+        placeholder: '{{ t(signin:forms.credentials.fields.password.placeholder) }}'
+      - type: ACTION
+        id: action_001
+        label: '{{ t(signin:forms.credentials.actions.submit.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: input_001
+      identifier: username
+      type: TEXT_INPUT
+      required: true
+    - ref: input_002
+      identifier: password
+      type: PASSWORD_INPUT
+      required: true
+    action:
+      ref: action_001
+      nextNode: credentials_auth
+  layout:
+    size:
+      width: 350
+      height: 834
+    position:
+      x: 562
+      y: 312
+- id: credentials_auth
+  type: TASK_EXECUTION
+  executor:
+    name: CredentialsAuthExecutor
+  onSuccess: authorization_check
+  onIncomplete: prompt_credentials
+  layout:
+    size:
+      width: 217
+      height: 113
+    position:
+      x: 1283
+      y: 470
+- id: authorization_check
+  type: TASK_EXECUTION
+  executor:
+    name: AuthorizationExecutor
+  onSuccess: consent_check
+  layout:
+    size:
+      width: 200
+      height: 113
+    position:
+      x: 1774
+      y: 470
+- id: consent_check
+  type: TASK_EXECUTION
+  executor:
+    name: ConsentExecutor
+  onSuccess: auth_assert
+  onIncomplete: prompt_consent
+  layout:
+    size:
+      width: 244
+      height: 113
+    position:
+      x: 2168
+      y: 469
+- id: prompt_consent
+  type: PROMPT
+  meta:
+    components:
+    - align: center
+      type: TEXT
+      id: consent_heading
+      label: '{{ t(consent:title) }}'
+      variant: HEADING_3
+    - align: center
+      type: TEXT
+      id: consent_agent_message
+      label: '{{ meta(application.name) }} wants to access your resources on your behalf.'
+      variant: BODY_1
+    - align: center
+      type: TEXT
+      id: consent_message
+      label: '{{ t(consent:message) }}'
+      variant: BODY_1
+    - type: BLOCK
+      id: consent_block
+      components:
+      - id: consent_input
+        ref: consent_decisions
+        type: CONSENT_INPUT
+        required: true
+      - type: ACTION
+        id: consent_action_allow
+        label: '{{ t(consent:allow) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+      - type: ACTION
+        id: consent_action_deny
+        label: '{{ t(consent:deny) }}'
+        variant: SECONDARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: consent_input
+      identifier: consent_decisions
+      type: CONSENT_INPUT
+      required: true
+    action:
+      ref: consent_action_allow
+      nextNode: consent_check
+  - inputs:
+    - ref: consent_input
+      identifier: consent_decisions
+      type: CONSENT_INPUT
+      required: true
+    action:
+      ref: consent_action_deny
+      nextNode: consent_check
+  layout:
+    size:
+      width: 350
+      height: 500
+    position:
+      x: 2168
+      y: -100
+- id: auth_assert
+  type: TASK_EXECUTION
+  executor:
+    name: AuthAssertExecutor
+  onSuccess: end
+  layout:
+    size:
+      width: 244
+      height: 113
+    position:
+      x: 2562
+      y: 469
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 2921
+      y: 509
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-000000000093
+ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
+name: User and Personal Assistant Registration Flow
+handle: user-and-personal-assistant-registration-flow
+flowType: REGISTRATION
+nodes:
+- id: start
+  type: START
+  onSuccess: prompt_registration_choice
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 0
+      y: 480
+- id: prompt_registration_choice
+  type: PROMPT
+  meta:
+    components:
+    - alt: '{{ t(signup:images.app_logo.alt) }}'
+      category: DISPLAY
+      height: '60'
+      id: image
+      resourceType: ELEMENT
+      src: '{{ meta(application.logoUrl) }}'
+      type: IMAGE
+    - align: center
+      type: TEXT
+      id: heading_registration_choice
+      label: '{{ t(signup:forms.registration_choice.title) }}'
+      variant: HEADING_1
+    - type: BLOCK
+      id: block_registration_choice
+      components:
+      - type: ACTION
+        id: action_register_user
+        label: '{{ t(signup:forms.registration_choice.actions.register_user.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+      - type: ACTION
+        id: action_register_personal_agent
+        label: '{{ t(signup:forms.registration_choice.actions.register_personal_agent.label) }}'
+        variant: SECONDARY
+        eventType: SUBMIT
+  prompts:
+  - action:
+      ref: action_register_user
+      nextNode: user_type_resolver
+  - action:
+      ref: action_register_personal_agent
+      nextNode: call_owner_login
+  layout:
+    size:
+      width: 350
+      height: 320
+    position:
+      x: 180
+      y: 380
+
+# User branch: as the default registration flow.
+- id: user_type_resolver
+  type: TASK_EXECUTION
+  executor:
+    name: UserTypeResolver
+  onSuccess: prompt_credentials
+  onIncomplete: prompt_usertype
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 640
+      y: 0
+- id: prompt_usertype
+  type: PROMPT
+  meta:
+    components:
+    - align: center
+      type: TEXT
+      id: heading_usertype
+      label: '{{ t(signup:forms.user_type.title) }}'
+      variant: HEADING_1
+    - type: BLOCK
+      id: block_usertype
+      components:
+      - type: SELECT
+        id: usertype_input
+        ref: userType
+        label: '{{ t(signup:forms.user_type.fields.user_type.label) }}'
+        placeholder: '{{ t(signup:forms.user_type.fields.user_type.placeholder) }}'
+        required: true
+        options: []
+      - type: ACTION
+        id: action_usertype
+        label: '{{ t(signup:forms.user_type.actions.continue.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: usertype_input
+      identifier: userType
+      type: SELECT
+      required: true
+    action:
+      ref: action_usertype
+      nextNode: user_type_resolver
+  layout:
+    size:
+      width: 350
+      height: 320
+    position:
+      x: 640
+      y: -400
+- id: prompt_credentials
+  type: PROMPT
+  meta:
+    components:
+    - align: center
+      type: TEXT
+      id: heading_credentials
+      label: '{{ t(signup:forms.credentials.title) }}'
+      variant: HEADING_1
+    - type: BLOCK
+      id: block_credentials
+      components:
+      - type: TEXT_INPUT
+        id: input_username
+        ref: username
+        label: '{{ t(signup:forms.credentials.fields.username.label) }}'
+        placeholder: '{{ t(signup:forms.credentials.fields.username.placeholder) }}'
+        required: true
+      - type: PASSWORD_INPUT
+        id: input_password
+        ref: password
+        label: '{{ t(signup:forms.credentials.fields.password.label) }}'
+        placeholder: '{{ t(signup:forms.credentials.fields.password.placeholder) }}'
+        required: true
+      - type: ACTION
+        id: action_credentials
+        label: '{{ t(signup:forms.credentials.actions.continue.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: input_username
+      identifier: username
+      type: TEXT_INPUT
+      required: true
+    - ref: input_password
+      identifier: password
+      type: PASSWORD_INPUT
+      required: true
+    action:
+      ref: action_credentials
+      nextNode: credentials_auth
+  layout:
+    size:
+      width: 350
+      height: 400
+    position:
+      x: 920
+      y: -400
+- id: credentials_auth
+  type: TASK_EXECUTION
+  executor:
+    name: CredentialsAuthExecutor
+  onSuccess: user_provisioning
+  onFailure: prompt_credentials
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1200
+      y: 0
+- id: user_provisioning
+  type: TASK_EXECUTION
+  executor:
+    name: ProvisioningExecutor
+  onSuccess: end
+  onIncomplete: prompt_schema_attrs
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1480
+      y: 0
+- id: prompt_schema_attrs
+  type: PROMPT
+  meta:
+    components:
+    - align: center
+      type: TEXT
+      id: heading_schema_attrs
+      label: '{{ t(signup:forms.user_info.title) }}'
+      variant: HEADING_1
+    - type: BLOCK
+      id: block_dynamic_user_inputs
+      components:
+      - type: DYNAMIC_INPUT_PLACEHOLDER
+        id: dynamic_inputs
+      - type: ACTION
+        id: action_schema_attrs
+        label: '{{ t(signup:forms.user_info.actions.continue.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs: []
+    action:
+      ref: action_schema_attrs
+      nextNode: user_provisioning
+  layout:
+    size:
+      width: 350
+      height: 320
+    position:
+      x: 1480
+      y: -400
+
+# Personal assistant branch: sign the owner in, then register the agent for them.
+- id: call_owner_login
+  type: CALL
+  flow:
+    ref: 01900000-0000-7000-8000-000000000092
+  onSuccess: agent_type_resolution
+  layout:
+    size:
+      width: 260
+      height: 129
+    position:
+      x: 920
+      y: 900
+- id: agent_type_resolution
+  type: TASK_EXECUTION
+  properties:
+    allowedAgentTypes:
+    - default
+  executor:
+    name: AgentTypeResolver
+  onSuccess: agent_provisioning
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1240
+      y: 910
+- id: prompt_agent_details
+  type: PROMPT
+  meta:
+    components:
+    - align: left
+      type: TEXT
+      id: text_header_agent_details
+      label: '{{ t(signup:forms.personal_agent_details.title) }}'
+      variant: HEADING_1
+    - align: left
+      type: TEXT
+      id: text_subtitle_agent_details
+      label: '{{ t(signup:forms.personal_agent_details.subtitle) }}'
+      variant: HEADING_6
+    - type: BLOCK
+      id: block_agent_details
+      components:
+      - type: DYNAMIC_INPUT_PLACEHOLDER
+        id: dynamic_agent_inputs
+      - id: input_agent_redirect_uris
+        ref: redirectUris
+        type: TEXT_INPUT
+        label: '{{ t(signup:forms.personal_agent_details.fields.redirect_uris.label) }}'
+        required: true
+        placeholder: '{{ t(signup:forms.personal_agent_details.fields.redirect_uris.placeholder) }}'
+      - id: input_agent_jwks_uri
+        ref: jwksUri
+        type: TEXT_INPUT
+        label: '{{ t(signup:forms.personal_agent_details.fields.jwks_uri.label) }}'
+        required: false
+        placeholder: '{{ t(signup:forms.personal_agent_details.fields.jwks_uri.placeholder) }}'
+      - id: input_agent_public_key
+        ref: publicKey
+        type: TEXT_INPUT
+        label: '{{ t(signup:forms.personal_agent_details.fields.public_key.label) }}'
+        required: false
+        placeholder: '{{ t(signup:forms.personal_agent_details.fields.public_key.placeholder) }}'
+      - type: ACTION
+        id: action_agent_details
+        label: '{{ t(signup:forms.personal_agent_details.actions.submit.label) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: input_agent_redirect_uris
+      identifier: redirectUris
+      type: TEXT_INPUT
+      required: true
+    - ref: input_agent_jwks_uri
+      identifier: jwksUri
+      type: TEXT_INPUT
+      required: false
+    - ref: input_agent_public_key
+      identifier: publicKey
+      type: TEXT_INPUT
+      required: false
+    action:
+      ref: action_agent_details
+      nextNode: agent_attribute_uniqueness
+  layout:
+    size:
+      width: 350
+      height: 500
+    position:
+      x: 1520
+      y: 400
+- id: agent_attribute_uniqueness
+  type: TASK_EXECUTION
+  executor:
+    name: AttributeUniquenessValidator
+  onSuccess: agent_provisioning
+  onIncomplete: prompt_agent_details
+  layout:
+    size:
+      width: 312
+      height: 117
+    position:
+      x: 1520
+      y: 1080
+- id: agent_provisioning
+  type: TASK_EXECUTION
+  properties:
+    includeOptional: true
+  executor:
+    name: ProvisioningExecutor
+    inputs:
+    - identifier: kind
+      type: TEXT_INPUT
+      required: false
+      defaultValue: personal-assistant
+      constant: true
+    - identifier: authFlowId
+      type: TEXT_INPUT
+      required: false
+      defaultValue: 01900000-0000-7000-8000-000000000092
+      constant: true
+    - identifier: alwaysPromptConsent
+      type: BOOLEAN_INPUT
+      required: false
+      defaultValue: "true"
+      constant: true
+  onSuccess: agent_credentials
+  onIncomplete: prompt_agent_details
+  onFailure: prompt_agent_details
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1520
+      y: 910
+- id: agent_credentials
+  type: PROMPT
+  meta:
+    components:
+    - align: left
+      type: TEXT
+      id: agent_credentials_heading
+      label: '{{ t(signup:forms.personal_agent_credentials.title) }}'
+      variant: HEADING_1
+      color: SUCCESS
+    - align: left
+      type: TEXT
+      id: agent_credentials_message
+      label: '{{ t(signup:forms.personal_agent_credentials.message) }}'
+      variant: HEADING_6
+    - type: COPYABLE_TEXT
+      id: agent_credentials_agent_id
+      label: '{{ t(agentOnboarding:forms.credentials.agent_id_label) }}'
+      source: agentId
+    - type: COPYABLE_TEXT
+      id: agent_credentials_client_id
+      label: '{{ t(agentOnboarding:forms.credentials.client_id_label) }}'
+      source: clientId
+    - type: COPYABLE_TEXT
+      id: agent_credentials_client_secret
+      label: '{{ t(agentOnboarding:forms.credentials.client_secret_label) }}'
+      source: clientSecret
+      masked: true
+  message: Agent registered successfully
+  next: end
+  layout:
+    size:
+      width: 350
+      height: 520
+    position:
+      x: 1800
+      y: 800
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 2160
+      y: 480
+---
+resource_type: flow
 id: 01900000-0000-7000-8000-000000000068
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 name: Console App Authentication Flow
 handle: console-app-flow
 flowType: AUTHENTICATION
@@ -399,6 +1099,7 @@ nodes:
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000070
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 name: Console App Recovery Flow
 handle: console-app-flow
 flowType: RECOVERY
@@ -556,6 +1257,7 @@ nodes:
   executor:
     name: CredentialSetter
   onSuccess: release_account_locks
+  onIncomplete: prompt_new_password
 - id: release_account_locks
   type: TASK_EXECUTION
   executor:
@@ -594,6 +1296,7 @@ nodes:
 resource_type: flow
 id: 01900000-0000-7000-8000-00000000006a
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 name: Default Sign Out Flow
 handle: default-flow
 flowType: SIGNOUT
@@ -651,6 +1354,7 @@ nodes:
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000067
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 name: Default Recovery Flow
 handle: default-flow
 flowType: RECOVERY
@@ -880,6 +1584,7 @@ nodes:
   executor:
     name: CredentialSetter
   onSuccess: release_account_locks
+  onIncomplete: prompt_new_password
   layout:
     size:
       width: 206
@@ -953,6 +1658,7 @@ nodes:
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000064
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 name: Default Registration Flow
 handle: default-flow
 flowType: REGISTRATION
@@ -1195,6 +1901,7 @@ nodes:
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000069
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 name: Console App Registration Flow
 handle: console-app-flow
 flowType: REGISTRATION
@@ -1355,6 +2062,7 @@ nodes:
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000066
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 name: Default User Onboarding Flow
 handle: default-flow
 flowType: USER_ONBOARDING
@@ -1373,7 +2081,8 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system:user
+    - system
+    - org
   executor:
     name: PermissionValidator
   onSuccess: user_type_resolver
@@ -1943,840 +2652,9 @@ nodes:
       y: 637
 ---
 resource_type: flow
-id: 01900000-0000-7000-8000-000000000077
-ouHandle: default
-name: Default User Deletion Flow
-handle: default-user-deletion-flow
-flowType: ADMINISTRATION
-nodes:
-- id: start
-  type: START
-  onSuccess: permission_validator
-  layout:
-    size:
-      width: 101
-      height: 34
-    position:
-      x: 100
-      y: 200
-- id: permission_validator
-  type: TASK_EXECUTION
-  properties:
-    requiredScopes:
-    - system:user
-  executor:
-    name: PermissionValidator
-  onSuccess: pre_delete
-  layout:
-    size:
-      width: 206
-      height: 113
-    position:
-      x: 300
-      y: 175
-- id: pre_delete
-  type: TASK_EXECUTION
-  executor:
-    name: PreDeleteExecutor
-    mode: revoke_all
-  onSuccess: revoke_tokens
-  layout:
-    size:
-      width: 220
-      height: 113
-    position:
-      x: 580
-      y: 175
-- id: revoke_tokens
-  type: TASK_EXECUTION
-  executor:
-    name: CriteriaRevocationExecutor
-  onSuccess: revoke_sessions
-  layout:
-    size:
-      width: 206
-      height: 113
-    position:
-      x: 900
-      y: 175
-- id: revoke_sessions
-  type: TASK_EXECUTION
-  executor:
-    name: SessionRevocationExecutor
-  onSuccess: delete_user
-  layout:
-    size:
-      width: 206
-      height: 113
-    position:
-      x: 1180
-      y: 175
-- id: delete_user
-  type: TASK_EXECUTION
-  executor:
-    name: UserDeleteExecutor
-  onSuccess: end
-  layout:
-    size:
-      width: 206
-      height: 113
-    position:
-      x: 1460
-      y: 175
-- id: end
-  type: END
-  layout:
-    size:
-      width: 85
-      height: 34
-    position:
-      x: 1740
-      y: 200
----
-resource_type: flow
-id: 01900000-0000-7000-8000-000000000079
-ouHandle: default
-name: Default Application Deletion Flow
-handle: default-application-deletion-flow
-flowType: ADMINISTRATION
-nodes:
-- id: start
-  type: START
-  onSuccess: permission_validator
-  layout:
-    size:
-      width: 101
-      height: 34
-    position:
-      x: 100
-      y: 200
-- id: permission_validator
-  type: TASK_EXECUTION
-  executor:
-    name: PermissionValidator
-  onSuccess: validate_application_deletion
-  layout:
-    size:
-      width: 206
-      height: 113
-    position:
-      x: 300
-      y: 175
-- id: validate_application_deletion
-  type: TASK_EXECUTION
-  executor:
-    name: ApplicationActionValidator
-    mode: revoke_all
-  onSuccess: revoke_tokens
-  layout:
-    size:
-      width: 240
-      height: 113
-    position:
-      x: 580
-      y: 175
-- id: revoke_tokens
-  type: TASK_EXECUTION
-  executor:
-    name: CriteriaRevocationExecutor
-  onSuccess: revoke_sessions
-  layout:
-    size:
-      width: 206
-      height: 113
-    position:
-      x: 900
-      y: 175
-- id: revoke_sessions
-  type: TASK_EXECUTION
-  executor:
-    name: SessionRevocationExecutor
-  onSuccess: delete_application
-  layout:
-    size:
-      width: 206
-      height: 113
-    position:
-      x: 1180
-      y: 175
-- id: delete_application
-  type: TASK_EXECUTION
-  executor:
-    name: ApplicationDeleteExecutor
-  onSuccess: end
-  layout:
-    size:
-      width: 220
-      height: 113
-    position:
-      x: 1460
-      y: 175
-- id: end
-  type: END
-  layout:
-    size:
-      width: 85
-      height: 34
-    position:
-      x: 1760
-      y: 200
----
-resource_type: flow
-id: 01900000-0000-7000-8000-00000000007a
-ouHandle: default
-name: Default Secret Regeneration Flow
-handle: default-secret-regeneration-flow
-flowType: ADMINISTRATION
-nodes:
-- id: start
-  type: START
-  onSuccess: permission_validator
-  layout:
-    size:
-      width: 101
-      height: 34
-    position:
-      x: 100
-      y: 200
-- id: permission_validator
-  type: TASK_EXECUTION
-  executor:
-    name: PermissionValidator
-  onSuccess: validate_secret_regeneration
-  layout:
-    size:
-      width: 206
-      height: 113
-    position:
-      x: 300
-      y: 175
-- id: validate_secret_regeneration
-  type: TASK_EXECUTION
-  executor:
-    name: ApplicationActionValidator
-    mode: revoke_before_action
-  onSuccess: revoke_tokens
-  layout:
-    size:
-      width: 250
-      height: 113
-    position:
-      x: 580
-      y: 175
-- id: revoke_tokens
-  type: TASK_EXECUTION
-  executor:
-    name: CriteriaRevocationExecutor
-    mode: revoke
-  onSuccess: regenerate_secret
-  layout:
-    size:
-      width: 206
-      height: 113
-    position:
-      x: 920
-      y: 175
-- id: regenerate_secret
-  type: TASK_EXECUTION
-  executor:
-    name: ClientSecretExecutor
-  onSuccess: advance_cutoff
-  layout:
-    size:
-      width: 250
-      height: 113
-    position:
-      x: 1200
-      y: 175
-- id: advance_cutoff
-  type: TASK_EXECUTION
-  executor:
-    name: CriteriaRevocationExecutor
-    mode: advance_cutoff
-  onSuccess: end
-  layout:
-    size:
-      width: 260
-      height: 113
-    position:
-      x: 1490
-      y: 175
-- id: end
-  type: END
-  layout:
-    size:
-      width: 85
-      height: 34
-    position:
-      x: 1810
-      y: 200
----
-resource_type: flow
-id: 01900000-0000-7000-8000-000000000081
-ouHandle: default
-name: Default Role Assignment Removal Flow
-handle: default-role-assignment-removal-flow
-flowType: ADMINISTRATION
-nodes:
-- id: start
-  type: START
-  onSuccess: permission_validator
-  layout:
-    size:
-      width: 101
-      height: 34
-    position:
-      x: 100
-      y: 200
-- id: permission_validator
-  type: TASK_EXECUTION
-  properties:
-    requiredScopes:
-    - system
-  executor:
-    name: PermissionValidator
-  onSuccess: pre_role_assignment_removal
-  layout:
-    size:
-      width: 206
-      height: 113
-    position:
-      x: 300
-      y: 175
-- id: pre_role_assignment_removal
-  type: TASK_EXECUTION
-  executor:
-    name: AccessChangeValidator
-    mode: role_assignment_removal
-  onSuccess: revoke_scopes
-  layout:
-    size:
-      width: 260
-      height: 113
-    position:
-      x: 580
-      y: 175
-- id: revoke_scopes
-  type: TASK_EXECUTION
-  executor:
-    name: CriteriaRevocationExecutor
-    mode: revoke
-  onSuccess: remove_assignment
-  layout:
-    size:
-      width: 206
-      height: 113
-    position:
-      x: 900
-      y: 175
-- id: remove_assignment
-  type: TASK_EXECUTION
-  executor:
-    name: RoleExecutor
-    mode: role_assignment_removal
-  onSuccess: advance_cutoff
-  layout:
-    size:
-      width: 230
-      height: 113
-    position:
-      x: 1180
-      y: 175
-- id: advance_cutoff
-  type: TASK_EXECUTION
-  executor:
-    name: CriteriaRevocationExecutor
-    mode: advance_cutoff
-  onSuccess: end
-  layout:
-    size:
-      width: 260
-      height: 113
-    position:
-      x: 1470
-      y: 175
-- id: end
-  type: END
-  layout:
-    size:
-      width: 85
-      height: 34
-    position:
-      x: 1790
-      y: 200
----
-resource_type: flow
-id: 01900000-0000-7000-8000-00000000007c
-ouHandle: default
-name: Default Action Deletion Flow
-handle: default-action-deletion-flow
-flowType: ADMINISTRATION
-nodes:
-- id: start
-  type: START
-  onSuccess: permission_validator
-  layout:
-    size:
-      width: 101
-      height: 34
-    position:
-      x: 100
-      y: 200
-- id: permission_validator
-  type: TASK_EXECUTION
-  properties:
-    requiredScopes:
-    - system
-  executor:
-    name: PermissionValidator
-  onSuccess: pre_action_deletion
-  layout:
-    size:
-      width: 206
-      height: 113
-    position:
-      x: 300
-      y: 175
-- id: pre_action_deletion
-  type: TASK_EXECUTION
-  executor:
-    name: AccessChangeValidator
-    mode: action_deletion
-  onSuccess: revoke_scopes
-  layout:
-    size:
-      width: 260
-      height: 113
-    position:
-      x: 580
-      y: 175
-- id: revoke_scopes
-  type: TASK_EXECUTION
-  executor:
-    name: CriteriaRevocationExecutor
-    mode: revoke
-  onSuccess: delete_action
-  layout:
-    size:
-      width: 206
-      height: 113
-    position:
-      x: 900
-      y: 175
-- id: delete_action
-  type: TASK_EXECUTION
-  executor:
-    name: ActionDeletionExecutor
-  onSuccess: advance_cutoff
-  layout:
-    size:
-      width: 206
-      height: 113
-    position:
-      x: 1180
-      y: 175
-- id: advance_cutoff
-  type: TASK_EXECUTION
-  executor:
-    name: CriteriaRevocationExecutor
-    mode: advance_cutoff
-  onSuccess: end
-  layout:
-    size:
-      width: 260
-      height: 113
-    position:
-      x: 1470
-      y: 175
-- id: end
-  type: END
-  layout:
-    size:
-      width: 85
-      height: 34
-    position:
-      x: 1790
-      y: 200
----
-resource_type: flow
-id: 01900000-0000-7000-8000-00000000007d
-ouHandle: default
-name: Default Role Deletion Flow
-handle: default-role-deletion-flow
-flowType: ADMINISTRATION
-nodes:
-- id: start
-  type: START
-  onSuccess: permission_validator
-  layout:
-    size:
-      width: 101
-      height: 34
-    position:
-      x: 100
-      y: 200
-- id: permission_validator
-  type: TASK_EXECUTION
-  properties:
-    requiredScopes:
-    - system
-  executor:
-    name: PermissionValidator
-  onSuccess: pre_role_deletion
-  layout:
-    size:
-      width: 206
-      height: 113
-    position:
-      x: 300
-      y: 175
-- id: pre_role_deletion
-  type: TASK_EXECUTION
-  executor:
-    name: AccessChangeValidator
-    mode: role_deletion
-  onSuccess: revoke_scopes
-  layout:
-    size:
-      width: 260
-      height: 113
-    position:
-      x: 580
-      y: 175
-- id: revoke_scopes
-  type: TASK_EXECUTION
-  executor:
-    name: CriteriaRevocationExecutor
-    mode: revoke
-  onSuccess: delete_role
-  layout:
-    size:
-      width: 206
-      height: 113
-    position:
-      x: 900
-      y: 175
-- id: delete_role
-  type: TASK_EXECUTION
-  executor:
-    name: RoleExecutor
-    mode: role_deletion
-  onSuccess: advance_cutoff
-  layout:
-    size:
-      width: 206
-      height: 113
-    position:
-      x: 1180
-      y: 175
-- id: advance_cutoff
-  type: TASK_EXECUTION
-  executor:
-    name: CriteriaRevocationExecutor
-    mode: advance_cutoff
-  onSuccess: end
-  layout:
-    size:
-      width: 260
-      height: 113
-    position:
-      x: 1470
-      y: 175
-- id: end
-  type: END
-  layout:
-    size:
-      width: 85
-      height: 34
-    position:
-      x: 1790
-      y: 200
----
-resource_type: flow
-id: 01900000-0000-7000-8000-00000000007e
-ouHandle: default
-name: Default Group Deletion Flow
-handle: default-group-deletion-flow
-flowType: ADMINISTRATION
-nodes:
-- id: start
-  type: START
-  onSuccess: permission_validator
-  layout:
-    size:
-      width: 101
-      height: 34
-    position:
-      x: 100
-      y: 200
-- id: permission_validator
-  type: TASK_EXECUTION
-  properties:
-    requiredScopes:
-    - system:group
-  executor:
-    name: PermissionValidator
-  onSuccess: pre_group_deletion
-  layout:
-    size:
-      width: 206
-      height: 113
-    position:
-      x: 300
-      y: 175
-- id: pre_group_deletion
-  type: TASK_EXECUTION
-  executor:
-    name: AccessChangeValidator
-    mode: group_deletion
-  onSuccess: revoke_scopes
-  layout:
-    size:
-      width: 260
-      height: 113
-    position:
-      x: 580
-      y: 175
-- id: revoke_scopes
-  type: TASK_EXECUTION
-  executor:
-    name: CriteriaRevocationExecutor
-    mode: revoke
-  onSuccess: delete_group
-  layout:
-    size:
-      width: 206
-      height: 113
-    position:
-      x: 900
-      y: 175
-- id: delete_group
-  type: TASK_EXECUTION
-  executor:
-    name: GroupExecutor
-    mode: group_deletion
-  onSuccess: advance_cutoff
-  layout:
-    size:
-      width: 206
-      height: 113
-    position:
-      x: 1180
-      y: 175
-- id: advance_cutoff
-  type: TASK_EXECUTION
-  executor:
-    name: CriteriaRevocationExecutor
-    mode: advance_cutoff
-  onSuccess: end
-  layout:
-    size:
-      width: 260
-      height: 113
-    position:
-      x: 1470
-      y: 175
-- id: end
-  type: END
-  layout:
-    size:
-      width: 85
-      height: 34
-    position:
-      x: 1790
-      y: 200
----
-resource_type: flow
-id: 01900000-0000-7000-8000-00000000007f
-ouHandle: default
-name: Default Group Membership Removal Flow
-handle: default-group-membership-removal-flow
-flowType: ADMINISTRATION
-nodes:
-- id: start
-  type: START
-  onSuccess: permission_validator
-  layout:
-    size:
-      width: 101
-      height: 34
-    position:
-      x: 100
-      y: 200
-- id: permission_validator
-  type: TASK_EXECUTION
-  properties:
-    requiredScopes:
-    - system:group
-  executor:
-    name: PermissionValidator
-  onSuccess: pre_group_membership_removal
-  layout:
-    size:
-      width: 206
-      height: 113
-    position:
-      x: 300
-      y: 175
-- id: pre_group_membership_removal
-  type: TASK_EXECUTION
-  executor:
-    name: AccessChangeValidator
-    mode: group_membership_removal
-  onSuccess: revoke_scopes
-  layout:
-    size:
-      width: 260
-      height: 113
-    position:
-      x: 580
-      y: 175
-- id: revoke_scopes
-  type: TASK_EXECUTION
-  executor:
-    name: CriteriaRevocationExecutor
-    mode: revoke
-  onSuccess: remove_member
-  layout:
-    size:
-      width: 206
-      height: 113
-    position:
-      x: 900
-      y: 175
-- id: remove_member
-  type: TASK_EXECUTION
-  executor:
-    name: GroupExecutor
-    mode: group_membership_removal
-  onSuccess: advance_cutoff
-  layout:
-    size:
-      width: 260
-      height: 113
-    position:
-      x: 1180
-      y: 175
-- id: advance_cutoff
-  type: TASK_EXECUTION
-  executor:
-    name: CriteriaRevocationExecutor
-    mode: advance_cutoff
-  onSuccess: end
-  layout:
-    size:
-      width: 260
-      height: 113
-    position:
-      x: 1470
-      y: 175
-- id: end
-  type: END
-  layout:
-    size:
-      width: 85
-      height: 34
-    position:
-      x: 1790
-      y: 200
----
-resource_type: flow
-id: 01900000-0000-7000-8000-000000000080
-ouHandle: default
-name: Default Role Permission Removal Flow
-handle: default-role-permission-removal-flow
-flowType: ADMINISTRATION
-nodes:
-- id: start
-  type: START
-  onSuccess: permission_validator
-  layout:
-    size:
-      width: 101
-      height: 34
-    position:
-      x: 100
-      y: 200
-- id: permission_validator
-  type: TASK_EXECUTION
-  properties:
-    requiredScopes:
-    - system
-  executor:
-    name: PermissionValidator
-  onSuccess: pre_role_permission_removal
-  layout:
-    size:
-      width: 206
-      height: 113
-    position:
-      x: 300
-      y: 175
-- id: pre_role_permission_removal
-  type: TASK_EXECUTION
-  executor:
-    name: AccessChangeValidator
-    mode: role_permission_removal
-  onSuccess: revoke_scopes
-  layout:
-    size:
-      width: 260
-      height: 113
-    position:
-      x: 580
-      y: 175
-- id: revoke_scopes
-  type: TASK_EXECUTION
-  executor:
-    name: CriteriaRevocationExecutor
-    mode: revoke
-  onSuccess: update_permissions
-  layout:
-    size:
-      width: 206
-      height: 113
-    position:
-      x: 900
-      y: 175
-- id: update_permissions
-  type: TASK_EXECUTION
-  executor:
-    name: RoleExecutor
-    mode: role_permission_removal
-  onSuccess: advance_cutoff
-  layout:
-    size:
-      width: 260
-      height: 113
-    position:
-      x: 1180
-      y: 175
-- id: advance_cutoff
-  type: TASK_EXECUTION
-  executor:
-    name: CriteriaRevocationExecutor
-    mode: advance_cutoff
-  onSuccess: end
-  layout:
-    size:
-      width: 260
-      height: 113
-    position:
-      x: 1470
-      y: 175
-- id: end
-  type: END
-  layout:
-    size:
-      width: 85
-      height: 34
-    position:
-      x: 1790
-      y: 200
----
-resource_type: flow
 id: 01900000-0000-7000-8000-00000000007b
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 name: Default Agent Onboarding Flow
 handle: default-agent-onboarding-flow
 flowType: ADMINISTRATION
@@ -2793,6 +2671,10 @@ nodes:
       y: 1131
 - id: permission_validator
   type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:agent:create
+    - org:agent:create
   executor:
     name: PermissionValidator
   onSuccess: agent_type_resolution
@@ -2805,9 +2687,6 @@ nodes:
       y: 1089
 - id: agent_type_resolution
   type: TASK_EXECUTION
-  properties:
-    allowedAgentTypes:
-    - default
   executor:
     name: AgentTypeResolver
   onSuccess: ou_selection
@@ -2926,7 +2805,7 @@ nodes:
   type: TASK_EXECUTION
   executor:
     name: OwnerResolver
-  onSuccess: prompt_agent_details
+  onSuccess: provisioning
   onIncomplete: prompt_owner
   layout:
     size:
@@ -2996,77 +2875,24 @@ nodes:
     - type: BLOCK
       id: block_agent_details
       components:
-      - id: input_agent_name
-        ref: name
-        type: TEXT_INPUT
-        label: '{{ t(agentOnboarding:forms.agent_details.fields.name.label) }}'
-        required: true
-        placeholder: '{{ t(agentOnboarding:forms.agent_details.fields.name.placeholder) }}'
-      - id: input_agent_model_provider
-        ref: modelProvider
-        type: SELECT
-        label: '{{ t(agentOnboarding:forms.agent_details.fields.model_provider.label) }}'
-        placeholder: '{{ t(agentOnboarding:forms.agent_details.fields.model_provider.placeholder) }}'
-        required: false
-        options:
-        - openai
-        - anthropic
-        - gemini
-        - mistral
-        - custom
-      - id: input_agent_model
-        ref: model
-        type: TEXT_INPUT
-        label: '{{ t(agentOnboarding:forms.agent_details.fields.model.label) }}'
-        required: false
-        placeholder: '{{ t(agentOnboarding:forms.agent_details.fields.model.placeholder) }}'
-      - id: input_agent_function
-        ref: function
-        type: SELECT
-        label: '{{ t(agentOnboarding:forms.agent_details.fields.function.label) }}'
-        placeholder: '{{ t(agentOnboarding:forms.agent_details.fields.function.placeholder) }}'
-        required: false
-        options:
-        - task-automation
-        - rag-retrieval
-        - code-gen
-        - data-analysis
-        - orchestrator
-        - sub-agent
-        - assistant
-        - custom
+      - type: DYNAMIC_INPUT_PLACEHOLDER
+        id: dynamic_inputs_agent_details
       - type: ACTION
         id: action_agent_details
         label: '{{ t(agentOnboarding:forms.agent_details.actions.submit.label) }}'
         variant: PRIMARY
         eventType: SUBMIT
   prompts:
-  - inputs:
-    - ref: input_agent_name
-      identifier: name
-      type: TEXT_INPUT
-      required: true
-    - ref: input_agent_model_provider
-      identifier: modelProvider
-      type: SELECT
-      required: false
-    - ref: input_agent_model
-      identifier: model
-      type: TEXT_INPUT
-      required: false
-    - ref: input_agent_function
-      identifier: function
-      type: SELECT
-      required: false
+  - inputs: []
     action:
       ref: action_agent_details
       nextNode: agent_attribute_uniqueness
   layout:
     size:
       width: 350
-      height: 954
+      height: 724
     position:
-      x: 3070
+      x: 3580
       y: 711
 - id: agent_attribute_uniqueness
   type: TASK_EXECUTION
@@ -3079,7 +2905,7 @@ nodes:
       width: 312
       height: 117
     position:
-      x: 3580
+      x: 4052
       y: 1089
 - id: provisioning
   type: TASK_EXECUTION
@@ -3090,13 +2916,12 @@ nodes:
     name: ProvisioningExecutor
   onSuccess: agent_credentials
   onIncomplete: prompt_agent_details
-  onFailure: prompt_agent_details
   layout:
     size:
       width: 216
       height: 117
     position:
-      x: 4052
+      x: 3070
       y: 1089
 - id: agent_credentials
   type: PROMPT
@@ -3148,6 +2973,7 @@ nodes:
 resource_type: theme
 id: 01900000-0000-7000-8000-000000000071
 handle: acrylic-orange
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Acrylic Orange
 description: A vibrant theme with warm orange accents and translucent acrylic surfaces.
 theme:
@@ -3650,6 +3476,7 @@ theme:
 resource_type: theme
 id: 01900000-0000-7000-8000-000000000072
 handle: acrylic-purple
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Acrylic Purple
 description: A modern theme with bold purple accents and translucent acrylic surfaces.
 theme:
@@ -4152,6 +3979,7 @@ theme:
 resource_type: theme
 id: 01900000-0000-7000-8000-000000000073
 handle: classic
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Classic
 description: A timeless theme with warm accents and readable contrast for programming.
 theme:
@@ -4652,6 +4480,7 @@ theme:
 resource_type: theme
 id: 01900000-0000-7000-8000-000000000074
 handle: high-contrast
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: High Contrast
 description: A high contrast theme optimized for accessibility with bold colors and maximum readability.
 theme:
@@ -5152,6 +4981,7 @@ theme:
 resource_type: theme
 id: 01900000-0000-7000-8000-000000000075
 handle: pale-gray
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Pale Gray
 description: A minimalist theme with neutral charcoal and gray tones for a distraction-free interface.
 theme:
@@ -5654,6 +5484,7 @@ theme:
 resource_type: theme
 id: 01900000-0000-7000-8000-000000000076
 handle: pale-indigo
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Pale Indigo
 description: A soft theme with gentle indigo accents and clean neutral backgrounds.
 theme:
@@ -6158,6 +5989,7 @@ id: 01900000-0000-7000-8000-000000000078
 handle: centered
 displayName: Centered
 description: A centered card layout for authentication screens.
+projectId: 01900000-0000-7000-8000-000000000002
 layout: {}
 ---
 resource_type: application
@@ -6166,6 +5998,7 @@ name: Console
 description: Management application for ThunderID
 type: browser
 ouId: 01900000-0000-7000-8000-000000000001
+projectId: 01900000-0000-7000-8000-000000000002
 url: "{{ .PUBLIC_URL }}/console"
 logoUrl: "avatar:shape=rounded,variant=anonymous_entity,content=cube,colors=0"
 authFlowId: 01900000-0000-7000-8000-000000000068
@@ -6380,34 +6213,92 @@ translations:
     forms.missing_inputs.subtitle: These details are still needed before the agent can be created.
     forms.missing_inputs.actions.next.label: Continue
     forms.agent_details.title: Agent Details
-    forms.agent_details.subtitle: Name the agent and describe the model it runs on and what it does.
+    forms.agent_details.subtitle: Fill in the details of the agent.
     forms.agent_details.fields.name.label: Name
     forms.agent_details.fields.name.placeholder: Enter a name for the agent
     forms.agent_details.fields.model_provider.label: Model Provider
     forms.agent_details.fields.model_provider.placeholder: Select a model provider
-    forms.agent_details.fields.model.label: Model
-    forms.agent_details.fields.model.placeholder: Enter the model name
-    forms.agent_details.fields.function.label: Function
-    forms.agent_details.fields.function.placeholder: Select a function
     forms.agent_details.actions.submit.label: Create Agent
     forms.credentials.title: Agent Created Successfully
     forms.credentials.message: Copy the client secret now. It is shown only once and cannot be retrieved later.
     forms.credentials.agent_id_label: Agent ID
     forms.credentials.client_id_label: Client ID
     forms.credentials.client_secret_label: Client Secret
+  verification:
+    self.email.title: Verify your email address
+    self.email.message: Enter the verification code sent to your email address.
+    self.email.code.label: Verification code
+    self.email.verify: Verify
+    self.email.resend: Resend code
+    self.email.link.sent.title: Check your email
+    self.email.link.sent.message: We sent a verification link to your email address. Open it to verify the address.
+    self.email.link.confirm.title: Verify your email address
+    self.email.link.confirm.message: Confirm that this email address belongs to you.
+    self.email.link.confirm.action: Verify email address
+    self.complete.title: Verification complete
+    self.complete.message: Your details are verified. You can close this page.
+    self.mobile.title: Verify your mobile number
+    self.mobile.message: Enter the verification code sent to your mobile number.
+    self.mobile.code.label: Verification code
+    self.mobile.verify: Verify
+    self.mobile.resend: Resend code
+    admin.email.link.sent.title: Verification link sent
+    admin.email.link.sent.message: We sent a verification link to the user's email address. The address is verified once the user opens the link and confirms.
+    admin.email.link.confirm.title: Verify your email address
+    admin.email.link.confirm.message: An administrator asked you to confirm that this email address belongs to you.
+    admin.email.link.confirm.action: Verify email address
+    admin.email.link.complete.title: Email address verified
+    admin.email.link.complete.message: Your email address is verified. You can close this page.
+  consent:
+    title: Review access
+    message: Review what is being requested and choose what to allow.
+    allow: Allow
+    deny: Deny
   invite:
-    validating: Validating your invite link...
+    validating: Checking your link...
     complete.title: Welcome Aboard!
     complete.description: Your account has been successfully set up. You can now sign in.
     complete.description.withApp: Your account has been successfully set up for {{appName}}. You can now sign in.
     complete.backToApp: Back to Application
     complete.backToApp.withApp: Back to {{appName}}
-    errors.invalid.title: Unable to verify invite
-    errors.invalid.description: This invite link is invalid or has expired.
+    errors.invalid.title: This link can't be used
+    errors.invalid.description: It is invalid or has expired. Ask for a new one.
     errors.failed.title: Error
     errors.failed.description: An error occurred. Please try again.
     goToSignIn: Go to Sign In
     signIn: Sign In
+  invitation:
+    forms.email.title: Invite a User
+    forms.email.subtitle: Enter the email of the user to bring into your organization.
+    forms.email.fields.email.label: Email
+    forms.email.fields.email.placeholder: Enter email
+    forms.email.actions.next.label: Next
+    forms.new_user.title: No Account Found
+    forms.new_user.description: No user has this email. Invite them to create an account?
+    forms.new_user.actions.invite.label: Invite
+    forms.new_user.actions.change_email.label: Use Another Email
+    forms.roles.title: Select Roles
+    forms.roles.subtitle: Choose the roles the user gets in your organization once they accept.
+    forms.roles.fields.roles.label: Roles
+    forms.roles.actions.invite.label: Send Invite
+    forms.invite_sent.title: Invitation Sent
+    forms.invite_sent.description: The user can accept the invitation using the link in the email.
+    forms.invite_email_unavailable.title: Email Delivery Failed
+    forms.invite_email_unavailable.description: The invitation email could not be delivered. Share the link below with the user.
+    forms.invite_email_unavailable.link_label: Invite Link
+    forms.accept.title: Join the Organization
+    forms.accept.description: You have been invited to join an organization. Do you want to accept?
+    forms.accept.actions.accept.label: Accept
+    forms.accept.actions.decline.label: Decline
+    forms.user_details.title: Complete Your Account
+    forms.user_details.subtitle: Enter your details to create your account.
+    forms.user_details.actions.submit.label: Continue
+    forms.complete.title: You Have Joined
+    forms.complete.description: You can now sign in to the organization.
+    forms.complete_without_roles.title: You Have Joined
+    forms.complete_without_roles.description: Your roles could not be assigned. Contact your administrator.
+    forms.declined.title: Invitation Declined
+    forms.declined.description: You declined the invitation. Nothing was changed.
   signin:
     images.app_logo.alt: Application logo
     forms.credentials.title: Sign In
@@ -6480,6 +6371,18 @@ translations:
     forms.credentials.links.sign_up.label: Sign up
     forms.schema_attrs.title: Tell us about you
     forms.schema_attrs.actions.continue.label: Continue
+    forms.credentials.actions.enterprise_sso.label: Sign in with SSO
+    forms.enterprise_sso.title: Sign In with SSO
+    forms.enterprise_sso.description: Enter your organization's handle to continue with its identity provider.
+    forms.enterprise_sso.fields.handle.label: Organization Handle
+    forms.enterprise_sso.fields.handle.placeholder: Enter your organization's handle
+    forms.enterprise_sso.actions.continue.label: Continue
+    forms.enterprise_sso.actions.back.label: Back to sign in
+    forms.organization_select.title: Choose an Organization
+    forms.organization_select.description: You belong to more than one organization. Choose the one to sign in to.
+    forms.organization_select.fields.organization.label: Organization
+    forms.organization_select.fields.organization.placeholder: Select an organization
+    forms.organization_select.actions.continue.label: Continue
   deviceGrant:
     forms.user_code.title: Enter the code shown on your device
     forms.user_code.fields.code.label: Verification code
@@ -6613,6 +6516,30 @@ translations:
     forms.email_otp.description: Enter the verification code sent to your email
     forms.magic_link.email_sent.title: Check Your Email
     forms.magic_link.email_sent.description: We sent you a verification link. Please check your inbox and click the link to continue.
+    forms.organization.title: Create Your Organization
+    forms.organization.description: Name your organization. Its handle is how its members find it when they sign in.
+    forms.organization.fields.name.label: Organization Name
+    forms.organization.fields.name.placeholder: Enter your organization's name
+    forms.organization.fields.handle.label: Organization Handle
+    forms.organization.fields.handle.placeholder: Leave empty to make one from the name
+    forms.organization.actions.submit.label: Create Organization
+    forms.registration_choice.title: Get Started
+    forms.registration_choice.actions.register_user.label: Create an account
+    forms.registration_choice.actions.register_personal_agent.label: Register a personal assistant
+    forms.personal_agent_details.title: Register your agent
+    forms.personal_agent_details.subtitle: The agent acts only for you. Describe it, tell us where to send you back after you approve it, and give its public key if it has one.
+    forms.personal_agent_details.fields.redirect_uris.label: Redirect URIs
+    forms.personal_agent_details.fields.redirect_uris.placeholder: Where to send you back after you approve the agent. Separate several with commas
+    forms.personal_agent_details.fields.jwks_uri.label: JWKS URI
+    forms.personal_agent_details.fields.jwks_uri.placeholder: Optional. The URI that serves the agent's public keys
+    forms.personal_agent_details.fields.public_key.label: Public Key
+    forms.personal_agent_details.fields.public_key.placeholder: Optional. The agent's public keys as a JWKS document
+    forms.personal_agent_details.actions.submit.label: Register Agent
+    forms.personal_agent_credentials.title: Agent Registered Successfully
+    forms.personal_agent_credentials.message: Copy these values now. When no key was given, the client secret is shown only once and cannot be retrieved later.
+    forms.personal_agent_details.jwks_subtitle: The agent acts only for you. Describe it, tell us where to send you back after you approve it, and give the URI that serves its public keys.
+    forms.personal_agent_details.fields.jwks_uri.required_placeholder: The URI that serves the agent's public keys
+    forms.personal_agent_credentials.jwks_message: Copy the client ID to configure your agent. It should sign its requests with the keys at its JWKS URI.
   recovery:
     forms.username.title: Password Recovery
     forms.username.subtitle: Enter your username to start the password recovery
@@ -6638,6 +6565,13 @@ translations:
     forms.complete.message: Your password has been successfully reset. You can now sign in with your new password.
     forms.username.links.sign_in.prefix: Remember your password?
     forms.username.links.sign_in.label: Sign in
+    admin.reset.sent.title: Reset link sent
+    admin.reset.sent.message: We sent a reset link to the user's email address. Their current credential no longer works, and they set a new one from the link.
+    admin.reset.credential.title: Set a new credential
+    admin.reset.credential.subtitle: An administrator asked you to set a new value for this credential on your account.
+    admin.reset.submit: Save
+    admin.reset.complete.title: Reset complete
+    admin.reset.complete.message: Your new credential is saved. You can now sign in with it.
   elements:
     fields.usertype.label: User Type
     fields.usertype.placeholder: Select User Type
@@ -6663,6 +6597,12 @@ translations:
     userInvite.email.linkFallback: "If the button above doesn't work, copy and paste the following link into your browser:"
     userInvite.email.ignore: "If you did not expect this invitation, you can safely ignore this email."
     userInvite.sms.body: "You've been invited to register. Complete your account setup here: {{ctx(inviteLink)}}"
+    invitation.email.subject: "You're Invited to Join an Organization"
+    invitation.email.heading: "You've Been Invited!"
+    invitation.email.intro: "An administrator invited you to join their organization. Open the invitation to accept or decline it."
+    invitation.email.cta: "View Invitation"
+    invitation.email.linkFallback: "If the button above does not work, copy and paste the following link into your browser:"
+    invitation.email.ignore: "If you did not expect this invitation, you can safely ignore this email. Nothing changes unless you accept it."
     selfRegistration.email.subject: "Complete Your Registration for {{ctx(appName)}}"
     selfRegistration.email.heading: "Complete Your Registration for {{ctx(appName)}}"
     selfRegistration.email.intro: "You recently started the registration process for <strong>{{ctx(appName)}}</strong>. Click the link below to complete your account setup:"
@@ -6685,6 +6625,12 @@ translations:
     passwordRecovery.email.linkFallback: "If the button doesn't work, copy and paste this link into your browser:"
     passwordRecovery.email.expiry: "This link will expire in <strong>30 minutes</strong> for your security."
     passwordRecovery.email.ignore: "If you did not request a password reset, you can safely ignore this email, your account will remain unchanged."
+    selfEmailVerification.email.subject: "Verify your email address"
+    selfEmailVerification.email.heading: "Verify your email address"
+    selfEmailVerification.email.intro: "Select the button below to open the verification page, then select <strong>Verify email address</strong> to confirm that this address belongs to you."
+    selfEmailVerification.email.cta: "Open verification page"
+    selfEmailVerification.email.linkFallback: "If the button above doesn't work, copy and paste the following link into your browser:"
+    selfEmailVerification.email.ignore: "If you did not ask for this, you can ignore this email."
     cibaNotification.email.subject: "Authentication Request from {{ctx(appName)}}"
     cibaNotification.email.heading: "Authentication Request"
     cibaNotification.email.intro: "<strong>{{ctx(appName)}}</strong> is requesting to authenticate you."
@@ -6734,10 +6680,23 @@ translations:
     accountUnlocked.email.subject: "Your account has been unlocked"
     accountUnlocked.email.heading: "Your account has been unlocked"
     accountUnlocked.email.intro: "An administrator has unlocked your account. You can sign in again."
+    adminEmailVerification.email.subject: "Verify your email address"
+    adminEmailVerification.email.heading: "Verify your email address"
+    adminEmailVerification.email.intro: "An administrator asked you to verify this email address. Open the link below and select <strong>Verify email address</strong>:"
+    adminEmailVerification.email.cta: "Verify email address"
+    adminEmailVerification.email.linkFallback: "If the button above doesn't work, copy and paste the following link into your browser:"
+    adminEmailVerification.email.ignore: "If you did not expect this request, you can ignore this email. The address stays unverified."
+    adminCredentialReset.email.subject: "Reset your sign-in credential"
+    adminCredentialReset.email.heading: "Reset your sign-in credential"
+    adminCredentialReset.email.intro: "An administrator started a reset of your sign-in credential. Your current credential no longer works. Open the link below to set a new one:"
+    adminCredentialReset.email.cta: "Set a new credential"
+    adminCredentialReset.email.linkFallback: "If the button above doesn't work, copy and paste the following link into your browser:"
+    adminCredentialReset.email.ignore: "If you did not expect this request, contact your administrator."
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000087
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 name: Default User Unlock Flow
 handle: default-user-unlock-flow
 flowType: ADMINISTRATION
@@ -6756,7 +6715,8 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system:user
+    - system:user:update
+    - org:user:update
   executor:
     name: PermissionValidator
   onSuccess: access_governance
@@ -6813,6 +6773,7 @@ nodes:
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000086
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 name: Default Agent Unlock Flow
 handle: default-agent-unlock-flow
 flowType: ADMINISTRATION
@@ -6831,7 +6792,8 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system:agent
+    - system:agent:update
+    - org:agent:update
   executor:
     name: PermissionValidator
   onSuccess: access_governance
@@ -6868,6 +6830,7 @@ nodes:
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000088
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 name: Default User Suspend Flow
 handle: default-user-suspend-flow
 flowType: ADMINISTRATION
@@ -6886,7 +6849,8 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system:user
+    - system:user:update
+    - org:user:update
   executor:
     name: PermissionValidator
   onSuccess: pre_suspend
@@ -6979,6 +6943,7 @@ nodes:
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000089
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 name: Default User Unsuspend Flow
 handle: default-user-unsuspend-flow
 flowType: ADMINISTRATION
@@ -6997,7 +6962,8 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system:user
+    - system:user:update
+    - org:user:update
   executor:
     name: PermissionValidator
   onSuccess: access_governance
@@ -7054,6 +7020,7 @@ nodes:
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000082
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 name: Default Agent Suspend Flow
 handle: default-agent-suspend-flow
 flowType: ADMINISTRATION
@@ -7072,7 +7039,8 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system:agent
+    - system:agent:update
+    - org:agent:update
   executor:
     name: PermissionValidator
   onSuccess: pre_suspend
@@ -7165,6 +7133,7 @@ nodes:
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000083
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 name: Default Agent Unsuspend Flow
 handle: default-agent-unsuspend-flow
 flowType: ADMINISTRATION
@@ -7183,7 +7152,8 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system:agent
+    - system:agent:update
+    - org:agent:update
   executor:
     name: PermissionValidator
   onSuccess: access_governance
@@ -7220,6 +7190,7 @@ nodes:
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000084
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 name: Default Application Suspend Flow
 handle: default-application-suspend-flow
 flowType: ADMINISTRATION
@@ -7238,7 +7209,8 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system
+    - system:app:update
+    - org
   executor:
     name: PermissionValidator
   onSuccess: pre_suspend
@@ -7331,6 +7303,7 @@ nodes:
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000085
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 name: Default Application Unsuspend Flow
 handle: default-application-unsuspend-flow
 flowType: ADMINISTRATION
@@ -7349,7 +7322,8 @@ nodes:
   type: TASK_EXECUTION
   properties:
     requiredScopes:
-    - system
+    - system:app:update
+    - org
   executor:
     name: PermissionValidator
   onSuccess: access_governance
@@ -7388,6 +7362,7 @@ id: 01900000-0000-7000-8000-0000000000a0
 channel: email
 handle: user-invite
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: User Invitation Email
 description: Sent to invite a new user to complete their registration.
 content:
@@ -7408,10 +7383,36 @@ content:
     </html>
 ---
 resource_type: notification_template
+id: 01900000-0000-7000-8000-0000000000b1
+channel: email
+handle: invitation
+ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
+displayName: Invitation Email
+description: Sent to invite a user into an organization unit through an invitation flow.
+content:
+  subject: "{{t(invitation.email.subject)}}"
+  body: |
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: {{design(palette.text.primary)}}; background-color: {{design(palette.background.default)}};">
+      <h2>{{t(invitation.email.heading)}}</h2>
+      <p>{{t(invitation.email.intro)}}</p>
+      <p><a href="{{ctx(inviteLink)}}" style="display: inline-block; padding: 10px 20px;
+        background-color: {{design(palette.primary.main)}}; color: {{design(palette.primary.contrastText)}}; text-decoration: none;
+        border-radius: 4px;">{{t(invitation.email.cta)}}</a></p>
+      <p>{{t(invitation.email.linkFallback)}}</p>
+      <p><a href="{{ctx(inviteLink)}}">{{ctx(inviteLink)}}</a></p>
+      <p>{{t(invitation.email.ignore)}}</p>
+    </body>
+    </html>
+---
+resource_type: notification_template
 id: 01900000-0000-7000-8000-0000000000a1
 channel: sms
 handle: user-invite
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: User Invitation SMS
 description: Sent to invite a new user to complete their registration.
 content:
@@ -7422,6 +7423,7 @@ id: 01900000-0000-7000-8000-0000000000a2
 channel: email
 handle: self-registration
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Self Registration Invite Email
 description: Sent to complete a self-service registration.
 content:
@@ -7446,6 +7448,7 @@ id: 01900000-0000-7000-8000-0000000000a3
 channel: sms
 handle: self-registration
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Self Registration Invite SMS
 description: Sent to complete a self-service registration.
 content:
@@ -7456,6 +7459,7 @@ id: 01900000-0000-7000-8000-0000000000a4
 channel: email
 handle: magic-link
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Magic Link Sign-In Email
 description: Sent to let a user sign in through a secure link.
 content:
@@ -7481,6 +7485,7 @@ id: 01900000-0000-7000-8000-0000000000a5
 channel: email
 handle: password-recovery
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Password Recovery Email
 description: Sent to let a user reset their account password.
 content:
@@ -7513,6 +7518,7 @@ id: 01900000-0000-7000-8000-0000000000a6
 channel: email
 handle: ciba-notification
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: CIBA Authentication Notification Email
 description: Sent to approve a backchannel authentication request.
 content:
@@ -7540,6 +7546,7 @@ id: 01900000-0000-7000-8000-0000000000a7
 channel: sms
 handle: ciba-notification
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: CIBA Authentication Notification SMS
 description: Sent to approve a backchannel authentication request.
 content:
@@ -7550,6 +7557,7 @@ id: 01900000-0000-7000-8000-0000000000a8
 channel: email
 handle: otp
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Email OTP Verification
 description: Sent to verify a user's email address with a one-time passcode.
 content:
@@ -7575,6 +7583,7 @@ id: 01900000-0000-7000-8000-0000000000a9
 channel: sms
 handle: otp
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: SMS OTP Verification
 description: Sent to verify a user's phone number with a one-time passcode.
 content:
@@ -7585,6 +7594,7 @@ id: 01900000-0000-7000-8000-0000000000aa
 channel: email
 handle: authentication-method-locked
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Account Temporarily Locked Email
 description: Sent when repeated failed sign-ins lock one sign-in method for a limited time.
 content:
@@ -7606,6 +7616,7 @@ id: 01900000-0000-7000-8000-0000000000ab
 channel: email
 handle: authentication-method-locked-permanent
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Account Locked Email
 description: Sent when repeated failed sign-ins lock one sign-in method until it is released.
 content:
@@ -7627,6 +7638,7 @@ id: 01900000-0000-7000-8000-0000000000ac
 channel: email
 handle: account-locked
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Account Sign-in Temporarily Locked Email
 description: Sent when repeated failed sign-ins lock every sign-in method on the account for a limited time.
 content:
@@ -7648,6 +7660,7 @@ id: 01900000-0000-7000-8000-0000000000ad
 channel: email
 handle: account-locked-permanent
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Account Sign-in Locked Email
 description: Sent when repeated failed sign-ins lock every sign-in method on the account until it is released.
 content:
@@ -7669,6 +7682,7 @@ id: 01900000-0000-7000-8000-0000000000ae
 channel: email
 handle: account-suspended
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Account Suspended Email
 description: Sent when an administrator suspends an account.
 content:
@@ -7688,6 +7702,7 @@ id: 01900000-0000-7000-8000-0000000000af
 channel: email
 handle: account-unsuspended
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Account Suspension Lifted Email
 description: Sent when an administrator lifts a suspension. The account stays locked until it is recovered or unlocked.
 content:
@@ -7707,6 +7722,7 @@ id: 01900000-0000-7000-8000-0000000000b0
 channel: email
 handle: account-unlocked
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 displayName: Account Unlocked Email
 description: Sent when an administrator unlocks an account.
 content:
@@ -7720,9 +7736,91 @@ content:
     </body>
     </html>
 ---
+resource_type: notification_template
+id: 01900000-0000-7000-8000-0000000000b2
+channel: email
+handle: self-email-verification
+ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
+displayName: Self Email Verification Email
+description: Sent when a user asks to verify their own email address.
+content:
+  subject: "{{t(selfEmailVerification.email.subject)}}"
+  body: |
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: {{design(palette.text.primary)}}; background-color: {{design(palette.background.default)}};">
+      <h2>{{t(selfEmailVerification.email.heading)}}</h2>
+      <p>{{t(selfEmailVerification.email.intro)}}</p>
+      <p><a href="{{ctx(inviteLink)}}" style="display: inline-block; padding: 10px 20px;
+        background-color: {{design(palette.primary.main)}}; color: {{design(palette.primary.contrastText)}}; text-decoration: none;
+        border-radius: 4px;">{{t(selfEmailVerification.email.cta)}}</a></p>
+      <p>{{t(selfEmailVerification.email.linkFallback)}}</p>
+      <p style="word-break: break-all;"><a href="{{ctx(inviteLink)}}">{{ctx(inviteLink)}}</a></p>
+      <p>{{t(selfEmailVerification.email.ignore)}}</p>
+    </body>
+    </html>
+---
+resource_type: notification_template
+id: 01900000-0000-7000-8000-0000000000b3
+channel: email
+handle: admin-initiated-email-verification
+ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
+displayName: Administrator Initiated Email Verification
+description: Sent when an administrator asks a user to verify their email address.
+content:
+  subject: "{{t(adminEmailVerification.email.subject)}}"
+  body: |
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: {{design(palette.text.primary)}}; background-color: {{design(palette.background.default)}};">
+      <h2>{{t(adminEmailVerification.email.heading)}}</h2>
+      <p>{{t(adminEmailVerification.email.intro)}}</p>
+      <p><a href="{{ctx(inviteLink)}}" style="display: inline-block; padding: 10px 20px;
+        background-color: {{design(palette.primary.main)}}; color: {{design(palette.primary.contrastText)}}; text-decoration: none;
+        border-radius: 4px;">{{t(adminEmailVerification.email.cta)}}</a></p>
+      <p>{{t(adminEmailVerification.email.linkFallback)}}</p>
+      <p style="word-break: break-all;"><a href="{{ctx(inviteLink)}}">{{ctx(inviteLink)}}</a></p>
+      <p>{{t(adminEmailVerification.email.ignore)}}</p>
+    </body>
+    </html>
+---
+resource_type: notification_template
+id: 01900000-0000-7000-8000-0000000000b4
+channel: email
+handle: admin-user-credential-reset
+ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
+displayName: Administrator Initiated User Credential Reset
+description: Sent when an administrator asks a user to set a new sign-in credential.
+content:
+  subject: "{{t(adminCredentialReset.email.subject)}}"
+  body: |
+    <!DOCTYPE html>
+    <html>
+    <body style="font-family: Arial, sans-serif; line-height: 1.6; color: {{design(palette.text.primary)}}; background-color: {{design(palette.background.default)}};">
+      <h2>{{t(adminCredentialReset.email.heading)}}</h2>
+      <p>{{t(adminCredentialReset.email.intro)}}</p>
+      <p>
+        <a href="{{ctx(inviteLink)}}" style="display: inline-block; padding: 12px 24px;
+        background-color: {{design(palette.primary.main)}}; color: {{design(palette.primary.contrastText)}}; text-decoration: none;
+        border-radius: 4px; font-weight: bold;">
+          {{t(adminCredentialReset.email.cta)}}
+        </a>
+      </p>
+      <p>{{t(adminCredentialReset.email.linkFallback)}}</p>
+      <p style="word-break: break-all;">
+        <a href="{{ctx(inviteLink)}}">{{ctx(inviteLink)}}</a>
+      </p>
+      <p>{{t(adminCredentialReset.email.ignore)}}</p>
+    </body>
+    </html>
+---
 resource_type: flow
 id: 01900000-0000-7000-8000-00000000008a
 ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
 name: Default Device Grant Flow
 handle: default-device-grant-flow
 flowType: DEVICE_GRANT
@@ -7807,3 +7905,713 @@ nodes:
     layout:
       size: {width: 85, height: 34}
       position: {x: 1620, y: 313}
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-00000000008b
+ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
+name: Default Self Attribute Verification Flow
+handle: default-self-attribute-verification-flow
+flowType: SELF
+nodes:
+- id: start
+  type: START
+  onSuccess: prepare_verification
+  layout:
+    size:
+      width: 101
+      height: 34
+    position:
+      x: 62
+      y: 530
+- id: prepare_verification
+  type: TASK_EXECUTION
+  executor:
+    name: AttributeVerificationExecutor
+    mode: prepare
+  onSuccess: generate_email_otp
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 372
+      y: 490
+- id: generate_email_otp
+  type: TASK_EXECUTION
+  properties:
+    maxAttempts: 3
+    otpValidityPeriodSeconds: 300
+  executor:
+    name: OTPExecutor
+    mode: generate
+  onSuccess: send_email_otp
+  condition:
+    key: '{{ctx(recipientType)}}'
+    value: email
+    onSkip: generate_mobile_otp
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 738
+      y: 490
+- id: send_email_otp
+  type: TASK_EXECUTION
+  properties:
+    emailTemplate: otp
+  executor:
+    name: EmailExecutor
+    mode: send
+    inputs:
+    - identifier: email
+      type: EMAIL_INPUT
+      required: true
+  onSuccess: email_code
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1125
+      y: 490
+- id: email_code
+  type: PROMPT
+  meta:
+    components:
+    - align: left
+      type: TEXT
+      id: email_code_heading
+      label: '{{ t(verification:self.email.title) }}'
+      variant: HEADING_1
+    - align: left
+      type: TEXT
+      id: email_code_message
+      label: '{{ t(verification:self.email.message) }}'
+      variant: HEADING_6
+    - type: BLOCK
+      id: block_email_otp
+      components:
+      - type: OTP_INPUT
+        id: input_email_otp
+        ref: otp
+        label: '{{ t(verification:self.email.code.label) }}'
+        required: true
+      - type: ACTION
+        id: action_email_verify
+        label: '{{ t(verification:self.email.verify) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+      - type: RESEND
+        id: action_email_resend
+        label: '{{ t(verification:self.email.resend) }}'
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: input_email_otp
+      identifier: otp
+      type: OTP_INPUT
+      required: true
+    action:
+      ref: action_email_verify
+      nextNode: verify_email_otp
+  - inputs: []
+    action:
+      ref: action_email_resend
+      nextNode: prepare_verification
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1504
+      y: 490
+- id: verify_email_otp
+  type: TASK_EXECUTION
+  properties:
+    maxAttempts: 3
+  inputs:
+  - ref: input_email_otp
+    identifier: otp
+    type: OTP_INPUT
+    required: true
+  executor:
+    name: OTPExecutor
+    mode: verify
+  onSuccess: record_verification
+  onIncomplete: email_code
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1882
+      y: 471
+- id: generate_mobile_otp
+  type: TASK_EXECUTION
+  properties:
+    maxAttempts: 3
+    otpValidityPeriodSeconds: 300
+  executor:
+    name: OTPExecutor
+    mode: generate
+  onSuccess: send_mobile_otp
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1125
+      y: 277
+- id: send_mobile_otp
+  type: TASK_EXECUTION
+  properties:
+    senderId: '{{SENDER_ID}}'
+    smsTemplate: otp
+  executor:
+    name: SMSExecutor
+    mode: send
+    inputs:
+    - identifier: mobile_number
+      type: PHONE_INPUT
+      required: true
+  onSuccess: mobile_code
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1504
+      y: 238
+- id: mobile_code
+  type: PROMPT
+  meta:
+    components:
+    - align: left
+      type: TEXT
+      id: mobile_code_heading
+      label: '{{ t(verification:self.mobile.title) }}'
+      variant: HEADING_1
+    - align: left
+      type: TEXT
+      id: mobile_code_message
+      label: '{{ t(verification:self.mobile.message) }}'
+      variant: HEADING_6
+    - type: BLOCK
+      id: block_mobile_otp
+      components:
+      - type: OTP_INPUT
+        id: input_mobile_otp
+        ref: otp
+        label: '{{ t(verification:self.mobile.code.label) }}'
+        required: true
+      - type: ACTION
+        id: action_mobile_verify
+        label: '{{ t(verification:self.mobile.verify) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+      - type: RESEND
+        id: action_mobile_resend
+        label: '{{ t(verification:self.mobile.resend) }}'
+        eventType: SUBMIT
+  prompts:
+  - inputs:
+    - ref: input_mobile_otp
+      identifier: otp
+      type: OTP_INPUT
+      required: true
+    action:
+      ref: action_mobile_verify
+      nextNode: verify_mobile_otp
+  - inputs: []
+    action:
+      ref: action_mobile_resend
+      nextNode: prepare_verification
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 1882
+      y: 122
+- id: verify_mobile_otp
+  type: TASK_EXECUTION
+  properties:
+    maxAttempts: 3
+  inputs:
+  - ref: input_mobile_otp
+    identifier: otp
+    type: OTP_INPUT
+    required: true
+  executor:
+    name: OTPExecutor
+    mode: verify
+  onSuccess: record_verification
+  onIncomplete: mobile_code
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 2270
+      y: 355
+- id: record_verification
+  type: TASK_EXECUTION
+  executor:
+    name: AttributeVerificationExecutor
+    mode: record
+  onSuccess: end
+  layout:
+    size:
+      width: 206
+      height: 113
+    position:
+      x: 2647
+      y: 471
+- id: end
+  type: END
+  layout:
+    size:
+      width: 85
+      height: 34
+    position:
+      x: 3013
+      y: 511
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-00000000008c
+ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
+name: Default Admin Attribute Verification Flow
+handle: default-admin-attribute-verification-flow
+flowType: ADMIN_INITIATED
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 60
+      height: 34
+    position:
+      x: 62
+      y: 345
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:user:update
+    - org:user:update
+  executor:
+    name: PermissionValidator
+  onSuccess: prepare_verification
+  layout:
+    size:
+      width: 264
+      height: 113
+    position:
+      x: 218
+      y: 305
+- id: prepare_verification
+  type: TASK_EXECUTION
+  executor:
+    name: AttributeVerificationExecutor
+    mode: prepare
+    inputs:
+    - identifier: attribute
+      type: TEXT_INPUT
+      required: true
+      defaultValue: email
+  onSuccess: generate_link
+  layout:
+    size:
+      width: 260
+      height: 113
+    position:
+      x: 578
+      y: 305
+- id: generate_link
+  type: TASK_EXECUTION
+  executor:
+    name: InviteExecutor
+    mode: generate
+  onSuccess: send_link
+  layout:
+    size:
+      width: 222
+      height: 113
+    position:
+      x: 934
+      y: 305
+- id: send_link
+  type: TASK_EXECUTION
+  properties:
+    emailTemplate: admin-initiated-email-verification
+  executor:
+    name: EmailExecutor
+    mode: send
+    inputs:
+    - identifier: email
+      type: EMAIL_INPUT
+      required: true
+  onSuccess: link_sent
+  layout:
+    size:
+      width: 200
+      height: 113
+    position:
+      x: 1252
+      y: 305
+- id: link_sent
+  type: PROMPT
+  meta:
+    components:
+    - align: left
+      type: TEXT
+      id: link_sent_heading
+      label: '{{ t(verification:admin.email.link.sent.title) }}'
+      variant: HEADING_1
+      color: SUCCESS
+    - align: left
+      type: TEXT
+      id: link_sent_message
+      label: '{{ t(verification:admin.email.link.sent.message) }}'
+      variant: HEADING_6
+  next: verify_link
+  layout:
+    size:
+      width: 350
+      height: 350
+    position:
+      x: 1548
+      y: 187
+- id: verify_link
+  type: TASK_EXECUTION
+  inputs:
+  - ref: input_invite_token
+    identifier: inviteToken
+    type: HIDDEN
+    required: true
+  executor:
+    name: InviteExecutor
+    mode: verify
+  onSuccess: confirm
+  layout:
+    size:
+      width: 200
+      height: 113
+    position:
+      x: 1994
+      y: 305
+- id: confirm
+  type: PROMPT
+  meta:
+    components:
+    - align: left
+      type: TEXT
+      id: confirm_heading
+      label: '{{ t(verification:admin.email.link.confirm.title) }}'
+      variant: HEADING_1
+    - align: left
+      type: TEXT
+      id: confirm_message
+      label: '{{ t(verification:admin.email.link.confirm.message) }}'
+      variant: HEADING_6
+    - type: BLOCK
+      id: block_confirm
+      components:
+      - type: ACTION
+        id: action_confirm
+        label: '{{ t(verification:admin.email.link.confirm.action) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs: []
+    action:
+      ref: action_confirm
+      nextNode: record_verification
+  layout:
+    size:
+      width: 350
+      height: 600
+    position:
+      x: 2290
+      y: 62
+- id: record_verification
+  type: TASK_EXECUTION
+  executor:
+    name: AttributeVerificationExecutor
+    mode: record
+  onSuccess: verification_complete
+  layout:
+    size:
+      width: 254
+      height: 113
+    position:
+      x: 2736
+      y: 305
+- id: verification_complete
+  type: PROMPT
+  meta:
+    components:
+    - align: left
+      type: TEXT
+      id: verification_complete_heading
+      label: '{{ t(verification:admin.email.link.complete.title) }}'
+      variant: HEADING_1
+      color: SUCCESS
+    - align: left
+      type: TEXT
+      id: verification_complete_message
+      label: '{{ t(verification:admin.email.link.complete.message) }}'
+      variant: HEADING_6
+  next: end
+  layout:
+    size:
+      width: 350
+      height: 325
+    position:
+      x: 3086
+      y: 199
+- id: end
+  type: END
+  layout:
+    size:
+      width: 50
+      height: 34
+    position:
+      x: 3532
+      y: 345
+---
+resource_type: flow
+id: 01900000-0000-7000-8000-00000000008d
+ouHandle: default
+projectId: 01900000-0000-7000-8000-000000000002
+name: Default Admin User Credential Reset Flow
+handle: default-admin-user-credential-reset-flow
+flowType: ADMIN_INITIATED
+nodes:
+- id: start
+  type: START
+  onSuccess: permission_validator
+  layout:
+    size:
+      width: 60
+      height: 34
+    position:
+      x: 62
+      y: 345
+- id: permission_validator
+  type: TASK_EXECUTION
+  properties:
+    requiredScopes:
+    - system:user:update
+    - org:user:update
+  executor:
+    name: PermissionValidator
+  onSuccess: validate_reset
+  layout:
+    size:
+      width: 264
+      height: 113
+    position:
+      x: 218
+      y: 305
+- id: validate_reset
+  type: TASK_EXECUTION
+  executor:
+    name: CredentialSetter
+    mode: validate
+    inputs:
+    - identifier: credential
+      type: TEXT_INPUT
+      required: true
+  onSuccess: generate_link
+  layout:
+    size:
+      width: 240
+      height: 113
+    position:
+      x: 578
+      y: 305
+- id: generate_link
+  type: TASK_EXECUTION
+  executor:
+    name: InviteExecutor
+    mode: generate
+  onSuccess: send_link
+  layout:
+    size:
+      width: 240
+      height: 113
+    position:
+      x: 914
+      y: 305
+- id: send_link
+  type: TASK_EXECUTION
+  properties:
+    emailTemplate: admin-user-credential-reset
+  executor:
+    name: EmailExecutor
+    mode: send
+    inputs:
+    - identifier: email
+      type: EMAIL_INPUT
+      required: true
+  onSuccess: invalidate_credential
+  layout:
+    size:
+      width: 240
+      height: 113
+    position:
+      x: 1250
+      y: 305
+- id: invalidate_credential
+  type: TASK_EXECUTION
+  executor:
+    name: CredentialSetter
+    mode: invalidate
+  onSuccess: link_sent
+  layout:
+    size:
+      width: 240
+      height: 113
+    position:
+      x: 1586
+      y: 305
+- id: link_sent
+  type: PROMPT
+  meta:
+    components:
+    - align: left
+      type: TEXT
+      id: link_sent_heading
+      label: '{{ t(recovery:admin.reset.sent.title) }}'
+      variant: HEADING_1
+      color: SUCCESS
+    - align: left
+      type: TEXT
+      id: link_sent_message
+      label: '{{ t(recovery:admin.reset.sent.message) }}'
+      variant: HEADING_6
+  next: verify_link
+  layout:
+    size:
+      width: 350
+      height: 350
+    position:
+      x: 1922
+      y: 187
+- id: verify_link
+  type: TASK_EXECUTION
+  inputs:
+  - ref: input_invite_token
+    identifier: inviteToken
+    type: HIDDEN
+    required: true
+  executor:
+    name: InviteExecutor
+    mode: verify
+  onSuccess: set_credential
+  layout:
+    size:
+      width: 240
+      height: 113
+    position:
+      x: 2368
+      y: 305
+- id: prompt_new_credential
+  type: PROMPT
+  meta:
+    components:
+    - align: left
+      type: TEXT
+      id: prompt_new_credential_heading
+      label: '{{ t(recovery:admin.reset.credential.title) }}'
+      variant: HEADING_1
+    - align: left
+      type: TEXT
+      id: prompt_new_credential_subtitle
+      label: '{{ t(recovery:admin.reset.credential.subtitle) }}'
+      variant: HEADING_6
+    - type: BLOCK
+      id: block_prompt_new_credential
+      components:
+      - type: DYNAMIC_INPUT_PLACEHOLDER
+        id: dynamic_credential_input
+      - type: ACTION
+        id: action_prompt_new_credential
+        label: '{{ t(recovery:admin.reset.submit) }}'
+        variant: PRIMARY
+        eventType: SUBMIT
+  prompts:
+  - inputs: []
+    action:
+      ref: action_prompt_new_credential
+      nextNode: set_credential
+  layout:
+    size:
+      width: 350
+      height: 400
+    position:
+      x: 3040
+      y: 62
+- id: set_credential
+  type: TASK_EXECUTION
+  executor:
+    name: CredentialSetter
+  onSuccess: release_account_locks
+  onIncomplete: prompt_new_credential
+  layout:
+    size:
+      width: 240
+      height: 113
+    position:
+      x: 3932
+      y: 305
+- id: release_account_locks
+  type: TASK_EXECUTION
+  executor:
+    name: IdentityGovernanceExecutor
+    mode: unlock
+  onSuccess: reset_complete
+  layout:
+    size:
+      width: 240
+      height: 113
+    position:
+      x: 4268
+      y: 305
+- id: reset_complete
+  type: PROMPT
+  meta:
+    components:
+    - align: left
+      type: TEXT
+      id: reset_complete_heading
+      label: '{{ t(recovery:admin.reset.complete.title) }}'
+      variant: HEADING_1
+      color: SUCCESS
+    - align: left
+      type: TEXT
+      id: reset_complete_message
+      label: '{{ t(recovery:admin.reset.complete.message) }}'
+      variant: HEADING_6
+  next: end
+  layout:
+    size:
+      width: 350
+      height: 325
+    position:
+      x: 4604
+      y: 199
+- id: end
+  type: END
+  layout:
+    size:
+      width: 50
+      height: 34
+    position:
+      x: 5050
+      y: 345

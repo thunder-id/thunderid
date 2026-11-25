@@ -1,0 +1,198 @@
+---
+displayed_sidebar: null
+title: OrganizationUnitSwitcher
+docType: reference
+description: Jetpack Compose dropdown that lists the organization units a signed-in user can access and switches the session to the one they pick.
+---
+
+# `OrganizationUnitSwitcher`
+
+The `OrganizationUnitSwitcher` composable shows the current organization unit in a dropdown field. Its menu lists the organization units the signed-in user can access, from [`ThunderIDClient.getAccessibleOrganizationUnits`](../../thunderid-client#organization-units). Picking another one calls `ThunderIDClient.switchOrganizationUnit`, then reloads the list and refreshes `ThunderIDState`. To learn how a switch decides whether the user signs in again, see [Switch Organizations](../../../../../use-cases/b2b/journeys/switch-organizations).
+
+`OrganizationUnitSwitcher` requires `ThunderIDProvider` in its ancestor composable hierarchy.
+
+## Usage
+
+```kotlin
+import dev.thunderid.android.api.account.OrganizationUnitScope
+import dev.thunderid.compose.components.account.OrganizationUnitSwitcher
+import dev.thunderid.compose.components.auth.guards.SignedIn
+
+@Composable
+fun Header() {
+    SignedIn {
+        OrganizationUnitSwitcher(
+            modifier = Modifier.fillMaxWidth(),
+            scope = OrganizationUnitScope.SIBLINGS
+        )
+    }
+}
+```
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `modifier` | `Modifier` | ❌ | Compose modifier applied to the switcher container. |
+| `scope` | `OrganizationUnitScope?` | ❌ | Narrows the list. `OrganizationUnitScope.SIBLINGS` lists the accessible organization units that share the parent of the current organization unit. Defaults to `null`, which lists every accessible organization unit. |
+| `limit` | `Int` | ❌ | Page size of the list. Defaults to `10`. |
+| `switchOptions` | `SwitchOrganizationUnitOptions` | ❌ | Options passed to `switchOrganizationUnit`. Set `browser` when the application signs in through redirects or a backend. Defaults to `SwitchOrganizationUnitOptions()`. |
+| `onSelect` | `((AccessibleOrganizationUnit) -> Unit)?` | ❌ | Takes over a pick. The switcher calls it with the organization unit instead of switching. |
+| `onSwitched` | `(() -> Unit)?` | ❌ | Called after a switch completes and `ThunderIDState` has been refreshed. |
+| `onSignInRequired` | `((OrganizationUnitSwitchResult.SignInRequired) -> Unit)?` | ❌ | Called when an app-native switch needs the user, with the flow to drive. |
+| `content` | `(@Composable (OrganizationUnitSwitcherState) -> Unit)?` | ❌ | Replaces the built-in dropdown. See [Custom Rendering](#custom-rendering). |
+
+## Example: Switch Through a Custom Tab
+
+With no `browser`, a switch that a device secret cannot complete runs the application's app-native `AUTHENTICATION` flow, which needs `applicationId` in the configuration. With a backend, a switch that needs the user fails. To sign in to the organization unit in a Custom Tab in either case, pass `customTabBrowser(context)`:
+
+```kotlin
+import androidx.compose.ui.platform.LocalContext
+import dev.thunderid.android.api.auth.SwitchOrganizationUnitOptions
+import dev.thunderid.android.api.auth.customTabBrowser
+import dev.thunderid.compose.components.account.OrganizationUnitSwitcher
+
+@Composable
+fun Header() {
+    val context = LocalContext.current
+
+    OrganizationUnitSwitcher(
+        switchOptions = SwitchOrganizationUnitOptions(browser = customTabBrowser(context))
+    )
+}
+```
+
+The host Activity forwards the redirect to `FederatedAuthSession.onRedirect`, the same setup as [federated sign-in](../sign-in#setting-up-federated-sign-in).
+
+## Behavior
+
+- The field shows the current organization unit's name. When no name is known, it shows the loading text while the list loads, and the placeholder otherwise.
+- The menu lists each organization unit by its name, or its handle when it has no name. The handle appears as secondary text when it differs from the name.
+- A check mark marks the current organization unit. Picking it only closes the menu.
+- When the user can access more organization units than `limit`, the menu ends with a pager: **Previous**, the range on display, and **Next**.
+- During a switch, the field shows the switching text with a progress indicator, and the menu does not open.
+- A failed load or switch shows a translated message below the field, never the server's own text. When an app-native switch needs the user, the switcher shows a message asking the user to sign in again and calls `onSignInRequired`.
+- The switcher reloads the list when the signed-in user changes.
+
+## Custom Rendering
+
+Pass `content` to replace the built-in dropdown. The switcher keeps loading, paging, and switching, and passes an `OrganizationUnitSwitcherState` to your lambda.
+
+```kotlin
+import dev.thunderid.compose.components.account.OrganizationUnitSwitcher
+
+@Composable
+fun OrganizationUnitList() {
+    OrganizationUnitSwitcher { state ->
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("Working in ${state.currentName ?: "an unknown organization unit"}")
+
+            state.organizationUnits.forEach { unit ->
+                TextButton(
+                    onClick = { state.onSwitch(unit) },
+                    enabled = state.switchingId == null && unit.id != state.current
+                ) {
+                    Text(unit.name ?: unit.handle ?: unit.id)
+                }
+            }
+
+            state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        }
+    }
+}
+```
+
+### `OrganizationUnitSwitcherState` Properties
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `organizationUnits` | `List<AccessibleOrganizationUnit>` | The page of organization units the signed-in user can access. |
+| `current` | `String?` | ID of the organization unit the session is in. It might not be on this page. |
+| `currentName` | `String?` | Name of the current organization unit, from the page, or else from the session. `null` when unknown. |
+| `isLoading` | `Boolean` | `true` while the list loads. |
+| `error` | `String?` | Translated message for the last failed load or switch. |
+| `limit` | `Int` | Page size. |
+| `offset` | `Int` | The 0-based index of the page's first organization unit. |
+| `totalResults` | `Int` | Number of organization units the user can access, across all pages. |
+| `onPageChange` | `(Int) -> Unit` | Loads the page that starts at the given offset. |
+| `switchingId` | `String?` | ID of the organization unit a switch is in progress to. `null` when no switch is running. |
+| `onSwitch` | `(AccessibleOrganizationUnit) -> Unit` | Switches to the organization unit, or passes it to `onSelect` when set. In `OrganizationUnitSwitcher`, it does nothing for the current organization unit or while another switch is running. |
+
+## Customization with `BaseOrganizationUnitSwitcher`
+
+`BaseOrganizationUnitSwitcher` draws the same dropdown from the data you pass. It holds no SDK state: it loads nothing and switches nothing, and calls `onSwitch` when the user picks another organization unit. It reads its strings from `LocalThunderID`, so it also requires `ThunderIDProvider` in its ancestor composable hierarchy.
+
+```kotlin
+import dev.thunderid.android.api.account.AccessibleOrganizationUnit
+import dev.thunderid.compose.components.account.BaseOrganizationUnitSwitcher
+
+@Composable
+fun TeamSwitcher(
+    units: List<AccessibleOrganizationUnit>,
+    currentId: String?,
+    onPick: (AccessibleOrganizationUnit) -> Unit
+) {
+    BaseOrganizationUnitSwitcher(
+        organizationUnits = units,
+        current = currentId,
+        onSwitch = onPick
+    )
+}
+```
+
+### `BaseOrganizationUnitSwitcher` Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `organizationUnits` | `List<AccessibleOrganizationUnit>` | ✅ | Organization units the menu lists. |
+| `current` | `String?` | ✅ | ID of the current organization unit. |
+| `onSwitch` | `(AccessibleOrganizationUnit) -> Unit` | ✅ | Called with the organization unit when the user picks one other than the current one. |
+| `modifier` | `Modifier` | ❌ | Compose modifier applied to the switcher container. |
+| `isLoading` | `Boolean` | ❌ | Shows the loading state. Defaults to `false`. |
+| `error` | `String?` | ❌ | Message shown below the field. Defaults to `null`. |
+| `limit` | `Int` | ❌ | Page size. Defaults to `organizationUnits.size`. |
+| `offset` | `Int` | ❌ | The 0-based index of the page's first organization unit. Defaults to `0`. |
+| `totalResults` | `Int` | ❌ | Number of organization units across all pages. The menu shows the pager when it is greater than `limit`. Defaults to `organizationUnits.size`. |
+| `onPageChange` | `(Int) -> Unit` | ❌ | Called with the offset of the page to load. |
+| `switchingId` | `String?` | ❌ | ID of the organization unit a switch is in progress to. Defaults to `null`. |
+| `currentName` | `String?` | ❌ | Names the current organization unit when `organizationUnits` does not list it. Defaults to `null`. |
+| `content` | `(@Composable (OrganizationUnitSwitcherState) -> Unit)?` | ❌ | Replaces the built-in dropdown. |
+
+## Translations
+
+The switcher reads every string from the translation bundle. To override a string, pass a `ThunderIDI18n` with your own bundle to `ThunderIDProvider`:
+
+```kotlin
+import dev.thunderid.compose.ThunderIDProvider
+import dev.thunderid.compose.i18n.ThunderIDI18n
+
+ThunderIDProvider(
+    config = config,
+    i18n = ThunderIDI18n(
+        bundles = mapOf(
+            "en-US" to mapOf(
+                "organizationUnitSwitcher.label" to "Workspace",
+                "organizationUnitSwitcher.placeholder" to "Select a workspace"
+            )
+        )
+    )
+) {
+    AppContent()
+}
+```
+
+| Key | Default (`en-US`) | Description |
+| :--- | :--- | :--- |
+| `organizationUnitSwitcher.label` | Organization | Label of the field. Set it to an empty string to hide the label. |
+| `organizationUnitSwitcher.placeholder` | Select an organization | Field text when the current organization unit has no known name. |
+| `organizationUnitSwitcher.switching` | Switching to `{name}`… | Field text during a switch. `{name}` is the organization unit being switched to. |
+| `organizationUnitSwitcher.loading` | Loading organization units… | Field and menu text while the list loads. |
+| `organizationUnitSwitcher.empty` | No organization units | Menu text when the list is empty. |
+| `organizationUnitSwitcher.unnamed` | Unnamed organization unit | Name of an organization unit that has neither a name nor a handle. |
+| `organizationUnitSwitcher.previous` | Previous | Pager button. |
+| `organizationUnitSwitcher.next` | Next | Pager button. |
+| `organizationUnitSwitcher.page` | `{start}` to `{end}` of `{total}` | Pager range. |
+| `organizationUnitSwitcher.errors.load` | Could not load your organization units. Please try again. | Shown when the list fails to load. |
+| `organizationUnitSwitcher.errors.switch` | Could not switch to this organization unit. Please try again. | Shown when a switch fails. |
+| `organizationUnitSwitcher.errors.notAccessible` | This organization unit is not available to this application. | Shown when a load or switch fails with `ORGANIZATION_UNIT_UNAVAILABLE`. |
+| `organizationUnitSwitcher.errors.signInRequired` | Sign in again to switch to this organization unit. | Shown when an app-native switch needs the user. |

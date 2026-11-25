@@ -18,11 +18,26 @@ The Admin Console's (`apps/admin-console`) pages ship as `@thunderid/manage-*` p
 `manage-groups`, `manage-roles`, `manage-agents`), built on the React SDK's admin components. The two families split by
 runtime: `configure-*` call the native management APIs only, while `manage-*` run destructive and lifecycle operations
 through the server's administration flows (`administrationMode: 'flow'` by default), so grants are revoked and sessions
-end first. Don't add flow handling to a `configure-*` package.
+end first. Don't add flow handling to a `configure-*` package. The exception is an action that has no native endpoint
+and starts an `ADMIN_INITIATED` flow that emails the user a link, such as attribute verification and credential reset;
+start it with `startAdminInitiatedFlow` from `@thunderid/utils`.
 
 Gate consumes ThunderID's published SDK packages — `@thunderid/react` and `@thunderid/react-router` — from the separate
 [javascript-sdks](https://github.com/thunder-id/javascript-sdks) repository. Clone that repository only to develop or
 debug the SDK itself, or to test against unreleased SDK changes.
+
+### Project Scope
+
+`console-cp` mounts `projectDashboardRoutes()` and `projectFullScreenRoutes()` from `apps/console-cp/src/App.tsx` twice:
+under the project's path, where `ProjectScopeProvider` holds the selected project, and at the root, where no project is
+selected. A `configure-*` package for a resource that can belong to a project reads the project with `useProjectScope()`
+from `@thunderid/contexts`, puts `projectId` in its query keys, and sends it on list requests and in create requests.
+Where no project is selected, as at the root or in the main console, `projectId` is undefined: lists show every
+resource, in a project or not, and a create sends no project. For a type that needs a project, pass
+`createInProjectsOnly` to its list and create pages, as the organization unit, notification template, and verifiable
+credential pages do. To add a page, mount it in one of those two functions and add its domain to
+`PROJECT_SCOPED_DOMAINS` in `apps/console-cp/src/configs/RouteConfig.ts`, which keeps its links under the project's
+path. Backend rules for such a resource are in the `backend` skill's `resource.md`.
 
 ### rolldown External Subpaths
 
@@ -67,7 +82,8 @@ UI: a page, dialog, form, table, card, shared component, or styling. The rules t
 ## Route Configuration — Never Hardcode a Path
 
 Every route destination is centralized in a per-app `RouteConfig` (`frontend/apps/console/src/configs/RouteConfig.ts`,
-`frontend/apps/gate/src/configs/RouteConfig.ts`) — never a literal path string scattered through app code.
+`frontend/apps/console-cp/src/configs/RouteConfig.ts`, `frontend/apps/gate/src/configs/RouteConfig.ts`), never a literal
+path string scattered through app code.
 
 - **Never** write `navigate('/some/path')`, ``navigate(`/some/${id}`)``, or `<Link to="/some/path">`. Always resolve the
   destination through `RouteConfig` (app-local code) or a package's `use<Domain>Routes()` hook (see below).
@@ -75,14 +91,15 @@ Every route destination is centralized in a per-app `RouteConfig` (`frontend/app
   `RouteConfig`/`ROUTE_SEGMENTS`, so the mounted route and every place that navigates to it share one source and can't
   drift apart. Read `frontend/apps/console/src/configs/RouteConfig.ts` directly — do not trust a copied route table,
   which goes stale.
-- A `@thunderid/configure-*` package must never hardcode or assume the host app's URL structure. Each package defines
-  its own `routes/types.ts` (a route-shape interface + defaults matching Console's current paths) and a
-  `use<Domain>Routes()` hook built on `@thunderid/contexts`'s `useRoutes`, which resolves the host-supplied path when
-  present and falls back to the package's own default otherwise. Components call this hook and build destinations from
-  its returned functions — never a literal string. This is what lets a package be mounted under a different URL by a
-  different host app without touching the package's code.
-- Adding a new route means updating `RouteConfig` (or a package's `routes/types.ts`) first, then consuming it — never
-  add a `navigate('/new/path')` call without registering the path there.
+- A `@thunderid/configure-*` package must never hardcode or assume the host app's URL structure. Each package that links
+  to or navigates between pages defines a `use<Domain>Routes()` hook in `hooks/use<Domain>Routes.ts`, next to its
+  route-shape interface and the defaults matching Console's current paths (for example `GroupRoutePaths` and
+  `defaultGroupRoutePaths` in `useGroupRoutes.ts`). The hook reads the host-supplied paths with `@thunderid/contexts`'s
+  `useRoutes` and falls back to the package's own defaults for any key the host does not supply. Components call this
+  hook and build destinations from its returned functions, never a literal string. This is what lets a package be
+  mounted under a different URL by a different host app without touching the package's code.
+- Adding a new route means updating `RouteConfig` (or a package's `use<Domain>Routes.ts`) first, then consuming it.
+  Never add a `navigate('/new/path')` call without registering the path there.
 
 ## Error Display
 
@@ -169,6 +186,22 @@ interpolation values follow), e.g. `t('applications:foo.bar', 'Fallback text', {
 the options object, e.g. `t('applications:foo.bar', {defaultValue: 'Fallback text', count})`. Both forms are valid;
 prefer whichever the surrounding code already uses. This matches the existing convention across the codebase and ensures
 the UI degrades gracefully if a key or locale is missing.
+
+## Product Name
+
+Never write `ThunderID` in text a user can see or hear: i18n values, `t()` fallbacks, JSX text, and `alt`, `aria-label`,
+`title`, or `placeholder` attributes. Deployments rebrand through the runtime brand config, so read the name from it. In
+a translation, use the `{{productName}}` placeholder and pass the value at the call site:
+
+```tsx
+const {config} = useConfig(); // from @thunderid/contexts
+t('settings:page.subtitle', 'Settings that apply across your entire {{productName}} deployment.', {
+  productName: config.brand.product_name,
+});
+```
+
+Elsewhere, use `config.brand.product_name` directly. License headers, import paths, identifiers, test fixtures, and the
+default `product_name` in an app's `public/config.js` are exempt.
 
 ## Browser Automation
 

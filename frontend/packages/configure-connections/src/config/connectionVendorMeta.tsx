@@ -140,6 +140,7 @@ export const CONNECTION_VENDOR_META: ConnectionVendorMeta[] = [
     logo: <ResourceAvatar transparent variant="rounded" size={AVATAR_SIZE} fallback={<Mail size={28} />} />,
     categories: ['email'],
     presentation: 'custom',
+    reentersCredentialsOnOriginChange: true,
     generalSettingsCardCopy: 'configuration',
     deleteDescriptionKey: 'connections:detail.dangerZone.delete.emailDescription',
   },

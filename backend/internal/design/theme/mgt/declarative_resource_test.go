@@ -406,3 +406,17 @@ func (s *ThemeDeclarativeSuite) TestValidateThemeWrapper_InvalidType() {
 	s.Error(err)
 	s.Contains(err.Error(), "invalid type")
 }
+
+// A theme file can place the theme in a project.
+func (s *ThemeDeclarativeSuite) TestParseToTheme_ProjectID() {
+	theme, err := parseToTheme([]byte(`
+id: theme-002
+displayName: Project Theme
+projectId: project-1
+theme:
+  primaryColor: "#1976d2"
+`))
+
+	s.NoError(err)
+	s.Equal("project-1", theme.ProjectID)
+}

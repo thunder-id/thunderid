@@ -17,8 +17,7 @@ const (
 	TypeCategoryAgent TypeCategory = "agent"
 )
 
-// DefaultAgentTypeHandle is the only agent type handle allowed; agent types are restricted
-// to a single 'default' schema.
+// DefaultAgentTypeHandle is the handle of the agent type that setup creates in the default organization unit.
 const DefaultAgentTypeHandle = "default"
 
 // IsValid reports whether the category is one of the known fixed values.
@@ -49,6 +48,8 @@ type EntityType struct {
 	AllowSelfRegistration bool              `json:"allowSelfRegistration" yaml:"allowSelfRegistration,omitempty"`
 	SystemAttributes      *SystemAttributes `json:"systemAttributes,omitempty" yaml:"systemAttributes,omitempty"`
 	Schema                json.RawMessage   `json:"schema,omitempty" yaml:"schema"`
+	// IsReadOnly marks a type a control plane deployed. It is never exported.
+	IsReadOnly bool `json:"isReadOnly" yaml:"-"`
 }
 
 // EntityTypeListItem represents a simplified entity type for listing operations.

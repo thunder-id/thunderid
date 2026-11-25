@@ -3,21 +3,26 @@
 
 package resource
 
-import "github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+import (
+	"github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+)
 
 // HTTP Response Models
 
 // ResourceServerResponse represents a resource server.
 type ResourceServerResponse struct {
-	ID                  string                              `json:"id"`
-	Name                string                              `json:"name"`
-	Description         string                              `json:"description,omitempty"`
-	Identifier          string                              `json:"identifier"`
-	Type                providers.ResourceServerType        `json:"type"`
-	OUID                string                              `json:"ouId"`
-	Delimiter           string                              `json:"delimiter"`
-	AuthorizationEngine providers.AuthorizationEngineConfig `json:"authorizationEngine,omitempty"`
-	IsReadOnly          bool                                `json:"isReadOnly"`
+	ID                      string                              `json:"id"`
+	Name                    string                              `json:"name"`
+	Description             string                              `json:"description,omitempty"`
+	Identifier              string                              `json:"identifier"`
+	Type                    providers.ResourceServerType        `json:"type"`
+	OUID                    string                              `json:"ouId"`
+	ProjectID               string                              `json:"projectId,omitempty"`
+	Delimiter               string                              `json:"delimiter"`
+	HierarchicalPermissions bool                                `json:"hierarchicalPermissions"`
+	AuthorizationEngine     providers.AuthorizationEngineConfig `json:"authorizationEngine,omitempty"`
+	IsReadOnly              bool                                `json:"isReadOnly"`
 }
 
 // ResourceResponse represents a resource.
@@ -79,8 +84,12 @@ type CreateResourceServerRequest struct {
 	Description string                       `json:"description,omitempty"`
 	Identifier  string                       `json:"identifier"            native:"required"`
 	Type        providers.ResourceServerType `json:"type,omitempty"`
-	OUID        string                       `json:"ouId"                  native:"required"`
+	OUID        string                       `json:"ouId,omitempty"`
+	ProjectID   string                       `json:"projectId,omitempty"`
 	Delimiter   string                       `json:"delimiter,omitempty"`
+	// HierarchicalPermissions declares that this server's permissions nest, so granting one
+	// authorizes those beneath it. Immutable after creation, like the delimiter.
+	HierarchicalPermissions bool `json:"hierarchicalPermissions,omitempty"`
 }
 
 // UpdateResourceServerRequest represents the request to update a resource server.
@@ -88,7 +97,8 @@ type UpdateResourceServerRequest struct {
 	Name                string                              `json:"name"`
 	Description         string                              `json:"description,omitempty"`
 	Identifier          string                              `json:"identifier,omitempty"`
-	OUID                string                              `json:"ouId"                  native:"required"`
+	OUID                string                              `json:"ouId,omitempty"`
+	ProjectID           string                              `json:"projectId,omitempty"`
 	AuthorizationEngine providers.AuthorizationEngineConfig `json:"authorizationEngine,omitempty"`
 }
 
@@ -120,19 +130,13 @@ type UpdateActionRequest struct {
 	Description string `json:"description,omitempty"`
 }
 
-// Link represents a pagination link in the service layer.
-type Link struct {
-	Href string
-	Rel  string
-}
-
 // ResourceServerList represents the result of listing resource servers.
 type ResourceServerList struct {
 	TotalResults    int
 	StartIndex      int
 	Count           int
 	ResourceServers []providers.ResourceServer
-	Links           []Link
+	Links           []utils.Link
 }
 
 // ResourceList represents the result of listing resources.
@@ -141,7 +145,7 @@ type ResourceList struct {
 	StartIndex   int
 	Count        int
 	Resources    []providers.Resource
-	Links        []Link
+	Links        []utils.Link
 }
 
 // ActionList represents the result of listing actions.
@@ -150,5 +154,5 @@ type ActionList struct {
 	StartIndex   int
 	Count        int
 	Actions      []providers.Action
-	Links        []Link
+	Links        []utils.Link
 }

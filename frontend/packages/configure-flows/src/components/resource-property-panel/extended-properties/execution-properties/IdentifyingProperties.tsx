@@ -1,12 +1,17 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {FormLabel, MenuItem, Select, Stack, Typography} from '@wso2/oxygen-ui';
-import {useMemo, type ReactNode} from 'react';
+import {useGetUserTypeAttributes} from '@thunderid/configure-user-types';
+import {FormHelperText, FormLabel, MenuItem, Select, Stack, Typography} from '@wso2/oxygen-ui';
+import {useEffect, useMemo, useRef, useState, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
+import CheckboxWithHint from './CheckboxWithHint';
 import {IDENTIFYING_MODES} from './constants';
 import type {CommonResourcePropertiesPropsInterface} from './types';
 import type {StepData} from '../../../../models/steps';
+import UserAttributeAutocomplete from '../UserAttributeAutocomplete';
+
+const DEFAULT_LOGIN_HINT_ATTRIBUTE = 'username';
 
 function IdentifyingProperties({resource, onChange}: CommonResourcePropertiesPropsInterface): ReactNode {
   const {t} = useTranslation();
@@ -15,6 +20,78 @@ function IdentifyingProperties({resource, onChange}: CommonResourcePropertiesPro
     const stepData = resource?.data as StepData | undefined;
     return (stepData?.action?.executor as {mode?: string})?.mode ?? '';
   }, [resource]);
+
+  const properties = useMemo(() => (resource?.data as StepData | undefined)?.properties ?? {}, [resource]);
+
+  // The user type is not known while the flow is authored, so attributes from every user type are
+  // suggested. Only unique ones are offered, since identify fails when more than one user matches.
+  const {attributes: allAttributes, isLoading: isLoadingAttributes} = useGetUserTypeAttributes();
+  const attributeOptions = useMemo(
+    () => allAttributes.filter((attribute) => attribute.unique && !attribute.credential),
+    [allAttributes],
+  );
+
+  const loginHintAttribute =
+    typeof properties['loginHintAttribute'] === 'string' ? properties['loginHintAttribute'] : '';
+  const isCibaLoginHint = loginHintAttribute !== '';
+  const isIdentifyMode = currentMode === '' || currentMode === 'identify';
+
+  // Typed text stays local until blur or Enter, like DraftTextField.
+  const [loginHintInput, setLoginHintInput] = useState<string>(loginHintAttribute);
+  const [syncedLoginHintAttribute, setSyncedLoginHintAttribute] = useState<string>(loginHintAttribute);
+  if (loginHintAttribute !== syncedLoginHintAttribute) {
+    setSyncedLoginHintAttribute(loginHintAttribute);
+    setLoginHintInput(loginHintAttribute);
+  }
+
+  // Removing a focused input does not reliably fire blur, so a typed attribute is committed when the panel
+  // unmounts, as DraftTextField does.
+  const pendingCommitRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    pendingCommitRef.current = (): void => {
+      const attribute = loginHintInput.trim();
+      if (attribute !== '' && attribute !== loginHintAttribute) {
+        onChange('data.properties.loginHintAttribute', attribute, resource);
+      }
+    };
+  });
+  useEffect(
+    () => () => {
+      pendingCommitRef.current?.();
+    },
+    [],
+  );
+
+  const handleBooleanPropertyChange = (propertyName: string, value: boolean): void => {
+    onChange(`data.properties.${propertyName}`, value, resource);
+  };
+
+  // A CIBA login hint is on while an attribute is set, so it cannot be cleared from the field; an empty
+  // value restores the attribute and only the checkbox turns it off.
+  const commitLoginHintAttribute = (value: string): void => {
+    const attribute = value.trim();
+    if (attribute === '' || attribute === loginHintAttribute) {
+      setLoginHintInput(loginHintAttribute);
+      return;
+    }
+    setLoginHintInput(attribute);
+    onChange('data.properties.loginHintAttribute', attribute, resource);
+  };
+
+  // The panel's change handler saves a missing value as '', which the executor reads as not set. Turning it on
+  // also clears continueOnNoMatch in the same write: with a hint no one can re-enter, continuing on no match
+  // would leave the client polling until the request expires.
+  const handleCibaLoginHintChange = (checked: boolean): void => {
+    if (!checked) {
+      onChange('data.properties.loginHintAttribute', '', resource);
+      return;
+    }
+    onChange(
+      'data.properties',
+      {...properties, loginHintAttribute: DEFAULT_LOGIN_HINT_ATTRIBUTE, continueOnNoMatch: false},
+      resource,
+    );
+  };
 
   const handleIdentifyingModeChange = (selectedMode: string): void => {
     const modeConfig = IDENTIFYING_MODES.find((mode) => mode.value === selectedMode);
@@ -62,6 +139,71 @@ function IdentifyingProperties({resource, onChange}: CommonResourcePropertiesPro
           ))}
         </Select>
       </div>
+
+      {isIdentifyMode && (
+        <>
+          <CheckboxWithHint
+            checked={properties['boundToUserType'] === true}
+            label={t('flows:core.executions.identifying.boundToUserType.label', 'Bound to the user type')}
+            hint={t(
+              'flows:core.executions.identifying.boundToUserType.hint',
+              'Accept only a user of the user type the flow resolved. A user of another type fails the step.',
+            )}
+            onChange={(checked) => handleBooleanPropertyChange('boundToUserType', checked)}
+          />
+          <CheckboxWithHint
+            checked={properties['continueOnNoMatch'] === true}
+            disabled={isCibaLoginHint}
+            label={t('flows:core.executions.identifying.continueOnNoMatch.label', 'Continue when no user matches')}
+            hint={t(
+              'flows:core.executions.identifying.continueOnNoMatch.hint',
+              'Follow the incomplete path without an error when no user matches, keeping the entered value.',
+            )}
+            onChange={(checked) => handleBooleanPropertyChange('continueOnNoMatch', checked)}
+          />
+        </>
+      )}
+
+      {/* Offered in identify mode, and in any mode where it is already on so it can be turned off. */}
+      {(isIdentifyMode || isCibaLoginHint) && (
+        <CheckboxWithHint
+          checked={isCibaLoginHint}
+          label={t('flows:core.executions.identifying.cibaLoginHint.label', 'Identify from a CIBA login hint')}
+          hint={t(
+            'flows:core.executions.identifying.cibaLoginHint.hint',
+            'For backchannel (CIBA) sign-in. The user is matched by the login hint the client sends instead of the step inputs.',
+          )}
+          onChange={handleCibaLoginHintChange}
+        />
+      )}
+
+      {isCibaLoginHint && (
+        <div>
+          <UserAttributeAutocomplete
+            id="login-hint-attribute"
+            label={t('flows:core.executions.identifying.loginHintAttribute.label', 'Login hint attribute')}
+            placeholder={t('flows:core.executions.identifying.loginHintAttribute.placeholder', 'username')}
+            size="small"
+            disableClearable
+            options={attributeOptions}
+            loading={isLoadingAttributes}
+            inputValue={loginHintInput}
+            onChange={commitLoginHintAttribute}
+            onInputChange={(value: string, reason: string) => {
+              if (reason === 'input') {
+                setLoginHintInput(value);
+              }
+            }}
+            onBlur={() => commitLoginHintAttribute(loginHintInput)}
+          />
+          <FormHelperText>
+            {t(
+              'flows:core.executions.identifying.loginHintAttribute.hint',
+              'The unique user attribute the login hint is matched against, such as username.',
+            )}
+          </FormHelperText>
+        </div>
+      )}
     </Stack>
   );
 }

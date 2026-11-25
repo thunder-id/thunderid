@@ -223,6 +223,10 @@ spec:
               default: {}
               properties:
                 clientBase: { type: string, default: "/gate" }
+                # Content for the Gate sign-in hero panel, as a JSON value in a string: a JSON
+                # string (a single title, quotes included), a {"title", "description", "icon"}
+                # object, or an array of such objects. "[]" keeps the built-in items.
+                slogan: { type: string, default: "[]" }
             console:
               type: object
               default: {}
@@ -839,6 +843,7 @@ spec:
                   light: "assets/images/favicon.ico",
                   dark: "assets/images/favicon-inverted.ico",
                 },
+                slogan: ${parameters.runtime.gate.slogan},
               },
               client: {
                 base: "${parameters.runtime.gate.clientBase}",

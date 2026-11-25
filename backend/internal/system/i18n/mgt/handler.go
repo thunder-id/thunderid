@@ -213,6 +213,9 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.S
 		if svcErr.Code == "I18N-1006" {
 			statusCode = http.StatusNotFound
 		}
+		if svcErr.Code == tidcommon.ErrorUnauthorized.Code {
+			statusCode = http.StatusForbidden
+		}
 	}
 
 	errResp := apierror.ErrorResponse{

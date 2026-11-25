@@ -45,6 +45,8 @@ type emailSMTPConnectionResponse struct {
 	FromName       string                      `json:"fromName,omitempty"`
 	TLS            string                      `json:"tls,omitempty"`
 	Authentication outboundauth.Authentication `json:"authentication"`
+
+	connectionOwnership
 }
 
 func emailSMTPToSenderDTO(req emailSMTPConnectionRequest) (*ncommon.NotificationSenderDTO, error) {

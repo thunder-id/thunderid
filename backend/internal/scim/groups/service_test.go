@@ -593,22 +593,86 @@ func (suite *ServiceTestSuite) TestPatchGroup_RemoveAllMembers_EmptyFilter() {
 	require.Empty(t, scimGroup.Members)
 }
 
-// TestPatchGroup_ReadOnly tests Patch Group for Read Only.
+// TestPatchGroup_ReadOnly tests that a PATCH on a read-only group is refused as the group service refuses it:
+// a declared group is a mutability violation, and a deployed one says it can only be changed by the control plane.
 func (suite *ServiceTestSuite) TestPatchGroup_ReadOnly() {
+	cases := map[string]struct {
+		refusal  *tidcommon.ServiceError
+		expected string
+	}{
+		"declared": {&group.ErrorImmutableGroup, scim.ErrorMutabilityViolation.Code},
+		"deployed": {&group.ErrorManagedGroup, scim.ErrorManagedResource.Code},
+	}
+	for name, tc := range cases {
+		suite.Run(name, func() {
+			t := suite.T()
+			mockGroupService := groupmock.NewGroupServiceInterfaceMock(t)
+			service := newSCIMGroupsService(mockGroupService)
+
+			mockGroupService.On("GetGroup", mock.Anything, "group-1", false).
+				Return(&group.Group{ID: "group-1", Name: "Admins", IsReadOnly: true}, (*tidcommon.ServiceError)(nil))
+			mockGroupService.On("UpdateGroup", mock.Anything, "group-1", mock.Anything).
+				Return((*group.Group)(nil), tc.refusal)
+
+			actions := []SCIMGroupPatchAction{
+				{Op: scimPatchOpReplace, Target: scimGroupPatchTargetDisplayName, DisplayName: "New"},
+			}
+			scimGroup, err := service.PatchGroup(context.Background(), "group-1", actions, testBaseURL)
+
+			require.Nil(t, scimGroup)
+			require.Equal(t, tc.expected, err.Code)
+		})
+	}
+}
+
+// TestPatchGroup_RenameRefusedBeforeMembers tests that a PATCH adding a member and renaming a deployed group is
+// refused before the member is added, so the refused PATCH leaves the group unchanged.
+func (suite *ServiceTestSuite) TestPatchGroup_RenameRefusedBeforeMembers() {
+	t := suite.T()
+	mockGroupService := groupmock.NewGroupServiceInterfaceMock(t)
+	service := newSCIMGroupsService(mockGroupService)
+	mockGroupService.On("GetGroup", mock.Anything, "group-1", false).
+		Return(&group.Group{ID: "group-1", Name: "Admins", IsReadOnly: true}, (*tidcommon.ServiceError)(nil))
+	mockGroupService.On("UpdateGroup", mock.Anything, "group-1", mock.Anything).
+		Return((*group.Group)(nil), &group.ErrorManagedGroup)
+
+	actions := []SCIMGroupPatchAction{
+		{Op: scimPatchOpAdd, Target: scimGroupPatchTargetMembers, Members: []SCIMGroupMember{{Value: "user-1"}}},
+		{Op: scimPatchOpReplace, Target: scimGroupPatchTargetDisplayName, DisplayName: "New"},
+	}
+	_, err := service.PatchGroup(context.Background(), "group-1", actions, testBaseURL)
+
+	require.NotNil(t, err)
+	require.Equal(t, scim.ErrorManagedResource.Code, err.Code)
+	mockGroupService.AssertNotCalled(t, "AddGroupMembers", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// TestPatchGroup_AddMembersToDeployedGroup tests that a deployed group takes a member added through SCIM, as
+// the group's own member API does: only the group service decides what a deployed group refuses.
+func (suite *ServiceTestSuite) TestPatchGroup_AddMembersToDeployedGroup() {
 	t := suite.T()
 	mockGroupService := groupmock.NewGroupServiceInterfaceMock(t)
 	service := newSCIMGroupsService(mockGroupService)
 
 	mockGroupService.On("GetGroup", mock.Anything, "group-1", false).
-		Return(&group.Group{ID: "group-1", Name: "Admins", IsReadOnly: true}, (*tidcommon.ServiceError)(nil))
+		Return(&group.Group{ID: "group-1", Name: "Team", IsReadOnly: true}, (*tidcommon.ServiceError)(nil))
+	mockGroupService.On("AddGroupMembers", mock.Anything, "group-1",
+		[]group.Member{{ID: "user-9", Type: group.MemberTypeUser}}).
+		Return(&group.Group{}, (*tidcommon.ServiceError)(nil))
+	mockGroupService.On("GetGroup", mock.Anything, "group-1", true).
+		Return(&group.Group{ID: "group-1", Name: "Team", IsReadOnly: true}, (*tidcommon.ServiceError)(nil))
+	mockGroupService.On("GetGroupMembers", mock.Anything, "group-1", serverconst.MaxPageSize, 0, true).
+		Return(&group.MemberListResponse{Members: []group.Member{{ID: "user-9", Type: group.MemberTypeUser}}},
+			(*tidcommon.ServiceError)(nil))
 
 	actions := []SCIMGroupPatchAction{
-		{Op: scimPatchOpReplace, Target: scimGroupPatchTargetDisplayName, DisplayName: "New"},
+		{Op: scimPatchOpAdd, Target: scimGroupPatchTargetMembers,
+			Members: []SCIMGroupMember{{Value: "user-9", Type: "User"}}},
 	}
 	scimGroup, err := service.PatchGroup(context.Background(), "group-1", actions, testBaseURL)
 
-	require.Nil(t, scimGroup)
-	require.Equal(t, scim.ErrorMutabilityViolation.Code, err.Code)
+	require.Nil(t, err)
+	require.Len(t, scimGroup.Members, 1)
 }
 
 // TestDeleteGroup_Success tests Delete Group for Success.

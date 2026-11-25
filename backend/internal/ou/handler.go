@@ -54,7 +54,25 @@ func (ouh *organizationUnitHandler) HandleOUListRequest(w http.ResponseWriter, r
 		return
 	}
 
-	ouListResponse, svcErr := ouh.service.GetOrganizationUnitList(ctx, limit, offset, f)
+	// An empty projectId= still takes the project branch and lists no organization units, rather than every one.
+	var ouListResponse *OrganizationUnitListResponse
+	query := r.URL.Query()
+	switch {
+	case query.Has(projectIDQueryParam) && query.Get(placementQueryParam) == "true":
+		// The placement listing leads with the system organization unit, which a filter could not page around.
+		if f != nil {
+			ouh.handleError(ctx, w, &ErrorPlacementWithFilter)
+			return
+		}
+		ouListResponse, svcErr = ouh.service.GetOrganizationUnitPlacementList(ctx,
+			sysutils.SanitizeString(query.Get(projectIDQueryParam)),
+			sysutils.SanitizeString(query.Get(withinQueryParam)), limit, offset)
+	case query.Has(projectIDQueryParam):
+		ouListResponse, svcErr = ouh.service.GetOrganizationUnitListByProject(
+			ctx, sysutils.SanitizeString(query.Get(projectIDQueryParam)), limit, offset, f)
+	default:
+		ouListResponse, svcErr = ouh.service.GetOrganizationUnitList(ctx, limit, offset, f)
+	}
 	if svcErr != nil {
 		ouh.handleError(ctx, w, svcErr)
 		return
@@ -98,7 +116,7 @@ func (ouh *organizationUnitHandler) HandleOUPostRequest(w http.ResponseWriter, r
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusCreated, createdOU)
 
-	logger.Debug(ctx, "Successfully created organization unit", log.String("ouId", createdOU.ID))
+	logger.Debug(ctx, "Successfully created organization unit", log.String("ouID", createdOU.ID))
 }
 
 // HandleOUGetRequest handles the get organization unit by id request.
@@ -119,7 +137,7 @@ func (ouh *organizationUnitHandler) HandleOUGetRequest(w http.ResponseWriter, r 
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, ou)
 
-	logger.Debug(ctx, "Successfully retrieved organization unit", log.String("ouId", id))
+	logger.Debug(ctx, "Successfully retrieved organization unit", log.String("ouID", id))
 }
 
 // HandleOUPutRequest handles the update organization unit request.
@@ -155,7 +173,7 @@ func (ouh *organizationUnitHandler) HandleOUPutRequest(w http.ResponseWriter, r 
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, ou)
 
-	logger.Debug(ctx, "Successfully updated organization unit", log.String("ouId", id))
+	logger.Debug(ctx, "Successfully updated organization unit", log.String("ouID", id))
 }
 
 // HandleOUDeleteRequest handles the delete organization unit request.
@@ -175,7 +193,7 @@ func (ouh *organizationUnitHandler) HandleOUDeleteRequest(w http.ResponseWriter,
 	}
 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
-	logger.Debug(ctx, "Successfully deleted organization unit", log.String("ouId", id))
+	logger.Debug(ctx, "Successfully deleted organization unit", log.String("ouID", id))
 }
 
 // HandleOUChildrenListRequest handles the list child organization units request.
@@ -259,6 +277,7 @@ func (ouh *organizationUnitHandler) sanitizeOrganizationUnitRequest(
 		Name:                      sysutils.SanitizeString(request.Name),
 		Description:               sysutils.SanitizeString(request.Description),
 		Parent:                    request.Parent,
+		ProjectID:                 sysutils.SanitizeString(request.ProjectID),
 		ThemeID:                   request.ThemeID,
 		LayoutID:                  request.LayoutID,
 		AuthFlowID:                request.AuthFlowID,

@@ -3,7 +3,7 @@
 
 import {DocumentTitle} from '@thunderid/components';
 import {OrganizationUnitPickerScreen, useHasMultipleOUs} from '@thunderid/configure-organization-units';
-import {useToast} from '@thunderid/contexts';
+import {useCapabilitiesContext, useProjectScope, useToast} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {getErrorMessage} from '@thunderid/utils';
 import {
@@ -51,13 +51,20 @@ export default function CreateResourceServerPage(): JSX.Element {
   const setDefaultResourceServer = useSetDefaultResourceServer();
   const {data: defaultConfig, isLoading: isDefaultLoading, error: defaultError} = useGetDefaultResourceServer();
 
-  const {hasMultipleOUs, isLoading: isOuLoading, ouList} = useHasMultipleOUs();
+  const {projectId} = useProjectScope();
+  // Inside a project the resource server goes to the system organization unit or one of the
+  // project's own, picked on the organization unit step. The step is offered only when the project
+  // has organization units; without any, the API places the resource server in the system
+  // organization unit.
+  const isInProject = Boolean(projectId);
+  const {hasMultipleOUs, isLoading: isOuLoading, ouList} = useHasMultipleOUs(projectId);
 
   // Only trust the config once it has resolved, so the checkbox does not flicker from unticked to
   // ticked. A declarative (read-only) default is locked: the backend rejects any write to it.
   const isDefaultReady = !isDefaultLoading && !defaultError;
   const isDefaultLocked = Boolean(defaultConfig?.readOnly?.resourceServerId);
-  const canSetDefault = isDefaultReady && !isDefaultLocked;
+  const {can} = useCapabilitiesContext();
+  const canSetDefault = isDefaultReady && !isDefaultLocked && can('serverconfig', 'update');
   const hasExistingDefault = Boolean(defaultConfig?.merged?.resourceServerId);
 
   const [currentStep, setCurrentStep] = useState<ResourceServerCreateStep>(ResourceServerCreateStep.ORGANIZATION_UNIT);
@@ -65,6 +72,7 @@ export default function CreateResourceServerPage(): JSX.Element {
   const [name, setName] = useState('');
   const [identifier, setIdentifier] = useState('');
   const [delimiter, setDelimiter] = useState<PermissionDelimiter>(DEFAULT_PERMISSION_DELIMITER);
+  const [hierarchicalPermissions, setHierarchicalPermissions] = useState(false);
   const [ouId, setOuId] = useState('');
   const [error, setError] = useState<string | null>(null);
   // Only the user's explicit choice is stored. Until they make one it derives from the config, which
@@ -147,11 +155,11 @@ export default function CreateResourceServerPage(): JSX.Element {
       ORGANIZATION_UNIT: {label: t('resourceServers:create.steps.organizationUnit', 'Organization'), order: 1},
       TYPE: {label: t('resourceServers:create.steps.type', 'Type'), order: 1 + ouOffset},
       NAME: {label: t('resourceServers:create.steps.name', 'Details'), order: 2 + ouOffset},
-      SEPARATOR: {label: t('resourceServers:create.steps.separator', 'Permission delimiter'), order: 3 + ouOffset},
+      SEPARATOR: {label: t('resourceServers:create.steps.separator', 'Permission settings'), order: 3 + ouOffset},
     };
   }, [t, hasMultipleOUs]);
 
-  const effectiveOuId = hasMultipleOUs ? ouId : (ouList[0]?.id ?? '');
+  const effectiveOuId = hasMultipleOUs ? ouId : isInProject ? '' : (ouList[0]?.id ?? '');
 
   // The organization unit is the wizard's first step whenever there's a choice to make. Single-OU
   // deployments never need it, so once that's known, skip straight past it. Adjusted during render
@@ -212,14 +220,16 @@ export default function CreateResourceServerPage(): JSX.Element {
     }
 
     const resolvedOuId = effectiveOuId;
-    if (!resolvedOuId) return;
+    if (!isInProject && !resolvedOuId) return;
 
     const payload = {
       name: name.trim(),
       identifier: identifier.trim(),
-      ouId: resolvedOuId,
+      ...(isInProject ? {projectId} : {}),
+      ...(resolvedOuId ? {ouId: resolvedOuId} : {}),
       type: selectedType,
       delimiter,
+      hierarchicalPermissions,
     };
 
     // Guard on the same conditions the checkbox renders under, so a type change after ticking it
@@ -332,6 +342,11 @@ export default function CreateResourceServerPage(): JSX.Element {
         return (
           <ConfigureSeparator
             delimiter={delimiter}
+            hierarchicalPermissions={hierarchicalPermissions}
+            onHierarchicalPermissionsChange={(value) => {
+              setHierarchicalPermissions(value);
+              clearCreateError();
+            }}
             onDelimiterChange={handleDelimiterChange}
             onReadyChange={handleSeparatorReadyChange}
           />
@@ -364,6 +379,7 @@ export default function CreateResourceServerPage(): JSX.Element {
             'Select which organization unit this resource server belongs to.',
           )}
           value={ouId}
+          projectId={projectId}
           onChange={handleOuIdChange}
           onBack={handleClose}
           onContinue={handleNext}

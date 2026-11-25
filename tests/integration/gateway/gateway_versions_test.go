@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -39,18 +40,26 @@ type appliedVersion struct {
 }
 
 type change struct {
-	Key          string `json:"key"`
-	ResourceType string `json:"resourceType"`
-	ID           string `json:"id"`
-	Change       string `json:"change"`
-	Skipped      bool   `json:"skipped"`
-	Excluded     bool   `json:"excluded"`
+	Key          string   `json:"key"`
+	ResourceType string   `json:"resourceType"`
+	ID           string   `json:"id"`
+	Change       string   `json:"change"`
+	Failed       bool     `json:"failed"`
+	Selected     bool     `json:"selected"`
+	Needs        []string `json:"needs"`
+	Required     bool     `json:"required"`
+	RequiredBy   string   `json:"requiredBy"`
+	Replaces     string   `json:"replaces"`
+	Lines        []struct {
+		Kind string `json:"kind"`
+		Text string `json:"text"`
+	} `json:"lines"`
 }
 
 type diffResult struct {
-	FromVersion string   `json:"fromVersion"`
-	ToVersion   string   `json:"toVersion"`
-	Changes     []change `json:"changes"`
+	FromMaster string   `json:"fromMaster"`
+	ToVersion  string   `json:"toVersion"`
+	Changes    []change `json:"changes"`
 }
 
 type applyResult struct {
@@ -118,7 +127,7 @@ func (ts *GatewayVersionsTestSuite) TestApplyAddsAndRemovesWhatTheVersionsDiffer
 	// The later version no longer has the unit, so applying it removes it.
 	second := ts.apply(withoutUnit.Version, false)
 	ts.True(second.Recorded, "the apply was not recorded: %s", second.Import)
-	ts.Equal(withUnit.Version, second.Diff.FromVersion)
+	ts.Equal(first.Master, second.Diff.FromMaster)
 	if removed := ts.changeIn(second.Diff, "organization_unit/"+ouID); ts.NotNil(removed, "the diff does not report the unit") {
 		ts.Equal("deleted", removed.Change)
 	}
@@ -136,6 +145,104 @@ func (ts *GatewayVersionsTestSuite) TestApplyAddsAndRemovesWhatTheVersionsDiffer
 	ts.Equal(http.StatusBadRequest, ts.call(http.MethodPost, "/gateways/"+ts.gatewayID+"/revert",
 		map[string]any{}, nil), "a revert was reverted")
 	ts.Equal(http.StatusOK, ts.unitStatus(ouID), "a refused revert changed the gateway")
+}
+
+// Applying a version takes off a role or a group whoever the version no longer lists there, and only
+// them: an assignee or member the gateway added itself stays.
+func (ts *GatewayVersionsTestSuite) TestApplyTakesOffWhoARoleOrGroupNoLongerLists() {
+	suffix := fmt.Sprint(time.Now().UnixNano())
+	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{Handle: "members-" + suffix,
+		Name: "Members"})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(ouID) }()
+	typeID, err := testutils.CreateUserType(testutils.UserType{Handle: "members-" + suffix, DisplayName: "Members",
+		OUID: ouID, Schema: map[string]any{"email": map[string]any{"type": "string"}}})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteUserType(typeID) }()
+	person := func(name string) string {
+		id, err := testutils.CreateUser(testutils.User{Type: "members-" + suffix, OUID: ouID,
+			Attributes: json.RawMessage(fmt.Sprintf(`{"email": "%s-%s@example.com"}`, name, suffix))})
+		ts.Require().NoError(err)
+		return id
+	}
+	dropped, kept := person("dropped"), person("kept")
+	defer func() {
+		_ = testutils.DeleteUser(dropped)
+		_ = testutils.DeleteUser(kept)
+	}()
+	groupID, err := testutils.CreateGroup(testutils.Group{Name: "members-" + suffix, OUID: ouID,
+		Members: []testutils.Member{{Id: dropped, Type: "user"}}})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteGroup(groupID) }()
+	roleID, err := testutils.CreateRole(testutils.Role{Name: "members-" + suffix, OUID: ouID,
+		Assignments: []testutils.Assignment{{ID: dropped, Type: "user"}}})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteRole(roleID) }()
+	only := func(id string) map[string]any {
+		return map[string]any{"id": id, "type": "user"}
+	}
+
+	listed := ts.capture("with the user")
+	ts.Require().Equal(http.StatusNoContent, ts.call(http.MethodPost, "/roles/"+roleID+"/assignments/remove",
+		map[string]any{"assignments": []any{only(dropped)}}, nil))
+	ts.Require().Equal(http.StatusOK, ts.call(http.MethodPost, "/groups/"+groupID+"/members/remove",
+		map[string]any{"members": []any{only(dropped)}}, nil))
+	unlisted := ts.capture("without the user")
+
+	ts.True(ts.apply(listed.Version, false).Recorded)
+	ts.ElementsMatch([]string{dropped}, ts.assignees(roleID))
+	ts.ElementsMatch([]string{dropped}, ts.members(groupID))
+	ts.Require().Equal(http.StatusNoContent, ts.call(http.MethodPost, "/roles/"+roleID+"/assignments/add",
+		map[string]any{"assignments": []any{only(kept)}}, nil))
+	ts.Require().Equal(http.StatusOK, ts.call(http.MethodPost, "/groups/"+groupID+"/members/add",
+		map[string]any{"members": []any{only(kept)}}, nil))
+
+	dryRun := ts.apply(unlisted.Version, true)
+	ts.Contains(string(dryRun.Import), `"resourceType":"role_assignment"`, "the dry run did not report the removal")
+	ts.ElementsMatch([]string{dropped, kept}, ts.assignees(roleID), "a dry run took an assignee off")
+
+	applied := ts.apply(unlisted.Version, false)
+	ts.True(applied.Recorded, "the apply was not recorded: %s", applied.Import)
+	ts.ElementsMatch([]string{kept}, ts.assignees(roleID), "the role kept who the version dropped")
+	ts.ElementsMatch([]string{kept}, ts.members(groupID), "the group kept who the version dropped")
+	after := ts.diff(unlisted.Version)
+	for _, key := range []string{"role/" + roleID, "group/" + groupID} {
+		if held := ts.changeIn(after, key); ts.NotNil(held, "the diff does not report %s", key) {
+			ts.Equal("unchanged", held.Change, "%s is still on offer", key)
+		}
+	}
+}
+
+// assignees lists the ids of a role's assignees.
+func (ts *GatewayVersionsTestSuite) assignees(roleID string) []string {
+	ts.T().Helper()
+	var listed struct {
+		Assignments []struct {
+			ID string `json:"id"`
+		} `json:"assignments"`
+	}
+	ts.Require().Equal(http.StatusOK, ts.call(http.MethodGet, "/roles/"+roleID+"/assignments", nil, &listed))
+	ids := make([]string, 0, len(listed.Assignments))
+	for _, assignment := range listed.Assignments {
+		ids = append(ids, assignment.ID)
+	}
+	return ids
+}
+
+// members lists the ids of a group's members.
+func (ts *GatewayVersionsTestSuite) members(groupID string) []string {
+	ts.T().Helper()
+	var listed struct {
+		Members []struct {
+			ID string `json:"id"`
+		} `json:"members"`
+	}
+	ts.Require().Equal(http.StatusOK, ts.call(http.MethodGet, "/groups/"+groupID+"/members", nil, &listed))
+	ids := make([]string, 0, len(listed.Members))
+	for _, member := range listed.Members {
+		ids = append(ids, member.ID)
+	}
+	return ids
 }
 
 // Without a user lookup at a trusted issuer, a version names no one and neither does the gateway that
@@ -164,9 +271,9 @@ func (ts *GatewayVersionsTestSuite) TestWithoutALookupNoUserIsNamed() {
 	ts.Nil(held.AppliedBy, "the gateway gave out a user with no name to show")
 }
 
-// A change left out of an apply is left alone on the gateway, and stays left alone in later applies
-// until one selects it again.
-func (ts *GatewayVersionsTestSuite) TestAChangeLeftOutIsLeftAloneUntilSelected() {
+// A selection deploys the changes named and nothing is kept: the unit left out stays on offer, and
+// the next apply without a selection deploys it.
+func (ts *GatewayVersionsTestSuite) TestASelectionDeploysOnlyTheChangesNamed() {
 	units := map[string]string{}
 	for _, name := range []string{"taken", "left"} {
 		id, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
@@ -180,144 +287,75 @@ func (ts *GatewayVersionsTestSuite) TestAChangeLeftOutIsLeftAloneUntilSelected()
 	for _, id := range units {
 		ts.Require().NoError(testutils.DeleteOrganizationUnit(id))
 	}
-	leftKey := "organization_unit/" + units["left"]
+	takenKey, leftKey := "organization_unit/"+units["taken"], "organization_unit/"+units["left"]
 
 	ts.Equal(http.StatusBadRequest, ts.call(http.MethodPost, "/gateways/"+ts.gatewayID+"/apply",
 		map[string]any{"version": captured.Version, "selection": []string{"organization_unit/not-in-the-diff"}},
 		nil), "a key the diff does not report was accepted")
 	ts.Equal(http.StatusNotFound, ts.unitStatus(units["taken"]), "a refused selection was applied")
 
-	ts.applySelecting(captured.Version, func(key string) bool { return key != leftKey })
+	result := ts.applySelecting(captured.Version, func(key string) bool { return key != leftKey })
 	ts.Equal(http.StatusOK, ts.unitStatus(units["taken"]), "the selected unit was not applied")
 	ts.Equal(http.StatusNotFound, ts.unitStatus(units["left"]), "the unit left out was applied")
-
-	var diff struct {
-		Changes []struct {
-			Key      string `json:"key"`
-			Excluded bool   `json:"excluded"`
-		} `json:"changes"`
+	if taken := ts.changeIn(result.Diff, takenKey); ts.NotNil(taken) {
+		ts.True(taken.Selected, "the change sent is not marked as such")
 	}
-	ts.Require().Equal(http.StatusOK, ts.call(http.MethodGet,
-		fmt.Sprintf("/gateways/%s/diff?version=%s", ts.gatewayID, captured.Version), nil, &diff))
-	excluded := []string{}
-	for _, c := range diff.Changes {
-		if c.Excluded {
-			excluded = append(excluded, c.Key)
-		}
+	if left := ts.changeIn(result.Diff, leftKey); ts.NotNil(left) {
+		ts.False(left.Selected, "the change left out is marked as sent")
 	}
-	ts.Equal([]string{leftKey}, excluded, "the unit left out is not offered as left alone")
 
-	ts.apply(captured.Version, false)
-	ts.Equal(http.StatusNotFound, ts.unitStatus(units["left"]), "the choice was not kept for the next apply")
-
-	ts.applySelecting(captured.Version, func(string) bool { return true })
-	ts.Equal(http.StatusOK, ts.unitStatus(units["left"]), "selecting the unit again did not apply it")
-}
-
-// A skipped change is left alone for that apply only: the gateway does not keep it as its choice but
-// is owed it, so the next diff offers it again, saying it was skipped, and the next apply writes it.
-func (ts *GatewayVersionsTestSuite) TestASkippedChangeIsLeftAloneOnce() {
-	units := map[string]string{}
-	for _, name := range []string{"taken", "skipped"} {
-		id, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
-			Handle: fmt.Sprintf("skip-%s-%d", name, time.Now().UnixNano()), Name: name,
-		})
-		ts.Require().NoError(err)
-		units[name] = id
-		defer func() { _ = testutils.DeleteOrganizationUnit(id) }()
-	}
-	captured := ts.capture("two units to skip from")
-	for _, id := range units {
-		ts.Require().NoError(testutils.DeleteOrganizationUnit(id))
-	}
-	skippedKey := "organization_unit/" + units["skipped"]
-
-	var result applyResult
-	ts.Require().Equal(http.StatusOK, ts.call(http.MethodPost, "/gateways/"+ts.gatewayID+"/apply",
-		map[string]any{"version": captured.Version, "skip": []string{skippedKey}}, &result))
-	ts.True(result.Recorded, "the apply was not recorded: %s", result.Import)
-	ts.Equal(http.StatusOK, ts.unitStatus(units["taken"]), "the unit not skipped was not applied")
-	ts.Equal(http.StatusNotFound, ts.unitStatus(units["skipped"]), "the skipped unit was applied")
-
-	offered := ts.changeIn(ts.apply(captured.Version, true).Diff, skippedKey)
-	ts.Require().NotNil(offered, "the skipped change was not offered again")
-	ts.Equal("updated", offered.Change)
-	ts.True(offered.Skipped, "the change offered again does not say it was skipped")
+	offered := ts.changeIn(ts.diff(captured.Version), leftKey)
+	ts.Require().NotNil(offered, "the unit left out is no longer offered")
+	ts.Equal("added", offered.Change)
 
 	ts.True(ts.apply(captured.Version, false).Recorded)
-	ts.Equal(http.StatusOK, ts.unitStatus(units["skipped"]), "a skip was kept for the next apply")
-	taken := ts.changeIn(ts.apply(captured.Version, true).Diff, skippedKey)
-	ts.Require().NotNil(taken)
-	ts.Equal("unchanged", taken.Change)
-	ts.False(taken.Skipped, "a change the apply wrote is still said to be skipped")
+	ts.Equal(http.StatusOK, ts.unitStatus(units["left"]), "the next apply did not deploy the unit left out")
+	if deployed := ts.changeIn(ts.diff(captured.Version), leftKey); ts.NotNil(deployed) {
+		ts.Equal("unchanged", deployed.Change, "a deployed unit is still offered")
+	}
 }
 
-// A change owed from a skip that a later selection leaves out becomes the gateway's standing choice:
-// the stored row is turned from owed into left alone, on the database itself.
-func (ts *GatewayVersionsTestSuite) TestALeftOutOwedChangeBecomesTheStandingChoice() {
-	units := map[string]string{}
-	for _, name := range []string{"kept", "owed"} {
-		id, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
-			Handle: fmt.Sprintf("owed-%s-%d", name, time.Now().UnixNano()), Name: name,
-		})
-		ts.Require().NoError(err)
-		units[name] = id
-		defer func() { _ = testutils.DeleteOrganizationUnit(id) }()
-	}
-	captured := ts.capture("two units, one to owe")
-	for _, id := range units {
-		ts.Require().NoError(testutils.DeleteOrganizationUnit(id))
-	}
-	keptKey, owedKey := "organization_unit/"+units["kept"], "organization_unit/"+units["owed"]
-
-	ts.Require().Equal(http.StatusOK, ts.call(http.MethodPost, "/gateways/"+ts.gatewayID+"/apply",
-		map[string]any{"version": captured.Version, "skip": []string{owedKey}}, nil))
-	owed := ts.changeIn(ts.apply(captured.Version, true).Diff, owedKey)
-	ts.Require().NotNil(owed)
-	ts.Require().True(owed.Skipped, "the skipped change is not owed")
-
-	var result applyResult
-	ts.Require().Equal(http.StatusOK, ts.call(http.MethodPost, "/gateways/"+ts.gatewayID+"/apply",
-		map[string]any{"version": captured.Version, "selection": []string{keptKey}}, &result))
-	ts.True(result.Recorded, "the apply was not recorded: %s", result.Import)
-
-	left := ts.changeIn(ts.apply(captured.Version, true).Diff, owedKey)
-	ts.Require().NotNil(left, "the change left out is no longer offered")
-	ts.True(left.Excluded, "the change left out is not the gateway's choice")
-	ts.False(left.Skipped, "the change left out is still owed")
-	ts.Equal(http.StatusNotFound, ts.unitStatus(units["owed"]), "the change left out was applied")
-
-	ts.Require().Equal(http.StatusOK, ts.call(http.MethodPost, "/gateways/"+ts.gatewayID+"/apply",
-		map[string]any{"version": captured.Version, "selection": []string{keptKey, owedKey}}, nil))
+// diff reads how a version differs from what the gateway holds.
+func (ts *GatewayVersionsTestSuite) diff(version string) diffResult {
+	ts.T().Helper()
+	var diff diffResult
+	ts.Require().Equal(http.StatusOK, ts.call(http.MethodGet,
+		fmt.Sprintf("/gateways/%s/diff?version=%s", ts.gatewayID, version), nil, &diff))
+	return diff
 }
 
-// A skipped removal is owed to the gateway: the version is recorded, and the diff offers the removal
-// until an apply removes the resource.
-func (ts *GatewayVersionsTestSuite) TestASkippedRemovalIsOfferedUntilRemoved() {
-	id, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
-		Handle: fmt.Sprintf("skip-removal-%d", time.Now().UnixNano()), Name: "skip removal",
-	})
-	ts.Require().NoError(err)
-	defer func() { _ = testutils.DeleteOrganizationUnit(id) }()
-	withUnit := ts.capture("with the unit to be removed")
-	ts.True(ts.apply(withUnit.Version, false).Recorded)
-	ts.Require().NoError(testutils.DeleteOrganizationUnit(id))
-	without := ts.capture("without the unit")
-	key := "organization_unit/" + id
+// A resource the gateway refuses stays on offer: the diff reports it as failed, and every apply sends
+// it again while the resources the gateway accepted are not sent again.
+func (ts *GatewayVersionsTestSuite) TestARefusedResourceStaysOnOffer() {
+	const declaredFlow = "flow/decl-flow-1"
+	captured := ts.capture("with the declared flow")
+	ts.True(ts.apply(captured.Version, false).Recorded)
 
-	var result applyResult
-	ts.Require().Equal(http.StatusOK, ts.call(http.MethodPost, "/gateways/"+ts.gatewayID+"/apply",
-		map[string]any{"version": without.Version, "skip": []string{key}}, &result))
-	ts.True(result.Recorded, "the apply was not recorded: %s", result.Import)
-	ts.Equal(without.Version, ts.applied().AppliedVersion)
+	diff := ts.diff(captured.Version)
+	refused := 0
+	for _, c := range diff.Changes {
+		if c.Failed {
+			refused++
+			ts.Equal("added", c.Change, "%s was refused, yet it is not offered again", c.Key)
+			continue
+		}
+		ts.Equal("unchanged", c.Change, "%s was accepted, yet it is offered again", c.Key)
+	}
+	flow := ts.changeIn(diff, declaredFlow)
+	ts.Require().NotNil(flow, "the declared flow is not offered")
+	ts.True(flow.Failed, "the declared flow is not reported as refused")
 
-	owed := ts.changeIn(ts.apply(without.Version, true).Diff, key)
-	ts.Require().NotNil(owed, "the skipped removal was not offered again")
-	ts.Equal("deleted", owed.Change)
-	ts.True(owed.Skipped)
-
-	ts.True(ts.apply(without.Version, false).Recorded)
-	ts.Nil(ts.changeIn(ts.apply(without.Version, true).Diff, key), "the removal is still offered after an apply took it")
+	again := ts.apply(captured.Version, false)
+	ts.True(again.Recorded, "the apply was not recorded: %s", again.Import)
+	var imported struct {
+		Summary struct {
+			TotalDocuments int `json:"totalDocuments"`
+			Failed         int `json:"failed"`
+		} `json:"summary"`
+	}
+	ts.Require().NoError(json.Unmarshal(again.Import, &imported))
+	ts.Equal(refused, imported.Summary.TotalDocuments, "the apply sent more than the refused resources")
+	ts.Equal(refused, imported.Summary.Failed)
 }
 
 // changeIn finds a change in a diff by key.
@@ -350,11 +388,59 @@ func (ts *GatewayVersionsTestSuite) TestTheDiffComparesWithWhatTheGatewayHolds()
 		fmt.Sprintf("/gateways/%s/diff?version=%s", ts.gatewayID, captured.Version), nil, &diff))
 
 	ts.Equal(captured.Version, diff.ToVersion)
-	ts.Zero(diff.FromVersion, "the gateway holds nothing yet")
+	ts.Zero(diff.FromMaster, "the gateway holds nothing yet")
 	ts.NotEmpty(diff.Changes)
 	for _, c := range diff.Changes {
 		ts.Equal("added", c.Change, "nothing held, so everything is added")
 	}
+}
+
+// The diff shows which attributes a user has without what they hold: each value is masked, the
+// username aside, and so is what an object attribute nests.
+func (ts *GatewayVersionsTestSuite) TestTheDiffMasksAUsersAttributeValues() {
+	suffix := fmt.Sprintf("%d", time.Now().UnixNano())
+	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "masked-" + suffix, Name: "Masked",
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(ouID) }()
+	typeID, err := testutils.CreateUserType(testutils.UserType{
+		Handle: "masked-person-" + suffix, DisplayName: "Masked person", OUID: ouID,
+		Schema: map[string]any{
+			"username":    map[string]any{"type": "string"},
+			"national_id": map[string]any{"type": "string"},
+			"address": map[string]any{
+				"type":       "object",
+				"properties": map[string]any{"city": map[string]any{"type": "string"}},
+			},
+		},
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteUserType(typeID) }()
+	username, nationalID, city := "masked-"+suffix, "TEST-ID-"+suffix, "City-"+suffix
+	userID, err := testutils.CreateUser(testutils.User{
+		Type: "masked-person-" + suffix, OUID: ouID,
+		Attributes: json.RawMessage(fmt.Sprintf(`{"username": %q, "national_id": %q, "address": {"city": %q}}`,
+			username, nationalID, city)),
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteUser(userID) }()
+
+	captured := ts.capture("with a user")
+	ts.Contains(captured.Resources, nationalID, "the version does not hold the user's attributes")
+	ts.Contains(captured.Resources, city, "the version does not hold the user's object attribute")
+
+	user := ts.changeIn(ts.diff(captured.Version), "user/"+userID)
+	ts.Require().NotNil(user, "the diff does not report the user")
+	var masked, named bool
+	for _, line := range user.Lines {
+		ts.NotContains(line.Text, nationalID, "the diff shows a user's attribute value")
+		ts.NotContains(line.Text, city, "the diff shows a value an object attribute nests")
+		masked = masked || strings.HasSuffix(line.Text, "national_id: ********")
+		named = named || strings.HasSuffix(line.Text, fmt.Sprintf("username: %q", username))
+	}
+	ts.True(masked, "the diff does not show the attribute masked")
+	ts.True(named, "the diff does not show the username")
 }
 
 // Captured versions are listed newest first and read back with their content.
@@ -548,7 +634,7 @@ func (ts *GatewayVersionsTestSuite) applySelecting(version string, keep func(key
 		fmt.Sprintf("/gateways/%s/diff?version=%s", ts.gatewayID, version), nil, &diff))
 	selection := []string{}
 	for _, c := range diff.Changes {
-		if (c.Change != "unchanged" || c.Excluded) && keep(c.Key) {
+		if c.Change != "unchanged" && keep(c.Key) {
 			selection = append(selection, c.Key)
 		}
 	}
@@ -636,8 +722,16 @@ func (ts *GatewayVersionsTestSuite) TestAnApplyThatReachedNoGatewayLeavesTheVers
 // every gateway would refuse to import it, so the configuration is refused here, naming the place.
 func (ts *GatewayVersionsTestSuite) TestACaptureRefusesASecretOutsideACredentialField() {
 	suffix := fmt.Sprint(time.Now().UnixNano())
+	// A root unit is imported, and import refuses a misplaced reference, so the unit is a child
+	// created through the API, which stores the reference as written.
+	parentID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: "misplaced-parent-" + suffix, Name: "Misplaced Parent " + suffix,
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(parentID) }()
 	id, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
 		Handle: "misplaced-" + suffix, Name: "Misplaced " + suffix, Description: "sec:MISPLACED_" + suffix,
+		Parent: &parentID,
 	})
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteOrganizationUnit(id) }()

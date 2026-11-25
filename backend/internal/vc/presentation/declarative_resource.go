@@ -116,6 +116,7 @@ type definitionRequestWithID struct {
 	Handle               string              `yaml:"handle"`
 	OUID                 string              `yaml:"ouId"`
 	OUHandle             string              `yaml:"ouHandle"`
+	ProjectID            string              `yaml:"projectId"`
 	Name                 string              `yaml:"name"`
 	Description          string              `yaml:"description"`
 	VCT                  string              `yaml:"vct"`
@@ -177,6 +178,7 @@ func buildDefinitionDTOFromRequest(req definitionRequestWithID) *PresentationDef
 		Handle:               req.Handle,
 		OUID:                 req.OUID,
 		OUHandle:             req.OUHandle,
+		ProjectID:            req.ProjectID,
 		Name:                 req.Name,
 		Description:          req.Description,
 		VCT:                  req.VCT,
@@ -209,6 +211,13 @@ func validateDefinitionWrapper(
 	}
 	if service != nil {
 		if svcErr := service.ResolvePresentationDefinitionOUHandle(context.Background(), def); svcErr != nil {
+			if svcErr.Code == ErrorDefinitionProjectRequired.Code {
+				return fmt.Errorf("presentation definition '%s' is missing the required projectId", def.Handle)
+			}
+			if def.ProjectID != "" && def.OUID == "" && strings.TrimSpace(def.OUHandle) == "" {
+				return fmt.Errorf("failed to place presentation definition '%s' in the system organization unit",
+					def.Handle)
+			}
 			if def.OUID != "" {
 				return fmt.Errorf("organization unit '%s' does not exist for presentation definition '%s'",
 					def.OUID, def.Handle)

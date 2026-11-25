@@ -80,7 +80,7 @@ so do not add `Authorization` under **Other HTTP headers** when either method is
 
 <ProductName /> does not assemble a request payload for the gateway. It sends the rendered SMS template as the request body exactly as written. The template defines both the payload shape and the field names your gateway expects.
 
-To change the request body, edit the SMS template your flow uses (for example the `otp` template) from the Console under **Customize → Notifications → SMS Templates**, or through the [Notification Templates API](./templates.mdx#manage-templates). Changes take effect immediately, with no restart.
+To change the request body, edit the SMS template your flow uses (for example the `otp` template) from the Console under **Customize → Notifications → SMS Templates** (on the control plane, open the project first, where **Notifications** is under **Customize**), or through the [Notification Templates API](./templates.mdx#manage-templates). Changes take effect immediately, with no restart.
 
 For a connection with `contentType` set to `JSON`, write the template body as the JSON object your gateway accepts:
 

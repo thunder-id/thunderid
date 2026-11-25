@@ -24,6 +24,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "require": "./dist/cjs/index.cjs"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js",
+      "require": "./dist/cjs/*.cjs"
     }
   },
   "types": "./dist/index.d.ts",
@@ -61,6 +66,7 @@
     "@thunderid/configure-groups": "workspace:^",
     "@thunderid/configure-organization-units": "workspace:^",
     "@thunderid/configure-resource-servers": "workspace:^",
+    "@thunderid/configure-resource-sharing": "workspace:^",
     "@thunderid/configure-users": "workspace:^",
     "@thunderid/contexts": "workspace:^",
     "@thunderid/eslint-plugin": "workspace:^",
@@ -100,6 +106,7 @@
     "@thunderid/configure-groups": "workspace:^",
     "@thunderid/configure-organization-units": "workspace:^",
     "@thunderid/configure-resource-servers": "workspace:^",
+    "@thunderid/configure-resource-sharing": "workspace:^",
     "@thunderid/configure-users": "workspace:^",
     "@thunderid/contexts": "workspace:^",
     "@thunderid/hooks": "workspace:^",

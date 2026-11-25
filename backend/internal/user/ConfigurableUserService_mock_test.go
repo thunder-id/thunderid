@@ -711,6 +711,88 @@ func (_c *ConfigurableUserServiceMock_GetUserGroups_Call) RunAndReturn(run func(
 	return _c
 }
 
+// GetUserInOU provides a mock function for the type ConfigurableUserServiceMock
+func (_mock *ConfigurableUserServiceMock) GetUserInOU(ctx context.Context, userID string, ouID string, includeDisplay bool) (*providers.User, *common.ServiceError) {
+	ret := _mock.Called(ctx, userID, ouID, includeDisplay)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetUserInOU")
+	}
+
+	var r0 *providers.User
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, bool) (*providers.User, *common.ServiceError)); ok {
+		return returnFunc(ctx, userID, ouID, includeDisplay)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, bool) *providers.User); ok {
+		r0 = returnFunc(ctx, userID, ouID, includeDisplay)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*providers.User)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, bool) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, userID, ouID, includeDisplay)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ConfigurableUserServiceMock_GetUserInOU_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetUserInOU'
+type ConfigurableUserServiceMock_GetUserInOU_Call struct {
+	*mock.Call
+}
+
+// GetUserInOU is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userID string
+//   - ouID string
+//   - includeDisplay bool
+func (_e *ConfigurableUserServiceMock_Expecter) GetUserInOU(ctx any, userID any, ouID any, includeDisplay any) *ConfigurableUserServiceMock_GetUserInOU_Call {
+	return &ConfigurableUserServiceMock_GetUserInOU_Call{Call: _e.mock.On("GetUserInOU", ctx, userID, ouID, includeDisplay)}
+}
+
+func (_c *ConfigurableUserServiceMock_GetUserInOU_Call) Run(run func(ctx context.Context, userID string, ouID string, includeDisplay bool)) *ConfigurableUserServiceMock_GetUserInOU_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 bool
+		if args[3] != nil {
+			arg3 = args[3].(bool)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *ConfigurableUserServiceMock_GetUserInOU_Call) Return(user *providers.User, serviceError *common.ServiceError) *ConfigurableUserServiceMock_GetUserInOU_Call {
+	_c.Call.Return(user, serviceError)
+	return _c
+}
+
+func (_c *ConfigurableUserServiceMock_GetUserInOU_Call) RunAndReturn(run func(ctx context.Context, userID string, ouID string, includeDisplay bool) (*providers.User, *common.ServiceError)) *ConfigurableUserServiceMock_GetUserInOU_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetUserList provides a mock function for the type ConfigurableUserServiceMock
 func (_mock *ConfigurableUserServiceMock) GetUserList(ctx context.Context, limit int, offset int, filters map[string]interface{}, includeDisplay bool) (*UserListResponse, *common.ServiceError) {
 	ret := _mock.Called(ctx, limit, offset, filters, includeDisplay)
@@ -799,6 +881,100 @@ func (_c *ConfigurableUserServiceMock_GetUserList_Call) RunAndReturn(run func(ct
 	return _c
 }
 
+// GetUserListByProject provides a mock function for the type ConfigurableUserServiceMock
+func (_mock *ConfigurableUserServiceMock) GetUserListByProject(ctx context.Context, projectID string, limit int, offset int, filters map[string]interface{}, includeDisplay bool) (*UserListResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, projectID, limit, offset, filters, includeDisplay)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetUserListByProject")
+	}
+
+	var r0 *UserListResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int, map[string]interface{}, bool) (*UserListResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, projectID, limit, offset, filters, includeDisplay)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int, map[string]interface{}, bool) *UserListResponse); ok {
+		r0 = returnFunc(ctx, projectID, limit, offset, filters, includeDisplay)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*UserListResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int, map[string]interface{}, bool) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, projectID, limit, offset, filters, includeDisplay)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ConfigurableUserServiceMock_GetUserListByProject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetUserListByProject'
+type ConfigurableUserServiceMock_GetUserListByProject_Call struct {
+	*mock.Call
+}
+
+// GetUserListByProject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - projectID string
+//   - limit int
+//   - offset int
+//   - filters map[string]interface{}
+//   - includeDisplay bool
+func (_e *ConfigurableUserServiceMock_Expecter) GetUserListByProject(ctx any, projectID any, limit any, offset any, filters any, includeDisplay any) *ConfigurableUserServiceMock_GetUserListByProject_Call {
+	return &ConfigurableUserServiceMock_GetUserListByProject_Call{Call: _e.mock.On("GetUserListByProject", ctx, projectID, limit, offset, filters, includeDisplay)}
+}
+
+func (_c *ConfigurableUserServiceMock_GetUserListByProject_Call) Run(run func(ctx context.Context, projectID string, limit int, offset int, filters map[string]interface{}, includeDisplay bool)) *ConfigurableUserServiceMock_GetUserListByProject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		var arg4 map[string]interface{}
+		if args[4] != nil {
+			arg4 = args[4].(map[string]interface{})
+		}
+		var arg5 bool
+		if args[5] != nil {
+			arg5 = args[5].(bool)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+			arg4,
+			arg5,
+		)
+	})
+	return _c
+}
+
+func (_c *ConfigurableUserServiceMock_GetUserListByProject_Call) Return(userListResponse *UserListResponse, serviceError *common.ServiceError) *ConfigurableUserServiceMock_GetUserListByProject_Call {
+	_c.Call.Return(userListResponse, serviceError)
+	return _c
+}
+
+func (_c *ConfigurableUserServiceMock_GetUserListByProject_Call) RunAndReturn(run func(ctx context.Context, projectID string, limit int, offset int, filters map[string]interface{}, includeDisplay bool) (*UserListResponse, *common.ServiceError)) *ConfigurableUserServiceMock_GetUserListByProject_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetUserMetadata provides a mock function for the type ConfigurableUserServiceMock
 func (_mock *ConfigurableUserServiceMock) GetUserMetadata(ctx context.Context, userID string) (*entitytype.EntityType, *common.ServiceError) {
 	ret := _mock.Called(ctx, userID)
@@ -865,6 +1041,88 @@ func (_c *ConfigurableUserServiceMock_GetUserMetadata_Call) Return(entityType *e
 }
 
 func (_c *ConfigurableUserServiceMock_GetUserMetadata_Call) RunAndReturn(run func(ctx context.Context, userID string) (*entitytype.EntityType, *common.ServiceError)) *ConfigurableUserServiceMock_GetUserMetadata_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetUserOrganizationUnits provides a mock function for the type ConfigurableUserServiceMock
+func (_mock *ConfigurableUserServiceMock) GetUserOrganizationUnits(ctx context.Context, userID string, limit int, offset int) (*UserOrganizationUnitListResponse, *common.ServiceError) {
+	ret := _mock.Called(ctx, userID, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetUserOrganizationUnits")
+	}
+
+	var r0 *UserOrganizationUnitListResponse
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) (*UserOrganizationUnitListResponse, *common.ServiceError)); ok {
+		return returnFunc(ctx, userID, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) *UserOrganizationUnitListResponse); ok {
+		r0 = returnFunc(ctx, userID, limit, offset)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*UserOrganizationUnitListResponse)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, userID, limit, offset)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ConfigurableUserServiceMock_GetUserOrganizationUnits_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetUserOrganizationUnits'
+type ConfigurableUserServiceMock_GetUserOrganizationUnits_Call struct {
+	*mock.Call
+}
+
+// GetUserOrganizationUnits is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userID string
+//   - limit int
+//   - offset int
+func (_e *ConfigurableUserServiceMock_Expecter) GetUserOrganizationUnits(ctx any, userID any, limit any, offset any) *ConfigurableUserServiceMock_GetUserOrganizationUnits_Call {
+	return &ConfigurableUserServiceMock_GetUserOrganizationUnits_Call{Call: _e.mock.On("GetUserOrganizationUnits", ctx, userID, limit, offset)}
+}
+
+func (_c *ConfigurableUserServiceMock_GetUserOrganizationUnits_Call) Run(run func(ctx context.Context, userID string, limit int, offset int)) *ConfigurableUserServiceMock_GetUserOrganizationUnits_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *ConfigurableUserServiceMock_GetUserOrganizationUnits_Call) Return(userOrganizationUnitListResponse *UserOrganizationUnitListResponse, serviceError *common.ServiceError) *ConfigurableUserServiceMock_GetUserOrganizationUnits_Call {
+	_c.Call.Return(userOrganizationUnitListResponse, serviceError)
+	return _c
+}
+
+func (_c *ConfigurableUserServiceMock_GetUserOrganizationUnits_Call) RunAndReturn(run func(ctx context.Context, userID string, limit int, offset int) (*UserOrganizationUnitListResponse, *common.ServiceError)) *ConfigurableUserServiceMock_GetUserOrganizationUnits_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -1033,6 +1291,80 @@ func (_c *ConfigurableUserServiceMock_GetUsersByPath_Call) RunAndReturn(run func
 	return _c
 }
 
+// IsUserCredentialUnchangedSince provides a mock function for the type ConfigurableUserServiceMock
+func (_mock *ConfigurableUserServiceMock) IsUserCredentialUnchangedSince(ctx context.Context, userID string, marker string) (bool, *common.ServiceError) {
+	ret := _mock.Called(ctx, userID, marker)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsUserCredentialUnchangedSince")
+	}
+
+	var r0 bool
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (bool, *common.ServiceError)); ok {
+		return returnFunc(ctx, userID, marker)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) bool); ok {
+		r0 = returnFunc(ctx, userID, marker)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, userID, marker)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ConfigurableUserServiceMock_IsUserCredentialUnchangedSince_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsUserCredentialUnchangedSince'
+type ConfigurableUserServiceMock_IsUserCredentialUnchangedSince_Call struct {
+	*mock.Call
+}
+
+// IsUserCredentialUnchangedSince is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userID string
+//   - marker string
+func (_e *ConfigurableUserServiceMock_Expecter) IsUserCredentialUnchangedSince(ctx any, userID any, marker any) *ConfigurableUserServiceMock_IsUserCredentialUnchangedSince_Call {
+	return &ConfigurableUserServiceMock_IsUserCredentialUnchangedSince_Call{Call: _e.mock.On("IsUserCredentialUnchangedSince", ctx, userID, marker)}
+}
+
+func (_c *ConfigurableUserServiceMock_IsUserCredentialUnchangedSince_Call) Run(run func(ctx context.Context, userID string, marker string)) *ConfigurableUserServiceMock_IsUserCredentialUnchangedSince_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *ConfigurableUserServiceMock_IsUserCredentialUnchangedSince_Call) Return(b bool, serviceError *common.ServiceError) *ConfigurableUserServiceMock_IsUserCredentialUnchangedSince_Call {
+	_c.Call.Return(b, serviceError)
+	return _c
+}
+
+func (_c *ConfigurableUserServiceMock_IsUserCredentialUnchangedSince_Call) RunAndReturn(run func(ctx context.Context, userID string, marker string) (bool, *common.ServiceError)) *ConfigurableUserServiceMock_IsUserCredentialUnchangedSince_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ListSharingPolicies provides a mock function for the type ConfigurableUserServiceMock
 func (_mock *ConfigurableUserServiceMock) ListSharingPolicies(ctx context.Context, userID string, limit int, offset int) (sharing.PolicyList, *common.ServiceError) {
 	ret := _mock.Called(ctx, userID, limit, offset)
@@ -1109,6 +1441,80 @@ func (_c *ConfigurableUserServiceMock_ListSharingPolicies_Call) Return(policyLis
 }
 
 func (_c *ConfigurableUserServiceMock_ListSharingPolicies_Call) RunAndReturn(run func(ctx context.Context, userID string, limit int, offset int) (sharing.PolicyList, *common.ServiceError)) *ConfigurableUserServiceMock_ListSharingPolicies_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// RemoveUserCredential provides a mock function for the type ConfigurableUserServiceMock
+func (_mock *ConfigurableUserServiceMock) RemoveUserCredential(ctx context.Context, userID string, credentialType string) (string, *common.ServiceError) {
+	ret := _mock.Called(ctx, userID, credentialType)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RemoveUserCredential")
+	}
+
+	var r0 string
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (string, *common.ServiceError)); ok {
+		return returnFunc(ctx, userID, credentialType)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) string); ok {
+		r0 = returnFunc(ctx, userID, credentialType)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, userID, credentialType)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ConfigurableUserServiceMock_RemoveUserCredential_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RemoveUserCredential'
+type ConfigurableUserServiceMock_RemoveUserCredential_Call struct {
+	*mock.Call
+}
+
+// RemoveUserCredential is a helper method to define mock.On call
+//   - ctx context.Context
+//   - userID string
+//   - credentialType string
+func (_e *ConfigurableUserServiceMock_Expecter) RemoveUserCredential(ctx any, userID any, credentialType any) *ConfigurableUserServiceMock_RemoveUserCredential_Call {
+	return &ConfigurableUserServiceMock_RemoveUserCredential_Call{Call: _e.mock.On("RemoveUserCredential", ctx, userID, credentialType)}
+}
+
+func (_c *ConfigurableUserServiceMock_RemoveUserCredential_Call) Run(run func(ctx context.Context, userID string, credentialType string)) *ConfigurableUserServiceMock_RemoveUserCredential_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *ConfigurableUserServiceMock_RemoveUserCredential_Call) Return(s string, serviceError *common.ServiceError) *ConfigurableUserServiceMock_RemoveUserCredential_Call {
+	_c.Call.Return(s, serviceError)
+	return _c
+}
+
+func (_c *ConfigurableUserServiceMock_RemoveUserCredential_Call) RunAndReturn(run func(ctx context.Context, userID string, credentialType string) (string, *common.ServiceError)) *ConfigurableUserServiceMock_RemoveUserCredential_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -1640,17 +2046,17 @@ func (_c *ConfigurableUserServiceMock_UpdateUserCredentials_Call) RunAndReturn(r
 	return _c
 }
 
-// ValidateDeleteUser provides a mock function for the type ConfigurableUserServiceMock
-func (_mock *ConfigurableUserServiceMock) ValidateDeleteUser(ctx context.Context, userID string) *common.ServiceError {
-	ret := _mock.Called(ctx, userID)
+// ValidateRemoveUserCredential provides a mock function for the type ConfigurableUserServiceMock
+func (_mock *ConfigurableUserServiceMock) ValidateRemoveUserCredential(ctx context.Context, userID string, credentialType string) *common.ServiceError {
+	ret := _mock.Called(ctx, userID, credentialType)
 
 	if len(ret) == 0 {
-		panic("no return value specified for ValidateDeleteUser")
+		panic("no return value specified for ValidateRemoveUserCredential")
 	}
 
 	var r0 *common.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *common.ServiceError); ok {
-		r0 = returnFunc(ctx, userID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, userID, credentialType)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*common.ServiceError)
@@ -1659,19 +2065,20 @@ func (_mock *ConfigurableUserServiceMock) ValidateDeleteUser(ctx context.Context
 	return r0
 }
 
-// ConfigurableUserServiceMock_ValidateDeleteUser_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateDeleteUser'
-type ConfigurableUserServiceMock_ValidateDeleteUser_Call struct {
+// ConfigurableUserServiceMock_ValidateRemoveUserCredential_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateRemoveUserCredential'
+type ConfigurableUserServiceMock_ValidateRemoveUserCredential_Call struct {
 	*mock.Call
 }
 
-// ValidateDeleteUser is a helper method to define mock.On call
+// ValidateRemoveUserCredential is a helper method to define mock.On call
 //   - ctx context.Context
 //   - userID string
-func (_e *ConfigurableUserServiceMock_Expecter) ValidateDeleteUser(ctx any, userID any) *ConfigurableUserServiceMock_ValidateDeleteUser_Call {
-	return &ConfigurableUserServiceMock_ValidateDeleteUser_Call{Call: _e.mock.On("ValidateDeleteUser", ctx, userID)}
+//   - credentialType string
+func (_e *ConfigurableUserServiceMock_Expecter) ValidateRemoveUserCredential(ctx any, userID any, credentialType any) *ConfigurableUserServiceMock_ValidateRemoveUserCredential_Call {
+	return &ConfigurableUserServiceMock_ValidateRemoveUserCredential_Call{Call: _e.mock.On("ValidateRemoveUserCredential", ctx, userID, credentialType)}
 }
 
-func (_c *ConfigurableUserServiceMock_ValidateDeleteUser_Call) Run(run func(ctx context.Context, userID string)) *ConfigurableUserServiceMock_ValidateDeleteUser_Call {
+func (_c *ConfigurableUserServiceMock_ValidateRemoveUserCredential_Call) Run(run func(ctx context.Context, userID string, credentialType string)) *ConfigurableUserServiceMock_ValidateRemoveUserCredential_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -1681,20 +2088,25 @@ func (_c *ConfigurableUserServiceMock_ValidateDeleteUser_Call) Run(run func(ctx 
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
 }
 
-func (_c *ConfigurableUserServiceMock_ValidateDeleteUser_Call) Return(serviceError *common.ServiceError) *ConfigurableUserServiceMock_ValidateDeleteUser_Call {
+func (_c *ConfigurableUserServiceMock_ValidateRemoveUserCredential_Call) Return(serviceError *common.ServiceError) *ConfigurableUserServiceMock_ValidateRemoveUserCredential_Call {
 	_c.Call.Return(serviceError)
 	return _c
 }
 
-func (_c *ConfigurableUserServiceMock_ValidateDeleteUser_Call) RunAndReturn(run func(ctx context.Context, userID string) *common.ServiceError) *ConfigurableUserServiceMock_ValidateDeleteUser_Call {
+func (_c *ConfigurableUserServiceMock_ValidateRemoveUserCredential_Call) RunAndReturn(run func(ctx context.Context, userID string, credentialType string) *common.ServiceError) *ConfigurableUserServiceMock_ValidateRemoveUserCredential_Call {
 	_c.Call.Return(run)
 	return _c
 }

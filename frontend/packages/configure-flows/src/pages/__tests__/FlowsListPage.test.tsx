@@ -1,10 +1,27 @@
 // Copyright 2025 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {render, screen, fireEvent, waitFor} from '@testing-library/react';
+import {
+  render as rtlRender,
+  screen,
+  fireEvent,
+  waitFor,
+  type RenderOptions,
+  type RenderResult,
+} from '@testing-library/react';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
+import type {JSX, ReactElement, ReactNode} from 'react';
 import {MemoryRouter} from 'react-router';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import FlowsListPage from '../FlowsListPage';
+
+// The admin may do everything, so the component's actions show; a test nests its own provider to restrict them.
+function AllowAll({children}: {children: ReactNode}): JSX.Element {
+  return <CapabilitiesProvider capabilities={{can: () => true, isLoading: false}}>{children}</CapabilitiesProvider>;
+}
+
+const render = (ui: ReactElement, options?: RenderOptions): RenderResult =>
+  rtlRender(ui, {wrapper: AllowAll, ...options});
 
 // Mock logger
 const mockLoggerError = vi.fn();
@@ -57,6 +74,11 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   };
 });
 
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  isLoading: false,
+};
+
 describe('FlowsListPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -98,6 +120,40 @@ describe('FlowsListPage', () => {
         <MemoryRouter>
           <FlowsListPage />
         </MemoryRouter>,
+      );
+
+      expect(screen.getByRole('button', {name: /add flow/i})).toBeInTheDocument();
+    });
+
+    it('hides the Add Flow button when the admin may not create flows', () => {
+      render(
+        <CapabilitiesProvider capabilities={viewOnly}>
+          <MemoryRouter>
+            <FlowsListPage />
+          </MemoryRouter>
+        </CapabilitiesProvider>,
+      );
+
+      expect(screen.queryByRole('button', {name: /add flow/i})).not.toBeInTheDocument();
+    });
+
+    it('offers no create action outside a project when flows are created in projects only', () => {
+      render(
+        <MemoryRouter>
+          <FlowsListPage createInProjectsOnly />
+        </MemoryRouter>,
+      );
+
+      expect(screen.queryByRole('button', {name: /add flow/i})).not.toBeInTheDocument();
+    });
+
+    it('offers the create action inside a project when flows are created in projects only', () => {
+      render(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <MemoryRouter>
+            <FlowsListPage createInProjectsOnly />
+          </MemoryRouter>
+        </ProjectScopeProvider>,
       );
 
       expect(screen.getByRole('button', {name: /add flow/i})).toBeInTheDocument();

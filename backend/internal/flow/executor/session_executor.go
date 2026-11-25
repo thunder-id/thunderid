@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
@@ -134,7 +135,7 @@ func (e *sessionExecutor) refuseHeldSubject(ctx *providers.NodeContext, entityRe
 
 // saveCheckpoint resolves the authenticated subject, builds the snapshot from this join's runtime
 // state, and hands it to the SSO session service to attach to the flow execution's session. It emits
-// the handle for the transport layer to set only when the service minted a new session.
+// the session's handle for the transport layer, whether the service minted the session or attached to one.
 func (e *sessionExecutor) saveCheckpoint(ctx *providers.NodeContext, execResp *providers.ExecutorResponse,
 	checkpoint string, entityRef *providers.EntityReference, refErr *tidcommon.ServiceError,
 	logger *log.Logger) error {
@@ -166,7 +167,7 @@ func (e *sessionExecutor) saveCheckpoint(ctx *providers.NodeContext, execResp *p
 	// instead of saving again.
 	savedKey := common.SSOCheckpointKey(common.RuntimeKeySSOSessionSaved, checkpoint)
 	if existing := ctx.RuntimeData[savedKey]; existing != "" {
-		setHandleOut(execResp, existing)
+		setHandleOut(execResp, existing, ctx.RuntimeData[common.RuntimeKeySSOSessionExpiresAt])
 		return nil
 	}
 
@@ -203,6 +204,7 @@ func (e *sessionExecutor) saveCheckpoint(ctx *providers.NodeContext, execResp *p
 		CompletedSteps: buildCompletedSteps(ctx.ExecutionHistory),
 		AppID:          ctx.Application.ID,
 		TokenFamilyID:  tokenFamilyID,
+		ClientInfo:     session.ClientInfoFrom(ctx.Context),
 	})
 	if err != nil {
 		return err
@@ -235,11 +237,13 @@ func (e *sessionExecutor) saveCheckpoint(ctx *providers.NodeContext, execResp *p
 	if result.SessionID != "" {
 		execResp.RuntimeData[common.RuntimeKeySSOSessionID] = result.SessionID
 	}
-	// Emit the cookie only when this call minted the session, and only now that its first checkpoint
-	// is durably saved — so a context-write failure never leaves a cookie for an empty session.
-	if result.Created {
-		setHandleOut(execResp, result.Handle)
+	expiresAt := formatSessionExpiry(result.AbsoluteExpiresAt)
+	if expiresAt != "" {
+		execResp.RuntimeData[common.RuntimeKeySSOSessionExpiresAt] = expiresAt
 	}
+	// Emit the handle only now that the checkpoint is durably saved, so a context-write failure never
+	// leaves a credential for an empty session.
+	setHandleOut(execResp, result.Handle, expiresAt)
 	logger.Debug(ctx.Context, "Saved SSO checkpoint", log.String("checkpoint", checkpoint))
 	return nil
 }
@@ -260,15 +264,26 @@ func (e *sessionExecutor) resolveTokenFamilyID(ctx *providers.NodeContext, logge
 	return tokenFamilyID
 }
 
-// setHandleOut records a minted session handle on the response's EngineData channel — engine-only
-// output that the flow engine lifts onto the flow step for the transport layer to set the per-flow
-// cookie. EngineData is never returned to the client, so the handle does not leak into the response,
-// and using a generic channel (not a dedicated field) keeps SSO concepts off the engine contract.
-func setHandleOut(execResp *providers.ExecutorResponse, handle string) {
+// setHandleOut records the session handle, and the session's end when known, on the response's
+// EngineData channel — engine-only output that the flow engine lifts onto the flow step. Using a generic
+// channel (not a dedicated field) keeps SSO concepts off the engine contract.
+func setHandleOut(execResp *providers.ExecutorResponse, handle, expiresAt string) {
 	if execResp.EngineData == nil {
 		execResp.EngineData = make(map[string]string)
 	}
 	execResp.EngineData[common.RuntimeKeySSOSessionHandle] = handle
+	if expiresAt != "" {
+		execResp.EngineData[common.RuntimeKeySSOSessionExpiresAt] = expiresAt
+	}
+}
+
+// formatSessionExpiry renders a session's end as Unix seconds for the RuntimeData and EngineData channels,
+// or "" when the session records none.
+func formatSessionExpiry(expiresAt time.Time) string {
+	if expiresAt.IsZero() {
+		return ""
+	}
+	return strconv.FormatInt(expiresAt.Unix(), 10)
 }
 
 // readForwardedSSOData returns the session and checkpoint context the paired SSO-Check node read and
@@ -301,6 +316,7 @@ func (e *sessionExecutor) loadCheckpoint(ctx *providers.NodeContext, execResp *p
 		TokenFamilyID: tokenFamilyID,
 		Session:       forwardedSession,
 		Context:       forwardedContext,
+		ClientInfo:    session.ClientInfoFrom(ctx.Context),
 	})
 	if err != nil {
 		return err
@@ -335,9 +351,13 @@ func (e *sessionExecutor) loadCheckpoint(ctx *providers.NodeContext, execResp *p
 	if ssoSession.SessionID != "" {
 		execResp.RuntimeData[common.RuntimeKeySSOSessionID] = ssoSession.SessionID
 	}
+	// The reused session's handle is emitted as a new one's is, with the session's end.
+	if handle != "" {
+		setHandleOut(execResp, handle, formatSessionExpiry(ssoSession.AbsoluteExpiresAt))
+	}
 
 	logger.Debug(ctx.Context, "Loaded SSO checkpoint",
-		log.String("flowId", session.SSOInputsFrom(ctx.Context).FlowID),
+		log.String("flowID", session.SSOInputsFrom(ctx.Context).FlowID),
 		log.String("checkpoint", checkpoint))
 	return nil
 }
@@ -349,13 +369,15 @@ func (e *sessionExecutor) loadCheckpoint(ctx *providers.NodeContext, execResp *p
 // observed to break attribute release; it should move to a central place when the flow-context data
 // classification is implemented.
 var requestScopedSnapshotDenyList = map[string]struct{}{
-	common.RuntimeKeyRequestedPermissions:        {},
-	common.RuntimeKeyResourceServerIdentifier:    {},
-	common.RuntimeKeyRequiredEssentialAttributes: {},
-	common.RuntimeKeyRequiredOptionalAttributes:  {},
-	common.RuntimeKeyRequiredLocales:             {},
-	common.RuntimeKeyClientID:                    {},
-	common.RuntimeKeyAuthorizationRequestID:      {},
+	common.RuntimeKeyRequestedPermissions:          {},
+	common.RuntimeKeyResourceServerIdentifier:      {},
+	common.RuntimeKeyResourceServerID:              {},
+	common.RuntimeKeyRequiredEssentialAttributes:   {},
+	common.RuntimeKeyRequiredOptionalAttributes:    {},
+	common.RuntimeKeyUserAttributesCacheTTLSeconds: {},
+	common.RuntimeKeyRequiredLocales:               {},
+	common.RuntimeKeyClientID:                      {},
+	common.RuntimeKeyAuthorizationRequestID:        {},
 	// The client and redirect hosts name the establishing client; a replayed copy would show them for
 	// another client at its consent.
 	common.RuntimeKeyClientIDHost:    {},
@@ -364,6 +386,8 @@ var requestScopedSnapshotDenyList = map[string]struct{}{
 	common.RuntimeKeyTokenFamilyID: {},
 	// The SSO session id is resolved fresh per flow execution; a replayed copy could name another session.
 	common.RuntimeKeySSOSessionID: {},
+	// Same for the session's end, which comes from the session now in force.
+	common.RuntimeKeySSOSessionExpiresAt: {},
 	// force_reauth and max_age state what the establishing app's authorization request demanded of
 	// this authentication. Replaying either onto a later join would impose that demand on an app that
 	// never asked: a stale force_reauth re-prompts every reuse, and a stale max_age fails the

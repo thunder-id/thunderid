@@ -28,6 +28,15 @@ func (s *InitTestSuite) TearDownTest() {
 	config.ResetServerRuntime()
 }
 
+func (s *InitTestSuite) TestInitialize_RefusesANilEventBus() {
+	service, renderer, exporter, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, nil, nil)
+
+	s.ErrorIs(err, errNilEventBus)
+	s.Nil(service)
+	s.Nil(renderer)
+	s.Nil(exporter)
+}
+
 // TestSelectStoreDeclarative verifies declarative mode builds a read-only file store seeded from the
 // declarations on disk. This mode needs no database, so selectStore is exercised without a DB
 // provider. The read cache is unused in this mode, so a nil cache is passed.
@@ -42,7 +51,7 @@ func (s *InitTestSuite) TestSelectStoreDeclarative() {
 	cfg.Notification.Template.Store = "declarative"
 	s.Require().NoError(config.InitializeServerRuntime(serverHome, cfg))
 
-	store, err := selectStore(nil)
+	store, err := selectStore(nil, false, nil)
 	s.Require().NoError(err)
 
 	got, err := store.GetTemplateByHandle(context.Background(), ChannelTypeEmail, "welcome")

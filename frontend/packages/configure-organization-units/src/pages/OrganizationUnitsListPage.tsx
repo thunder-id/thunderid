@@ -7,7 +7,20 @@ import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import OrganizationUnitsTreeView from '../components/OrganizationUnitsTreeView';
 
-export default function OrganizationUnitsListPage(): JSX.Element {
+/**
+ * Props for the {@link OrganizationUnitsListPage} component.
+ */
+export interface OrganizationUnitsListPageProps {
+  /**
+   * Offer to create organization units only inside a project, on a deployment that places every organization
+   * unit but the system one in a project.
+   */
+  createInProjectsOnly?: boolean;
+}
+
+export default function OrganizationUnitsListPage({
+  createInProjectsOnly = false,
+}: OrganizationUnitsListPageProps): JSX.Element {
   const {t} = useTranslation();
 
   return (
@@ -21,7 +34,7 @@ export default function OrganizationUnitsListPage(): JSX.Element {
         </PageTitle.SubHeader>
       </PageTitle>
 
-      <OrganizationUnitsTreeView />
+      <OrganizationUnitsTreeView createInProjectsOnly={createInProjectsOnly} />
     </PageContent>
   );
 }

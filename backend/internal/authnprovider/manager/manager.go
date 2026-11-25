@@ -15,6 +15,8 @@ import (
 
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/authnprovider/defaultprovider"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -28,12 +30,15 @@ type authnProviderManager struct {
 	authnProviders        map[string]providers.AuthnProviderInterface
 	logger                *log.Logger
 	credToProviderMapping map[string]string
+	bus                   eventbus.EventBusInterface
+	sync                  FederatedSyncDependencies
 }
 
 // newAuthnProviderManager creates a new authnProviderManager from the default provider
 // and the optional custom providers.
 func newAuthnProviderManager(defaultProvider providers.AuthnProviderInterface,
-	customProviders map[string]providers.CustomAuthnProvider) (providers.AuthnProviderManager, error) {
+	customProviders map[string]providers.CustomAuthnProvider, bus eventbus.EventBusInterface,
+	syncDeps FederatedSyncDependencies) (providers.AuthnProviderManager, error) {
 	if defaultProvider == nil {
 		return nil, fmt.Errorf("authn provider manager: default provider must not be nil")
 	}
@@ -61,6 +66,8 @@ func newAuthnProviderManager(defaultProvider providers.AuthnProviderInterface,
 		authnProviders:        providerMap,
 		logger:                logger,
 		credToProviderMapping: credMap,
+		bus:                   bus,
+		sync:                  syncDeps,
 	}, nil
 }
 
@@ -153,6 +160,14 @@ func (m *authnProviderManager) AuthenticateUser(ctx context.Context, identifiers
 		return authUser, nil, svcErr
 	}
 
+	values, svcErr := m.settleFederatedSync(ctx, credentials, metadata, authResult, &authUser,
+		selectedProviderName)
+	if svcErr != nil {
+		return authUser, nil, svcErr
+	}
+	if values != nil {
+		return authUser, withSessionValues(authResult.AuthenticatedClaims, values), nil
+	}
 	return authUser, authResult.AuthenticatedClaims, nil
 }
 
@@ -228,21 +243,16 @@ func (m *authnProviderManager) GetEntityReference(ctx context.Context, authUser 
 }
 
 // checkSubjectAllowed rejects a resolved subject whose category and type the application/ agent driving the
-// current authentication does not accept. A nil reference means the subject is not resolved yet (the provider
-// returned an entity reference token for an entity it has not provisioned), and the check applies once
-// GetEntityReference resolves it.
+// current authentication does not accept, or that is not the one subject it requires. A nil reference means
+// the subject is not resolved yet (the provider returned an entity reference token for an entity it has not
+// provisioned), and the check applies once GetEntityReference resolves it.
 func (m *authnProviderManager) checkSubjectAllowed(
 	ctx context.Context, entityRef *providers.EntityReference) *tidcommon.ServiceError {
-	if entityRef == nil {
-		return nil
-	}
-	constraints, ok := authnprovidercm.SubjectTypeConstraintsFrom(ctx)
-	if !ok || constraints.PermitsSubject(
-		providers.EntityCategory(entityRef.EntityCategory), entityRef.EntityType) {
+	if authnprovidercm.SubjectAllowed(ctx, entityRef) {
 		return nil
 	}
 	m.logger.Debug(ctx, "resolved subject is not allowed for the application",
-		log.String("entityId", entityRef.EntityID),
+		log.MaskedString(log.LoggerKeyEntityID, entityRef.EntityID),
 		log.String("entityCategory", entityRef.EntityCategory),
 		log.String("entityType", entityRef.EntityType))
 	return &ErrorSubjectNotAllowed
@@ -272,20 +282,11 @@ func (m *authnProviderManager) ResolveLinkCandidates(ctx context.Context,
 }
 
 // GetUserAvailableAttributes returns the merged attributes available across
-// every provider's state in the AuthUser.
+// every provider's state in the AuthUser, loading each provider's pending attribute token first.
 func (m *authnProviderManager) GetUserAvailableAttributes(ctx context.Context,
 	authUser providers.AuthUser) (*providers.AttributesResponse, *tidcommon.ServiceError) {
-	if !authUser.IsAuthenticated() {
-		m.logger.Error(ctx, "GetUserAvailableAttributes called with unauthenticated authUser")
-		return nil, &tidcommon.InternalServerError
-	}
-
-	available := newAttributesResponse()
-	for _, name := range authUser.ProviderNames() {
-		state, _ := authUser.StateFor(name)
-		mergeAttributes(available, state.Attributes)
-	}
-	return available, nil
+	_, available, svcErr := m.GetUserAttributes(ctx, nil, nil, authUser)
+	return available, svcErr
 }
 
 // GetUserAttributes resolves and merges attributes across every provider in
@@ -354,6 +355,17 @@ func (m *authnProviderManager) Enroll(ctx context.Context, identifiers, credenti
 	requestedAttributes *providers.RequestedAttributes,
 	metadata *providers.AuthnMetadata,
 	authUser providers.AuthUser) (providers.AuthUser, providers.AuthenticatedClaims, *tidcommon.ServiceError) {
+	var stored *providers.AuthnResult
+	authUser, claims, svcErr := m.enroll(ctx, identifiers, credentials, metadata, authUser, &stored)
+	m.publishEnrollment(ctx, stored, svcErr)
+	return authUser, claims, svcErr
+}
+
+// enroll completes the enrollment without publishing its audit event, and sets stored to the provider's
+// result once the provider has stored the credential.
+func (m *authnProviderManager) enroll(ctx context.Context, identifiers, credentials map[string]interface{},
+	metadata *providers.AuthnMetadata, authUser providers.AuthUser, stored **providers.AuthnResult) (
+	providers.AuthUser, providers.AuthenticatedClaims, *tidcommon.ServiceError) {
 	selectedProviderName, selectedProvider, svcErr := m.selectProvider(ctx, slices.Sorted(maps.Keys(credentials)))
 	if svcErr != nil {
 		return authUser, nil, svcErr
@@ -385,6 +397,7 @@ func (m *authnProviderManager) Enroll(ctx context.Context, identifiers, credenti
 			return authUser, nil, &ErrorEnrollmentFailed
 		}
 	}
+	*stored = authResult
 	if svcErr := m.checkSubjectAllowed(ctx, authResult.EntityReference); svcErr != nil {
 		return authUser, nil, svcErr
 	}
@@ -395,6 +408,29 @@ func (m *authnProviderManager) Enroll(ctx context.Context, identifiers, credenti
 	}
 
 	return authUser, authResult.AuthenticatedClaims, nil
+}
+
+// publishEnrollment publishes the audit event of an attempt to enroll a credential. A credential the
+// provider stored is recorded as enrolled even when the call then fails, since the credential stays.
+// The actor is set here rather than read from the request, since the enrollment endpoints are public: it
+// is the enrolled user once a credential is stored, and anonymous otherwise.
+func (m *authnProviderManager) publishEnrollment(ctx context.Context, stored *providers.AuthnResult,
+	svcErr *tidcommon.ServiceError) {
+	target := audit.Ref{Type: audit.TargetTypeUser}
+	actor := audit.Actor{Type: audit.ActorTypeAnonymous}
+	if stored != nil {
+		svcErr = nil
+		if stored.EntityReference != nil {
+			target.ID = stored.EntityReference.EntityID
+			actor = audit.Actor{Type: audit.ActorTypeUser, ID: target.ID}
+		}
+	}
+	payload := audit.ChangePayload(ctx, target, audit.ActionEnroll, svcErr)
+	if svcErr != nil && svcErr.Code == ErrorAccountSuspended.Code {
+		payload = audit.NewPayload(ctx, target, audit.ActionEnroll, audit.OutcomeDenied(auditReasonAccountSuspended))
+	}
+	eventbus.TryPublish(ctx, m.bus,
+		eventbus.NewEvent(ctx, audit.EventUserCredentialEnroll).With(payload.WithActor(actor)))
 }
 
 // LinkAccount records a linked account against the user this AuthUser names, on the provider
@@ -613,7 +649,8 @@ func accountLinkingFilters(entityReferenceToken any) []map[string]interface{} {
 }
 
 // updateAuthUser records a provider's authentication or enrollment result in the AuthUser
-// under the selected provider's name.
+// under the selected provider's name. A federated sign-in the provider verified becomes the provider's
+// pending identity; otherwise the provider keeps the one it had.
 func (m *authnProviderManager) updateAuthUser(ctx context.Context, authResult *providers.AuthnResult,
 	authUser providers.AuthUser, selectedProviderName string) (providers.AuthUser, *tidcommon.ServiceError) {
 	if (authResult.AttributeToken == nil && authResult.Attributes == nil) ||
@@ -622,7 +659,10 @@ func (m *authnProviderManager) updateAuthUser(ctx context.Context, authResult *p
 		return authUser, &tidcommon.InternalServerError
 	}
 
-	state := providers.AuthState{}
+	state := providers.AuthState{PendingIdentity: authResult.FederatedIdentity}
+	if previous, ok := authUser.StateFor(selectedProviderName); ok && state.PendingIdentity == nil {
+		state.PendingIdentity = previous.PendingIdentity
+	}
 	if authResult.EntityReferenceToken != nil {
 		state.EntityReferenceToken = authResult.EntityReferenceToken
 	} else {

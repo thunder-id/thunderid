@@ -91,6 +91,6 @@ The deployment serving your users is the one exposed to them, and every administ
 
 Adopting this pattern does not require adopting all of it.
 
-- The all-in-one instance is unchanged and remains supported. A single deployment that authors and serves configuration in one place is a complete setup.
-- Creating a resource directly against a data plane behaves as it always has.
+- The all-in-one instance remains supported. A single deployment that authors and serves configuration in one place is a complete setup.
+- Creating a resource directly against a data plane behaves as it always has, except for root organization units and the resources that apply to the whole deployment: themes, layouts, translations, server configuration, and authorization details types. A data plane, including the all-in-one instance, takes these only from an import with the management API key. See [Import Resources](../../guides/declarative-configurations/import-resources.mdx#resources-imported-only-with-the-management-api-key).
 - The management APIs are the same APIs. Configuration authored on a control plane is authored through the interface you already know.

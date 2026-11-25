@@ -116,6 +116,70 @@ func (_c *OrganizationUnitProviderMock_CreateOrganizationUnit_Call) RunAndReturn
 	return _c
 }
 
+// GetEligibleOUs provides a mock function for the type OrganizationUnitProviderMock
+func (_mock *OrganizationUnitProviderMock) GetEligibleOUs(ctx context.Context) ([]string, *common.ServiceError) {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetEligibleOUs")
+	}
+
+	var r0 []string
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context) ([]string, *common.ServiceError)); ok {
+		return returnFunc(ctx)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context) []string); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context) *common.ServiceError); ok {
+		r1 = returnFunc(ctx)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// OrganizationUnitProviderMock_GetEligibleOUs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetEligibleOUs'
+type OrganizationUnitProviderMock_GetEligibleOUs_Call struct {
+	*mock.Call
+}
+
+// GetEligibleOUs is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *OrganizationUnitProviderMock_Expecter) GetEligibleOUs(ctx any) *OrganizationUnitProviderMock_GetEligibleOUs_Call {
+	return &OrganizationUnitProviderMock_GetEligibleOUs_Call{Call: _e.mock.On("GetEligibleOUs", ctx)}
+}
+
+func (_c *OrganizationUnitProviderMock_GetEligibleOUs_Call) Run(run func(ctx context.Context)) *OrganizationUnitProviderMock_GetEligibleOUs_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *OrganizationUnitProviderMock_GetEligibleOUs_Call) Return(strings []string, serviceError *common.ServiceError) *OrganizationUnitProviderMock_GetEligibleOUs_Call {
+	_c.Call.Return(strings, serviceError)
+	return _c
+}
+
+func (_c *OrganizationUnitProviderMock_GetEligibleOUs_Call) RunAndReturn(run func(ctx context.Context) ([]string, *common.ServiceError)) *OrganizationUnitProviderMock_GetEligibleOUs_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetOrganizationUnit provides a mock function for the type OrganizationUnitProviderMock
 func (_mock *OrganizationUnitProviderMock) GetOrganizationUnit(ctx context.Context, id string) (providers.OrganizationUnit, *common.ServiceError) {
 	ret := _mock.Called(ctx, id)
@@ -268,6 +332,136 @@ func (_c *OrganizationUnitProviderMock_GetOrganizationUnitChildren_Call) Return(
 }
 
 func (_c *OrganizationUnitProviderMock_GetOrganizationUnitChildren_Call) RunAndReturn(run func(ctx context.Context, id string, limit int, offset int, f *common.FilterGroup) (*providers.OrganizationUnitListResponse, *common.ServiceError)) *OrganizationUnitProviderMock_GetOrganizationUnitChildren_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// IsApplicationShared provides a mock function for the type OrganizationUnitProviderMock
+func (_mock *OrganizationUnitProviderMock) IsApplicationShared(ctx context.Context) (bool, *common.ServiceError) {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsApplicationShared")
+	}
+
+	var r0 bool
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context) (bool, *common.ServiceError)); ok {
+		return returnFunc(ctx)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context) bool); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context) *common.ServiceError); ok {
+		r1 = returnFunc(ctx)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// OrganizationUnitProviderMock_IsApplicationShared_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsApplicationShared'
+type OrganizationUnitProviderMock_IsApplicationShared_Call struct {
+	*mock.Call
+}
+
+// IsApplicationShared is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *OrganizationUnitProviderMock_Expecter) IsApplicationShared(ctx any) *OrganizationUnitProviderMock_IsApplicationShared_Call {
+	return &OrganizationUnitProviderMock_IsApplicationShared_Call{Call: _e.mock.On("IsApplicationShared", ctx)}
+}
+
+func (_c *OrganizationUnitProviderMock_IsApplicationShared_Call) Run(run func(ctx context.Context)) *OrganizationUnitProviderMock_IsApplicationShared_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *OrganizationUnitProviderMock_IsApplicationShared_Call) Return(b bool, serviceError *common.ServiceError) *OrganizationUnitProviderMock_IsApplicationShared_Call {
+	_c.Call.Return(b, serviceError)
+	return _c
+}
+
+func (_c *OrganizationUnitProviderMock_IsApplicationShared_Call) RunAndReturn(run func(ctx context.Context) (bool, *common.ServiceError)) *OrganizationUnitProviderMock_IsApplicationShared_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// IsEligibleOU provides a mock function for the type OrganizationUnitProviderMock
+func (_mock *OrganizationUnitProviderMock) IsEligibleOU(ctx context.Context, ouID string) (bool, *common.ServiceError) {
+	ret := _mock.Called(ctx, ouID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsEligibleOU")
+	}
+
+	var r0 bool
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (bool, *common.ServiceError)); ok {
+		return returnFunc(ctx, ouID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) bool); ok {
+		r0 = returnFunc(ctx, ouID)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, ouID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// OrganizationUnitProviderMock_IsEligibleOU_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsEligibleOU'
+type OrganizationUnitProviderMock_IsEligibleOU_Call struct {
+	*mock.Call
+}
+
+// IsEligibleOU is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ouID string
+func (_e *OrganizationUnitProviderMock_Expecter) IsEligibleOU(ctx any, ouID any) *OrganizationUnitProviderMock_IsEligibleOU_Call {
+	return &OrganizationUnitProviderMock_IsEligibleOU_Call{Call: _e.mock.On("IsEligibleOU", ctx, ouID)}
+}
+
+func (_c *OrganizationUnitProviderMock_IsEligibleOU_Call) Run(run func(ctx context.Context, ouID string)) *OrganizationUnitProviderMock_IsEligibleOU_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *OrganizationUnitProviderMock_IsEligibleOU_Call) Return(b bool, serviceError *common.ServiceError) *OrganizationUnitProviderMock_IsEligibleOU_Call {
+	_c.Call.Return(b, serviceError)
+	return _c
+}
+
+func (_c *OrganizationUnitProviderMock_IsEligibleOU_Call) RunAndReturn(run func(ctx context.Context, ouID string) (bool, *common.ServiceError)) *OrganizationUnitProviderMock_IsEligibleOU_Call {
 	_c.Call.Return(run)
 	return _c
 }

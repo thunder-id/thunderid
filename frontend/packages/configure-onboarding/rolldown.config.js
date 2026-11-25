@@ -13,8 +13,6 @@ const external = [
   'react/jsx-runtime',
   // Needed to avoid hook ordering issues.
   /^@mui\//,
-  // Peer dep subpaths are not matched by exact string - add them explicitly.
-  '@thunderid/logger/react',
 ];
 
 const alias = {

@@ -13,7 +13,11 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
-const configurationsPath = "/openid4vci/credential-configurations"
+const (
+	configurationsPath = "/openid4vci/credential-configurations"
+	// projectIDQueryParam is the list query parameter that names a project.
+	projectIDQueryParam = "projectId"
+)
 
 // configurationHandler serves the management API for credential configurations.
 type configurationHandler struct {
@@ -40,9 +44,17 @@ func (h *configurationHandler) HandleCreate(w http.ResponseWriter, r *http.Reque
 	sysutils.WriteSuccessResponse(r.Context(), w, http.StatusCreated, toResponse(*created))
 }
 
-// HandleList returns a minimal summary of all credential configurations.
+// HandleList returns a minimal summary of all credential configurations, or of a project's when the projectId
+// query parameter names one.
 func (h *configurationHandler) HandleList(w http.ResponseWriter, r *http.Request) {
-	summaries, svcErr := h.service.ListCredentialConfigurationSummaries(r.Context())
+	var summaries []CredentialConfigurationList
+	var svcErr *tidcommon.ServiceError
+	if query := r.URL.Query(); query.Has(projectIDQueryParam) {
+		summaries, svcErr = h.service.ListCredentialConfigurationSummariesByProject(r.Context(),
+			sysutils.SanitizeString(query.Get(projectIDQueryParam)))
+	} else {
+		summaries, svcErr = h.service.ListCredentialConfigurationSummaries(r.Context())
+	}
 	if svcErr != nil {
 		writeConfigurationError(r.Context(), w, svcErr)
 		return
@@ -104,6 +116,7 @@ func requestToDTO(req *credentialConfigurationRequest) *CredentialConfigurationD
 	return &CredentialConfigurationDTO{
 		Handle:          sysutils.SanitizeString(req.Handle),
 		OUID:            sysutils.SanitizeString(req.OUID),
+		ProjectID:       sysutils.SanitizeString(req.ProjectID),
 		Name:            sysutils.SanitizeString(req.Name),
 		Description:     sysutils.SanitizeString(req.Description),
 		Format:          sysutils.SanitizeString(req.Format),

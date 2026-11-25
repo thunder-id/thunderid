@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {CapabilitiesProvider} from '@thunderid/contexts';
 import {render, renderHook, screen} from '@thunderid/test-utils';
 import {useTranslation} from 'react-i18next';
 import {describe, expect, it, vi, beforeAll, beforeEach} from 'vitest';
@@ -22,7 +23,9 @@ vi.mock('@/api/useUpdateNotificationTemplate', () => ({default: mockUseUpdate}))
 
 // Stub the config + preview panes; this suite covers the editor's header editing and save payload.
 vi.mock('@/components/edit-template/TemplateContentEditor', () => ({
-  default: () => <div data-testid="content-editor" />,
+  default: ({readOnly = false}: {readOnly?: boolean}) => (
+    <div data-testid="content-editor" data-readonly={String(readOnly)} />
+  ),
 }));
 vi.mock('@/components/edit-template/TemplatePreviewPanel', () => ({
   default: () => <div data-testid="preview-panel" />,
@@ -44,6 +47,11 @@ const smsTemplate: SmsTemplate = {
   handle: 'otp-sms',
   displayName: 'OTP SMS',
   content: {body: 'Your code is {{ctx(otp.code)}}'},
+};
+
+const viewOnly = {
+  can: (_resource: string, action = 'view') => action === 'view',
+  isLoading: false,
 };
 
 describe('TemplateEditor', () => {
@@ -167,6 +175,18 @@ describe('TemplateEditor', () => {
 
       expect(screen.getByRole('button', {name: t('notificationTemplates:editor.save')})).toBeInTheDocument();
       expect(screen.getByText('You have unsaved changes')).toBeInTheDocument();
+    });
+
+    it('offers no inline edits and keeps the content read-only when the admin may not update templates', () => {
+      render(
+        <CapabilitiesProvider capabilities={viewOnly}>
+          <TemplateEditor channel="email" template={emailTemplate} />
+        </CapabilitiesProvider>,
+      );
+
+      expect(screen.getByText('OTP Verification')).toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Edit'})).not.toBeInTheDocument();
+      expect(screen.getByTestId('content-editor')).toHaveAttribute('data-readonly', 'true');
     });
 
     it('saves an email template with the design color scheme and full content', async () => {

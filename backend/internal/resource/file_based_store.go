@@ -7,9 +7,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/transaction"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -104,6 +106,62 @@ func (f *fileBasedResourceStore) GetResourceServerListCount(ctx context.Context)
 	return f.GenericFileBasedStore.Count()
 }
 
+// GetResourceServerListByOUID returns a page of the declarative resource servers an organization unit owns.
+func (f *fileBasedResourceStore) GetResourceServerListByOUID(
+	ctx context.Context, ouID string, limit, offset int,
+) ([]providers.ResourceServer, error) {
+	servers, err := f.resourceServersByOUID(ouID)
+	if err != nil {
+		return nil, err
+	}
+
+	start := max(offset, 0)
+	if start >= len(servers) {
+		return []providers.ResourceServer{}, nil
+	}
+	end := min(start+max(limit, 0), len(servers))
+	return servers[start:end], nil
+}
+
+// GetResourceServerListCountByOUID returns the number of declarative resource servers an organization unit owns.
+func (f *fileBasedResourceStore) GetResourceServerListCountByOUID(ctx context.Context, ouID string) (int, error) {
+	servers, err := f.resourceServersByOUID(ouID)
+	if err != nil {
+		return 0, err
+	}
+	return len(servers), nil
+}
+
+// GetResourceServerListByProject returns a page of the declarative resource servers of a project, narrowed
+// to the ones an organization unit owns when ouID is set.
+func (f *fileBasedResourceStore) GetResourceServerListByProject(
+	ctx context.Context, projectID, ouID string, limit, offset int,
+) ([]providers.ResourceServer, error) {
+	servers, err := f.resourceServersByProject(projectID, ouID)
+	if err != nil {
+		return nil, err
+	}
+
+	start := max(offset, 0)
+	if start >= len(servers) {
+		return []providers.ResourceServer{}, nil
+	}
+	end := min(start+max(limit, 0), len(servers))
+	return servers[start:end], nil
+}
+
+// GetResourceServerListCountByProject returns the number of declarative resource servers of a project,
+// narrowed to the ones an organization unit owns when ouID is set.
+func (f *fileBasedResourceStore) GetResourceServerListCountByProject(
+	ctx context.Context, projectID, ouID string,
+) (int, error) {
+	servers, err := f.resourceServersByProject(projectID, ouID)
+	if err != nil {
+		return 0, err
+	}
+	return len(servers), nil
+}
+
 func (f *fileBasedResourceStore) UpdateResourceServer(
 	ctx context.Context,
 	id string,
@@ -128,8 +186,8 @@ func (f *fileBasedResourceStore) CheckResourceServerNameExists(ctx context.Conte
 
 func (f *fileBasedResourceStore) CheckResourceServerIdentifierExists(
 	ctx context.Context, identifier string) (bool, error) {
-	_, err := f.GenericFileBasedStore.GetByField(identifier, func(d interface{}) string {
-		return d.(*providers.ResourceServer).Identifier
+	_, err := f.GenericFileBasedStore.GetByField(normalizeResourceIdentifier(identifier), func(d interface{}) string {
+		return normalizeResourceIdentifier(d.(*providers.ResourceServer).Identifier)
 	})
 	if err != nil {
 		return false, nil
@@ -601,6 +659,36 @@ func (f *fileBasedResourceStore) CheckActionHandleExists(
 	return false, nil
 }
 
+// GetDeclaredPermissions reads covered resources and actions from the loaded declaration.
+func (f *fileBasedResourceStore) GetDeclaredPermissions(
+	ctx context.Context, resServerID string, roots []string, delimiter string,
+) ([]string, error) {
+	if len(roots) == 0 {
+		return nil, nil
+	}
+	server, err := f.GetResourceServer(ctx, resServerID)
+	if errors.Is(err, errResourceServerNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	permissions := []string{}
+	for _, resource := range server.Resources {
+		if !security.AnyPermissionCovers(roots, resource.Permission, delimiter) {
+			continue
+		}
+		permissions = append(permissions, resource.Permission)
+		for _, action := range resource.Actions {
+			if security.AnyPermissionCovers(roots, action.Permission, delimiter) {
+				permissions = append(permissions, action.Permission)
+			}
+		}
+	}
+	slices.Sort(permissions)
+	return slices.Compact(permissions), nil
+}
+
 func (f *fileBasedResourceStore) ValidatePermissions(
 	ctx context.Context, resServerID string, permissions []string) ([]string, error) {
 	list, err := f.GenericFileBasedStore.List()
@@ -638,4 +726,40 @@ func (f *fileBasedResourceStore) ValidatePermissions(
 		}
 	}
 	return invalidList, nil
+}
+
+// resourceServersByOUID returns every declarative resource server an organization unit owns.
+func (f *fileBasedResourceStore) resourceServersByOUID(ouID string) ([]providers.ResourceServer, error) {
+	list, err := f.GenericFileBasedStore.List()
+	if err != nil {
+		return nil, err
+	}
+
+	servers := make([]providers.ResourceServer, 0, len(list))
+	for _, item := range list {
+		if rs, ok := item.Data.(*providers.ResourceServer); ok && rs.OUID == ouID {
+			servers = append(servers, *rs)
+		}
+	}
+	return servers, nil
+}
+
+// resourceServersByProject returns the declarative resource servers of a project, narrowed to the ones an
+// organization unit owns when ouID is set.
+func (f *fileBasedResourceStore) resourceServersByProject(
+	projectID, ouID string,
+) ([]providers.ResourceServer, error) {
+	list, err := f.GenericFileBasedStore.List()
+	if err != nil {
+		return nil, err
+	}
+
+	servers := make([]providers.ResourceServer, 0, len(list))
+	for _, item := range list {
+		if rs, ok := item.Data.(*providers.ResourceServer); ok && rs.ProjectID == projectID &&
+			(ouID == "" || rs.OUID == ouID) {
+			servers = append(servers, *rs)
+		}
+	}
+	return servers, nil
 }
