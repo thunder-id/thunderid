@@ -3,6 +3,8 @@
 
 package jwt
 
+import "time"
+
 const (
 	// TokenTypeJWT is the standard JWT type header value used for general-purpose JWTs.
 	TokenTypeJWT = "JWT"
@@ -32,3 +34,6 @@ const (
 	// sessions. Its own type keeps it from being accepted where an access or subject token is expected.
 	TokenTypeDeviceSecret = "sso-session+jwt" //nolint:gosec // JWT typ header value, not a credential
 )
+
+// jwksFetchTimeout bounds the retrieval of a JWKS.
+const jwksFetchTimeout = 10 * time.Second

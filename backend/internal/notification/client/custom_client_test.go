@@ -16,6 +16,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 )
 
@@ -76,7 +77,7 @@ func (suite *CustomClientTestSuite) getValidCustomSenderFORM() common.Notificati
 func (suite *CustomClientTestSuite) TestNewCustomClient_Success() {
 	sender := suite.getValidCustomSenderJSON()
 
-	client, err := newCustomClient(context.Background(), sender)
+	client, err := newCustomClient(context.Background(), sender, privateAllowed)
 
 	suite.NoError(err)
 	suite.NotNil(client)
@@ -85,7 +86,7 @@ func (suite *CustomClientTestSuite) TestNewCustomClient_Success() {
 
 func (suite *CustomClientTestSuite) TestGetName() {
 	sender := suite.getValidCustomSenderJSON()
-	client, _ := newCustomClient(context.Background(), sender)
+	client, _ := newCustomClient(context.Background(), sender, privateAllowed)
 
 	name := client.GetName()
 
@@ -94,7 +95,7 @@ func (suite *CustomClientTestSuite) TestGetName() {
 
 func (suite *CustomClientTestSuite) TestSendSMS_JSON_Success() {
 	sender := suite.getValidCustomSenderJSON()
-	client, _ := newCustomClient(context.Background(), sender)
+	client, _ := newCustomClient(context.Background(), sender, privateAllowed)
 
 	// Create a test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -134,7 +135,7 @@ func (suite *CustomClientTestSuite) TestSendSMSLegacyHTTPHeadersSuccess() {
 			sender.Properties[len(sender.Properties)-1] = createProperty(
 				"http_headers", "X-API-Key: legacy-key, X-Tenant: legacy-tenant", test.isSecret,
 			)
-			client, err := newCustomClient(context.Background(), sender)
+			client, err := newCustomClient(context.Background(), sender, privateAllowed)
 			suite.Require().NoError(err)
 
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -164,7 +165,7 @@ func (suite *CustomClientTestSuite) TestSendSMSStringHeadersAndAuthentication() 
 	})
 	suite.Require().NoError(err)
 	sender.Properties = append(sender.Properties, authProperties...)
-	client, err := newCustomClient(context.Background(), sender)
+	client, err := newCustomClient(context.Background(), sender, privateAllowed)
 	suite.Require().NoError(err)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		suite.Equal("campaign-1", r.Header.Get("X-Campaign"))
@@ -206,7 +207,7 @@ func (suite *CustomClientTestSuite) TestSendSMSBearerAndBasicAuthentication() {
 			authProperties, err := outboundauth.ToProperties(test.config)
 			suite.Require().NoError(err)
 			sender.Properties = append(sender.Properties, authProperties...)
-			client, err := newCustomClient(context.Background(), sender)
+			client, err := newCustomClient(context.Background(), sender, privateAllowed)
 			suite.Require().NoError(err)
 			client.(*CustomClient).url = server.URL
 			suite.NoError(client.Send(context.Background(), common.ChannelTypeSMS,
@@ -227,7 +228,7 @@ func (suite *CustomClientTestSuite) TestRejectsGeneralAuthorizationWithBearerOrB
 		authProperties, err := outboundauth.ToProperties(config)
 		suite.Require().NoError(err)
 		sender.Properties = append(sender.Properties, authProperties...)
-		_, err = newCustomClient(context.Background(), sender)
+		_, err = newCustomClient(context.Background(), sender, privateAllowed)
 		suite.ErrorContains(err, "also used for authentication")
 	}
 }
@@ -237,7 +238,7 @@ func (suite *CustomClientTestSuite) TestSendSMSLegacyHeadersAllowRemoteHTTP() {
 	sender.Properties[len(sender.Properties)-1] = createProperty(
 		"http_headers", "X-API-Key: legacy-key", false,
 	)
-	client, err := newCustomClient(context.Background(), sender)
+	client, err := newCustomClient(context.Background(), sender, privateAllowed)
 	suite.Require().NoError(err)
 	customClient := client.(*CustomClient)
 	customClient.url = "http://internal.example/send"
@@ -273,7 +274,7 @@ func (suite *CustomClientTestSuite) TestSendSMSLegacyHeadersFollowRedirect() {
 	sender.Properties[len(sender.Properties)-1] = createProperty(
 		common.CustomPropKeyHTTPHeaders, "X-Campaign: campaign-1", false,
 	)
-	client, err := newCustomClient(context.Background(), sender)
+	client, err := newCustomClient(context.Background(), sender, privateAllowed)
 	suite.Require().NoError(err)
 	client.(*CustomClient).url = redirect.URL
 
@@ -300,7 +301,7 @@ func (suite *CustomClientTestSuite) TestSendSMSAuthenticationDoesNotFollowRedire
 	})
 	suite.Require().NoError(err)
 	sender.Properties = append(sender.Properties, authProperties...)
-	client, err := newCustomClient(context.Background(), sender)
+	client, err := newCustomClient(context.Background(), sender, privateAllowed)
 	suite.Require().NoError(err)
 	client.(*CustomClient).url = redirect.URL
 
@@ -311,7 +312,7 @@ func (suite *CustomClientTestSuite) TestSendSMSAuthenticationDoesNotFollowRedire
 
 func (suite *CustomClientTestSuite) TestSendSMS_FORM_Success() {
 	sender := suite.getValidCustomSenderFORM()
-	client, _ := newCustomClient(context.Background(), sender)
+	client, _ := newCustomClient(context.Background(), sender, privateAllowed)
 
 	// Create a test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -341,7 +342,7 @@ func (suite *CustomClientTestSuite) TestSendSMS_FORM_Success() {
 
 func (suite *CustomClientTestSuite) TestSendSMS_Error() {
 	sender := suite.getValidCustomSenderJSON()
-	client, _ := newCustomClient(context.Background(), sender)
+	client, _ := newCustomClient(context.Background(), sender, privateAllowed)
 
 	// Create a test server that returns an error
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -369,7 +370,7 @@ func (suite *CustomClientTestSuite) TestSendSMS_Error() {
 
 func (suite *CustomClientTestSuite) TestSendSMS_NetworkError() {
 	sender := suite.getValidCustomSenderJSON()
-	client, _ := newCustomClient(context.Background(), sender)
+	client, _ := newCustomClient(context.Background(), sender, privateAllowed)
 
 	// Use an invalid URL to force a network error
 	customClient := client.(*CustomClient)
@@ -395,7 +396,7 @@ func (suite *CustomClientTestSuite) TestSendSMS_UnsupportedContentType() {
 			createProperty("content_type", "XML", false),
 		},
 	}
-	client, _ := newCustomClient(context.Background(), sender)
+	client, _ := newCustomClient(context.Background(), sender, privateAllowed)
 
 	data := common.MessageData{
 		Recipient: "+15559876543",
@@ -412,7 +413,7 @@ func (suite *CustomClientTestSuite) TestNewCustomClient_WithUnknownProperty() {
 	sender := suite.getValidCustomSenderJSON()
 	sender.Properties = append(sender.Properties, createProperty("unknown_prop", "value", false))
 
-	client, err := newCustomClient(context.Background(), sender)
+	client, err := newCustomClient(context.Background(), sender, privateAllowed)
 
 	// Should succeed and just log a warning for unknown property
 	suite.NoError(err)
@@ -431,9 +432,46 @@ func (suite *CustomClientTestSuite) TestNewCustomClient_InvalidAPIKeyHeaders() {
 		},
 	}
 
-	client, err := newCustomClient(context.Background(), sender)
+	client, err := newCustomClient(context.Background(), sender, privateAllowed)
 
 	suite.Error(err)
 	suite.Nil(client)
 	suite.Contains(err.Error(), "failed to parse legacy HTTP headers")
+}
+
+// guardTestClient builds a custom client with clients, pointed at url.
+func (suite *CustomClientTestSuite) guardTestClient(clients syshttp.OutboundClientFactoryInterface,
+	url string) MessageClientInterface {
+	client, err := newCustomClient(context.Background(), common.NotificationSenderDTO{
+		Name:     "custom",
+		Provider: common.NotificationProviderTypeCustom,
+		Properties: []cmodels.Property{
+			createProperty(common.CustomPropKeyURL, url, false),
+			createProperty(common.CustomPropKeyHTTPMethod, "POST", false),
+			createProperty(common.CustomPropKeyContentType, "JSON", false),
+		},
+	}, clients)
+	suite.Require().NoError(err)
+	return client
+}
+
+func (suite *CustomClientTestSuite) TestSend_RefusesPrivateAddresses() {
+	for _, host := range privateTargets {
+		err := suite.guardTestClient(syshttp.Initialize(false), "http://"+host+":8080/sms").
+			Send(context.Background(), common.ChannelTypeSMS, testSMSMessage)
+		suite.ErrorIs(err, syshttp.ErrPrivateAddress, "reached %s", host)
+	}
+}
+
+func (suite *CustomClientTestSuite) TestSend_ReachesPrivateAddressesWhenAllowed() {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	for _, url := range loopbackURLs(server.URL) {
+		err := suite.guardTestClient(syshttp.Initialize(true), url).
+			Send(context.Background(), common.ChannelTypeSMS, testSMSMessage)
+		suite.NoError(err, url)
+	}
 }

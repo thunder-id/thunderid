@@ -44,7 +44,7 @@ func storeGateway(t *testing.T, status int, body string) (*Gateway, *[]storeCall
 
 // Each variable call reaches its own path of the gateway's store with the key, and reads the answer.
 func TestTheStoreClientCallsTheGatewaysVariables(t *testing.T) {
-	ctx, client := context.Background(), newGatewayClient()
+	ctx, client := context.Background(), testGatewayClient()
 	gw, calls := storeGateway(t, http.StatusOK, `{"name":"A","value":"1"}`)
 
 	variable, err := client.GetVariable(ctx, gw, "the-key", "A")
@@ -71,7 +71,7 @@ func TestTheStoreClientCallsTheGatewaysVariables(t *testing.T) {
 // Each secret call reaches its own path of the gateway's store, and a write that created the value
 // says so.
 func TestTheStoreClientCallsTheGatewaysSecrets(t *testing.T) {
-	ctx, client := context.Background(), newGatewayClient()
+	ctx, client := context.Background(), testGatewayClient()
 	gw, calls := storeGateway(t, http.StatusCreated, `{"name":"S","exists":true}`)
 
 	secret, created, err := client.SetSecret(ctx, gw, "k", "S", variablestore.SecretUpdateRequest{Value: "v"})
@@ -92,7 +92,7 @@ func TestTheStoreClientCallsTheGatewaysSecrets(t *testing.T) {
 
 // A listing passes only the narrowing it was given, and reads the gateway's page.
 func TestTheStoreClientListsWithTheQueryGiven(t *testing.T) {
-	ctx, client := context.Background(), newGatewayClient()
+	ctx, client := context.Background(), testGatewayClient()
 	gw, calls := storeGateway(t, http.StatusOK, `{"totalResults":1,"count":1,"secrets":[{"name":"S","exists":true}]}`)
 
 	listing, err := client.ListSecrets(ctx, gw, "k", StoreListQuery{Limit: "5", Filter: `name sw "S"`})
@@ -111,7 +111,7 @@ func TestTheStoreClientListsWithTheQueryGiven(t *testing.T) {
 // A removal of many names reaches the collection with them in names=, and an age, when given, as whole
 // seconds rounded up in unchangedFor=; it answers with the names the gateway removed.
 func TestTheStoreClientRemovesManyNamesInOneCall(t *testing.T) {
-	ctx, client := context.Background(), newGatewayClient()
+	ctx, client := context.Background(), testGatewayClient()
 	gw, calls := storeGateway(t, http.StatusOK, `{"deleted":["A"]}`)
 
 	deleted, err := client.DeleteVariables(ctx, gw, "the-key", []string{"A", "B"}, 0)
@@ -133,7 +133,7 @@ func TestTheStoreClientRemovesManyNamesInOneCall(t *testing.T) {
 func TestTheStoreClientReportsARefusedRemovalOfManyNames(t *testing.T) {
 	gw, _ := storeGateway(t, http.StatusMethodNotAllowed, ``)
 
-	_, err := newGatewayClient().DeleteVariables(context.Background(), gw, "k", []string{"A"}, time.Second)
+	_, err := testGatewayClient().DeleteVariables(context.Background(), gw, "k", []string{"A"}, time.Second)
 
 	var refusal *StoreRefusal
 	require.ErrorAs(t, err, &refusal)
@@ -144,7 +144,7 @@ func TestTheStoreClientReportsARefusedRemovalOfManyNames(t *testing.T) {
 func TestTheStoreClientEscapesTheName(t *testing.T) {
 	gw, calls := storeGateway(t, http.StatusNotFound, `{"code":"VAR-1004"}`)
 
-	_, _ = newGatewayClient().GetVariable(context.Background(), gw, "k", "../import")
+	_, _ = testGatewayClient().GetVariable(context.Background(), gw, "k", "../import")
 
 	assert.Equal(t, "/variables/..%2Fimport", (*calls)[0].path)
 }
@@ -152,7 +152,7 @@ func TestTheStoreClientEscapesTheName(t *testing.T) {
 // A call the gateway refuses fails with the gateway's status and error as it gave them, and one
 // whose answer cannot be read, or that cannot reach the gateway, fails otherwise.
 func TestTheStoreClientReportsWhatWentWrong(t *testing.T) {
-	ctx, client := context.Background(), newGatewayClient()
+	ctx, client := context.Background(), testGatewayClient()
 	refusing, _ := storeGateway(t, http.StatusConflict, `{"code":"VAR-1005"}`)
 	_, err := client.CreateVariable(ctx, refusing, "k", variablestore.VariableRequest{Name: "A"})
 	var refusal *StoreRefusal
@@ -183,7 +183,7 @@ func TestHeldValuesReportsWhatTheGatewayHoldsAndSince(t *testing.T) {
 		secrets[i] = fmt.Sprintf("S%d", i)
 	}
 
-	held, err := newGatewayClient().HeldValues(context.Background(), gw, "the-key", []string{"A", "B"}, secrets)
+	held, err := testGatewayClient().HeldValues(context.Background(), gw, "the-key", []string{"A", "B"}, secrets)
 
 	require.NoError(t, err)
 	missing := held.missing([]string{"A", "B"}, secrets)
@@ -208,9 +208,9 @@ func TestHeldValuesReportsWhatTheGatewayHoldsAndSince(t *testing.T) {
 	assert.Equal(t, "/secrets", (*calls)[2].path)
 
 	refusing, _ := storeGateway(t, http.StatusUnauthorized, `{"code":"AUTH-4010"}`)
-	_, err = newGatewayClient().HeldValues(context.Background(), refusing, "k", nil, []string{"S"})
+	_, err = testGatewayClient().HeldValues(context.Background(), refusing, "k", nil, []string{"S"})
 	assert.True(t, isRefusal(err))
-	_, err = newGatewayClient().HeldValues(context.Background(), refusing, "k", []string{"A"}, nil)
+	_, err = testGatewayClient().HeldValues(context.Background(), refusing, "k", []string{"A"}, nil)
 	assert.True(t, isRefusal(err))
 }
 

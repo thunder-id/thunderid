@@ -55,6 +55,9 @@ func (m *HTTPServer) routes() http.Handler {
 	// Handle generic success endpoint
 	mux.HandleFunc("/api/success", m.handleSuccess)
 
+	// Handle redirecting endpoint
+	mux.HandleFunc("/api/redirect", m.handleRedirect)
+
 	// Handle endpoint for retrieving captured requests (for test verification)
 	mux.HandleFunc("/test/requests", m.handleGetRequests)
 
@@ -179,6 +182,13 @@ func (m *HTTPServer) handleError(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusInternalServerError)
 	json.NewEncoder(w).Encode(response)
+}
+
+// handleRedirect captures the request and redirects it to the notifications endpoint, so a test can
+// tell whether the redirect was followed.
+func (m *HTTPServer) handleRedirect(w http.ResponseWriter, r *http.Request) {
+	m.captureRequest(r, nil)
+	http.Redirect(w, r, "notifications", http.StatusFound)
 }
 
 // handleSuccess simulates a generic success response

@@ -75,9 +75,10 @@ type namedUntil struct {
 	until time.Time
 }
 
-// New reads the lookup from the server configuration and calls the issuer with the server's outbound
-// client.
-func New() *Lookup {
+// New reads the lookup from the server configuration and calls the issuer with an unguarded client
+// from clients: the issuer is one the deployment configuration sets, so it may sit on an internal
+// address.
+func New(clients syshttp.OutboundClientFactoryInterface) *Lookup {
 	var (
 		once   sync.Once
 		client syshttp.HTTPClientInterface
@@ -86,7 +87,7 @@ func New() *Lookup {
 		config: configured,
 		do: func(req *http.Request) (*http.Response, error) {
 			// The client reads the TLS settings from the runtime, which is loaded by the time a lookup runs.
-			once.Do(func() { client = syshttp.NewHTTPClientWithTimeout(Timeout) })
+			once.Do(func() { client = clients.NewUnguardedHTTPClient(Timeout) })
 			return client.Do(req)
 		},
 		logger: log.GetLogger().With(log.String(log.LoggerKeyComponentName, "UserLookup")),

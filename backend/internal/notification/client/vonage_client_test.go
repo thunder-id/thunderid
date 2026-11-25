@@ -17,6 +17,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	sysContext "github.com/thunder-id/thunderid/internal/system/context"
+	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 )
 
 type VonageClientTestSuite struct {
@@ -56,7 +57,7 @@ func (suite *VonageClientTestSuite) getValidVonageSender() common.NotificationSe
 func (suite *VonageClientTestSuite) TestNewVonageClient_Success() {
 	sender := suite.getValidVonageSender()
 
-	client, err := newVonageClient(context.Background(), sender)
+	client, err := newVonageClient(context.Background(), sender, privateAllowed)
 
 	suite.NoError(err)
 	suite.NotNil(client)
@@ -65,7 +66,7 @@ func (suite *VonageClientTestSuite) TestNewVonageClient_Success() {
 
 func (suite *VonageClientTestSuite) TestGetName() {
 	sender := suite.getValidVonageSender()
-	client, _ := newVonageClient(context.Background(), sender)
+	client, _ := newVonageClient(context.Background(), sender, privateAllowed)
 
 	name := client.GetName()
 
@@ -74,7 +75,7 @@ func (suite *VonageClientTestSuite) TestGetName() {
 
 func (suite *VonageClientTestSuite) TestSendSMS_Success() {
 	sender := suite.getValidVonageSender()
-	client, _ := newVonageClient(context.Background(), sender)
+	client, _ := newVonageClient(context.Background(), sender, privateAllowed)
 
 	// Create a test server to mock Vonage API
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -111,7 +112,7 @@ func (suite *VonageClientTestSuite) TestSendSMS_Success() {
 
 func (suite *VonageClientTestSuite) TestSendSMS_PropagatesCorrelationID() {
 	sender := suite.getValidVonageSender()
-	client, _ := newVonageClient(context.Background(), sender)
+	client, _ := newVonageClient(context.Background(), sender, privateAllowed)
 
 	var gotCorrelationID string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -140,7 +141,7 @@ func (suite *VonageClientTestSuite) TestSendSMS_PropagatesCorrelationID() {
 
 func (suite *VonageClientTestSuite) TestSendSMS_Error() {
 	sender := suite.getValidVonageSender()
-	client, _ := newVonageClient(context.Background(), sender)
+	client, _ := newVonageClient(context.Background(), sender, privateAllowed)
 
 	// Create a test server that returns an error
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -170,7 +171,7 @@ func (suite *VonageClientTestSuite) TestSendSMS_Error() {
 
 func (suite *VonageClientTestSuite) TestSendSMS_NetworkError() {
 	sender := suite.getValidVonageSender()
-	client, _ := newVonageClient(context.Background(), sender)
+	client, _ := newVonageClient(context.Background(), sender, privateAllowed)
 
 	// Use an invalid URL to force a network error
 	vonageClient := client.(*VonageClient)
@@ -188,7 +189,7 @@ func (suite *VonageClientTestSuite) TestSendSMS_NetworkError() {
 
 func (suite *VonageClientTestSuite) TestFormatPhoneNumber_WithPlus() {
 	sender := suite.getValidVonageSender()
-	client, _ := newVonageClient(context.Background(), sender)
+	client, _ := newVonageClient(context.Background(), sender, privateAllowed)
 	vonageClient := client.(*VonageClient)
 
 	formatted := vonageClient.formatPhoneNumber("+15559876543")
@@ -198,7 +199,7 @@ func (suite *VonageClientTestSuite) TestFormatPhoneNumber_WithPlus() {
 
 func (suite *VonageClientTestSuite) TestFormatPhoneNumber_WithDoubleZero() {
 	sender := suite.getValidVonageSender()
-	client, _ := newVonageClient(context.Background(), sender)
+	client, _ := newVonageClient(context.Background(), sender, privateAllowed)
 	vonageClient := client.(*VonageClient)
 
 	formatted := vonageClient.formatPhoneNumber("0015559876543")
@@ -208,7 +209,7 @@ func (suite *VonageClientTestSuite) TestFormatPhoneNumber_WithDoubleZero() {
 
 func (suite *VonageClientTestSuite) TestFormatPhoneNumber_NoPrefix() {
 	sender := suite.getValidVonageSender()
-	client, _ := newVonageClient(context.Background(), sender)
+	client, _ := newVonageClient(context.Background(), sender, privateAllowed)
 	vonageClient := client.(*VonageClient)
 
 	formatted := vonageClient.formatPhoneNumber("15559876543")
@@ -220,9 +221,49 @@ func (suite *VonageClientTestSuite) TestNewVonageClient_WithUnknownProperty() {
 	sender := suite.getValidVonageSender()
 	sender.Properties = append(sender.Properties, createProperty("unknown_prop", "value", false))
 
-	client, err := newVonageClient(context.Background(), sender)
+	client, err := newVonageClient(context.Background(), sender, privateAllowed)
 
 	// Should succeed and just log a warning for unknown property
 	suite.NoError(err)
 	suite.NotNil(client)
+}
+
+// guardTestClient builds a Vonage client with clients, pointed at url.
+func (suite *VonageClientTestSuite) guardTestClient(clients syshttp.OutboundClientFactoryInterface,
+	url string) MessageClientInterface {
+	client, err := newVonageClient(context.Background(), common.NotificationSenderDTO{
+		Name:     "vonage",
+		Provider: common.NotificationProviderTypeVonage,
+		Properties: []cmodels.Property{
+			createProperty(common.VonagePropKeyAPIKey, "key", true),
+			createProperty(common.VonagePropKeyAPISecret, "secret", true),
+			createProperty(common.VonagePropKeySenderID, "ThunderID", false),
+		},
+	}, clients)
+	suite.Require().NoError(err)
+	client.(*VonageClient).url = url
+	return client
+}
+
+func (suite *VonageClientTestSuite) TestSend_RefusesPrivateAddresses() {
+	for _, host := range privateTargets {
+		err := suite.guardTestClient(syshttp.Initialize(false), "http://"+host+":8080/sms").
+			Send(context.Background(), common.ChannelTypeSMS, testSMSMessage)
+		suite.ErrorIs(err, syshttp.ErrPrivateAddress, "reached %s", host)
+	}
+}
+
+func (suite *VonageClientTestSuite) TestSend_ReachesPrivateAddressesWhenAllowed() {
+	// 202 with a zero status is what Vonage answers a send with.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = w.Write([]byte(`{"messages":[{"status":"0"}]}`))
+	}))
+	defer server.Close()
+
+	for _, url := range loopbackURLs(server.URL) {
+		err := suite.guardTestClient(syshttp.Initialize(true), url).
+			Send(context.Background(), common.ChannelTypeSMS, testSMSMessage)
+		suite.NoError(err, url)
+	}
 }

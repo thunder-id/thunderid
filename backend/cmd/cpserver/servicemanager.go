@@ -49,6 +49,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
+	inboundclientconfig "github.com/thunder-id/thunderid/internal/inboundclient/config"
 	"github.com/thunder-id/thunderid/internal/notification"
 	notificationconfig "github.com/thunder-id/thunderid/internal/notification/config"
 	"github.com/thunder-id/thunderid/internal/notificationtemplate"
@@ -69,6 +70,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/export"
 	healthcheckservice "github.com/thunder-id/thunderid/internal/system/healthcheck/service"
+	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/importer"
 	"github.com/thunder-id/thunderid/internal/system/jose"
@@ -132,7 +134,14 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		Leeway:         runtime.Config.JWT.Leeway,
 		JWKSCacheTTL:   time.Duration(runtime.Config.Server.SecurityConfig.JWKSCacheTTL) * time.Second,
 	}
-	jwtService, jweService, err := jose.Initialize(runtimeCryptoSvc, joseCfg)
+	// Calls to destinations an administrator configures, such as identity providers' JWKS and
+	// notification providers, go through clients from this factory, which refuse private addresses
+	// unless the deployment allows them. Calls to destinations a client names, such as its JWKS URI or
+	// metadata document, go through strictOutboundClients, which always refuse them.
+	outboundClients := httpservice.Initialize(runtime.Config.Server.AllowPrivateAddresses)
+	strictOutboundClients := httpservice.Initialize(false)
+
+	jwtService, jweService, err := jose.Initialize(runtimeCryptoSvc, joseCfg, outboundClients, strictOutboundClients)
 	fatalOnError(ctx, logger, err, "Failed to initialize JOSE services")
 
 	observabilitySvc = observability.Initialize(config.GetServerRuntime().Config.Observability)
@@ -226,7 +235,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Notification: only the sender-management (CRUD) service and the notification section handler are
 	// kept. The OTP and sender runtime services this returns are data plane concerns and are dropped.
 	notifSenderMgtSvc, _, _, notificationConfigHandler, err :=
-		notification.Initialize(jwtService, notificationconfig.FromServerRuntime(), ouService, auditBus)
+		notification.Initialize(jwtService, notificationconfig.FromServerRuntime(), ouService, auditBus,
+			outboundClients)
 	fatalOnError(ctx, logger, err, "Failed to initialize NotificationService")
 
 	// Create the flow server-config handler early so it can be registered before serverconfig is
@@ -372,11 +382,11 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	projectService.AddResourceCheck(layoutMgtService.ProjectHasLayouts)
 	exporters = append(exporters, layoutExporter)
 
-	cimdService := cimd.Initialize(mux)
+	cimdService := cimd.Initialize(mux, strictOutboundClients)
 	inboundClientService, err := inboundclient.Initialize(
 		cacheManager, certservice, entityProvider,
 		themeMgtService, layoutMgtService, flowMgtService, entityTypeService, runtimeCryptoSvc, jweService,
-		cimdService, nil, nil, inboundclient.KeepingValueReferences())
+		cimdService, nil, nil, inboundclientconfig.FromServerRuntime(), inboundclient.KeepingValueReferences())
 	fatalOnError(ctx, logger, err, "Failed to initialize InboundClientService")
 
 	// TODO: Remove entityService dependency after finalizing declarative resource loading pattern
@@ -438,7 +448,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// The gateways this control plane administers. Registration is bounded by gateway.max_gateways,
 	// which is one unless a deployment raises it.
 	gatewayService, gatewayStopper, err := gateway.Initialize(mux, mcpServer, exportService, valueCapture, exporters,
-		changeCapture, serverConfigService, projectService, auditBus)
+		changeCapture, serverConfigService, projectService, auditBus, outboundClients,
+		httpservice.Initialize(runtime.Config.Gateway.AllowPrivateAddresses))
 	fatalOnError(ctx, logger, err, "Failed to initialize gateway service")
 
 	// Initialize import service

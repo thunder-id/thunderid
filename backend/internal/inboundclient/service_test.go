@@ -1764,7 +1764,8 @@ func (suite *InboundClientServiceTestSuite) TestValidateOAuthProfile_PropagatesU
 		TokenEndpointAuthMethod: "client_secret_basic",
 		UserInfo:                &providers.UserInfoConfig{SigningAlg: "BOGUS"},
 	}
-	assert.ErrorIs(suite.T(), validateOAuthProfile(context.Background(), p, true, suite.cryptoMock, suite.jweService),
+	assert.ErrorIs(suite.T(),
+		validateOAuthProfile(context.Background(), p, true, suite.cryptoMock, suite.jweService, false),
 		ErrOAuthUserInfoUnsupportedSigningAlg)
 }
 
@@ -1778,7 +1779,8 @@ func (suite *InboundClientServiceTestSuite) TestValidateOAuthProfile_IDJAGRequir
 			IDJAG: &providers.IDJAGConfig{Enabled: true},
 		},
 	}
-	assert.ErrorIs(suite.T(), validateOAuthProfile(context.Background(), p, true, suite.cryptoMock, suite.jweService),
+	assert.ErrorIs(suite.T(),
+		validateOAuthProfile(context.Background(), p, true, suite.cryptoMock, suite.jweService, false),
 		ErrOAuthClientIDJAGRequiresTokenExchange)
 }
 
@@ -1862,7 +1864,7 @@ func (suite *InboundClientServiceTestSuite) TestValidateIDJAGConfig() {
 
 func (suite *InboundClientServiceTestSuite) TestValidateOAuthProfile_NilProfile() {
 	assert.NoError(suite.T(),
-		validateOAuthProfile(context.Background(), nil, false, suite.cryptoMock, suite.jweService))
+		validateOAuthProfile(context.Background(), nil, false, suite.cryptoMock, suite.jweService, false))
 }
 
 // ----- BuildOAuthClient -----
@@ -4249,12 +4251,12 @@ func (suite *InboundClientServiceTestSuite) TestValidateBackchannelLogoutURI() {
 	for _, tc := range cases {
 		suite.Run(tc.name, func() {
 			p := &providers.OAuthProfile{BackchannelLogoutURI: tc.uri, PublicClient: tc.public}
-			assert.ErrorIs(suite.T(), validateBackchannelLogoutURI(p), tc.want)
+			assert.ErrorIs(suite.T(), validateBackchannelLogoutURI(p, false), tc.want)
 		})
 	}
 }
 
-// With nothing configured the guard is on, as default.json ships it.
+// With private addresses not allowed, as default.json ships server.allow_private_addresses, the guard is on.
 func (suite *InboundClientServiceTestSuite) TestValidateBackchannelLogoutURI_RejectPrivateAddresses() {
 	rejected := []string{
 		"https://localhost/bcl", "https://app.localhost/bcl", "http://127.0.0.1:8080/bcl", "https://[::1]/bcl",
@@ -4263,27 +4265,21 @@ func (suite *InboundClientServiceTestSuite) TestValidateBackchannelLogoutURI_Rej
 	}
 	for _, uri := range rejected {
 		p := &providers.OAuthProfile{BackchannelLogoutURI: uri}
-		assert.ErrorIs(suite.T(), validateBackchannelLogoutURI(p), ErrOAuthBackchannelLogoutURIPrivateHost, uri)
+		assert.ErrorIs(suite.T(), validateBackchannelLogoutURI(p, false), ErrOAuthBackchannelLogoutURIPrivateHost, uri)
 	}
 	allowed := []string{"https://rp.example.com/bcl", "https://8.8.8.8/bcl", "https://rp.internal/bcl"}
 	for _, uri := range allowed {
 		p := &providers.OAuthProfile{BackchannelLogoutURI: uri}
-		assert.NoError(suite.T(), validateBackchannelLogoutURI(p), uri)
+		assert.NoError(suite.T(), validateBackchannelLogoutURI(p, false), uri)
 	}
 }
 
-// An operator with relying parties on internal networks can turn the guard off.
+// An operator with relying parties on internal networks can turn the guard off with
+// server.allow_private_addresses.
 func (suite *InboundClientServiceTestSuite) TestValidateBackchannelLogoutURI_GuardOffAcceptsPrivateHosts() {
-	sysconfig.ResetServerRuntime()
-	cfg := &sysconfig.Config{}
-	allow := false
-	cfg.OAuth.Logout.Backchannel.RejectPrivateAddresses = &allow
-	suite.Require().NoError(sysconfig.InitializeServerRuntime("/tmp/test", cfg))
-	defer suite.SetupTest()
-
 	for _, uri := range []string{"https://localhost/bcl", "http://127.0.0.1:8080/bcl", "https://10.0.0.5/bcl"} {
 		p := &providers.OAuthProfile{BackchannelLogoutURI: uri}
-		assert.NoError(suite.T(), validateBackchannelLogoutURI(p), uri)
+		assert.NoError(suite.T(), validateBackchannelLogoutURI(p, true), uri)
 	}
 }
 

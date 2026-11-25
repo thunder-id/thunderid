@@ -294,7 +294,7 @@ func (s *VersionServiceAuditTestSuite) TestAFailingBusDoesNotFailTheApply() {
 }
 
 func (s *VersionServiceAuditTestSuite) TestInitializeRefusesANilEventBus() {
-	service, stopper, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, nil, nil, nil, nil)
+	service, stopper, err := Initialize(http.NewServeMux(), nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	s.Require().ErrorIs(err, errNilEventBus)
 	s.Nil(service)

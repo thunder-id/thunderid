@@ -13,6 +13,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
+	inboundclientconfig "github.com/thunder-id/thunderid/internal/inboundclient/config"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/cache"
@@ -30,7 +31,7 @@ func KeepingValueReferences() Option {
 	return func(s *inboundClientService) { s.keepsReferences = true }
 }
 
-// Initialize initializes the inbound client service.
+// Initialize initializes the inbound client service with the configuration cfg.
 func Initialize(
 	cacheManager cache.CacheManagerInterface,
 	certService cert.CertificateServiceInterface,
@@ -44,6 +45,7 @@ func Initialize(
 	cimdService cimd.CIMDServiceInterface,
 	sharingService sharing.SharingServiceInterface,
 	sharedTypes SharedTypeResolver,
+	cfg inboundclientconfig.Config,
 	options ...Option,
 ) (InboundClientServiceInterface, error) {
 	store, transactioner, err := initializeStore(cacheManager)
@@ -53,6 +55,7 @@ func Initialize(
 	service := newInboundClientService(store, transactioner, certService, entityProvider,
 		themeMgt, layoutMgt, flowMgt, entityType, cryptoProvider, jweService, cimdService,
 		sharingService, sharedTypes)
+	service.allowPrivateAddresses = cfg.AllowPrivateAddresses
 	for _, option := range options {
 		option(service)
 	}
