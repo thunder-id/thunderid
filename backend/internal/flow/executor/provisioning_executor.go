@@ -253,7 +253,7 @@ func (p *provisioningExecutor) isOutsideCrossOUTarget(ctx *providers.NodeContext
 		return false, nil
 	}
 
-	user, getUserErr := p.entityProvider.GetEntity(userID)
+	user, getUserErr := p.entityProvider.GetEntity(ctx.Context, userID)
 	if getUserErr != nil {
 		return false, errors.New("failed to retrieve the resolved user")
 	}
@@ -346,7 +346,7 @@ func (p *provisioningExecutor) handleExistingUser(ctx *providers.NodeContext, us
 		return false, nil
 	}
 
-	existingUser, getUserErr := p.entityProvider.GetEntity(userID)
+	existingUser, getUserErr := p.entityProvider.GetEntity(ctx.Context, userID)
 	if getUserErr != nil {
 		return false, errors.New("failed to retrieve existing user")
 	}
@@ -375,7 +375,7 @@ func (p *provisioningExecutor) resolveAmbiguousUserForProvisioning(ctx *provider
 	identifyingAttrs map[string]interface{}) (*string, error) {
 	logger := p.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
 
-	matches, searchErr := p.entityProvider.SearchEntities(identifyingAttrs)
+	matches, searchErr := p.entityProvider.SearchEntities(ctx.Context, identifyingAttrs)
 	if searchErr != nil {
 		return nil, fmt.Errorf("failed to search for matching users: code=%s, description=%s",
 			searchErr.Code, searchErr.Description)
@@ -701,7 +701,7 @@ func (p *provisioningExecutor) createUserInStore(nodeCtx *providers.NodeContext,
 	}
 	newEntity.Attributes = attributesJSON
 
-	retEntity, svcErr := p.entityProvider.CreateEntity(&newEntity, nil)
+	retEntity, svcErr := p.entityProvider.CreateEntity(nodeCtx.Context, &newEntity, nil)
 	if svcErr != nil {
 		return nil, svcErr
 	}

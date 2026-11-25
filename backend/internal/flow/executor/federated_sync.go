@@ -158,7 +158,7 @@ func syncFederatedUser(
 		return true, nil
 	}
 
-	written, epErr := entityProvider.SyncFederatedEntity(userID, sync.Entity)
+	written, epErr := entityProvider.SyncFederatedEntity(ctx.Context, userID, sync.Entity)
 	if epErr != nil {
 		if epErr.Code == entityprovider.ErrorCodeNotImplemented {
 			logger.Debug(ctx.Context, "Entity provider does not support federated sync, skipping",

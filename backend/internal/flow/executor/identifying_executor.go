@@ -74,7 +74,7 @@ func (i *identifyingExecutor) IdentifyUser(ctx context.Context, filters map[stri
 	logger.Debug(ctx, "Identifying user with filters")
 
 	if entityID, ok := filters[userAttributeUserID].(string); ok && entityID != "" {
-		entity, epErr := i.entityProvider.GetEntity(entityID)
+		entity, epErr := i.entityProvider.GetEntity(ctx, entityID)
 		if epErr != nil {
 			if epErr.Code == entityprovider.ErrorCodeEntityNotFound {
 				execResp.Error = &ErrUserNotFound
@@ -95,7 +95,7 @@ func (i *identifyingExecutor) IdentifyUser(ctx context.Context, filters map[stri
 		}
 	}
 
-	userID, err := i.entityProvider.IdentifyEntity(searchableFilter)
+	userID, err := i.entityProvider.IdentifyEntity(ctx, searchableFilter)
 	if err != nil {
 		switch err.Code {
 		case entityprovider.ErrorCodeEntityNotFound:
@@ -342,7 +342,7 @@ func (i *identifyingExecutor) searchCandidates(ctx context.Context,
 		}
 	}
 
-	users, err := i.entityProvider.SearchEntities(searchableFilters)
+	users, err := i.entityProvider.SearchEntities(ctx, searchableFilters)
 	if err != nil {
 		if err.Code == entityprovider.ErrorCodeEntityNotFound {
 			logger.Debug(ctx, "No users found for the provided filters")

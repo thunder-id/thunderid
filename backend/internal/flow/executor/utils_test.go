@@ -686,7 +686,7 @@ func (s *UtilsTestSuite) TestResolveAndSetMappedAuthorizationTargets_ExpandsSess
 		Return([]providers.AuthorizationTarget{{Type: providers.AuthorizationTargetGroup, ID: "child"}}, nil,
 			(*tidcommon.ServiceError)(nil))
 	mockEntityProvider := entityprovidermock.NewEntityProviderInterfaceMock(s.T())
-	mockEntityProvider.On("GetTransitiveGroupAncestors", "child").Return([]string{"parent"}, nil).Once()
+	mockEntityProvider.On("GetTransitiveGroupAncestors", mock.Anything, "child").Return([]string{"parent"}, nil).Once()
 	execResp := &providers.ExecutorResponse{}
 
 	_, _, err := resolveAndSetMappedAuthorizationTargets(context.Background(), execResp, mockIDPService,
@@ -734,7 +734,8 @@ func (s *UtilsTestSuite) TestResolveAndSetMappedAuthorizationTargets_Declarative
 				}, nil, (*tidcommon.ServiceError)(nil))
 			mockEntityProvider := entityprovidermock.NewEntityProviderInterfaceMock(s.T())
 			if tc.expandsAncestor {
-				mockEntityProvider.On("GetTransitiveGroupAncestors", "child").Return([]string{"parent"}, nil).Once()
+				mockEntityProvider.On("GetTransitiveGroupAncestors", mock.Anything, "child").
+					Return([]string{"parent"}, nil).Once()
 			}
 			execResp := &providers.ExecutorResponse{}
 
@@ -847,7 +848,7 @@ func runFederatedSignInSyncCase(
 			Return(nil, nil, (*tidcommon.ServiceError)(nil))
 	}
 	if tc.wantSync {
-		entities.On("SyncFederatedEntity", "local-user-123", providers.FederatedEntitySync{
+		entities.On("SyncFederatedEntity", mock.Anything, "local-user-123", providers.FederatedEntitySync{
 			AttributesByType: map[string]map[string]interface{}{"Person": {"email": "new@example.com"}},
 		}).Return(nil, tc.syncErr).Once()
 	}

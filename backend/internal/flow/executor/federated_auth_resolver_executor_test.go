@@ -355,7 +355,7 @@ func (suite *FederatedAuthResolverTestSuite) TestExecute_SyncsTheResolvedUser() 
 	pending := federatedSync{
 		Entity: providers.FederatedEntitySync{Groups: &providers.MembershipSync{IDs: []string{"g1"}}},
 	}
-	suite.mockEntity.On("SyncFederatedEntity", "user-1", pending.Entity).Return(nil, nil).Once()
+	suite.mockEntity.On("SyncFederatedEntity", mock.Anything, "user-1", pending.Entity).Return(nil, nil).Once()
 
 	resp, err := suite.executeResolvedWithPendingSync(pending)
 
@@ -367,7 +367,7 @@ func (suite *FederatedAuthResolverTestSuite) TestExecute_RejectedSyncFailsSignIn
 	pending := federatedSync{
 		Entity: providers.FederatedEntitySync{Groups: &providers.MembershipSync{IDs: []string{"g1"}}},
 	}
-	suite.mockEntity.On("SyncFederatedEntity", "user-1", pending.Entity).Return(nil,
+	suite.mockEntity.On("SyncFederatedEntity", mock.Anything, "user-1", pending.Entity).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSyncRejected, "Sync rejected", "denied")).Once()
 
 	resp, err := suite.executeResolvedWithPendingSync(pending)
@@ -378,7 +378,7 @@ func (suite *FederatedAuthResolverTestSuite) TestExecute_RejectedSyncFailsSignIn
 }
 
 func (suite *FederatedAuthResolverTestSuite) TestExecute_SyncServerErrorIsReturned() {
-	suite.mockEntity.On("SyncFederatedEntity", "user-1", mock.Anything).Return(nil,
+	suite.mockEntity.On("SyncFederatedEntity", mock.Anything, "user-1", mock.Anything).Return(nil,
 		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "System error", "db down")).Once()
 
 	resp, err := suite.executeResolvedWithPendingSync(

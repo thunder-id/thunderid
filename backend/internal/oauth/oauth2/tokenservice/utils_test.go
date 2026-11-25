@@ -914,7 +914,7 @@ func newOAuthAppForOwnAttributes(clientAttributes []string) *providers.OAuthClie
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_ResolvesRegardlessOfEntityCategory() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
-	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
+	actors.On("GetActor", mock.Anything, testBCCAppID).Return(&providers.Entity{
 		ID:         testBCCAppID,
 		Attributes: []byte(`{"modelProvider":"anthropic"}`),
 	}, (*tidcommon.ServiceError)(nil))
@@ -939,7 +939,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_NoClientAttributesConfigu
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentOwnAttributes_HappyPath() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
-	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
+	actors.On("GetActor", mock.Anything, testBCCAppID).Return(&providers.Entity{
 		ID:         testBCCAppID,
 		Attributes: []byte(`{"modelProvider":"anthropic","model":"claude","unrequested":"x"}`),
 	}, (*tidcommon.ServiceError)(nil))
@@ -955,7 +955,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentOwnAttributes_HappyP
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentOwnAttributes_SkipsReservedClaimNames() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
-	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
+	actors.On("GetActor", mock.Anything, testBCCAppID).Return(&providers.Entity{
 		ID:         testBCCAppID,
 		Attributes: []byte(`{"scope":"malicious-override","modelProvider":"anthropic"}`),
 	}, (*tidcommon.ServiceError)(nil))
@@ -970,7 +970,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentOwnAttributes_SkipsR
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentSystemAttributes_HappyPath() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
-	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
+	actors.On("GetActor", mock.Anything, testBCCAppID).Return(&providers.Entity{
 		ID:               testBCCAppID,
 		Category:         providers.EntityCategoryAgent,
 		Attributes:       []byte(`{"modelProvider":"anthropic"}`),
@@ -990,11 +990,11 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentSystemAttributes_Hap
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_GroupsAndRoles_Resolved() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
-	actors.On("GetActorGroups", testBCCAppID).Return([]providers.EntityGroup{
+	actors.On("GetActorGroups", mock.Anything, testBCCAppID).Return([]providers.EntityGroup{
 		{ID: "g1", Name: "engineering"},
 		{ID: "g2", Name: "admins"},
 	}, (*tidcommon.ServiceError)(nil))
-	actors.On("GetActorRoles", testBCCAppID, []string{"g1", "g2"}).
+	actors.On("GetActorRoles", mock.Anything, testBCCAppID, []string{"g1", "g2"}).
 		Return([]string{"admin", "editor"}, (*tidcommon.ServiceError)(nil))
 
 	app := newOAuthAppForOwnAttributes([]string{"groups", "roles"})
@@ -1008,7 +1008,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_GroupsAndRoles_Resolved()
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_GroupsOnly_DoesNotResolveRoles() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
-	actors.On("GetActorGroups", testBCCAppID).Return([]providers.EntityGroup{
+	actors.On("GetActorGroups", mock.Anything, testBCCAppID).Return([]providers.EntityGroup{
 		{ID: "g1", Name: "engineering"},
 	}, (*tidcommon.ServiceError)(nil))
 
@@ -1023,7 +1023,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_GroupsOnly_DoesNotResolve
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_GroupRoles_SkippedWhenNotRequested() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
-	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
+	actors.On("GetActor", mock.Anything, testBCCAppID).Return(&providers.Entity{
 		ID:         testBCCAppID,
 		Category:   providers.EntityCategoryAgent,
 		Attributes: []byte(`{"modelProvider":"anthropic"}`),
@@ -1042,7 +1042,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_GroupRoles_SkippedWhenNot
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_SystemAttributes_SkippedForNonAgentEntity() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
-	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
+	actors.On("GetActor", mock.Anything, testBCCAppID).Return(&providers.Entity{
 		ID:               testBCCAppID,
 		Category:         providers.EntityCategoryApp,
 		SystemAttributes: []byte(`{"name":"My App"}`),
@@ -1057,7 +1057,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_SystemAttributes_SkippedF
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_SystemAttributes_EmptyWhenNotStored() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
-	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
+	actors.On("GetActor", mock.Anything, testBCCAppID).Return(&providers.Entity{
 		ID:       testBCCAppID,
 		Category: providers.EntityCategoryAgent,
 	}, (*tidcommon.ServiceError)(nil))
@@ -1071,7 +1071,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_SystemAttributes_EmptyWhe
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_SystemAttributeWinsOverSchemaOnCollision() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
-	actors.On("GetActor", testBCCAppID).Return(&providers.Entity{
+	actors.On("GetActor", mock.Anything, testBCCAppID).Return(&providers.Entity{
 		ID:               testBCCAppID,
 		Category:         providers.EntityCategoryAgent,
 		Attributes:       []byte(`{"name":"schema-name"}`),
@@ -1087,7 +1087,7 @@ func (suite *UtilsTestSuite) TestBuildClientAttributes_SystemAttributeWinsOverSc
 
 func (suite *UtilsTestSuite) TestBuildClientAttributes_AgentGetActorError_ReturnsError() {
 	actors := actorprovidermock.NewActorProviderMock(suite.T())
-	actors.On("GetActor", testBCCAppID).Return(
+	actors.On("GetActor", mock.Anything, testBCCAppID).Return(
 		(*providers.Entity)(nil),
 		&tidcommon.ServiceError{
 			Code:  "AGT-0001",

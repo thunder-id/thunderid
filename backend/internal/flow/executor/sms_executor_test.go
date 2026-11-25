@@ -644,7 +644,7 @@ func (suite *SMSExecutorTestSuite) TestExecute_SendMode_IdentifiedUserGetsTheSto
 		suite.Run(name, func() {
 			suite.SetupTest()
 			entityProvider := entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
-			entityProvider.On("GetEntity", "test-user-id").Return(
+			entityProvider.On("GetEntity", mock.Anything, "test-user-id").Return(
 				&providers.Entity{ID: "test-user-id", Attributes: []byte(test.profile)}, nil)
 			suite.executor.entityProvider = entityProvider
 			ctx := &providers.NodeContext{
@@ -693,7 +693,7 @@ func (suite *SMSExecutorTestSuite) TestExecute_SendMode_IdentifiedUserProfileLoo
 			suite.SetupTest()
 			if !test.noProvider {
 				entityProvider := entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
-				entityProvider.On("GetEntity", "test-user-id").Return(nil, test.providerErr)
+				entityProvider.On("GetEntity", mock.Anything, "test-user-id").Return(nil, test.providerErr)
 				suite.executor.entityProvider = entityProvider
 			}
 			ctx := &providers.NodeContext{
@@ -753,7 +753,7 @@ func (suite *SMSExecutorTestSuite) TestExecute_SendMode_AuthenticatedUserGetsThe
 	authnProvider.On("GetEntityReference", mock.Anything, authUser).
 		Return(authUser, &providers.EntityReference{EntityID: "test-user-id"}, (*tidcommon.ServiceError)(nil))
 	entityProvider := entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
-	entityProvider.On("GetEntity", "test-user-id").Return(
+	entityProvider.On("GetEntity", mock.Anything, "test-user-id").Return(
 		&providers.Entity{ID: "test-user-id", Attributes: []byte(`{"mobile_number":"+94711111111"}`)}, nil)
 	suite.executor.authnProvider = authnProvider
 	suite.executor.entityProvider = entityProvider
@@ -788,7 +788,7 @@ func (suite *SMSExecutorTestSuite) TestExecute_SendMode_UserWithoutAStoredMobile
 		suite.Run(name, func() {
 			suite.SetupTest()
 			entityProvider := entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
-			entityProvider.On("GetEntity", "test-user-id").Return(
+			entityProvider.On("GetEntity", mock.Anything, "test-user-id").Return(
 				&providers.Entity{ID: "test-user-id", Attributes: []byte(`{"username":"testuser"}`)}, nil)
 			suite.executor.entityProvider = entityProvider
 			ctx := &providers.NodeContext{
@@ -838,7 +838,7 @@ func (suite *SMSExecutorTestSuite) TestExecute_SendMode_SignedInUserLookupFailsF
 			authnProvider.On("GetEntityReference", mock.Anything, authUser).
 				Return(authUser, (*providers.EntityReference)(nil), svcErr)
 			entityProvider := entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
-			entityProvider.On("GetEntity", "test-user-id").Return(
+			entityProvider.On("GetEntity", mock.Anything, "test-user-id").Return(
 				&providers.Entity{ID: "test-user-id", Attributes: []byte(`{"username":"testuser"}`)}, nil)
 			suite.executor.authnProvider = authnProvider
 			suite.executor.entityProvider = entityProvider

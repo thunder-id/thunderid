@@ -83,7 +83,7 @@ func newApplicationService(
 }
 
 func (as *applicationService) deleteEntityCompensation(ctx context.Context, appID string) {
-	if delErr := as.entityProvider.DeleteEntity(appID); delErr != nil {
+	if delErr := as.entityProvider.DeleteEntity(ctx, appID); delErr != nil {
 		as.logger.Error(ctx, "Failed to delete entity during compensation", log.Error(delErr),
 			log.String("appID", appID))
 	}
@@ -151,7 +151,7 @@ func (as *applicationService) CreateApplication(ctx context.Context, app *model.
 		return nil, &tidcommon.InternalServerError
 	}
 
-	_, epErr := as.entityProvider.CreateEntity(appEntity, sysCredsJSON)
+	_, epErr := as.entityProvider.CreateEntity(ctx, appEntity, sysCredsJSON)
 	if epErr != nil {
 		if svcErr := mapEntityProviderError(epErr); svcErr != nil {
 			return nil, svcErr
@@ -275,13 +275,13 @@ func (as *applicationService) ValidateApplication(ctx context.Context, app *mode
 // GetApplicationList list the applications.
 func (as *applicationService) GetApplicationList(
 	ctx context.Context) (*model.ApplicationListResponse, *tidcommon.ServiceError) {
-	totalResults, epErr := as.entityProvider.GetEntityListCount(providers.EntityCategoryApp, nil)
+	totalResults, epErr := as.entityProvider.GetEntityListCount(ctx, providers.EntityCategoryApp, nil)
 	if epErr != nil {
 		as.logger.Error(ctx, "Failed to count application entities", log.Error(epErr))
 		return nil, &tidcommon.InternalServerError
 	}
 
-	entities, epErr := as.entityProvider.GetEntityList(
+	entities, epErr := as.entityProvider.GetEntityList(ctx,
 		providers.EntityCategoryApp, serverconst.MaxCompositeStoreRecords, 0, nil)
 	if epErr != nil {
 		as.logger.Error(ctx, "Failed to list application entities", log.Error(epErr))
@@ -351,7 +351,7 @@ func (as *applicationService) GetOAuthApplication(
 		return nil, &ErrorApplicationNotFound
 	}
 
-	entity, epErr := as.entityProvider.GetEntity(client.ID)
+	entity, epErr := as.entityProvider.GetEntity(ctx, client.ID)
 	if epErr != nil && epErr.Code != entityprovider.ErrorCodeEntityNotFound {
 		as.logger.Error(ctx, "Failed to load entity for OAuth client",
 			log.String("entityID", client.ID), log.Error(epErr))
@@ -469,7 +469,7 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 		return &tidcommon.InternalServerError
 	}
 
-	if epErr := as.entityProvider.UpdateSystemAttributes(appID, sysAttrsJSON); epErr != nil {
+	if epErr := as.entityProvider.UpdateSystemAttributes(ctx, appID, sysAttrsJSON); epErr != nil {
 		if svcErr := mapEntityProviderError(epErr); svcErr != nil {
 			return svcErr
 		}
@@ -489,7 +489,7 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 			as.logger.Error(ctx, "Failed to build flow secret credentials for update", log.Error(marshalErr))
 			return &tidcommon.InternalServerError
 		}
-		if epErr := as.entityProvider.UpdateSystemCredentials(appID, flowSecretJSON); epErr != nil {
+		if epErr := as.entityProvider.UpdateSystemCredentials(ctx, appID, flowSecretJSON); epErr != nil {
 			if svcErr := mapEntityProviderError(epErr); svcErr != nil {
 				return svcErr
 			}
@@ -517,7 +517,7 @@ func (as *applicationService) updateEntityDataForApplicationUpdate(ctx context.C
 		return &tidcommon.InternalServerError
 	}
 
-	if epErr := as.entityProvider.UpdateSystemCredentials(appID, sysCredsJSON); epErr != nil {
+	if epErr := as.entityProvider.UpdateSystemCredentials(ctx, appID, sysCredsJSON); epErr != nil {
 		if svcErr := mapEntityProviderError(epErr); svcErr != nil {
 			return svcErr
 		}
@@ -590,7 +590,7 @@ func (as *applicationService) DeleteApplication(ctx context.Context, appID strin
 		return &ErrorInvalidApplicationID
 	}
 
-	if existing, epErr := as.entityProvider.GetEntity(appID); epErr != nil {
+	if existing, epErr := as.entityProvider.GetEntity(ctx, appID); epErr != nil {
 		if epErr.Code != entityprovider.ErrorCodeEntityNotFound {
 			as.logger.Error(ctx, "Failed to load entity before delete",
 				log.String("appID", appID), log.Error(epErr))
@@ -627,7 +627,7 @@ func (as *applicationService) DeleteApplication(ctx context.Context, appID strin
 	}
 
 	// Delete entity.
-	if epErr := as.entityProvider.DeleteEntity(appID); epErr != nil {
+	if epErr := as.entityProvider.DeleteEntity(ctx, appID); epErr != nil {
 		if svcErr := mapEntityProviderError(epErr); svcErr != nil {
 			return svcErr
 		}
@@ -656,7 +656,7 @@ func (as *applicationService) GetResourceDependencies(
 		return []resourcedependency.ResourceDependency{}, nil
 	}
 
-	entities, epErr := as.entityProvider.GetEntitiesByIDs(ids)
+	entities, epErr := as.entityProvider.GetEntitiesByIDs(ctx, ids)
 	if epErr != nil {
 		as.logger.Error(ctx, "Failed to get entities by IDs", log.Error(epErr))
 		return nil, epErr
@@ -728,7 +728,7 @@ func (as *applicationService) ValidateReferenceUpdate(
 // (used during declarative loading and updates where the entity already exists).
 func (as *applicationService) isIdentifierTaken(
 	ctx context.Context, key, value, excludeID string) (bool, *tidcommon.ServiceError) {
-	entityID, epErr := as.entityProvider.IdentifyEntity(map[string]interface{}{key: value})
+	entityID, epErr := as.entityProvider.IdentifyEntity(ctx, map[string]interface{}{key: value})
 	if epErr != nil {
 		if epErr.Code == entityprovider.ErrorCodeEntityNotFound {
 			return false, nil
@@ -758,7 +758,7 @@ func (as *applicationService) getApplication(
 		return nil, &ErrorApplicationNotFound
 	}
 
-	entity, epErr := as.entityProvider.GetEntity(appID)
+	entity, epErr := as.entityProvider.GetEntity(ctx, appID)
 	if epErr != nil {
 		if epErr.Code == entityprovider.ErrorCodeEntityNotFound {
 			entity = nil

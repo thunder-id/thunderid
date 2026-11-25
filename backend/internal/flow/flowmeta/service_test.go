@@ -86,7 +86,7 @@ func (suite *FlowMetaServiceTestSuite) expectInboundLookup(
 		SystemAttributes: sysAttrs,
 	}
 	suite.mockInboundClient.On("GetInboundClientByEntityID", mock.Anything, appID).Return(client, nil)
-	suite.mockEntityProvider.On("GetEntity", appID).
+	suite.mockEntityProvider.On("GetEntity", mock.Anything, appID).
 		Return(entity, (*entityprovider.EntityProviderError)(nil))
 }
 
