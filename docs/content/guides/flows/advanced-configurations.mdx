@@ -602,7 +602,7 @@ Sets credentials (e.g., password) for an existing user. Typically used in regist
 | `invalidate` | Removes the stored credential, revoking the user's tokens and ending their sessions. It runs only after the link was sent, so place it right after **Send Email**, with no View between them. If it fails, the link that was sent stops working (`FET-1140`). A reset that reaches it with no delivered link fails with `FET-1139`, which only a best-effort **Send Email** can cause. |
 | `set` (default) | In an administrator-initiated flow, sets only the credential the reset removed. Before it asks for anything, it fails, as an invalid link does, when the user's credentials changed after the reset started, such as by a later reset or a forgot password recovery, and refuses a suspended user. A changed credential fails with `FET-1073`. It reads the value only from a request after the one that opened the link, and asks for one masked input named after the credential, labelled with its display name, so point its **On Incomplete** at a View with a dynamic input placeholder. |
 
-Only string credentials can be reset this way; `validate` refuses a number credential.
+Only string credentials can be reset this way; `validate` refuses a number credential. In the flow builder, the **Operation** setting of the node selects the mode: **Set credentials**, **Validate credential reset**, or **Remove credential**. It offers the last two only in administrator-initiated flows. The **Administrator User Credential Reset with Email Link** template wires all three as the shipped flow does.
 
 </details>
 

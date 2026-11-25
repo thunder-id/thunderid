@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import {describe, expect, it} from 'vitest';
@@ -521,6 +521,38 @@ describe('resolveStepMetadata', () => {
       const result = resolveStepMetadata(resources, steps);
 
       expect(result[0].display.label).toBe('Generate OTP');
+    });
+
+    it.each([
+      {mode: 'validate', label: 'Validate Credential Reset'},
+      {mode: 'invalidate', label: 'Remove Credential'},
+      {mode: undefined, label: 'Set Credentials'},
+      {mode: 'unknown', label: 'Set Credentials'},
+    ])('should resolve mode $mode to its entry, wherever the entry without a mode is listed', ({mode, label}) => {
+      const steps: Step[] = [
+        createMockStep({
+          id: 'credential-step',
+          type: 'TASK_EXECUTION',
+          data: {action: {executor: {name: 'CredentialSetter', ...(mode ? {mode} : {})}}},
+        }),
+      ];
+      const entry = (entryLabel: string, entryMode?: string): Step =>
+        createMockStep({
+          type: 'TASK_EXECUTION',
+          display: {label: entryLabel, image: '/images/password.svg', showOnResourcePanel: true},
+          data: {action: {executor: {name: 'CredentialSetter', ...(entryMode ? {mode: entryMode} : {})}}},
+        });
+
+      const moded = [entry('Validate Credential Reset', 'validate'), entry('Remove Credential', 'invalidate')];
+
+      [
+        [entry('Set Credentials'), ...moded],
+        [...moded, entry('Set Credentials')],
+      ].forEach((executors) => {
+        const result = resolveStepMetadata(createMockResources({executors}), steps);
+
+        expect(result[0].display.label).toBe(label);
+      });
     });
 
     it('should merge executor display into step data as well', () => {

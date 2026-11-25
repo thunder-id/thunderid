@@ -190,4 +190,132 @@ describe('CredentialResetDialog', () => {
       expect(onReset).toHaveBeenCalledWith(pinField, '1234');
     });
   });
+
+  describe('with a reset link', () => {
+    const onSend = vi.fn();
+    const getLinkErrorMessage = vi.fn((error: Error) => `Could not send: ${error.message}`);
+    const SEND = {name: 'Send reset link'};
+
+    const renderWithLink = (heldReason?: string) =>
+      render(
+        <CredentialResetDialog
+          open
+          field={passwordField}
+          onReset={onReset}
+          getErrorMessage={getErrorMessage}
+          resetLink={{onSend, getErrorMessage: getLinkErrorMessage, heldReason}}
+          onClose={onClose}
+        />,
+      );
+
+    const chooseLink = () =>
+      fireEvent.click(screen.getByRole('radio', {name: 'Email the user a link to set a new password'}));
+
+    beforeEach(() => {
+      onSend.mockResolvedValue(undefined);
+    });
+
+    it('offers both ways, setting the value here first', () => {
+      renderWithLink();
+
+      expect(screen.getByRole('radiogroup', {name: 'How should the password be reset?'})).toBeInTheDocument();
+      expect(screen.getByRole('radio', {name: 'Set a new password now'})).toBeChecked();
+      expect(screen.getByPlaceholderText('Enter new password')).toBeInTheDocument();
+    });
+
+    it('offers no choice without a reset link', () => {
+      renderDialog();
+
+      expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    });
+
+    it('warns what the link does and sends it without asking for a value', async () => {
+      renderWithLink();
+
+      chooseLink();
+
+      expect(screen.getByText('The user will receive an email with a link to set a new password.')).toBeInTheDocument();
+      expect(screen.getByText(/^Password stops working once the email is sent/)).toBeInTheDocument();
+      expect(screen.queryByPlaceholderText('Enter new password')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', SEND));
+
+      await waitFor(() => {
+        expect(onClose).toHaveBeenCalledTimes(1);
+      });
+      expect(onSend).toHaveBeenCalledTimes(1);
+      expect(onReset).not.toHaveBeenCalled();
+    });
+
+    it("shows the link's own message when the send fails, and stays open", async () => {
+      onSend.mockRejectedValue(new Error('No email'));
+      renderWithLink();
+      chooseLink();
+
+      fireEvent.click(screen.getByRole('button', SEND));
+
+      expect(await screen.findByTestId('credential-reset-error')).toHaveTextContent('Could not send: No email');
+      expect(screen.getByRole('button', SEND)).toBeEnabled();
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('drops a failed send when the other way is chosen', async () => {
+      onSend.mockRejectedValue(new Error('No email'));
+      renderWithLink();
+      chooseLink();
+      fireEvent.click(screen.getByRole('button', SEND));
+      await screen.findByText('Could not send: No email');
+
+      fireEvent.click(screen.getByRole('radio', {name: 'Set a new password now'}));
+
+      expect(screen.queryByTestId('credential-reset-error')).not.toBeInTheDocument();
+    });
+
+    it('cannot be closed or switched while sending', async () => {
+      let finish: () => void = () => undefined;
+      onSend.mockReturnValue(new Promise<void>((resolve) => (finish = resolve)));
+      renderWithLink();
+      chooseLink();
+
+      fireEvent.click(screen.getByRole('button', SEND));
+
+      expect(await screen.findByRole('button', {name: 'Sending…'})).toBeDisabled();
+      expect(screen.getByRole('button', {name: 'Cancel'})).toBeDisabled();
+      expect(screen.getByRole('radio', {name: 'Set a new password now'})).toBeDisabled();
+      fireEvent.keyDown(screen.getByRole('dialog'), {key: 'Escape'});
+      expect(onClose).not.toHaveBeenCalled();
+
+      finish();
+      await waitFor(() => {
+        expect(onClose).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    it('shows a held link disabled with the reason, leaving the value to be set here', () => {
+      renderWithLink('Unsuspend the user to send a reset link.');
+
+      expect(screen.getByRole('radio', {name: 'Email the user a link to set a new password'})).toBeDisabled();
+      expect(screen.getByText('Unsuspend the user to send a reset link.')).toBeVisible();
+      expect(screen.getByRole('radio', {name: 'Set a new password now'})).toBeChecked();
+    });
+
+    it('opens on setting the value again after a cancelled send', () => {
+      const {rerender} = renderWithLink();
+      chooseLink();
+      fireEvent.click(screen.getByRole('button', {name: 'Cancel'}));
+
+      rerender(
+        <CredentialResetDialog
+          open
+          field={passwordField}
+          onReset={onReset}
+          getErrorMessage={getErrorMessage}
+          resetLink={{onSend, getErrorMessage: getLinkErrorMessage}}
+          onClose={onClose}
+        />,
+      );
+
+      expect(screen.getByRole('radio', {name: 'Set a new password now'})).toBeChecked();
+    });
+  });
 });

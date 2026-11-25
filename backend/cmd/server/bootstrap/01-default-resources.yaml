@@ -6255,14 +6255,14 @@ translations:
     allow: Allow
     deny: Deny
   invite:
-    validating: Validating your invite link...
+    validating: Checking your link...
     complete.title: Welcome Aboard!
     complete.description: Your account has been successfully set up. You can now sign in.
     complete.description.withApp: Your account has been successfully set up for {{appName}}. You can now sign in.
     complete.backToApp: Back to Application
     complete.backToApp.withApp: Back to {{appName}}
-    errors.invalid.title: Unable to verify invite
-    errors.invalid.description: This invite link is invalid or has expired.
+    errors.invalid.title: This link can't be used
+    errors.invalid.description: It is invalid or has expired. Ask for a new one.
     errors.failed.title: Error
     errors.failed.description: An error occurred. Please try again.
     goToSignIn: Go to Sign In

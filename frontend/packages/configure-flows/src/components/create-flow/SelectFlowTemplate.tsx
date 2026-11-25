@@ -79,6 +79,7 @@ const TEMPLATE_ICONS: Record<string, string[]> = {
   SELF_ATTRIBUTE_VERIFICATION: ['assets/images/icons/email-down.svg'],
   SELF_ATTRIBUTE_VERIFICATION_EMAIL_LINK: ['assets/images/icons/link.svg'],
   ADMIN_ATTRIBUTE_VERIFICATION_EMAIL_LINK: ['assets/images/icons/link.svg'],
+  ADMIN_USER_CREDENTIAL_RESET_EMAIL_LINK: ['assets/images/icons/password.svg'],
 };
 
 const DEVICE_TEMPLATE_ICONS: Record<string, ReactNode> = {

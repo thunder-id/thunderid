@@ -98,6 +98,12 @@ export const FlowStatus = {
 export const ADMINISTRATION_FLOW_TYPE = 'ADMINISTRATION';
 
 /**
+ * Flow type of the administrator-initiated flows, such as attribute verification and credential reset,
+ * that pause once they send the user a link.
+ */
+export const ADMIN_INITIATED_FLOW_TYPE = 'ADMIN_INITIATED';
+
+/**
  * Page size used when walking the flow listing to resolve a handle. Matches the server's maximum
  * page size, so the common case of a handful of administration flows resolves in one request. A
  * larger value is refused rather than clamped.
@@ -107,7 +113,8 @@ export const FLOW_PAGE_SIZE = 100;
 /**
  * `flow` server-config entries; an unset handle is the opt-out, running the native endpoint. The
  * account lifecycle actions and attribute verification have no native endpoint, so an unset handle
- * withholds them. Attribute verification names an `ADMIN_INITIATED` flow, which starts by handle.
+ * withholds them. Attribute verification and credential reset name an `ADMIN_INITIATED` flow, which
+ * starts by handle.
  */
 export const AdministrationFlowConfigKey = {
   USER_UNLOCK: 'userUnlockFlow',
@@ -119,6 +126,7 @@ export const AdministrationFlowConfigKey = {
   APPLICATION_SUSPEND: 'applicationSuspendFlow',
   APPLICATION_UNSUSPEND: 'applicationUnsuspendFlow',
   ADMIN_ATTRIBUTE_VERIFICATION: 'adminAttributeVerificationFlow',
+  ADMIN_USER_CREDENTIAL_RESET: 'adminUserCredentialResetFlow',
 } as const;
 
 export type AdministrationFlowConfigKeyValue =
@@ -131,6 +139,7 @@ export type AdministrationFlowConfigKeyValue =
 export const AdministrationFlowInput = {
   APPLICATION: 'targetApplicationId',
   ATTRIBUTE: 'attribute',
+  CREDENTIAL: 'credential',
   GROUP: 'targetGroupId',
   OPERATOR_NOTE: 'operatorNote',
   ROLE: 'targetRoleId',
@@ -258,6 +267,30 @@ export async function executeAdministrationFlow(
   }
 
   throw new FlowExecutionFailure(result.error ?? {}, `The ${action} flow did not complete`);
+}
+
+/**
+ * Starts the administrator-initiated flow a handle names for a subject and returns the response as is.
+ *
+ * The start is verbose because it fixes verbose mode for the whole execution, and the page the emailed
+ * link opens shows its form only in verbose mode. The flow pauses once it sends the link, so the caller
+ * decides what a successful start looks like; {@link executeAdministrationFlow} would treat the pause as
+ * a failure.
+ */
+export async function startAdminInitiatedFlow(
+  http: HttpLike,
+  serverUrl: string,
+  handle: string,
+  inputs: Record<string, string>,
+): Promise<FlowExecutionResponse> {
+  const response = await http.request({
+    url: `${serverUrl}/flow/execute`,
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    data: {flowType: ADMIN_INITIATED_FLOW_TYPE, handle, inputs, verbose: true},
+  });
+
+  return (response?.data ?? {}) as FlowExecutionResponse;
 }
 
 /**

@@ -389,6 +389,27 @@ For properties, input types, and node examples, see [Advanced Configurations](..
 
 </details>
 
+<details>
+  <summary>Build an administrator credential reset flow</summary>
+
+  An administrator credential reset flow emails a user a link to set a new password or other text credential, then removes the current one. Like the administrator attribute verification flow, it is started by an administrator for one user and finished by that user from the link. The Console starts the flow that `adminUserCredentialResetFlow` names when an administrator chooses to email a reset link in the reset dialog on the user's **Credentials** tab. See [Ask a User to Reset a Credential](../../users/manage-users#ask-a-user-to-reset-a-credential).
+
+  <ProductName /> ships `default-admin-user-credential-reset-flow`. Its **Send Email** node ships without an email provider, so the flow sends nothing until you select your email provider on that node and save the flow, as for the attribute verification flow. The link email uses the `admin-user-credential-reset` template.
+
+  Build a flow of your own:
+
+  1. In the Console, go to **Flows** → **+ Create New Flow**.
+  2. If your deployment has more than one organization unit, select the organization unit that owns the flow and click **Continue**. You cannot change it later. With exactly one organization unit, the Console skips this step.
+  3. Select **Administrator-initiated** as the flow type and click **Continue**.
+  4. Choose the **Administrator User Credential Reset with Email Link** template.
+  5. Give the flow a name and click **Create**.
+  6. The canvas opens with the template pre-wired. Select the email provider on the **Send Email** node, customize the steps as needed, then click **Save**.
+  7. Set `adminUserCredentialResetFlow.defaultHandle` to the flow's handle. See [Flow Defaults](../../../deployment/configuration#flow-defaults).
+
+  The template has three credential nodes, each set by its **Operation**. The node set to **Validate credential reset** checks the user and the credential before the link is sent. The node set to **Remove credential** removes the current value right after **Send Email**, with no View between them. The node set to **Set credentials** writes the value the user enters from the link. Keep that order in a flow of your own. See [Credential Verification and Management](../advanced-configurations#credential-verification-and-management).
+
+</details>
+
 ## Development Tips
 
 ### Always Wire Failure Outputs

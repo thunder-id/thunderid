@@ -167,6 +167,21 @@ const ADMIN_INITIATED_EMAIL_VERIFICATION_EMAIL_BODY = `<!DOCTYPE html>
 </html>
 `;
 
+const ADMIN_USER_CREDENTIAL_RESET_EMAIL_BODY = `<!DOCTYPE html>
+<html>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #181818;">
+  <h2>Reset your sign-in credential</h2>
+  <p>An administrator started a reset of your sign-in credential. Your current credential no longer works. Open the link below to set a new one:</p>
+  <p><a href="{{ctx(inviteLink)}}" style="display: inline-block; padding: 12px 24px;
+    background-color: #3a87ed; color: #fff; text-decoration: none;
+    border-radius: 4px; font-weight: bold;">Set a new credential</a></p>
+  <p>If the button above doesn't work, copy and paste the following link into your browser:</p>
+  <p style="word-break: break-all;"><a href="{{ctx(inviteLink)}}">{{ctx(inviteLink)}}</a></p>
+  <p>If you did not expect this request, contact your administrator.</p>
+</body>
+</html>
+`;
+
 /**
  * Hardcoded sample templates, mirroring the backend bootstrap defaults (per channel + handle). Keep
  * the {{ctx(...)}} keys aligned with the runtime executor keys so a sample resolves on send.
@@ -249,6 +264,17 @@ export const SAMPLE_TEMPLATES: readonly SampleNotificationTemplate[] = [
     },
     subject: 'Verify your email address',
     body: ADMIN_INITIATED_EMAIL_VERIFICATION_EMAIL_BODY,
+    colorScheme: 'light',
+  },
+  {
+    id: 'email-admin-user-credential-reset',
+    channel: 'email',
+    display: {
+      label: 'Administrator Initiated User Credential Reset',
+      description: 'Sent when an administrator asks a user to set a new sign-in credential.',
+    },
+    subject: 'Reset your sign-in credential',
+    body: ADMIN_USER_CREDENTIAL_RESET_EMAIL_BODY,
     colorScheme: 'light',
   },
   // ── SMS ────────────────────────────────────────────────────────────────
