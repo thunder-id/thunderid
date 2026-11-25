@@ -209,7 +209,7 @@ const CONTROL_PLANE_ADMINISTRATION: AdministrationConfig = {mode: Administration
 function projectDashboardRoutes(): JSX.Element {
   return (
     <>
-      <Route path={ROUTE_SEGMENTS.applications} element={<ApplicationsListPage />} />
+      <Route path={ROUTE_SEGMENTS.applications} element={<ApplicationsListPage createInProjectsOnly />} />
       {/* An application's client ID and endpoints differ in each environment it is deployed to. */}
       <Route
         path={`${ROUTE_SEGMENTS.applications}/:applicationId`}
@@ -219,7 +219,7 @@ function projectDashboardRoutes(): JSX.Element {
           </RuntimeEnvironmentsProvider>
         }
       />
-      <Route path={ROUTE_SEGMENTS.agents} element={<AgentsListPage />} />
+      <Route path={ROUTE_SEGMENTS.agents} element={<AgentsListPage createInProjectsOnly />} />
       {/* An agent's client ID and endpoints differ in each environment too. */}
       <Route
         path={`${ROUTE_SEGMENTS.agents}/:agentId`}
@@ -253,7 +253,7 @@ function projectDashboardRoutes(): JSX.Element {
       </Route>
       <Route path={ROUTE_SEGMENTS.groups} element={<GroupsListPage />} />
       <Route path={`${ROUTE_SEGMENTS.groups}/:groupId`} element={<GroupEditPage />} />
-      <Route path={ROUTE_SEGMENTS.flows} element={<FlowsListPage />} />
+      <Route path={ROUTE_SEGMENTS.flows} element={<FlowsListPage createInProjectsOnly />} />
       <Route
         path={ROUTE_SEGMENTS.verifiablePresentations}
         element={<VerifiablePresentationsListPage createInProjectsOnly />}
@@ -451,7 +451,7 @@ function projectFullScreenRoutes(): JSX.Element {
             index
             element={
               <CapabilityGuard resource="app" action="create">
-                <ApplicationTemplateSelectPage />
+                <ApplicationTemplateSelectPage createInProjectsOnly />
               </CapabilityGuard>
             }
           />
@@ -461,7 +461,7 @@ function projectFullScreenRoutes(): JSX.Element {
             index
             element={
               <CapabilityGuard resource="app" action="create">
-                <ApplicationCreatePage />
+                <ApplicationCreatePage createInProjectsOnly />
               </CapabilityGuard>
             }
           />
@@ -472,7 +472,7 @@ function projectFullScreenRoutes(): JSX.Element {
           index
           element={
             <CapabilityGuard resource="agent" action="create">
-              <AgentOnboardPage />
+              <AgentOnboardPage createInProjectsOnly />
             </CapabilityGuard>
           }
         />
@@ -492,7 +492,7 @@ function projectFullScreenRoutes(): JSX.Element {
           index
           element={
             <CapabilityGuard resource="flow" action="create">
-              <FlowCreatePage />
+              <FlowCreatePage createInProjectsOnly />
             </CapabilityGuard>
           }
         />
