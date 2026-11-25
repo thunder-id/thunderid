@@ -77,6 +77,8 @@ A connection variable can have an empty `defaultValue`, which means no connectio
 
 When the owner changes a sharing policy so that a unit can no longer change a variable, for example by pinning it, the value the unit saved for that variable is dropped. A later change to the flow, such as a lower maximum, is then not refused over a value the unit could not clear.
 
+A unit's own value for a connection variable is also dropped when the owner of the connection stops sharing that connection with the unit. The variable then falls back to the value the sharing policy sets, or to the `defaultValue` of the owner, and the flow ends with the error above if that is empty.
+
 A unit sees the value that applies to it: the value the sharing policy sets for it, or the `defaultValue` of the owner when the policy sets none. It does not see what the owner holds beyond that, such as options it may not choose or variables that no policy names for it. Its own override replaces that value, and you remove the override by leaving the variable out of a `PUT`.
 
 ## Declare Sharing in a File

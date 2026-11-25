@@ -1945,15 +1945,38 @@ func (s *sharingService) clearOverlayValues(
 func (s *sharingService) notifyVisibilityLost(
 	ctx context.Context, rt ResourceType, resourceID, ouID string,
 ) error {
-	decl, ok := s.registry.get(rt)
-	if !ok {
-		return nil
+	if decl, ok := s.registry.get(rt); ok {
+		if hooks, ok := decl.(PolicyHooks); ok {
+			if err := hooks.OnVisibilityLost(ctx, resourceID, ouID); err != nil {
+				return err
+			}
+		}
 	}
-	hooks, ok := decl.(PolicyHooks)
-	if !ok {
-		return nil
+	return s.dropValuesNaming(ctx, rt, resourceID, ouID)
+}
+
+// dropValuesNaming deletes the values a unit holds, for resources of any type that implements ReferenceHolder, that
+// name a resource the unit has lost. They are deleted rather than checked, as the framework does for every value a
+// unit can no longer hold, so a unit stops using what it can no longer see.
+func (s *sharingService) dropValuesNaming(
+	ctx context.Context, rt ResourceType, resourceID, ouID string,
+) error {
+	for _, decl := range s.registry.all() {
+		holder, ok := decl.(ReferenceHolder)
+		if !ok {
+			continue
+		}
+		refs, err := holder.OverlayValuesNaming(ctx, rt, resourceID, ouID)
+		if err != nil {
+			return fmt.Errorf("failed to list the values of %s naming %s %s: %w", decl.ResourceType(), rt, resourceID, err)
+		}
+		for _, ref := range refs {
+			if err := s.store.DeleteOverlayValue(ctx, ref.ResourceType, ref.ResourceID, ouID, ref.FieldKey); err != nil {
+				return fmt.Errorf("failed to drop a value of %s naming %s %s: %w", ref.ResourceID, rt, resourceID, err)
+			}
+		}
 	}
-	return hooks.OnVisibilityLost(ctx, resourceID, ouID)
+	return nil
 }
 
 // policyWriteHooks returns a resource type's PolicyWriteHooks, if its declaration implements them.

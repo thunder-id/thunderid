@@ -51,6 +51,17 @@ func (r *registry) register(decl ResourceOverlayFieldDeclaration) {
 	r.decls[decl.ResourceType()] = decl
 }
 
+// all returns every registered declaration.
+func (r *registry) all() []ResourceOverlayFieldDeclaration {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	decls := make([]ResourceOverlayFieldDeclaration, 0, len(r.decls))
+	for _, decl := range r.decls {
+		decls = append(decls, decl)
+	}
+	return decls
+}
+
 // get returns the declaration registered for resourceType, if any.
 func (r *registry) get(resourceType ResourceType) (ResourceOverlayFieldDeclaration, bool) {
 	r.mu.RLock()
