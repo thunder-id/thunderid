@@ -11,6 +11,13 @@ var serverConfigActions = []string{catalogActionView, catalogActionUpdate}
 // captured.
 var configVersionActions = []string{catalogActionView, catalogActionCreate}
 
+// importActions are the actions declared on import: importing resources and deleting them through an
+// import.
+var importActions = []string{catalogActionCreate, catalogActionDelete}
+
+// exportActions are the actions declared on export, which can only be created.
+var exportActions = []string{catalogActionCreate}
+
 // controlPlaneCatalog lists, in declaration order, each resource declared under the system root
 // resource on the Control Plane resource server and the actions declared on it. That resource server
 // (cmd/cpserver/idp-bootstrap/control-plane-resource-server.yaml) is imported into the identity
@@ -33,9 +40,13 @@ var controlPlaneCatalog = []catalogResource{
 	{ResourceTypeDesign, crudActions},
 	{ResourceTypeI18n, crudActions},
 	{ResourceTypeGateway, crudActions},
+	{ResourceTypeVariable, crudActions},
+	{ResourceTypeSecret, crudActions},
 	{ResourceTypeAuthorizationDetailType, crudActions},
 	{ResourceTypeServerConfig, serverConfigActions},
 	{ResourceTypeConfigurationVersion, configVersionActions},
+	{ResourceTypeImport, importActions},
+	{ResourceTypeExport, exportActions},
 }
 
 // InitControlPlanePermissions activates the control plane's permissions: the system root permission and
@@ -118,6 +129,17 @@ func InitControlPlanePermissions(handle string) {
 		GatewayCreate:              buildPermission(handle, "system", "gateway", catalogActionCreate),
 		GatewayUpdate:              buildPermission(handle, "system", "gateway", catalogActionUpdate),
 		GatewayDelete:              buildPermission(handle, "system", "gateway", catalogActionDelete),
+		VariableView:               buildPermission(handle, "system", "variable", catalogActionView),
+		VariableCreate:             buildPermission(handle, "system", "variable", catalogActionCreate),
+		VariableUpdate:             buildPermission(handle, "system", "variable", catalogActionUpdate),
+		VariableDelete:             buildPermission(handle, "system", "variable", catalogActionDelete),
+		SecretView:                 buildPermission(handle, "system", "secret", catalogActionView),
+		SecretCreate:               buildPermission(handle, "system", "secret", catalogActionCreate),
+		SecretUpdate:               buildPermission(handle, "system", "secret", catalogActionUpdate),
+		SecretDelete:               buildPermission(handle, "system", "secret", catalogActionDelete),
+		ImportCreate:               buildPermission(handle, "system", "import", catalogActionCreate),
+		ImportDelete:               buildPermission(handle, "system", "import", catalogActionDelete),
+		ExportCreate:               buildPermission(handle, "system", "export", catalogActionCreate),
 		ServerConfigView:           buildPermission(handle, "system", "serverconfig", catalogActionView),
 		ServerConfigUpdate:         buildPermission(handle, "system", "serverconfig", catalogActionUpdate),
 		ConfigVersionView:          buildPermission(handle, "system", "configversion", catalogActionView),

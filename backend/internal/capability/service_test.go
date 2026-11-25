@@ -55,7 +55,7 @@ func (s *ServiceTestSuite) TestReportsWhatTheBoundaryAllows() {
 		resp.Resources[security.ResourceTypeApplication])
 	s.True(resp.Resources[security.ResourceTypeProject]["view"])
 	s.Equal(map[string]bool{"view": false, "update": false}, resp.Resources[security.ResourceTypeServerConfig])
-	s.Equal(map[string]bool{"create": false, "delete": false}, resp.Resources[resourceImport])
+	s.Equal(map[string]bool{"create": false, "delete": false}, resp.Resources[security.ResourceTypeImport])
 }
 
 func (s *ServiceTestSuite) TestAnActionNeedsEveryDependency() {
@@ -135,13 +135,17 @@ func (s *ServiceTestSuite) TestRoutesNeedTheirPermission() {
 	s.allow()
 	s.authz.On("GetBoundary", mock.Anything).Return(sysauthz.Boundary{Type: sysauthz.BoundaryTypeDeployment})
 	ctx := security.WithSecurityContextTest(context.Background(),
-		security.NewSecurityContextForTest("admin", "ou-1", "token", []string{"system:app", "system:gateway"}, nil))
+		security.NewSecurityContextForTest("admin", "ou-1", "token",
+			[]string{"system:app", "system:gateway", "system:secret:view", "system:export"}, nil))
 
 	resp, svcErr := newCapabilityService(s.authz).GetCapabilities(ctx)
 
 	s.Require().Nil(svcErr)
-	s.False(resp.Resources[resourceExport]["create"])
-	s.False(resp.Resources[resourceGatewaySecret]["view"])
+	s.True(resp.Resources[security.ResourceTypeExport]["create"])
+	s.False(resp.Resources[security.ResourceTypeImport]["create"])
+	s.True(resp.Resources[security.ResourceTypeSecret]["view"])
+	s.False(resp.Resources[security.ResourceTypeSecret]["update"])
+	s.False(resp.Resources[security.ResourceTypeVariable]["view"])
 }
 
 func (s *ServiceTestSuite) TestReturnsTheAuthorizationError() {

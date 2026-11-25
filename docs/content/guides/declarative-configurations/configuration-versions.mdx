@@ -16,8 +16,9 @@ can revert it to the one it held before.
 
 - <ProductName /> running locally. See [Get <ProductName />](../../getting-started/get-thunderid.mdx).
 - A gateway registered on the control plane through `POST /gateways`.
-- An access token with the root system permission (the `system` scope by default). Every route on this
-  page requires it.
+- An access token with the root system permission (the `system` scope by default), which every route on
+  this page accepts. A narrower token needs the permission of each route it calls. See
+  [System Permissions](../users/manage-roles.mdx#system-permissions).
 
 ## Capture a Version
 
@@ -507,7 +508,8 @@ master records is answered with `404` (`GTW-1031`).
 ## Manage a Gateway's Values
 
 The control plane passes requests to the gateway's own variable store, presenting the gateway's key,
-and returns the gateway's answer unchanged.
+and returns the gateway's answer unchanged. These routes need the `variable` and `secret` permissions,
+such as `system:secret:update`, not the `gateway` permissions.
 
 | Route | Gateway route |
 |---|---|

@@ -391,7 +391,7 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
           routes: [
             {
               id: 'gateway-values',
-              resource: ['gatewayvariable', 'gatewaysecret'],
+              resource: ['variable', 'secret'],
               text: t('navigation:pages.variablesAndSecrets', 'Variables & secrets'),
               icon: <KeyRound />,
               path: section('values'),

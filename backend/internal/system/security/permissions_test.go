@@ -432,7 +432,7 @@ func TestResolveAPIPermission(t *testing.T) {
 
 	permission, ok := ResolveAPIPermission("POST /export")
 	assert.True(t, ok)
-	assert.Equal(t, p.Root, permission)
+	assert.Equal(t, p.ExportCreate, permission)
 
 	permission, ok = ResolveAPIPermission("GET /applications")
 	assert.True(t, ok)
@@ -445,11 +445,33 @@ func TestResolveAPIPermission(t *testing.T) {
 	// The rule listed first answers, as it does for a request.
 	permission, ok = ResolveAPIPermission("GET /gateways/*/variables/**")
 	assert.True(t, ok)
-	assert.Equal(t, p.Root, permission)
+	assert.Equal(t, p.VariableView, permission)
 
 	permission, ok = ResolveAPIPermission("GET /no-such-api")
 	assert.False(t, ok)
 	assert.Equal(t, p.Root, permission)
+}
+
+// TestDataPlaneGatewayStoresRequireSystem checks that the data plane keeps the system root permission on
+// a gateway's variable and secret stores, import and export, which have child permissions only on the
+// control plane.
+func TestDataPlaneGatewayStoresRequireSystem(t *testing.T) {
+	InitDataPlanePermissions("")
+	defer InitControlPlanePermissions("")
+	p := GetSystemPermissions()
+
+	for _, route := range []string{
+		"GET /gateways/*/variables/**", "PUT /gateways/*/variables/**",
+		"GET /gateways/*/secrets/**", "DELETE /gateways/*/secrets/**",
+		"POST /import", "POST /import/managed", "POST /import/delete", "POST /export",
+	} {
+		permission, ok := ResolveAPIPermission(route)
+		assert.True(t, ok, route)
+		assert.Equal(t, p.Root, permission, route)
+	}
+	for _, tool := range []string{"list_gateway_secrets", "set_gateway_variable", "import_configuration"} {
+		assert.Equal(t, p.Root, ResolveMCPToolPermission(tool), tool)
+	}
 }
 
 // TestResolveAPIPermissionMatchesRequests checks that each listed pattern resolves to the permission a
@@ -733,17 +755,31 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 			method: http.MethodGet, path: "/projects/p-1/deletion-check", wantPerm: p.ProjectDelete,
 		},
 		{
-			name:   "GET gateway variables needs root",
-			method: http.MethodGet, path: "/gateways/g-1/variables", wantPerm: p.Root,
+			name:   "GET gateway variables",
+			method: http.MethodGet, path: "/gateways/g-1/variables", wantPerm: p.VariableView,
 		},
 		{
-			name:   "PUT gateway secret needs root",
-			method: http.MethodPut, path: "/gateways/g-1/secrets/db-password", wantPerm: p.Root,
+			name:   "DELETE gateway variable",
+			method: http.MethodDelete, path: "/gateways/g-1/variables/api-url", wantPerm: p.VariableDelete,
 		},
 		{
-			name:   "POST gateway secret needs root",
-			method: http.MethodPost, path: "/gateways/g-1/secrets", wantPerm: p.Root,
+			name:   "GET gateway secrets",
+			method: http.MethodGet, path: "/gateways/g-1/secrets", wantPerm: p.SecretView,
 		},
+		{
+			name:   "PUT gateway secret",
+			method: http.MethodPut, path: "/gateways/g-1/secrets/db-password", wantPerm: p.SecretUpdate,
+		},
+		{
+			name:   "POST gateway secret",
+			method: http.MethodPost, path: "/gateways/g-1/secrets", wantPerm: p.SecretCreate,
+		},
+
+		// ---- Import and export APIs ----
+		{name: "POST /import", method: http.MethodPost, path: "/import", wantPerm: p.ImportCreate},
+		{name: "POST /import/managed", method: http.MethodPost, path: "/import/managed", wantPerm: p.ImportCreate},
+		{name: "POST /import/delete", method: http.MethodPost, path: "/import/delete", wantPerm: p.ImportDelete},
+		{name: "POST /export", method: http.MethodPost, path: "/export", wantPerm: p.ExportCreate},
 
 		// ---- Server configuration APIs ----
 		{name: "GET /server-config", method: http.MethodGet, path: "/server-config", wantPerm: p.ServerConfigView},
@@ -1358,16 +1394,9 @@ func TestRouteTableUsesCatalogPermissions(t *testing.T) {
 		"PUT /variables/**": true, "DELETE /variables/**": true,
 		"GET /secrets": true, "POST /secrets": true, "GET /secrets/**": true,
 		"PUT /secrets/**": true, "DELETE /secrets/**": true,
-		"POST /import": true, "POST /import/delete": true, "POST /import/managed": true,
-		"POST /export":     true,
 		"GET /users/*/ous": true,
 		// The administration flow permission is the root permission on the control plane.
 		"POST /flow/execute": true,
-		// A gateway's variable and secret stores hold credentials, as the server's own does.
-		"GET /gateways/*/variables/**": true, "POST /gateways/*/variables/**": true,
-		"PUT /gateways/*/variables/**": true, "DELETE /gateways/*/variables/**": true,
-		"GET /gateways/*/secrets/**": true, "POST /gateways/*/secrets/**": true,
-		"PUT /gateways/*/secrets/**": true, "DELETE /gateways/*/secrets/**": true,
 	}
 
 	for _, entry := range apiPermissionEntries {
@@ -1412,10 +1441,29 @@ func TestResourceRoutesUseResourcePermissions(t *testing.T) {
 		{ResourceTypeDesign, []string{" /design/"}},
 		{ResourceTypeI18n, []string{" /i18n/"}},
 		{ResourceTypeGateway, []string{" /gateways"}},
+		{ResourceTypeVariable, []string{" /gateways/*/variables"}},
+		{ResourceTypeSecret, []string{" /gateways/*/secrets"}},
 		{ResourceTypeServerConfig, []string{" /server-config"}},
 		{ResourceTypeConfigurationVersion, []string{" /configuration-versions"}},
 		{ResourceTypeAuthorizationDetailType, []string{" /authorization-detail-types"}},
 		{ResourceTypeFlow, []string{" /flows"}},
+		{ResourceTypeImport, []string{" /import"}},
+		{ResourceTypeExport, []string{" /export"}},
+	}
+
+	// A route belongs to the resource with the longest path it contains, so a gateway's variable and
+	// secret routes belong to those resources rather than to the gateway.
+	owner := func(pattern string) ResourceType {
+		var resource ResourceType
+		longest := 0
+		for _, r := range resources {
+			for _, path := range r.paths {
+				if strings.Contains(pattern, path) && len(path) > longest {
+					resource, longest = r.resource, len(path)
+				}
+			}
+		}
+		return resource
 	}
 
 	for _, r := range resources {
@@ -1430,11 +1478,7 @@ func TestResourceRoutesUseResourcePermissions(t *testing.T) {
 
 			found := 0
 			for _, entry := range apiPermissionEntries {
-				matches := false
-				for _, path := range r.paths {
-					matches = matches || strings.Contains(entry.pattern, path)
-				}
-				if !matches || entry.permission == p.Root || entry.permission == "" {
+				if owner(entry.pattern) != r.resource || entry.permission == p.Root || entry.permission == "" {
 					continue
 				}
 				found++
@@ -1459,6 +1503,26 @@ func TestMCPToolPermissionsUseCatalogPermissions(t *testing.T) {
 		assert.Equal(t, p.Root, ResolveMCPToolPermission("unmapped_tool"))
 	}
 	InitControlPlanePermissions("")
+}
+
+// TestGatewayStoreAndTransferToolsUseTheirPermissions checks that a gateway's variable and secret tools,
+// and the import and export tools, require the permission of the API each one stands for.
+func TestGatewayStoreAndTransferToolsUseTheirPermissions(t *testing.T) {
+	InitControlPlanePermissions("")
+	p := GetSystemPermissions()
+
+	for tool, want := range map[string]string{
+		"list_gateway_variables":  p.VariableView,
+		"set_gateway_variable":    p.VariableUpdate,
+		"delete_gateway_variable": p.VariableDelete,
+		"list_gateway_secrets":    p.SecretView,
+		"set_gateway_secret":      p.SecretUpdate,
+		"delete_gateway_secret":   p.SecretDelete,
+		"import_configuration":    p.ImportCreate,
+		"export_configuration":    p.ExportCreate,
+	} {
+		assert.Equal(t, want, ResolveMCPToolPermission(tool), tool)
+	}
 }
 
 func (suite *SecurityContextTestSuite) TestPermissionCovers() {

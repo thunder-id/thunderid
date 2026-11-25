@@ -104,6 +104,14 @@ const (
 	ResourceTypeServerConfig ResourceType = "serverconfig"
 	// ResourceTypeConfigurationVersion identifies a configuration version resource.
 	ResourceTypeConfigurationVersion ResourceType = "configversion"
+	// ResourceTypeVariable identifies the variables a gateway holds.
+	ResourceTypeVariable ResourceType = "variable"
+	// ResourceTypeSecret identifies the secrets a gateway holds.
+	ResourceTypeSecret ResourceType = "secret"
+	// ResourceTypeImport identifies a configuration import.
+	ResourceTypeImport ResourceType = "import"
+	// ResourceTypeExport identifies a configuration export.
+	ResourceTypeExport ResourceType = "export"
 )
 
 // ---- Permission catalog ----
@@ -447,6 +455,17 @@ type SystemPermissions struct {
 	GatewayCreate              string
 	GatewayUpdate              string
 	GatewayDelete              string
+	VariableView               string
+	VariableCreate             string
+	VariableUpdate             string
+	VariableDelete             string
+	SecretView                 string
+	SecretCreate               string
+	SecretUpdate               string
+	SecretDelete               string
+	ImportCreate               string
+	ImportDelete               string
+	ExportCreate               string
 	ServerConfigView           string
 	ServerConfigUpdate         string
 	ConfigVersionView          string
@@ -792,17 +811,17 @@ func activatePermissions(p *SystemPermissions) {
 		{"POST /i18n/languages/*/translations/ns/*/keys/*", p.I18nUpdate},
 		{"DELETE /i18n/languages/*/translations/ns/*/keys/*", p.I18nDelete},
 
-		// Gateway APIs. A gateway's variable and secret stores hold credentials, so they require root, as
-		// the server's own variable store does. Applying or reverting a configuration updates the
+		// Gateway APIs. A gateway's variable and secret stores hold credentials, so they require their
+		// own permissions rather than the gateway's. Applying or reverting a configuration updates the
 		// gateway. These rules are listed before the "**" rules.
-		{"GET /gateways/*/variables/**", p.Root},
-		{"POST /gateways/*/variables/**", p.Root},
-		{"PUT /gateways/*/variables/**", p.Root},
-		{"DELETE /gateways/*/variables/**", p.Root},
-		{"GET /gateways/*/secrets/**", p.Root},
-		{"POST /gateways/*/secrets/**", p.Root},
-		{"PUT /gateways/*/secrets/**", p.Root},
-		{"DELETE /gateways/*/secrets/**", p.Root},
+		{"GET /gateways/*/variables/**", p.VariableView},
+		{"POST /gateways/*/variables/**", p.VariableCreate},
+		{"PUT /gateways/*/variables/**", p.VariableUpdate},
+		{"DELETE /gateways/*/variables/**", p.VariableDelete},
+		{"GET /gateways/*/secrets/**", p.SecretView},
+		{"POST /gateways/*/secrets/**", p.SecretCreate},
+		{"PUT /gateways/*/secrets/**", p.SecretUpdate},
+		{"DELETE /gateways/*/secrets/**", p.SecretDelete},
 		{"GET /gateways", p.GatewayView},
 		{"POST /gateways", p.GatewayCreate},
 		{"POST /gateways/*/apply", p.GatewayUpdate},
@@ -864,11 +883,13 @@ func activatePermissions(p *SystemPermissions) {
 		{"PUT /notification-templates/**", p.NotificationTemplateUpdate},
 		{"DELETE /notification-templates/**", p.NotificationTemplateDelete},
 
-		// Import and export APIs.
-		{"POST /import", p.Root},
-		{"POST /import/delete", p.Root},
-		{"POST /import/managed", p.Root},
-		{"POST /export", p.Root},
+		// Import and export APIs. Each resource an import writes or an export reads also checks the
+		// caller's permission for it, except gateways and projects, which an import writes on its own
+		// permission.
+		{"POST /import", p.ImportCreate},
+		{"POST /import/delete", p.ImportDelete},
+		{"POST /import/managed", p.ImportCreate},
+		{"POST /export", p.ExportCreate},
 	}
 
 	mcpToolPermissions = map[string]string{
@@ -928,8 +949,8 @@ func activatePermissions(p *SystemPermissions) {
 		// Design tools.
 		"list_themes":     p.DesignView,
 		"get_theme_by_id": p.DesignView,
-		// Gateway and configuration version tools. A gateway's variable and secret tools stay root, as
-		// their APIs do.
+		// Gateway and configuration version tools. A gateway's variable and secret tools require the
+		// permissions their APIs do; setting a value creates it when the gateway does not hold it.
 		"list_gateways":                 p.GatewayView,
 		"get_gateway_applied_version":   p.GatewayView,
 		"get_gateway_configuration":     p.GatewayView,
@@ -937,9 +958,19 @@ func activatePermissions(p *SystemPermissions) {
 		"deploy_version":                p.GatewayUpdate,
 		"promote_gateway":               p.GatewayUpdate,
 		"rollback_gateway":              p.GatewayUpdate,
+		"list_gateway_variables":        p.VariableView,
+		"set_gateway_variable":          p.VariableUpdate,
+		"delete_gateway_variable":       p.VariableDelete,
+		"list_gateway_secrets":          p.SecretView,
+		"set_gateway_secret":            p.SecretUpdate,
+		"delete_gateway_secret":         p.SecretDelete,
 		"list_configuration_versions":   p.ConfigVersionView,
 		"get_configuration_version":     p.ConfigVersionView,
 		"capture_configuration_version": p.ConfigVersionCreate,
+
+		// Import and export tools.
+		"import_configuration": p.ImportCreate,
+		"export_configuration": p.ExportCreate,
 
 		// Authorization detail type tools.
 		"list_authorization_detail_types":     p.AuthzDetailView,

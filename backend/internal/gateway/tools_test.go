@@ -255,13 +255,9 @@ func (s *GatewayToolsTestSuite) TestGatewayValues() {
 }
 
 // TestRegisteredToolsRequireGatewayPermissions verifies that every gateway MCP tool is mapped to a gateway
-// or configuration version catalog permission, except the variable and secret tools, which require root
-// as their APIs do.
+// or configuration version catalog permission, except the variable and secret tools, which require the
+// variable and secret permissions their APIs do.
 func (s *GatewayToolsTestSuite) TestRegisteredToolsRequireGatewayPermissions() {
-	rootTools := map[string]bool{
-		"list_gateway_variables": true, "set_gateway_variable": true, "delete_gateway_variable": true,
-		"list_gateway_secrets": true, "set_gateway_secret": true, "delete_gateway_secret": true,
-	}
 	tools, err := s.session.ListTools(context.Background(), nil)
 	s.Require().NoError(err)
 
@@ -269,9 +265,14 @@ func (s *GatewayToolsTestSuite) TestRegisteredToolsRequireGatewayPermissions() {
 	security.ForEachPermissionPlaneForTest(func(plane string) {
 		s.Run(plane, func() {
 			p := security.GetSystemPermissions()
+			valueTools := map[string]string{
+				"list_gateway_variables": p.VariableView, "set_gateway_variable": p.VariableUpdate,
+				"delete_gateway_variable": p.VariableDelete, "list_gateway_secrets": p.SecretView,
+				"set_gateway_secret": p.SecretUpdate, "delete_gateway_secret": p.SecretDelete,
+			}
 			for _, registered := range tools.Tools {
-				if rootTools[registered.Name] {
-					s.Equal(p.Root, security.ResolveMCPToolPermission(registered.Name), registered.Name)
+				if want, ok := valueTools[registered.Name]; ok {
+					s.Equal(want, security.ResolveMCPToolPermission(registered.Name), registered.Name)
 					continue
 				}
 				s.Contains([]string{p.GatewayView, p.GatewayUpdate, p.ConfigVersionView, p.ConfigVersionCreate},
