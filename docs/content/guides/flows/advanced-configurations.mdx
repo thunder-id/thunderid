@@ -2803,6 +2803,10 @@ Checks submitted values for attributes marked unique in the selected user or age
 
 **Input Configuration:** The executor checks values already in submitted inputs. It does not declare default inputs. Values omitted from the form are left for provisioning and the management service to validate.
 
+**Properties:**
+
+- `allowCrossOUProvisioning` (optional, default `false`): set this on flows that provision users with cross-OU provisioning enabled, so one user can hold an account in more than one organization unit. The executor then checks `email` against the target organization unit rather than the whole deployment, and asks for another address when a user there already holds it. It resolves that unit the way the provisioning executor places a new entity, so set `provisioningOU` on this node to match the provisioning node whenever that node does not use the resolved unit. Users holding the same address in other organization units are left alone, and every other unique attribute stays deployment-wide. Without it, a user invited to an organization unit they already belong to only fails later, at provisioning. It applies to the user category only, and the flow must resolve a target organization unit before this node runs.
+
 **Agent example:**
 
 ```json
