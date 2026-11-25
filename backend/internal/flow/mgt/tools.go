@@ -79,8 +79,9 @@ Key Requirements:
 - Transitions: Use onSuccess/onFailure node IDs to define the path.`,
 		InputSchema: getCreateFlowSchema(),
 		Annotations: &mcp.ToolAnnotations{
-			Title:          "Create Flow",
-			IdempotentHint: false,
+			Title:           "Create Flow",
+			DestructiveHint: new(false),
+			IdempotentHint:  false,
 		},
 	}, tools.createFlow)
 
@@ -98,8 +99,9 @@ Workflow:
 Flow versions are automatically tracked. Updating creates a new version.`,
 		InputSchema: getUpdateFlowSchema(),
 		Annotations: &mcp.ToolAnnotations{
-			Title:          "Update Flow",
-			IdempotentHint: true,
+			Title:           "Update Flow",
+			DestructiveHint: new(true),
+			IdempotentHint:  true,
 		},
 	}, tools.updateFlow)
 }

@@ -162,6 +162,21 @@ func (s *TypeToolsTestSuite) TestToolsOverMCP() {
 		"get_authorization_detail_type_by_id", "create_authorization_detail_type",
 		"update_authorization_detail_type"}, names)
 
+	tools, err := session.ListTools(ctx, nil)
+	s.Require().NoError(err)
+	byName := map[string]*mcp.Tool{}
+	for _, registered := range tools.Tools {
+		byName[registered.Name] = registered
+	}
+	for name, destructive := range map[string]bool{
+		"create_authorization_detail_type": false,
+		"update_authorization_detail_type": true,
+	} {
+		s.Require().Contains(byName, name)
+		s.Require().NotNil(byName[name].Annotations.DestructiveHint, name)
+		s.Equal(destructive, *byName[name].Annotations.DestructiveHint, name)
+	}
+
 	// Every tool is mapped to an authorization detail type permission, so none falls back to root.
 	security.ForEachPermissionPlaneForTest(func(plane string) {
 		s.Run(plane, func() {

@@ -513,7 +513,8 @@ func (suite *ApplicationToolsTestSuite) TestRegisterMCPTools() {
 }
 
 // TestRegisteredToolsRequireApplicationPermissions verifies that every application MCP tool is mapped
-// to an application catalog permission, so none falls back to root by accident.
+// to an application catalog permission, so none falls back to root by accident, and that each write
+// tool states whether it is destructive.
 func (suite *ApplicationToolsTestSuite) TestRegisteredToolsRequireApplicationPermissions() {
 	server := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "1.0.0"}, nil)
 	registerMCPTools(server, NewApplicationServiceInterfaceMock(suite.T()))
@@ -530,6 +531,19 @@ func (suite *ApplicationToolsTestSuite) TestRegisteredToolsRequireApplicationPer
 	suite.Require().NoError(err)
 
 	suite.Require().NotEmpty(tools.Tools)
+	byName := map[string]*mcp.Tool{}
+	for _, registered := range tools.Tools {
+		byName[registered.Name] = registered
+	}
+	for name, destructive := range map[string]bool{
+		"create_application":            false,
+		"update_application":            true,
+		"regenerate_application_secret": true,
+	} {
+		suite.Require().Contains(byName, name)
+		suite.Require().NotNil(byName[name].Annotations.DestructiveHint, name)
+		suite.Equal(destructive, *byName[name].Annotations.DestructiveHint, name)
+	}
 	security.ForEachPermissionPlaneForTest(func(plane string) {
 		suite.Run(plane, func() {
 			p := security.GetSystemPermissions()

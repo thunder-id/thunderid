@@ -492,7 +492,8 @@ func (suite *FlowToolsTestSuite) TestRegisterMCPTools() {
 }
 
 // TestRegisteredToolsRequireFlowPermissions verifies that every flow MCP tool is mapped to a flow
-// catalog permission, so none falls back to root by accident.
+// catalog permission, so none falls back to root by accident, and that each write tool states whether
+// it is destructive.
 func (suite *FlowToolsTestSuite) TestRegisteredToolsRequireFlowPermissions() {
 	server := mcp.NewServer(&mcp.Implementation{Name: "test-server", Version: "1.0.0"}, nil)
 	registerMCPTools(server, NewFlowMgtServiceInterfaceMock(suite.T()))
@@ -509,6 +510,15 @@ func (suite *FlowToolsTestSuite) TestRegisteredToolsRequireFlowPermissions() {
 	suite.Require().NoError(err)
 
 	suite.Require().NotEmpty(tools.Tools)
+	byName := map[string]*mcp.Tool{}
+	for _, registered := range tools.Tools {
+		byName[registered.Name] = registered
+	}
+	for name, destructive := range map[string]bool{"create_flow": false, "update_flow": true} {
+		suite.Require().Contains(byName, name)
+		suite.Require().NotNil(byName[name].Annotations.DestructiveHint, name)
+		suite.Equal(destructive, *byName[name].Annotations.DestructiveHint, name)
+	}
 	security.ForEachPermissionPlaneForTest(func(plane string) {
 		suite.Run(plane, func() {
 			p := security.GetSystemPermissions()
