@@ -4,6 +4,7 @@
 package engine
 
 import (
+	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/role"
 	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 )
@@ -11,8 +12,9 @@ import (
 // Initialize creates the authorization engine implementations.
 func Initialize(
 	roleService role.RoleServiceInterface,
+	groupService group.GroupServiceInterface,
 	connectionService authZENPDPConnectionService,
 	client httpservice.HTTPClientInterface,
 ) (AuthorizationEngine, AuthorizationEngine) {
-	return newRBACEngine(roleService), newAuthZENPDPEngine(connectionService, client)
+	return newRBACEngine(roleService), newAuthZENPDPEngine(connectionService, roleService, groupService, client)
 }
