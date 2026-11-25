@@ -1,13 +1,15 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {FormLabel, MenuItem, Select, Stack, Typography} from '@wso2/oxygen-ui';
+import {OrganizationUnitTreePicker} from '@thunderid/configure-organization-units';
+import {useProjectScope} from '@thunderid/contexts';
+import {FormControl, FormLabel, MenuItem, Select, Stack, Typography} from '@wso2/oxygen-ui';
 import {useCallback, useContext, useMemo, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import CheckboxWithHint from './CheckboxWithHint';
 import {OU_RESOLVE_FROM_OPTIONS} from './constants';
-import DraftTextField from './DraftTextField';
 import type {CommonResourcePropertiesPropsInterface} from './types';
+import FlowOrganizationUnitContext from '../../../../context/FlowOrganizationUnitContext';
 import FlowTypeContext from '../../../../context/FlowTypeContext';
 import {FlowType} from '../../../../models/flows';
 import type {StepData} from '../../../../models/steps';
@@ -16,6 +18,8 @@ import {PARENT_OU_ID_PLACEHOLDER} from '../../../../utils/parentOrganizationUnit
 function OUResolverProperties({resource, onChange}: CommonResourcePropertiesPropsInterface): ReactNode {
   const {t} = useTranslation();
   const flowType = useContext(FlowTypeContext);
+  const flowOuId = useContext(FlowOrganizationUnitContext);
+  const {projectId} = useProjectScope();
 
   const properties = useMemo(() => {
     const stepData = resource?.data as StepData | undefined;
@@ -70,19 +74,26 @@ function OUResolverProperties({resource, onChange}: CommonResourcePropertiesProp
       </div>
 
       {currentResolveFrom === 'prompt' && flowType === FlowType.AUTHENTICATION && (
-        <DraftTextField
-          labelPlacement="top"
-          label={t('flows:core.executions.ouResolver.parentOuId.label', 'Parent OU ID')}
-          helperText={t('flows:core.executions.ouResolver.parentOuId.hint', 'Users select an OU below this one.')}
-          id="parent-ou-id"
-          value={parentOuId}
-          onCommit={(value) => onChange('data.properties.parentOuId', value.trim(), resource)}
-          placeholder={t('flows:core.executions.ouResolver.parentOuId.placeholder', 'OU ID')}
-          required
-          error={parentOuId.trim() === ''}
-          fullWidth
-          size="small"
-        />
+        <FormControl fullWidth required error={parentOuId === ''}>
+          <FormLabel htmlFor="parent-ou-id">
+            {t('flows:core.executions.ouResolver.parentOuId.label', 'Parent OU')}
+          </FormLabel>
+          <OrganizationUnitTreePicker
+            id="parent-ou-id"
+            value={parentOuId}
+            onChange={(ouId: string) => onChange('data.properties.parentOuId', ouId, resource)}
+            error={parentOuId === ''}
+            helperText={
+              parentOuId === ''
+                ? t('flows:core.executions.ouResolver.parentOuId.required', 'Select the parent OU.')
+                : t('flows:core.executions.ouResolver.parentOuId.hint', 'Users select an OU below this one.')
+            }
+            maxHeight={240}
+            projectId={projectId}
+            withinOuId={flowOuId}
+            rootOuId={projectId ? undefined : flowOuId}
+          />
+        </FormControl>
       )}
 
       {currentResolveFrom === 'prompt' && (

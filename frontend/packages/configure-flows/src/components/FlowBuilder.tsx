@@ -32,6 +32,7 @@ import SsoDisableConfirmDialog from '../components/SsoDisableConfirmDialog';
 import SsoToggle from '../components/SsoToggle';
 import FlowConstants from '../constants/FlowConstants';
 import CompactStacksContext from '../context/CompactStacksContext';
+import FlowOrganizationUnitContext from '../context/FlowOrganizationUnitContext';
 import FlowTypeContext from '../context/FlowTypeContext';
 import useEdgeGeneration from '../hooks/useEdgeGeneration';
 import useElementAddition from '../hooks/useElementAddition';
@@ -863,43 +864,45 @@ function FlowBuilder() {
         )
       )}
       <FlowTypeContext.Provider value={flowType}>
-        <CompactStacksContext.Provider value={compactStacksContextValue}>
-          <FlowCanvas
-            resources={resources}
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            mutateComponents={mutateComponents}
-            onTemplateLoad={handleTemplateLoad}
-            onWidgetLoad={handleWidgetLoad}
-            onStepLoad={handleStepLoad}
-            onResourceAdd={handleResourceAdd}
-            onSave={isReadOnlyFlow ? undefined : saveFlow}
-            nodes={displayNodes}
-            sourceNodes={nodes}
-            sourceEdges={edges}
-            onDeleteRefused={showError}
-            edges={displayEdges}
-            setNodes={setNodes}
-            setEdges={setEdges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onEdgeClick={sso.handleEdgeClick}
-            flowTitle={flowName}
-            flowStatus={flowStatus}
-            flowHandle={flowHandle}
-            onFlowTitleChange={handleFlowNameChange}
-            triggerAutoLayoutOnLoad={needsAutoLayout}
-            resourcePanelFooter={ssoToggleFooter}
-            onUndo={undo}
-            onRedo={redo}
-            canUndo={canUndo}
-            canRedo={canRedo}
-            isDirty={isDirty || sharingAccess.hasChanges}
-            sharing={sharedFlow}
-            sharingAccess={sharingAccess}
-            saveBlockedReason={saveBlockedReason}
-          />
-        </CompactStacksContext.Provider>
+        <FlowOrganizationUnitContext.Provider value={existingFlowData?.ouId ?? initialFlowData?.ouId}>
+          <CompactStacksContext.Provider value={compactStacksContextValue}>
+            <FlowCanvas
+              resources={resources}
+              nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
+              mutateComponents={mutateComponents}
+              onTemplateLoad={handleTemplateLoad}
+              onWidgetLoad={handleWidgetLoad}
+              onStepLoad={handleStepLoad}
+              onResourceAdd={handleResourceAdd}
+              onSave={isReadOnlyFlow ? undefined : saveFlow}
+              nodes={displayNodes}
+              sourceNodes={nodes}
+              sourceEdges={edges}
+              onDeleteRefused={showError}
+              edges={displayEdges}
+              setNodes={setNodes}
+              setEdges={setEdges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onEdgeClick={sso.handleEdgeClick}
+              flowTitle={flowName}
+              flowStatus={flowStatus}
+              flowHandle={flowHandle}
+              onFlowTitleChange={handleFlowNameChange}
+              triggerAutoLayoutOnLoad={needsAutoLayout}
+              resourcePanelFooter={ssoToggleFooter}
+              onUndo={undo}
+              onRedo={redo}
+              canUndo={canUndo}
+              canRedo={canRedo}
+              isDirty={isDirty || sharingAccess.hasChanges}
+              sharing={sharedFlow}
+              sharingAccess={sharingAccess}
+              saveBlockedReason={saveBlockedReason}
+            />
+          </CompactStacksContext.Provider>
+        </FlowOrganizationUnitContext.Provider>
       </FlowTypeContext.Provider>
       <SsoDisableConfirmDialog
         open={sso.isConfirmDialogOpen}
