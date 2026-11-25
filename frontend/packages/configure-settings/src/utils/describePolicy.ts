@@ -1,9 +1,9 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {toDurationParts, type DurationParts, type DurationUnit} from '@thunderid/components';
 import type {TFunction} from 'i18next';
 import type {AccountLockForm} from './accountLockPayload';
-import {toDurationParts, type DurationParts, type DurationUnit} from './duration';
 import {LockGranularities, type AccountLockCategory} from '../models/accountAccess';
 
 /** Fallback copy for the dynamic keys, matching en-US. */

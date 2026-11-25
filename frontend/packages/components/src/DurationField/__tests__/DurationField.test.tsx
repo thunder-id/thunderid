@@ -88,6 +88,39 @@ describe('DurationField', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it('shows why while the box is empty or not a positive whole number', async () => {
+    render(<Harness initial={600} onChange={vi.fn()} />);
+    const input = screen.getByTestId('duration');
+
+    await userEvent.clear(input);
+    expect(screen.getByText('Enter a whole number of 1 or more.')).toBeInTheDocument();
+
+    await userEvent.type(input, '-5');
+    expect(screen.getByText('Enter a whole number of 1 or more.')).toBeInTheDocument();
+
+    await userEvent.clear(input);
+    await userEvent.type(input, '15');
+    expect(screen.queryByText('Enter a whole number of 1 or more.')).not.toBeInTheDocument();
+  });
+
+  it('shows the message it was given instead of its own', async () => {
+    render(<DurationField label="Lock duration" seconds={600} testId="duration" error="Too long" onChange={vi.fn()} />);
+
+    await userEvent.clear(screen.getByTestId('duration'));
+
+    expect(screen.getByText('Too long')).toBeInTheDocument();
+    expect(screen.queryByText('Enter a whole number of 1 or more.')).not.toBeInTheDocument();
+  });
+
+  it('puts the id on the number box, or on the unit list while the box is hidden', () => {
+    const {rerender} = render(<DurationField id="lock" label="Lock duration" seconds={300} onChange={vi.fn()} />);
+    expect(screen.getByRole('spinbutton')).toHaveAttribute('id', 'lock');
+
+    rerender(<DurationField id="lock" label="Lock duration" seconds={0} zeroLabel="No limit" onChange={vi.fn()} />);
+    expect(screen.queryByRole('spinbutton')).not.toBeInTheDocument();
+    expect(screen.getByRole('combobox')).toHaveAttribute('id', 'lock');
+  });
+
   // Reset and Save are buttons, so pressing one blurs the box before the parent value is read.
   it('does not leave an empty box behind a button press that keeps the value', async () => {
     render(

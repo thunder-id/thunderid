@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import type {AssertionConfig, OAuth2Config} from '@thunderid/configure-applications';
+import type {AssertionConfig, LoginConsentConfig, OAuth2Config} from '@thunderid/configure-applications';
 import type {AccessStatusReport} from '@thunderid/types';
 
 /**
@@ -16,9 +16,7 @@ export interface AgentInboundAuthConfig {
   config?: OAuthAgentConfig;
 }
 
-export interface AgentLoginConsentConfig {
-  validityPeriod?: number;
-}
+export type AgentLoginConsentConfig = LoginConsentConfig;
 
 /**
  * Where an agent stands in its lifespan, derived by the server on every read.
