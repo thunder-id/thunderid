@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 // GatePreview
-export {default as GatePreview} from './GatePreview/GatePreview';
+export {default as GatePreview, type Viewport} from './GatePreview/GatePreview';
 export {default as PreviewThemeProvider} from './GatePreview/PreviewThemeProvider';
 
 // NotificationTemplatePreview (shared email/SMS template preview)
@@ -13,6 +13,9 @@ export {
 } from './NotificationTemplatePreview/NotificationTemplatePreview';
 
 // Components
+export {default as ElementInspector, type ElementInspectorProps} from './components/layouts/ElementInspector';
+export {default as PreviewFrame, type PreviewFrameProps} from './components/PreviewFrame';
+export {default as PreviewToolbar, type PreviewToolbarProps} from './components/PreviewToolbar';
 export {default as LayoutPresetThumbnail, type LayoutPresetVariant} from './components/layouts/LayoutPresetThumbnail';
 export {default as LayoutThumbnail} from './components/layouts/LayoutThumbnail';
 export {default as ThemeThumbnail} from './components/themes/ThemeThumbnail';
