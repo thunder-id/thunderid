@@ -58,7 +58,10 @@ func newVonageClient(ctx context.Context, sender common.NotificationSenderDTO) (
 			logger.Warn(ctx, "Unknown property for Vonage client", log.String("property", prop.GetName()))
 		}
 	}
-	client.httpClient = syshttp.NewHTTPClientWithTimeout(httpClientTimeout)
+	// Vonage's API host is hardcoded below, so it needs no SSRF dial guard.
+	client.httpClient = syshttp.NewHTTPClient(syshttp.HTTPClientConfig{
+		Timeout: httpClientTimeout,
+	})
 
 	return client, nil
 }
