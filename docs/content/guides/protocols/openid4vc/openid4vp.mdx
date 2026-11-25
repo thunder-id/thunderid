@@ -68,7 +68,6 @@ Configure the verifier engine under the `openid4vp:` key in `deployment.yaml`. A
 |---|---|---|
 | `client_id_scheme` | `x509_san_dns` | How the verifier `client_id` is derived from the signing certificate: `x509_san_dns` (first DNS SAN), `x509_hash` (SHA-256 thumbprint), or `redirect_uri` (response URI). |
 | `signing_key_id` | `ecdsa-key` | Key used to sign request objects. Must be certificate-backed. |
-| `ephemeral_key_id` | `vp-enc` | Key used for ECDH-ES decryption of wallet responses. |
 | `registration_cert_file` | - | Path to a PEM file containing the signing certificate chain advertised in `client_metadata`. |
 | `trusted_anchors` | `[]` | List of `{name, cert_file}` entries. Each entry pins a root CA whose chains are accepted as SD-JWT VC issuer certificates. Empty list disables certificate-chain validation. |
 | `enforce_key_binding` | `true` | Require wallets to include a `kb+jwt` binding the presentation to the nonce and verifier. |

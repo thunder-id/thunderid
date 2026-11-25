@@ -21,25 +21,40 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// identityCrypto is a no-op ConfigCryptoProvider for tests: it exercises the
+// identityCrypto is a no-op RuntimeCryptoProvider for tests: it exercises the
 // marshal/encrypt/decrypt/parse path without a real symmetric key.
-type identityCrypto struct{}
+type identityCrypto struct {
+	providers.RuntimeCryptoProvider
+}
 
-func (identityCrypto) Encrypt(_ context.Context, content []byte) ([]byte, error) { return content, nil }
-func (identityCrypto) Decrypt(_ context.Context, content []byte) ([]byte, error) { return content, nil }
+func (identityCrypto) Encrypt(
+	_ context.Context, _ *providers.KeyRef, _ string, _ map[string]interface{}, content []byte,
+) ([]byte, *providers.CryptoDetails, error) {
+	return content, nil, nil
+}
+
+func (identityCrypto) Decrypt(
+	_ context.Context, _ *providers.KeyRef, _ string, _ map[string]interface{}, content []byte,
+) ([]byte, error) {
+	return content, nil
+}
 
 // failingDecryptCrypto encrypts as identity but fails to decrypt, to exercise the read error path.
 type failingDecryptCrypto struct{ identityCrypto }
 
-func (failingDecryptCrypto) Decrypt(_ context.Context, _ []byte) ([]byte, error) {
+func (failingDecryptCrypto) Decrypt(
+	_ context.Context, _ *providers.KeyRef, _ string, _ map[string]interface{}, _ []byte,
+) ([]byte, error) {
 	return nil, errors.New("decrypt failed")
 }
 
 // failingEncryptCrypto fails to encrypt, to exercise the write error path.
 type failingEncryptCrypto struct{ identityCrypto }
 
-func (failingEncryptCrypto) Encrypt(_ context.Context, _ []byte) ([]byte, error) {
-	return nil, errors.New("encrypt failed")
+func (failingEncryptCrypto) Encrypt(
+	_ context.Context, _ *providers.KeyRef, _ string, _ map[string]interface{}, _ []byte,
+) ([]byte, *providers.CryptoDetails, error) {
+	return nil, nil, errors.New("encrypt failed")
 }
 
 // errRuntimeStore is a RuntimeStoreProvider whose reads and writes always fail,
@@ -106,7 +121,7 @@ func (suite *OpenID4VPStoreTestSuite) TestRoundTripCompleted() {
 	expiry := time.Now().Add(time.Minute)
 	st := &RequestState{
 		State:        "state-1",
-		DefinitionID: "eudi-pid",
+		VerifierID:   "eudi-pid",
 		Nonce:        "nonce-1",
 		EphemeralKey: key,
 		ClientID:     "x509_hash:abc",
@@ -121,7 +136,7 @@ func (suite *OpenID4VPStoreTestSuite) TestRoundTripCompleted() {
 	suite.Require().True(ok)
 	suite.Require().NotNil(rs)
 	suite.Equal("state-1", rs.State)
-	suite.Equal("eudi-pid", rs.DefinitionID)
+	suite.Equal("eudi-pid", rs.VerifierID)
 	suite.Equal("nonce-1", rs.Nonce)
 	suite.Equal(StatusCompleted, rs.Status)
 	suite.Require().NotNil(rs.EphemeralKey)
@@ -255,6 +270,69 @@ func (suite *OpenID4VPStoreTestSuite) TestGetNonECEphemeralKey() {
 	rs, ok := newOpenID4VPStore(identityCrypto{}, prov).GetRequestState(suite.ctx, "s")
 	suite.False(ok)
 	suite.Nil(rs)
+}
+
+// A swap succeeds when the stored status matches the expected status, and the new state is persisted.
+func (suite *OpenID4VPStoreTestSuite) TestCompareAndSwapMatchingStatus() {
+	st := &RequestState{State: "s", Nonce: "n", Status: StatusPending, ExpiresAt: time.Now().Add(time.Minute)}
+	suite.Require().NoError(suite.store.SaveRequestState(suite.ctx, st))
+
+	updated := *st
+	updated.Status = StatusFailed
+	updated.FailureReason = "rejected"
+	swapped, err := suite.store.CompareAndSwapRequestState(suite.ctx, &updated, StatusPending)
+	suite.Require().NoError(err)
+	suite.True(swapped)
+
+	got, ok := suite.store.GetRequestState(suite.ctx, "s")
+	suite.Require().True(ok)
+	suite.Equal(StatusFailed, got.Status)
+	suite.Equal("rejected", got.FailureReason)
+	suite.Equal("n", got.Nonce)
+}
+
+// A swap is rejected when the stored status differs from the expected status, leaving the state unchanged.
+func (suite *OpenID4VPStoreTestSuite) TestCompareAndSwapStatusMismatch() {
+	st := &RequestState{State: "s", Status: StatusCompleted, ExpiresAt: time.Now().Add(time.Minute)}
+	suite.Require().NoError(suite.store.SaveRequestState(suite.ctx, st))
+
+	updated := *st
+	updated.Status = StatusFailed
+	swapped, err := suite.store.CompareAndSwapRequestState(suite.ctx, &updated, StatusPending)
+	suite.Require().NoError(err)
+	suite.False(swapped)
+
+	got, ok := suite.store.GetRequestState(suite.ctx, "s")
+	suite.Require().True(ok)
+	suite.Equal(StatusCompleted, got.Status)
+}
+
+// A swap on an absent state is rejected without error.
+func (suite *OpenID4VPStoreTestSuite) TestCompareAndSwapNotFound() {
+	st := &RequestState{State: "missing", Status: StatusFailed, ExpiresAt: time.Now().Add(time.Minute)}
+	swapped, err := suite.store.CompareAndSwapRequestState(suite.ctx, st, StatusPending)
+	suite.NoError(err)
+	suite.False(swapped)
+}
+
+// A runtime-store error during the swap is surfaced as an error.
+func (suite *OpenID4VPStoreTestSuite) TestCompareAndSwapStoreError() {
+	store := newOpenID4VPStore(identityCrypto{}, errRuntimeStore{})
+	st := &RequestState{State: "s", Status: StatusFailed, ExpiresAt: time.Now().Add(time.Minute)}
+	swapped, err := store.CompareAndSwapRequestState(suite.ctx, st, StatusPending)
+	suite.Error(err)
+	suite.False(swapped)
+}
+
+// An encoding failure is surfaced as an error before the store is touched.
+func (suite *OpenID4VPStoreTestSuite) TestCompareAndSwapEncodeError() {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	suite.Require().NoError(err)
+	store := newOpenID4VPStore(failingEncryptCrypto{}, inmemory.Initialize("test-deployment"))
+	st := &RequestState{State: "s", EphemeralKey: key, Status: StatusFailed, ExpiresAt: time.Now().Add(time.Minute)}
+	swapped, err := store.CompareAndSwapRequestState(suite.ctx, st, StatusPending)
+	suite.Error(err)
+	suite.False(swapped)
 }
 
 func (suite *OpenID4VPStoreTestSuite) TestTTLUntil() {

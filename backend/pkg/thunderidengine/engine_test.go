@@ -11,6 +11,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"math/big"
 	"net/http"
 	"os"
@@ -29,6 +30,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/kmprovider"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/log/rollingfile"
+	"github.com/thunder-id/thunderid/internal/vc/verifier"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/actorprovidermock"
@@ -48,6 +50,9 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/ouprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/resourceserverprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/runtimestoreprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/vc/vcverifierclientconfigprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/vc/vcverifierprovidermock"
+	"github.com/thunder-id/thunderid/tests/mocks/vc/verifiermock"
 )
 
 const testKeyID = "test-key"
@@ -116,6 +121,8 @@ func validEngineContext(t *testing.T) *engineContext {
 		idpProvider:           idpprovidermock.NewIDPProviderMock(t),
 		consentProvider:       consentprovidermock.NewConsentProviderMock(t),
 		defaultAuthnProvider:  newTestDefaultAuthnProvider(t),
+		verifierClientConfigProvider: vcverifierclientconfigprovidermock.
+			NewVCVerifierClientConfigProviderMock(t),
 	}
 }
 
@@ -201,6 +208,12 @@ func (suite *EngineTestSuite) TestValidateEngineContext() {
 		ctx.defaultAuthnProvider = nil
 		assert.ErrorContains(t, validateEngineContext(ctx), "default authentication provider")
 	})
+
+	suite.T().Run("missing verifier client config provider", func(t *testing.T) {
+		ctx := validEngineContext(t)
+		ctx.verifierClientConfigProvider = nil
+		assert.ErrorContains(t, validateEngineContext(ctx), "verifier client config provider")
+	})
 }
 
 func (suite *EngineTestSuite) TestApplyCustomExecutors() {
@@ -228,6 +241,89 @@ func (suite *EngineTestSuite) TestApplyCustomExecutors() {
 		}
 		require.NoError(t, ctx.applyCustomExecutors())
 	})
+}
+
+func (suite *EngineTestSuite) TestInitOpenID4VP_InvalidTrustAnchor() {
+	ctx := &engineContext{
+		openid4vpConfig: engineconfig.OpenID4VPConfig{
+			TrustedAnchors: []engineconfig.TrustedAnchorEntry{{Name: "anchor"}},
+		},
+	}
+	err := ctx.initOpenID4VP(http.NewServeMux())
+	suite.ErrorContains(err, "failed to initialize trust anchor store")
+	suite.Nil(ctx.verifierRegistry)
+	suite.Nil(ctx.openid4vpService)
+}
+
+func (suite *EngineTestSuite) TestInitOpenID4VP_RegisterVCVerifiersFails() {
+	ctx := &engineContext{
+		vcVerifiers: map[string]providers.VCVerifierProvider{
+			verifier.FormatSDJWTVC: vcverifierprovidermock.NewVCVerifierProviderMock(suite.T()),
+		},
+	}
+	err := ctx.initOpenID4VP(http.NewServeMux())
+	suite.ErrorContains(err, "failed to register VC verifiers")
+	suite.Nil(ctx.openid4vpService)
+}
+
+func (suite *EngineTestSuite) TestInitOpenID4VP_ServiceInitFails() {
+	ctx := &engineContext{}
+	err := ctx.initOpenID4VP(http.NewServeMux())
+	suite.ErrorContains(err, "failed to initialize OpenID4VP verifier service")
+	suite.NotNil(ctx.verifierRegistry)
+	suite.Nil(ctx.openid4vpService)
+}
+
+func (suite *EngineTestSuite) TestRegisterVCVerifiers() {
+	suite.T().Run("no verifiers", func(t *testing.T) {
+		ctx := &engineContext{}
+		assert.NoError(t, ctx.registerVCVerifiers())
+	})
+
+	suite.T().Run("nil registry", func(t *testing.T) {
+		ctx := &engineContext{vcVerifiers: map[string]providers.VCVerifierProvider{
+			"custom": vcverifierprovidermock.NewVCVerifierProviderMock(t),
+		}}
+		assert.ErrorContains(t, ctx.registerVCVerifiers(), "verifier registry is nil")
+	})
+
+	suite.T().Run("register failure", func(t *testing.T) {
+		v := vcverifierprovidermock.NewVCVerifierProviderMock(t)
+		registry := verifiermock.NewVCVerifierRegistryInterfaceMock(t)
+		registry.EXPECT().Register("custom", v).Return(errors.New("duplicate"))
+		ctx := &engineContext{
+			verifierRegistry: registry,
+			vcVerifiers:      map[string]providers.VCVerifierProvider{"custom": v},
+		}
+		assert.ErrorContains(t, ctx.registerVCVerifiers(), "failed to register VC verifier 'custom'")
+	})
+
+	suite.T().Run("registers all verifiers", func(t *testing.T) {
+		v1 := vcverifierprovidermock.NewVCVerifierProviderMock(t)
+		v2 := vcverifierprovidermock.NewVCVerifierProviderMock(t)
+		registry := verifiermock.NewVCVerifierRegistryInterfaceMock(t)
+		registry.EXPECT().Register("custom-1", v1).Return(nil)
+		registry.EXPECT().Register("custom-2", v2).Return(nil)
+		ctx := &engineContext{
+			verifierRegistry: registry,
+			vcVerifiers:      map[string]providers.VCVerifierProvider{"custom-1": v1, "custom-2": v2},
+		}
+		assert.NoError(t, ctx.registerVCVerifiers())
+	})
+}
+
+func (suite *EngineTestSuite) TestWithVCVerifierProviders_MergesIntoExistingMap() {
+	v1 := vcverifierprovidermock.NewVCVerifierProviderMock(suite.T())
+	v2 := vcverifierprovidermock.NewVCVerifierProviderMock(suite.T())
+	v3 := vcverifierprovidermock.NewVCVerifierProviderMock(suite.T())
+
+	var ctx engineContext
+	WithVCVerifierProviders(map[string]providers.VCVerifierProvider{"a": v1, "b": v2})(&ctx)
+	WithVCVerifierProviders(map[string]providers.VCVerifierProvider{"b": v3})(&ctx)
+
+	suite.Len(ctx.vcVerifiers, 2)
+	suite.Same(v1, ctx.vcVerifiers["a"])
+	suite.Same(v3, ctx.vcVerifiers["b"])
 }
 
 func (suite *EngineTestSuite) TestEngineOptions() {
@@ -430,6 +526,9 @@ func (suite *EngineTestSuite) TestNew_HappyPath() {
 		WithFlowProvider(flowexecmock.NewFlowProviderMock(t)),
 		WithI18nProvider(i18nprovidermock.NewI18nProviderMock(t)),
 		WithConsentProvider(consentprovidermock.NewConsentProviderMock(t)),
+		WithOpenid4VPConfig(engineconfig.OpenID4VPConfig{SigningKeyID: keyID}),
+		WithVerifierClientConfigProvider(
+			vcverifierclientconfigprovidermock.NewVCVerifierClientConfigProviderMock(t)),
 		// Restrict to built-in executors that only depend on FlowFactory; the others assume
 		// non-nil typed provider dependencies (e.g. the GitHub/Google/OIDC auth executors) that
 		// this minimal test setup does not wire up.
@@ -503,6 +602,9 @@ func (suite *EngineTestSuite) TestNew_InitializesRuntimeStoreWhenNotInjected() {
 		WithFlowProvider(flowexecmock.NewFlowProviderMock(t)),
 		WithI18nProvider(i18nprovidermock.NewI18nProviderMock(t)),
 		WithConsentProvider(consentprovidermock.NewConsentProviderMock(t)),
+		WithOpenid4VPConfig(engineconfig.OpenID4VPConfig{SigningKeyID: keyID}),
+		WithVerifierClientConfigProvider(
+			vcverifierclientconfigprovidermock.NewVCVerifierClientConfigProviderMock(t)),
 		// Restrict to built-in executors that only depend on FlowFactory; the others assume
 		// non-nil typed provider dependencies (e.g. the GitHub/Google/OIDC auth executors) that
 		// this minimal test setup does not wire up.
@@ -661,6 +763,9 @@ func (suite *EngineTestSuite) TestNew_AppliesLogFormatToServicesBuiltInsideNew()
 		WithFlowProvider(flowexecmock.NewFlowProviderMock(t)),
 		WithI18nProvider(i18nprovidermock.NewI18nProviderMock(t)),
 		WithConsentProvider(consentprovidermock.NewConsentProviderMock(t)),
+		WithOpenid4VPConfig(engineconfig.OpenID4VPConfig{SigningKeyID: keyID}),
+		WithVerifierClientConfigProvider(
+			vcverifierclientconfigprovidermock.NewVCVerifierClientConfigProviderMock(t)),
 		WithFlowConfig(engineconfig.FlowConfig{Executors: []string{"InviteExecutor", "PermissionValidator"}}),
 	)
 	require.NotNil(t, eng)
@@ -727,6 +832,9 @@ func (suite *EngineTestSuite) TestNew_ResetsDynamicMatcherWhenOriginConfigEmpty(
 			WithFlowProvider(flowexecmock.NewFlowProviderMock(t)),
 			WithI18nProvider(i18nprovidermock.NewI18nProviderMock(t)),
 			WithConsentProvider(consentprovidermock.NewConsentProviderMock(t)),
+			WithOpenid4VPConfig(engineconfig.OpenID4VPConfig{SigningKeyID: keyID}),
+			WithVerifierClientConfigProvider(
+				vcverifierclientconfigprovidermock.NewVCVerifierClientConfigProviderMock(t)),
 			WithFlowConfig(engineconfig.FlowConfig{Executors: []string{"InviteExecutor", "PermissionValidator"}}),
 		}
 		return New(http.NewServeMux(), append(baseOpts, opts...)...)

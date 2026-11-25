@@ -863,7 +863,9 @@ func (suite *ConfigTestSuite) TestMergeConfigs_BoolPointerOverride() {
 	newBase := func() *Config {
 		return &Config{
 			Notification: NotificationConfig{OTP: OTPConfig{UseNumericOnly: boolPtr(true)}},
-			OpenID4VP:    OpenID4VPConfig{EnforceKeyBinding: boolPtr(true)},
+			OpenID4VP: OpenID4VPConfig{
+				OpenID4VPConfig: engineconfig.OpenID4VPConfig{EnforceKeyBinding: boolPtr(true)},
+			},
 			OAuth: OAuthConfig{
 				RefreshToken:    engineconfig.RefreshTokenConfig{RevokePreviousOnRenew: boolPtr(true)},
 				TokenRevocation: engineconfig.OAuthTokenRevocationConfig{Enabled: boolPtr(true)},
@@ -884,7 +886,9 @@ func (suite *ConfigTestSuite) TestMergeConfigs_BoolPointerOverride() {
 		base := newBase()
 		user := &Config{
 			Notification: NotificationConfig{OTP: OTPConfig{UseNumericOnly: boolPtr(false)}},
-			OpenID4VP:    OpenID4VPConfig{EnforceKeyBinding: boolPtr(false)},
+			OpenID4VP: OpenID4VPConfig{
+				OpenID4VPConfig: engineconfig.OpenID4VPConfig{EnforceKeyBinding: boolPtr(false)},
+			},
 			OAuth: OAuthConfig{
 				RefreshToken:    engineconfig.RefreshTokenConfig{RevokePreviousOnRenew: boolPtr(false)},
 				TokenRevocation: engineconfig.OAuthTokenRevocationConfig{Enabled: boolPtr(false)},

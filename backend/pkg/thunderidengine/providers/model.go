@@ -8,6 +8,7 @@ package providers
 
 import (
 	"context"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"regexp"
@@ -1575,4 +1576,104 @@ type PublicKeyInfo struct {
 	Thumbprint          string
 	CertificateDER      []byte
 	CertificateChainDER [][]byte // leaf first, then intermediates; nil if not certificate-backed
+}
+
+// VCVerifierClientConfig is the configuration of a verifier client that requests and verifies
+// verifiable credentials (VCs) over OpenID4VP.
+type VCVerifierClientConfig struct {
+	VerifierID string
+	// DCQL is the credential query sent to the wallet. The engine derives the expected credential
+	// type, the requested claims and their allowed values from it. Every claim listed is treated as
+	// mandatory; claim_sets and credential_sets are not supported, and exactly one credential query
+	// with one vct value is accepted.
+	DCQL DCQLQuery
+	// TrustedAuthorities restricts the accepted trust anchors, keyed by the base64url-encoded
+	// SubjectKeyId of each anchor certificate; empty means any. The DCQL query must carry the same
+	// keys as its trusted_authorities (aki) entries; the engine sends DCQL to the wallet as-is.
+	TrustedAuthorities map[string]*x509.Certificate
+	// EnforceTrustedIssuer requires the issuer chain to terminate at a trust anchor; nil means false.
+	EnforceTrustedIssuer *bool
+	ClientIDScheme       string            // "pre-registered" | "x509_hash"; empty = engine default
+	ClientID             string            // only for pre-registered
+	SubjectClaim         string            // VC claim path holding the individual ID
+	ClaimMappings        map[string]string // VC claim path -> OIDC user claim
+	WalletURI            string            // wallet deep-link base; empty = openid4vp://
+	ResponseMode         string            // direct_post.jwt | direct_post; empty = direct_post.jwt
+	EnforceKeyBinding    bool              // require a key binding proof of holder possession; nil = engine default
+	// VerifierInfo is the request object's verifier_info array of attestations about the verifier
+	// (e.g. a registration certificate); empty omits it.
+	VerifierInfo []interface{}
+}
+
+// DCQLQuery is an OpenID4VP Digital Credentials Query Language (DCQL) query.
+type DCQLQuery struct {
+	Credentials []DCQLCredentialQuery `json:"credentials"`
+}
+
+// DCQLCredentialQuery requests a single credential.
+type DCQLCredentialQuery struct {
+	ID     string            `json:"id"`
+	Format string            `json:"format"`
+	Meta   *DCQLMeta         `json:"meta,omitempty"`
+	Claims []DCQLClaimsQuery `json:"claims,omitempty"`
+	// ClaimSets lists the acceptable combinations of claim IDs, most preferred first. When empty,
+	// every claim in Claims is required.
+	ClaimSets                         [][]string             `json:"claim_sets,omitempty"`
+	TrustedAuthorities                []DCQLTrustedAuthority `json:"trusted_authorities,omitempty"`
+	RequireCryptographicHolderBinding bool                   `json:"require_cryptographic_holder_binding,omitempty"`
+}
+
+// DCQLMeta carries format-specific credential matching metadata.
+type DCQLMeta struct {
+	VCTValues []string `json:"vct_values,omitempty"`
+}
+
+// DCQLClaimsQuery selects a single claim by its path, optionally constrained to a set of values.
+type DCQLClaimsQuery struct {
+	// ID identifies the claim within its credential query; required when ClaimSets is present.
+	ID     string        `json:"id,omitempty"`
+	Path   []interface{} `json:"path"`
+	Values []interface{} `json:"values,omitempty"`
+}
+
+// DCQLTrustedAuthority is a per-credential-query trust constraint.
+type DCQLTrustedAuthority struct {
+	Type   string   `json:"type"`
+	Values []string `json:"values"`
+}
+
+// VCVerifierParams carries the verification inputs for VCVerifierProvider.Verify.
+type VCVerifierParams struct {
+	// CredentialQuery is the requested DCQL credential query for the credential to verify.
+	CredentialQuery DCQLCredentialQuery
+	// Nonce is the expected holder key binding nonce.
+	Nonce string
+	// Audience is the expected holder key binding audience.
+	Audience string
+	// Leeway is the clock skew tolerance for key binding validation.
+	Leeway time.Duration
+	// KeyBindingMaxAge rejects key binding proofs older than this; 0 disables the check.
+	KeyBindingMaxAge time.Duration
+	// EnforceTrustedIssuer requires the issuer chain to terminate at a configured trust anchor.
+	EnforceTrustedIssuer bool
+	// TrustedAuthorities restricts the accepted trust anchors, keyed by the base64url-encoded
+	// SubjectKeyId of each anchor certificate; empty means any configured anchor.
+	TrustedAuthorities map[string]*x509.Certificate
+	// EnforceKeyBinding requires a key binding proof of holder possession.
+	EnforceKeyBinding bool
+	// OtherParams carries format-specific inputs not covered by the fields above. Promote a key
+	// to a typed field once a built-in verifier or more than one format relies on it.
+	OtherParams map[string]interface{}
+}
+
+// VerifiedCredential represents a verifiable credential that has been successfully verified,
+// including its format, issuer, type, claims, disclosed paths, key binding thumbprint, and status.
+type VerifiedCredential struct {
+	Format string
+	Issuer string
+	Type   []string
+	// Claims is a map of claim paths to their corresponding values, representing the verified claims in the credential.
+	Claims               map[string]interface{}
+	DisclosedPaths       []string
+	KeyBindingThumbprint string
 }

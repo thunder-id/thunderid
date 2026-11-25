@@ -6,6 +6,8 @@ package openid4vp
 import (
 	"errors"
 
+	"github.com/thunder-id/thunderid/internal/vc/truststore"
+	"github.com/thunder-id/thunderid/internal/vc/verifier"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
@@ -70,12 +72,9 @@ var (
 
 // Sentinel errors returned by the verifier. HTTP-facing service errors live in error_constants.go.
 var (
-	ErrUntrustedIssuer       = errors.New("openid4vp: untrusted credential issuer")
-	ErrUnexpectedVCT         = errors.New("openid4vp: unexpected credential type (vct)")
 	ErrUnrequestedClaim      = errors.New("openid4vp: disclosed claim was not requested")
 	ErrMissingMandatoryClaim = errors.New("openid4vp: mandatory claim missing")
 	ErrClaimValueNotAllowed  = errors.New("openid4vp: disclosed claim value not in the allowed set")
-	ErrInvalidPresentation   = errors.New("openid4vp: invalid presentation")
 	ErrInvalidResponse       = errors.New("openid4vp: invalid authorization response")
 	ErrPolicy                = errors.New("openid4vp: invalid verification policy")
 	ErrUnknownDefinition     = errors.New("openid4vp: unknown presentation definition")
@@ -93,10 +92,10 @@ func toServiceError(err error) *tidcommon.ServiceError {
 	case errors.Is(err, ErrPolicy):
 		return &tidcommon.InternalServerError
 	case errors.Is(err, ErrInvalidResponse),
-		errors.Is(err, ErrInvalidPresentation),
 		errors.Is(err, ErrStateMismatch),
-		errors.Is(err, ErrUntrustedIssuer),
-		errors.Is(err, ErrUnexpectedVCT),
+		errors.Is(err, truststore.ErrUntrustedIssuer),
+		errors.Is(err, verifier.ErrInvalidCredential),
+		errors.Is(err, verifier.ErrUnexpectedCredentialType),
 		errors.Is(err, ErrUnrequestedClaim),
 		errors.Is(err, ErrMissingMandatoryClaim),
 		errors.Is(err, ErrClaimValueNotAllowed):

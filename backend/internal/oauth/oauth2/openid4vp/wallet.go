@@ -6,7 +6,6 @@ package openid4vp
 import (
 	"context"
 	"crypto/ecdsa"
-	"crypto/x509"
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
@@ -19,8 +18,10 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
 	"github.com/thunder-id/thunderid/internal/system/jose/jws"
-	"github.com/thunder-id/thunderid/internal/system/jose/sdjwt"
+	"github.com/thunder-id/thunderid/internal/system/log"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // walletInterface is the internal interface consumed by the wallet-facing HTTP handler.
@@ -30,7 +31,6 @@ type walletInterface interface {
 		*VerifiedPresentation, string, *tidcommon.ServiceError,
 	)
 	SubmitError(ctx context.Context, state, code, description string) *tidcommon.ServiceError
-	GetTrustAnchors() []TrustAnchorInfo
 }
 
 // OpenID4VP protocol constants.
@@ -40,6 +40,8 @@ const (
 	DefaultResponseEncValue   = "A128GCM"
 	defaultRequestValidity    = 5 * time.Minute
 	requestObjectType         = "oauth-authz-req+jwt"
+	formatSDJWTVC             = "dc+sd-jwt"
+	formatLDProofVC           = "dc+ldp"
 )
 
 // GetRequestObject builds and signs the request object (JAR) for state.
@@ -48,34 +50,34 @@ func (s *openid4vpService) GetRequestObject(ctx context.Context, state string) (
 	if err != nil {
 		return "", toServiceError(err)
 	}
+
+	// Only allow the request object to be generated once per state. The wallet may retry the request
+	// object fetch, but the request object itself is single-use and must be generated only once.
+	if rs.Status != StatusPending {
+		return "", &ErrorUnknownState
+	}
 	if rs.EphemeralKey == nil {
 		return "", &tidcommon.InternalServerError
 	}
-	def, err := s.resolveDefinition(ctx, rs.DefinitionID)
+	verifierClientConfig, err := s.resolveVerifierClientConfig(ctx, rs.VerifierID)
 	if err != nil {
 		return "", toServiceError(err)
 	}
 
-	dcql := def.DCQL
-	if s.trust != nil {
-		dcql.TrustedAuthorityKeyIDs = s.trust.skisFor(dcql.TrustedAuthorities)
-	}
-
 	claims, err := buildRequestObject(requestConfig{
-		ClientID:          s.clientID,
+		ClientID:          rs.ClientID,
 		ResponseURI:       s.responseURI(state),
 		ResponseMode:      ResponseModeDirectPostJWT,
 		Audience:          s.cfg.RequestAudience,
-		Validity:          s.cfg.RequestValidity,
-		DCQL:              dcql,
+		Validity:          time.Duration(s.cfg.RequestValiditySeconds) * time.Second,
+		DCQL:              verifierClientConfig.DCQL,
 		ResponseEncValues: s.cfg.ResponseEncValues,
-		VerifierInfo:      s.cfg.VerifierInfo,
+		VerifierInfo:      verifierClientConfig.VerifierInfo,
 	}, requestParams{
-		Nonce:          rs.Nonce,
-		State:          state,
-		EphemeralKey:   &rs.EphemeralKey.PublicKey,
-		EphemeralKeyID: s.cfg.EphemeralKeyID,
-		IssuedAt:       time.Now(),
+		Nonce:        rs.Nonce,
+		State:        state,
+		EphemeralKey: &rs.EphemeralKey.PublicKey,
+		IssuedAt:     time.Now(),
 	})
 	if err != nil {
 		return "", toServiceError(err)
@@ -83,6 +85,17 @@ func (s *openid4vpService) GetRequestObject(ctx context.Context, state string) (
 	jar, err := s.signRequestObject(ctx, claims)
 	if err != nil {
 		return "", toServiceError(err)
+	}
+
+	rs.Status = StatusStarted
+	swapped, err := s.store.CompareAndSwapRequestState(ctx, rs, StatusPending)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to mark OpenID4VP request as started",
+			log.String("state", state), log.Error(err))
+		return "", &tidcommon.InternalServerError
+	}
+	if !swapped {
+		return "", &ErrorUnknownState
 	}
 	return jar, nil
 }
@@ -95,7 +108,7 @@ func (s *openid4vpService) SubmitResponse(
 	if err != nil {
 		return nil, "", toServiceError(err)
 	}
-	def, err := s.resolveDefinition(ctx, rs.DefinitionID)
+	verifierClientConfig, err := s.resolveVerifierClientConfig(ctx, rs.VerifierID)
 	if err != nil {
 		return nil, "", toServiceError(err)
 	}
@@ -117,56 +130,53 @@ func (s *openid4vpService) SubmitResponse(
 	if resp.State != "" && resp.State != state {
 		return nil, "", toServiceError(s.fail(ctx, rs, ErrStateMismatch))
 	}
-	candidates, err := resp.presentationsFor(def.DCQL.CredentialID)
+
+	var vp *VerifiedPresentation
+	var validatedPresentation string
+	var lastErr error
+
+	// NOTE : As of now consdering only the first credential
+	credentialQuery := verifierClientConfig.DCQL.Credentials[0]
+
+	presentationCandidates, err := resp.presentationsFor(credentialQuery.ID)
 	if err != nil {
 		return nil, "", toServiceError(s.fail(ctx, rs, err))
 	}
 
-	policy := def.policy
-	if policy.Leeway == 0 {
-		policy.Leeway = s.cfg.Leeway
-	}
-	if policy.KeyBindingMaxAge == 0 {
-		policy.KeyBindingMaxAge = s.cfg.KeyBindingMaxAge
+	vcVerifier, err := s.verifierRegistry.GetVerifier(credentialQuery.Format)
+	if err != nil {
+		return nil, "", toServiceError(s.fail(ctx, rs, fmt.Errorf("%w: %w", ErrPolicy, err)))
 	}
 
-	// Accept the first candidate that verifies and satisfies the policy.
-	var vp *VerifiedPresentation
-	var lastErr error
-	for _, presentation := range candidates {
-		cred, verr := verifySDJWTPresentation(
-			presentation, s.trust, policy.Audience, rs.Nonce, policy.Leeway, policy.KeyBindingMaxAge,
-			policy.EnforceTrustedIssuer, policy.EnforceKeyBinding, policy.TrustedAuthorities)
+	// Verify each presentation candidate until one succeeds. If none succeed, the last error is returned.
+	for _, presentation := range presentationCandidates {
+		verifiedPresentation, verr := verifyPresentation(ctx, vcVerifier, presentation, rs.Nonce, rs.ClientID,
+			credentialQuery, s.cfg, verifierClientConfig)
 		if verr != nil {
 			lastErr = verr
 			continue
 		}
-		candidate, verr := finalizePresentation(cred, policy)
-		if verr != nil {
-			lastErr = verr
-			continue
-		}
-		vp = candidate
+		vp = verifiedPresentation
+		validatedPresentation = presentation
 		break
 	}
+
 	if vp == nil {
 		return nil, "", toServiceError(s.fail(ctx, rs, lastErr))
 	}
-	if def.DeriveSubject != nil {
-		if subject := def.DeriveSubject(vp); subject != "" {
-			vp.Subject = subject
-		}
-	}
 
+	// TODO - Should be changed to StatusVerified.
 	rs.Status = StatusCompleted
 	rs.Result = vp
+	rs.ValidatedVP = validatedPresentation
 	if err := s.store.SaveRequestState(ctx, rs); err != nil {
 		return nil, "", toServiceError(fmt.Errorf("failed to persist verification result: %w", err))
 	}
 
 	redirect := ""
-	if s.cfg.ResultRedirectURIBase != "" {
-		redirect = withState(s.cfg.ResultRedirectURIBase, state)
+	if s.cfg.ResultRedirectURI != "" {
+		// TODO: need to add usercode support
+		redirect = withState(s.cfg.ResultRedirectURI, state)
 	}
 	return vp, redirect, nil
 }
@@ -187,30 +197,12 @@ func (s *openid4vpService) SubmitError(
 	return nil
 }
 
-// GetTrustAnchors returns the configured trust anchors (root CAs).
-func (s *openid4vpService) GetTrustAnchors() []TrustAnchorInfo {
-	if s.trust == nil {
-		return []TrustAnchorInfo{}
-	}
-	anchors := s.trust.list()
-	out := make([]TrustAnchorInfo, 0, len(anchors))
-	for _, a := range anchors {
-		out = append(out, TrustAnchorInfo{
-			Name:     a.Name,
-			Subject:  a.Subject,
-			SKI:      a.SKI,
-			NotAfter: a.NotAfter,
-		})
-	}
-	return out
-}
-
 func (s *openid4vpService) requestURI(state string) string {
-	return withState(s.cfg.RequestURIBase, state)
+	return withState(s.requestURL, state)
 }
 
 func (s *openid4vpService) responseURI(state string) string {
-	return withState(s.cfg.ResponseURIBase, state)
+	return withState(s.responseURL, state)
 }
 
 // withState appends the state query parameter to a base URL.
@@ -228,6 +220,7 @@ func WalletAuthorizationURI(clientID, requestURI string) string {
 	v := url.Values{}
 	v.Set("client_id", clientID)
 	v.Set("request_uri", requestURI)
+	// TODO - Make request_uri_method configurable (deployment level).
 	v.Set("request_uri_method", "get")
 	return "openid4vp://?" + v.Encode()
 }
@@ -252,9 +245,8 @@ func buildRequestObject(cfg requestConfig, params requestParams) (map[string]int
 		return nil, err
 	}
 
-	query, err := buildQuery(cfg.DCQL)
-	if err != nil {
-		return nil, err
+	if len(cfg.DCQL.Credentials) == 0 {
+		return nil, fmt.Errorf("%w: dcql_query requires at least one credential query", ErrPolicy)
 	}
 
 	validity := cfg.Validity
@@ -280,7 +272,7 @@ func buildRequestObject(cfg requestConfig, params requestParams) (map[string]int
 		"state":           params.State,
 		"iat":             iat.Unix(),
 		"exp":             iat.Add(validity).Unix(),
-		"dcql_query":      query,
+		"dcql_query":      cfg.DCQL,
 		"client_metadata": clientMetadata,
 	}
 	// Omit SIOP audience for a pure vp_token request; some wallets treat it as SIOP if present.
@@ -295,7 +287,7 @@ func buildRequestObject(cfg requestConfig, params requestParams) (map[string]int
 
 // buildClientMetadata advertises the ephemeral encryption key and supported response enc algorithms.
 func buildClientMetadata(cfg requestConfig, params requestParams) (map[string]interface{}, error) {
-	jwk, err := ecdsaPublicKeyToEncJWK(params.EphemeralKey, params.EphemeralKeyID)
+	jwk, err := ecdsaPublicKeyToEncJWK(params.EphemeralKey)
 	if err != nil {
 		return nil, err
 	}
@@ -306,12 +298,17 @@ func buildClientMetadata(cfg requestConfig, params requestParams) (map[string]in
 	}
 
 	vpFormats := map[string]interface{}{
-		FormatSDJWTVC: map[string]interface{}{
+		formatSDJWTVC: map[string]interface{}{
 			"kb-jwt_alg_values": []string{"ES256", "EdDSA"},
 			"sd-jwt_alg_values": []string{"ES256", "EdDSA"},
 		},
+		formatLDProofVC: map[string]interface{}{
+			"kb-jwt_alg_values": []string{"ES256", "EdDSA"},
+			"ldp_alg_values":    []string{"ES256", "EdDSA"},
+		},
 	}
 
+	// TODO - This should be dynamic based on the registered VC verifiers. For now, we hardcode the two known formats.
 	return map[string]interface{}{
 		"jwks": map[string]interface{}{
 			"keys": []interface{}{jwk},
@@ -321,8 +318,9 @@ func buildClientMetadata(cfg requestConfig, params requestParams) (map[string]in
 	}, nil
 }
 
-// ecdsaPublicKeyToEncJWK encodes an EC public key as an encryption-use JWK.
-func ecdsaPublicKeyToEncJWK(pub *ecdsa.PublicKey, kid string) (map[string]interface{}, error) {
+// ecdsaPublicKeyToEncJWK encodes an EC public key as an encryption-use JWK whose kid is
+// its RFC 7638 thumbprint.
+func ecdsaPublicKeyToEncJWK(pub *ecdsa.PublicKey) (map[string]interface{}, error) {
 	raw, err := pub.Bytes()
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrPolicy, err)
@@ -349,9 +347,11 @@ func ecdsaPublicKeyToEncJWK(pub *ecdsa.PublicKey, kid string) (map[string]interf
 		"use": "enc",
 		"alg": "ECDH-ES",
 	}
-	if kid != "" {
-		jwk["kid"] = kid
+	kid, err := jws.ComputeJKT(jwk)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrPolicy, err)
 	}
+	jwk["kid"] = kid
 	return jwk, nil
 }
 
@@ -462,218 +462,131 @@ func (r *authorizationResponse) presentationsFor(credentialID string) ([]string,
 	return list, nil
 }
 
-// verifySDJWTPresentation parses, verifies, and resolves disclosures for an SD-JWT VC presentation.
-func verifySDJWTPresentation(
-	presentation string, trust *trustAnchorStore,
-	expectedAudience, expectedNonce string, leeway, maxIATAge time.Duration,
-	enforceTrustedIssuer, enforceKeyBinding bool, allowedAnchors []string,
-) (*verifiedCredential, error) {
-	p, err := sdjwt.Parse(presentation)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidPresentation, err)
+// verifyPresentation verifies one wallet presentation with the format verifier and applies the claim policy.
+// The holder key binding must carry nonce and be addressed to audience, the verifier's client_id. The
+// verifier client configuration's trust settings override the engine defaults in cfg.
+func verifyPresentation(
+	ctx context.Context, vcVerifier providers.VCVerifierProvider, presentation, nonce, audience string,
+	credentialQuery providers.DCQLCredentialQuery,
+	cfg engineconfig.OpenID4VPConfig,
+	clientConfig *providers.VCVerifierClientConfig,
+) (*VerifiedPresentation, error) {
+	enforceTrustedIssuer := cfg.EnforceTrustedIssuer
+	if clientConfig.EnforceTrustedIssuer != nil {
+		enforceTrustedIssuer = *clientConfig.EnforceTrustedIssuer
 	}
-
-	issuerClaims, err := p.IssuerClaims()
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidPresentation, err)
-	}
-	issuer, _ := issuerClaims["iss"].(string)
-	if issuer == "" {
-		return nil, fmt.Errorf("%w: credential missing iss", ErrInvalidPresentation)
-	}
-
-	chain, err := x5cChain(p.IssuerJWT)
+	cred, err := vcVerifier.Verify(ctx, presentation, providers.VCVerifierParams{
+		Nonce:                nonce,
+		Audience:             audience,
+		Leeway:               time.Duration(cfg.LeewaySeconds) * time.Second,
+		KeyBindingMaxAge:     time.Duration(cfg.KeyBindingMaxAgeSeconds) * time.Second,
+		EnforceTrustedIssuer: enforceTrustedIssuer,
+		TrustedAuthorities:   clientConfig.TrustedAuthorities,
+		EnforceKeyBinding:    cfg.EnforceKeyBindingEnabled(),
+		CredentialQuery:      credentialQuery,
+	})
 	if err != nil {
 		return nil, err
 	}
-	issuerLeaf := chain[0]
-	if enforceTrustedIssuer {
-		if trust == nil {
-			return nil, fmt.Errorf("%w: no trust anchors configured", ErrUntrustedIssuer)
-		}
-		var err error
-		issuerLeaf, err = trust.verifyChain(chain, time.Now(), allowedAnchors)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if err := sdjwt.VerifyIssuerSignature(p, issuerLeaf.PublicKey); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidPresentation, err)
-	}
-
-	cred, err := sdjwt.ResolveDisclosures(p)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidPresentation, err)
-	}
-
-	if enforceKeyBinding || p.HasKeyBinding() {
-		if err := sdjwt.VerifyKeyBinding(p, cred, sdjwt.VerifyOptions{
-			ExpectedAudience: expectedAudience,
-			ExpectedNonce:    expectedNonce,
-			Leeway:           leeway,
-			MaxIATAge:        maxIATAge,
-		}); err != nil {
-			return nil, fmt.Errorf("%w: %w", ErrInvalidPresentation, err)
-		}
-	}
-
-	vct, _ := cred.Claims["vct"].(string)
-	var keyBindingThumbprint string
-	if cred.ConfirmationKey != nil {
-		if jkt, jktErr := jws.ComputeJKT(cred.ConfirmationKey); jktErr == nil {
-			keyBindingThumbprint = jkt
-		}
-	}
-	return &verifiedCredential{
-		Issuer:               issuer,
-		VCT:                  vct,
-		Claims:               cred.Claims,
-		DisclosedPaths:       cred.DisclosedPaths,
-		KeyBindingThumbprint: keyBindingThumbprint,
-	}, nil
-}
-
-// x5cChain extracts the leaf-first DER certificate chain from the issuer JWT's x5c header (RFC 7515).
-func x5cChain(issuerJWT string) ([]*x509.Certificate, error) {
-	header, err := jws.DecodeHeader(issuerJWT)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidPresentation, err)
-	}
-	raw, ok := header["x5c"].([]interface{})
-	if !ok || len(raw) == 0 {
-		return nil, fmt.Errorf("%w: issuer JWT missing x5c header", ErrInvalidPresentation)
-	}
-	chain := make([]*x509.Certificate, 0, len(raw))
-	for _, entry := range raw {
-		encoded, ok := entry.(string)
-		if !ok {
-			return nil, fmt.Errorf("%w: malformed x5c entry", ErrInvalidPresentation)
-		}
-		der, err := base64.StdEncoding.DecodeString(encoded)
-		if err != nil {
-			return nil, fmt.Errorf("%w: %w", ErrInvalidPresentation, err)
-		}
-		cert, err := x509.ParseCertificate(der)
-		if err != nil {
-			return nil, fmt.Errorf("%w: %w", ErrInvalidPresentation, err)
-		}
-		chain = append(chain, cert)
-	}
-	return chain, nil
-}
-
-// finalizePresentation enforces VCT and selective-disclosure policy on a raw credential.
-func finalizePresentation(cred *verifiedCredential, policy policy) (*VerifiedPresentation, error) {
-	if cred.VCT != policy.ExpectedVCT {
-		return nil, fmt.Errorf("%w: got %q, want %q", ErrUnexpectedVCT, cred.VCT, policy.ExpectedVCT)
-	}
-	if err := enforceClaimPolicy(cred.DisclosedPaths, cred.Claims, policy); err != nil {
+	if err := verifyClaims(cred.Claims, credentialQuery); err != nil {
 		return nil, err
 	}
 
-	subject, _ := cred.Claims["sub"].(string)
+	// Derive the subject from the claim if present, otherwise fall back to "sub" or the key-binding thumbprint.
+	subjectClaim := clientConfig.SubjectClaim
+	subject, _ := cred.Claims[subjectClaim].(string)
+	if subject == "" {
+		subject, _ = cred.Claims["sub"].(string)
+	}
+	if subject == "" {
+		subject = cred.KeyBindingThumbprint
+	}
+	if subject == "" {
+		return nil, fmt.Errorf("%w: subject claim %q is missing and no key-binding thumbprint available",
+			ErrPolicy, subjectClaim)
+	}
 	return &VerifiedPresentation{
+		Format:               cred.Format,
+		Type:                 cred.Type,
 		Subject:              subject,
-		Claims:               flattenClaims(cred.Claims),
+		Claims:               cred.Claims,
 		KeyBindingThumbprint: cred.KeyBindingThumbprint,
 	}, nil
 }
 
-// enforceClaimPolicy applies data minimisation and mandatory-claim checks.
-func enforceClaimPolicy(disclosed []string, claims map[string]interface{}, policy policy) error {
-	if len(policy.RequestedClaims) > 0 {
-		requested := make(map[string]bool, len(policy.RequestedClaims))
-		for _, c := range policy.RequestedClaims {
-			requested[c] = true
-		}
-		for _, path := range disclosed {
-			if !requested[path] {
-				return fmt.Errorf("%w: %s", ErrUnrequestedClaim, path)
-			}
-		}
-	}
-
-	for _, mandatory := range policy.MandatoryClaims {
-		if _, ok := lookupClaim(claims, mandatory); !ok {
-			return fmt.Errorf("%w: %s", ErrMissingMandatoryClaim, mandatory)
-		}
-	}
-
-	for path, allowed := range policy.ClaimValues {
-		value, ok := lookupClaim(claims, path)
+// verifyClaims checks the verified claims against the DCQL credential query. A disclosed claim
+// must match the query's allowed values. Without claim_sets every requested claim is mandatory;
+// with claim_sets the disclosed claims must satisfy at least one set.
+func verifyClaims(claims map[string]interface{}, credentialQuery providers.DCQLCredentialQuery) error {
+	present := make(map[string]bool, len(credentialQuery.Claims))
+	for _, claim := range credentialQuery.Claims {
+		value, ok := lookupClaim(claims, claim.Path)
 		if !ok {
 			continue
 		}
-		if !valueAllowed(value, allowed) {
-			return fmt.Errorf("%w: %s", ErrClaimValueNotAllowed, path)
+		if len(claim.Values) > 0 && !valueAllowed(value, claim.Values) {
+			return fmt.Errorf("%w: %s", ErrClaimValueNotAllowed, claimPathString(claim.Path))
+		}
+		present[claim.ID] = true
+	}
+
+	if len(credentialQuery.ClaimSets) == 0 {
+		for _, claim := range credentialQuery.Claims {
+			if _, ok := lookupClaim(claims, claim.Path); !ok {
+				return fmt.Errorf("%w: %s", ErrMissingMandatoryClaim, claimPathString(claim.Path))
+			}
+		}
+		return nil
+	}
+
+	for _, set := range credentialQuery.ClaimSets {
+		if !slices.ContainsFunc(set, func(id string) bool { return !present[id] }) {
+			return nil
 		}
 	}
-	return nil
+	return fmt.Errorf("%w: no claim set satisfied for credential %q", ErrMissingMandatoryClaim, credentialQuery.ID)
 }
 
-func valueAllowed(value interface{}, allowed []string) bool {
-	return slices.Contains(allowed, fmt.Sprint(value))
+// valueAllowed reports whether value matches one of the allowed DCQL values.
+func valueAllowed(value interface{}, allowed []interface{}) bool {
+	return slices.ContainsFunc(allowed, func(a interface{}) bool { return fmt.Sprint(a) == fmt.Sprint(value) })
 }
 
-// lookupClaim resolves a dotted-path claim value from the nested claims map.
-func lookupClaim(claims map[string]interface{}, path string) (interface{}, bool) {
-	segments := strings.Split(path, ".")
+// lookupClaim resolves a DCQL claim path against the nested claims. String segments select object
+// members and integer segments select array elements.
+func lookupClaim(claims map[string]interface{}, path []interface{}) (interface{}, bool) {
+	if len(path) == 0 {
+		return nil, false
+	}
 	var current interface{} = claims
-	for _, seg := range segments {
-		obj, ok := current.(map[string]interface{})
-		if !ok {
-			return nil, false
-		}
-		current, ok = obj[seg]
-		if !ok {
+	for _, seg := range path {
+		switch s := seg.(type) {
+		case string:
+			obj, ok := current.(map[string]interface{})
+			if !ok {
+				return nil, false
+			}
+			if current, ok = obj[s]; !ok {
+				return nil, false
+			}
+		case int:
+			arr, ok := current.([]interface{})
+			if !ok || s < 0 || s >= len(arr) {
+				return nil, false
+			}
+			current = arr[s]
+		default:
 			return nil, false
 		}
 	}
 	return current, true
 }
 
-// flattenClaims returns dotted-path-keyed attributes, omitting SD-JWT metadata claims.
-func flattenClaims(claims map[string]interface{}) map[string]interface{} {
-	metaRoots := map[string]struct{}{
-		"iss": {}, "vct": {}, "cnf": {}, "iat": {}, "exp": {}, "nbf": {}, "status": {}, "_sd_alg": {},
+// claimPathString renders a DCQL claim path in dotted form for error messages.
+func claimPathString(path []interface{}) string {
+	parts := make([]string, 0, len(path))
+	for _, seg := range path {
+		parts = append(parts, fmt.Sprint(seg))
 	}
-	filtered := make(map[string]interface{}, len(claims))
-	for k, v := range claims {
-		if _, isMeta := metaRoots[k]; !isMeta {
-			filtered[k] = v
-		}
-	}
-	out := make(map[string]interface{})
-	flattenInto(out, "", filtered)
-	return out
-}
-
-func flattenInto(out map[string]interface{}, prefix string, node map[string]interface{}) {
-	for k, val := range node {
-		key := k
-		if prefix != "" {
-			key = prefix + "." + k
-		}
-		if nested, ok := val.(map[string]interface{}); ok {
-			flattenInto(out, key, nested)
-			continue
-		}
-		out[key] = val
-	}
-}
-
-// defaultSubjectDeriver returns a deriver that falls back to the key-binding thumbprint when sub is absent.
-func defaultSubjectDeriver() subjectDeriver {
-	return func(vp *VerifiedPresentation) string {
-		if vp == nil {
-			return ""
-		}
-		if vp.Subject != "" {
-			return vp.Subject
-		}
-		if vp.KeyBindingThumbprint != "" {
-			return "urn:ietf:params:oauth:jwk-thumbprint:sha-256:" + vp.KeyBindingThumbprint
-		}
-		return ""
-	}
+	return strings.Join(parts, ".")
 }

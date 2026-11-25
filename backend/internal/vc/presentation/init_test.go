@@ -27,48 +27,48 @@ func setupDefinitionConfig(t *testing.T, store string, declarativeEnabled bool) 
 
 func TestGetDefinitionStoreMode_ExplicitMutable(t *testing.T) {
 	setupDefinitionConfig(t, "mutable", false)
-	mode, err := getDefinitionStoreMode()
+	mode, err := getDefinitionStoreMode(config.GetServerRuntime().Config.OpenID4VP)
 	require.NoError(t, err)
 	assert.Equal(t, serverconst.StoreModeMutable, mode)
 }
 
 func TestGetDefinitionStoreMode_ExplicitDeclarative(t *testing.T) {
 	setupDefinitionConfig(t, "declarative", false)
-	mode, err := getDefinitionStoreMode()
+	mode, err := getDefinitionStoreMode(config.GetServerRuntime().Config.OpenID4VP)
 	require.NoError(t, err)
 	assert.Equal(t, serverconst.StoreModeDeclarative, mode)
 }
 
 func TestGetDefinitionStoreMode_ExplicitComposite(t *testing.T) {
 	setupDefinitionConfig(t, "composite", false)
-	mode, err := getDefinitionStoreMode()
+	mode, err := getDefinitionStoreMode(config.GetServerRuntime().Config.OpenID4VP)
 	require.NoError(t, err)
 	assert.Equal(t, serverconst.StoreModeComposite, mode)
 }
 
 func TestGetDefinitionStoreMode_CaseInsensitive(t *testing.T) {
 	setupDefinitionConfig(t, "  Composite  ", false)
-	mode, err := getDefinitionStoreMode()
+	mode, err := getDefinitionStoreMode(config.GetServerRuntime().Config.OpenID4VP)
 	require.NoError(t, err)
 	assert.Equal(t, serverconst.StoreModeComposite, mode)
 }
 
 func TestGetDefinitionStoreMode_InvalidIsError(t *testing.T) {
 	setupDefinitionConfig(t, "bogus", true)
-	_, err := getDefinitionStoreMode()
+	_, err := getDefinitionStoreMode(config.GetServerRuntime().Config.OpenID4VP)
 	assert.Error(t, err)
 }
 
 func TestGetDefinitionStoreMode_FallbackDeclarativeEnabled(t *testing.T) {
 	setupDefinitionConfig(t, "", true)
-	mode, err := getDefinitionStoreMode()
+	mode, err := getDefinitionStoreMode(config.GetServerRuntime().Config.OpenID4VP)
 	require.NoError(t, err)
 	assert.Equal(t, serverconst.StoreModeDeclarative, mode)
 }
 
 func TestGetDefinitionStoreMode_FallbackDeclarativeDisabled(t *testing.T) {
 	setupDefinitionConfig(t, "", false)
-	mode, err := getDefinitionStoreMode()
+	mode, err := getDefinitionStoreMode(config.GetServerRuntime().Config.OpenID4VP)
 	require.NoError(t, err)
 	assert.Equal(t, serverconst.StoreModeMutable, mode)
 }
@@ -85,4 +85,25 @@ func TestRegisterRoutesRegistersEndpoints(t *testing.T) {
 		mux.ServeHTTP(rec, req)
 		assert.Equal(t, http.StatusNoContent, rec.Code)
 	}
+}
+
+func TestInitializeInvalidStoreMode(t *testing.T) {
+	svc, exporter, err := Initialize(http.NewServeMux(), nil, nil, "", config.OpenID4VPConfig{Store: "bogus"})
+	assert.Error(t, err)
+	assert.Nil(t, svc)
+	assert.Nil(t, exporter)
+}
+
+func TestInitializeMutableStore(t *testing.T) {
+	setupDefinitionConfig(t, "mutable", false)
+	mux := http.NewServeMux()
+	svc, exporter, err := Initialize(mux, nil, nil, "", config.OpenID4VPConfig{Store: "mutable"})
+	require.NoError(t, err)
+	assert.NotNil(t, svc)
+	assert.NotNil(t, exporter)
+
+	req := httptest.NewRequest(http.MethodOptions, definitionsPath, nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	assert.Equal(t, http.StatusNoContent, rec.Code)
 }

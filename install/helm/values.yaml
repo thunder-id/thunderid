@@ -466,8 +466,6 @@ configuration:
     clientIdScheme: "x509_san_dns"
     # Key ID (from crypto.keys) used to sign the request object. Empty disables OpenID4VP.
     signingKeyId: ""
-    # Ephemeral key ID (from crypto.keys) used for response encryption.
-    ephemeralKeyId: "vp-enc"
     # Supported response encryption (JWE enc) values.
     responseEncValues:
       - "A128GCM"

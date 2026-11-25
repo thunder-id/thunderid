@@ -127,6 +127,20 @@ var (
 			DefaultValue: "A valid organization unit (ouId or ouHandle) is required",
 		},
 	}
+
+	// ErrorDefinitionUnknownTrustedAuthority indicates a trusted authority is not a configured trust anchor.
+	ErrorDefinitionUnknownTrustedAuthority = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "VP-2008",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_unknown_trusted_authority",
+			DefaultValue: "Unknown trusted authority",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.vp.definition_unknown_trusted_authority_description",
+			DefaultValue: "Each trusted authority must name a configured trust anchor",
+		},
+	}
 )
 
 // definitionClientErrorStatus maps a client-facing definition error to its HTTP status.

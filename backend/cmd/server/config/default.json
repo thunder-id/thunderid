@@ -336,7 +336,6 @@
   "openid4vp": {
     "client_id_scheme": "x509_san_dns",
     "signing_key_id": "ecdsa-key",
-    "ephemeral_key_id": "vp-enc",
     "response_enc_values": [
       "A128GCM",
       "A256GCM",
