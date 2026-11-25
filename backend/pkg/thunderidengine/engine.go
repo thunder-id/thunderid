@@ -140,7 +140,8 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	auditBus, _, _ := eventbus.Initialize()
 
 	authnProviderManager, err := authnprovidermgr.Initialize(
-		engineCtx.defaultAuthnProvider, engineCtx.customAuthnProviders, auditBus)
+		engineCtx.defaultAuthnProvider, engineCtx.customAuthnProviders, auditBus,
+		authnprovidermgr.FederatedSyncDependencies{})
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize authn provider manager", log.Error(err))
 	}

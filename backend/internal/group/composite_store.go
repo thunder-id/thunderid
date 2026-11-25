@@ -5,6 +5,7 @@ package group
 
 import (
 	"context"
+	"maps"
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
@@ -404,6 +405,13 @@ func (c *compositeGroupStore) DeleteMembershipsByMember(
 	return c.dbStore.DeleteMembershipsByMember(ctx, memberType, memberID)
 }
 
+// GetMemberGroupIDs returns the member's direct group IDs from the database store only, since
+// declarative memberships are not writable.
+func (c *compositeGroupStore) GetMemberGroupIDs(
+	ctx context.Context, memberType, memberID string) ([]string, error) {
+	return c.dbStore.GetMemberGroupIDs(ctx, memberType, memberID)
+}
+
 // GetGroupsByIDs returns groups matching the given IDs, merged from both stores.
 func (c *compositeGroupStore) GetGroupsByIDs(ctx context.Context, groupIDs []string) ([]GroupBasicDAO, error) {
 	dbGroups, err := c.dbStore.GetGroupsByIDs(ctx, groupIDs)
@@ -489,11 +497,52 @@ func (c *compositeGroupStore) GetTransitiveGroupsForEntity(
 		result = append(result, g)
 		seen[g.ID] = true
 	}
+	resolvedInDB := maps.Clone(seen)
 	for _, g := range fileGroups {
 		if !seen[g.ID] {
 			result = append(result, g)
 			seen[g.ID] = true
 		}
+	}
+	return c.appendDeclarativeGroupsHeldInDB(ctx, entityID, result, seen, resolvedInDB)
+}
+
+// appendDeclarativeGroupsHeldInDB adds to result the declarative groups the entity belongs to through a
+// database membership, with their ancestors from both stores. Neither store's own lookup finds them: the
+// database one needs the group's row, and the file one reads only declared members. resolvedInDB holds the
+// groups the database lookup already resolved with their ancestors; a group the file lookup found still
+// has its database ancestors resolved here.
+func (c *compositeGroupStore) appendDeclarativeGroupsHeldInDB(ctx context.Context, entityID string,
+	result []providers.EntityGroup, seen, resolvedInDB map[string]bool) ([]providers.EntityGroup, error) {
+	directIDs, err := c.dbStore.GetMemberGroupIDs(ctx, string(memberTypeEntity), entityID)
+	if err != nil {
+		return nil, err
+	}
+	var missing []string
+	for _, id := range directIDs {
+		if resolvedInDB[id] {
+			continue
+		}
+		ancestors, err := resolveTransitiveGroupAncestors(ctx, c, id)
+		if err != nil {
+			return nil, err
+		}
+		for _, groupID := range append([]string{id}, ancestors...) {
+			if !seen[groupID] {
+				seen[groupID] = true
+				missing = append(missing, groupID)
+			}
+		}
+	}
+	if len(missing) == 0 {
+		return result, nil
+	}
+	groups, err := c.GetGroupsByIDs(ctx, missing)
+	if err != nil {
+		return nil, err
+	}
+	for _, g := range groups {
+		result = append(result, providers.EntityGroup{ID: g.ID, Name: g.Name, OUID: g.OUID})
 	}
 	return result, nil
 }

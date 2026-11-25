@@ -383,7 +383,8 @@ func (a *attributeCollector) getInputAttributes(ctx *providers.NodeContext) map[
 			attributesMap[inputAttr.Identifier] = convertToSchemaType(value, schemaType)
 		} else if runtimeValue, exists := ctx.RuntimeData[inputAttr.Identifier]; exists {
 			attributesMap[inputAttr.Identifier] = convertToSchemaType(runtimeValue, schemaType)
-		} else if claimValue, exists := extIdentity.Claim(inputAttr.Identifier); exists {
+		} else if claimValue, exists := extIdentity.Claim(inputAttr.Identifier); exists && inputAttr.Required {
+			// Only a required input takes the claim. The connection's sync decides what else is stored.
 			attributesMap[inputAttr.Identifier] = convertToSchemaType(claimValue, schemaType)
 		}
 	}

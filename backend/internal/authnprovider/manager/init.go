@@ -9,12 +9,13 @@ import (
 )
 
 // Initialize creates a new AuthnProviderManager. defaultProvider is required. bus is required: the
-// manager publishes the audit event of every credential it enrolls on it.
+// manager publishes the audit event of every credential it enrolls on it. syncDeps are what it syncs
+// federated sign-ins with.
 func Initialize(defaultProvider providers.AuthnProviderInterface,
-	others map[string]providers.CustomAuthnProvider, bus eventbus.EventBusInterface) (
-	providers.AuthnProviderManager, error) {
+	others map[string]providers.CustomAuthnProvider, bus eventbus.EventBusInterface,
+	syncDeps FederatedSyncDependencies) (providers.AuthnProviderManager, error) {
 	if bus == nil {
 		return nil, errNilEventBus
 	}
-	return newAuthnProviderManager(defaultProvider, others, bus)
+	return newAuthnProviderManager(defaultProvider, others, bus, syncDeps)
 }

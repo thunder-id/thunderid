@@ -427,7 +427,14 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			Creds:    restCfg.CredentialTypes,
 		}
 	}
-	authnProvider, err := authnprovidermgr.Initialize(defaultProvider, customProviders, auditBus)
+	authnProvider, err := authnprovidermgr.Initialize(defaultProvider, customProviders, auditBus,
+		authnprovidermgr.FederatedSyncDependencies{
+			EntityProvider:        entityProvider,
+			EntityTypeService:     entityTypeService,
+			GroupService:          groupService,
+			RoleAssignmentService: roleAssignmentService,
+			IDPProvider:           idpService,
+		})
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize authn provider manager", log.Error(err))
 	}

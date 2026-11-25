@@ -93,4 +93,6 @@ type FederatedAuthenticator interface {
 type AuthnResult struct {
 	Token               map[string]interface{} `json:"token"`
 	AuthenticatedClaims map[string]interface{} `json:"authenticatedClaims,omitempty"`
+	// ReceivedClaims holds a federated identity's claims as the provider sent them, before mapping.
+	ReceivedClaims map[string]interface{} `json:"-"`
 }

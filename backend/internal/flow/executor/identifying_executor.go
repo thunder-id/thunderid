@@ -440,7 +440,7 @@ func (i *identifyingExecutor) bindLinkHolder(ctx *providers.NodeContext, execRes
 	if i.authnProvider == nil {
 		return nil, errors.New("no authentication provider to bind the resolved link holder")
 	}
-	if svcErr := authenticateEntityByID(ctx, i.authnProvider, entityID, ctx.AuthUser, execResp); svcErr != nil {
+	if svcErr := authenticateEntityByID(ctx, i.authnProvider, entityID, ctx.AuthUser, execResp, false); svcErr != nil {
 		if svcErr.Type == tidcommon.ServerErrorType {
 			return nil, fmt.Errorf("failed to bind the resolved link holder: %s", svcErr.Code)
 		}

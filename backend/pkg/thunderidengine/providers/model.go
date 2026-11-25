@@ -396,6 +396,11 @@ type ConditionDefinition struct {
 // AuthnMetadata contains metadata for authentication.
 type AuthnMetadata struct {
 	RuntimeMetadata map[string][]string `json:"runtimeMetadata,omitempty"`
+	// DeferSync asks the authn provider manager not to sync a federated sign-in to the account holding its
+	// link yet, and to keep it pending for a later authentication by entity ID instead. Providers ignore it.
+	DeferSync bool `json:"deferSync,omitempty"`
+	// Created marks the authentication of an entity the flow has just created.
+	Created bool `json:"created,omitempty"`
 }
 
 // AuthenticatedClaims holds claims produced by an authentication mechanism.
@@ -410,6 +415,17 @@ type AuthnResult struct {
 	// AttributeToken can be nil, iff attribute values are included
 	AttributeToken any                 `json:"attributeToken"`
 	Attributes     *AttributesResponse `json:"attributes,omitempty"`
+	// FederatedIdentity is the federated sign-in the provider verified, if any. The authn provider manager
+	// syncs it to the account holding its link.
+	FederatedIdentity *FederatedIdentity `json:"federatedIdentity,omitempty"`
+}
+
+// FederatedIdentity is a federated sign-in an authn provider verified.
+type FederatedIdentity struct {
+	IdpID string `json:"idpId"`
+	Sub   string `json:"sub"`
+	// Claims holds the raw claims from the identity provider, before mapping.
+	Claims map[string]interface{} `json:"claims,omitempty"`
 }
 
 // AssuranceMetadataResponse contains assurance metadata for an attribute.
@@ -507,6 +523,9 @@ type AuthState struct {
 	EntityReference      *EntityReference    `json:"entityReference,omitempty"`
 	AttributeToken       any                 `json:"attributeToken"`
 	Attributes           *AttributesResponse `json:"attributes,omitempty"`
+	// PendingIdentity is a federated sign-in the authn provider manager has not synced yet, kept until a
+	// deferred sync uses it up. Resolving the entity reference or the attributes leaves it unchanged.
+	PendingIdentity *FederatedIdentity `json:"pendingIdentity,omitempty"`
 }
 
 // AuthUser accumulates per-provider authentication state produced during flow execution.
@@ -1098,6 +1117,47 @@ type AttributeConfiguration struct {
 	UserTypeAttributeMappings []UserTypeAttributeMapping `json:"userTypeAttributeMappings,omitempty" yaml:"user_type_attribute_mappings,omitempty"` //nolint:lll
 	AccountLinking            *AccountLinking            `json:"accountLinking,omitempty"           yaml:"accountLinking,omitempty"`                //nolint:lll
 	AuthorizationMapping      *AuthorizationMapping      `json:"authorizationMapping,omitempty"      yaml:"authorizationMapping,omitempty"`         //nolint:lll
+	Sync                      *SyncConfiguration         `json:"sync,omitempty"                      yaml:"sync,omitempty"`                         //nolint:lll
+}
+
+// SyncMode controls how a federated sign-in keeps the local account in line with the provider.
+type SyncMode string
+
+const (
+	// SyncModeNoSync writes the provider's data when the account is created, and never after.
+	SyncModeNoSync SyncMode = "no_sync"
+	// SyncModeSessionOnly applies the provider's data to the session and tokens without storing it. The
+	// attributes the user type or the Provisioning step requires are still stored when the account is created.
+	SyncModeSessionOnly SyncMode = "session_only"
+	// SyncModeOverrideReceived overwrites the attributes the connection maps and the provider sends, and
+	// keeps the rest. Valid for attributes only.
+	SyncModeOverrideReceived SyncMode = "override_received"
+	// SyncModeOverrideAll sets the account's groups and roles to what the authorization mapping resolves,
+	// removals included. Valid for groups and roles only.
+	SyncModeOverrideAll SyncMode = "override_all"
+)
+
+// SyncConfiguration holds a connection's sync modes. An unset mode takes its default:
+// SyncModeOverrideReceived for attributes and SyncModeNoSync for groups and roles.
+type SyncConfiguration struct {
+	Attributes     SyncMode `json:"attributes,omitempty"     yaml:"attributes,omitempty"`
+	GroupsAndRoles SyncMode `json:"groupsAndRoles,omitempty" yaml:"groupsAndRoles,omitempty"`
+}
+
+// AttributesMode returns the attributes sync mode, SyncModeOverrideReceived when unset.
+func (s *SyncConfiguration) AttributesMode() SyncMode {
+	if s == nil || s.Attributes == "" {
+		return SyncModeOverrideReceived
+	}
+	return s.Attributes
+}
+
+// GroupsAndRolesMode returns the groups and roles sync mode, SyncModeNoSync when unset.
+func (s *SyncConfiguration) GroupsAndRolesMode() SyncMode {
+	if s == nil || s.GroupsAndRoles == "" {
+		return SyncModeNoSync
+	}
+	return s.GroupsAndRoles
 }
 
 // AuthorizationMapping holds a connection's authorization mapping configuration: explicit

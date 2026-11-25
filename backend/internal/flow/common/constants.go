@@ -398,15 +398,23 @@ const (
 	// requested without a valid id_token_hint. A sign-out flow's session sign-out node reads it to
 	// decide whether the End-User must confirm the logout before the session is terminated.
 	RuntimeKeyLogoutPromptRequired = "logoutPromptRequired"
-	// RuntimeKeyMappedRoleIDs holds the space-separated role IDs a federated login's authorization
-	// mapping (rule-based or direct) resolved.
-	RuntimeKeyMappedRoleIDs = "mapped_role_ids"
-	// RuntimeKeyMappedGroupIDs holds the space-separated group IDs a federated login's authorization
-	// mapping (rule-based or direct) resolved.
-	RuntimeKeyMappedGroupIDs = "mapped_group_ids"
 	// RuntimeKeyMappedPermissions holds the JSON-encoded []providers.AuthorizationTarget permission
 	// targets a federated login's authorization mapping (rule-based or direct) resolved.
 	RuntimeKeyMappedPermissions = "mapped_permissions"
+	// RuntimeKeySessionAttributes holds the JSON-encoded attributes a federated login keeps to the
+	// session. They win over the stored values in tokens.
+	RuntimeKeySessionAttributes = "session_attributes"
+	// RuntimeKeySessionGroupIDs holds the space-separated mapped groups, with their ancestors, that a
+	// federated login grants for the session only, because the connection keeps them to the session or
+	// the group store can't hold memberships.
+	RuntimeKeySessionGroupIDs = "session_group_ids"
+	// RuntimeKeySessionDirectGroupIDs holds the groups of RuntimeKeySessionGroupIDs without their
+	// ancestors, which a refresh resolves again.
+	RuntimeKeySessionDirectGroupIDs = "session_direct_group_ids"
+	// RuntimeKeySessionRoleIDs holds the space-separated mapped roles that a federated login grants for
+	// the session only, because the connection keeps them to the session or the role store can't hold
+	// assignments.
+	RuntimeKeySessionRoleIDs = "session_role_ids"
 	// RuntimeKeyExtensionAttemptCount holds the number of FAILED and INCOMPLETE answers an extension
 	// step has had in the current flow execution, scoped to the step by ExtensionAttemptCountKey.
 	RuntimeKeyExtensionAttemptCount = "extensionAttemptCount"
