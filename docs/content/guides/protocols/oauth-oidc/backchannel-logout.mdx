@@ -206,7 +206,7 @@ URIs that name `localhost` or a loopback, link-local, private, shared, unspecifi
 
 ## Try It in <ProductName />
 
-1. Pick two server-side applications that sign in through the same authentication flow, and add the **Check SSO Session** and **Save / Load Session** nodes to that flow, see [Single Sign-On for Flows](../../flows/single-sign-on.mdx). The default authentication flow has no session nodes, so it records no session and sends no notification.
+1. Pick two server-side applications that sign in through the same authentication flow, and add the **Check SSO Session** and **Save / Load Session** nodes to that flow, see [Single Sign-On for Flows](../../flows/single-sign-on.mdx). The default authentication flow has no session nodes, so each sign-in records a session of its own, and signing out of one application does not reach the other.
 2. In the first application, add the receiving route. For an app built with the [Express quickstart](../../../getting-started/connect-your-application/express.mdx), add `app.post('/backchannel-logout', handleBackchannelLogout())` after `thunderID()`, and register `http://localhost:3000/backchannel-logout` as its back-channel logout URI.
 3. A `localhost` URI is rejected by default. For local testing only, set `server.allow_private_addresses: true` in the server's `deployment.yaml` and restart the server.
 4. Sign in to the first application. Then sign in to the second application in the same browser, so both join one <ProductName /> session.

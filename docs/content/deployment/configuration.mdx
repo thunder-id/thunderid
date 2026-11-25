@@ -642,6 +642,21 @@ flow:
 
 For the complete list of built-in executor names and configuration details, see [Executor Details and Configuration](../../guides/flows/advanced-configurations#executor-details-and-configuration).
 
+## Session Configuration
+
+Controls which sign-ins record a [session](../../key-concepts/authentication/sessions).
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `session.tracking.enabled` | `true` | If `true`, a sign-in through a flow without the session nodes records a [direct session](../../key-concepts/authentication/sessions#sign-ins-without-sso). If `false`, such a sign-in records no session, so it cannot be listed or ended, and its tokens carry no `sid` claim. A flow with the session nodes still records its SSO session, so SSO is not affected. The setting applies to new sign-ins: sessions recorded earlier keep working until they end |
+
+**Example:**
+```yaml
+session:
+  tracking:
+    enabled: false
+```
+
 ## User Configuration
 
 User management settings.

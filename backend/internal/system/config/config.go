@@ -981,6 +981,22 @@ type Config struct {
 	ResourceSharing            ResourceSharingConfig             `yaml:"resource_sharing"      json:"resource_sharing"`
 	AccountAccess              AccountAccessConfig               `yaml:"account_access"        json:"account_access"`
 	IdentityGovernanceProvider IdentityGovernanceProviderConfig  `yaml:"identity_governance_provider" json:"identity_governance_provider"` //nolint:lll
+	Session                    SessionConfig                     `yaml:"session"               json:"session"`
+}
+
+// SessionConfig holds the deployment's session settings.
+type SessionConfig struct {
+	Tracking SessionTrackingConfig `yaml:"tracking" json:"tracking"`
+}
+
+// SessionTrackingConfig controls whether a login through a flow without a Session node records a session.
+type SessionTrackingConfig struct {
+	Enabled *bool `yaml:"enabled" json:"enabled"`
+}
+
+// IsEnabled reports whether direct sessions are recorded, defaulting to false when unset.
+func (c SessionTrackingConfig) IsEnabled() bool {
+	return derefBool(c.Enabled)
 }
 
 // ResourceSharingConfig configures how resources may be shared across organization units.

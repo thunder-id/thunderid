@@ -398,6 +398,11 @@
       }
     }
   },
+  "session": {
+    "tracking": {
+      "enabled": true
+    }
+  },
   "organization_unit": {
     "store": "composite"
   },

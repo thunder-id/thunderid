@@ -594,6 +594,12 @@ configuration:
     # Leave empty to inherit the global declarativeResources.enabled setting.
     store: ""
 
+  # Session tracking. Set enabled to false to record no session for a login through a flow without a
+  # Session node. A flow with a Session node still records its SSO session.
+  session:
+    tracking:
+      enabled: true
+
   # Direct API authentication endpoints (/auth/**, /register/passkey/**). Set enabled to false to
   # remove them from the server. AuthZEN access endpoints are not affected.
   directApi:
