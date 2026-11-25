@@ -44,3 +44,9 @@ func getRoleStoreMode() serverconst.StoreMode {
 func isDeclarativeModeEnabled() bool {
 	return getRoleStoreMode() == serverconst.StoreModeDeclarative
 }
+
+// IsDeclarativeOnly reports whether roles are kept only in declarative files, which hold no writable
+// assignments.
+func IsDeclarativeOnly() bool {
+	return isDeclarativeModeEnabled()
+}

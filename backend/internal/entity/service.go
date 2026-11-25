@@ -1957,6 +1957,9 @@ func (s *entityService) validateEntityType(
 	isValid, svcErr := s.entityTypeService.ValidateEntity(ctx, schemaCategory, entityType, attributes,
 		skipCredentialRequired)
 	if svcErr != nil {
+		if svcErr.Type == tidcommon.ServerErrorType {
+			return fmt.Errorf("failed to validate attributes against schema: %s", svcErr.ErrorDescription)
+		}
 		return fmt.Errorf("%w: %s", ErrSchemaValidationFailed, svcErr.ErrorDescription)
 	}
 	if !isValid {
@@ -1983,6 +1986,9 @@ func (s *entityService) validateEntityType(
 			return true, nil
 		})
 	if svcErr != nil {
+		if svcErr.Type == tidcommon.ServerErrorType {
+			return fmt.Errorf("failed to validate attribute uniqueness: %s", svcErr.ErrorDescription)
+		}
 		return fmt.Errorf("%w: %s", ErrAttributeConflict, svcErr.ErrorDescription)
 	}
 	if !isValid {

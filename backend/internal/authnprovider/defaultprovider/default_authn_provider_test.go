@@ -387,6 +387,10 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Provisioning_Succes
 	suite.Equal("provisioned-user-123", result.EntityReference.EntityID)
 	suite.NotNil(result.AuthenticatedClaims)
 	suite.Equal("provisioned-user-123", result.AuthenticatedClaims[authnprovidercm.UserAttributeUserID])
+	suite.Nil(result.FederatedIdentity)
+	suite.Nil(result.Attributes)
+	suite.Equal(map[string]interface{}{authnprovidercm.UserAttributeUserID: "provisioned-user-123"},
+		result.AttributeToken)
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Provisioning_InvalidPayload() {
@@ -1879,6 +1883,21 @@ func (suite *DefaultAuthnProviderTestSuite) TestFederatedToken_ResolvesThroughRe
 	suite.Require().NotNil(result.EntityReference)
 	suite.Equal("user123", result.EntityReference.EntityID)
 	suite.mockService.AssertNotCalled(suite.T(), "IdentifyEntity", mock.Anything, mock.Anything)
+}
+
+// A federated sign-in reports the identity it verified, and an attribute token rather than loaded
+// attributes, so the attributes load after the authn provider manager syncs the account.
+func (suite *DefaultAuthnProviderTestSuite) TestFederatedSignIn_ReportsIdentityAndAttributeToken() {
+	suite.mockService.On("ResolveLinkedAccounts", mock.Anything, "idp-a", "sub-1").Return([]string{"user123"}, nil)
+	suite.mockService.On("GetEntityProfile", mock.Anything, "user123").
+		Return(&providers.Entity{ID: "user123", Category: providers.EntityCategoryUser, Type: "customer"}, nil)
+
+	result, svcErr := suite.federatedAuthResult(federatedToken(nil))
+	suite.Require().Nil(svcErr)
+	suite.Equal(&providers.FederatedIdentity{IdpID: "idp-a", Sub: "sub-1"}, result.FederatedIdentity)
+	suite.Nil(result.Attributes)
+	suite.Equal(map[string]interface{}{authnprovidercm.UserAttributeUserID: "user123"}, result.AttributeToken)
+	suite.mockService.AssertNotCalled(suite.T(), "UpdateAttributes", mock.Anything, mock.Anything, mock.Anything)
 }
 
 // A recorded link is the only thing that authenticates a federated sign-in here. With none, the

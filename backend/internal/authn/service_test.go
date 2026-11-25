@@ -2483,6 +2483,13 @@ func (suite *AuthenticationServiceTestSuite) TestMapFederatedAuthnErrorInvalidRe
 	suite.Equal(ErrorFederatedAuthenticationFailed.Code, err.Code)
 }
 
+// A federated sign-in whose sync to the account holding its link fails is reported as such.
+func (suite *AuthenticationServiceTestSuite) TestMapFederatedAuthnErrorSyncFailed() {
+	err := suite.service.mapFederatedAuthnError(context.Background(),
+		&authnprovidermgr.ErrorFederatedSyncFailed, log.GetLogger())
+	suite.Equal(ErrorFederatedSyncFailed.Code, err.Code)
+}
+
 // The entity-reference fetch reports through this mapper too, so the codes it raises must keep their
 // client classification instead of reaching the default branch.
 func (suite *AuthenticationServiceTestSuite) TestMapFederatedAuthnErrorEntityReferenceCases() {

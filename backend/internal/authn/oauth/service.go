@@ -346,6 +346,7 @@ func (s *oAuthAuthnService) BuildFederatedAuthResult(ctx context.Context, idpID,
 	return &common.AuthnResult{
 		Token:               token,
 		AuthenticatedClaims: mappedClaims,
+		ReceivedClaims:      claims,
 	}, nil
 }
 

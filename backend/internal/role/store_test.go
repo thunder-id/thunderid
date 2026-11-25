@@ -2005,6 +2005,31 @@ func (suite *RoleStoreTestSuite) TestGetRoleAssignmentsCount_DBClientError() {
 	suite.Equal(0, count)
 }
 
+// --- GetDirectEntityRoleIDs ---
+
+func (suite *RoleStoreTestSuite) TestGetDirectEntityRoleIDs() {
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetDirectEntityRoleIDs, testUserID1, "ou-1",
+		testDeploymentID).Return([]map[string]interface{}{{"role_id": "role-a"}}, nil).Once()
+
+	roleIDs, err := suite.store.GetDirectEntityRoleIDs(context.Background(), testUserID1, "ou-1")
+
+	suite.NoError(err)
+	suite.Equal([]string{"role-a"}, roleIDs)
+	suite.Contains(queryGetDirectEntityRoleIDs.Query, "SHARING_POLICY_ID = ''")
+}
+
+func (suite *RoleStoreTestSuite) TestGetDirectEntityRoleIDs_QueryError() {
+	suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+	suite.mockDBClient.On("QueryContext", mock.Anything, queryGetDirectEntityRoleIDs, testUserID1, "ou-1",
+		testDeploymentID).Return(nil, errors.New("db error")).Once()
+
+	roleIDs, err := suite.store.GetDirectEntityRoleIDs(context.Background(), testUserID1, "ou-1")
+
+	suite.Error(err)
+	suite.Nil(roleIDs)
+}
+
 // --- GetEntityRoleIDs ---
 
 func (suite *RoleStoreTestSuite) TestGetEntityRoleIDs_Success() {

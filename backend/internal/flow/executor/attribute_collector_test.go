@@ -573,6 +573,27 @@ func (suite *AttributeCollectorTestSuite) TestGetInputAttributes_FromRuntimeData
 	assert.Equal(suite.T(), "runtime@example.com", result["email"])
 }
 
+// A claim stands in only for a required input. The connection's sync decides what else is stored.
+func (suite *AttributeCollectorTestSuite) TestGetInputAttributes_ClaimFallbackOnlyForRequiredInputs() {
+	execResp := &providers.ExecutorResponse{}
+	connection := &providers.IDPDTO{ID: "idp-a"}
+	suite.Require().NoError(setExternalIdentity(execResp, connection, "sub-1", map[string]interface{}{
+		"email": "claim@example.com", "nickname": "claimed",
+	}))
+	ctx := &providers.NodeContext{
+		UserInputs:  map[string]string{},
+		RuntimeData: execResp.RuntimeData,
+		NodeInputs: []providers.Input{
+			{Identifier: "email", Type: "string", Required: true},
+			{Identifier: "nickname", Type: "string"},
+		},
+	}
+
+	result := suite.executor.getInputAttributes(ctx)
+
+	suite.Equal(map[string]interface{}{"email": "claim@example.com"}, result)
+}
+
 // TestGetInputAttributes_ConvertsByInputType verifies that values collected for typed inputs are
 // converted from the engine's string representation, so a boolean or number attribute satisfies
 // schema validation when the collected profile is persisted.

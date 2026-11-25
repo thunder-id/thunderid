@@ -510,6 +510,12 @@ func (f *fileBasedGroupStore) DeleteMembershipsByMember(
 	return 0, nil
 }
 
+// GetMemberGroupIDs returns nothing for the file-based store: declarative groups hold no mutable
+// runtime memberships.
+func (f *fileBasedGroupStore) GetMemberGroupIDs(_ context.Context, _, _ string) ([]string, error) {
+	return nil, nil
+}
+
 // GetGroupsByIDs returns groups matching any of the given IDs.
 func (f *fileBasedGroupStore) GetGroupsByIDs(ctx context.Context, groupIDs []string) ([]GroupBasicDAO, error) {
 	if len(groupIDs) == 0 {

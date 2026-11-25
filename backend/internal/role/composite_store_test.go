@@ -563,6 +563,19 @@ func (suite *CompositeRoleStoreTestSuite) TestGetHeldPermissionsByResourceServer
 	}
 }
 
+// The composite store reads removable direct roles from the database store only.
+func (suite *CompositeRoleStoreTestSuite) TestGetDirectEntityRoleIDs_DatabaseOnly() {
+	suite.mockDBStore.On("GetDirectEntityRoleIDs", mock.Anything, "user-1", "ou-1").
+		Return([]string{"role-db"}, nil).Once()
+
+	roleIDs, err := suite.store.GetDirectEntityRoleIDs(context.Background(), "user-1", "ou-1")
+
+	suite.NoError(err)
+	suite.Equal([]string{"role-db"}, roleIDs)
+	suite.mockFileStore.AssertNotCalled(suite.T(), "GetDirectEntityRoleIDs", mock.Anything, mock.Anything,
+		mock.Anything)
+}
+
 // Counting or listing the assignments of a role whose database store alone holds more than the composite
 // limit is refused, not read as if it held only the limit.
 func (suite *CompositeRoleStoreTestSuite) TestAssignmentReads_OneStoreOverTheLimit() {
