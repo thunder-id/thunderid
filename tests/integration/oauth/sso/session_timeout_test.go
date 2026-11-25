@@ -199,3 +199,62 @@ func (ts *SSOLogoutTestSuite) TestSSOSession_TokenRefreshExtendsIdleTimeout() {
 	ts.True(ts.ssoSatisfies(client, refreshPeerClientID, "refresh_idle_state_2"),
 		"a token refresh must keep the SSO session alive for another application")
 }
+
+// assertRefreshRejected checks that a refresh is refused the same way as any other invalid refresh token.
+func (ts *SSOLogoutTestSuite) assertRefreshRejected(refreshToken, msg string) {
+	result, err := testutils.RefreshAccessTokenRaw(clientID, clientSecret, refreshToken, "")
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusBadRequest, result.StatusCode, "%s: %s", msg, string(result.Body))
+
+	var body map[string]interface{}
+	ts.Require().NoError(json.Unmarshal(result.Body, &body))
+	ts.Equal("invalid_grant", body["error"], msg)
+}
+
+// A refresh token issued under a session stops working once the session goes idle, even though the
+// refresh token's own lifetime is much longer.
+func (ts *SSOLogoutTestSuite) TestSSOSession_RefreshFailsAfterIdleTimeout() {
+	// A generous absolute timeout isolates the idle deadline as the only thing that can expire.
+	ts.applySessionTimeouts(2, 600, 1)
+
+	client := ts.newSessionClient()
+	token := ts.loginTokens(client, ssoReuseUsername, "refresh_after_idle_state")
+	ts.Require().NotEmpty(token.RefreshToken, "a refresh token should be issued")
+
+	// Idle past the deadline with no activity at all.
+	time.Sleep(4 * time.Second)
+
+	ts.assertRefreshRejected(token.RefreshToken, "a refresh after the idle deadline must be rejected")
+}
+
+// The absolute timeout ends the session even while refreshes keep it active, and its refresh tokens
+// stop working with it.
+func (ts *SSOLogoutTestSuite) TestSSOSession_RefreshFailsAfterAbsoluteTimeout() {
+	// Idle equals absolute, so the refresh below slides the idle deadline past the absolute one and
+	// only the absolute timeout can end the session. Both deadlines start when the login flow creates
+	// the session, a little before loginTokens returns, so every wait below is measured from the
+	// end of the login and leaves room for that latency.
+	ts.applySessionTimeouts(8, 8, 1)
+
+	client := ts.newSessionClient()
+	token := ts.loginTokens(client, ssoReuseUsername, "refresh_after_absolute_state")
+	ts.Require().NotEmpty(token.RefreshToken, "a refresh token should be issued")
+
+	// Past the 1s activity-refresh interval, so this refresh slides the idle deadline, and about 6.5s
+	// before the absolute deadline whatever the login took.
+	time.Sleep(1500 * time.Millisecond)
+	refreshed, err := testutils.RefreshAccessTokenRaw(clientID, clientSecret, token.RefreshToken, "")
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, refreshed.StatusCode,
+		"a refresh within both deadlines should succeed: %s", string(refreshed.Body))
+	refreshToken := token.RefreshToken
+	if refreshed.Token.RefreshToken != "" {
+		refreshToken = refreshed.Token.RefreshToken
+	}
+
+	// 7s after the refresh: past the absolute deadline, which fell at most 6.5s after the refresh, and
+	// still 1s inside the idle deadline the refresh moved to 8s after it.
+	time.Sleep(7 * time.Second)
+
+	ts.assertRefreshRejected(refreshToken, "a refresh after the absolute deadline must be rejected")
+}

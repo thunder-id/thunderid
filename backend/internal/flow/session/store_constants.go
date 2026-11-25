@@ -47,6 +47,16 @@ var (
 			`FROM "SESSION" WHERE FLOW_EXECUTION_ID = $1 AND DEPLOYMENT_ID = $2 AND TYPE = 'SSO'`,
 	}
 
+	// queryGetSessionByID fetches a session by its id, the sid its tokens carry. Liveness checks
+	// (state, deadlines) are applied by the caller, not here.
+	queryGetSessionByID = model.DBQuery{
+		ID: "SEQ-SESS-19",
+		Query: `SELECT SESSION_ID, SUBJECT_ID, FLOW_ID, FLOW_VERSION, FLOW_EXECUTION_ID, HANDLE_ID, ` +
+			`AUTHENTICATED_AT, CREATED_AT, LAST_ACTIVE_AT, IDLE_EXPIRES_AT, ABSOLUTE_EXPIRES_AT, ` +
+			`PROPERTIES, STATE, VERSION ` +
+			`FROM "SESSION" WHERE SESSION_ID = $1 AND DEPLOYMENT_ID = $2`,
+	}
+
 	// queryUpdateSession updates the mutable fields of a session under an optimistic-lock
 	// guard: it only matches when the stored VERSION equals the expected version, and it
 	// bumps VERSION on success. It never touches the session context.

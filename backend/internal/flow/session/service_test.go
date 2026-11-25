@@ -144,6 +144,55 @@ func (suite *ServiceTestSuite) TestResolve_StoreError() {
 	suite.Contains(err.Error(), "failed to resolve SSO session")
 }
 
+// --- IsLive ---
+
+func (suite *ServiceTestSuite) TestIsLive() {
+	now := time.Date(2026, 11, 18, 10, 0, 0, 0, time.UTC)
+	withDeadlines := func(idle, absolute time.Time) *Session {
+		s := liveStoreSession()
+		s.IdleExpiresAt, s.AbsoluteExpiresAt = idle, absolute
+		return s
+	}
+	ended := liveStoreSession()
+	ended.State = "ENDED"
+
+	cases := []struct {
+		name    string
+		stored  *Session
+		expLive bool
+	}{
+		{"within both deadlines", withDeadlines(now.Add(time.Hour), now.Add(8*time.Hour)), true},
+		{"no deadlines set", liveStoreSession(), true},
+		{"past the idle deadline", withDeadlines(now.Add(-time.Second), now.Add(8*time.Hour)), false},
+		{"at the idle deadline", withDeadlines(now, now.Add(8*time.Hour)), false},
+		{"past the absolute deadline", withDeadlines(now.Add(time.Hour), now.Add(-time.Second)), false},
+		{"not active", ended, false},
+		{"unknown session", nil, false},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			svc, m := suite.newService()
+			m.store.EXPECT().GetByID(mock.Anything, "sess-1").Return(tc.stored, nil)
+
+			live, err := svc.IsLive(context.Background(), "sess-1", now)
+
+			suite.Require().NoError(err)
+			suite.Equal(tc.expLive, live)
+		})
+	}
+}
+
+func (suite *ServiceTestSuite) TestIsLive_StoreError() {
+	svc, m := suite.newService()
+	m.store.EXPECT().GetByID(mock.Anything, "sess-1").Return(nil, errors.New("store down"))
+
+	live, err := svc.IsLive(context.Background(), "sess-1", time.Now().UTC())
+
+	suite.Require().Error(err)
+	suite.False(live)
+	suite.Contains(err.Error(), "failed to load session")
+}
+
 // --- FindCheckpoint ---
 
 // TestFindCheckpoint_Present also pins that the row itself is returned, not just its existence: the
