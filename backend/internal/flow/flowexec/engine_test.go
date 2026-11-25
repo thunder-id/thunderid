@@ -22,6 +22,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/executormock"
 	"github.com/thunder-id/thunderid/tests/mocks/observability/observabilitymock"
+	"github.com/thunder-id/thunderid/tests/mocks/observabilityprovidermock"
 )
 
 type EngineTestSuite struct {
@@ -2485,7 +2486,6 @@ func (s *EngineTestSuite) TestSkipToNextNode_NoCondition() {
 	t := s.T()
 	mockNode := coremock.NewNodeInterfaceMock(t)
 	mockNode.On("GetCondition").Return((*core.NodeCondition)(nil))
-	mockNode.On("GetID").Return("node-1")
 
 	fe := &flowEngine{logger: log.GetLogger()}
 	ctx := &EngineContext{Context: context.Background()}
@@ -2500,7 +2500,6 @@ func (s *EngineTestSuite) TestSkipToNextNode_EmptyOnSkip() {
 	cond := &core.NodeCondition{OnSkip: ""}
 	mockNode := coremock.NewNodeInterfaceMock(t)
 	mockNode.On("GetCondition").Return(cond)
-	mockNode.On("GetID").Return("node-1")
 
 	fe := &flowEngine{logger: log.GetLogger()}
 	ctx := &EngineContext{Context: context.Background()}
@@ -2515,7 +2514,6 @@ func (s *EngineTestSuite) TestSkipToNextNode_NodeNotFound() {
 	cond := &core.NodeCondition{OnSkip: "skip-target"}
 	mockNode := coremock.NewNodeInterfaceMock(t)
 	mockNode.On("GetCondition").Return(cond)
-	mockNode.On("GetID").Return("node-1")
 
 	mockGraph := coremock.NewGraphInterfaceMock(t)
 	mockGraph.On("GetNode", "skip-target").Return(nil, false)
@@ -2728,7 +2726,6 @@ func (s *EngineTestSuite) TestSetNodeExecutor_NotExecutorBacked() {
 	t := s.T()
 	mockNode := coremock.NewNodeInterfaceMock(t)
 	mockNode.On("GetType").Return(common.NodeTypeTaskExecution)
-	mockNode.On("GetID").Return("node-1")
 
 	fe := &flowEngine{logger: log.GetLogger()}
 	err := fe.setNodeExecutor(context.Background(), mockNode, log.GetLogger())
@@ -2753,7 +2750,6 @@ func (s *EngineTestSuite) TestSetNodeExecutor_ExecutorNameEmpty() {
 	mockNode.On("GetType").Return(common.NodeTypeTaskExecution)
 	mockNode.On("GetExecutor").Return(nil)
 	mockNode.On("GetExecutorName").Return("")
-	mockNode.On("GetID").Return("node-1")
 
 	fe := &flowEngine{logger: log.GetLogger()}
 	err := fe.setNodeExecutor(context.Background(), mockNode, log.GetLogger())
@@ -2769,7 +2765,6 @@ func (s *EngineTestSuite) TestSetNodeExecutor_RegistryError() {
 	mockNode.On("GetType").Return(common.NodeTypeTaskExecution)
 	mockNode.On("GetExecutor").Return(nil)
 	mockNode.On("GetExecutorName").Return("myExec")
-	mockNode.On("GetID").Return("node-1")
 
 	fe := &flowEngine{executorRegistry: mockRegistry, logger: log.GetLogger()}
 	err := fe.setNodeExecutor(context.Background(), mockNode, log.GetLogger())
@@ -4965,4 +4960,30 @@ func (s *EngineTestSuite) TestHandleCompletedResponse_EndNodeWithFrameStack() {
 	s.Nil(svcErr)
 	s.Equal(mockNextNode, next)
 	s.Equal(0, ctx.frameDepth())
+}
+
+func (s *EngineTestSuite) TestPublishFlowEvents_UseTraceIDNotExecutionID() {
+	t := s.T()
+	ctx := &EngineContext{
+		Context:     context.Background(),
+		ExecutionID: "exec-trace",
+		TraceID:     "trace-abc",
+		FlowType:    providers.FlowTypeAuthentication,
+	}
+
+	var published []*providers.Event
+	obs := observabilityprovidermock.NewObservabilityProviderMock(t)
+	obs.On("IsEnabled").Return(true)
+	obs.On("PublishEvent", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		published = append(published, args.Get(1).(*providers.Event))
+	})
+
+	publishFlowStartedEvent(ctx, obs)
+	publishFlowCompletedEvent(ctx, 0, 10, obs)
+	publishFlowFailedEvent(ctx, &tidcommon.InternalServerError, 0, 10, obs)
+
+	s.Len(published, 3)
+	for _, evt := range published {
+		s.Equal("trace-abc", evt.TraceID)
+	}
 }

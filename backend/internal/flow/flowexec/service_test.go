@@ -32,6 +32,7 @@ import (
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	sysContext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -1837,6 +1838,66 @@ func TestInitiateAndExecute_InitialInputsAndRuntimeData(t *testing.T) {
 	assert.Equal(t, providers.FlowStatusIncomplete, step.Status)
 	assert.Equal(t, "alice", capturedCtx.UserInputs["username"])
 	assert.Equal(t, "c1", capturedCtx.RuntimeData["clientId"])
+}
+
+func TestInitiateAndExecute_SetsTraceID(t *testing.T) {
+	appID := "test-app-trace"
+
+	testConfig := &config.Config{}
+	_ = config.InitializeServerRuntime("/tmp/test-trace", testConfig)
+	defer config.ResetServerRuntime()
+
+	flowFactory, _ := core.Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"))
+	testGraph := flowFactory.CreateGraph("auth-graph-trace", providers.FlowTypeAuthentication, 1)
+
+	mockInboundClient := inboundclientmock.NewInboundClientServiceInterfaceMock(t)
+	mockEntityProvider := entityprovidermock.NewEntityProviderInterfaceMock(t)
+	mockFlowProvider := NewFlowProviderMock(t)
+	mockGraphBuilder := NewGraphBuilderInterfaceMock(t)
+	mockCrypto := cryptomock.NewRuntimeCryptoProviderMock(t)
+	mockStore := newFlowStoreInterfaceMock(t)
+	mockEngineInner := newFlowEngineInterfaceMock(t)
+
+	mockInboundClient.EXPECT().GetInboundClientByEntityID(mock.Anything, appID).Return(
+		&inboundmodel.InboundClient{ID: appID, AuthFlowID: "auth-graph-trace"}, nil)
+	mockEntityProvider.EXPECT().GetEntity(appID).Return(
+		&providers.Entity{ID: appID, Category: providers.EntityCategoryApp}, nil)
+	mockFlowProvider.EXPECT().
+		GetFlow(mock.Anything, "auth-graph-trace").
+		Return(&providers.CompleteFlowDefinition{ID: "auth-graph-trace"}, nil)
+	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).Return(testGraph, nil)
+	mockCrypto.EXPECT().Encrypt(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Return([]byte("encrypted"), nil, nil)
+	mockStore.EXPECT().StoreFlowContext(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	var capturedCtx *EngineContext
+	mockEngineInner.EXPECT().Execute(mock.MatchedBy(func(ctx *EngineContext) bool {
+		capturedCtx = ctx
+		return true
+	})).Return(FlowStep{Status: providers.FlowStatusIncomplete}, nil)
+
+	svc := &flowExecService{
+		flowStore:     mockStore,
+		graphBuilder:  mockGraphBuilder,
+		flowProvider:  mockFlowProvider,
+		flowEngine:    mockEngineInner,
+		actorProvider: actorprovider.Initialize(mockInboundClient, mockEntityProvider, noopAuthnMgr(), nil),
+		transactioner: &stubTransactioner{},
+		cryptoSvc:     mockCrypto,
+		cfg:           testFlowExecCfg,
+	}
+
+	step, err := svc.InitiateAndExecute(sysContext.WithTraceID(context.Background(), "trace-123"), &FlowInitContext{
+		ApplicationID: appID,
+		FlowType:      "AUTHENTICATION",
+		RuntimeData:   map[string]string{"clientId": "c1"},
+		InitialInputs: map[string]string{"username": "alice"},
+	})
+
+	assert.Nil(t, err)
+	assert.NotNil(t, step)
+	assert.Equal(t, providers.FlowStatusIncomplete, step.Status)
+	assert.Equal(t, "trace-123", capturedCtx.TraceID)
 }
 
 func TestInitiateAndExecute_FlowComplete_ContextNotStored(t *testing.T) {
