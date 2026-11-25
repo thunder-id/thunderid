@@ -258,6 +258,7 @@ type ExecutorDependencies struct {
 	SharingService         sharing.SharingServiceInterface
 	PermissionResolver     entityPermissionResolver
 	tokenLeeway            time.Duration
+	gateHostname           string
 	DeviceCodeVerifier     providers.DeviceCodeVerifier
 }
 
@@ -276,7 +277,7 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNamePasskeyAuth: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNamePasskeyAuth, newPasskeyAuthExecutor(
-				deps.FlowFactory, deps.AuthnProvider, newAccessGuard(deps.IdentityGovernance)))
+				deps.FlowFactory, deps.AuthnProvider, newAccessGuard(deps.IdentityGovernance), deps.gateHostname))
 		},
 		ExecutorNameMagicLink: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameMagicLink, newMagicLinkExecutor(

@@ -15,6 +15,8 @@ import (
 const (
 	passkeyRegRelyingPartyID   = "localhost"
 	passkeyRegRelyingPartyName = "ThunderID Test"
+	// passkeyRegGateHost is the host of the test server's sign-in page.
+	passkeyRegGateHost = "localhost"
 )
 
 // passkeyRegOrigin is set as the application's only allowed passkey origin, which is what the
@@ -164,6 +166,7 @@ type PasskeyRegistrationTestSuite struct {
 	authenticatorSelFlow string
 	attestationFlow      string
 	defaultRPNameFlow    string
+	noRPIDFlow           string
 }
 
 func TestPasskeyRegistrationTestSuite(t *testing.T) {
@@ -208,10 +211,15 @@ func (ts *PasskeyRegistrationTestSuite) SetupSuite() {
 			"attestation":      "direct",
 		}))
 
-	// No relyingPartyName, so the relying party ID should be used in its place.
+	// No relyingPartyName, so the application's name should be used in its place.
 	ts.defaultRPNameFlow = ts.createFlow(buildPasskeyRegistrationFlow(
 		"Passkey Registration Default RP Name Test", "reg_flow_passkey_default_rpname_test",
 		map[string]interface{}{"relyingPartyId": passkeyRegRelyingPartyID}))
+
+	// No relying party ID, so the host of the sign-in page should be used in its place.
+	ts.noRPIDFlow = ts.createFlow(buildPasskeyRegistrationFlow(
+		"Passkey Registration No RP ID Test", "reg_flow_passkey_no_rpid_test",
+		map[string]interface{}{"relyingPartyName": passkeyRegRelyingPartyName}))
 
 	// An isolated auth flow avoids the cross-type reference check, which rejects an application
 	// whose authentication flow points at a different registration flow than the one configured.
@@ -419,20 +427,40 @@ func (ts *PasskeyRegistrationTestSuite) TestPasskeyRegistration_AttestationPrope
 }
 
 // TestPasskeyRegistration_RelyingPartyNameDefault checks that omitting the relying party name falls
-// back to the relying party ID.
+// back to the application's name.
 func (ts *PasskeyRegistrationTestSuite) TestPasskeyRegistration_RelyingPartyNameDefault() {
 	ts.useFlow(ts.defaultRPNameFlow)
 
 	step := ts.startRegistration("passkeyregdefaultrp")
 	options := ts.creationOptions(step)
 
-	ts.Equal(passkeyRegRelyingPartyID, options.RelyingParty.Name,
-		"Relying party name should fall back to the relying party ID")
+	ts.Equal(passkeyRegTestApp.Name, options.RelyingParty.Name,
+		"Relying party name should fall back to the application's name")
 
 	finalStep, _ := ts.completeRegistration(step, options.Challenge)
 	ts.Require().Equal("COMPLETE", finalStep.FlowStatus, "Expected flow status to be COMPLETE")
 
 	user, err := testutils.FindUserByAttribute("username", "passkeyregdefaultrp")
+	ts.Require().NoError(err, "Failed to look up the registered user")
+	ts.Require().NotNil(user, "The registration flow should have provisioned a user")
+	ts.config.CreatedUserIDs = append(ts.config.CreatedUserIDs, user.ID)
+}
+
+// TestPasskeyRegistration_RelyingPartyIDDefault checks that a flow without a relying party ID registers
+// the passkey for the host of the sign-in page, which is the test server's own host.
+func (ts *PasskeyRegistrationTestSuite) TestPasskeyRegistration_RelyingPartyIDDefault() {
+	ts.useFlow(ts.noRPIDFlow)
+
+	step := ts.startRegistration("passkeyregnorpid")
+	options := ts.creationOptions(step)
+
+	ts.Equal(passkeyRegGateHost, options.RelyingParty.ID,
+		"Relying party ID should default to the host of the sign-in page")
+
+	finalStep, _ := ts.completeRegistration(step, options.Challenge)
+	ts.Require().Equal("COMPLETE", finalStep.FlowStatus, "Expected flow status to be COMPLETE")
+
+	user, err := testutils.FindUserByAttribute("username", "passkeyregnorpid")
 	ts.Require().NoError(err, "Failed to look up the registered user")
 	ts.Require().NotNil(user, "The registration flow should have provisioned a user")
 	ts.config.CreatedUserIDs = append(ts.config.CreatedUserIDs, user.ID)

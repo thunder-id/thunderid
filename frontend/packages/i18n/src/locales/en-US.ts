@@ -3322,7 +3322,10 @@ const translations = {
     'onboarding.configure.passkey.description': 'Configure the Relying Party details for Passkey authentication.',
     'onboarding.configure.details.relyingPartyId.label': 'Relying party ID',
     'onboarding.configure.details.relyingPartyId.placeholder': 'e.g., example.com',
-    'onboarding.configure.details.relyingPartyId.helperText': 'The domain where the WebAuthn credential is valid',
+    'onboarding.configure.details.relyingPartyId.helperText':
+      'The domain where the passkey is valid. Leave empty to use the host of the sign-in page.',
+    'onboarding.configure.details.relyingPartyId.embeddedHelperText':
+      'The domain of your application, where users create and use their passkeys.',
     'onboarding.configure.details.relyingPartyName.label': 'Relying party name',
     'onboarding.configure.details.relyingPartyName.placeholder': 'e.g., my application',
     'onboarding.configure.details.relyingPartyName.helperText': 'A user-friendly name for the relying party',
@@ -4762,12 +4765,13 @@ const translations = {
 
     // Passkey relying party configuration
     'core.executions.passkey.relyingPartyId.label': 'Relying party ID',
-    'core.executions.passkey.relyingPartyId.placeholder': 'e.g., localhost or example.com',
+    'core.executions.passkey.relyingPartyId.placeholder': 'e.g., example.com',
     'core.executions.passkey.relyingPartyId.hint':
-      'The domain identifier for passkey registration (typically your domain name)',
+      'The domain the passkey is valid for. Leave empty to use the host of the sign-in page.',
     'core.executions.passkey.relyingPartyName.label': 'Relying party name',
     'core.executions.passkey.relyingPartyName.placeholder': 'e.g., my application',
-    'core.executions.passkey.relyingPartyName.hint': 'A human-readable name shown to users during passkey registration',
+    'core.executions.passkey.relyingPartyName.hint':
+      "A name shown to users during passkey registration. Leave empty to use the application's name.",
 
     // OU Resolver executor
     'core.executions.ouResolver.description': 'Configure the OU resolution strategy.',

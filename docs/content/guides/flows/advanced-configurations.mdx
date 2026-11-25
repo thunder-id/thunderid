@@ -839,7 +839,7 @@ Issues a WebAuthn authentication challenge. The browser forwards it to the user'
 
 **Prerequisites:**
 - `userID` (optional): if present in runtime data, the challenge targets only passkeys registered for that user. If absent, a usernameless challenge is issued and any registered passkey can respond. Populated by any prior authentication executor.
-- `relyingPartyId` node property must be set to the domain where the passkey is used (e.g., `app.example.com`). The executor hard-fails if missing.
+- `relyingPartyId` node property: the domain where the passkey is used (e.g., `app.example.com`). If it is not set, the executor uses the host of the sign-in page (the `gate_client` host). Set it when your application runs the passkey ceremony on its own pages (an embedded or app-native integration), since the browser accepts only a relying party ID that matches the page's domain.
 
 **View pairing:** Must be followed by the **Passkey View**, which collects the signed authenticator response.
 
@@ -847,8 +847,8 @@ Issues a WebAuthn authentication challenge. The browser forwards it to the user'
 
 | Property | UI Label | Required | Description |
 |---|---|---|---|
-| `relyingPartyId` | Relying Party ID | Yes | The relying party domain (e.g. `app.example.com`) |
-| `relyingPartyName` | Relying Party Name | No | Display name of the relying party (e.g. `My App`) |
+| `relyingPartyId` | Relying Party ID | No | The relying party domain (e.g. `app.example.com`). Defaults to the host of the sign-in page. |
+| `relyingPartyName` | Relying Party Name | No | Display name of the relying party (e.g. `My App`). Defaults to the application's name. |
 | `authenticatorSelection` | - | No | Authenticator selection criteria object with fields: `authenticatorAttachment`, `requireResidentKey`, `residentKey`, `userVerification` |
 | `attestation` | - | No | Attestation conveyance preference (e.g. `none`, `direct`, `indirect`). Defaults to `none`. |
 
@@ -874,7 +874,6 @@ Issues a WebAuthn authentication challenge. The browser forwards it to the user'
 ```
 
 **Failure conditions:**
-- `relyingPartyId` node property missing or empty
 - No passkeys registered for the user (when userID is provided)
 - Passkey service error
 
@@ -933,14 +932,14 @@ Begins the WebAuthn credential registration ceremony and returns `PublicKeyCrede
 
 **Prerequisites:**
 - `userID` (required): must be present in runtime data. The executor hard-fails if missing. Populated by Provisioning (for new users during registration) or any authentication executor (for existing users adding a passkey).
-- `relyingPartyId` node property must be set to the domain where passkeys will be registered (e.g., `app.example.com`). The executor hard-fails if missing.
+- `relyingPartyId` node property: the domain where passkeys will be registered (e.g., `app.example.com`). If it is not set, the executor uses the host of the sign-in page (the `gate_client` host). Set it when your application runs the passkey ceremony on its own pages (an embedded or app-native integration), since the browser accepts only a relying party ID that matches the page's domain.
 
 **Executor properties:**
 
 | Property | UI Label | Required | Description |
 |---|---|---|---|
-| `relyingPartyId` | Relying Party ID | Yes | The relying party domain (e.g. `app.example.com`) |
-| `relyingPartyName` | Relying Party Name | No | Display name of the relying party (e.g. `My App`) |
+| `relyingPartyId` | Relying Party ID | No | The relying party domain (e.g. `app.example.com`). Defaults to the host of the sign-in page. |
+| `relyingPartyName` | Relying Party Name | No | Display name of the relying party (e.g. `My App`). Defaults to the application's name. |
 | `authenticatorSelection` | - | No | Authenticator selection criteria object with fields: `authenticatorAttachment`, `requireResidentKey`, `residentKey`, `userVerification` |
 | `attestation` | - | No | Attestation conveyance preference (e.g. `none`, `direct`, `indirect`). Defaults to `none`. |
 
@@ -967,7 +966,6 @@ Begins the WebAuthn credential registration ceremony and returns `PublicKeyCrede
 
 **Failure conditions:**
 - `userID` not available
-- `relyingPartyId` node property missing or empty
 - Passkey service error
 
 </details>

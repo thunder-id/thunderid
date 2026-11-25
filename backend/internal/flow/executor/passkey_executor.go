@@ -52,7 +52,9 @@ type passkeyAuthExecutor struct {
 	providers.Executor
 	authnProvider providers.AuthnProviderManager
 	accessGuard   *accessGuard
-	logger        *log.Logger
+	// gateHostname is the relying party ID for a node that sets none.
+	gateHostname string
+	logger       *log.Logger
 }
 
 var _ providers.Executor = (*passkeyAuthExecutor)(nil)
@@ -62,6 +64,7 @@ func newPasskeyAuthExecutor(
 	flowFactory core.FlowFactoryInterface,
 	authnProvider providers.AuthnProviderManager,
 	accessGuard *accessGuard,
+	gateHostname string,
 ) *passkeyAuthExecutor {
 	defaultInputs := []providers.Input{
 		{
@@ -111,7 +114,7 @@ func newPasskeyAuthExecutor(
 				passkeyExecutorModeRegFinish,
 			},
 			SupportedProperties: []providers.ExecutorSupportedProperties{
-				{Property: "relyingPartyId", IsRequired: true, ApplicableModes: []string{
+				{Property: "relyingPartyId", ApplicableModes: []string{
 					passkeyExecutorModeChallenge, passkeyExecutorModeRegStart,
 				}},
 				{Property: "relyingPartyName"},
@@ -124,6 +127,7 @@ func newPasskeyAuthExecutor(
 		Executor:      base,
 		authnProvider: authnProvider,
 		accessGuard:   accessGuard,
+		gateHostname:  gateHostname,
 		logger:        logger,
 	}
 }
@@ -187,11 +191,10 @@ func (p *passkeyAuthExecutor) executeChallenge(ctx *providers.NodeContext,
 		return execResp, nil
 	}
 
-	// Get relying party ID from node properties or use a default
 	relyingPartyID := p.getRelyingPartyID(ctx)
 	if relyingPartyID == "" {
 		logger.Error(ctx.Context, "Relying party ID not configured")
-		return execResp, errors.New("relying party ID is not configured in node properties")
+		return execResp, errors.New("relying party ID is not configured")
 	}
 
 	// Start passkey authentication (service will detect usernameless flow if userID is empty)
@@ -363,13 +366,11 @@ func (p *passkeyAuthExecutor) executeRegisterStart(ctx *providers.NodeContext,
 	relyingPartyID := p.getRelyingPartyID(ctx)
 	if relyingPartyID == "" {
 		logger.Error(ctx.Context, "Relying party ID not configured")
-		return execResp, errors.New("relying party ID is not configured in node properties")
+		return execResp, errors.New("relying party ID is not configured")
 	}
 
-	relyingPartyName := p.getRelyingPartyName(ctx)
-	if relyingPartyName == "" {
-		relyingPartyName = relyingPartyID // Default to ID if name not specified
-	}
+	// A step that names no relying party shows the application's name in the passkey prompt.
+	relyingPartyName := cmp.Or(p.getRelyingPartyName(ctx), ctx.Application.Name, relyingPartyID)
 
 	// Build registration request
 	regReq := &passkey.PasskeyRegistrationStartRequest{
@@ -537,19 +538,14 @@ func passkeyStartFailure(description string) *tidcommon.ServiceError {
 	})
 }
 
-// getRelyingPartyID retrieves the relying party ID from node properties.
+// getRelyingPartyID returns the node's relying party ID, or the host of the gate that serves the
+// sign-in page when the node sets none.
 func (p *passkeyAuthExecutor) getRelyingPartyID(ctx *providers.NodeContext) string {
-	if len(ctx.NodeProperties) == 0 {
-		return ""
+	if rpID, ok := ctx.NodeProperties["relyingPartyId"].(string); ok && rpID != "" {
+		return rpID
 	}
 
-	if rpID, ok := ctx.NodeProperties["relyingPartyId"]; ok {
-		if rpIDStr, valid := rpID.(string); valid && rpIDStr != "" {
-			return rpIDStr
-		}
-	}
-
-	return ""
+	return p.gateHostname
 }
 
 // getRelyingPartyName retrieves the relying party name from node properties.

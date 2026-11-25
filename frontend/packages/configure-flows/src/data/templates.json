@@ -2578,10 +2578,6 @@
               "y": 303
             }
           },
-          "properties": {
-            "relyingPartyId": "localhost",
-            "relyingPartyName": "{{productName}}"
-          },
           "executor": {
             "name": "PasskeyAuthExecutor",
             "mode": "challenge"
@@ -5589,10 +5585,6 @@
               "y": 330
             }
           },
-          "properties": {
-            "relyingPartyId": "localhost",
-            "relyingPartyName": "{{productName}}"
-          },
           "executor": {
             "name": "PasskeyAuthExecutor",
             "mode": "challenge"
@@ -5750,8 +5742,10 @@
             }
           },
           "properties": {
-            "relyingPartyId": "localhost",
-            "relyingPartyName": "{{productName}}"
+            "authenticatorSelection": {
+              "residentKey": "required",
+              "requireResidentKey": true
+            }
           },
           "executor": {
             "name": "PasskeyAuthExecutor",
@@ -9704,8 +9698,10 @@
             }
           },
           "properties": {
-            "relyingPartyId": "localhost",
-            "relyingPartyName": "{{productName}}"
+            "authenticatorSelection": {
+              "residentKey": "required",
+              "requireResidentKey": true
+            }
           },
           "executor": {
             "name": "PasskeyAuthExecutor",
@@ -11942,8 +11938,6 @@
           "id": "passkey_reg_start",
           "type": "TASK_EXECUTION",
           "properties": {
-            "relyingPartyId": "localhost",
-            "relyingPartyName": "{{productName}}",
             "authenticatorSelection": {
               "authenticatorAttachment": "platform",
               "requireResidentKey": true,
@@ -12061,8 +12055,6 @@
           "id": "passkey_only_reg_start",
           "type": "TASK_EXECUTION",
           "properties": {
-            "relyingPartyId": "localhost",
-            "relyingPartyName": "{{productName}}",
             "authenticatorSelection": {
               "authenticatorAttachment": "platform",
               "requireResidentKey": true,
@@ -19884,10 +19876,6 @@
                 "onSuccess": "{{PASSKEY_VERIFY_EXECUTOR_ID}}",
                 "onFailure": "{{PASSWORD_FOR_REG_VIEW_ID}}",
                 "onIncomplete": ""
-              },
-              "properties": {
-                "relyingPartyId": "localhost",
-                "relyingPartyName": "{{productName}}"
               }
             }
           },
@@ -20022,8 +20010,10 @@
                 "onIncomplete": ""
               },
               "properties": {
-                "relyingPartyId": "localhost",
-                "relyingPartyName": "{{productName}}"
+                "authenticatorSelection": {
+                  "residentKey": "required",
+                  "requireResidentKey": true
+                }
               }
             }
           },

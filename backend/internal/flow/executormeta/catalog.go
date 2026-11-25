@@ -171,7 +171,7 @@ var catalog = map[string]providers.ExecutorMeta{
 	ExecutorNamePasskeyAuth: {
 		SupportedModes: []string{"challenge", "verify", "register_start", "register_finish"},
 		SupportedProperties: []providers.ExecutorSupportedProperties{
-			{Property: "relyingPartyId", IsRequired: true, ApplicableModes: []string{"challenge", "register_start"}},
+			{Property: "relyingPartyId", ApplicableModes: []string{"challenge", "register_start"}},
 			{Property: "relyingPartyName"},
 			{Property: "authenticatorSelection"},
 			{Property: "attestation"},
