@@ -140,7 +140,7 @@ func (suite *AuthorizeServiceTestSuite) SetupTest() {
 	// Default resolution path: permission-bearing requests without an explicit resource resolve the
 	// configured default resource server via the empty identifier. Declared optional so tests that
 	// never reach flow initiation (or that exercise resource-binding specifics) are unaffected.
-	suite.mockResourceService.EXPECT().GetResourceServerByIdentifier(mock.Anything, "").
+	suite.mockResourceService.EXPECT().GetResourceServerByPermissions(mock.Anything, "", []string{"read", "write"}).
 		Return(&providers.ResourceServer{ID: "rs-default", Identifier: "https://rs-default.example.com"}, nil).Maybe()
 	suite.mockResourceService.EXPECT().ValidatePermissions(mock.Anything, "rs-default", mock.Anything).
 		Return([]string{}, nil).Maybe()
@@ -372,7 +372,8 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Ex
 	suite.mockInboundClient.EXPECT().GetOAuthClientByClientID(mock.Anything, "test-client-id").Return(app, nil)
 	suite.mockValidator.On("validateInitialAuthorizationRequest", mock.Anything, mock.Anything, app).
 		Return(false, "", "")
-	suite.mockResourceService.EXPECT().GetResourceServerByIdentifier(mock.Anything, "https://api.example.com").
+	suite.mockResourceService.EXPECT().GetResourceServerByPermissions(
+		mock.Anything, "https://api.example.com", []string{"read", "write"}).
 		Return(&providers.ResourceServer{ID: "rs-api", Identifier: "https://api.example.com"}, nil)
 	suite.mockResourceService.EXPECT().ValidatePermissions(mock.Anything, "rs-api", mock.Anything).
 		Return([]string{}, nil)
@@ -425,7 +426,7 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_No
 	// No default resource server configured; resolving the empty identifier fails, so the
 	// permission-bearing request cannot bind and is rejected with invalid_target.
 	rs := resourcemock.NewResourceServiceInterfaceMock(suite.T())
-	rs.EXPECT().GetResourceServerByIdentifier(mock.Anything, "").
+	rs.EXPECT().GetResourceServerByPermissions(mock.Anything, "", []string{"read", "write"}).
 		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RES-1003"})
 
 	svc := suite.newService()

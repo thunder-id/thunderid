@@ -11,10 +11,10 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// defaultAwareResourceServerProvider decorates a providers.ResourceServerProvider so that an empty
-// identifier resolves the deployment's configured default resource server. The default resource server
-// is a server-side policy: the authentication engine and OAuth layers depend only on
-// providers.ResourceServerProvider and never see the server-config store.
+// defaultAwareResourceServerProvider decorates a providers.ResourceServerProvider so that a binding
+// request without a resource identifier resolves the deployment's configured default resource server.
+// The default resource server is a server-side policy: the authentication engine and OAuth layers
+// depend only on providers.ResourceServerProvider and never see the server-config store.
 type defaultAwareResourceServerProvider struct {
 	providers.ResourceServerProvider
 	serverConfigService serverconfig.ServerConfigService
@@ -22,7 +22,7 @@ type defaultAwareResourceServerProvider struct {
 
 var _ providers.ResourceServerProvider = (*defaultAwareResourceServerProvider)(nil)
 
-// NewDefaultAwareResourceServerProvider wraps base so that GetResourceServerByIdentifier resolves the
+// NewDefaultAwareResourceServerProvider wraps base so that GetResourceServerByPermissions resolves the
 // configured default resource server when the identifier is empty. base and serverConfigService must
 // both be non-nil.
 func NewDefaultAwareResourceServerProvider(
@@ -41,16 +41,24 @@ func NewDefaultAwareResourceServerProvider(
 	}
 }
 
-// GetResourceServerByIdentifier resolves an explicit identifier through the wrapped provider. When the
-// identifier is empty it resolves the deployment's configured default resource server: a client error
-// when no default is configured (or the merged config is malformed), and a server error when the
-// configuration cannot be read.
-func (p *defaultAwareResourceServerProvider) GetResourceServerByIdentifier(
-	ctx context.Context, identifier string,
+// GetResourceServerByPermissions resolves an explicit identifier by identifier only. ThunderID does not
+// resolve resource servers from permissions, so an empty identifier resolves the deployment's configured
+// default resource server.
+func (p *defaultAwareResourceServerProvider) GetResourceServerByPermissions(
+	ctx context.Context, resourceIdentifier string, _ []string,
 ) (*providers.ResourceServer, *tidcommon.ServiceError) {
-	if identifier != "" {
-		return p.ResourceServerProvider.GetResourceServerByIdentifier(ctx, identifier)
+	if resourceIdentifier != "" {
+		return p.ResourceServerProvider.GetResourceServerByIdentifier(ctx, resourceIdentifier)
 	}
+	return p.getDefaultResourceServer(ctx)
+}
+
+// getDefaultResourceServer resolves the deployment's configured default resource server. It returns a
+// client error when no default is configured (or the merged config is malformed), and a server error
+// when the configuration cannot be read.
+func (p *defaultAwareResourceServerProvider) getDefaultResourceServer(
+	ctx context.Context,
+) (*providers.ResourceServer, *tidcommon.ServiceError) {
 	merged, svcErr := p.serverConfigService.GetMergedConfig(
 		ctx, string(serverconfig.ConfigNameDefaultResourceServer))
 	if svcErr != nil {
