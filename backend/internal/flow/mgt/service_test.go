@@ -67,6 +67,29 @@ func (s *stubTransactioner) Transact(ctx context.Context, txFunc func(context.Co
 	return txFunc(ctx)
 }
 
+// txMarkerKey marks a context as the one a transaction hands its function.
+type txMarkerKey struct{}
+
+// recordingTransactioner hands its function a marked context and records how many transactions it ran and whether
+// the last one failed, which a real transactioner rolls back.
+type recordingTransactioner struct {
+	calls      int
+	rolledBack bool
+}
+
+func (t *recordingTransactioner) Transact(ctx context.Context, txFunc func(context.Context) error) error {
+	t.calls++
+	err := txFunc(context.WithValue(ctx, txMarkerKey{}, true))
+	t.rolledBack = err != nil
+	return err
+}
+
+// inTransaction reports whether a context is the one a recordingTransactioner handed its function.
+func inTransaction(ctx context.Context) bool {
+	marked, _ := ctx.Value(txMarkerKey{}).(bool)
+	return marked
+}
+
 // stubDependencyRegistry is a stub implementation of resourcedependency.Registry for testing.
 // The real registry never returns an error from GetDependencies, so a stub is required to
 // exercise the error branch of GetFlowUsages.
@@ -4686,19 +4709,38 @@ func (s *SharingVariablesTestSuite) TestPurgeOrphanedSharingReportsAFailureToRea
 	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
-// A policy left behind by a delete that could not clean up is not hidden: the delete fails, and a retry finishes it.
-func (s *SharingVariablesTestSuite) TestDeleteFlowFailsWhenItsPoliciesCannotBeRemoved() {
+// A flow and its sharing policies are removed in one transaction, and the cached graph is dropped once it commits.
+func (s *SharingVariablesTestSuite) TestDeleteFlowRemovesTheFlowAndItsPoliciesInOneTransaction() {
+	tx := &recordingTransactioner{}
+	s.service.transactioner = tx
 	graphs := newGraphBuilderInterfaceMock(s.T())
 	graphs.EXPECT().InvalidateCache(mock.Anything, flowIDVar).Return()
 	s.service.graphBuilder = graphs
-	s.store.EXPECT().DeleteFlow(mock.Anything, flowIDVar).Return(nil)
-	s.sharing.EXPECT().DeletePoliciesForResource(mock.Anything, FlowSharingType, flowIDVar).
+	s.store.EXPECT().DeleteFlow(mock.MatchedBy(inTransaction), flowIDVar).Return(nil)
+	s.sharing.EXPECT().DeletePoliciesForResource(mock.MatchedBy(inTransaction), FlowSharingType, flowIDVar).
+		Return(nil)
+
+	s.Nil(s.service.DeleteFlow(context.Background(), flowIDVar))
+
+	s.Equal(1, tx.calls)
+	s.False(tx.rolledBack)
+}
+
+// A delete that cannot remove the policies is undone with them: the flow and its sharing go together or not at all,
+// so nothing is left behind and the cached graph of a flow that still exists is kept.
+func (s *SharingVariablesTestSuite) TestDeleteFlowIsUndoneWhenItsPoliciesCannotBeRemoved() {
+	tx := &recordingTransactioner{}
+	s.service.transactioner = tx
+	s.service.graphBuilder = newGraphBuilderInterfaceMock(s.T())
+	s.store.EXPECT().DeleteFlow(mock.MatchedBy(inTransaction), flowIDVar).Return(nil)
+	s.sharing.EXPECT().DeletePoliciesForResource(mock.MatchedBy(inTransaction), FlowSharingType, flowIDVar).
 		Return(&tidcommon.InternalServerError)
 
 	svcErr := s.service.DeleteFlow(context.Background(), flowIDVar)
 
 	s.Require().NotNil(svcErr)
 	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+	s.True(tx.rolledBack, "the flow delete is undone with the policies")
 }
 
 func (s *SharingVariablesTestSuite) TestDeleteFlowThatIsAlreadyGoneFinishesTheCleanUp() {
