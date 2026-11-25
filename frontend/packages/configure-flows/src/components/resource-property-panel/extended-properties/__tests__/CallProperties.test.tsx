@@ -13,9 +13,9 @@ vi.mock('react-i18next', async (importOriginal) => ({
   }),
 }));
 
-const mockUseGetFlows = vi.fn<() => unknown>();
+const mockUseGetFlows = vi.fn<(params?: unknown) => unknown>();
 vi.mock('../../../../api/useGetFlows', () => ({
-  default: (): unknown => mockUseGetFlows(),
+  default: (params?: unknown): unknown => mockUseGetFlows(params),
 }));
 
 vi.mock('../../../../hooks/useValidationStatus', () => ({
@@ -64,13 +64,15 @@ describe('CallProperties', () => {
     expect(select.querySelector('[role="combobox"]')).toHaveAttribute('aria-disabled', 'true');
   });
 
-  it('lists available flows except sign-out flows', () => {
+  it('lists available flows except sign-out, device grant and CIBA flows', () => {
     mockUseGetFlows.mockReturnValue({
       data: {
         flows: [
           {id: 'flow-a', name: 'Flow A', flowType: 'AUTHENTICATION'},
           {id: 'flow-b', name: 'Flow B', flowType: 'REGISTRATION'},
           {id: 'flow-so', name: 'Sign Out', flowType: 'SIGNOUT'},
+          {id: 'flow-dg', name: 'Device Grant', flowType: 'DEVICE_GRANT'},
+          {id: 'flow-ciba', name: 'CIBA', flowType: 'CIBA'},
           {id: 'current-flow-id', name: 'Current Flow', flowType: 'AUTHENTICATION'},
         ],
       },
@@ -84,6 +86,7 @@ describe('CallProperties', () => {
     expect(screen.queryByText('Current Flow (AUTHENTICATION)')).not.toBeInTheDocument();
     expect(screen.queryByText('Sign Out (SIGNOUT)')).not.toBeInTheDocument();
     expect(screen.queryByText('Device Grant (DEVICE_GRANT)')).not.toBeInTheDocument();
+    expect(screen.queryByText('CIBA (CIBA)')).not.toBeInTheDocument();
   });
 
   it('filters flow options by the configured flow type', () => {
@@ -109,6 +112,25 @@ describe('CallProperties', () => {
     expect(screen.getByText('Authentication (AUTHENTICATION)')).toBeInTheDocument();
     expect(screen.queryByText('Registration (REGISTRATION)')).not.toBeInTheDocument();
     expect(screen.queryByText('Device Grant (DEVICE_GRANT)')).not.toBeInTheDocument();
+  });
+
+  it('loads every flow, narrowed to the configured flow type on the server', () => {
+    mockUseGetFlows.mockReturnValue({data: {flows: []}, isLoading: false, error: null});
+    render(
+      <CallProperties
+        resource={makeResource({data: {flow: {ref: '', filterFlowType: 'AUTHENTICATION'}} as Resource['data']})}
+        onChange={onChange}
+      />,
+    );
+
+    expect(mockUseGetFlows).toHaveBeenCalledWith({flowType: 'AUTHENTICATION', limit: 100, fetchAllPages: true});
+  });
+
+  it('loads every flow of every type when no flow type is configured', () => {
+    mockUseGetFlows.mockReturnValue({data: {flows: []}, isLoading: false, error: null});
+    render(<CallProperties resource={makeResource()} onChange={onChange} />);
+
+    expect(mockUseGetFlows).toHaveBeenCalledWith({flowType: undefined, limit: 100, fetchAllPages: true});
   });
 
   it('writes a selected fixed flow id to the resource', () => {

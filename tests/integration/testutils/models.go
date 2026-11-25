@@ -53,6 +53,7 @@ type Application struct {
 	IsRecoveryFlowEnabled     bool                     `json:"isRecoveryFlowEnabled,omitempty"`
 	AuthFlowID                string                   `json:"authFlowId,omitempty"`
 	DeviceGrantFlowID         string                   `json:"deviceGrantFlowId,omitempty"`
+	CIBAFlowID                string                   `json:"cibaFlowId,omitempty"`
 	RegistrationFlowID        string                   `json:"registrationFlowId,omitempty"`
 	RecoveryFlowID            string                   `json:"recoveryFlowId,omitempty"`
 	SignOutFlowID             string                   `json:"signOutFlowId,omitempty"`
@@ -568,6 +569,7 @@ type Agent struct {
 	LoginConsent              *LoginConsent            `json:"loginConsent,omitempty"`
 	InboundAuthConfig         []AgentInboundAuthConfig `json:"inboundAuthConfig,omitempty"`
 	DeviceGrantFlowID         string                   `json:"deviceGrantFlowId,omitempty"`
+	CIBAFlowID                string                   `json:"cibaFlowId,omitempty"`
 	Delegated                 bool                     `json:"delegated,omitempty"`
 
 	Kind string `json:"kind,omitempty"`

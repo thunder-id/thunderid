@@ -9,6 +9,7 @@ import (
 
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -25,6 +26,23 @@ func (s *ModelTestSuite) TestRuntimeDataOrShared() {
 		map[string]string{"key": "shared"}, "key"))
 	s.Equal("shared", RuntimeDataOrShared(nil, map[string]string{"key": "shared"}, "key"))
 	s.Empty(RuntimeDataOrShared(nil, nil, "missing"))
+}
+
+func (s *ModelTestSuite) TestLookupRuntimeDataOrShared() {
+	value, ok := LookupRuntimeDataOrShared(map[string]string{"key": "local"}, map[string]string{"key": "shared"}, "key")
+	s.Equal("local", value)
+	s.True(ok)
+
+	value, ok = LookupRuntimeDataOrShared(map[string]string{"key": ""}, map[string]string{"key": "shared"}, "key")
+	s.Empty(value, "an empty local value still wins over the shared one")
+	s.True(ok)
+
+	value, ok = LookupRuntimeDataOrShared(nil, map[string]string{"key": ""}, "key")
+	s.Empty(value)
+	s.True(ok, "a present but empty shared value is reported as present")
+
+	_, ok = LookupRuntimeDataOrShared(nil, nil, "missing")
+	s.False(ok)
 }
 
 func (s *ModelTestSuite) TestNodeExecutionRecord_GetDuration() {
@@ -400,4 +418,18 @@ func (s *ModelTestSuite) TestToValidationRules_EmptyAndInvalid() {
 
 	_, err = ToValidationRules([]providers.ValidationRuleDefinition{{Type: "regex", Value: "("}})
 	s.Error(err)
+}
+
+func TestIsRequestOnlyFlowType(t *testing.T) {
+	for flowType, want := range map[providers.FlowType]bool{
+		providers.FlowTypeCIBA:           true,
+		providers.FlowTypeDeviceGrant:    true,
+		providers.FlowTypeAuthentication: false,
+		providers.FlowTypeRegistration:   false,
+		providers.FlowTypeRecovery:       false,
+		providers.FlowTypeSignOut:        false,
+		providers.FlowTypeAdministration: false,
+	} {
+		assert.Equal(t, want, IsRequestOnlyFlowType(flowType), string(flowType))
+	}
 }

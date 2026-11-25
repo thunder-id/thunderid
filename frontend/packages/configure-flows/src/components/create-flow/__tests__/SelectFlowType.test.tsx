@@ -120,6 +120,18 @@ describe('SelectFlowType', () => {
       expect(mockOnReadyChange).toHaveBeenCalledWith(true);
     });
 
+    it('should offer CIBA as a kind of flow and call onTypeChange with CIBA when it is clicked', () => {
+      render(<SelectFlowType {...defaultProps} />);
+
+      expect(
+        screen.getByText('Let a user approve a sign-in request on another device, such as their phone'),
+      ).toBeInTheDocument();
+      fireEvent.click(screen.getByText('CIBA (Backchannel Authentication)'));
+
+      expect(mockOnTypeChange).toHaveBeenCalledWith('CIBA');
+      expect(mockOnReadyChange).toHaveBeenCalledWith(true);
+    });
+
     it('should call onTypeChange with SIGNOUT when SignOut is clicked', () => {
       render(<SelectFlowType {...defaultProps} />);
 

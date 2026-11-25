@@ -193,6 +193,7 @@ type BasicApplicationResponse struct {
 	LogoURL                   string          `json:"logoUrl,omitempty" jsonschema:"Logo URL."`
 	AuthFlowID                string          `json:"authFlowId,omitempty" jsonschema:"Authentication Flow ID."`
 	DeviceGrantFlowID         string          `json:"deviceGrantFlowId,omitempty" jsonschema:"Device Grant Flow ID."`
+	CIBAFlowID                string          `json:"cibaFlowId,omitempty" jsonschema:"CIBA Flow ID."`
 	RegistrationFlowID        string          `json:"registrationFlowId,omitempty" jsonschema:"Registration Flow ID."`
 	IsRegistrationFlowEnabled bool            `json:"isRegistrationFlowEnabled" jsonschema:"Registration enabled status."`
 	RecoveryFlowID            string          `json:"recoveryFlowId,omitempty" jsonschema:"Recovery Flow ID."`

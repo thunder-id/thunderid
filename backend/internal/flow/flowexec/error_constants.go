@@ -474,3 +474,17 @@ var ErrorFlowRestartRequired = tidcommon.ServiceError{
 		DefaultValue: "This flow was started by an earlier server version. Start the flow again",
 	},
 }
+
+// ErrorCallTargetRequestOnly is returned when a flow calls a CIBA or Device Grant flow, which only a request starts.
+var ErrorCallTargetRequestOnly = tidcommon.ServiceError{
+	Code: "FES-1033",
+	Type: tidcommon.ClientErrorType,
+	Error: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.call_target_request_only",
+		DefaultValue: "Call target not permitted",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.call_target_request_only_description",
+		DefaultValue: "A flow cannot call a CIBA or Device Grant flow, which only a request starts",
+	},
+}

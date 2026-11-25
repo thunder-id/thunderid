@@ -254,6 +254,8 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_Success_UserInputs() {
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
 	assert.Equal(suite.T(), testUserID, resp.RuntimeData[userAttributeUserID])
+	assert.NotContains(suite.T(), resp.RuntimeData, common.RuntimeKeyRequestedSubjectID,
+		"only a CIBA login hint names the user the request is for")
 }
 
 func (suite *IdentifyingExecutorTestSuite) TestExecute_Success_RuntimeData() {
@@ -376,6 +378,36 @@ func (suite *IdentifyingExecutorTestSuite) TestExecute_CIBALoginHint_IdentifiesB
 	suite.Equal(testUserID, resp.RuntimeData[userAttributeUserID])
 }
 
+func (suite *IdentifyingExecutorTestSuite) TestExecute_CIBALoginHint_RecordsTheRequestedSubject() {
+	ctx := cibaLoginHintContext(string(providers.GrantTypeCIBA), map[string]string{userInputLoginHint: "a@example.com"})
+	userID := testUserID
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything,
+		map[string]interface{}{userAttributeEmail: "a@example.com"}).Return(&userID, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(testUserID, resp.RuntimeData[common.RuntimeKeyRequestedSubjectID])
+}
+
+// A step in a flow the request calls can identify the user again, but the user the request named stays the one
+// the sign-in is held to.
+func (suite *IdentifyingExecutorTestSuite) TestExecute_CIBALoginHint_KeepsTheRequestedSubjectAlreadyRecorded() {
+	ctx := cibaLoginHintContext(string(providers.GrantTypeCIBA), map[string]string{userInputLoginHint: "a@example.com"})
+	ctx.RuntimeData[common.RuntimeKeyRequestedSubjectID] = "first-user"
+	otherUser := "other-user"
+	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything,
+		map[string]interface{}{userAttributeEmail: "a@example.com"}).Return(&otherUser, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal(otherUser, resp.RuntimeData[userAttributeUserID])
+	suite.NotContains(resp.RuntimeData, common.RuntimeKeyRequestedSubjectID,
+		"the engine keeps the recorded user, so the step must not replace it")
+}
+
 // A CALLed flow reads the CIBA request from the data shared across frames.
 func (suite *IdentifyingExecutorTestSuite) TestExecute_CIBALoginHint_ReadsTheSharedCallbackType() {
 	ctx := cibaLoginHintContext("", map[string]string{userInputLoginHint: "a@example.com"})
@@ -428,6 +460,7 @@ func (suite *IdentifyingExecutorTestSuite) TestExecuteResolve_CIBALoginHint_Reso
 	suite.Require().NoError(err)
 	suite.Equal(providers.ExecComplete, resp.Status)
 	suite.Equal(testUserID, resp.RuntimeData[userAttributeUserID])
+	suite.Equal(testUserID, resp.RuntimeData[common.RuntimeKeyRequestedSubjectID])
 }
 
 func (suite *IdentifyingExecutorTestSuite) TestExecuteResolve_CIBALoginHint_UnknownUserFails() {

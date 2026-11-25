@@ -3888,6 +3888,12 @@ const translations = {
     'edit.flows.signOutFlow.hint': 'Select the flow that runs when a user signs out of this {{entity}}.',
     'edit.flows.signOutFlow.alert':
       'To modify the selected flow, <0>open the flow builder</0>. To create a new flow, visit the <1>Flows page</1>.',
+    'edit.flows.labels.cibaFlow': 'CIBA flow',
+    'edit.flows.labels.cibaFlow.description':
+      'Choose the flow that notifies the user and asks for approval of a backchannel authentication request for this {{entity}}.',
+    'edit.flows.cibaFlow.placeholder': 'Select a CIBA flow',
+    'edit.flows.cibaFlow.hint':
+      'This flow calls this {{entity}}’s Authentication flow once the user approves. When none is selected, the Authentication flow handles the request.',
     'edit.flows.editFlow': 'Edit flow',
 
     // Customization section

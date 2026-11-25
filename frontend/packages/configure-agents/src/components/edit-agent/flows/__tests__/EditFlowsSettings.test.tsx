@@ -27,6 +27,9 @@ vi.mock('@thunderid/configure-applications', async (importOriginal) => ({
       data-has-retry={String(Boolean(onRetryDeviceGrantFlowQuery))}
     />
   ),
+  CibaFlowSection: ({application}: {application: Application}) => (
+    <div data-testid="ciba-flow" data-readonly={String(application.isReadOnly)} />
+  ),
   // Mocked so the absence assertions below fail if the section is ever wired back in.
   RecoveryFlowSection: ({readOnly = false}: {readOnly?: boolean}) => (
     <div data-testid="recovery-flow" data-readonly={String(readOnly)} />
@@ -50,6 +53,7 @@ describe('EditFlowsSettings', () => {
     expect(screen.getByTestId('auth-flow')).toBeInTheDocument();
     expect(screen.getByTestId('registration-flow')).toBeInTheDocument();
     expect(screen.getByTestId('device-grant-flow')).toBeInTheDocument();
+    expect(screen.getByTestId('ciba-flow')).toBeInTheDocument();
   });
 
   it('passes the Device Grant flow query error and retry handler to its section', () => {

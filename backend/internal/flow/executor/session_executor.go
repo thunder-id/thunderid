@@ -378,6 +378,8 @@ var requestScopedSnapshotDenyList = map[string]struct{}{
 	common.RuntimeKeyRequiredLocales:               {},
 	common.RuntimeKeyClientID:                      {},
 	common.RuntimeKeyAuthorizationRequestID:        {},
+	// The user a CIBA request names is the request's, not the session's.
+	common.RuntimeKeyRequestedSubjectID: {},
 	// The client and redirect hosts name the establishing client; a replayed copy would show them for
 	// another client at its consent.
 	common.RuntimeKeyClientIDHost:    {},

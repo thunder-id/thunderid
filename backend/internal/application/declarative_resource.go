@@ -274,6 +274,8 @@ func parseToApplicationDTO(data []byte) (*model.ApplicationDTO, error) {
 			AuthFlowHandle:            appRequest.AuthFlowHandle,
 			DeviceGrantFlowID:         appRequest.DeviceGrantFlowID,
 			DeviceGrantFlowHandle:     appRequest.DeviceGrantFlowHandle,
+			CIBAFlowID:                appRequest.CIBAFlowID,
+			CIBAFlowHandle:            appRequest.CIBAFlowHandle,
 			RegistrationFlowID:        appRequest.RegistrationFlowID,
 			RegistrationFlowHandle:    appRequest.RegistrationFlowHandle,
 			IsRegistrationFlowEnabled: appRequest.IsRegistrationFlowEnabled,

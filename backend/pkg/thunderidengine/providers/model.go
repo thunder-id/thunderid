@@ -989,6 +989,7 @@ type InboundClient struct {
 	ID                        string
 	AuthFlowID                string
 	DeviceGrantFlowID         string
+	CIBAFlowID                string
 	RegistrationFlowID        string
 	IsRegistrationFlowEnabled bool
 	RecoveryFlowID            string
@@ -1626,6 +1627,8 @@ type InboundAuthProfile struct {
 	AuthFlowID                string              `json:"authFlowId,omitempty"             yaml:"authFlowId,omitempty"             jsonschema:"Authentication flow ID. Optional. Specifies which login flow to use (e.g., MFA, passwordless). If omitted, the default authentication flow is used."`
 	DeviceGrantFlowID         string              `json:"deviceGrantFlowId,omitempty"      yaml:"deviceGrantFlowId,omitempty"      jsonschema:"Device Grant flow ID. Optional. Specifies the flow used to approve device authorization requests."`
 	DeviceGrantFlowHandle     string              `json:"deviceGrantFlowHandle,omitempty"  yaml:"deviceGrantFlowHandle,omitempty"  jsonschema:"Device Grant flow handle. Optional. Alternative to deviceGrantFlowId — resolved to an ID at import time."`
+	CIBAFlowID                string              `json:"cibaFlowId,omitempty"             yaml:"cibaFlowId,omitempty"             jsonschema:"CIBA flow ID. Optional. Specifies the flow that notifies the user and asks for approval of a backchannel authentication request. If omitted, the authentication flow is used."`
+	CIBAFlowHandle            string              `json:"cibaFlowHandle,omitempty"         yaml:"cibaFlowHandle,omitempty"         jsonschema:"CIBA flow handle. Optional. Alternative to cibaFlowId, resolved to an ID at import time."`
 	AuthFlowHandle            string              `json:"authFlowHandle,omitempty"         yaml:"authFlowHandle,omitempty"         jsonschema:"Authentication flow handle. Optional. Alternative to authFlowId — resolved to an ID at import time."`
 	RegistrationFlowID        string              `json:"registrationFlowId,omitempty"     yaml:"registrationFlowId,omitempty"     jsonschema:"Registration flow ID. Optional. Specifies the user registration/signup flow."`
 	RegistrationFlowHandle    string              `json:"registrationFlowHandle,omitempty" yaml:"registrationFlowHandle,omitempty" jsonschema:"Registration flow handle. Optional. Alternative to registrationFlowId — resolved to an ID at import time."`

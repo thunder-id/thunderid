@@ -58,6 +58,7 @@ export const TemplateCategories = {
   SocialLogin: 'SOCIAL_LOGIN',
   Mfa: 'MFA',
   Passwordless: 'PASSWORDLESS',
+  Ciba: 'CIBA',
 } as const;
 
 export type TemplateCategories = (typeof TemplateCategories)[keyof typeof TemplateCategories];
@@ -87,6 +88,7 @@ export const TemplateTypes = {
   BasicMagicLink: 'BASIC_MAGIC_LINK',
   BasicWithConsent: 'BASIC_WITH_CONSENT',
   CibaEmailNotification: 'CIBA_EMAIL_NOTIFICATION',
+  CibaSmsNotification: 'CIBA_SMS_NOTIFICATION',
   DisambiguationLogin: 'DISAMBIGUATION_LOGIN',
 } as const;
 

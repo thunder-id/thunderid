@@ -183,6 +183,12 @@ export default function AcceptInviteBox(): JSX.Element {
                   {flowError ?? error?.message ?? t('invite:errors.failed.description', 'An error occurred.')}
                 </Alert>
               )}
+              {additionalData?.bindingMessage && (
+                <Alert severity="info" icon={false} sx={{mb: 2}} data-testid="invite-binding-message">
+                  <AlertTitle>{t('invite:bindingMessage.title', 'Request message')}</AlertTitle>
+                  {additionalData.bindingMessage}
+                </Alert>
+              )}
               {components?.length > 0 && (
                 <Box sx={{display: 'flex', flexDirection: 'column', gap: 2}}>
                   {(components as EmbeddedFlowComponent[]).map((component, index) => (

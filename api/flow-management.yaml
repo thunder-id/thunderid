@@ -97,6 +97,7 @@ paths:
               - ADMINISTRATION
               - INVITATION
               - DEVICE_GRANT
+              - CIBA
         - name: limit
           in: query
           description: Maximum number of flows to return
@@ -1635,6 +1636,7 @@ components:
             - ADMINISTRATION
             - INVITATION
             - DEVICE_GRANT
+            - CIBA
         name:
           type: string
           description: Name of the flow
@@ -1713,6 +1715,7 @@ components:
             - ADMINISTRATION
             - INVITATION
             - DEVICE_GRANT
+            - CIBA
           description: |
             Type of flow
           example: AUTHENTICATION
@@ -1985,6 +1988,7 @@ components:
             - ADMINISTRATION
             - INVITATION
             - DEVICE_GRANT
+            - CIBA
           description: |
             Type of flow
           example: AUTHENTICATION
@@ -2077,6 +2081,7 @@ components:
             - ADMINISTRATION
             - INVITATION
             - DEVICE_GRANT
+            - CIBA
           description: |
             Type of flow
           example: AUTHENTICATION
@@ -2590,6 +2595,7 @@ components:
             - AUTHENTICATION
             - REGISTRATION
             - INVITATION
+            - CIBA
           example: AUTHENTICATION
         ouId:
           type: string

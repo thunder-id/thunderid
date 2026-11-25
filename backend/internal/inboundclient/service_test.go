@@ -4644,3 +4644,77 @@ func (suite *InboundClientServiceTestSuite) TestSetSystemFlowProvider() {
 	suite.Error(SetSystemFlowProvider(NewInboundClientServiceInterfaceMock(suite.T()), provider))
 	suite.Error(SetSystemFlowProvider(nil, provider))
 }
+
+func (suite *InboundClientServiceTestSuite) TestResolveInboundAuthProfileHandles_ResolvesCIBAFlowHandle() {
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().GetFlowByHandle(mock.Anything, "ciba-handle", providers.FlowTypeCIBA).
+		Return(&providers.CompleteFlowDefinition{ID: "ciba-id"}, nil).Once()
+	svc := &inboundClientService{flowMgt: flowMgt}
+	profile := &providers.InboundAuthProfile{CIBAFlowHandle: "ciba-handle"}
+	assert.NoError(suite.T(), svc.ResolveInboundAuthProfileHandles(context.Background(), profile))
+	assert.Equal(suite.T(), "ciba-id", profile.CIBAFlowID)
+}
+
+func (suite *InboundClientServiceTestSuite) TestResolveInboundAuthProfileHandles_CIBAFlowHandleNotFound() {
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().GetFlowByHandle(mock.Anything, "bad-handle", providers.FlowTypeCIBA).
+		Return(nil, &tidcommon.ServiceError{Code: "NOT_FOUND"}).Once()
+	svc := &inboundClientService{flowMgt: flowMgt}
+	profile := &providers.InboundAuthProfile{CIBAFlowHandle: "bad-handle"}
+	assert.ErrorIs(suite.T(), svc.ResolveInboundAuthProfileHandles(context.Background(), profile), ErrFKInvalidCIBAFlow)
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateFKs_CIBAFlowErrorPropagated() {
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().IsValidFlow(mock.Anything, "bad", providers.FlowTypeCIBA).Return(false, nil)
+	svc := &inboundClientService{flowMgt: flowMgt}
+	c := &inboundmodel.InboundClient{CIBAFlowID: "bad"}
+	assert.ErrorIs(suite.T(), svc.validateFKs(context.Background(), c), ErrFKInvalidCIBAFlow)
+}
+
+func (suite *InboundClientServiceTestSuite) TestValidateFKs_CIBAFlowServerError() {
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().IsValidFlow(mock.Anything, "ciba", providers.FlowTypeCIBA).
+		Return(false, &tidcommon.InternalServerError)
+	svc := &inboundClientService{flowMgt: flowMgt}
+	c := &inboundmodel.InboundClient{CIBAFlowID: "ciba"}
+	assert.ErrorIs(suite.T(), svc.validateFKs(context.Background(), c), ErrFKFlowServerError)
+}
+
+func (suite *InboundClientServiceTestSuite) TestReconcileReferencedFlows_CIBAFlowMustCallAnAuthenticationFlow() {
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "ciba").Return(nil, nil)
+	svc := &inboundClientService{flowMgt: flowMgt}
+	c := &inboundmodel.InboundClient{CIBAFlowID: "ciba"}
+	assert.ErrorIs(suite.T(), svc.reconcileReferencedFlows(context.Background(), c), ErrFKInvalidCIBAFlow)
+}
+
+func (suite *InboundClientServiceTestSuite) TestReconcileReferencedFlows_CIBAFlowCallingTheConfiguredAuthFlow() {
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "auth").Return(nil, nil)
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "ciba").Return(
+		[]flowmgt.CallTarget{{FlowID: "auth", FlowType: providers.FlowTypeAuthentication}}, nil)
+	svc := &inboundClientService{flowMgt: flowMgt}
+	c := &inboundmodel.InboundClient{AuthFlowID: "auth", CIBAFlowID: "ciba"}
+	assert.NoError(suite.T(), svc.reconcileReferencedFlows(context.Background(), c))
+}
+
+func (suite *InboundClientServiceTestSuite) TestReconcileReferencedFlows_CIBAFlowCallingAnotherAuthFlowIsRefused() {
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "auth").Return(nil, nil)
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "ciba").Return(
+		[]flowmgt.CallTarget{{FlowID: "other-auth", FlowType: providers.FlowTypeAuthentication}}, nil)
+	svc := &inboundClientService{flowMgt: flowMgt}
+	c := &inboundmodel.InboundClient{AuthFlowID: "auth", CIBAFlowID: "ciba"}
+	var mismatch *FlowMismatchError
+	assert.ErrorAs(suite.T(), svc.reconcileReferencedFlows(context.Background(), c), &mismatch)
+}
+
+func (suite *InboundClientServiceTestSuite) TestReconcileReferencedFlows_UnresolvableCIBAFlowIsInvalid() {
+	flowMgt := flowmgtmock.NewFlowMgtServiceInterfaceMock(suite.T())
+	flowMgt.EXPECT().GetReachableCallTargets(mock.Anything, "ciba").Return(
+		nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "NOT_FOUND"})
+	svc := &inboundClientService{flowMgt: flowMgt}
+	c := &inboundmodel.InboundClient{CIBAFlowID: "ciba"}
+	assert.ErrorIs(suite.T(), svc.reconcileReferencedFlows(context.Background(), c), ErrFKInvalidCIBAFlow)
+}

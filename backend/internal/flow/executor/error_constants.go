@@ -1818,6 +1818,20 @@ var (
 				"work. Start the reset again",
 		},
 	}
+
+	// ErrAuthenticatedUserNotRequested is returned when the user who signed in is not the user the request names.
+	ErrAuthenticatedUserNotRequested = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1141",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.authenticated_user_not_requested",
+			DefaultValue: "Sign-in refused",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.authenticated_user_not_requested_desc",
+			DefaultValue: "This request is for a different user. Sign in as the user it was sent to",
+		},
+	}
 )
 
 // errForEntityCategory returns a copy of err whose messages name the entity category they are

@@ -4,6 +4,7 @@
 import {
   type Application,
   AuthenticationFlowSection,
+  CibaFlowSection,
   DeviceGrantFlowSection,
   SettingsLockNotice,
   RegistrationFlowSection,
@@ -87,6 +88,12 @@ export default function EditFlowsSettings({
             entityLabel="agent"
             deviceGrantFlowQueryError={deviceGrantFlowQueryError}
             onRetryDeviceGrantFlowQuery={onRetryDeviceGrantFlowQuery}
+          />
+          <CibaFlowSection
+            application={appLikeAgent}
+            editedApp={appLikeEditedAgent}
+            onFieldChange={appHandleFieldChange}
+            entityLabel="agent"
           />
         </Stack>
       </SettingsLockNotice>

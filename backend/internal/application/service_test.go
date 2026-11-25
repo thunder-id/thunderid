@@ -3567,6 +3567,12 @@ func (suite *ServiceTestSuite) TestTranslateInboundClientFKError_FlowMismatchPro
 	assert.Equal(suite.T(), "registration", svcErr.ErrorDescription.Params["flowType"])
 }
 
+func (suite *ServiceTestSuite) TestTranslateInboundClientFKError_InvalidCIBAFlow() {
+	svcErr := translateInboundClientFKError(inboundclient.ErrFKInvalidCIBAFlow)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorInvalidCIBAFlowID.Code, svcErr.Code)
+}
+
 func (suite *ServiceTestSuite) TestTranslateInboundClientFKError_UnknownReturnsNil() {
 	svcErr := translateInboundClientFKError(errors.New("something else"))
 	assert.Nil(suite.T(), svcErr)

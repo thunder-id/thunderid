@@ -418,6 +418,13 @@ func (s *inboundClientService) ResolveInboundAuthProfileHandles(
 		}
 		profile.DeviceGrantFlowID = flow.ID
 	}
+	if profile.CIBAFlowID == "" && profile.CIBAFlowHandle != "" {
+		flow, svcErr := s.flowMgt.GetFlowByHandle(ctx, profile.CIBAFlowHandle, providers.FlowTypeCIBA)
+		if svcErr != nil {
+			return ErrFKInvalidCIBAFlow
+		}
+		profile.CIBAFlowID = flow.ID
+	}
 	if profile.RegistrationFlowID == "" && profile.RegistrationFlowHandle != "" {
 		flow, svcErr := s.flowMgt.GetFlowByHandle(ctx, profile.RegistrationFlowHandle, providers.FlowTypeRegistration)
 		if svcErr != nil {
@@ -1573,6 +1580,9 @@ func (s *inboundClientService) validateFKs(ctx context.Context, c *inboundmodel.
 	if err := s.validateDeviceGrantFlowID(ctx, c.DeviceGrantFlowID); err != nil {
 		return err
 	}
+	if err := s.validateCIBAFlowID(ctx, c.CIBAFlowID); err != nil {
+		return err
+	}
 	if err := s.validateReferencedFlows(ctx, c); err != nil {
 		return err
 	}
@@ -1661,6 +1671,20 @@ func (s *inboundClientService) validateDeviceGrantFlowID(ctx context.Context, fl
 	}
 	if !valid {
 		return ErrFKInvalidDeviceGrantFlow
+	}
+	return nil
+}
+
+func (s *inboundClientService) validateCIBAFlowID(ctx context.Context, flowID string) error {
+	if flowID == "" || s.flowMgt == nil {
+		return nil
+	}
+	valid, svcErr := s.flowMgt.IsValidFlow(ctx, flowID, providers.FlowTypeCIBA)
+	if svcErr != nil {
+		return ErrFKFlowServerError
+	}
+	if !valid {
+		return ErrFKInvalidCIBAFlow
 	}
 	return nil
 }
@@ -2275,6 +2299,7 @@ func (s *inboundClientService) walkReferencedFlows(
 		{c.RecoveryFlowID, providers.FlowTypeRecovery},
 		{c.SignOutFlowID, providers.FlowTypeSignOut},
 		{c.DeviceGrantFlowID, providers.FlowTypeDeviceGrant},
+		{c.CIBAFlowID, providers.FlowTypeCIBA},
 	}
 	for _, start := range starts {
 		if start.id == "" {
@@ -2295,6 +2320,8 @@ func (s *inboundClientService) walkReferencedFlows(
 					return ErrFKInvalidSignOutFlow
 				case providers.FlowTypeDeviceGrant:
 					return ErrFKInvalidDeviceGrantFlow
+				case providers.FlowTypeCIBA:
+					return ErrFKInvalidCIBAFlow
 				}
 			}
 			return ErrFKFlowServerError
@@ -2302,6 +2329,11 @@ func (s *inboundClientService) walkReferencedFlows(
 		if start.flowType == providers.FlowTypeDeviceGrant {
 			if !containsFlowType(targets, providers.FlowTypeAuthentication) {
 				return ErrFKInvalidDeviceGrantFlow
+			}
+		}
+		if start.flowType == providers.FlowTypeCIBA {
+			if !containsFlowType(targets, providers.FlowTypeAuthentication) {
+				return ErrFKInvalidCIBAFlow
 			}
 		}
 

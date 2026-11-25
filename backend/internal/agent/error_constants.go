@@ -881,6 +881,20 @@ var (
 			DefaultValue: "A personal agent's credentials can only be set by its owner",
 		},
 	}
+
+	// ErrorInvalidCIBAFlowID is returned when an invalid CIBA flow is assigned.
+	ErrorInvalidCIBAFlowID = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1070",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_ciba_flow_id",
+			DefaultValue: "Invalid CIBA flow ID",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.invalid_ciba_flow_id_description",
+			DefaultValue: "The assigned flow must be a valid CIBA flow that calls this agent's Authentication flow",
+		},
+	}
 )
 
 // errInvalidDeclarativeLifespan is returned when a declarative agent's validUntil is not an RFC 3339

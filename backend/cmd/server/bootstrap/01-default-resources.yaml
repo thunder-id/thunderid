@@ -6260,6 +6260,7 @@ translations:
     complete.backToApp.withApp: Back to {{appName}}
     errors.invalid.title: Unable to verify invite
     errors.invalid.description: This invite link is invalid or has expired.
+    bindingMessage.title: Request message
     errors.failed.title: Error
     errors.failed.description: An error occurred. Please try again.
     goToSignIn: Go to Sign In
@@ -6320,6 +6321,12 @@ translations:
     forms.ciba.consent.heading: Authorize Request
     forms.ciba.consent.message: By clicking Approve, you confirm that you initiated this request and consent to the action being performed.
     forms.ciba.consent.actions.approve.label: Approve
+    forms.ciba.approve.heading: Authentication Request
+    forms.ciba.approve.message: If you recognize this request, select Approve to continue. If you do not recognize it, select Deny.
+    forms.ciba.approve.actions.approve.label: Approve
+    forms.ciba.approve.actions.deny.label: Deny
+    forms.ciba.denied.heading: Request Denied
+    forms.ciba.denied.message: You denied this request. You may close this window.
     forms.ciba.success.heading: Authentication Successful
     forms.ciba.success.message: You have successfully authenticated. You may close this window.
     forms.passkey.title: Sign in with Passkey
