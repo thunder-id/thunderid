@@ -30,7 +30,7 @@ I have a Next.js application (App Router) for a business-to-business (B2B) produ
 - Select it with `<FlowVariablesForm flowId ouId ouName showScopeNotice onCreateConnection />`. `onCreateConnection` opens the add-connection form. Change the form's `key` after a connection is added, so it lists the new one
 
 ## Implementation Steps
-1. Set up the application in {{productName}}: run `npx degit thunder-id/samples/quickstarts/nextjs-b2b/thunderid-config thunderid-config` to copy its configuration (the application, user type, roles, and sign-up and sign-in flows). Then tell me to do these, and do not do them yourself:
+1. Set up the application in {{productName}}: run `npx degit thunder-id/samples/quickstarts/quickstart-nextjs-b2b/thunderid-config thunderid-config` to copy its configuration (the application, user type, roles, and sign-up and sign-in flows). Then tell me to do these, and do not do them yourself:
    - Generate a client secret with `openssl rand -base64 32` and set it as NEXTJS_B2B_CLIENT_SECRET in `thunderid-config/thunderid.env`. The same value goes into THUNDERID_CLIENT_SECRET in `.env`
    - Import the resources in the Control Plane console: Import / Export, then Import, uploading `thunderid-config.yaml` and `thunderid.env`
 2. Create the app: `npx create-next-app@latest nextjs-b2b` with the recommended defaults, then `cd nextjs-b2b`

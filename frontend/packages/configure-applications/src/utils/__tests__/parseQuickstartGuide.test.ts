@@ -238,7 +238,7 @@ describe('parseQuickstartGuide', () => {
         '',
         '## Run the Sample App',
         '',
-        'The [React sample](https://github.com/thunder-id/samples/tree/main/quickstarts/react) runs instead.',
+        'The [React sample](https://github.com/thunder-id/samples/tree/main/quickstarts/quickstart-react) runs instead.',
         '',
         '```dotenv title=".env"',
         'CLIENT_ID=<your-client-id>',
@@ -251,11 +251,11 @@ describe('parseQuickstartGuide', () => {
     );
 
     expect(content?.steps.map((step) => step.title)).toEqual(['Install']);
-    expect(content?.sample?.id).toBe('quickstarts/react');
+    expect(content?.sample?.id).toBe('quickstarts/quickstart-react');
     expect(content?.sample?.blocks).toEqual([
       {
         type: 'paragraph',
-        text: 'The [React sample](https://github.com/thunder-id/samples/tree/main/quickstarts/react) runs instead.',
+        text: 'The [React sample](https://github.com/thunder-id/samples/tree/main/quickstarts/quickstart-react) runs instead.',
       },
       {type: 'code', language: 'dotenv', title: '.env', code: 'CLIENT_ID=<your-client-id>'},
     ]);

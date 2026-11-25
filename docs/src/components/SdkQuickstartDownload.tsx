@@ -33,7 +33,7 @@ interface EcosystemReleasesData {
 interface SdkQuickstartDownloadProps {
   /**
    * The `packageId` of the release, as tracked in `ecosystem-releases.json`: an SDK package (e.g. `react`,
-   * `nextjs`, `express`) or, with `type="sample"`, a sample (e.g. `integrations/flutter-app-auth`).
+   * `nextjs`, `express`) or, with `type="sample"`, a sample (e.g. `integrations/app-auth-flutter`).
    */
   packageId: string;
   /**
@@ -41,7 +41,7 @@ interface SdkQuickstartDownloadProps {
    */
   type?: 'sdk' | 'sample';
   /**
-   * The samples-repo sample whose released archive to offer (e.g. `quickstarts/react`), for an SDK
+   * The samples-repo sample whose released archive to offer (e.g. `quickstarts/quickstart-react`), for an SDK
    * `packageId` whose quickstart lives in the samples repo. `packageId` still selects the prompt.
    */
   sample?: string;

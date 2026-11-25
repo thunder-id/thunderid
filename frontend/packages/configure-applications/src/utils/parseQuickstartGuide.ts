@@ -38,7 +38,7 @@ export interface QuickstartGuideStep {
  * @public
  */
 export interface QuickstartGuideSample {
-  /** The sample's path in the samples repository (e.g. "quickstarts/react"), which identifies its releases */
+  /** The sample's path in the samples repository (e.g. "quickstarts/quickstart-react"), which identifies its releases */
   id: string;
   /** The section's content: how to configure and run the sample */
   blocks: QuickstartGuideBlock[];

@@ -27,7 +27,7 @@ I have a React application for a business-to-business (B2B) product, and I want 
 - The SDK sends these calls with the admin's own token. Never put a secret in browser code
 
 ## Implementation Steps
-1. Set up the application in {{productName}}: run `npx degit thunder-id/samples/quickstarts/react-b2b/thunderid-config thunderid-config` to copy its configuration (the application, user type, roles, and sign-up and sign-in flows). Then tell me to do these in the Control Plane console, and do not do them yourself:
+1. Set up the application in {{productName}}: run `npx degit thunder-id/samples/quickstarts/quickstart-react-b2b/thunderid-config thunderid-config` to copy its configuration (the application, user type, roles, and sign-up and sign-in flows). Then tell me to do these in the Control Plane console, and do not do them yourself:
    - Import the resources: Import / Export, then Import, uploading `thunderid-config.yaml` and `thunderid.env`
    - Add http://localhost:5173 as an allowed CORS origin: Configurations, then CORS
    - For a local instance with a self-signed certificate, open https://localhost:8090 in the browser once and accept the certificate, or the app's calls to it fail

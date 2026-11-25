@@ -30,7 +30,7 @@ interface EcosystemRelease {
  * the docs site offers sample downloads from.
  *
  * @param releasesUrl - The URL of the ecosystem releases feed
- * @param sampleId - The sample's ID in the feed (e.g. "quickstarts/react")
+ * @param sampleId - The sample's ID in the feed (e.g. "quickstarts/quickstart-react")
  * @returns TanStack Query result holding the archive, or null when the sample has no released archive
  *
  * @public
