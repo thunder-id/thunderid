@@ -6,6 +6,7 @@ import {flightBookingSchema, flightBookingTemplate} from './flightBookingSchema'
 import type {SchemaField} from '../../models/authorization-detail-type';
 import {
   checkConsentTemplate,
+  composerUnsupportedPath,
   effectiveModification,
   fieldsToSchema,
   isValidLimit,
@@ -16,6 +17,7 @@ import {
   modificationsFor,
   newField,
   optionalPaths,
+  patternProblem,
   pathsReferencing,
   previewConsentTemplate,
   sampleData,
@@ -130,11 +132,16 @@ describe('schemaToFields and fieldsToSchema', () => {
     expect(
       schemaToFields({type: 'object', properties: {a: {type: 'array', items: {type: 'string', enum: 'x'}}}}),
     ).toBeNull();
-    expect(schemaToFields({type: 'object', properties: {a: {type: 'string', enum: ['x']}}})).toBeNull();
+    // A field's own allowed values must match its type, and an empty list allows nothing.
+    expect(schemaToFields({type: 'object', properties: {a: {type: 'number', enum: ['x']}}})).toBeNull();
+    expect(schemaToFields({type: 'object', properties: {a: {type: 'string', enum: []}}})).toBeNull();
   });
 
   it('opens schemas that use other JSON Schema features as JSON only', () => {
-    expect(schemaToFields({type: 'object', properties: {a: {type: 'string', pattern: '^x$'}}})).toBeNull();
+    expect(
+      schemaToFields({type: 'object', properties: {a: {type: 'array', items: {type: 'string', pattern: '^x$'}}}}),
+    ).toBeNull();
+    expect(schemaToFields({type: 'object', title: 'Payment', properties: {}})).toBeNull();
     expect(schemaToFields({type: 'object', properties: {a: {type: 'string', policy: {other: 1}}}})).toBeNull();
     expect(schemaToFields({type: 'object', properties: {a: {type: 'array', items: {type: 'object'}}}})).toBeNull();
     expect(schemaToFields({type: 'object', properties: {a: {type: 'string', policy: {modification: 'x'}}}})).toBeNull();
@@ -337,6 +344,9 @@ describe('validateFields', () => {
   it('reports missing and duplicate names, and reserves none', () => {
     expect(messages([field({name: ' '})])).toContain('fields.errors.nameRequired');
     expect(messages([field({name: 'a'}), field({name: 'a'})])).toContain('fields.errors.nameDuplicate');
+    expect(messages([field({name: 'a'}), field({name: 'a '})]), 'names the schema would trim to the same key').toEqual([
+      'fields.errors.nameDuplicate',
+    ]);
     expect(messages([field({name: 'detailId'})])).toEqual([]);
   });
 
@@ -504,6 +514,25 @@ describe('previewConsentTemplate', () => {
     expect(sampleValue(field({kind: 'number', policy: {maximum: '9', minimum: '1'}}))).toBe('9');
     expect(sampleValue(field({kind: 'number', policy: {minimum: '250'}}))).toBe('250');
     expect(sampleValue(field({kind: 'number', policy: {maximum: 'x'}})), 'an invalid limit is ignored').toBe('100');
+    expect(sampleValue(field({kind: 'number', policy: {maximum: '100'}, exclusiveMaximum: true}))).toBe('99');
+    expect(sampleValue(field({kind: 'number', policy: {minimum: '100'}, exclusiveMinimum: true}))).toBe('101');
+    expect(sampleValue(field({kind: 'number', step: '3'}))).toBe('99');
+    expect(sampleValue(field({kind: 'number', step: '0.1', policy: {maximum: '0.35'}}))).toBe('0.3');
+    expect(sampleValue(field({kind: 'number', step: '3', policy: {maximum: '48'}, exclusiveMaximum: true}))).toBe('45');
+    expect(sampleValue(field({kind: 'number', step: '3', policy: {minimum: '201'}, exclusiveMinimum: true}))).toBe(
+      '204',
+    );
+    expect(
+      sampleValue(
+        field({
+          kind: 'number',
+          policy: {minimum: '0.5', maximum: '0.6'},
+          exclusiveMinimum: true,
+          exclusiveMaximum: true,
+        }),
+      ),
+      'between exclusive limits',
+    ).toBe('0.55');
     expect(sampleValue(field({name: 'currency', title: 'Currency'}))).toBe('EUR');
     expect(sampleValue(field({name: 'settlementCurrency'}))).toBe('EUR');
     expect(sampleValue(field({name: 'payee', title: 'Pay to'}))).toBe('‹Pay to›');
@@ -714,8 +743,17 @@ describe('composer fixes', () => {
     expect(keys([{...grp, policy: {}}])).toEqual([]);
   });
 
-  it('refuses a space inside a field name, which a summary placeholder cannot name', () => {
-    expect(keys([field('string', 'z z')])).toEqual(['fields.errors.nameInnerSpace']);
+  it('accepts a space inside a field name, as the server does', () => {
+    expect(keys([field('string', 'z z')])).toEqual([]);
+  });
+
+  it('trims names as the server does, so a name it keeps is kept here', () => {
+    expect(keys([field('string', 'a\u0085')])).toEqual(['fields.errors.nameSpaces']);
+    expect(keys([field('string', 'a\ufeff')])).toEqual([]);
+    expect(fieldsToSchema([field('string', 'a\ufeff')])).toEqual({
+      type: 'object',
+      properties: {'a\ufeff': {type: 'string'}},
+    });
   });
 
   it('caps a maximum length and a fewest number of items at what the server holds', () => {
@@ -772,6 +810,10 @@ describe('schemaKeywordIssues', () => {
 
   it('accepts what the server accepts', () => {
     expect(schemaKeywordIssues(flightBookingSchema)).toEqual([]);
+    // Names and values are trimmed as the server trims them: U+FEFF is not white space there.
+    expect(schemaKeywordIssues({type: 'object', properties: {'a\ufeff': {type: 'string', enum: ['b\ufeff']}}})).toEqual(
+      [],
+    );
     expect(
       issues({
         $schema: 'https://json-schema.org/draft/2020-12/schema',
@@ -832,5 +874,237 @@ describe('schemaKeywordIssues', () => {
       ['|schema.errors.object', '|schema.errors.dialect'],
     );
     expect(issues({type: 'object', properties: {type: {type: 'number'}}})).toEqual(['type|fields.errors.typeKind']);
+  });
+});
+
+describe('value restrictions in the composer', () => {
+  // Every value restriction the server allows on a field, other than on a list's items.
+  const restricted = {
+    type: 'object',
+    required: ['currency', 'quantity'],
+    properties: {
+      currency: {type: 'string', title: 'Currency', description: 'ISO 4217 code', enum: ['USD', 'EUR']},
+      code: {type: 'string', minLength: 3, maxLength: 3, pattern: '^[A-Z]{3}$'},
+      region: {type: 'string', const: 'EU'},
+      quantity: {
+        type: 'number',
+        minimum: 1,
+        maximum: 100,
+        multipleOf: 1,
+        policy: {modification: 'decrease', modifiableBy: ['user']},
+      },
+      amount: {type: 'number', exclusiveMinimum: 0, exclusiveMaximum: 100000, multipleOf: 0.01},
+      level: {type: 'number', enum: [1, 2, 3]},
+      express: {type: 'boolean', const: true},
+      tags: {type: 'array', items: {type: 'string'}, minItems: 1, maxItems: 5, uniqueItems: true},
+    },
+  };
+
+  it('opens a schema with value restrictions in the composer and writes it back unchanged', () => {
+    const fields = schemaToFields(restricted);
+    expect(fields).not.toBeNull();
+    expect(fieldsToSchema(fields!)).toEqual(restricted);
+    expect(validateFields(fields!)).toEqual([]);
+  });
+
+  it('reads each restriction into the field it belongs to', () => {
+    const byName = Object.fromEntries(schemaToFields(restricted)!.map((f) => [f.name, f]));
+    expect(byName['currency']).toMatchObject({allowedValues: ['USD', 'EUR'], description: 'ISO 4217 code'});
+    expect(byName['code']).toMatchObject({minLength: '3', maxLength: '3', pattern: '^[A-Z]{3}$'});
+    expect(byName['region']).toMatchObject({fixedValue: 'EU'});
+    expect(byName['quantity']).toMatchObject({step: '1', policy: {minimum: '1', maximum: '100'}});
+    expect(byName['quantity'].exclusiveMinimum).toBeUndefined();
+    expect(byName['amount']).toMatchObject({
+      step: '0.01',
+      exclusiveMinimum: true,
+      exclusiveMaximum: true,
+      policy: {minimum: '0', maximum: '100000'},
+    });
+    expect(byName['level']).toMatchObject({allowedValues: ['1', '2', '3']});
+    expect(byName['express']).toMatchObject({fixedValue: 'true'});
+    expect(byName['tags']).toMatchObject({minItems: '1', maxItems: '5', uniqueItems: true});
+  });
+
+  it('opens as JSON only a restriction on a kind of field that cannot carry it', () => {
+    const one = (property: Record<string, unknown>): unknown =>
+      schemaToFields({type: 'object', properties: {a: property}});
+    expect(one({type: 'boolean', enum: [true]}), 'allowed values on a boolean').toBeNull();
+    expect(one({type: 'string', format: 'date', enum: ['2026-01-01']}), 'allowed values on a date').toBeNull();
+    expect(one({type: 'string', multipleOf: 1}), 'a step on text').toBeNull();
+    expect(one({type: 'number', pattern: '^1$'}), 'a pattern on a number').toBeNull();
+    expect(one({type: 'number', minimum: 1, exclusiveMinimum: 0}), 'both kinds of minimum').toBeNull();
+    expect(one({type: 'number', multipleOf: 0}), 'a step that is not positive').toBeNull();
+    expect(one({type: 'number', const: '1'}), 'a fixed value of another type').toBeNull();
+    expect(one({type: 'string', maxItems: 2}), 'an item count on text').toBeNull();
+    expect(one({type: 'string', minLength: 1.5}), 'a length that is not a whole number').toBeNull();
+    expect(
+      one({type: 'array', items: {type: 'string'}, enum: [['a']]}),
+      'allowed values on the list itself',
+    ).toBeNull();
+  });
+
+  it('keeps a uniqueItems of false, so saving does not change the schema', () => {
+    const schema = {type: 'object', properties: {t: {type: 'array', items: {type: 'string'}, uniqueItems: false}}};
+    const fields = schemaToFields(schema);
+    expect(fields).not.toBeNull();
+    expect(fields![0].uniqueItems).toBe(false);
+    expect(fieldsToSchema(fields!)).toEqual(schema);
+  });
+
+  it('shows as JSON a schema with a blank value it would drop on save', () => {
+    const one = (property: Record<string, unknown>): SchemaField[] | null =>
+      schemaToFields({type: 'object', properties: {f: property}});
+    expect(one({type: 'string', description: ''}), 'an empty description').toBeNull();
+    expect(one({type: 'string', description: '  '}), 'a blank description').toBeNull();
+    expect(one({type: 'string', title: ' '}), 'a blank title').toBeNull();
+    expect(one({type: 'string', pattern: ' '}), 'a blank pattern').toBeNull();
+    expect(one({type: 'string', const: ''}), 'a blank fixed value').toBeNull();
+    expect(one({type: 'string', enum: ['a', '']}), 'a blank allowed value').toBeNull();
+    expect(one({type: 'array', items: {type: 'string', enum: ['']}}), 'a blank allowed item').toBeNull();
+  });
+
+  it('writes back every value it shows exactly as the schema holds it', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        code: {type: 'string', title: ' Code ', description: ' Three letters ', pattern: ' ^[A-Z]{3}$', const: ' ABC'},
+        kind: {type: 'string', enum: ['a\ufeff', 'b']},
+        n: {type: 'number', exclusiveMinimum: 0, maximum: 10, multipleOf: 0.01, enum: [0.5, 1]},
+        list: {type: 'array', items: {type: 'string', enum: ['x', 'y']}, minItems: 0, maxItems: 2, uniqueItems: true},
+      },
+    };
+    const fields = schemaToFields(schema);
+    expect(fields).not.toBeNull();
+    expect(schemaDefinitionText(fieldsToSchema(fields!))).toBe(schemaDefinitionText(schema));
+  });
+
+  it('checks each restriction and how restrictions combine', () => {
+    const keys = (f: Partial<SchemaField>): string[] => validateFields([field(f)]).map((issue) => issue.messageKey);
+    expect(keys({minLength: 'x'})).toContain('fields.errors.minLengthInvalid');
+    expect(keys({minLength: '5', maxLength: '3'})).toContain('fields.errors.lengthOrder');
+    // The server compiles patterns with Go's RE2 and refuses one it cannot read when the type is saved.
+    expect(keys({pattern: '(?i)^[a-z]+$'}), 'RE2 syntax a browser does not read').toEqual([]);
+    expect(keys({pattern: '^(?=.*[0-9]).+$'})).toContain('fields.errors.patternUnsupported');
+    expect(keys({pattern: '(unclosed'})).toContain('fields.errors.patternIncomplete');
+    expect(keys({kind: 'array', minItems: '3', maxItems: '2'})).toContain('fields.errors.itemsOrder');
+    expect(keys({kind: 'array', maxItems: '-1'})).toContain('fields.errors.maxItemsInvalid');
+    expect(keys({kind: 'number', step: '0'})).toContain('fields.errors.stepInvalid');
+    expect(keys({kind: 'number', step: 'abc'})).toContain('fields.errors.stepInvalid');
+    expect(keys({kind: 'number', fixedValue: 'ten'})).toContain('fields.errors.fixedValueInvalid');
+    expect(keys({kind: 'boolean', fixedValue: 'yes'})).toContain('fields.errors.fixedValueBoolean');
+    expect(keys({allowedValues: ['USD', 'EUR'], fixedValue: 'GBP'}), 'as the server allows').toEqual([]);
+    expect(keys({kind: 'number', allowedValues: ['1', 'x']})).toContain('fields.errors.allowedValuesInvalid');
+    expect(keys({kind: 'number', allowedValues: ['1', '1.0']})).toContain('fields.errors.allowedValuesDuplicate');
+    expect(
+      keys({kind: 'number', fixedValue: '5', policy: {modification: 'decrease', modifiableBy: ['user']}}),
+      'as the server allows',
+    ).toEqual([]);
+    expect(
+      keys({minLength: '3', maxLength: '3', pattern: '^[A-Z]{3}$', allowedValues: ['USD'], fixedValue: 'USD'}),
+    ).toEqual([]);
+  });
+
+  it('previews a field with a fixed value or allowed values with one of them', () => {
+    expect(sampleData(field({fixedValue: 'EU'}))).toBe('EU');
+    expect(sampleData(field({kind: 'number', fixedValue: '7'}))).toBe(7);
+    expect(sampleData(field({kind: 'boolean', fixedValue: 'false'}))).toBe(false);
+    expect(sampleData(field({allowedValues: ['USD', 'EUR']}))).toBe('USD');
+    expect(sampleData(field({kind: 'number', allowedValues: ['5', '10']}))).toBe(5);
+  });
+
+  it('flags only what the server, reading the pattern as RE2, refuses whatever else it holds', () => {
+    for (const accepted of [
+      '^[A-Z]{3}$',
+      '(?i)abc',
+      '\\A\\d+\\z',
+      '[[:alpha:]]',
+      '\\pL',
+      '(?P<n>a)',
+      '[]a]',
+      '\\12',
+      '[(?=]',
+      'a\\Q(b',
+    ]) {
+      expect(patternProblem(accepted), accepted).toBeNull();
+    }
+    for (const unsupported of ['(?=a)', '(?!a)', '(?<=a)b', '(?<!a)b', '(a)\\1', '\\8', '\\k<n>']) {
+      expect(patternProblem(unsupported), unsupported).toBe('unsupported');
+    }
+    expect(patternProblem('[%-[:]x:]'), 'a bracket that ends a range is not a POSIX class').toBeNull();
+    expect(patternProblem('[-[:alpha:])]'), 'a hyphen first in a class is a literal one').toBeNull();
+    expect(patternProblem('[[:alpha:]-)]'), 'a hyphen after a POSIX class is a literal one').toBeNull();
+    expect(patternProblem('[^-[:digit:]]'), 'a hyphen first after a caret is a literal one').toBeNull();
+    for (const incomplete of ['(a', 'a)', '[a', 'a\\']) {
+      expect(patternProblem(incomplete), incomplete).toBe('incomplete');
+    }
+  });
+
+  it('refuses a number with more digits than the page keeps exactly', () => {
+    const keys = (f: Partial<SchemaField>): string[] => validateFields([field(f)]).map((issue) => issue.messageKey);
+    const precise = '0.10000000000000000001';
+    expect(keys({kind: 'number', policy: {maximum: precise}})).toEqual(['fields.errors.limitPrecision']);
+    expect(keys({kind: 'number', step: precise})).toEqual(['fields.errors.stepPrecision']);
+    expect(keys({kind: 'number', fixedValue: '9007199254740993'})).toEqual(['fields.errors.fixedValuePrecision']);
+    expect(keys({kind: 'number', allowedValues: ['1', precise]})).toEqual(['fields.errors.allowedValuesPrecision']);
+    expect(keys({kind: 'number', policy: {minimum: '0.1', maximum: '1e3'}, step: '0.05'})).toEqual([]);
+  });
+
+  it('compares limits as the server does', () => {
+    const keys = (f: Partial<SchemaField>): string[] => validateFields([field(f)]).map((issue) => issue.messageKey);
+    const range = {minimum: '10', maximum: '5'};
+    expect(keys({kind: 'number', policy: range})).toEqual(['fields.errors.limitOrder']);
+    expect(keys({kind: 'number', policy: range, exclusiveMinimum: true, exclusiveMaximum: true})).toEqual([
+      'fields.errors.limitOrder',
+    ]);
+    expect(
+      keys({kind: 'number', policy: range, exclusiveMinimum: true}),
+      'an exclusive and an inclusive limit',
+    ).toEqual([]);
+    const dateTime = (minimum: string, maximum: string): string[] =>
+      keys({kind: 'dateTime', policy: {minimum, maximum}});
+    expect(dateTime('2026-01-01T00:00:00.0005Z', '2026-01-01T00:00:00.0001Z'), 'below a millisecond').toEqual([
+      'fields.errors.limitOrder',
+    ]);
+    expect(dateTime('2026-01-01T00:00:00,5Z', '2026-01-01T00:00:01Z'), 'a comma before the fraction').toEqual([]);
+    expect(isValidLimit('0050-01-01', 'date'), 'a year before 100').toBe(true);
+  });
+
+  it('asks for the limit an exclusive bound applies to', () => {
+    const keys = (f: Partial<SchemaField>): string[] => validateFields([field(f)]).map((issue) => issue.messageKey);
+    expect(keys({kind: 'number', exclusiveMinimum: true})).toEqual(['fields.errors.exclusiveLimitRequired']);
+    expect(keys({kind: 'number', exclusiveMinimum: true, policy: {minimum: '0'}})).toEqual([]);
+  });
+
+  it('checks the type field can hold the type identifier, as the server does', () => {
+    const type = (f: Partial<SchemaField>): string[] =>
+      validateFields([field({name: 'type', ...f})], 'purchase_order').map((issue) => issue.messageKey);
+    expect(type({fixedValue: 'other'})).toEqual(['fields.errors.typeValueExcluded']);
+    expect(type({allowedValues: ['a', 'b']})).toEqual(['fields.errors.typeValueExcluded']);
+    expect(type({allowedValues: ['purchase_order', 'b']})).toEqual([]);
+    expect(type({fixedValue: ' purchase_order'}), 'a fixed value is written untrimmed').toEqual([
+      'fields.errors.typeValueExcluded',
+    ]);
+    expect(type({allowedValues: ['purchase_order'], fixedValue: 'other'}), 'each must hold it').toEqual([
+      'fields.errors.typeValueExcluded',
+    ]);
+    expect(type({allowedValues: ['other'], fixedValue: 'purchase_order'}), 'each must hold it').toEqual([
+      'fields.errors.typeValueExcluded',
+    ]);
+    expect(type({allowedValues: ['purchase_order', 'b'], fixedValue: 'purchase_order'})).toEqual([]);
+    expect(type({})).toEqual([]);
+  });
+
+  it('names the field the composer cannot show', () => {
+    expect(composerUnsupportedPath(restricted)).toBeNull();
+    expect(composerUnsupportedPath({type: 'object', title: 'x', properties: {}})).toBe('');
+    expect(
+      composerUnsupportedPath({
+        type: 'object',
+        properties: {
+          ok: {type: 'string'},
+          payee: {type: 'object', properties: {lines: {type: 'array', items: {type: 'object'}}}},
+        },
+      }),
+    ).toBe('payee.lines');
   });
 });

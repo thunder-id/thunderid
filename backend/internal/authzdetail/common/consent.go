@@ -54,11 +54,13 @@ func DetailElement(obj Detail, t providers.AuthorizationDetailType) providers.Pr
 	titles := titlesOf(root)
 	itemOptions := itemOptionsOf(root)
 	policies, _ := policiesOf(root)
+	properties := schemaPropertiesOf(t.Schema)
 	for _, entry := range flattenFields(obj.Fields, "", propertyOrderOf(t.Schema)) {
 		if entry.Path == FieldType {
 			continue
 		}
-		row := providers.ConsentDetailRow{Path: entry.Path, Label: entry.Path, Value: entry.Value}
+		row := providers.ConsentDetailRow{Path: entry.Path, Label: entry.Path, Value: entry.Value,
+			Description: properties[entry.Path].description}
 		if title, ok := titles[entry.Path]; ok {
 			row.Label = title
 		}
@@ -66,6 +68,7 @@ func DetailElement(obj Detail, t providers.AuthorizationDetailType) providers.Pr
 			slices.Contains(policy.ModifiableBy, PartyUser) {
 			row.Modification = policy.Modification
 			row.As = policy.ValueType
+			setRowLimits(&row, policy, properties[entry.Path])
 			if policy.Modification == modificationAddItems {
 				if values, ok := itemOptions[entry.Path]; ok {
 					if encoded, err := json.Marshal(values); err == nil {
@@ -85,6 +88,28 @@ func DetailElement(obj Detail, t providers.AuthorizationDetailType) providers.Pr
 		DetailType: t.Type,
 		Summary:    renderConsentTemplate(t.ConsentTemplate, obj.Fields),
 		Rows:       rows,
+	}
+}
+
+// setRowLimits copies to the row of a field the user may change the limits a changed value must still keep,
+// so the consent screen can refuse a value the decision would refuse: the schema's own limits of a number or
+// a list, and the policy's limits of a date.
+func setRowLimits(row *providers.ConsentDetailRow, policy fieldPolicy, property schemaProperty) {
+	switch policy.Modification {
+	case modificationDecrease, modificationIncrease:
+		if policy.ValueType != valueTypeNumber {
+			row.Minimum, row.Maximum = policy.Minimum, policy.Maximum
+			return
+		}
+		row.Minimum = property.keywords["minimum"]
+		row.Maximum = property.keywords["maximum"]
+		row.ExclusiveMinimum = property.keywords["exclusiveMinimum"]
+		row.ExclusiveMaximum = property.keywords["exclusiveMaximum"]
+		row.MultipleOf = property.keywords["multipleOf"]
+	case modificationRemoveItems:
+		row.MinItems = property.keywords["minItems"]
+	case modificationAddItems:
+		row.MaxItems = property.keywords["maxItems"]
 	}
 }
 

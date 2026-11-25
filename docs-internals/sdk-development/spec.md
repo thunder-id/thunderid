@@ -1,7 +1,7 @@
 # SDK Development Specification
 
 - **Status:** Draft
-- **Version:** 0.10
+- **Version:** 0.11
 - **Related documents:**
   [threat-model.md](threat-model.md),
   [#5305](https://github.com/thunder-id/thunderid/issues/5305),
@@ -587,7 +587,11 @@ components render the server's consent step renders each authorization details e
 1. The element's summary, and one row per field.
 2. For a field the user may change, an input that permits only the change the row's
    `modification` allows, bounded by the value shown, and limited to the row's `options` where
-   it carries them.
+   it carries them. The input also keeps the limits the row carries: `minimum`, `maximum`,
+   `exclusiveMinimum`, `exclusiveMaximum` and `multipleOf` for a number, used as its step,
+   `minimum` and `maximum` for a date, `minItems` for a list whose items the user may remove, and
+   `maxItems` for a list whose items the user may add. A row's `description` is shown with its
+   label.
 3. Approval blocked while a changed field is invalid. Deny is always available.
 4. One decision per element, carrying the fields the user changed as `modified`, keyed by
    field path, and nothing else.
@@ -1254,3 +1258,4 @@ server recorded and nothing else.
 | 0.8 | 2026-10-26 | `authorizationDetails` configuration key (RFC 9396), sent on the authorization, silent sign-in, CIBA, and `client_credentials` requests. Granted details surfaced on the token response and the access token. Consent rendering of authorization details elements for SDKs that render consent, and decisions only in server-rendered consent. |
 | 0.9 | 2026-11-03 | Self user attribute verification added as an optional capability (R10). |
 | 0.10 | 2026-11-10 | The built-in profile waits for Verify after a contact save instead of starting verification by itself (AC10.6). |
+| 0.11 | 2026-11-22 | Consent rendering keeps the limits an authorization details row carries (minimum, maximum, exclusive limits, step, fewest and most list items) and shows the row's description. |

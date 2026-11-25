@@ -9,7 +9,7 @@ description: Headless state and handlers for one authorization detail field on a
 
 The `useConsentDetailField` hook gives the state and handlers of one field of an [RFC 9396 authorization detail](../../../../../guides/protocols/oauth-oidc/rich-authorization-requests) on the consent step, for drawing the field in a custom UI. [`<ConsentDetailField />`](../../components/consent-detail-field) is built on it and applies the same bounds and validation.
 
-For a number or date field, the hook keeps the text the user typed. It writes the text to the consent decision only while the value stays within the field's bound. Otherwise it clears the field's change and marks the field invalid, which blocks approval through [`isApprovalBlocked`](../../components/consent#render-props). For a list field, it exposes the items and toggles them as the field's rule allows.
+For a number or date field, the hook keeps the text the user typed. It writes the text to the consent decision only while the value stays within the field's bound and the limits the type declares for it. Otherwise it clears the field's change and marks the field invalid, which blocks approval through [`isApprovalBlocked`](../../components/consent#render-props). For a list field, it exposes the items and toggles them as the field's rule allows.
 
 ## Usage
 
@@ -28,8 +28,9 @@ export default function DetailField({
 
   if (field.kind === 'removeItems' || field.kind === 'addItems') {
     return (
-      <fieldset>
+      <fieldset aria-describedby={field.descriptionId}>
         <legend>{field.label}</legend>
+        {field.description && <small id={field.descriptionId}>{field.description}</small>}
         {field.items.map((item) => (
           <button
             key={String(item.value)}
@@ -59,16 +60,23 @@ export default function DetailField({
   }
 
   if (field.kind !== 'number' && field.kind !== 'date') {
-    return <p>{`${field.label}: ${JSON.stringify(row.value)}`}</p>
+    return (
+      <p>
+        {`${field.label}: ${JSON.stringify(row.value)}`}
+        {field.description && <small>{field.description}</small>}
+      </p>
+    )
   }
 
   return (
     <div>
       <label htmlFor={field.inputId}>{field.label}</label>
+      {field.description && <small id={field.descriptionId}>{field.description}</small>}
       <input
         id={field.inputId}
         type={field.kind}
-        step={field.kind === 'number' ? 'any' : undefined}
+        aria-describedby={field.descriptionId}
+        step={field.kind === 'number' ? (field.step ?? 'any') : undefined}
         value={field.text}
         max={field.max}
         min={field.min}
@@ -104,8 +112,11 @@ Render it for each of a detail's `rows` from the render props of [`<ConsentAutho
 | `label` | `string` | The field's label, or its path when it has none. |
 | `inputId` | `string` | An identifier for the field's input element. |
 | `text` | `string` | The text to show in a `number` or `date` input: what the user typed, the value they chose, or the value shown. For an `addItems` list that takes typed items, the item being typed. |
-| `max` | `string \| undefined` | Upper bound of a field that may decrease: the value shown. |
-| `min` | `string \| undefined` | Lower bound of a field that may increase: the value shown. |
+| `description` | `string \| undefined` | The field's description from the type's schema, to show as a hint. |
+| `descriptionId` | `string \| undefined` | An identifier for the element that shows the description, for the field's controls to reference with `aria-describedby`. Absent when the field has no description. |
+| `max` | `string \| undefined` | Upper bound of a `number` or `date` field: the value shown when the field may decrease, or the row's `maximum`, whichever is lower. |
+| `min` | `string \| undefined` | Lower bound of a `number` or `date` field: the value shown when the field may increase, or the row's `minimum`, whichever is higher. With a `step`, the lowest multiple of the step the field accepts. |
+| `step` | `string \| undefined` | The row's `multipleOf` for a `number` field. Absent when any number is allowed. |
 | `isValid` | `boolean` | Whether the text may be submitted. Always `true` for a list or a read-only field. |
 | `error` | `ConsentDetailFieldError \| undefined` | Why the text cannot be submitted, with the translated `message`, its translation `key`, and `params`. |
 | `handleChange` | `(text: string) => void` | Call with the text the user entered. |
@@ -114,7 +125,7 @@ Render it for each of a detail's `rows` from the render props of [`<ConsentAutho
 | `handleToggle` | `(item: string \| number \| boolean) => void` | Toggles an item of a list field, within what its rule allows. |
 | `isSelected` | `(item: string \| number \| boolean) => boolean` | Whether an item is part of the value that would be granted. |
 | `isToggleable` | `(item: string \| number \| boolean) => boolean` | Whether the user may toggle an item. |
-| `isTypedItemAllowed` | `boolean` | Whether an `addItems` list takes typed items, which holds when its type lists no allowed values. |
+| `isTypedItemAllowed` | `boolean` | Whether an `addItems` list takes typed items, which holds when its type lists no allowed values and the list holds fewer than its `maxItems`. |
 | `handleAdd` | `(text: string) => boolean` | Adds a typed item to such a list. Returns whether it was added. |
 | `isPlainList` | `boolean` | Whether the value is a list of plain values. |
 | `listDisplay` | `ConsentDetailListDisplay` | How many items of a long list to show, and whether the list can collapse. |

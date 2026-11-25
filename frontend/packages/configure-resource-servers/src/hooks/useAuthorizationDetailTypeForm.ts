@@ -365,7 +365,10 @@ export default function useAuthorizationDetailTypeForm(
     () => (schemaMode === 'builder' ? fieldsToSchema(fields) : (jsonSchema ?? {})),
     [schemaMode, fields, jsonSchema],
   );
-  const issues = useMemo(() => (activeFields ? validateFields(activeFields) : []), [activeFields]);
+  const issues = useMemo(
+    () => (activeFields ? validateFields(activeFields, typeValue.trim()) : []),
+    [activeFields, typeValue],
+  );
   const schemaTooLarge = useMemo(() => isSchemaTooLarge(schema), [schema]);
   // A schema the composer cannot show is checked against the keywords the server allows.
   const keywordIssueCount = useMemo(

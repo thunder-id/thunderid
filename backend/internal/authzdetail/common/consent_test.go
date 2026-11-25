@@ -127,6 +127,75 @@ func (s *ConsentTestSuite) TestDetailElement_OffersTheValuesTheUserMayAdd() {
 	s.Empty(rows["actions"].Options, "options are offered only where the user may add items")
 }
 
+func (s *ConsentTestSuite) TestDetailElement_CarriesTheLimitsOfFieldsTheUserMayChange() {
+	typ := providers.AuthorizationDetailType{ID: "type-5", Type: "order", Name: "Order", Version: 1,
+		Schema: json.RawMessage(`{"type":"object","properties":{` +
+			`"quantity":{"type":"number","minimum":5,"maximum":100,"multipleOf":5,` +
+			`"policy":{"modification":"decrease","modifiableBy":["user"]}},` +
+			`"total":{"type":"number","exclusiveMinimum":0,"exclusiveMaximum":10000,"multipleOf":0.01,` +
+			`"policy":{"modification":"decrease","modifiableBy":["user"]}},` +
+			`"floor":{"type":"number","minimum":1,"policy":{"modification":"decrease","modifiableBy":["client"]}},` +
+			`"until":{"type":"string","format":"date",` +
+			`"policy":{"modification":"increase","modifiableBy":["user"],` +
+			`"minimum":"2026-01-01","maximum":"2026-12-31"}},` +
+			`"tags":{"type":"array","items":{"type":"string"},"minItems":2,"maxItems":4,` +
+			`"policy":{"modification":"removeItems","modifiableBy":["user"]}},` +
+			`"blocked":{"type":"array","items":{"type":"string"},"minItems":1,"maxItems":3,` +
+			`"policy":{"modification":"addItems","modifiableBy":["user"]}}}}`)}
+	detail := Detail{ID: "d-5", Type: "order", Fields: map[string]json.RawMessage{
+		"type": json.RawMessage(`"order"`), "quantity": json.RawMessage(`20`), "total": json.RawMessage(`99.5`),
+		"floor": json.RawMessage(`3`), "until": json.RawMessage(`"2026-03-01"`),
+		"tags": json.RawMessage(`["a","b","c"]`), "blocked": json.RawMessage(`["x"]`)}}
+
+	rows := map[string]providers.ConsentDetailRow{}
+	for _, row := range DetailElement(detail, typ).Rows {
+		rows[row.Path] = row
+	}
+	quantity := rows["quantity"]
+	s.Equal("5", string(quantity.Minimum))
+	s.Equal("100", string(quantity.Maximum))
+	s.Equal("5", string(quantity.MultipleOf))
+	s.Empty(quantity.ExclusiveMinimum)
+
+	total := rows["total"]
+	s.Equal("0", string(total.ExclusiveMinimum))
+	s.Equal("10000", string(total.ExclusiveMaximum))
+	s.Equal("0.01", string(total.MultipleOf), "the step keeps the text the type declares")
+	s.Empty(total.Minimum)
+
+	s.Empty(rows["floor"].Minimum, "a field the user may not change carries no limits")
+
+	until := rows["until"]
+	s.Equal(`"2026-01-01"`, string(until.Minimum), "a date carries its policy's limits")
+	s.Equal(`"2026-12-31"`, string(until.Maximum))
+
+	s.Equal("2", string(rows["tags"].MinItems))
+	s.Empty(rows["tags"].MaxItems, "the user only removes items, so the most a list may hold does not apply")
+	s.Equal("3", string(rows["blocked"].MaxItems))
+	s.Empty(rows["blocked"].MinItems, "the user only adds items, so the fewest a list may hold does not apply")
+}
+
+func (s *ConsentTestSuite) TestDetailElement_CarriesFieldDescriptions() {
+	typ := providers.AuthorizationDetailType{ID: "type-6", Type: "trip", Name: "Trip", Version: 1,
+		Schema: json.RawMessage(`{"type":"object","properties":{` +
+			`"route":{"type":"string","description":"Departure and arrival airports"},` +
+			`"fare":{"type":"object","properties":{` +
+			`"amount":{"type":"number","description":"Highest fare per seat",` +
+			`"policy":{"modification":"decrease","modifiableBy":["user"]}}}},` +
+			`"seat":{"type":"string"}}}`)}
+	detail := Detail{ID: "d-6", Type: "trip", Fields: map[string]json.RawMessage{
+		"type": json.RawMessage(`"trip"`), "route": json.RawMessage(`"CMB-SIN"`),
+		"fare": json.RawMessage(`{"amount":450}`), "seat": json.RawMessage(`"12A"`)}}
+
+	rows := map[string]providers.ConsentDetailRow{}
+	for _, row := range DetailElement(detail, typ).Rows {
+		rows[row.Path] = row
+	}
+	s.Equal("Departure and arrival airports", rows["route"].Description, "a read-only field shows its description")
+	s.Equal("Highest fare per seat", rows["fare.amount"].Description, "a nested field shows its description")
+	s.Empty(rows["seat"].Description)
+}
+
 func (s *ConsentTestSuite) TestDetailElement_MarksProcessorSuppliedFields() {
 	typ := providers.AuthorizationDetailType{ID: "type-2", Type: "payment", Name: "Payment", Version: 1,
 		Schema: json.RawMessage(`{"type":"object","properties":{"amount":{"type":"number"},` +

@@ -143,7 +143,7 @@ The schema is a subset of JSON Schema draft 2020-12 that must describe an object
 
 Every object in the schema is closed, so a detail with a field the schema does not declare is refused. A detail always carries `type`, which the schema accepts as a string when it does not declare it. The RFC 9396 common fields, such as `locations`, `actions`, and `identifier`, are accepted only when the schema declares them. In the Console, **Add standard fields** in the **Add field** menu adds `locations` and `actions`.
 
-A property's `title` labels its row on the consent card. A field without a title is labeled by its path, such as `instructedAmount.amount`. The client's values are shown to the user, so limit free text with `maxLength`.
+A property's `title` labels its row on the consent card. A field without a title is labeled by its path, such as `instructedAmount.amount`. A property's `description` appears below its label, so use it for a hint such as `Ordered in packs of 5`. The client's values are shown to the user, so limit free text with `maxLength`.
 
 ## Field Policies
 
@@ -185,7 +185,7 @@ The consent summary is the heading of the intent's card on the consent screen. E
 - Without a summary, the card heading is the type identifier.
 - When a detail has no value for a placeholder, such as an optional field the client left out, the card heading is the type identifier instead. The card still lists the detail's fields.
 
-Below the summary, the card lists the detail's fields with their titles. A field the user may change is shown as an input, and a field the processor supplied is shown with the processor's value.
+Below the summary, the card lists the detail's fields with their titles and descriptions. A field the user may change is shown as an input that keeps the field's limits, such as its minimum and its step, and a field the processor supplied is shown with the processor's value.
 
 ## Reuse Earlier Approvals
 

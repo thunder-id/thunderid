@@ -432,6 +432,55 @@ describe('ConsentAdapter — modifying authorization details', () => {
 
     expect(modifyInput('instructedAmount.amount').value).toBe('20');
   });
+
+  it('steps a number by the multiple the type declares and shows the field description', () => {
+    const onInputChange = vi.fn();
+    renderWithProviders(
+      <ConsentAdapter
+        consentData={JSON.stringify([
+          detailPurpose({
+            ...paymentDetail,
+            rows: [
+              {
+                path: 'quantity',
+                label: 'Quantity',
+                description: 'Ordered in packs of 5',
+                value: 20,
+                modification: 'decrease',
+                as: 'number',
+                minimum: 5,
+                multipleOf: 5,
+              },
+            ],
+          }),
+        ])}
+        formValues={{}}
+        onInputChange={onInputChange}
+      />,
+    );
+    const quantity = modifyInput('quantity');
+
+    expect(quantity.step).toBe('5');
+    expect(quantity.min).toBe('5');
+    expect(quantity.max).toBe('20');
+    expect(screen.getByText('Ordered in packs of 5')).toBeInTheDocument();
+
+    // The description describes the input, and so does the error once there is one.
+    const description = screen.getByText('Ordered in packs of 5');
+    expect(quantity.getAttribute('aria-describedby')).toBe(description.id);
+
+    fireEvent.change(quantity, {target: {value: '19'}});
+    expect(screen.getByText('Enter a multiple of 5.')).toBeInTheDocument();
+    const error = screen.getByText('Enter a multiple of 5.');
+    expect(quantity.getAttribute('aria-describedby')?.split(' ')).toEqual([description.id, error.id]);
+    expect(onInputChange).not.toHaveBeenCalledWith(modifiedKey('quantity'), '19');
+  });
+
+  it('lets a number without a multiple take any value', () => {
+    renderModifiable();
+
+    expect(modifyInput('instructedAmount.amount').step).toBe('any');
+  });
 });
 
 describe('ConsentAdapter — values that cannot be granted', () => {
@@ -668,6 +717,32 @@ describe('ConsentAdapter — adding list items', () => {
     expect(byId('excluded_offered_crypto')).toBeNull();
     fireEvent.click(byId('excluded_added_crypto')!);
     expect(removeAdded).toHaveBeenCalledWith(modifiedKey('excluded'), '["gambling"]');
+  });
+
+  it('disables the offered values once the list holds the most items its type allows', () => {
+    renderWithProviders(
+      <ConsentAdapter
+        consentData={JSON.stringify([
+          detailPurpose({
+            ...paymentDetail,
+            rows: [
+              {
+                path: 'excluded',
+                label: 'Excluded',
+                value: ['gambling'],
+                modification: 'addItems',
+                options: ['gambling', 'crypto'],
+                maxItems: 1,
+              },
+            ],
+          }),
+        ])}
+        formValues={{}}
+        onInputChange={vi.fn()}
+      />,
+    );
+
+    expect(byId('excluded_offered_crypto')).toHaveClass('Mui-disabled');
   });
 
   it('adds a typed value when the list allows any value', () => {
