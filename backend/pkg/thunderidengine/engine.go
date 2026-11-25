@@ -26,6 +26,7 @@ import (
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/openid4vp"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/runtimestore"
 	"github.com/thunder-id/thunderid/internal/system/cache"
@@ -38,6 +39,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/kmprovider"
 	"github.com/thunder-id/thunderid/internal/system/kmprovider/defaultkm/pki"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/vc/truststore"
+	"github.com/thunder-id/thunderid/internal/vc/verifier"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
@@ -186,6 +189,10 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		logger.Fatal(ctx, "Failed to initialize flow execution service", log.Error(err))
 	}
 
+	if err := engineCtx.initOpenID4VP(mux); err != nil {
+		logger.Fatal(ctx, "Failed to initialize OpenID4VP verification", log.Error(err))
+	}
+
 	oauthConfig := oauthconfig.Config{
 		DeploymentID:           engineCtx.serverConfig.Identifier,
 		RuntimeTransientDBType: engineCtx.runtimeTransientDBType,
@@ -272,6 +279,9 @@ func validateEngineContext(ctx *engineContext) error {
 	if ctx.defaultAuthnProvider == nil {
 		return errors.New("thunderidengine: default authentication provider is not set")
 	}
+	if ctx.verifierClientConfigProvider == nil {
+		return errors.New("thunderidengine: verifier client config provider is not set")
+	}
 	return nil
 }
 
@@ -298,6 +308,43 @@ func (e *engineContext) applyCustomExecutors() error {
 	}
 	for name, ex := range e.customExecutors {
 		e.execRegistry.RegisterExecutor(name, ex)
+	}
+	return nil
+}
+
+// initOpenID4VP initializes the trust anchor store, the VC verifier registry and the OpenID4VP
+// verifier service.
+func (e *engineContext) initOpenID4VP(mux *http.ServeMux) error {
+	trustStore, err := truststore.Initialize(e.openid4vpConfig.TrustedAnchors, e.serverHome)
+	if err != nil {
+		return fmt.Errorf("failed to initialize trust anchor store: %w", err)
+	}
+	e.verifierRegistry = verifier.Initialize(trustStore)
+	if err := e.registerVCVerifiers(); err != nil {
+		return fmt.Errorf("failed to register VC verifiers: %w", err)
+	}
+	e.openid4vpService, err = openid4vp.Initialize(mux, e.serverConfig.PublicURL, e.serverHome,
+		e.runtimeCryptoSvc, e.jwtService, e.openid4vpConfig, e.verifierClientConfigProvider,
+		e.runtimeStoreProvider, e.verifierRegistry)
+	if err != nil {
+		return fmt.Errorf("failed to initialize OpenID4VP verifier service: %w", err)
+	}
+	return nil
+}
+
+// registerVCVerifiers registers the VC verifiers with the verifier registry.
+func (e *engineContext) registerVCVerifiers() error {
+	if len(e.vcVerifiers) == 0 {
+		return nil
+	}
+	if e.verifierRegistry == nil {
+		return errors.New("thunderidengine: verifier registry is nil")
+	}
+	for name, verifier := range e.vcVerifiers {
+		err := e.verifierRegistry.Register(name, verifier)
+		if err != nil {
+			return fmt.Errorf("failed to register VC verifier '%s': %w", name, err)
+		}
 	}
 	return nil
 }
@@ -353,6 +400,8 @@ type engineContext struct {
 	dpopVerifier          dpop.VerifierInterface
 	flowExecService       flowexec.FlowExecServiceInterface
 	attributeCacheService attributecache.AttributeCacheServiceInterface
+	openid4vpService      openid4vp.OpenID4VPServiceInterface
+	verifierRegistry      verifier.VCVerifierRegistryInterface
 
 	serverHome             string
 	runtimeTransientDBType string
@@ -368,22 +417,25 @@ type engineContext struct {
 	logConfig              engineconfig.LogConfig
 	attributeCacheConfig   engineconfig.AttributeCacheConfig
 	originConfig           engineconfig.OriginConfig
+	openid4vpConfig        engineconfig.OpenID4VPConfig
 
-	actorProvider             providers.ActorProvider
-	defaultAuthnProvider      providers.AuthnProviderInterface
-	customAuthnProviders      map[string]providers.CustomAuthnProvider
-	resourceProvider          providers.ResourceServerProvider
-	ouProvider                providers.OrganizationUnitProvider
-	designResolveProvider     providers.DesignProvider
-	flowProvider              providers.FlowProvider
-	i18nProvider              providers.I18nProvider
-	idpProvider               providers.IDPProvider
-	consentProvider           providers.ConsentProvider
-	customExecutors           map[string]providers.Executor
-	observabilitySvc          providers.ObservabilityProvider
-	authzProvider             providers.AuthorizationProvider
-	attestationProvider       providers.AttestationProvider
-	captchaValidationProvider providers.CaptchaValidationProvider
+	actorProvider                providers.ActorProvider
+	defaultAuthnProvider         providers.AuthnProviderInterface
+	customAuthnProviders         map[string]providers.CustomAuthnProvider
+	resourceProvider             providers.ResourceServerProvider
+	ouProvider                   providers.OrganizationUnitProvider
+	designResolveProvider        providers.DesignProvider
+	flowProvider                 providers.FlowProvider
+	i18nProvider                 providers.I18nProvider
+	idpProvider                  providers.IDPProvider
+	consentProvider              providers.ConsentProvider
+	customExecutors              map[string]providers.Executor
+	observabilitySvc             providers.ObservabilityProvider
+	authzProvider                providers.AuthorizationProvider
+	attestationProvider          providers.AttestationProvider
+	captchaValidationProvider    providers.CaptchaValidationProvider
+	verifierClientConfigProvider providers.VCVerifierClientConfigProvider
+	vcVerifiers                  map[string]providers.VCVerifierProvider
 
 	transactioner        providers.Transactioner
 	runtimeStoreProvider providers.RuntimeStoreProvider
@@ -460,6 +512,11 @@ func WithFlowConfig(config engineconfig.FlowConfig) Option {
 // WithObservabilityConfig supplies the observability configuration.
 func WithObservabilityConfig(config engineconfig.ObservabilityConfig) Option {
 	return func(c *engineContext) { c.observabilityConfig = config }
+}
+
+// WithOpenid4VPConfig supplies the OpenID4VP configuration.
+func WithOpenid4VPConfig(config engineconfig.OpenID4VPConfig) Option {
+	return func(c *engineContext) { c.openid4vpConfig = config }
 }
 
 // WithActorProvider supplies the actor provider.
@@ -569,4 +626,21 @@ func WithCaptchaValidationProvider(provider providers.CaptchaValidationProvider)
 // WithRuntimeCryptoProvider supplies the RuntimeCryptoProvider.
 func WithRuntimeCryptoProvider(provider kmprovider.RuntimeCryptoProvider) Option {
 	return func(c *engineContext) { c.runtimeCryptoSvc = provider }
+}
+
+// WithVerifierClientConfigProvider supplies the verifier client config provider.
+func WithVerifierClientConfigProvider(provider providers.VCVerifierClientConfigProvider) Option {
+	return func(c *engineContext) { c.verifierClientConfigProvider = provider }
+}
+
+// WithVCVerifierProviders supplies the VC verifier providers to be registered with the engine.
+func WithVCVerifierProviders(verifiers map[string]providers.VCVerifierProvider) Option {
+	return func(c *engineContext) {
+		if c.vcVerifiers == nil {
+			c.vcVerifiers = make(map[string]providers.VCVerifierProvider, len(verifiers))
+		}
+		for name, v := range verifiers {
+			c.vcVerifiers[name] = v
+		}
+	}
 }

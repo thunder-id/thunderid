@@ -13,6 +13,7 @@ import (
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
+	"github.com/thunder-id/thunderid/internal/vc/truststore"
 )
 
 // Initialize builds the presentation-definition store and service, registers the
@@ -35,12 +36,14 @@ import (
 // verifier engine, which resolves definitions through it on demand.
 func Initialize(
 	mux *http.ServeMux, ouService ou.OrganizationUnitServiceInterface,
+	trustStore truststore.TrustStoreInterface, serverHome string,
+	cfg config.OpenID4VPConfig,
 ) (PresentationDefinitionServiceInterface, declarativeresource.ResourceExporter, error) {
-	store, err := initializeStore()
+	store, err := initializeStore(cfg)
 	if err != nil {
 		return nil, nil, err
 	}
-	svc := newPresentationDefinitionService(store, ouService)
+	svc := newPresentationDefinitionService(store, ouService, trustStore, cfg, serverHome)
 	registerRoutes(mux, newDefinitionHandler(svc))
 	return svc, newDefinitionExporter(svc), nil
 }
@@ -80,8 +83,8 @@ func registerRoutes(mux *http.ServeMux, h *definitionHandler) {
 }
 
 // initializeStore builds the presentation-definition store based on the configured store mode.
-func initializeStore() (definitionStoreInterface, error) {
-	storeMode, err := getDefinitionStoreMode()
+func initializeStore(cfg config.OpenID4VPConfig) (definitionStoreInterface, error) {
+	storeMode, err := getDefinitionStoreMode(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -118,16 +121,15 @@ func initializeStore() (definitionStoreInterface, error) {
 //     - If disabled: return "mutable"
 //
 // Returns normalized store mode: "mutable", "declarative", or "composite".
-func getDefinitionStoreMode() (serverconst.StoreMode, error) {
-	cfg := config.GetServerRuntime().Config
-	if cfg.OpenID4VP.Store != "" {
-		mode := serverconst.StoreMode(strings.ToLower(strings.TrimSpace(cfg.OpenID4VP.Store)))
+func getDefinitionStoreMode(cfg config.OpenID4VPConfig) (serverconst.StoreMode, error) {
+	if cfg.Store != "" {
+		mode := serverconst.StoreMode(strings.ToLower(strings.TrimSpace(cfg.Store)))
 		switch mode {
 		case serverconst.StoreModeMutable, serverconst.StoreModeDeclarative, serverconst.StoreModeComposite:
 			return mode, nil
 		default:
 			return "", fmt.Errorf("invalid openid4vp store mode %q: must be one of %q, %q, or %q",
-				cfg.OpenID4VP.Store,
+				cfg.Store,
 				serverconst.StoreModeMutable,
 				serverconst.StoreModeDeclarative,
 				serverconst.StoreModeComposite,

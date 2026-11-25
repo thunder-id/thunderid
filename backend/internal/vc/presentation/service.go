@@ -9,14 +9,19 @@ import (
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/ou"
+	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/utils"
+	"github.com/thunder-id/thunderid/internal/vc/truststore"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // PresentationDefinitionServiceInterface manages OpenID4VP presentation
-// definitions in the configdb store, which the verifier engine reads on demand.
+// definitions in the configdb store, which the verifier engine reads on demand
+// through the embedded VCVerifierClientConfigProvider.
 type PresentationDefinitionServiceInterface interface {
+	providers.VCVerifierClientConfigProvider
 	CreatePresentationDefinition(ctx context.Context, dto *PresentationDefinitionDTO) (
 		*PresentationDefinitionDTO, *tidcommon.ServiceError)
 	GetPresentationDefinition(ctx context.Context, id string) (*PresentationDefinitionDTO, *tidcommon.ServiceError)
@@ -32,22 +37,40 @@ type PresentationDefinitionServiceInterface interface {
 }
 
 type definitionService struct {
-	store     definitionStoreInterface
-	ouService ou.OrganizationUnitServiceInterface
-	logger    *log.Logger
-	uuid      func() (string, error)
+	store      definitionStoreInterface
+	ouService  ou.OrganizationUnitServiceInterface
+	trustStore truststore.TrustStoreInterface
+	logger     *log.Logger
+	uuid       func() (string, error)
+	config     config.OpenID4VPConfig
+	serverHome string
 }
 
 // newPresentationDefinitionService builds a presentation-definition service over the given store.
 func newPresentationDefinitionService(
 	store definitionStoreInterface, ouService ou.OrganizationUnitServiceInterface,
+	trustStore truststore.TrustStoreInterface, config config.OpenID4VPConfig, serverHome string,
 ) PresentationDefinitionServiceInterface {
 	return &definitionService{
-		store:     store,
-		ouService: ouService,
-		logger:    log.GetLogger().With(log.String(log.LoggerKeyComponentName, "OpenID4VPDefinitionService")),
-		uuid:      utils.GenerateUUIDv7,
+		store:      store,
+		ouService:  ouService,
+		trustStore: trustStore,
+		logger:     log.GetLogger().With(log.String(log.LoggerKeyComponentName, "OpenID4VPDefinitionService")),
+		uuid:       utils.GenerateUUIDv7,
+		config:     config,
+		serverHome: serverHome,
 	}
+}
+
+// validateTrustedAuthorities verifies each trusted authority names a configured trust anchor.
+func (s *definitionService) validateTrustedAuthorities(dto *PresentationDefinitionDTO) *tidcommon.ServiceError {
+	if s.trustStore == nil || len(dto.TrustedAuthorities) == 0 {
+		return nil
+	}
+	if err := s.trustStore.ValidateNames(dto.TrustedAuthorities); err != nil {
+		return &ErrorDefinitionUnknownTrustedAuthority
+	}
+	return nil
 }
 
 // resolveOU resolves ouHandle to ouId when needed and verifies the OU exists.
@@ -111,6 +134,9 @@ func (s *definitionService) CreatePresentationDefinition(
 	ctx context.Context, dto *PresentationDefinitionDTO,
 ) (*PresentationDefinitionDTO, *tidcommon.ServiceError) {
 	if svcErr := validateDefinition(dto); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := s.validateTrustedAuthorities(dto); svcErr != nil {
 		return nil, svcErr
 	}
 	if svcErr := s.resolveOU(ctx, dto); svcErr != nil {
@@ -251,6 +277,9 @@ func (s *definitionService) UpdatePresentationDefinition(
 		return nil, &ErrorDefinitionInvalidRequest
 	}
 	if svcErr := validateDefinition(dto); svcErr != nil {
+		return nil, svcErr
+	}
+	if svcErr := s.validateTrustedAuthorities(dto); svcErr != nil {
 		return nil, svcErr
 	}
 	if svcErr := s.resolveOU(ctx, dto); svcErr != nil {

@@ -77,8 +77,11 @@ type FederatedAuthCredential struct {
 
 // OpenID4VPCredential carries the verified presentation result to the authn provider.
 type OpenID4VPCredential struct {
-	Subject string
-	Claims  map[string]interface{}
+	Format      string
+	Type        []string
+	Subject     string
+	Claims      map[string]interface{}
+	ValidatedVP string
 }
 
 // FederatedAuthResult is the result of a federated authentication attempt.

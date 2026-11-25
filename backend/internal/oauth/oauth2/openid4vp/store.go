@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"time"
 
-	kmprovider "github.com/thunder-id/thunderid/internal/system/kmprovider/common"
+	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
@@ -23,6 +23,7 @@ type openID4VPStoreInterface interface {
 	SaveRequestState(ctx context.Context, st *RequestState) error
 	GetRequestState(ctx context.Context, state string) (*RequestState, bool)
 	DeleteRequestState(ctx context.Context, state string) error
+	CompareAndSwapRequestState(ctx context.Context, st *RequestState, expected Status) (bool, error)
 }
 
 // openID4VPStore persists OpenID4VP request state in the runtime store so it
@@ -33,7 +34,7 @@ type openID4VPStoreInterface interface {
 // server's configured symmetric key before serialization.
 type openID4VPStore struct {
 	store  providers.RuntimeStoreProvider
-	crypto kmprovider.ConfigCryptoProvider
+	crypto providers.RuntimeCryptoProvider
 	logger *log.Logger
 }
 
@@ -41,7 +42,7 @@ type openID4VPStore struct {
 // key is held as an encrypted PKCS#8 blob; the transient ResultToken is not persisted.
 type storedRequestState struct {
 	State         string
-	DefinitionID  string
+	VerifierID    string
 	Nonce         string
 	EphemeralKey  []byte
 	ClientID      string
@@ -54,7 +55,7 @@ type storedRequestState struct {
 
 // newOpenID4VPStore constructs a runtime-store-backed request state store using the given crypto provider.
 func newOpenID4VPStore(
-	crypto kmprovider.ConfigCryptoProvider, store providers.RuntimeStoreProvider,
+	crypto providers.RuntimeCryptoProvider, store providers.RuntimeStoreProvider,
 ) openID4VPStoreInterface {
 	return &openID4VPStore{
 		store:  store,
@@ -66,9 +67,40 @@ func newOpenID4VPStore(
 // SaveRequestState stores the request state, encrypting the ephemeral key. It overwrites
 // any existing entry for the same state, so status transitions re-save the full state.
 func (s *openID4VPStore) SaveRequestState(ctx context.Context, st *RequestState) error {
+	data, err := s.encode(ctx, st)
+	if err != nil {
+		return err
+	}
+	if err := s.store.Put(ctx, providers.NamespaceVPState, st.State, data, ttlUntil(st.ExpiresAt)); err != nil {
+		return fmt.Errorf("failed to store request state: %w", err)
+	}
+	return nil
+}
+
+// CompareAndSwapRequestState atomically replaces the stored request state with st, but only
+// when the currently stored status equals expected. The existing TTL is preserved. It returns
+// false when the status differs or the state is absent or expired.
+func (s *openID4VPStore) CompareAndSwapRequestState(
+	ctx context.Context, st *RequestState, expected Status,
+) (bool, error) {
+	data, err := s.encode(ctx, st)
+	if err != nil {
+		return false, err
+	}
+	swapped, err := s.store.CompareFieldAndSwap(
+		ctx, providers.NamespaceVPState, st.State, "Status", string(expected), data)
+	if err != nil {
+		return false, fmt.Errorf("failed to swap request state: %w", err)
+	}
+	return swapped, nil
+}
+
+// encode serializes a RequestState to its stored JSON form, encrypting the ephemeral key
+// when present.
+func (s *openID4VPStore) encode(ctx context.Context, st *RequestState) ([]byte, error) {
 	stored := storedRequestState{
 		State:         st.State,
-		DefinitionID:  st.DefinitionID,
+		VerifierID:    st.VerifierID,
 		Nonce:         st.Nonce,
 		ClientID:      st.ClientID,
 		RequestURI:    st.RequestURI,
@@ -81,23 +113,20 @@ func (s *openID4VPStore) SaveRequestState(ctx context.Context, st *RequestState)
 	if st.EphemeralKey != nil {
 		pkcs8, err := x509.MarshalPKCS8PrivateKey(st.EphemeralKey)
 		if err != nil {
-			return fmt.Errorf("failed to marshal ephemeral key: %w", err)
+			return nil, fmt.Errorf("failed to marshal ephemeral key: %w", err)
 		}
-		encKey, err := s.crypto.Encrypt(ctx, pkcs8)
+		encKey, _, err := s.crypto.Encrypt(ctx, nil, string(cryptolib.AlgorithmAESGCM), nil, pkcs8)
 		if err != nil {
-			return fmt.Errorf("failed to encrypt ephemeral key: %w", err)
+			return nil, fmt.Errorf("failed to encrypt ephemeral key: %w", err)
 		}
 		stored.EphemeralKey = encKey
 	}
 
 	data, err := json.Marshal(stored)
 	if err != nil {
-		return fmt.Errorf("failed to marshal request state: %w", err)
+		return nil, fmt.Errorf("failed to marshal request state: %w", err)
 	}
-	if err := s.store.Put(ctx, providers.NamespaceVPState, st.State, data, ttlUntil(st.ExpiresAt)); err != nil {
-		return fmt.Errorf("failed to store request state: %w", err)
-	}
-	return nil
+	return data, nil
 }
 
 // GetRequestState retrieves and reconstructs the request state for the given state,
@@ -134,7 +163,7 @@ func (s *openID4VPStore) decode(ctx context.Context, data []byte) (*RequestState
 
 	rs := &RequestState{
 		State:         stored.State,
-		DefinitionID:  stored.DefinitionID,
+		VerifierID:    stored.VerifierID,
 		Nonce:         stored.Nonce,
 		ClientID:      stored.ClientID,
 		RequestURI:    stored.RequestURI,
@@ -145,7 +174,7 @@ func (s *openID4VPStore) decode(ctx context.Context, data []byte) (*RequestState
 	}
 
 	if len(stored.EphemeralKey) > 0 {
-		pkcs8, err := s.crypto.Decrypt(ctx, stored.EphemeralKey)
+		pkcs8, err := s.crypto.Decrypt(ctx, nil, string(cryptolib.AlgorithmAESGCM), nil, stored.EphemeralKey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to decrypt ephemeral key: %w", err)
 		}

@@ -374,6 +374,41 @@ type FlowConfig struct {
 	Interceptors []string `yaml:"interceptors" json:"interceptors"`
 }
 
+// OpenID4VPConfig holds the engine-level OpenID4VP verifier settings shared by the server
+// configuration and the verifier engine.
+type OpenID4VPConfig struct {
+	SigningKeyID               string   `yaml:"signing_key_id" json:"signing_key_id"`
+	ResultRedirectURI          string   `yaml:"result_redirect_uri" json:"result_redirect_uri"`
+	RequestAudience            string   `yaml:"request_audience" json:"request_audience"`
+	ResponseEncValues          []string `yaml:"response_enc_values" json:"response_enc_values"`
+	RequestValiditySeconds     int      `yaml:"request_validity_seconds" json:"request_validity_seconds"`
+	StateTTLSeconds            int      `yaml:"state_ttl_seconds" json:"state_ttl_seconds"`
+	LeewaySeconds              int      `yaml:"leeway_seconds" json:"leeway_seconds"`
+	KeyBindingMaxAgeSeconds    int      `yaml:"key_binding_max_age_seconds" json:"key_binding_max_age_seconds"`     //nolint:lll
+	ResultTokenValiditySeconds int      `yaml:"result_token_validity_seconds" json:"result_token_validity_seconds"` //nolint:lll
+	RegistrationCertFile       string   `yaml:"registration_cert_file" json:"registration_cert_file"`
+	EnforceTrustedIssuer       bool     `yaml:"enforce_trusted_issuer" json:"enforce_trusted_issuer"`
+	// EnforceKeyBinding uses a pointer so an explicit false in deployment.yaml overrides the
+	// default.json default of true; a nil pointer means "not set" and keeps the default.
+	EnforceKeyBinding *bool                `yaml:"enforce_key_binding" json:"enforce_key_binding"`
+	TrustedAnchors    []TrustedAnchorEntry `yaml:"trusted_anchors" json:"trusted_anchors"` //nolint:lll
+}
+
+// TrustedAnchorEntry is a trust anchor (root CA) whose PEM certificate roots the
+// X.509 chains presented by credential issuers (via the x5c header). Trust
+// anchors are configured once at the OpenID4VP engine level and shared by every
+// presentation definition.
+type TrustedAnchorEntry struct {
+	Name     string `yaml:"name" json:"name"`
+	CertFile string `yaml:"cert_file" json:"cert_file"`
+}
+
+// EnforceKeyBindingEnabled reports whether a Key Binding JWT is required, defaulting to false
+// when unset (an explicit default lives in default.json).
+func (c OpenID4VPConfig) EnforceKeyBindingEnabled() bool {
+	return c.EnforceKeyBinding != nil && *c.EnforceKeyBinding
+}
+
 // RequiredClaim defines a claim name and expected value that must be present in the token.
 type RequiredClaim struct {
 	Claim string `yaml:"claim" json:"claim"`

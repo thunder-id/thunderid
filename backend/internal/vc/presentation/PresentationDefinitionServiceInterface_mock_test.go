@@ -9,6 +9,7 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 // NewPresentationDefinitionServiceInterfaceMock creates a new instance of PresentationDefinitionServiceInterfaceMock. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
@@ -303,6 +304,76 @@ func (_c *PresentationDefinitionServiceInterfaceMock_GetPresentationDefinitionBy
 }
 
 func (_c *PresentationDefinitionServiceInterfaceMock_GetPresentationDefinitionByHandle_Call) RunAndReturn(run func(ctx context.Context, handle string) (*PresentationDefinitionDTO, *common.ServiceError)) *PresentationDefinitionServiceInterfaceMock_GetPresentationDefinitionByHandle_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetVCVerifierClientConfigByID provides a mock function for the type PresentationDefinitionServiceInterfaceMock
+func (_mock *PresentationDefinitionServiceInterfaceMock) GetVCVerifierClientConfigByID(ctx context.Context, verifierID string) (*providers.VCVerifierClientConfig, *common.ServiceError) {
+	ret := _mock.Called(ctx, verifierID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetVCVerifierClientConfigByID")
+	}
+
+	var r0 *providers.VCVerifierClientConfig
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*providers.VCVerifierClientConfig, *common.ServiceError)); ok {
+		return returnFunc(ctx, verifierID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *providers.VCVerifierClientConfig); ok {
+		r0 = returnFunc(ctx, verifierID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*providers.VCVerifierClientConfig)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, verifierID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// PresentationDefinitionServiceInterfaceMock_GetVCVerifierClientConfigByID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetVCVerifierClientConfigByID'
+type PresentationDefinitionServiceInterfaceMock_GetVCVerifierClientConfigByID_Call struct {
+	*mock.Call
+}
+
+// GetVCVerifierClientConfigByID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - verifierID string
+func (_e *PresentationDefinitionServiceInterfaceMock_Expecter) GetVCVerifierClientConfigByID(ctx interface{}, verifierID interface{}) *PresentationDefinitionServiceInterfaceMock_GetVCVerifierClientConfigByID_Call {
+	return &PresentationDefinitionServiceInterfaceMock_GetVCVerifierClientConfigByID_Call{Call: _e.mock.On("GetVCVerifierClientConfigByID", ctx, verifierID)}
+}
+
+func (_c *PresentationDefinitionServiceInterfaceMock_GetVCVerifierClientConfigByID_Call) Run(run func(ctx context.Context, verifierID string)) *PresentationDefinitionServiceInterfaceMock_GetVCVerifierClientConfigByID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *PresentationDefinitionServiceInterfaceMock_GetVCVerifierClientConfigByID_Call) Return(vCVerifierClientConfig *providers.VCVerifierClientConfig, serviceError *common.ServiceError) *PresentationDefinitionServiceInterfaceMock_GetVCVerifierClientConfigByID_Call {
+	_c.Call.Return(vCVerifierClientConfig, serviceError)
+	return _c
+}
+
+func (_c *PresentationDefinitionServiceInterfaceMock_GetVCVerifierClientConfigByID_Call) RunAndReturn(run func(ctx context.Context, verifierID string) (*providers.VCVerifierClientConfig, *common.ServiceError)) *PresentationDefinitionServiceInterfaceMock_GetVCVerifierClientConfigByID_Call {
 	_c.Call.Return(run)
 	return _c
 }

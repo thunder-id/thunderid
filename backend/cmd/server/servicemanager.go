@@ -27,7 +27,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/authn/magiclink"
 	authnOAuth "github.com/thunder-id/thunderid/internal/authn/oauth"
 	authnOIDC "github.com/thunder-id/thunderid/internal/authn/oidc"
-	"github.com/thunder-id/thunderid/internal/authn/openid4vp"
+	authnOpenID4VP "github.com/thunder-id/thunderid/internal/authn/openid4vp"
 	"github.com/thunder-id/thunderid/internal/authn/otp"
 	"github.com/thunder-id/thunderid/internal/authn/passkey"
 	"github.com/thunder-id/thunderid/internal/authnprovider/defaultprovider"
@@ -62,6 +62,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dcr"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/jti"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/openid4vp"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/revocation"
 	"github.com/thunder-id/thunderid/internal/openid4vci"
 	"github.com/thunder-id/thunderid/internal/ou"
@@ -98,6 +99,8 @@ import (
 	"github.com/thunder-id/thunderid/internal/user"
 	"github.com/thunder-id/thunderid/internal/vc/credential"
 	"github.com/thunder-id/thunderid/internal/vc/presentation"
+	"github.com/thunder-id/thunderid/internal/vc/truststore"
+	"github.com/thunder-id/thunderid/internal/vc/verifier"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -268,8 +271,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	dpopVerifier := dpop.Initialize(oauthCfg, jti.Initialize(runtimeStoreProvider), runtimeCryptoSvc)
 
 	openid4vpSvc, openid4vpDefSvc, openid4vciCredSvc, exporters :=
-		initializeVCServices(ctx, logger, mux, runtimeCryptoSvc, configCryptoSvc, jwtService,
-			ouService, runtimeStoreProvider, exporters)
+		initializeVCServices(ctx, logger, mux, runtimeCryptoSvc, jwtService, ouService,
+			runtimeStoreProvider, exporters)
 
 	defaultProvider := defaultprovider.Initialize(entityService, passkeyService,
 		otpCoreService, magicLinkService, openid4vpSvc, federatedAuths)
@@ -649,22 +652,30 @@ func initializeFlowCoreAndExecutor(
 // itself is initialized later, once the application service it depends on exists.
 func initializeVCServices(
 	ctx context.Context, logger *log.Logger, mux *http.ServeMux,
-	runtimeCrypto providers.RuntimeCryptoProvider, configCrypto kmprovider.ConfigCryptoProvider,
+	runtimeCrypto providers.RuntimeCryptoProvider,
 	jwtService jwt.JWTServiceInterface,
 	ouService ou.OrganizationUnitServiceInterface,
 	runtimeStoreProvider providers.RuntimeStoreProvider,
 	exporters []declarativeresource.ResourceExporter,
 ) (openid4vp.OpenID4VPServiceInterface, presentation.PresentationDefinitionServiceInterface,
 	credential.CredentialConfigurationServiceInterface, []declarativeresource.ResourceExporter) {
-	openid4vpDefSvc, vpDefExp, err := presentation.Initialize(mux, ouService)
+	runtime := config.GetServerRuntime()
+	trustStore, err := truststore.Initialize(runtime.Config.OpenID4VP.TrustedAnchors, runtime.ServerHome)
+	fatalOnError(ctx, logger, err, "Failed to initialize trust anchor store")
+	verifierRegistry := verifier.Initialize(trustStore)
+
+	openid4vpDefSvc, vpDefExp, err := presentation.Initialize(mux, ouService, trustStore, runtime.ServerHome,
+		runtime.Config.OpenID4VP)
 	fatalOnError(ctx, logger, err, "Failed to initialize presentation definition service")
 	if vpDefExp != nil {
 		exporters = append(exporters, vpDefExp)
 	}
 
-	openid4vpSvc, err := openid4vp.Initialize(mux, runtimeCrypto, configCrypto, jwtService, openid4vpDefSvc,
-		runtimeStoreProvider)
+	openid4vpSvc, err := openid4vp.Initialize(mux, config.GetServerURL(&runtime.Config.Server), runtime.ServerHome,
+		runtimeCrypto, jwtService, runtime.Config.OpenID4VP.OpenID4VPConfig, openid4vpDefSvc,
+		runtimeStoreProvider, verifierRegistry)
 	fatalOnError(ctx, logger, err, "Failed to initialize OpenID4VP verifier service")
+	authnOpenID4VP.Initialize(mux, openid4vpSvc, trustStore)
 
 	openid4vciCredSvc, vciCredExp, err := credential.Initialize(mux, ouService)
 	fatalOnError(ctx, logger, err, "Failed to initialize credential configuration service")

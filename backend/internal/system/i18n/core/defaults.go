@@ -1138,6 +1138,8 @@ var defaultMessages = map[string]string{
 	"error.vp.definition_not_found_description": "No presentation definition exists for the supplied identifier",
 	"error.vp.definition_result_limit_exceeded": "Result limit exceeded",
 	"error.vp.definition_result_limit_exceeded_description": "The number of presentation definitions exceeds the supported limit in hybrid mode. Use search for larger datasets",
+	"error.vp.definition_unknown_trusted_authority": "Unknown trusted authority",
+	"error.vp.definition_unknown_trusted_authority_description": "Each trusted authority must name a configured trust anchor",
 	"error.vp.definition_unsupported_format": "Unsupported credential format",
 	"error.vp.definition_unsupported_format_description": "Only the dc+sd-jwt credential format is supported",
 	"flows.executor.errors.ambiguous_user_identity": "Ambiguous user identity",

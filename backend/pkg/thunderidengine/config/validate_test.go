@@ -377,3 +377,9 @@ func (suite *ValidateTestSuite) TestOAuthConfig_SendServerErrorsToClientEnabled(
 		})
 	}
 }
+
+func (suite *ValidateTestSuite) TestOpenID4VPEnforceKeyBindingEnabled() {
+	suite.False(OpenID4VPConfig{}.EnforceKeyBindingEnabled())
+	suite.False(OpenID4VPConfig{EnforceKeyBinding: boolPtr(false)}.EnforceKeyBindingEnabled())
+	suite.True(OpenID4VPConfig{EnforceKeyBinding: boolPtr(true)}.EnforceKeyBindingEnabled())
+}

@@ -131,6 +131,15 @@ packages:
       pkgname: granthandlersmock
       filename: "{{.InterfaceName}}_mock.go"
 
+  github.com/thunder-id/thunderid/internal/oauth/oauth2/openid4vp:
+    interfaces:
+      OpenID4VPServiceInterface:
+        config:
+          dir: tests/mocks/oauth/oauth2/openid4vpmock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: openid4vpmock
+          filename: "{{.InterfaceName}}_mock.go"
+
   github.com/thunder-id/thunderid/internal/oauth/oauth2/ciba:
     interfaces:
       CIBARequestStoreInterface:
@@ -647,6 +656,18 @@ packages:
           structname: '{{.InterfaceName}}Mock'
           pkgname: runtimestoreprovidermock
           filename: "{{.InterfaceName}}_mock.go"
+      VCVerifierProvider:
+        config:
+          dir: tests/mocks/vc/vcverifierprovidermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: vcverifierprovidermock
+          filename: "{{.InterfaceName}}_mock.go"
+      VCVerifierClientConfigProvider:
+        config:
+          dir: tests/mocks/vc/vcverifierclientconfigprovidermock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: vcverifierclientconfigprovidermock
+          filename: "{{.InterfaceName}}_mock.go"
 
   github.com/thunder-id/thunderid/internal/system/sysauthz:
     interfaces:
@@ -712,4 +733,20 @@ packages:
       dir: tests/mocks/vc/presentationmock
       structname: '{{.InterfaceName}}Mock'
       pkgname: presentationmock
+      filename: "{{.InterfaceName}}_mock.go"
+
+  github.com/thunder-id/thunderid/internal/vc/verifier:
+    config:
+      all: true
+      dir: tests/mocks/vc/verifiermock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: verifiermock
+      filename: "{{.InterfaceName}}_mock.go"
+
+  github.com/thunder-id/thunderid/internal/vc/truststore:
+    config:
+      all: true
+      dir: tests/mocks/vc/truststoremock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: truststoremock
       filename: "{{.InterfaceName}}_mock.go"

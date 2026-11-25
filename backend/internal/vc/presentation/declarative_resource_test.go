@@ -232,7 +232,7 @@ func (s *DefinitionExporterTestSuite) TestParseToDefinitionDTOInvalidYAML() {
 func (s *DefinitionExporterTestSuite) TestGetAllResourceIDsListError() {
 	store := newDefinitionStoreInterfaceMock(s.T())
 	store.EXPECT().ListPresentationDefinitions(mock.Anything).Return(nil, errors.New("db boom"))
-	svc := newPresentationDefinitionService(store, nil)
+	svc := newPresentationDefinitionService(store, nil, nil, config.OpenID4VPConfig{}, "")
 	exporter := newDefinitionExporter(svc)
 
 	_, err := exporter.GetAllResourceIDs(context.Background())
@@ -246,7 +246,7 @@ func (s *DefinitionExporterTestSuite) TestGetAllResourceIDsIsDeclarativeError() 
 		[]PresentationDefinitionDTO{{ID: "def-1", Handle: "h", VCT: "v"}}, nil)
 	store.EXPECT().IsPresentationDefinitionDeclarative(mock.Anything, mock.Anything).Return(
 		false, errors.New("db boom"))
-	svc := newPresentationDefinitionService(store, nil)
+	svc := newPresentationDefinitionService(store, nil, nil, config.OpenID4VPConfig{}, "")
 	exporter := newDefinitionExporter(svc)
 
 	_, err := exporter.GetAllResourceIDs(context.Background())
@@ -263,7 +263,7 @@ func (s *DefinitionExporterTestSuite) TestGetAllResourceIDsExcludesDeclarative()
 		}, nil)
 	store.EXPECT().IsPresentationDefinitionDeclarative(mock.Anything, "mutable").Return(false, nil)
 	store.EXPECT().IsPresentationDefinitionDeclarative(mock.Anything, "declarative").Return(true, nil)
-	svc := newPresentationDefinitionService(store, nil)
+	svc := newPresentationDefinitionService(store, nil, nil, config.OpenID4VPConfig{}, "")
 	exporter := newDefinitionExporter(svc)
 
 	ids, err := exporter.GetAllResourceIDs(context.Background())

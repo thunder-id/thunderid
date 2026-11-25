@@ -37,6 +37,78 @@ func (_m *openID4VPStoreInterfaceMock) EXPECT() *openID4VPStoreInterfaceMock_Exp
 	return &openID4VPStoreInterfaceMock_Expecter{mock: &_m.Mock}
 }
 
+// CompareAndSwapRequestState provides a mock function for the type openID4VPStoreInterfaceMock
+func (_mock *openID4VPStoreInterfaceMock) CompareAndSwapRequestState(ctx context.Context, st *RequestState, expected Status) (bool, error) {
+	ret := _mock.Called(ctx, st, expected)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CompareAndSwapRequestState")
+	}
+
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *RequestState, Status) (bool, error)); ok {
+		return returnFunc(ctx, st, expected)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, *RequestState, Status) bool); ok {
+		r0 = returnFunc(ctx, st, expected)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, *RequestState, Status) error); ok {
+		r1 = returnFunc(ctx, st, expected)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// openID4VPStoreInterfaceMock_CompareAndSwapRequestState_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CompareAndSwapRequestState'
+type openID4VPStoreInterfaceMock_CompareAndSwapRequestState_Call struct {
+	*mock.Call
+}
+
+// CompareAndSwapRequestState is a helper method to define mock.On call
+//   - ctx context.Context
+//   - st *RequestState
+//   - expected Status
+func (_e *openID4VPStoreInterfaceMock_Expecter) CompareAndSwapRequestState(ctx interface{}, st interface{}, expected interface{}) *openID4VPStoreInterfaceMock_CompareAndSwapRequestState_Call {
+	return &openID4VPStoreInterfaceMock_CompareAndSwapRequestState_Call{Call: _e.mock.On("CompareAndSwapRequestState", ctx, st, expected)}
+}
+
+func (_c *openID4VPStoreInterfaceMock_CompareAndSwapRequestState_Call) Run(run func(ctx context.Context, st *RequestState, expected Status)) *openID4VPStoreInterfaceMock_CompareAndSwapRequestState_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 *RequestState
+		if args[1] != nil {
+			arg1 = args[1].(*RequestState)
+		}
+		var arg2 Status
+		if args[2] != nil {
+			arg2 = args[2].(Status)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *openID4VPStoreInterfaceMock_CompareAndSwapRequestState_Call) Return(b bool, err error) *openID4VPStoreInterfaceMock_CompareAndSwapRequestState_Call {
+	_c.Call.Return(b, err)
+	return _c
+}
+
+func (_c *openID4VPStoreInterfaceMock_CompareAndSwapRequestState_Call) RunAndReturn(run func(ctx context.Context, st *RequestState, expected Status) (bool, error)) *openID4VPStoreInterfaceMock_CompareAndSwapRequestState_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // DeleteRequestState provides a mock function for the type openID4VPStoreInterfaceMock
 func (_mock *openID4VPStoreInterfaceMock) DeleteRequestState(ctx context.Context, state string) error {
 	ret := _mock.Called(ctx, state)
