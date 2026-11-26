@@ -4559,6 +4559,69 @@ func (_c *EntityServiceInterfaceMock_UpdateSystemCredentials_Call) RunAndReturn(
 	return _c
 }
 
+// ValidateAttributes provides a mock function for the type EntityServiceInterfaceMock
+func (_mock *EntityServiceInterfaceMock) ValidateAttributes(ctx context.Context, entityID string, attributes json.RawMessage) error {
+	ret := _mock.Called(ctx, entityID, attributes)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ValidateAttributes")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, json.RawMessage) error); ok {
+		r0 = returnFunc(ctx, entityID, attributes)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// EntityServiceInterfaceMock_ValidateAttributes_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateAttributes'
+type EntityServiceInterfaceMock_ValidateAttributes_Call struct {
+	*mock.Call
+}
+
+// ValidateAttributes is a helper method to define mock.On call
+//   - ctx context.Context
+//   - entityID string
+//   - attributes json.RawMessage
+func (_e *EntityServiceInterfaceMock_Expecter) ValidateAttributes(ctx any, entityID any, attributes any) *EntityServiceInterfaceMock_ValidateAttributes_Call {
+	return &EntityServiceInterfaceMock_ValidateAttributes_Call{Call: _e.mock.On("ValidateAttributes", ctx, entityID, attributes)}
+}
+
+func (_c *EntityServiceInterfaceMock_ValidateAttributes_Call) Run(run func(ctx context.Context, entityID string, attributes json.RawMessage)) *EntityServiceInterfaceMock_ValidateAttributes_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 json.RawMessage
+		if args[2] != nil {
+			arg2 = args[2].(json.RawMessage)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_ValidateAttributes_Call) Return(err error) *EntityServiceInterfaceMock_ValidateAttributes_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *EntityServiceInterfaceMock_ValidateAttributes_Call) RunAndReturn(run func(ctx context.Context, entityID string, attributes json.RawMessage) error) *EntityServiceInterfaceMock_ValidateAttributes_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ValidateCredentials provides a mock function for the type EntityServiceInterfaceMock
 func (_mock *EntityServiceInterfaceMock) ValidateCredentials(ctx context.Context, entityID string, plaintextUpdates json.RawMessage) error {
 	ret := _mock.Called(ctx, entityID, plaintextUpdates)

@@ -203,6 +203,7 @@ func registerRoutes(mux *http.ServeMux, userHandler *userHandler) {
 	optsSelf := middleware.CORSOptions{
 		AllowedMethods:   []string{"GET", "PUT"},
 		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		ExposedHeaders:   []string{serverconst.WWWAuthenticateHeaderName},
 		AllowCredentials: true,
 		MaxAge:           600,
 	}
@@ -233,6 +234,7 @@ func registerRoutes(mux *http.ServeMux, userHandler *userHandler) {
 	optsSelfCredentials := middleware.CORSOptions{
 		AllowedMethods:   []string{"POST"},
 		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		ExposedHeaders:   []string{serverconst.WWWAuthenticateHeaderName},
 		AllowCredentials: true,
 		MaxAge:           600,
 	}

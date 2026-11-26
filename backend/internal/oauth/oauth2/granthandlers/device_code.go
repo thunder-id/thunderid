@@ -211,6 +211,7 @@ func (h *deviceCodeGrantHandler) issueTokens(
 		SubjectAttributes: tokenservice.FilterAttributesByAllowList(attrs, userSubConfig),
 		AttributeCacheID:  record.AttributeCacheID, GrantType: string(providers.GrantTypeDeviceCode),
 		OAuthApp: oauthApp, ValidityPeriod: userSubConfig.ValidityPeriodOrZero(), DPoPJkt: dpop.GetJkt(ctx),
+		AuthTime: record.AuthTime.Unix(),
 	}
 	if oauthApp.ShouldAppendActorClaim() {
 		accessTokenCtx.ActorClaims = &tokenservice.SubjectTokenClaims{Sub: oauthApp.ID}

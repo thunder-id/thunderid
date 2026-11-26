@@ -669,6 +669,7 @@ User management settings.
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `user.indexed_attributes` | `["username", "email", "mobile_number", "sub"]` | User attributes that are indexed for fast `lookups` |
+| `user.self_service.max_authentication_age_seconds` | `180` | How long, in seconds, a sign-in stays recent enough for a self-service change that proves no current credential: setting a credential the user does not hold yet, changing an attribute of type `email` or `mobile`, or setting a personal agent's credentials. `0` or a negative value turns the check off. See [Let Users Change Their Own Account](../../guides/users/manage-users#let-users-change-their-own-account). |
 
 An indexed attribute's value can be a single scalar value or a list of scalar values. A list indexes each scalar element separately, so a user can be looked up by any one of them. Non-scalar elements in the list (for example, a nested object) are skipped and are not indexed. For example, a user with `email` set to `["primary@example.com", "secondary@example.com"]` can be identified, searched, or filtered by either address.
 

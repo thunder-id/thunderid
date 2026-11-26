@@ -239,6 +239,21 @@ type UserConfig struct {
 	//   - If DeclarativeResources.Enabled = true: behaves as "declarative"
 	//   - If DeclarativeResources.Enabled = false: behaves as "mutable"
 	Store string `yaml:"store"              json:"store"`
+	// SelfService holds the rules for changes users make to their own accounts.
+	SelfService UserSelfServiceConfig `yaml:"self_service" json:"self_service"`
+}
+
+// UserSelfServiceConfig holds the rules for changes users make to their own accounts.
+type UserSelfServiceConfig struct {
+	// MaxAuthenticationAgeSeconds is how long after sign-in a user can make a change that needs a recent sign-in,
+	// such as setting a credential they don't hold yet.
+	MaxAuthenticationAgeSeconds *int `yaml:"max_authentication_age_seconds" json:"max_authentication_age_seconds"`
+}
+
+// MaxAuthenticationAge reports the self-service maximum authentication age in seconds, zero or less for no check.
+// Unset, it is 180 (an explicit default lives in default.json).
+func (c UserSelfServiceConfig) MaxAuthenticationAge() int {
+	return derefInt(c.MaxAuthenticationAgeSeconds, 180)
 }
 
 // PasskeyConfig holds the passkey configuration details.

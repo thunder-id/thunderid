@@ -38,3 +38,17 @@ func ssoHandleTTL(ctx context.Context, sessions sessionLifetime) time.Duration {
 	}
 	return sessions.AbsoluteTimeout(ctx)
 }
+
+// requestedMaxAgeKey carries the maximum authentication age a flow start asked for.
+type requestedMaxAgeKey struct{}
+
+// withRequestedMaxAge returns a context carrying the maximum authentication age a flow start asked for.
+func withRequestedMaxAge(ctx context.Context, maxAge int64) context.Context {
+	return context.WithValue(ctx, requestedMaxAgeKey{}, maxAge)
+}
+
+// requestedMaxAge returns the maximum authentication age a flow start asked for, if any.
+func requestedMaxAge(ctx context.Context) (int64, bool) {
+	maxAge, ok := ctx.Value(requestedMaxAgeKey{}).(int64)
+	return maxAge, ok
+}

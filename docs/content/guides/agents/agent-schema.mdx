@@ -54,7 +54,7 @@ Set every value except `password` in **Agent Details** during onboarding or on t
 The optional `password` is not shown in either place. Send it in `attributes` when you create an agent through the API. An update of the agent that names a credential fails with `AGT-1068`, so change it with a credential update instead:
 
 - `POST /agents/{id}/update-credentials` sets the new value under `credentials`. It fails with `AGT-1069` for a personal agent.
-- `POST /users/me/agents/{id}/update-credentials` lets the owner of a personal agent set the new value under `attributes`.
+- `POST /users/me/agents/{id}/update-credentials` lets the owner of a personal agent set the new value under `attributes`. The owner gives no current value, so the request needs a recent sign-in; see [Recent Sign-In](../../users/manage-users#recent-sign-in).
 
 Replacing a password the agent already holds revokes its tokens and ends its sessions, as for a user.
 

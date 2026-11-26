@@ -1521,6 +1521,45 @@ func (suite *TokenValidatorTestSuite) TestValidateRefreshToken_Success_WithoutAu
 	assert.Nil(suite.T(), result.AuthorizationDetails)
 }
 
+func (suite *TokenValidatorTestSuite) TestValidateRefreshToken_ReadsAuthTime() {
+	tests := []struct {
+		name     string
+		authTime interface{}
+		want     int64
+	}{
+		{"auth time stamped", float64(1700000000), 1700000000},
+		{"no auth time", nil, 0},
+	}
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			suite.SetupTest()
+			now := time.Now().Unix()
+			claims := map[string]interface{}{
+				"sub":              "test-client",
+				"iss":              "https://example.com",
+				"aud":              "test-client",
+				"exp":              float64(now + 3600),
+				"iat":              float64(now),
+				"scope":            "read",
+				"access_token_sub": "user123",
+				"access_token_aud": testAppID,
+				"grant_type":       "authorization_code",
+			}
+			if tt.authTime != nil {
+				claims[constants.ClaimAuthTime] = tt.authTime
+			}
+			token := suite.createTestJWT(claims)
+
+			suite.mockJWTService.On("VerifyJWT", mock.Anything, token, "", "https://example.com").Return(nil)
+
+			result, err := suite.validator.ValidateRefreshToken(context.Background(), token)
+
+			assert.NoError(suite.T(), err)
+			assert.Equal(suite.T(), tt.want, result.AuthTime)
+		})
+	}
+}
+
 // ============================================================================
 // ValidateAuthAssertion Tests - Single Use
 // ============================================================================
@@ -1665,6 +1704,47 @@ func (suite *TokenValidatorTestSuite) TestValidateSubjectToken_NonAssertionDoesN
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), result)
 	suite.mockJTIStore.AssertNotCalled(suite.T(), "RecordJTI")
+}
+
+// A self-issued auth assertion yields AuthTime from its auth_time, else its iat; another self-issued token
+// keeps its auth_time.
+func (suite *TokenValidatorTestSuite) TestValidateSubjectToken_AuthTime() {
+	tests := []struct {
+		name      string
+		assertion bool
+		claims    map[string]interface{}
+		want      int64
+	}{
+		{"assertion with auth_time", true,
+			map[string]interface{}{constants.ClaimAuthTime: float64(1700000000), "iat": float64(1700000500)},
+			1700000000},
+		{"assertion with iat only", true, map[string]interface{}{"iat": float64(1700000500)}, 1700000500},
+		{"token with auth_time", false, map[string]interface{}{constants.ClaimAuthTime: float64(1700000000)},
+			1700000000},
+		{"token without auth_time", false, map[string]interface{}{}, 0},
+	}
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			suite.SetupTest()
+			claims := suite.authAssertionClaims()
+			if !tt.assertion {
+				delete(claims, "assurance")
+				delete(claims, "authorized_permissions")
+			}
+			for name, value := range tt.claims {
+				claims[name] = value
+			}
+			token := suite.createTestJWT(claims)
+			suite.oauthApp.ID = testAppID
+
+			suite.mockJWTService.On("VerifyJWTSignature", mock.Anything, token).Return(nil)
+
+			result, err := suite.validator.ValidateSubjectToken(context.Background(), token, suite.oauthApp)
+
+			assert.NoError(suite.T(), err)
+			assert.Equal(suite.T(), tt.want, result.AuthTime)
+		})
+	}
 }
 
 // ============================================================================
@@ -2945,6 +3025,29 @@ func (suite *ExternalIDPValidatorTestSuite) TestValidateSubjectToken_ExternalIDP
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), "ext-user-123", result.Sub)
+}
+
+// An external issuer's auth_time describes a sign-in there, so the exchange does not carry it.
+func (suite *ExternalIDPValidatorTestSuite) TestValidateSubjectToken_ExternalIDP_AuthTimeNotCarried() {
+	now := time.Now().Unix()
+	claims := map[string]interface{}{
+		"sub":       "ext-user-123",
+		"iss":       testExternalIssuer,
+		"aud":       "https://example.com",
+		"exp":       float64(now + 3600),
+		"nbf":       float64(now - 60),
+		"auth_time": float64(now - 10),
+	}
+	token := suite.createExternalJWT(claims)
+
+	suite.mockIDPService.On("GetIdentityProvidersByProperty", context.Background(),
+		idp.PropIssuer, testExternalIssuer).Return(buildExternalIDPDTOs(), nil)
+	suite.mockJWTService.On("VerifyJWTSignatureWithJWKS", mock.Anything, token, testExternalJWKS).Return(nil)
+
+	result, err := suite.validator.ValidateSubjectToken(context.Background(), token, suite.oauthApp)
+
+	assert.NoError(suite.T(), err)
+	assert.Zero(suite.T(), result.AuthTime)
 }
 
 func (suite *ExternalIDPValidatorTestSuite) TestValidateSubjectToken_ExternalIDP_Success_AudIsServerIssuer() {

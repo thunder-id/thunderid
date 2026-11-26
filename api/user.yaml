@@ -1791,6 +1791,10 @@ paths:
       tags:
         - Self
       summary: Update self user profile
+      description: |
+        Replaces the signed-in user's attributes. Adding, changing or removing a top-level attribute of type `email`
+        or `mobile` needs a sign-in within the server's maximum authentication age
+        (`user.self_service.max_authentication_age_seconds`, 180 seconds by default); other attributes do not.
       security:
         - OAuth2: []
       requestBody:
@@ -1860,19 +1864,44 @@ paths:
                       key: "error.userservice.user_type_not_found_description"
                       defaultValue: "The specified user type does not exist"
         "401":
-          description: Unauthorized - missing or invalid authentication token
+          description: >
+            Missing or invalid authentication token, or a change to an attribute of type `email` or `mobile` whose sign-in
+            is older than the maximum authentication age, or whose token has no `auth_time` (`AUTH-4011`)
+          headers:
+            WWW-Authenticate:
+              description: >
+                `Bearer error="insufficient_user_authentication"` with `max_age` when the sign-in is too old
+                (RFC 9470). The client signs the user in again with `max_age` and retries.
+              schema:
+                type: string
+              example: 'Bearer error="insufficient_user_authentication", error_description="A more recent authentication is required", max_age="180"'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                code: "AUTH-4010"
-                message:
-                  key: "error.unauthorized"
-                  defaultValue: "Unauthorized"
-                description:
-                  key: "error.unauthorized_description"
-                  defaultValue: "Authentication is required to access this resource"
+              examples:
+                unauthorized:
+                  summary: Missing or invalid token
+                  value:
+                    code: "AUTH-4010"
+                    message:
+                      key: "error.unauthorized"
+                      defaultValue: "Unauthorized"
+                    description:
+                      key: "error.unauthorized_description"
+                      defaultValue: "Authentication is required to access this resource"
+                recent-authentication-required:
+                  summary: Sign-in older than the maximum authentication age
+                  value:
+                    code: "AUTH-4011"
+                    message:
+                      key: "error.security.recent_authentication_required"
+                      defaultValue: "Recent authentication required"
+                    description:
+                      key: "error.security.recent_authentication_required_description"
+                      defaultValue: "Authenticate again: this change needs an authentication within the last 180 seconds"
+                      params:
+                        maxAge: "180"
         "404":
           description: Authenticated user not found
           content:
@@ -2693,9 +2722,9 @@ paths:
       summary: Update the credentials of one of the caller's personal agents
       description: |
         Sets new values for credentials the agent type's schema declares, such as a password, on a personal agent
-        the signed-in user owns, as `POST /users/me/update-credentials` does for the user's own. Only the
-        credentials present in the request body are updated, and the others keep their value. The values are
-        stored hashed and no read returns them. Replacing a credential the agent already holds revokes the tokens
+        the signed-in user owns. Only the credentials present in the request body are updated, and the others
+        keep their value. The values are stored hashed and no read returns them. Replacing a credential the agent
+        already holds revokes the tokens
         issued with the agent as their subject and ends its sessions, as a user's credential update does, up to the
         change and again once it is written; setting one the agent does not hold yet revokes nothing. Sending the
         value the agent already holds still revokes. If the revocation before the write fails, the credential is
@@ -2708,6 +2737,10 @@ paths:
         user's own: a delegated token is refused. An agent declared in a file, and one a control plane deployed,
         are refused. An administrator cannot set a personal agent's credentials, and an update of the agent
         through `PUT /agents/{id}` or `PUT /users/me/agents/{id}` that names a credential is refused (`AGT-1068`).
+
+        The owner sets the credentials without their current values, so the request needs a sign-in within the
+        server's maximum authentication age (`user.self_service.max_authentication_age_seconds`, 180 seconds by
+        default).
       security:
         - OAuth2: []
       parameters:
@@ -2739,7 +2772,17 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         "401":
-          description: No user access token (`AGT-1060`)
+          description: >
+            No user access token (`AGT-1060`), or a sign-in older than the maximum authentication age, or a token
+            with no `auth_time` (`AUTH-4011`)
+          headers:
+            WWW-Authenticate:
+              description: >
+                `Bearer error="insufficient_user_authentication"` with `max_age` when the sign-in is too old
+                (RFC 9470). The client signs the user in again with `max_age` and retries.
+              schema:
+                type: string
+              example: 'Bearer error="insufficient_user_authentication", error_description="A more recent authentication is required", max_age="180"'
           content:
             application/json:
               schema:
@@ -2769,7 +2812,20 @@ paths:
     post:
       tags:
         - Self
-      summary: Update self user credentials
+      summary: Update a self user credential
+      description: |
+        Sets one of the signed-in user's credentials that the user type's schema declares, such as a password.
+        Passkeys have their own registration and are refused here.
+
+        - When the user holds the credential, `currentValue` must match it. A wrong value is not counted for
+          account lockout, and a lock does not refuse the change, so limit request volume on this route with
+          rate limiting.
+        - When the user does not hold it yet, `currentValue` is not used, and the request needs a sign-in within
+          the server's maximum authentication age (`user.self_service.max_authentication_age_seconds`, 180 seconds
+          by default).
+
+        Replacing a credential the user holds revokes the tokens issued to the user and ends their sessions,
+        including the token that made the request.
       security:
         - OAuth2: []
       requestBody:
@@ -2777,58 +2833,112 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateSelfUserRequest'
+              $ref: '#/components/schemas/UpdateSelfUserCredentialRequest'
             example:
-              attributes:
-                password: "n3wP@ssword!"
+              name: "password"
+              currentValue: "0ldP@ssword!"
+              newValue: "n3wP@ssword!"
       responses:
         "204":
-          description: Credentials updated
+          description: Credential updated
         "400":
-          description: Bad request
+          description: >
+            Bad request. The body has no `name` or `newValue` (`USR-1049`), names a credential the user type does not
+            declare or a passkey, or gives a value its schema refuses; or the user holds the credential and
+            `currentValue` is missing (`USR-1047`).
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
               examples:
-                missing-credentials:
-                  summary: Missing credentials
+                missing-credential-change:
+                  summary: No name or new value, as in the earlier body
                   value:
-                    code: "USR-1017"
+                    code: "USR-1049"
                     message:
-                      key: "error.userservice.missing_credentials"
-                      defaultValue: "Missing credentials"
+                      key: "error.userservice.missing_credential_change"
+                      defaultValue: "Missing credential change"
                     description:
-                      key: "error.userservice.missing_credentials_description"
-                      defaultValue: "At least one credential field must be provided"
+                      key: "error.userservice.missing_credential_change_description"
+                      defaultValue: "A credential change needs the name and newValue fields"
+                current-credential-required:
+                  summary: Current value missing for a credential the user holds
+                  value:
+                    code: "USR-1047"
+                    message:
+                      key: "error.userservice.current_credential_required"
+                      defaultValue: "Current credential required"
+                    description:
+                      key: "error.userservice.current_credential_required_description"
+                      defaultValue: "Give the credential's current value to change it"
         "401":
-          description: Unauthorized - missing or invalid authentication token
+          description: >
+            Missing or invalid authentication token, or, for a credential the user does not hold yet, a sign-in
+            older than the maximum authentication age or a token with no `auth_time` (`AUTH-4011`)
+          headers:
+            WWW-Authenticate:
+              description: >
+                `Bearer error="insufficient_user_authentication"` with `max_age` when the sign-in is too old
+                (RFC 9470). The client signs the user in again with `max_age` and retries.
+              schema:
+                type: string
+              example: 'Bearer error="insufficient_user_authentication", error_description="A more recent authentication is required", max_age="180"'
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                code: "AUTH-4010"
-                message:
-                  key: "error.unauthorized"
-                  defaultValue: "Unauthorized"
-                description:
-                  key: "error.unauthorized_description"
-                  defaultValue: "Authentication is required to access this resource"
+              examples:
+                unauthorized:
+                  summary: Missing or invalid token
+                  value:
+                    code: "AUTH-4010"
+                    message:
+                      key: "error.unauthorized"
+                      defaultValue: "Unauthorized"
+                    description:
+                      key: "error.unauthorized_description"
+                      defaultValue: "Authentication is required to access this resource"
+                recent-authentication-required:
+                  summary: Sign-in older than the maximum authentication age
+                  value:
+                    code: "AUTH-4011"
+                    message:
+                      key: "error.security.recent_authentication_required"
+                      defaultValue: "Recent authentication required"
+                    description:
+                      key: "error.security.recent_authentication_required_description"
+                      defaultValue: "Authenticate again: this change needs an authentication within the last 180 seconds"
+                      params:
+                        maxAge: "180"
         "403":
-          description: The caller may not change the user's credentials with a delegated token
+          description: >
+            A delegated token (`USR-1046`); a `currentValue` that does not match (`USR-1048`); or a user shared
+            into this organization unit, which only the owning organization unit can change (`USR-1045`)
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                code: "USR-1046"
-                message:
-                  key: "error.userservice.delegated_token_not_allowed"
-                  defaultValue: "Delegated token not allowed"
-                description:
-                  key: "error.userservice.delegated_token_not_allowed_description"
-                  defaultValue: "Credentials cannot be changed with a delegated token"
+              examples:
+                delegated-token:
+                  summary: Delegated token
+                  value:
+                    code: "USR-1046"
+                    message:
+                      key: "error.userservice.delegated_token_not_allowed"
+                      defaultValue: "Delegated token not allowed"
+                    description:
+                      key: "error.userservice.delegated_token_not_allowed_description"
+                      defaultValue: "Credentials cannot be changed with a delegated token"
+                invalid-current-credential:
+                  summary: Current value does not match
+                  value:
+                    code: "USR-1048"
+                    message:
+                      key: "error.userservice.invalid_current_credential"
+                      defaultValue: "Invalid current credential"
+                    description:
+                      key: "error.userservice.invalid_current_credential_description"
+                      defaultValue: "The current value does not match the credential"
         "404":
           description: Authenticated user not found
           content:
@@ -4738,6 +4848,20 @@ components:
           description: "User attributes"
           additionalProperties: true
 
+    UpdateSelfUserCredentialRequest:
+      type: object
+      required: [name, newValue]
+      properties:
+        name:
+          type: string
+          description: "The credential attribute the user type's schema declares, such as `password`."
+        currentValue:
+          type: string
+          description: "The credential's current value. Required when the user holds the credential."
+        newValue:
+          type: string
+          description: "The value to set."
+
     UpdateUserCredentialsRequest:
       type: object
       required: [credentials]
@@ -5636,3 +5760,8 @@ components:
         defaultValue:
           type: string
           description: Default message in English (fallback).
+        params:
+          type: object
+          description: Values substituted for the `{{param(name)}}` placeholders in the message.
+          additionalProperties:
+            type: string

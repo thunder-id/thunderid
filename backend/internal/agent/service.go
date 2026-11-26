@@ -1418,6 +1418,19 @@ func (s *agentService) updateOwnedAgentCredentials(ctx context.Context, ownerID,
 	if svcErr := s.refuseManaged(ctx, agentID); svcErr != nil {
 		return svcErr
 	}
+	// A credential the type refuses is reported before the sign-in age.
+	if err := s.entityService.ValidateCredentials(ctx, agentID, credentials); err != nil {
+		if mapped := mapEntityError(err); mapped != nil {
+			return mapped
+		}
+		s.logger.Error(ctx, "Failed to validate agent credentials", log.MaskedString("agentID", agentID),
+			log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	// The owner sets the credentials without their current values, so this needs a recent sign-in.
+	if svcErr := security.RequireRecentAuthentication(ctx, getSelfServiceMaxAge()); svcErr != nil {
+		return svcErr
+	}
 	return s.storeAgentCredentials(ctx, agentID, e, credentials, values, written)
 }
 

@@ -311,6 +311,7 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 		DPoPJkt:              dpop.GetJkt(ctx),
 		TokenFamilyID:        refreshTokenClaims.TokenFamilyID,
 		AuthorizationDetails: authorizationDetails,
+		AuthTime:             refreshTokenClaims.AuthTime,
 	}
 	setRefreshSubjectIdentity(accessTokenCtx, subjectEntity, cacheEntry)
 	// Replay the on-behalf-of decision frozen at issuance, sourced from the stored marker
@@ -469,6 +470,7 @@ func (h *refreshTokenGrantHandler) IssueRefreshToken(
 		AuthorizationDetails: tokenResponse.RefreshableAuthorizationDetails,
 		SubjectEntityID:      tokenResponse.AccessToken.SubjectID,
 		OUID:                 issuingOUID(tokenResponse),
+		AuthTime:             tokenResponse.AccessToken.AuthTime,
 	}
 	if oauthApp.ShouldAppendActorClaim() {
 		tokenCtx.ActorSub = oauthApp.ID

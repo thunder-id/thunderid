@@ -576,6 +576,44 @@ func (ts *PersonalAgentTestSuite) TestOwnerResetsTheirAgentsPassword() {
 	ts.Contains(adminResetBody, "AGT-1069")
 }
 
+// With a sign-in older than the maximum authentication age, the owner's reset gets 401 with an RFC 9470
+// challenge that a browser application can read. The server restarts with a one-second age.
+func (ts *PersonalAgentTestSuite) TestOwnerResetNeedsARecentSignIn() {
+	t := ts.T()
+	agent := ts.createOwnedAgent("authorization_code")
+	defer func() { _ = deleteAgent(agent.id) }()
+	restore, err := testutils.RestartWithConfigSection("user", func(section map[string]interface{}) {
+		section["self_service"] = map[string]interface{}{"max_authentication_age_seconds": 1}
+	})
+	t.Cleanup(func() {
+		if err := restore(); err != nil {
+			t.Errorf("failed to restore the user config: %v", err)
+		}
+	})
+	ts.Require().NoError(err)
+
+	ownerToken := ts.userToken(ts.ownerUsername)
+	time.Sleep(2 * time.Second)
+	req, err := http.NewRequest(http.MethodPost, testServerURL+"/users/me/agents/"+agent.id+"/update-credentials",
+		strings.NewReader(`{"attributes":{"password":"Agent@Pass1234"}}`))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+ownerToken)
+	// The origin the integration deployment's declarative CORS configuration allows.
+	req.Header.Set("Origin", "https://declarative.example.com")
+	resp, err := testutils.GetRawHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	body := readBody(resp)
+
+	ts.Require().Equal(http.StatusUnauthorized, resp.StatusCode, body)
+	ts.Contains(body, "AUTH-4011")
+	challenge := resp.Header.Get("WWW-Authenticate")
+	ts.Contains(challenge, `error="insufficient_user_authentication"`)
+	ts.Contains(challenge, `max_age="1"`)
+	ts.Contains(resp.Header.Get("Access-Control-Expose-Headers"), "WWW-Authenticate")
+}
+
 // An administrator resets an ordinary agent's password. An update that names it is refused.
 func (ts *PersonalAgentTestSuite) TestAdminResetsAnOrdinaryAgentsPassword() {
 	ownerID, _ := ts.createUser(ts.seededPersonType(), "pa_ordinary_reset_owner")

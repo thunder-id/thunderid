@@ -101,7 +101,9 @@ func (ts *RecoveryReleaseTestSuite) TestAManagementCredentialWriteReleasesNothin
 }
 
 // The user APIs refuse credential fields, so the self-service credential endpoint is the holder's
-// write path; its token is obtained before the lock, which a lock does not revoke.
+// write path; its token is obtained before the lock, which a lock does not revoke. The endpoint checks the
+// current password without account lockout, so a signed-in holder can change it during a lock, and the change
+// releases nothing.
 func (ts *RecoveryReleaseTestSuite) TestASelfServiceCredentialUpdateReleasesNothing() {
 	userID, username, password, _ := ts.newUser("self_write")
 	holder, err := testutils.GetHTTPClientForOUUser(ts.users.signInClientID, username, password)
@@ -109,20 +111,9 @@ func (ts *RecoveryReleaseTestSuite) TestASelfServiceCredentialUpdateReleasesNoth
 	expiry := ts.lockCredential(userID, username)
 
 	replacement := "Self-Rotated-Secret-21!"
-	payload, err := json.Marshal(map[string]interface{}{
-		"attributes": map[string]interface{}{"password": replacement},
-	})
-	ts.Require().NoError(err)
-	req, err := http.NewRequest(http.MethodPost, testServerURL+"/users/me/update-credentials",
-		bytes.NewReader(payload))
-	ts.Require().NoError(err)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := holder.Do(req)
-	ts.Require().NoError(err, "the self-service update request failed")
-	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
-	ts.Require().Equal(http.StatusNoContent, resp.StatusCode,
-		"a lock must not refuse the holder's own credential update: %s", string(body))
+	status, code := ts.selfCredentialUpdate(holder, password, replacement)
+	ts.Require().Equal(http.StatusNoContent, status, "a lock must not refuse the holder's own credential update: %s",
+		code)
 
 	requireRefusedAsHeld(ts.T(), authenticate(ts.T(), "username", username, replacement), statedLockCode,
 		"the holder's own credential update must not release the lock")
@@ -131,6 +122,51 @@ func (ts *RecoveryReleaseTestSuite) TestASelfServiceCredentialUpdateReleasesNoth
 	runAdministrationFlow(ts.T(), unlockFlowHandle, userID)
 	ts.True(authenticate(ts.T(), "username", username, replacement).succeeded(),
 		"the update must have replaced the secret")
+}
+
+// A wrong current password on the self-service credential endpoint is not a failed sign-in, so it never forms a
+// lock, and the password still signs in.
+func (ts *RecoveryReleaseTestSuite) TestWrongCurrentPasswordsDoNotLockTheAccount() {
+	userID, username, password, _ := ts.newUser("self_wrong")
+	holder, err := testutils.GetHTTPClientForOUUser(ts.users.signInClientID, username, password)
+	ts.Require().NoError(err, "the holder must sign in")
+
+	for i := range lockThreshold + 1 {
+		status, code := ts.selfCredentialUpdate(holder, fmt.Sprintf("Wrong-Current-%d!", i), "Next-Secret-7!")
+		ts.Require().Equal(http.StatusForbidden, status, "attempt %d", i+1)
+		ts.Require().Equal("USR-1048", code, "attempt %d must be a wrong value", i+1)
+	}
+
+	ts.Equal("ACTIVE", readStatus(ts.T(), userID).Value, "wrong current values must not lock the account")
+	ts.True(authenticate(ts.T(), "username", username, password).succeeded(),
+		"the password must still sign in")
+}
+
+// selfCredentialUpdate sends the holder's own password change and returns the status and error code.
+func (ts *RecoveryReleaseTestSuite) selfCredentialUpdate(holder *http.Client, currentValue,
+	newValue string) (int, string) {
+	ts.T().Helper()
+
+	payload, err := json.Marshal(map[string]interface{}{
+		"name": "password", "currentValue": currentValue, "newValue": newValue,
+	})
+	ts.Require().NoError(err)
+	req, err := http.NewRequest(http.MethodPost, testServerURL+"/users/me/update-credentials",
+		bytes.NewReader(payload))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := holder.Do(req)
+	ts.Require().NoError(err, "the self-service update request failed")
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	var errResp struct {
+		Code string `json:"code"`
+	}
+	if len(body) > 0 {
+		ts.Require().NoError(json.Unmarshal(body, &errResp), "error body: %s", string(body))
+	}
+	return resp.StatusCode, errResp.Code
 }
 
 // Enrolment needs an assertion, which a locked password cannot produce, so it is taken before the lock

@@ -46,6 +46,9 @@ const (
 	// claimClientID names the OAuth client an access token was issued to.
 	claimClientID = "client_id"
 
+	// claimAuthTime is when the token's subject authenticated (RFC 9068).
+	claimAuthTime = "auth_time"
+
 	// claimSourceIDP names the external identity provider whose subject a self-issued access token was
 	// issued for. Its sub is that provider's identifier, not an account of this deployment. It mirrors
 	// the OAuth package's ClaimIDP.

@@ -38,6 +38,13 @@ type ConfigTestSuite struct {
 	originalEnvVars map[string]string
 }
 
+// The self-service maximum authentication age is 180 seconds when unset, and an explicit 0 is kept.
+func TestUserSelfServiceMaxAuthenticationAge(t *testing.T) {
+	assert.Equal(t, 180, UserSelfServiceConfig{}.MaxAuthenticationAge())
+	zero := 0
+	assert.Equal(t, 0, UserSelfServiceConfig{MaxAuthenticationAgeSeconds: &zero}.MaxAuthenticationAge())
+}
+
 func TestConfigTestSuite(t *testing.T) {
 	suite.Run(t, new(ConfigTestSuite))
 }

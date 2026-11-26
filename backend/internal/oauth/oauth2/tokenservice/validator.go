@@ -189,6 +189,7 @@ func (tv *tokenValidator) ValidateRefreshToken(
 	tokenFamilyID, _ := extractStringClaim(claims, constants.ClaimTokenFamilyID)
 	sessionID, _ := extractStringClaim(claims, constants.ClaimSessionID)
 	ouID, _ := extractStringClaim(claims, constants.ClaimAccessTokenOUID)
+	authTime, _ := extractInt64Claim(claims, constants.ClaimAuthTime)
 
 	// Extract claims request if present
 	var claimsRequest *oauth2model.ClaimsRequest
@@ -242,6 +243,7 @@ func (tv *tokenValidator) ValidateRefreshToken(
 		SessionID:            sessionID,
 		AuthorizationDetails: authorizationDetails,
 		OUID:                 ouID,
+		AuthTime:             authTime,
 	}, nil
 }
 
@@ -300,10 +302,21 @@ func (tv *tokenValidator) ValidateSubjectToken(
 	// Redeeming an auth assertion spends it. Done after every other check, so a token rejected for
 	// any other reason is not spent, and only for a self-issued assertion: an external issuer's jti
 	// is not ours to track, exactly as it contributes nothing to the revocation deny list.
-	if tv.isSelfIssuer(subjectClaims.Iss) && tv.isAuthAssertion(payload) {
+	if !tv.isSelfIssuer(subjectClaims.Iss) {
+		return subjectClaims, nil
+	}
+	if tv.isAuthAssertion(payload) {
+		assertionClaims, _, err := utils.DecodeFlowAssertionClaims(token)
+		if err != nil {
+			return nil, err
+		}
 		if err := tv.consumeAuthAssertion(ctx, payload); err != nil {
 			return nil, err
 		}
+		subjectClaims.AuthTime = assertionClaims.AuthTime.Unix()
+	} else if authTime, err := extractInt64Claim(payload, constants.ClaimAuthTime); err == nil && authTime > 0 {
+		// A token this server issued keeps its auth_time across the exchange (RFC 9068).
+		subjectClaims.AuthTime = authTime
 	}
 
 	return subjectClaims, nil

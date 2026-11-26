@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package middleware
@@ -107,6 +107,28 @@ func (suite *CORSMiddlewareTestSuite) TestWithCORS_ValidOrigin() {
 	assert.Empty(suite.T(), w.Header().Get("Access-Control-Allow-Headers"))
 	assert.Empty(suite.T(), w.Header().Get("Access-Control-Max-Age"))
 	assert.Equal(suite.T(), "OK", w.Body.String())
+}
+
+func (suite *CORSMiddlewareTestSuite) TestWithCORS_ExposedHeadersOnActualResponseOnly() {
+	opts := fullOpts
+	opts.ExposedHeaders = []string{"WWW-Authenticate"}
+	_, wrapped := WithCORS("PUT /test", noopHandler, opts)
+
+	req, w := newGetRequest("https://example.com")
+	wrapped(w, req)
+	assert.Equal(suite.T(), "WWW-Authenticate", w.Header().Get("Access-Control-Expose-Headers"))
+
+	preflight := httptest.NewRequest(http.MethodOptions, "/test", nil)
+	preflight.Header.Set("Origin", "https://example.com")
+	preflight.Header.Set("Access-Control-Request-Method", http.MethodPut)
+	pw := httptest.NewRecorder()
+	wrapped(pw, preflight)
+	assert.Empty(suite.T(), pw.Header().Get("Access-Control-Expose-Headers"))
+
+	_, plain := WithCORS("GET /test", noopHandler, fullOpts)
+	req, w = newGetRequest("https://example.com")
+	plain(w, req)
+	assert.Empty(suite.T(), w.Header().Get("Access-Control-Expose-Headers"))
 }
 
 func (suite *CORSMiddlewareTestSuite) TestWithCORS_EchoesRawHeader() {

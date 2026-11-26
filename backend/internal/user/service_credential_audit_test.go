@@ -191,6 +191,32 @@ func (s *ServiceCredentialAuditTestSuite) TestUpdateUserCredentials_RecordsRepla
 	s.requireOnlyEvent(published(), svcTestUserID1, audit.OutcomeSucceeded)
 }
 
+// A user's own change is recorded as succeeded when the credential is stored but the revocation after the write
+// fails, and the user still gets the failure.
+func (s *ServiceCredentialAuditTestSuite) TestUpdateSelfUserCredential_RecordsTheChangeWhenThePostFlowFails() {
+	bus, published := newRecordingBus(s.T())
+	service, storeMock := selfCredentialService(s.T(), true, []string{"password"})
+	service.bus = bus
+	storeMock.On("AuthenticateEntityByID", mock.Anything, svcTestUserID1, map[string]any{"password": "0ldP@ssword!"}).
+		Return(&entitypkg.AuthenticateResult{EntityID: svcTestUserID1}, "", nil).Once()
+	storeMock.On("UpdateCredentials", mock.Anything, svcTestUserID1, json.RawMessage(`{"password":"n3wP@ssword!"}`)).
+		Return(fmt.Errorf("%w: SSE-5000", entitypkg.ErrRevocationIncomplete)).Once()
+
+	svcErr := service.UpdateSelfUserCredential(selfContext(0), UpdateSelfUserCredentialRequest{
+		Name: "password", CurrentValue: "0ldP@ssword!", NewValue: "n3wP@ssword!",
+	})
+
+	s.Equal(&tidcommon.InternalServerError, svcErr)
+	events := published()
+	s.Require().Len(events, 1)
+	user := audit.Ref{Type: audit.TargetTypeUser, ID: svcTestUserID1}
+	s.Equal(audit.EventUserCredentialUpdate, events[0].name)
+	s.Equal(user, events[0].payload.Target())
+	s.Equal(audit.OutcomeSucceeded, events[0].payload.Outcome())
+	s.Equal(audit.Actor{Type: audit.ActorTypeUser, ID: svcTestUserID1}, events[0].payload.Actor())
+	s.NotContains(fmt.Sprintf("%+v", events[0].payload), "n3wP@ssword!", "a credential is never recorded")
+}
+
 // A flow that runs on the server's authority, such as a password reset through the recovery flow, keeps the
 // subject of the request it came in on, which may be anyone's bearer token sent to the public flow path. The
 // actor is the user whose credentials were set, or anonymous when they were not, never that subject.
