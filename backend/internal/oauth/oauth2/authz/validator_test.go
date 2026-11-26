@@ -15,6 +15,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	sysconfig "github.com/thunder-id/thunderid/internal/system/config"
+	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
 type AuthorizationValidatorTestSuite struct {
@@ -30,7 +31,7 @@ func TestAuthorizationValidatorTestSuite(t *testing.T) {
 func (suite *AuthorizationValidatorTestSuite) SetupTest() {
 	sysconfig.ResetServerRuntime()
 	err := sysconfig.InitializeServerRuntime("/tmp/test", &sysconfig.Config{
-		OAuth: sysconfig.OAuthConfig{AllowWildcardRedirectURI: true},
+		OAuth: engineconfig.OAuthConfig{AllowWildcardRedirectURI: true},
 	})
 	suite.Require().NoError(err)
 

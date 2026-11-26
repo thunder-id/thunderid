@@ -43,7 +43,7 @@ func TestServiceTestSuite(t *testing.T) {
 
 func (s *ServiceTestSuite) SetupTest() {
 	testConfig := &config.Config{
-		OAuth: config.OAuthConfig{
+		OAuth: engineconfig.OAuthConfig{
 			PAR: engineconfig.PARConfig{
 				ExpiresIn: 60,
 			},

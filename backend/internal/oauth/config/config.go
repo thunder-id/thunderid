@@ -25,7 +25,7 @@ type Config struct {
 // additional OIDC fields with the server defaults.
 func FromServerRuntime() Config {
 	runtime := config.GetServerRuntime()
-	oauth := runtime.Config.OAuth.ToEngineConfig()
+	oauth := runtime.Config.OAuth
 	applyOIDCDefaults(&oauth)
 
 	return Config{
