@@ -218,6 +218,12 @@ const (
 	EventProjectUpdate = "project.update"
 	// EventProjectDelete names an attempt to delete a project.
 	EventProjectDelete = "project.delete"
+	// EventSessionCreate names the establishing of a session.
+	EventSessionCreate = "session.create"
+	// EventSessionReuse names the use of an existing session to satisfy a request without a credential check.
+	EventSessionReuse = "session.reuse"
+	// EventSessionEnd names the ending of a session.
+	EventSessionEnd = "session.end"
 	// EventUserLock names a lock that failed authentication attempts placed on a user.
 	EventUserLock = "user.lock"
 	// EventUserUnlock names an attempt to release every automatic lock on a user.
@@ -333,6 +339,9 @@ const DetailGrantType = "grant_type"
 
 // DetailCredentialType is the detail key of the type of the credential an event acted on, such as password.
 const DetailCredentialType = "credential_type" //nolint:gosec // a detail key, not a credential
+
+// DetailEndReason is the detail key of why a session ended.
+const DetailEndReason = "end_reason"
 
 // DetailDryRun records whether an import only predicted its outcome, as "true" or "false".
 const DetailDryRun = "dry_run"
@@ -477,6 +486,9 @@ var auditedEvents = map[string][]string{
 	EventProjectUpdate: nil,
 	EventProjectDelete: nil,
 
+	EventSessionCreate: nil,
+	EventSessionReuse:  nil,
+	EventSessionEnd:    {DetailEndReason},
 	EventUserLock:      {DetailAuthenticationMethod},
 	EventUserUnlock:    {DetailSelfService},
 	EventUserSuspend:   {DetailAppliedBy},

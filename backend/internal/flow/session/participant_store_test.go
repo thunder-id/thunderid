@@ -185,9 +185,9 @@ func (s *ParticipantStoreTestSuite) TestListBySessionID() {
 func (s *ParticipantStoreTestSuite) TestListByAppID_ReturnsEveryOrganizationUnit() {
 	joined := time.Unix(1700000000, 0).UTC()
 	rows := []map[string]interface{}{
-		{"session_id": "sess-1", "app_id": "app-1", "ou_id": "ou-1", "tfid": "tfid-1",
+		{"session_id": "sess-1", "app_id": "app-1", "ou_id": "ou-1", "tfid": "tfid-1", "subject_id": "user-1",
 			"first_joined_at": joined, "last_active_at": joined},
-		{"session_id": "sess-1", "app_id": "app-1", "ou_id": "ou-2", "tfid": "tfid-2",
+		{"session_id": "sess-1", "app_id": "app-1", "ou_id": "ou-2", "tfid": "tfid-2", "subject_id": nil,
 			"first_joined_at": joined, "last_active_at": joined},
 	}
 	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
@@ -201,8 +201,10 @@ func (s *ParticipantStoreTestSuite) TestListByAppID_ReturnsEveryOrganizationUnit
 	s.Require().Len(got, 2)
 	s.Equal("ou-1", got[0].OUID)
 	s.Equal("tfid-1", got[0].TokenFamilyID)
+	s.Equal("user-1", got[0].SubjectID, "the session's subject comes with the participation")
 	s.Equal("ou-2", got[1].OUID)
 	s.Equal("tfid-2", got[1].TokenFamilyID)
+	s.Empty(got[1].SubjectID, "a participation whose session row is gone has no subject")
 }
 
 func (s *ParticipantStoreTestSuite) TestDeleteParticipant_RemovesOneOrganizationUnit() {

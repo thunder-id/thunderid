@@ -418,6 +418,23 @@ func (s *PayloadTestSuite) TestValidate() {
 				WithDetails(map[string]string{DetailAuthenticationMethod: "credential"}), errDetailNotAllowed},
 		{"an event that is not audited", "user.rename",
 			NewPayload(ctx, testTarget, ActionUpdate, OutcomeSucceeded), errUnknownEvent},
+		{"a session create", EventSessionCreate,
+			NewPayload(ctx, testTarget, ActionCreate, OutcomeSucceeded).WithSessionRef("s5d1").
+				WithApplication("a17"), nil},
+		{"a session create detail", EventSessionCreate,
+			NewPayload(ctx, testTarget, ActionCreate, OutcomeSucceeded).
+				WithDetails(map[string]string{DetailEndReason: "sign_out"}), errDetailNotAllowed},
+		{"a session reuse", EventSessionReuse,
+			NewPayload(ctx, testTarget, ActionReuse, OutcomeFailed("server_error")), nil},
+		{"a session reuse detail", EventSessionReuse,
+			NewPayload(ctx, testTarget, ActionReuse, OutcomeSucceeded).
+				WithDetails(map[string]string{DetailEndReason: "sign_out"}), errDetailNotAllowed},
+		{"a session end with its reason", EventSessionEnd,
+			NewPayload(ctx, testTarget, ActionEnd, OutcomeSucceeded).
+				WithDetails(map[string]string{DetailEndReason: "subject_revocation"}), nil},
+		{"a session end detail other than the reason", EventSessionEnd,
+			NewPayload(ctx, testTarget, ActionEnd, OutcomeSucceeded).
+				WithDetails(map[string]string{"handle": "cookie-value"}), errDetailNotAllowed},
 		{"a detail the event does not allow", EventUserUpdate,
 			NewPayload(ctx, testTarget, ActionUpdate, OutcomeSucceeded).
 				WithDetails(map[string]string{"password": "s3cr3t"}), errDetailNotAllowed},
@@ -462,6 +479,19 @@ func (s *PayloadTestSuite) TestEveryIDIsCutTo128Characters() {
 	s.Equal(exact, NewPayload(ctx, Ref{Type: TargetTypeUser, ID: exact}, ActionUpdate, OutcomeSucceeded).Target().ID)
 }
 
+// The session reference and the application ID are cut like every other ID.
+func (s *PayloadTestSuite) TestTheSessionRefAndTheApplicationAreCutTo128Characters() {
+	long := strings.Repeat("ü", maxIDLength+20)
+
+	payload := NewPayload(context.Background(), testTarget, ActionCreate, OutcomeSucceeded).
+		WithSessionRef(long).WithApplication(long)
+
+	s.True(utf8.ValidString(payload.SessionRef()))
+	s.Equal(strings.Repeat("ü", maxIDLength), payload.SessionRef())
+	s.True(utf8.ValidString(payload.Application()))
+	s.Equal(strings.Repeat("ü", maxIDLength), payload.Application())
+}
+
 // An OAuth endpoint names the actor itself, so a bearer token the request also carries decides neither
 // the actor nor the principal its act claim names.
 func (s *PayloadTestSuite) TestAnExplicitActorReplacesTheVerifiedToken() {
@@ -489,11 +519,15 @@ func (s *PayloadTestSuite) TestBuildersReturnIndependentCopies() {
 	details := map[string]string{"reason": "requested"}
 	base := NewPayload(context.Background(), testTarget, ActionCreate, OutcomeSucceeded)
 
-	built := base.WithSubject(testTarget).WithDetails(details)
+	built := base.WithSubject(testTarget).WithDetails(details).WithSessionRef("s5d1").WithApplication("a17")
 	details["reason"] = "changed"
 	built.Details()["reason"] = "changed again"
 
 	s.Equal(Ref{}, base.Subject(), "the receiver is unchanged")
+	s.Empty(base.SessionRef(), "the receiver is unchanged")
+	s.Empty(base.Application(), "the receiver is unchanged")
+	s.Equal("s5d1", built.SessionRef())
+	s.Equal("a17", built.Application())
 	s.Nil(base.Details())
 	s.Equal(testTarget, built.Subject())
 	s.Equal(map[string]string{"reason": "requested"}, built.Details())

@@ -570,6 +570,7 @@ func buildParticipantFromRow(row map[string]interface{}) (Participant, error) {
 		AppID:         appID,
 		OUID:          ouID,
 		TokenFamilyID: parseNullableString(row["tfid"]),
+		SubjectID:     parseNullableString(row["subject_id"]),
 		FirstJoinedAt: firstJoinedAt,
 		LastActiveAt:  lastActiveAt,
 	}, nil

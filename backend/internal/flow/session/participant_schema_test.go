@@ -167,3 +167,44 @@ func (s *ParticipantSchemaTestSuite) TestDeleteParticipantRemovesOneOU() {
 	s.Require().Len(got, 1)
 	s.Equal("ou-y", got[0].OUID)
 }
+
+// createSession inserts sess-1, owned by user-1, as the session store does.
+func (s *ParticipantSchemaTestSuite) createSession() {
+	now := time.Unix(1700000000, 0).UTC()
+	_, err := s.db.Exec(queryCreateSession.Query,
+		"sess-1", string(TypeSSO), "user-1", "flow-1", 1, "exec-1", "handle-abc",
+		now, now, now, now.Add(time.Hour), now.Add(time.Hour), nil, string(StateActive), 1, testDeploymentID)
+	s.Require().NoError(err)
+}
+
+func (s *ParticipantSchemaTestSuite) TestListByAppIDNamesTheSubjectOfTheSession() {
+	joined := time.Unix(1700000000, 0).UTC()
+	s.createSession()
+	s.record("ou-x", "tfid-x", joined)
+
+	got := s.list(queryListParticipantsByAppID, "app-1", testDeploymentID)
+
+	s.Require().Len(got, 1)
+	s.Equal("user-1", got[0].SubjectID)
+}
+
+func (s *ParticipantSchemaTestSuite) TestListByAppIDKeepsAParticipationWhoseSessionIsGone() {
+	joined := time.Unix(1700000000, 0).UTC()
+	s.record("ou-x", "tfid-x", joined)
+
+	got := s.list(queryListParticipantsByAppID, "app-1", testDeploymentID)
+
+	s.Require().Len(got, 1)
+	s.Equal("tfid-x", got[0].TokenFamilyID)
+	s.Empty(got[0].SubjectID)
+}
+
+func (s *ParticipantSchemaTestSuite) TestListByAppIDDoesNotCrossDeployments() {
+	joined := time.Unix(1700000000, 0).UTC()
+	s.createSession()
+	s.record("ou-x", "tfid-x", joined)
+
+	got := s.list(queryListParticipantsByAppID, "app-1", "another-deployment")
+
+	s.Empty(got)
+}
