@@ -288,39 +288,29 @@ func (_c *ServiceMock_FindCheckpoint_Call) RunAndReturn(run func(ctx context.Con
 }
 
 // LoadCheckpoint provides a mock function for the type ServiceMock
-func (_mock *ServiceMock) LoadCheckpoint(ctx context.Context, in session.LoadCheckpointInput) (*session.Session, *session.SessionContext, error) {
+func (_mock *ServiceMock) LoadCheckpoint(ctx context.Context, in session.LoadCheckpointInput) (session.LoadCheckpointResult, error) {
 	ret := _mock.Called(ctx, in)
 
 	if len(ret) == 0 {
 		panic("no return value specified for LoadCheckpoint")
 	}
 
-	var r0 *session.Session
-	var r1 *session.SessionContext
-	var r2 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, session.LoadCheckpointInput) (*session.Session, *session.SessionContext, error)); ok {
+	var r0 session.LoadCheckpointResult
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, session.LoadCheckpointInput) (session.LoadCheckpointResult, error)); ok {
 		return returnFunc(ctx, in)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, session.LoadCheckpointInput) *session.Session); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, session.LoadCheckpointInput) session.LoadCheckpointResult); ok {
 		r0 = returnFunc(ctx, in)
 	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*session.Session)
-		}
+		r0 = ret.Get(0).(session.LoadCheckpointResult)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, session.LoadCheckpointInput) *session.SessionContext); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, session.LoadCheckpointInput) error); ok {
 		r1 = returnFunc(ctx, in)
 	} else {
-		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*session.SessionContext)
-		}
+		r1 = ret.Error(1)
 	}
-	if returnFunc, ok := ret.Get(2).(func(context.Context, session.LoadCheckpointInput) error); ok {
-		r2 = returnFunc(ctx, in)
-	} else {
-		r2 = ret.Error(2)
-	}
-	return r0, r1, r2
+	return r0, r1
 }
 
 // ServiceMock_LoadCheckpoint_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'LoadCheckpoint'
@@ -353,12 +343,12 @@ func (_c *ServiceMock_LoadCheckpoint_Call) Run(run func(ctx context.Context, in 
 	return _c
 }
 
-func (_c *ServiceMock_LoadCheckpoint_Call) Return(session1 *session.Session, sessionContext *session.SessionContext, err error) *ServiceMock_LoadCheckpoint_Call {
-	_c.Call.Return(session1, sessionContext, err)
+func (_c *ServiceMock_LoadCheckpoint_Call) Return(loadCheckpointResult session.LoadCheckpointResult, err error) *ServiceMock_LoadCheckpoint_Call {
+	_c.Call.Return(loadCheckpointResult, err)
 	return _c
 }
 
-func (_c *ServiceMock_LoadCheckpoint_Call) RunAndReturn(run func(ctx context.Context, in session.LoadCheckpointInput) (*session.Session, *session.SessionContext, error)) *ServiceMock_LoadCheckpoint_Call {
+func (_c *ServiceMock_LoadCheckpoint_Call) RunAndReturn(run func(ctx context.Context, in session.LoadCheckpointInput) (session.LoadCheckpointResult, error)) *ServiceMock_LoadCheckpoint_Call {
 	_c.Call.Return(run)
 	return _c
 }

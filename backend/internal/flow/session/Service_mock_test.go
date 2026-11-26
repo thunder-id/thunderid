@@ -287,39 +287,29 @@ func (_c *ServiceMock_FindCheckpoint_Call) RunAndReturn(run func(ctx context.Con
 }
 
 // LoadCheckpoint provides a mock function for the type ServiceMock
-func (_mock *ServiceMock) LoadCheckpoint(ctx context.Context, in LoadCheckpointInput) (*Session, *SessionContext, error) {
+func (_mock *ServiceMock) LoadCheckpoint(ctx context.Context, in LoadCheckpointInput) (LoadCheckpointResult, error) {
 	ret := _mock.Called(ctx, in)
 
 	if len(ret) == 0 {
 		panic("no return value specified for LoadCheckpoint")
 	}
 
-	var r0 *Session
-	var r1 *SessionContext
-	var r2 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, LoadCheckpointInput) (*Session, *SessionContext, error)); ok {
+	var r0 LoadCheckpointResult
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, LoadCheckpointInput) (LoadCheckpointResult, error)); ok {
 		return returnFunc(ctx, in)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, LoadCheckpointInput) *Session); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, LoadCheckpointInput) LoadCheckpointResult); ok {
 		r0 = returnFunc(ctx, in)
 	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*Session)
-		}
+		r0 = ret.Get(0).(LoadCheckpointResult)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, LoadCheckpointInput) *SessionContext); ok {
+	if returnFunc, ok := ret.Get(1).(func(context.Context, LoadCheckpointInput) error); ok {
 		r1 = returnFunc(ctx, in)
 	} else {
-		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(*SessionContext)
-		}
+		r1 = ret.Error(1)
 	}
-	if returnFunc, ok := ret.Get(2).(func(context.Context, LoadCheckpointInput) error); ok {
-		r2 = returnFunc(ctx, in)
-	} else {
-		r2 = ret.Error(2)
-	}
-	return r0, r1, r2
+	return r0, r1
 }
 
 // ServiceMock_LoadCheckpoint_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'LoadCheckpoint'
@@ -352,12 +342,12 @@ func (_c *ServiceMock_LoadCheckpoint_Call) Run(run func(ctx context.Context, in 
 	return _c
 }
 
-func (_c *ServiceMock_LoadCheckpoint_Call) Return(session *Session, sessionContext *SessionContext, err error) *ServiceMock_LoadCheckpoint_Call {
-	_c.Call.Return(session, sessionContext, err)
+func (_c *ServiceMock_LoadCheckpoint_Call) Return(loadCheckpointResult LoadCheckpointResult, err error) *ServiceMock_LoadCheckpoint_Call {
+	_c.Call.Return(loadCheckpointResult, err)
 	return _c
 }
 
-func (_c *ServiceMock_LoadCheckpoint_Call) RunAndReturn(run func(ctx context.Context, in LoadCheckpointInput) (*Session, *SessionContext, error)) *ServiceMock_LoadCheckpoint_Call {
+func (_c *ServiceMock_LoadCheckpoint_Call) RunAndReturn(run func(ctx context.Context, in LoadCheckpointInput) (LoadCheckpointResult, error)) *ServiceMock_LoadCheckpoint_Call {
 	_c.Call.Return(run)
 	return _c
 }
