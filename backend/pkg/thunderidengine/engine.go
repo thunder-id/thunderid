@@ -91,6 +91,8 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 			Encryption: engineCtx.encryptionConfig,
 		},
 		AttributeCache: engineCtx.attributeCacheConfig,
+		JWT:            engineCtx.jwtConfig,
+		OAuth:          engineCtx.oauthConfig,
 	}
 
 	err = systemconfig.InitializeServerRuntime(engineCtx.serverHome, &sysConfig)

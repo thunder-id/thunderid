@@ -45,7 +45,7 @@ func (s *OAuthConfigTestSuite) TestFromServerRuntime() {
 			Issuer:         "https://thunder.io",
 			ValidityPeriod: 3600,
 		},
-		OAuth: config.OAuthConfig{
+		OAuth: engineconfig.OAuthConfig{
 			PAR: engineconfig.PARConfig{ExpiresIn: 600},
 		},
 		GateClient: engineconfig.GateClientConfig{

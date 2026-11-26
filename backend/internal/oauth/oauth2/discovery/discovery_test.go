@@ -65,7 +65,7 @@ func (suite *DiscoveryTestSuite) SetupTest() {
 			Issuer:         "https://auth.example.com",
 			ValidityPeriod: 3600,
 		},
-		OAuth: config.OAuthConfig{
+		OAuth: engineconfig.OAuthConfig{
 			DPoP: engineconfig.DPoPConfig{
 				Required:     false,
 				IatWindow:    60,
@@ -451,7 +451,7 @@ func (suite *DiscoveryTestSuite) TestAuthorizationGrantProfilesSupported_JWTBear
 	testConfig := &config.Config{
 		Server: engineconfig.ServerConfig{Hostname: "localhost", Port: 8080},
 		JWT:    engineconfig.JWTConfig{Issuer: "https://auth.example.com"},
-		OAuth: config.OAuthConfig{
+		OAuth: engineconfig.OAuthConfig{
 			AllowedGrantTypes: []string{"client_credentials", "refresh_token"},
 		},
 	}
@@ -519,7 +519,7 @@ func (suite *DiscoveryTestSuite) TestAuthorizationGrantProfilesSupported_NotOnOA
 	testConfig := &config.Config{
 		Server: engineconfig.ServerConfig{Hostname: "localhost", Port: 8080},
 		JWT:    engineconfig.JWTConfig{Issuer: "https://auth.example.com"},
-		OAuth: config.OAuthConfig{
+		OAuth: engineconfig.OAuthConfig{
 			AllowedGrantTypes: []string{"client_credentials", "refresh_token"},
 		},
 	}
