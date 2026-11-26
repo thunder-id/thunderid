@@ -199,8 +199,8 @@ var (
 
 // versionStoreInterface is the persistence the versions need.
 type versionStoreInterface interface {
-	// Add captures a version. Its hash is unique within the deployment, so capturing a hash already
-	// kept fails.
+	// Add captures a version, numbered one past the deployment's latest. When another capture took
+	// that number at the same moment, it keeps nothing and fails with errVersionNumberTaken.
 	Add(ctx context.Context, version Version) (*Version, error)
 	// ReplaceCurrent puts a version in place of the current one, and returns nil when there is none to
 	// replace: the newest version was not captured as current, an apply sent it, or a gateway holds it.
@@ -299,10 +299,24 @@ func (s *versionStore) execute(ctx context.Context, q dbmodel.DBQuery, args ...i
 	return err
 }
 
+// errVersionNumberTaken is Add finding the version's number taken by another capture at the same
+// moment, so it kept nothing.
+var errVersionNumberTaken = errors.New("another capture took the version's number")
+
+const (
+	// versionNumberIndexName is the name PostgreSQL gives the unique key on a deployment's version
+	// numbers, and versionNumberIndexColumns its column list as SQLite reports it.
+	versionNumberIndexName    = "CONFIGURATION_VERSION_deployment_id_seq_key"
+	versionNumberIndexColumns = "CONFIGURATION_VERSION.DEPLOYMENT_ID, CONFIGURATION_VERSION.SEQ"
+)
+
 func (s *versionStore) Add(ctx context.Context, version Version) (*Version, error) {
 	rows, err := s.query(ctx, queryInsertVersion, uuid.New().String(), version.Hash, version.Name,
 		version.Resources, version.variables, version.Note, flag(version.Current), actorColumn(version.CreatedBy),
 		deployment.Resolve(ctx), deployment.Resolve(ctx))
+	if dbprovider.IsUniqueIndexViolation(err, versionNumberIndexName, versionNumberIndexColumns) {
+		return nil, fmt.Errorf("%w: %w", errVersionNumberTaken, err)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to capture the version: %w", err)
 	}

@@ -34,6 +34,10 @@ const maxOriginLength = 255
 // latestVersion names the newest captured version.
 const latestVersion = "latest"
 
+// versionNumberAttempts is how many numbers a capture tries when other captures at the same moment
+// keep taking the one it reads as next.
+const versionNumberAttempts = 3
+
 // minHashPrefix is the fewest characters of a version's hash that name it, as many as are shown.
 const minHashPrefix = 7
 
@@ -245,15 +249,26 @@ func (s *versionService) capture(ctx context.Context, req CaptureRequest) (*Vers
 		}
 	}
 
-	version, err := s.versions.Add(ctx, captured)
-	if err != nil {
+	var version *Version
+	for attempt := 1; ; attempt++ {
+		var err error
+		version, err = s.versions.Add(ctx, captured)
+		if err == nil {
+			break
+		}
 		// Two captures at once collide on the number they take; when they captured the same
 		// configuration, the one refused answers with the version the other kept.
 		if kept, svcErr := s.latestWithHash(ctx, hash); svcErr == nil && kept != nil {
 			return kept, nil
 		}
-		s.logger.Error(ctx, "Failed to capture a version", log.Error(err))
-		return nil, &tidcommon.InternalServerError
+		// When they captured different configurations, such as one taken before a write and one after
+		// it, both are kept: the one refused takes the next number, as it would have a moment later.
+		if !errors.Is(err, errVersionNumberTaken) || attempt == versionNumberAttempts {
+			s.logger.Error(ctx, "Failed to capture a version", log.Error(err), log.Int("attempts", attempt))
+			return nil, &tidcommon.InternalServerError
+		}
+		s.logger.Debug(ctx, "Another capture took the version's number; taking the next one",
+			log.Int("attempt", attempt))
 	}
 	if err := s.versions.Prune(ctx, version.Seq-maxVersions()); err != nil {
 		// The version is captured; an older one surviving a little longer is not worth failing for.

@@ -42,6 +42,9 @@ type fakeVersionStore struct {
 	// another capture does at the same moment.
 	onReplace func(version Version)
 	onSettle  func()
+	// onAdd runs before a version is added, standing for another capture at the same moment; an error
+	// it returns refuses the addition.
+	onAdd func(version Version) error
 	// settled are the versions an apply sent, which stay current but are not replaced in place.
 	settled map[int]bool
 	// excluded is what each gateway was set to leave alone before masters were recorded.
@@ -127,6 +130,11 @@ func (f *fakeVersionStore) DeleteLease(_ context.Context, gatewayID string) erro
 func (f *fakeVersionStore) Add(_ context.Context, version Version) (*Version, error) {
 	if f.err != nil {
 		return nil, f.err
+	}
+	if f.onAdd != nil {
+		if err := f.onAdd(version); err != nil {
+			return nil, err
+		}
 	}
 	v := version
 	v.Seq = len(f.versions) + 1
@@ -783,6 +791,84 @@ func TestACurrentCaptureCollidingWithAnotherAnswersWithItsVersion(t *testing.T) 
 
 	require.Nil(t, svcErr)
 	assert.Equal(t, 1, v.Seq)
+	assert.Len(t, f.versions.versions, 1)
+}
+
+// numberTaken stands for another capture keeping a different configuration under the number a
+// capture read as next, so the capture's own addition is refused on it.
+func numberTaken(f *fakeVersionStore, hash string) error {
+	f.versions = append(f.versions, Version{Seq: len(f.versions) + 1, Hash: hash})
+	return fmt.Errorf("%w: duplicate key value violates unique constraint", errVersionNumberTaken)
+}
+
+// A capture whose number another capture of a different configuration took at the same moment, as the
+// capture after a change can, takes the next number: both are kept, and it answers with its own.
+func TestACaptureWhoseNumberWasTakenTakesTheNext(t *testing.T) {
+	f := newVersionFixture(t)
+	collided := false
+	f.versions.onAdd = func(Version) error {
+		if collided {
+			return nil
+		}
+		collided = true
+		return numberTaken(f.versions, "another-configuration")
+	}
+
+	v, svcErr := f.svc.Capture(context.Background(), CaptureRequest{Name: "mine"})
+
+	require.Nil(t, svcErr)
+	assert.Equal(t, 2, v.Seq)
+	assert.Equal(t, "mine", v.Name)
+	assert.False(t, v.Unchanged)
+	require.Len(t, f.versions.versions, 2)
+	assert.Equal(t, "another-configuration", f.versions.versions[0].Hash)
+	assert.Equal(t, v.Hash, f.versions.versions[1].Hash)
+}
+
+// A capture whose number keeps being taken gives up after its attempts rather than trying forever.
+func TestACaptureWhoseNumberIsAlwaysTakenFails(t *testing.T) {
+	f := newVersionFixture(t)
+	f.versions.onAdd = func(Version) error {
+		return numberTaken(f.versions, fmt.Sprintf("another-configuration-%d", len(f.versions.versions)))
+	}
+
+	_, svcErr := f.svc.Capture(context.Background(), CaptureRequest{})
+
+	require.NotNil(t, svcErr)
+	assert.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
+	assert.Len(t, f.versions.versions, versionNumberAttempts)
+}
+
+// A capture refused for anything but its number is not tried again.
+func TestACaptureRefusedForAnotherReasonIsNotTriedAgain(t *testing.T) {
+	f := newVersionFixture(t)
+	adds := 0
+	f.versions.onAdd = func(Version) error {
+		adds++
+		return errors.New("database is down")
+	}
+
+	_, svcErr := f.svc.Capture(context.Background(), CaptureRequest{})
+
+	require.NotNil(t, svcErr)
+	assert.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
+	assert.Equal(t, 1, adds)
+	assert.Empty(t, f.versions.versions)
+}
+
+// A capture whose number another capture of the same configuration took answers with that version
+// rather than keeping the same configuration twice.
+func TestACaptureWhoseNumberWasTakenForTheSameConfigurationAnswersWithIt(t *testing.T) {
+	f := newVersionFixture(t)
+	f.versions.onAdd = func(version Version) error {
+		return numberTaken(f.versions, version.Hash)
+	}
+
+	v, svcErr := f.svc.Capture(context.Background(), CaptureRequest{})
+
+	require.Nil(t, svcErr)
+	assert.Equal(t, 1, v.Seq)
+	assert.True(t, v.Unchanged)
 	assert.Len(t, f.versions.versions, 1)
 }
 

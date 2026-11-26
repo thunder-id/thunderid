@@ -8,6 +8,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/lib/pq"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
@@ -51,6 +52,33 @@ func (s *VersionStoreTestSuite) TestAddPlacesTheVersionWithinTheDeployment() {
 	s.Equal("docs", v.Resources)
 	s.Equal(&Actor{ID: "u-1", Name: "alice"}, v.CreatedBy)
 	s.Empty(v.variables, "a capture's answer carried its sealed values")
+}
+
+// An addition refused on the version's number, which another capture took at the same moment, is
+// reported as such on PostgreSQL and SQLite; any other failure is not.
+func (s *VersionStoreTestSuite) TestAddReportsANumberTakenByAnotherCapture() {
+	taken := []error{
+		&pq.Error{Code: "23505", Constraint: versionNumberIndexName},
+		errors.New("constraint failed: UNIQUE constraint failed: " + versionNumberIndexColumns + " (2067)"),
+	}
+	for _, err := range taken {
+		s.dbClientMock.On("QueryContext", mock.Anything, queryInsertVersion, mock.Anything, mock.Anything,
+			mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+			mock.Anything, mock.Anything).
+			Return(nil, err).Once()
+	}
+	s.dbClientMock.On("QueryContext", mock.Anything, queryInsertVersion, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything).
+		Return(nil, errors.New("statement timeout")).Once()
+
+	for range taken {
+		_, err := s.store.Add(scoped(), Version{Hash: "abc123"})
+		s.ErrorIs(err, errVersionNumberTaken)
+	}
+	_, err := s.store.Add(scoped(), Version{Hash: "abc123"})
+	s.Error(err)
+	s.NotErrorIs(err, errVersionNumberTaken)
 }
 
 // A version is settled by one statement that matches its number and hash within the deployment; a
