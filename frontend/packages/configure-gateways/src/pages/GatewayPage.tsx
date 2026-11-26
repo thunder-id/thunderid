@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle} from '@thunderid/components';
-import {useHiddenResources} from '@thunderid/contexts';
+import {useCapabilitiesContext, useHiddenResources} from '@thunderid/contexts';
 import {
   Accordion,
   AccordionDetails,
@@ -29,7 +29,7 @@ import {useApplyCheck, useAppliedVersion, useRunningReferences} from '../api/use
 import {useMaster, useMasterHistory} from '../api/useMaster';
 import {usePipeline} from '../api/usePipeline';
 import useProjectStatus from '../api/useProjectStatus';
-import {useStoredValues} from '../api/useStoredValues';
+import {useStoredValuesNamed} from '../api/useStoredValues';
 import {useVersions} from '../api/useVersions';
 import ActorName from '../components/ActorName';
 import CopyableUrl from '../components/CopyableUrl';
@@ -37,7 +37,7 @@ import DeployedResources from '../components/DeployedResources';
 import GatewayAdministration from '../components/GatewayAdministration';
 import ResourceNamesProvider from '../components/ResourceNamesProvider';
 import ResourceValuesView from '../components/ResourceValuesView';
-import ValuesTable, {type ValueRow} from '../components/ValuesTable';
+import StoredValuesList from '../components/StoredValuesList';
 import {gatewayColor} from '../constants/gateway-colors';
 import useProjectScope from '../contexts/ProjectScope';
 import {clientEndpoints, gatewayEndpoints, type Endpoint} from '../explorer/endpoints';
@@ -49,7 +49,7 @@ import type {PipelineStage} from '../models/pipeline';
 import {humanize} from '../utils/groupByResource';
 import relativeTime from '../utils/relativeTime';
 import {projectRollbackOf, rollbackHint} from '../utils/rollback';
-import valueRowsOf from '../utils/valueRows';
+import {referencedNames} from '../utils/valueRows';
 
 export interface GatewayPageProps {
   /** The section of the gateway shown; its overview by default. */
@@ -119,6 +119,7 @@ function GatewayPageContent({section}: Required<GatewayPageProps>): JSX.Element 
   const {gatewayId = ''} = useParams<{gatewayId: string}>();
   const routes = useDeployRoutes();
   const project = useProjectScope();
+  const canDeploy = useCapabilitiesContext().can('gateway', 'update');
   const [showAllValues, setShowAllValues] = useState(false);
   const pipeline = usePipeline();
   const stages: PipelineStage[] = useMemo(() => pipeline.data?.stages ?? [], [pipeline.data]);
@@ -132,8 +133,6 @@ function GatewayPageContent({section}: Required<GatewayPageProps>): JSX.Element 
   const master = useMaster(gatewayId);
   const history = useMasterHistory(gatewayId);
   const running = useRunningReferences(gatewayId);
-  const variables = useStoredValues(gatewayId, 'variable');
-  const secrets = useStoredValues(gatewayId, 'secret');
   const status = useProjectStatus(gatewayId, before?.gateway.id);
   const runs = applied.data?.appliedVersion ?? undefined;
   const changedCheck = useChangedValues(gatewayId, runs);
@@ -178,6 +177,11 @@ function GatewayPageContent({section}: Required<GatewayPageProps>): JSX.Element 
       references.filter((reference: ValueReference) => !isHiddenResource(reference.resourceType, reference.resourceId)),
     [references, isHiddenResource],
   );
+  // Only the values the resource cards show are looked up, by name; the rest are listed a page at a time.
+  const variableNames = useMemo(() => referencedNames(shownReferences, 'variable'), [shownReferences]);
+  const secretNames = useMemo(() => referencedNames(shownReferences, 'secret'), [shownReferences]);
+  const variables = useStoredValuesNamed(gatewayId, 'variable', variableNames, running.isSuccess);
+  const secrets = useStoredValuesNamed(gatewayId, 'secret', secretNames, running.isSuccess);
   const gateways = useMemo(() => (stage ? [stage.gateway] : []), [stage]);
   const everyApplied = useAppliedVersions(stages.map((entry: PipelineStage) => entry.gateway.id));
   const panels = useDeployPanels(gateways, all, everyApplied.byGateway, stages);
@@ -238,7 +242,7 @@ function GatewayPageContent({section}: Required<GatewayPageProps>): JSX.Element 
     // its own, with what it needs.
     const bringable = change.failed === true || change.change !== 'unchanged';
     const bring =
-      bringable && next && (!project || change.section === 'project') ? (
+      canDeploy && bringable && next && (!project || change.section === 'project') ? (
         <Button
           size="small"
           variant="text"
@@ -316,7 +320,7 @@ function GatewayPageContent({section}: Required<GatewayPageProps>): JSX.Element 
       <Typography variant="body2" color="text.secondary">
         {deployLine(deploy)}
       </Typography>
-      {position === 0 && rollbackTo && (
+      {canDeploy && position === 0 && rollbackTo && (
         <Tooltip title={projectRollback ? rollbackHint(t, projectRollback, rollbackTo, stage.name) : ''}>
           <Button
             size="small"
@@ -474,10 +478,6 @@ function GatewayPageContent({section}: Required<GatewayPageProps>): JSX.Element 
     }
     return null;
   };
-  const otherRows = (kind: ValueKind): ValueRow[] =>
-    valueRowsOf(kind, (kind === 'secret' ? secrets.data : variables.data) ?? [], references).filter(
-      (entry: ValueRow) => entry.references.length === 0,
-    );
   const values = valuesState() ?? (
     <Stack spacing={3}>
       {owed > 0 && (
@@ -485,9 +485,11 @@ function GatewayPageContent({section}: Required<GatewayPageProps>): JSX.Element 
           severity="warning"
           data-testid="gateway-redeploy-notice"
           action={
-            <Button color="inherit" size="small" onClick={() => panels.redeploy(stage.gateway)}>
-              {t('stage.redeploy', 'Redeploy')}
-            </Button>
+            canDeploy && (
+              <Button color="inherit" size="small" onClick={() => panels.redeploy(stage.gateway)}>
+                {t('stage.redeploy', 'Redeploy')}
+              </Button>
+            )
           }
         >
           {t('gateway.savedRedeploy', {
@@ -521,13 +523,16 @@ function GatewayPageContent({section}: Required<GatewayPageProps>): JSX.Element 
             key={kind}
             title={
               kind === 'secret'
-                ? t('gateway.otherSecrets', 'Other secrets on {{name}}', {name: stage.name})
-                : t('gateway.otherVariables', 'Other variables on {{name}}', {name: stage.name})
+                ? t('gateway.allSecrets', 'Secrets on {{name}}', {name: stage.name})
+                : t('gateway.allVariables', 'Variables on {{name}}', {name: stage.name})
             }
-            subtitle={t('gateway.otherValuesHint', 'Values belong to the gateway: no resource shown above uses these.')}
+            subtitle={t(
+              'gateway.allValuesHint',
+              'Values belong to the gateway: these are all it holds, including the ones the resources above use.',
+            )}
             testId={`gateway-other-${kind}`}
           >
-            <ValuesTable gatewayId={gatewayId} kind={kind} rows={otherRows(kind)} />
+            <StoredValuesList gatewayId={gatewayId} kind={kind} references={references} />
           </Section>
         ))}
     </Stack>

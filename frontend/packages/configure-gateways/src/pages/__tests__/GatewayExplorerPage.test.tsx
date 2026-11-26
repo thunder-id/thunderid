@@ -4,7 +4,7 @@
 import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import {fireEvent, render, screen, userEvent, waitFor, within} from '@thunderid/test-utils';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
-import {fakeHttp, SERVER, type Call} from '../../__tests__/fakeHttp';
+import {fakeHttp, queryOf, SERVER, type Call} from '../../__tests__/fakeHttp';
 import GatewayExplorerPage from '../GatewayExplorerPage';
 
 let http = fakeHttp({});
@@ -435,6 +435,30 @@ describe('GatewayExplorerPage', () => {
       .map((call: Call) => call.url.replace(SERVER, '').split('?')[0]);
     expect(reads).toContain('/gateways/gw-dev/variables');
     expect(reads).not.toContain('/gateways/gw-dev/secrets');
+  });
+
+  it('looks up only the values the running version refers to, and counts the rest with a page of one', async () => {
+    render(<GatewayExplorerPage />);
+    await screen.findByTestId('explorer-node-application/app-1');
+
+    await waitFor(() =>
+      expect(
+        http.calls
+          .filter((call: Call) => call.method === 'GET' && call.url.split('?')[0].endsWith('/gw-dev/variables'))
+          .map(queryOf),
+      ).toEqual(
+        expect.arrayContaining([
+          {limit: '100', offset: '0', names: 'APP_ORDERS_CLIENT_ID,APP_ORDERS_REDIRECT_URIS'},
+          {limit: '1', offset: '0'},
+        ]),
+      ),
+    );
+    const variableReads = http.calls.filter(
+      (call: Call) => call.method === 'GET' && call.url.split('?')[0].endsWith('/gw-dev/variables'),
+    );
+    expect(variableReads.every((call: Call) => queryOf(call).names !== undefined || queryOf(call).limit === '1')).toBe(
+      true,
+    );
   });
 
   it('keeps what saved when a later value fails, and sends only what failed again', async () => {

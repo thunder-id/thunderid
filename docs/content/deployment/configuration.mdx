@@ -33,6 +33,7 @@ Controls the <ProductName /> server's network settings and identity.
 | `server.hostname` | `localhost` | The hostname or IP address the server binds to |
 | `server.port` | `8090` | Port the server listens on |
 | `server.http_only` | `false` | If `true`, disables HTTPS and uses HTTP only (not recommended for production) |
+| `server.allow_private_addresses` | `false` | Whether calls to destinations an administrator configures may reach a private address, such as `localhost`, `10.0.0.5` or `169.254.169.254`. Turn it on for a local or single-host setup. See [Private Addresses](#private-addresses). |
 | `server.public_url` | _(derived from server hostname, port and protocol)_ | The public URL clients use to reach the server, if it differs from the bind address. Derived when unset. |
 | `server.timeouts.read_header_seconds` | `10` | Seconds the server waits to read a request's headers. Guards against clients that send headers slowly to hold connections open. |
 | `server.timeouts.write_seconds` | `10` | Seconds a request may take from the end of its headers until its response is written. A request still running at that point loses its connection, though the server finishes the work. It applies to every route except those with a timeout of their own, so it can stay short: applying and reverting a version (`gateway.apply_timeout_seconds`), the import (`import.timeout_seconds`), and the MCP server (`/mcp`), which gets the longer of the two because a tool can run either. |
@@ -47,6 +48,8 @@ Controls the <ProductName /> server's network settings and identity.
 | `gateway.allow_private_addresses` | `false` | Whether a gateway may be registered at, and reached on, a loopback, link-local or private address such as `localhost`, `10.0.0.5` or `169.254.169.254`. Off, a base URL naming one is refused with `400` (`GTW-1027`), and a hostname that resolves to one is refused when the gateway is called, so this deployment's calls, which carry the gateway's key, cannot be pointed at something inside its own network. Turn it on for a local or single-host setup whose gateways sit on such addresses. A base URL must be `https` and carry no credentials whatever this is set to. |
 | `gateway.removal_confirmation_threshold` | `5` | How many resources an apply or revert may remove from a gateway without being confirmed. One that would remove more is refused with `409` (`GTW-1030`) unless the request sets `confirmRemovals`; a dry run shows the removals first. A rollback to a much smaller version is the usual case. `0` turns the check off. |
 | `gateway.apply_timeout_seconds` | `300` | Seconds a request to apply a configuration version to a gateway, or to revert one, may take to answer, in place of `server.timeouts.write_seconds`. An MCP request (`/mcp`) gets this or `import.timeout_seconds`, whichever is longer, since a tool can deploy or import. It covers waiting for an apply already running on that gateway and the gateway's import. Raise it, together with `import.timeout_seconds` on the gateway and any proxy or ingress timeout in front of either, when large applies time out. |
+| `gateway.unused_value_grace_seconds` | `3600` | A variable or secret the control plane named for a resource is removed from a gateway when it was last set longer ago than this many seconds, and nothing refers to it. After each apply, the control plane removes from that gateway's store the values with such a name that no resource that still exists, no version this deployment keeps and no master the gateway keeps refers to, and that were last set longer ago than this. The time counts from when the value was last set, so an old value goes at the first removal after its resource is deleted. A resource that exists keeps its values however long its deploy waits, so this only covers a value set for a resource while a removal runs. A value you named yourself is never removed. The gateway measures the age on its own clock when it removes a value, so a value below `1`, such as `0`, is raised to `1` with a warning at startup; a negative number turns the removal off. A gateway too old to remove values by age has nothing removed. See [Unused Values Are Removed](../guides/declarative-configurations/configuration-versions.mdx#unused-values-are-removed). |
+| `gateway.unused_value_sweep_interval_seconds` | `300` | The least number of seconds between two removals of unused values from the same gateway by one control plane node. Each removal reads the whole configuration, so applies in quick succession run one and skip the rest until this has passed; the next apply after it removes what the skipped ones would have. The time is kept in each node's memory, so with several nodes each removes on its own schedule, and a restart starts afresh. `0` removes after every apply. |
 | `import.timeout_seconds` | `120` | Seconds an import request (`POST /import`) may take to answer, in place of `server.timeouts.write_seconds`. An MCP request (`/mcp`) gets this or `gateway.apply_timeout_seconds`, whichever is longer. A control plane applies a configuration version to a gateway through this API, so raise it on the gateway when large applies time out. |
 | `gateway.store` | `composite` | Where gateways are read from. `mutable` is the database alone, and gateways declared in files are not read. `declarative` is files alone, and registration through the API is refused. `composite` is both: listings merge the two, registration writes to the database, and a gateway declared in a file cannot be changed or removed through the API, because the file is read again on every start and would undo it. |
 | `notification.template.store` | `composite` | Where notification templates are read from. `mutable` is the database alone, and templates are editable through the Console and API. `declarative` is files alone, and writes through the API are refused with `403`. `composite` is both: file-declared templates are read-only and are merged with editable database templates. |
@@ -96,6 +99,21 @@ Keep the ranges as narrow as possible. A range such as `172.16.0.0/12` covers ev
 **CDN headers:** `cf-connecting-ip` and `true-client-ip` are only safe when the origin accepts traffic only from the CDN. Otherwise, use `x-forwarded-for` with the CDN's ranges listed.
 
 The client IP is for display and logging. Do not rely on it for security decisions.
+
+### Private Addresses
+
+By default, <ProductName /> refuses calls to a destination an administrator configures when its host is, or resolves to, one of these addresses:
+
+- Loopback (`localhost`, `127.0.0.1`, `::1`), link-local (`169.254.0.0/16`, `fe80::/10`, including instance metadata services) and private (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `fc00::/7`)
+- The shared address space `100.64.0.0/10`
+- Unspecified (`0.0.0.0`, `::`), multicast, reserved and broadcast addresses
+- An IPv6 NAT64 or 6to4 address that embeds one of the above, such as `64:ff9b::a9fe:a9fe`
+
+This covers federated identity providers (token, userinfo, JWKS and GitHub user email endpoints), notification providers (SMS gateways, Twilio, Vonage and SMTP hosts), HTTP request and extension steps in flows, AuthZEN policy decision points, authorization details processors, and back-channel logout URIs. The check runs on the address actually connected to, and on every redirect, so a hostname that later resolves elsewhere cannot get around it.
+
+Set `server.allow_private_addresses: true` in `deployment.yaml` and restart the server when these destinations run on such addresses. The quickstart pack turns it on, since everything it runs is on one host. Turning it on applies to every destination above at once, including back-channel logout URIs that dynamic client registration accepts.
+
+Destinations a client names, such as Client ID Metadata Documents and the JWKS URIs client assertions are verified against or tokens are encrypted to, are always refused these addresses. The trusted issuer's JWKS URL and user lookup, which the deployment configuration sets, are never refused. Gateways have their own setting, `gateway.allow_private_addresses`.
 
 ## Gate Client Configuration
 
@@ -423,7 +441,7 @@ Stores SSO sessions, revoked tokens, consent records, and account access state (
 | `cache.disabled` | `false` | If `true`, disables caching entirely |
 | `cache.type` | `inmemory` | Cache type (`inmemory` or `redis`). When `cache.type` is `redis`, <ProductName /> does not use the periodic cleanup routine. |
 | `cache.size` | `1000` | Maximum number of cache entries |
-| `cache.ttl` | `3600` | Default time-to-live for cache entries in seconds |
+| `cache.ttl` | `3600` | Default time-to-live for cache entries in seconds. `ServerConfigByNameCache` does not use it: see [Cache Property Overrides](#cache-property-overrides) |
 | `cache.eviction_policy` | `LRU` | Cache eviction policy (`LRU` - Least Recently Used) |
 | `cache.cleanup_interval` | `300` | In-memory only. Interval in seconds to clean up expired entries. Not used when `cache.type` is `redis`. |
 | `cache.properties[]` | `[]` | Per-cache overrides for `name`, `disabled`, `size`, `ttl`, and `eviction_policy` |
@@ -459,7 +477,7 @@ Each item in `cache.properties` supports these fields:
 | `ttl` | No | Time-to-live for that cache in seconds. |
 | `eviction_policy` | No | Eviction policy for that cache. Supported values are `LRU` and `LFU`. This setting applies to in-memory caches only. |
 
-If you omit a field in a `cache.properties` entry, <ProductName /> falls back to the corresponding global `cache.*` setting.
+If you omit a field in a `cache.properties` entry, <ProductName /> falls back to the corresponding global `cache.*` setting. The one exception is the `ttl` of `ServerConfigByNameCache`, described below.
 
 That means you can override only the fields you need. <ProductName /> continues to use the global cache settings for any fields you leave unset.
 
@@ -476,6 +494,8 @@ That means you can override only the fields you need. <ProductName /> continues 
 - `EntityTypeByHandleCache`
 - `FlowGraphCache`
 - `ServerConfigByNameCache`
+
+`ServerConfigByNameCache` keeps an entry for 30 seconds unless a `cache.properties` entry sets its `ttl`, so a runtime server configuration change reaches every node within that time. The global `cache.ttl` does not apply to it.
 
 :::note
 `FlowGraphCache` is always in-memory. It caches process-local flow graph Go objects during flow execution, not shared system-level cache data.
@@ -553,7 +573,6 @@ OAuth 2.0 and OpenID Connect settings.
 | `oauth.revocation.token_family.on_explicit_revoke` | `true` | If `true`, revoking a token through `/oauth2/revoke` also revokes every other token of the same authorization grant |
 | `oauth.revocation.token_family.on_refresh_replay` | `true` | If `true`, presenting a refresh token that has already been rotated out revokes every token of that grant. Requires `oauth.refresh_token.renew_on_grant`, since a refresh token can only be replayed once it has been rotated |
 | `oauth.revocation.token_family.on_code_replay` | `true` | If `true`, redeeming an authorization code a second time revokes every token issued from that code |
-| `oauth.token_exchange.token_family` | `none` | Whether an exchanged token joins the subject token's authorization grant. `none` issues an independent token; `inherit` copies the subject token's token family, so revoking the grant also revokes the exchanged token |
 | `oauth.authorization_code.validity_period` | `600` | Authorization code validity period in seconds (10 minutes) |
 | `oauth.authorization_request.validity_period` | `3600` | How long the authorization request context stays valid while the user completes the login flow, in seconds (60 minutes). A non-positive value falls back to the default |
 | `oauth.dcr.enabled` | `true` | If `true`, enables the Dynamic Client Registration endpoint |
@@ -577,6 +596,10 @@ Set `oauth.client_assertion.max_lifetime` and `oauth.client_assertion.max_iat_ag
 
 :::note
 Enabling `oauth.allow_wildcard_redirect_uri` affects all applications in the deployment. See [Use Wildcard Redirect URIs](../../guides/applications/application-settings#use-wildcard-redirect-uris) for pattern syntax and matching rules.
+:::
+
+:::warning
+If you are upgrading from an earlier release, remove the `oauth.token_exchange` block from `deployment.yaml`. The server does not start while `deployment.yaml` has it. Tokens exchanged before the upgrade under the earlier default, `none`, carry no token family, so revoking the grant they came from does not revoke them. See [Where `tfid` Comes From](../../guides/protocols/oauth-oidc/token-revocation#where-tfid-comes-from).
 :::
 
 ## Flow Configuration
@@ -621,6 +644,24 @@ flow:
 
 For the complete list of built-in executor names and configuration details, see [Executor Details and Configuration](../../guides/flows/advanced-configurations#executor-details-and-configuration).
 
+## Session Configuration
+
+Controls which sign-ins record a [session](../../key-concepts/authentication/sessions), and the limits the SSO session timeouts must respect. The timeouts themselves are runtime settings in the `session` server-config section. See [Configure Session Lifetime](../../guides/flows/single-sign-on#configure-session-lifetime).
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `session.tracking.enabled` | `true` | If `true`, a sign-in through a flow without the session nodes records a [direct session](../../key-concepts/authentication/sessions#sign-ins-without-sso). If `false`, such a sign-in records no session, so it cannot be listed or ended, and its tokens carry no `sid` claim. A flow with the session nodes still records its SSO session, so SSO is not affected. The setting applies to new sign-ins: sessions recorded earlier keep working until they end |
+| `session.activity_refresh_interval_seconds` | `60` | The shortest time, in seconds, between two writes of an SSO session's activity. Reusing a session within this time of the last write skips the write that moves its idle deadline. The idle timeout in the `session` section must be longer than this value. |
+| `session.max_idle_timeout_seconds` | `2592000` | The longest idle timeout, in seconds, that the `session` section may set (30 days by default). A longer one is rejected with `SCF-1003`. A stored timeout longer than a maximum you lower later applies as the maximum. |
+| `session.max_absolute_timeout_seconds` | `31536000` | The longest absolute timeout, in seconds, that the `session` section may set (365 days by default). A longer one is rejected with `SCF-1003`. A stored timeout longer than a maximum you lower later applies as the maximum. |
+
+**Example:**
+```yaml
+session:
+  tracking:
+    enabled: false
+```
+
 ## User Configuration
 
 User management settings.
@@ -648,6 +689,18 @@ Controls declarative configuration support.
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `declarative_resources.enabled` | `false` | If `true`, enables declarative resource configuration |
+
+### Store Modes
+
+Each resource type sets its own store mode in `<type>.store`, for example `group.store` and `role.store`.
+
+| Mode | Behavior |
+|------|----------|
+| `mutable` | Resources live in the database and are managed through the Console or API. |
+| `declarative` | Resources come only from declarative files and are read-only. Nothing is written to the database, including group and role memberships. |
+| `composite` | Declarative resources can't be changed or removed, and database resources are managed through the Console or API. Memberships added through the Console or API are stored in the database for both kinds of group or role, so they stay writable. Memberships a declaration file lists are fixed and can't be removed. |
+
+If `group.store` or `role.store` isn't set, that type behaves as `declarative` when `declarative_resources.enabled` is `true`, and as `mutable` otherwise.
 
 ### Resource Loading Precedence
 
@@ -915,10 +968,31 @@ Cryptographic settings for encryption and signing.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `crypto.password_hashing.algorithm` | `PBKDF2` | Password hashing algorithm |
-| `crypto.password_hashing.parameters.iterations` | `600000` | Number of hashing iterations |
-| `crypto.password_hashing.parameters.key_size` | `32` | Derived key size in bytes |
-| `crypto.password_hashing.parameters.salt_size` | `16` | Salt size in bytes |
+| `crypto.password_hashing.algorithm` | `PBKDF2` | Password hashing algorithm: `PBKDF2`, `ARGON2ID`, or `SHA256` |
+
+**`crypto.password_hashing.pbkdf2.*`** applies only when `crypto.password_hashing.algorithm` is `PBKDF2`:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `crypto.password_hashing.pbkdf2.iterations` | `600000` | Number of iterations |
+| `crypto.password_hashing.pbkdf2.key_size` | `32` | Derived key size in bytes |
+| `crypto.password_hashing.pbkdf2.salt_size` | `16` | Salt size in bytes |
+
+**`crypto.password_hashing.argon2id.*`** applies only when `crypto.password_hashing.algorithm` is `ARGON2ID`:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `crypto.password_hashing.argon2id.iterations` | `2` | Number of passes over memory |
+| `crypto.password_hashing.argon2id.memory` | `19456` | Memory cost in KiB |
+| `crypto.password_hashing.argon2id.parallelism` | `1` | Number of parallel lanes |
+| `crypto.password_hashing.argon2id.key_size` | `32` | Derived key size in bytes |
+| `crypto.password_hashing.argon2id.salt_size` | `16` | Salt size in bytes |
+
+**`crypto.password_hashing.sha256.*`** applies only when `crypto.password_hashing.algorithm` is `SHA256`:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `crypto.password_hashing.sha256.salt_size` | `16` | Salt size in bytes |
 
 ### Signing Keys
 
@@ -1135,7 +1209,7 @@ base-uri 'none';
 form-action 'self'
 ```
 
-A resource type without a matching directive (for example `font-src`) falls back to `default-src 'none'` and is blocked. On HTML responses, <ProductName /> Gate gets a fresh per-request nonce to the `script-src` and `style-src-elem` directives so its own inline scripts and styles load.
+A resource type without a matching directive (for example `font-src`) falls back to `default-src 'none'` and is blocked. On every Console and Gate response, <ProductName /> appends a fresh per-request nonce to `script-src`, and to `style-src-elem` when the policy sets that directive, so the UIs' own inline scripts and styles load. A directive that allows `'unsafe-inline'` gets no nonce, since browsers ignore `'unsafe-inline'` in a directive that has one.
 
 :::warning Overrides replace, not extend
 Listing a directive replaces its baseline value completely. Include `'self'` in your list when you still need same-origin resources. For example, `img-src: ["https://cdn.example.com"]` blocks same-origin images until you add `'self'`.
@@ -1145,7 +1219,7 @@ Listing a directive replaces its baseline value completely. Include `'self'` in 
 
 Set the policy in any of these ways:
 
-- **Console** - go to **Settings** and open the **Content security policy** tab. Turn **Report only** on or off, choose the scope under **Applies to** (**All pages** for the top-level `directives`, or a path such as `/console/`), and edit the sources of any directive, pressing Enter after each new source. Every directive that applies to the scope is listed, including the baseline. Changing a directive overrides its default value, and **Reset to default** removes the override. The header sent for the selected scope is shown at the end, ready to copy. Select **Save changes** to apply the policy immediately.
+- **Console** - go to **Settings** and open the **Content security policy** tab. Turn **Report only** on or off, and edit the sources of any directive, pressing Enter after each new source. **Shared** holds the top-level `directives`, which apply to both the Console and Gate. Each path already in the policy, such as `/console/`, has its own section listing every directive that applies to it, including the baseline. To add a path, use the declarative or runtime method below. Changing a directive overrides its default value, and **Reset to default** removes the override. Each section ends with a preview of the header it sends, without the per-request nonce described in [Deny-First Baseline](#deny-first-baseline). Select **Save changes** to apply the policy immediately.
 - **Declarative** - create `config/resources/server_configs/csp.yaml`, then restart.
   ```yaml
   name: csp
@@ -1213,12 +1287,12 @@ Set it in either of these ways:
   ```
 
 :::note
-A declarative default takes precedence and locks the setting: while `defaultResourceServer.yaml` sets a value, runtime `PUT /server-config/defaultResourceServer` requests are rejected. Remove the declarative value to manage the default at runtime.
+A declarative default takes precedence and locks the setting: while `defaultResourceServer.yaml` sets a value, runtime `PUT /server-config/defaultResourceServer` requests are rejected with `SCF-1007`. Remove the declarative value to manage the default at runtime.
 :::
 
 ## Flow Defaults
 
-Controls server-wide default flows and context expiry times for each flow type. These settings are stored in the server-config `flow` section, not in `deployment.yaml`.
+Controls server-wide default flows, context expiry times for each flow type, and where the sign-in page sends the user when it has no flow to continue. These settings are stored in the server-config `flow` section, not in `deployment.yaml`.
 
 Flow configuration uses the following fields. `selfFlow` uses only `expirySeconds`.
 
@@ -1226,14 +1300,17 @@ Flow configuration uses the following fields. `selfFlow` uses only `expirySecond
 |-------|-------------|
 | `<type>.defaultHandle` | Handle of the flow to use when the application and the organization unit do not pin a specific flow. Empty string means no server default, and the flow type is treated as not configured at the server level. |
 | `<type>.expirySeconds` | How long (in seconds) a started flow context remains valid before it expires. Must be a positive integer. |
+| `defaultReturnUrl` | Where the sign-in page sends the user when it has no flow to continue and no application URL to return to, such as a bookmarked sign-in page. Must be an absolute `http` or `https` URL without credentials, otherwise the update is rejected with `SCF-1003`. It can't be the sign-in page itself, which ignores such a URL to avoid a redirect loop. When no value is in effect, the page asks the user to return to the application. A writable value overrides the one in `flow.yaml`, so clearing the writable value keeps a `flow.yaml` value in effect. |
 
-Flow configuration keys include `authFlow`, `registrationFlow`, `userOnboardingFlow`, `recoveryFlow`, `signOutFlow`, `selfFlow`, `adminInitiatedFlow`, `agentOnboardingFlow`, and `adminAttributeVerificationFlow`.
+Flow configuration keys include `authFlow`, `registrationFlow`, `userOnboardingFlow`, `recoveryFlow`, `signOutFlow`, `selfFlow`, `adminInitiatedFlow`, `agentOnboardingFlow`, `adminAttributeVerificationFlow`, and `adminUserCredentialResetFlow`.
 
 `selfFlow` sets the execution expiry of every `SELF` flow, 30 minutes by default. It has no `defaultHandle`: each start request names its flow by `handle`, such as the shipped `default-self-attribute-verification-flow` or the handle of a custom `SELF` flow. A start without a `handle`, or with one that names no `SELF` flow, is refused before any node runs.
 
-`adminInitiatedFlow` sets the execution expiry of every `ADMIN_INITIATED` flow, 24 hours by default, which is how long the user has to finish the flow from the link it sends. Like `selfFlow`, it has no `defaultHandle`: each start request names its flow by `handle`, such as the shipped `default-admin-attribute-verification-flow`.
+`adminInitiatedFlow` sets the execution expiry of every `ADMIN_INITIATED` flow, 6 hours by default, which is how long the user has to finish the flow from the link it sends. Like `selfFlow`, it has no `defaultHandle`: each start request names its flow by `handle`, such as the shipped `default-admin-attribute-verification-flow`.
 
 `adminAttributeVerificationFlow.defaultHandle` names the `ADMIN_INITIATED` flow the Console starts when an administrator sends a user a verification link. Bootstrap sets it to `default-admin-attribute-verification-flow`. Set it to any saved `ADMIN_INITIATED` flow to send links through a custom flow; a handle that names no such flow is refused. With no handle set, the Console does not offer the action. See [Email Address and Mobile Number Verification](../../guides/users/manage-users#email-address-and-mobile-number-verification).
+
+`adminUserCredentialResetFlow.defaultHandle` names the `ADMIN_INITIATED` flow the Console starts when an administrator sends a user a credential reset link. Bootstrap sets it to `default-admin-user-credential-reset-flow`. Set it to any saved `ADMIN_INITIATED` flow to reset credentials through a custom flow; a handle that names no such flow is refused. With no handle set, the Console reset dialog does not offer the link. See [Ask a User to Reset a Credential](../../guides/users/manage-users#ask-a-user-to-reset-a-credential).
 
 `agentOnboardingFlow.defaultHandle` selects the Administration flow used when creating an agent in the Console. Bootstrap sets it to `default-agent-onboarding-flow`, which creates agents using their own identity. Set it to any saved agent onboarding Administration flow, including a custom flow, using the runtime API described below. For OBO creation, that flow collects delegation inputs and sets `delegated` through the Provisioning node or an administrator's selection. This Console action reads the server setting directly; it does not use the application and organization-unit fallback below. Direct `POST /agents` requests do not run the onboarding flow. See [Configure agent onboarding](../../guides/agents/manage-agents#configure-agent-onboarding).
 
@@ -1319,7 +1396,7 @@ Set it in either of these ways:
   ```
 
 :::note
-A declarative sender takes precedence and locks the setting: while `notification.yaml` names a sender, runtime `PUT /server-config/notification` requests are rejected. Remove the declarative value to manage the sender at runtime.
+A declarative sender takes precedence and locks the setting: while `notification.yaml` names a sender, runtime `PUT /server-config/notification` requests are rejected with `SCF-1007`. Remove the declarative value to manage the sender at runtime.
 :::
 
 ## Deploy Pipeline and Auto Apply
@@ -1389,7 +1466,7 @@ An auto apply is refused like any other apply, for example when the gateway lack
 The section is read on every capture. The node that takes the update applies it at once. With the default in-memory [cache](#cache-configuration), another node sees it once its cached copy of the section expires.
 
 :::note
-A declarative value takes precedence and locks the setting: while `gateway.yaml` sets `autoApply`, runtime `PUT /server-config/gateway` requests are rejected. Remove the declarative value to manage it at runtime.
+A declarative value takes precedence and locks the setting: while `gateway.yaml` sets `autoApply`, runtime `PUT /server-config/gateway` requests are rejected with `SCF-1007`. Remove the declarative value to manage it at runtime.
 :::
 
 ## Account Access
@@ -1450,12 +1527,12 @@ account_access:
 The effective policy is built from layers. The section is read each time it is needed, so a runtime update applies without a restart; a change to the base or to a declarative file applies after a restart:
 
 1. The base: the `account_access` block from `default.json` and `deployment.yaml`.
-2. A declarative document, when one exists, is laid over the base field by field. It locks the section: runtime writes are rejected until the declarative value is removed.
+2. A declarative document, when one exists, is laid over the base field by field. It locks the section: runtime writes are rejected with `SCF-1007` until the declarative value is removed.
 3. Otherwise the runtime value is laid over the base field by field.
 
 Within a category, a non-empty `lockDurationsSeconds` replaces the lower one. If the section cannot be read, the base applies.
 
-The node that receives a runtime update applies it immediately. With the default in-memory cache, other nodes keep their cached copy of the section until it expires, after `cache.ttl` (one hour by default). To apply updates on every node sooner, use the Redis cache, or set a shorter `ttl` for `ServerConfigByNameCache` in `cache.properties`. See [Cache Configuration](#cache-configuration).
+The node that receives a runtime update applies it immediately. With the default in-memory cache, other nodes keep their cached copy of the section until it expires, after 30 seconds unless `cache.properties` sets a `ttl` for `ServerConfigByNameCache`. To apply updates on every node at once, use the Redis cache. See [Cache Configuration](#cache-configuration).
 
 ### Configure the Policy
 
@@ -1528,7 +1605,8 @@ An invalid value is rejected with HTTP 400 and `SCF-1003` ("Invalid server confi
 - A negative `threshold` or seconds value, and a seconds value above the maximum.
 - A negative `maxConsecutiveFailures`, or one above `0` and below the policy's `threshold`.
 - An enabled policy, after it is laid over the base, that cannot form a lock: it needs a `threshold` of at least `1`, a `failureWindowSeconds`, and a non-empty `lockDurationsSeconds`. Set `enabled: false` to switch the policy off.
-- Any write while a declarative `accountAccess` document exists.
+
+A write while a declarative `accountAccess` document exists is refused with HTTP 403 and `SCF-1007`, since the document locks the section.
 
 The same rules check the base on its own at startup. An enabled policy in the `account_access` block of `default.json` and `deployment.yaml` must have its `threshold`, `failure_window_seconds`, and `lock_durations_seconds` without any later layer. An invalid base stops the server from starting.
 

@@ -29,6 +29,10 @@ interface EditTokensSettingsProps {
   sectionResetKey?: number;
   /** Switches the edit page to its Advanced tab, where Delegated mode is turned on. */
   onNavigateToAdvanced?: () => void;
+  /**
+   * Whether the agent can't be edited here
+   */
+  readOnly?: boolean;
 }
 
 export default function EditTokensSettings({
@@ -39,6 +43,7 @@ export default function EditTokensSettings({
   onValidationChange = undefined,
   sectionResetKey = 0,
   onNavigateToAdvanced = undefined,
+  readOnly = false,
 }: EditTokensSettingsProps): JSX.Element {
   const {t} = useTranslation();
   const [audience, setAudience] = useState(AGENT_AUDIENCE);
@@ -66,7 +71,7 @@ export default function EditTokensSettings({
     onValidationChange?.((isUnlocked && userTabHasError) || agentTabHasError);
   }, [isUnlocked, userTabHasError, agentTabHasError, onValidationChange]);
 
-  const appLikeAgent = {...agent, isReadOnly: agent.isReadOnly ?? false} as unknown as Application;
+  const appLikeAgent = agent as unknown as Application;
   // Only the unsaved allowed user types are passed on, since they decide which attributes can be added.
   const pendingAllowedUserTypes = useMemo<Partial<Application>>(
     () => (editedAgent.allowedUserTypes !== undefined ? {allowedUserTypes: editedAgent.allowedUserTypes} : {}),
@@ -134,6 +139,7 @@ export default function EditTokensSettings({
         <AgentAccessTokenSection
           key={sectionResetKey}
           agent={agent}
+          readOnly={readOnly}
           editedAgent={editedAgent}
           oauth2Config={oauth2Config}
           onFieldChange={onFieldChange}
@@ -155,6 +161,7 @@ export default function EditTokensSettings({
         <Stack spacing={3}>
           <EditTokenSettings
             application={appLikeAgent}
+            readOnly={readOnly}
             editedApp={pendingAllowedUserTypes}
             oauth2Config={oauth2Config}
             onFieldChange={appHandleFieldChange}

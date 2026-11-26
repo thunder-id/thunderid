@@ -340,6 +340,113 @@ sections:
                 }
             }
         }
+    - group: Components
+      kind: component
+      name: FlowVariablesForm
+      description: 'The `FlowVariablesForm` view lets a delegated admin override the variables a flow declares for their organization unit. It loads the variables the flow shares with the unit, the values the unit has set, and what the unit may change, shows them as a form, and saves the values that differ from their defaults. `FlowVariablesForm` requires `.thunderIDProvider(config:)` in its ancestor view hierarchy.'
+      rowsLabel: Parameters
+      rows:
+      - name: flowId
+        type: 'String'
+        tag: required
+        description: 'Identifier of the flow whose variables are configured.'
+      - name: ouId
+        type: 'String'
+        tag: required
+        description: 'The organization unit the overrides belong to.'
+      - name: title
+        type: 'String?'
+        tag: optional
+        description: 'Heading of the form.'
+      - name: ouName
+        type: 'String?'
+        tag: optional
+        description: 'The name of the organization unit, used in the notice and the connection hint.'
+      - name: ownerName
+        type: 'String?'
+        tag: optional
+        description: 'The name of whoever owns the flow, shown on a variable the unit may not set.'
+      - name: showScopeNotice
+        type: 'Bool'
+        tag: optional
+        description: 'Shows a notice that the settings apply to the organization unit only. Defaults to `false`.'
+      - name: readOnly
+        type: 'Bool'
+        tag: optional
+        description: 'Shows the variables without letting them be changed. Defaults to `false`.'
+      - name: onSaved
+        type: '((FlowVariableValues) -> Void)?'
+        tag: optional
+        description: 'Called with the saved overrides.'
+      - name: onCancel
+        type: '(() -> Void)?'
+        tag: optional
+        description: 'Called when the admin taps Cancel.'
+      - name: content
+        type: '(FlowVariablesFormState) -> Content'
+        tag: optional
+        description: 'Renders custom UI in place of the default form.'
+      example: |-
+        import SwiftUI
+        import ThunderIDSwiftUI
+
+        struct FlowSettings: View {
+            let flowId: String
+            let ouId: String
+
+            var body: some View {
+                FlowVariablesForm(flowId: flowId, ouId: ouId, onSaved: { _ in
+                    print("Saved")
+                })
+            }
+        }
+    - group: Components
+      kind: component
+      name: SharedFlowList
+      description: 'The `SharedFlowList` view lists the flows shared with an organization unit, the flows it owns, or both. Choosing a flow calls `onSelect`, so your app decides what to open, for example `FlowVariablesForm`. `SharedFlowList` requires `.thunderIDProvider(config:)` in its ancestor view hierarchy.'
+      rowsLabel: Parameters
+      rows:
+      - name: ouId
+        type: 'String'
+        tag: required
+        description: 'The organization unit to list the flows of.'
+      - name: ownership
+        type: 'SharedFlowOwnership'
+        tag: optional
+        description: 'Which flows to list: `.shared`, `.owned`, or `.all`. Defaults to `.shared`.'
+      - name: flowType
+        type: 'String?'
+        tag: optional
+        description: 'Restricts the list to one flow type, for example `AUTHENTICATION`.'
+      - name: limit
+        type: 'Int'
+        tag: optional
+        description: 'Page size. Defaults to `20`.'
+      - name: selectedFlowId
+        type: 'String?'
+        tag: optional
+        description: 'Identifier of the flow to highlight.'
+      - name: onSelect
+        type: '((ManagedFlow) -> Void)?'
+        tag: optional
+        description: 'Called when a flow is chosen. Rows are selectable only when set.'
+      - name: content
+        type: '(AdminListState<ManagedFlow>) -> Content'
+        tag: optional
+        description: 'Renders custom UI in place of the default list.'
+      example: |-
+        import SwiftUI
+        import ThunderID
+        import ThunderIDSwiftUI
+
+        struct FlowPicker: View {
+            let ouId: String
+            @State private var selected: ManagedFlow?
+
+            var body: some View {
+                SharedFlowList(ouId: ouId, selectedFlowId: selected?.id, onSelect: { selected = $0 })
+            }
+        }
     - group: Functions
       kind: function
       name: Configuration

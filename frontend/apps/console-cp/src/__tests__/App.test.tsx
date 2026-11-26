@@ -85,7 +85,7 @@ vi.mock('@thunderid/configure-gateways/pages/GatewayValuesPage', () => ({
   default: () => <div data-testid="gateway-values-page">Gateway Values Page</div>,
 }));
 
-const mockCan: (resource: string) => boolean = () => true;
+let mockCan: (resource: string) => boolean = () => true;
 vi.mock('@thunderid/contexts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/contexts')>()),
   useCapabilitiesContext: () => ({
@@ -299,6 +299,10 @@ vi.mock('@thunderid/configure-resource-servers/pages/CreateResourceServerPage', 
   default: () => <div data-testid="create-resource-server-page">Create Resource Server Page</div>,
 }));
 
+vi.mock('@thunderid/configure-resource-servers/pages/CreateAuthorizationDetailTypePage', () => ({
+  default: () => <div data-testid="create-authorization-detail-type-page" />,
+}));
+
 vi.mock('../layouts/DashboardLayout', async () => {
   const {Outlet} = await import('react-router');
   return {default: () => <Outlet />};
@@ -418,6 +422,22 @@ describe('App', () => {
       const {unmount} = render(<App />);
       expect(await screen.findByTestId(page)).toBeInTheDocument();
       unmount();
+    }
+  });
+
+  it("guards creating a project's authorization detail type", async () => {
+    window.history.pushState({}, '', '/project/shop/authorization-detail-types/create');
+    const {unmount} = render(<App />);
+    expect(await screen.findByTestId('create-authorization-detail-type-page')).toBeInTheDocument();
+    unmount();
+
+    mockCan = (resource) => resource !== 'authzdetail';
+    try {
+      render(<App />);
+      expect(await screen.findByText(/permission to view this page/)).toBeInTheDocument();
+      expect(screen.queryByTestId('create-authorization-detail-type-page')).not.toBeInTheDocument();
+    } finally {
+      mockCan = () => true;
     }
   });
 

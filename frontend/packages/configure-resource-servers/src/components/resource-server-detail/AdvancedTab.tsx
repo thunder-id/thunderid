@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {SettingsCard} from '@thunderid/components';
+import {useRecordAccess} from '@thunderid/contexts';
 import {FormControl, FormHelperText, FormLabel, MenuItem, Select, Stack, TextField} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -35,6 +36,7 @@ export default function AdvancedTab({
   onPDPConnectionChange,
 }: AdvancedTabProps): JSX.Element {
   const {t} = useTranslation();
+  const {readOnly: isReadOnly} = useRecordAccess('rs', resourceServer);
   const pdpConnections = useAuthZENPDPConnections();
   const connectionRoutes = useResourceServerConnectionRoutes();
   const authorizationEngineValue =
@@ -139,7 +141,7 @@ export default function AdvancedTab({
                     'A unique value that identifies this resource server. When set as an URI, enables RFC 8707 resource indicator support in OAuth2 authorization requests.',
                   )
           }
-          disabled={resourceServer.isReadOnly}
+          disabled={isReadOnly}
         />
         <FormControl fullWidth error={Boolean(pdpConnections.error)} sx={{mt: 3}}>
           <FormLabel id="resource-server-authorization-engine-label">
@@ -160,7 +162,7 @@ export default function AdvancedTab({
               onPDPConnectionChange('');
             }}
             size="small"
-            disabled={Boolean(resourceServer.isReadOnly) || pdpConnections.isLoading}
+            disabled={isReadOnly || pdpConnections.isLoading}
           >
             <MenuItem value={AuthorizationEngines.RBAC}>
               {t('resourceServers:edit.advanced.authorizationEngine.option.rbac', 'Local - role based access control')}

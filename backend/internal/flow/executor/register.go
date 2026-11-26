@@ -249,7 +249,6 @@ type ExecutorDependencies struct {
 	CriteriaRevoker        revocation.CriteriaRevoker
 	ResourceMgtService     resource.ResourceServiceInterface
 	HTTPConnectionProvider httpconnection.HTTPConnectionProvider
-	ExtensionHTTPClient    httpservice.HTTPClientInterface
 	ObservabilitySvc       providers.ObservabilityProvider
 	IdentityGovernance     providers.IdentityGovernanceProvider
 	AttributeVerification  providers.AttributeVerificationProvider
@@ -258,7 +257,13 @@ type ExecutorDependencies struct {
 	SharingService         sharing.SharingServiceInterface
 	PermissionResolver     entityPermissionResolver
 	tokenLeeway            time.Duration
+	gateHostname           string
+	sessionTracking        bool
 	DeviceCodeVerifier     providers.DeviceCodeVerifier
+
+	// OutboundClients builds the clients HTTP request and extension steps reach their configured
+	// endpoints with. Neither executor is registered without it.
+	OutboundClients httpservice.OutboundClientFactoryInterface
 }
 
 type builtInExecutorRegistrar func(ExecutorRegistryInterface, ExecutorDependencies)
@@ -276,7 +281,7 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNamePasskeyAuth: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNamePasskeyAuth, newPasskeyAuthExecutor(
-				deps.FlowFactory, deps.AuthnProvider, newAccessGuard(deps.IdentityGovernance)))
+				deps.FlowFactory, deps.AuthnProvider, newAccessGuard(deps.IdentityGovernance), deps.gateHostname))
 		},
 		ExecutorNameMagicLink: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameMagicLink, newMagicLinkExecutor(
@@ -318,21 +323,27 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		ExecutorNameAuthAssert: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameAuthAssert, newAuthAssertExecutor(deps.FlowFactory, deps.JWTService,
 				deps.OUService, deps.AuthAssertGen, deps.AuthnProvider, deps.EntityProvider,
-				deps.AttributeCacheSvc, deps.RoleService, deps.EntityTypeService, deps.ResourceService,
-				newAccessGuard(deps.IdentityGovernance)))
+				deps.AttributeCacheSvc, deps.RoleService, deps.GroupService, deps.EntityTypeService,
+				deps.ResourceService, newAccessGuard(deps.IdentityGovernance), deps.SessionService,
+				deps.sessionTracking))
 		},
 		ExecutorNameAuthorization: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameAuthorization, newAuthorizationExecutor(
 				deps.FlowFactory, deps.AuthZService, deps.EntityProvider, deps.AuthnProvider,
-				deps.ResourceService))
+				deps.ResourceService, deps.RoleAssignmentService))
 		},
 		ExecutorNameAuthorizationDetail: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameAuthorizationDetail, newAuthorizationDetailExecutor(
 				deps.FlowFactory, deps.AuthzDetailProvider, deps.AuthnProvider))
 		},
 		ExecutorNameHTTPRequest: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			// Without outbound clients a step could not send its request, so the executor is left
+			// unregistered and registration fails rather than the first HTTP step.
+			if deps.OutboundClients == nil {
+				return
+			}
 			reg.RegisterExecutor(ExecutorNameHTTPRequest, newHTTPRequestExecutor(deps.FlowFactory, deps.OUService,
-				deps.AuthnProvider))
+				deps.AuthnProvider, deps.OutboundClients))
 		},
 		ExecutorNameUserTypeResolver: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameUserTypeResolver, newUserTypeResolver(
@@ -343,12 +354,13 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNameEmailExecutor: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameEmailExecutor, newEmailExecutor(
-				deps.FlowFactory, deps.NotifSenderSvc, deps.TemplateRenderer, deps.EntityProvider))
+				deps.FlowFactory, deps.NotifSenderSvc, deps.TemplateRenderer, deps.EntityProvider,
+				deps.AuthnProvider))
 		},
 		ExecutorNameCredentialSetter: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameCredentialSetter, newCredentialSetter(
 				deps.FlowFactory, deps.EntityProvider, deps.UserMgtProvider, deps.AuthnProvider,
-				newAccessGuard(deps.IdentityGovernance)))
+				newAccessGuard(deps.IdentityGovernance), deps.EntityTypeService))
 		},
 		ExecutorNamePermissionValidator: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNamePermissionValidator, newPermissionValidator(deps.FlowFactory))
@@ -374,7 +386,8 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNameSMSExecutor: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameSMSExecutor, newSMSExecutor(
-				deps.FlowFactory, deps.NotifSenderSvc, deps.TemplateRenderer, deps.EntityProvider))
+				deps.FlowFactory, deps.NotifSenderSvc, deps.TemplateRenderer, deps.EntityProvider,
+				deps.AuthnProvider))
 		},
 		ExecutorNameOpenID4VPVerify: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameOpenID4VPVerify, newOpenID4VPVerifier(
@@ -447,9 +460,14 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 				newApplicationActionValidator(deps.FlowFactory))
 		},
 		ExecutorNameExtension: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			if deps.OutboundClients == nil {
+				return
+			}
+			// The request carries the connection's credentials, so a redirect is not followed: it could
+			// resend them to another host. The connection's own timeout bounds each call.
 			reg.RegisterExecutor(ExecutorNameExtension,
-				newExtensionExecutor(deps.FlowFactory, deps.HTTPConnectionProvider, deps.ExtensionHTTPClient,
-					deps.ObservabilitySvc))
+				newExtensionExecutor(deps.FlowFactory, deps.HTTPConnectionProvider,
+					deps.OutboundClients.NewHTTPClientWithoutRedirects(0), deps.ObservabilitySvc))
 		},
 		ExecutorNameSharing: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameSharing, newSharingExecutor(deps.FlowFactory, deps.SharingService))

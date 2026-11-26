@@ -121,6 +121,7 @@ type InputDefinition struct {
 	Required     bool                       `json:"required"`
 	DefaultValue string                     `json:"defaultValue,omitempty"`
 	Constant     bool                       `json:"constant,omitempty"`
+	OneTimeUse   bool                       `json:"oneTimeUse,omitempty"`
 	Validation   []ValidationRuleDefinition `json:"validation,omitempty"`
 }
 

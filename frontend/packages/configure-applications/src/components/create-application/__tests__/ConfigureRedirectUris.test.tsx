@@ -1,9 +1,11 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {render, screen} from '@testing-library/react';
+import {render as rtlRender, screen, type RenderOptions, type RenderResult} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {AllowedOriginTypes, createRow} from '@thunderid/configure-settings';
+import {CapabilitiesProvider} from '@thunderid/contexts';
+import type {JSX, ReactElement, ReactNode} from 'react';
 import {beforeEach, describe, expect, it, vi} from 'vitest';
 import ApplicationCreateContext, {
   type ApplicationCreateContextType,
@@ -11,12 +13,28 @@ import ApplicationCreateContext, {
 import type {ApplicationTemplate} from '../../../models/application-templates';
 import ConfigureRedirectUris from '../ConfigureRedirectUris';
 
-let translationLookup = (key: string): string => key;
+// The admin may do everything, so the component's actions show; a test nests its own provider to restrict them.
+function AllowAll({children}: {children: ReactNode}): JSX.Element {
+  return <CapabilitiesProvider capabilities={{can: () => true, isLoading: false}}>{children}</CapabilitiesProvider>;
+}
 
-vi.mock('react-i18next', () => ({
+const render = (ui: ReactElement, options?: RenderOptions): RenderResult =>
+  rtlRender(ui, {wrapper: AllowAll, ...options});
+
+type TranslationLookup = (key: string, fallback?: unknown, options?: {productName?: string}) => string;
+
+let translationLookup: TranslationLookup = (key) => key;
+
+vi.mock('react-i18next', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-i18next')>()),
   useTranslation: () => ({
-    t: (key: string) => translationLookup(key),
+    t: (key: string, fallback?: unknown, options?: {productName?: string}) => translationLookup(key, fallback, options),
   }),
+}));
+
+vi.mock('@thunderid/contexts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/contexts')>()),
+  useConfig: () => ({config: {brand: {product_name: 'Acme IAM'}}}),
 }));
 
 const renderWithContext = (
@@ -130,6 +148,19 @@ describe('ConfigureRedirectUris', () => {
     vi.clearAllMocks();
     translationLookup = (key: string): string => key;
     user = userEvent.setup();
+  });
+
+  it('names the configured product in the redirect URI help text', () => {
+    translationLookup = (key, fallback, options): string =>
+      typeof fallback === 'string' ? fallback.replace('{{productName}}', options?.productName ?? '') : key;
+
+    renderWithContext({selectedTemplateConfig: expressTemplate});
+
+    expect(
+      screen.getByText(
+        'Where Acme IAM sends users back after they sign in. Sign-in requests must use one of these URIs.',
+      ),
+    ).toBeInTheDocument();
   });
 
   it('does not render a dev server banner or CORS section for a template without either', () => {

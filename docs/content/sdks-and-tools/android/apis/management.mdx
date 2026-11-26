@@ -64,6 +64,26 @@ client.applications.update(current.id, current.toRequest().copy(description = "U
 
 A `ManagedUser` is a user record on the server, with `id`, `ouId`, `type`, `attributes`, and the resolved `display` value. It is a different type from `User`, which describes the signed-in user.
 
+## Flows and Connections
+
+`client.flows` and `client.connections` read the flows and connections an organization unit works with. Pass `ouId` to scope a request to one organization unit, which is what a delegated admin needs.
+
+| Client | Function | Request | Returns |
+| :--- | :--- | :--- | :--- |
+| `flows` | `list(flowType, limit, offset, fetcher, ouId)` | `GET /flows?filter=&flowType=&limit=&offset=` | `FlowListResponse` |
+| | `get(id, fetcher, ouId)` | `GET /flows/{id}?ouId=` | `FlowDefinition` |
+| | `getVariables(id, ouId, fetcher)` | `GET /flows/{id}/variables?ouId=` | `FlowVariables` |
+| | `updateVariables(id, variables, fetcher)` | `PUT /flows/{id}/variables` | `FlowVariables` |
+| | `getOverlayRules(id, ouId, fetcher)` | | The resolved overlay: what the unit may do with each variable |
+| `connections` | `list(type, category, limit, offset, fetcher, ouId)` | `GET /connections?filter=&category=&limit=&offset=` | `ConnectionListResponse` |
+
+`ouId` changes each function as follows:
+
+- `flows.list` and `connections.list` list the flows or connections the unit owns, followed by the ones shared with it, instead of every one the caller can see. The unit is sent as the filter `ouId eq "<id>"`. Each flow in the list carries `isOwnedByOU`, which is `false` for a flow shared with the unit. `connections.list` applies `ouId` only to the listing across every type, so it is not sent when `type` is set.
+- `flows.get` returns the flow as the unit sees it. A flow shared with the unit comes back as its `variables` only. Leave `ouId` out for the whole definition when the caller can read the owning unit's flow. A caller confined to a unit the flow was shared with gets the shared view, without `nodes`, even without `ouId`.
+
+`updateVariables` replaces the values the unit holds, so a variable left out returns to its default. Pass an `UpdateFlowVariablesRequest(ouId, values)`. The server validates every value before it writes any. See [`FlowVariablesForm`](../components/flow-variables-form#flow-variable-helpers) for helpers that read the definitions and validate values.
+
 ## Transport
 
 Set `ThunderIDConfig.http.fetcher` to route management requests through your own transport. A `fetcher` passed to a single call takes precedence over the configured one.

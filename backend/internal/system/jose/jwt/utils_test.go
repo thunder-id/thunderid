@@ -230,3 +230,12 @@ func (suite *JWTUtilsTestSuite) TestParseJWTHeaderInvalid() {
 	assert.Error(suite.T(), err)
 	assert.Nil(suite.T(), header)
 }
+
+func (suite *JWTUtilsTestSuite) TestIsAccessTokenType() {
+	suite.True(IsAccessTokenType("at+jwt"))
+	suite.True(IsAccessTokenType("AT+JWT"))
+	suite.True(IsAccessTokenType("application/at+jwt"))
+	suite.False(IsAccessTokenType("JWT"))
+	suite.False(IsAccessTokenType("rt+jwt"))
+	suite.False(IsAccessTokenType(""))
+}

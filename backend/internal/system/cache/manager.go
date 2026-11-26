@@ -239,8 +239,9 @@ func buildRedisKeyPrefix(basePrefix, deploymentID string) string {
 	return basePrefix + ":" + deploymentID
 }
 
-// newCache creates a new cache instance.
-func newCache[T any](cm CacheManagerInterface, cacheName string) CacheInterface[T] {
+// newCache creates a new cache instance. A positive defaultTTL is how long an entry is kept when
+// cache.properties sets no TTL for the cache.
+func newCache[T any](cm CacheManagerInterface, cacheName string, defaultTTL time.Duration) CacheInterface[T] {
 	// Cache infrastructure logging has no request scope, so context.Background() is used.
 	ctx := context.Background()
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CacheManager"),
@@ -257,6 +258,9 @@ func newCache[T any](cm CacheManagerInterface, cacheName string) CacheInterface[
 	}
 
 	cacheProperty := getCacheProperty(cacheConfig, cacheName)
+	if cacheProperty.TTL <= 0 && defaultTTL > 0 {
+		cacheProperty.TTL = int(defaultTTL / time.Second)
+	}
 
 	if cacheProperty.Disabled {
 		logger.Debug(ctx, "Individual cache is disabled, returning empty")
@@ -369,6 +373,18 @@ func GetInMemoryCache[T any](cm CacheManagerInterface, cacheName string) CacheIn
 
 // GetCache returns a singleton cache instance for the given type and cache name.
 func GetCache[T any](cm CacheManagerInterface, cacheName string) CacheInterface[T] {
+	return getCache[T](cm, cacheName, 0)
+}
+
+// GetCacheWithTTL returns a singleton cache instance for the given type and cache name, whose entries are
+// kept for ttl unless cache.properties sets a TTL for the cache.
+func GetCacheWithTTL[T any](cm CacheManagerInterface, cacheName string, ttl time.Duration) CacheInterface[T] {
+	return getCache[T](cm, cacheName, ttl)
+}
+
+// getCache returns the singleton cache instance for the given type and cache name, creating it with
+// defaultTTL as its TTL when cache.properties sets none.
+func getCache[T any](cm CacheManagerInterface, cacheName string, defaultTTL time.Duration) CacheInterface[T] {
 	// Cache infrastructure logging has no request scope, so context.Background() is used.
 	ctx := context.Background()
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "CacheManager"))
@@ -408,7 +424,7 @@ func GetCache[T any](cm CacheManagerInterface, cacheName string) CacheInterface[
 
 	// Create a new cache
 	logger.Debug(ctx, "Creating new cache", log.String("cacheName", cacheName), log.String("type", typeName))
-	newCacheInst := newCache[T](cm, cacheName)
+	newCacheInst := newCache[T](cm, cacheName, defaultTTL)
 	cm.addCache(cacheKey, newCacheInst)
 
 	return newCacheInst

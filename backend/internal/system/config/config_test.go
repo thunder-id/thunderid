@@ -1854,7 +1854,6 @@ func (suite *ConfigTestSuite) TestOAuthConfig_ToEngineConfig_CopiesYAMLFields() 
 		PAR:                      engineconfig.PARConfig{ExpiresIn: 600, RequirePAR: true},
 		DPoP:                     engineconfig.DPoPConfig{Required: true, AllowedAlgs: []string{"ES256"}},
 		CIBA:                     engineconfig.CIBAConfig{IDTokenHintMaxAgeDays: 30},
-		TokenExchange:            engineconfig.TokenExchangeConfig{TokenFamily: "inherit"},
 		IDJAG:                    idJAG,
 		AllowWildcardRedirectURI: true,
 		AllowedGrantTypes:        []string{"authorization_code"},
@@ -1872,7 +1871,6 @@ func (suite *ConfigTestSuite) TestOAuthConfig_ToEngineConfig_CopiesYAMLFields() 
 	assert.Equal(suite.T(), src.PAR, dst.PAR)
 	assert.Equal(suite.T(), src.DPoP, dst.DPoP)
 	assert.Equal(suite.T(), src.CIBA, dst.CIBA)
-	assert.Equal(suite.T(), src.TokenExchange, dst.TokenExchange)
 	assert.Equal(suite.T(), src.IDJAG, dst.IDJAG)
 	assert.Equal(suite.T(), src.AllowWildcardRedirectURI, dst.AllowWildcardRedirectURI)
 	assert.Equal(suite.T(), src.AllowedGrantTypes, dst.AllowedGrantTypes)
@@ -1926,6 +1924,31 @@ allowed_subject_types:
 	assert.Empty(suite.T(), dst.AllowedClaims)
 	assert.Empty(suite.T(), dst.DefaultScopeClaimsMapping)
 	assert.Empty(suite.T(), dst.AllowedSubjectTypes)
+}
+
+// oauth.token_exchange.token_family was removed: exchanged tokens always inherit the subject token's
+// token family. A deployment that still sets it fails to load rather than silently losing its choice.
+func (suite *ConfigTestSuite) TestLoadConfigRefusesTheRemovedTokenExchangeSection() {
+	const valid = `
+server:
+  hostname: "user-host"
+  port: 8095
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+`
+	tempDir := suite.T().TempDir()
+	_, err := LoadConfig(suite.createTempFile(tempDir, "valid*.yaml", valid), "", tempDir)
+	suite.Require().NoError(err)
+
+	cfg, err := LoadConfig(suite.createTempFile(tempDir, "token-exchange*.yaml",
+		valid+"oauth:\n  token_exchange:\n    token_family: none\n"), "", tempDir)
+
+	suite.Nil(cfg)
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "token_exchange")
 }
 
 // A deployment that sets max_gateways to zero means it administers none, and the merge has to keep
@@ -1996,20 +2019,24 @@ func (suite *ConfigTestSuite) TestMergeConfigs_BackchannelLogoutDefaultsSurviveA
 	assert.Equal(suite.T(), 1024, got.QueueSize)
 }
 
-// reject_private_addresses defaults to true in default.json, so an explicit false must survive the merge.
-func (suite *ConfigTestSuite) TestMergeConfigs_RejectPrivateAddressesCanBeTurnedOff() {
-	base := &Config{OAuth: OAuthConfig{Logout: engineconfig.LogoutConfig{
-		Backchannel: engineconfig.BackchannelLogoutConfig{RejectPrivateAddresses: boolPtr(true)},
-	}}}
-	user := &Config{OAuth: OAuthConfig{Logout: engineconfig.LogoutConfig{
-		Backchannel: engineconfig.BackchannelLogoutConfig{RejectPrivateAddresses: boolPtr(false)},
-	}}}
+// server.allow_private_addresses is off in default.json, and a deployment turns it on.
+func (suite *ConfigTestSuite) TestMergeConfigs_AllowPrivateAddressesCanBeTurnedOn() {
+	base := &Config{}
+	user := &Config{Server: engineconfig.ServerConfig{AllowPrivateAddresses: true}}
 
 	mergeConfigs(base, user)
 
-	assert.False(suite.T(), base.OAuth.Logout.Backchannel.RejectsPrivateAddresses())
-	var unset engineconfig.BackchannelLogoutConfig
-	assert.True(suite.T(), unset.RejectsPrivateAddresses(), "unset fails safe")
+	assert.True(suite.T(), base.Server.AllowPrivateAddresses)
+}
+
+// The back-channel logout reject_private_addresses key is gone: the server setting covers it, and
+// strict loading refuses a deployment.yaml that still names it.
+func (suite *ConfigTestSuite) TestRemovedRejectPrivateAddressesKeyIsRefused() {
+	doc := "oauth:\n  logout:\n    backchannel:\n      reject_private_addresses: false\n"
+	dec := yaml.NewDecoder(strings.NewReader(doc))
+	dec.KnownFields(true)
+	var cfg Config
+	assert.Error(suite.T(), dec.Decode(&cfg))
 }
 
 func (suite *ConfigTestSuite) TestDeploymentOverridesAccountAccessDefaults() {
@@ -2043,6 +2070,52 @@ func TestApplyAndImportTimeoutsAreSeconds(t *testing.T) {
 	if (GatewayConfig{ApplyTimeoutSeconds: math.MaxInt}).ApplyTimeout() != 0 ||
 		(ImportConfig{TimeoutSeconds: 9223372037}).Timeout() != 0 {
 		t.Error("a timeout too large for a duration should be zero rather than wrap around")
+	}
+}
+
+// An unused value's grace is an hour unset, an explicit zero is raised to the one-second minimum and
+// reported as raised, and a negative one turns the removal off.
+func TestUnusedValueGraceDefaultsToAnHour(t *testing.T) {
+	if grace, on := (GatewayConfig{}).UnusedValueGrace(); !on || grace != time.Hour {
+		t.Errorf("unset: got %v, %v", grace, on)
+	}
+	if (GatewayConfig{}).UnusedValueGraceRaised() {
+		t.Error("an unset grace is not raised")
+	}
+	zero, one, negative := 0, 1, -1
+	zeroGrace := GatewayConfig{UnusedValueGraceSeconds: &zero}
+	if grace, on := zeroGrace.UnusedValueGrace(); !on || grace != time.Second {
+		t.Errorf("zero: got %v, %v", grace, on)
+	}
+	if !zeroGrace.UnusedValueGraceRaised() {
+		t.Error("a zero grace should be reported as raised")
+	}
+	oneGrace := GatewayConfig{UnusedValueGraceSeconds: &one}
+	if grace, on := oneGrace.UnusedValueGrace(); !on || grace != time.Second || oneGrace.UnusedValueGraceRaised() {
+		t.Errorf("one: got %v, %v", grace, on)
+	}
+	off := GatewayConfig{UnusedValueGraceSeconds: &negative}
+	if _, on := off.UnusedValueGrace(); on || off.UnusedValueGraceRaised() {
+		t.Error("a negative grace should turn the removal off and is not raised")
+	}
+}
+
+// The least time between two sweeps of a gateway is five minutes unset, and zero or a negative number
+// sweeps after every apply.
+func TestUnusedValueSweepIntervalDefaultsToFiveMinutes(t *testing.T) {
+	if interval := (GatewayConfig{}).UnusedValueSweepInterval(); interval != 5*time.Minute {
+		t.Errorf("unset: got %v", interval)
+	}
+	zero, negative, minute := 0, -1, 60
+	cases := []struct {
+		seconds *int
+		want    time.Duration
+	}{{&zero, 0}, {&negative, 0}, {&minute, time.Minute}}
+	for _, tc := range cases {
+		got := (GatewayConfig{UnusedValueSweepIntervalSeconds: tc.seconds}).UnusedValueSweepInterval()
+		if got != tc.want {
+			t.Errorf("%d: got %v, want %v", *tc.seconds, got, tc.want)
+		}
 	}
 }
 
@@ -2092,4 +2165,47 @@ notification:
 		assert.Nil(suite.T(), cfg, unknown)
 		assert.Error(suite.T(), err, unknown)
 	}
+}
+
+// A deployment switches session tracking off, and an omitted value keeps the shipped default.
+func (suite *ConfigTestSuite) TestSessionTrackingEnabledOverridesTheShippedDefault() {
+	base := &Config{Session: SessionConfig{Tracking: SessionTrackingConfig{Enabled: boolPtr(true)}}}
+	mergeConfigs(base, &Config{Session: SessionConfig{Tracking: SessionTrackingConfig{Enabled: boolPtr(false)}}})
+	assert.False(suite.T(), base.Session.Tracking.IsEnabled(), "false must override the true default")
+
+	kept := &Config{Session: SessionConfig{Tracking: SessionTrackingConfig{Enabled: boolPtr(true)}}}
+	mergeConfigs(kept, &Config{})
+	assert.True(suite.T(), kept.Session.Tracking.IsEnabled(), "an omitted value keeps the default")
+
+	assert.False(suite.T(), SessionTrackingConfig{}.IsEnabled(), "a configuration without the key tracks nothing")
+}
+
+func (suite *ConfigTestSuite) TestTheShippedDefaultsTurnSessionTrackingOn() {
+	data, err := os.ReadFile("../../../cmd/server/config/default.json")
+	suite.Require().NoError(err)
+	var defaults Config
+	suite.Require().NoError(json.Unmarshal(data, &defaults))
+
+	assert.True(suite.T(), defaults.Session.Tracking.IsEnabled())
+}
+
+func (suite *ConfigTestSuite) TestLoadConfigReadsSessionTrackingEnabled() {
+	const content = `
+server:
+  hostname: "user-host"
+  port: 8095
+notification:
+  otp:
+    length: 6
+    use_numeric_only: true
+    validity_period_seconds: 120
+session:
+  tracking:
+    enabled: false
+`
+	tempDir := suite.T().TempDir()
+
+	cfg, err := LoadConfig(suite.createTempFile(tempDir, "session*.yaml", content), "", tempDir)
+	suite.Require().NoError(err)
+	assert.Equal(suite.T(), SessionTrackingConfig{Enabled: boolPtr(false)}, cfg.Session.Tracking)
 }

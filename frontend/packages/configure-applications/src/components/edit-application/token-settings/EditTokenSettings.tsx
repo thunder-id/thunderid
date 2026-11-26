@@ -102,6 +102,10 @@ interface EditTokenSettingsProps {
    * server lists and surfaces read failures with a retry.
    */
   userAttributeSource?: 'allowedUserTypes' | 'allUserTypes';
+  /**
+   * Whether the application can't be edited here
+   */
+  readOnly?: boolean;
 }
 
 const createTokenConfigSchema = (t: (key: string) => string, accessTokenOnly: boolean) => {
@@ -206,6 +210,7 @@ export default function EditTokenSettings({
   showAccessTokenAttributes = true,
   accessTokenNote = undefined,
   userAttributeSource = 'allowedUserTypes',
+  readOnly = false,
 }: EditTokenSettingsProps) {
   const logger = useLogger('EditTokenSettings');
   const {t} = useTranslation();
@@ -1001,7 +1006,7 @@ export default function EditTokenSettings({
             showUserInfoTab={showUserInfoTab}
             showActorClaim={showActorClaim}
             actorSub={actorSub}
-            disabled={application.isReadOnly}
+            disabled={readOnly}
             signingAlg={signingAlg}
             hasCertificate={Boolean(oauth2Config?.certificate?.type)}
             certificateLocation={certificateLocation}
@@ -1028,7 +1033,7 @@ export default function EditTokenSettings({
                 hasAllowedUserTypes={listsAllUserTypes || allowedUserTypes.length > 0}
                 onScopeClaimsChange={handleScopeClaimsChange}
                 entityLabel={entityLabel}
-                disabled={application.isReadOnly}
+                disabled={readOnly}
                 scopesOnly={isAccessTokenOnly}
               />
             }
@@ -1039,7 +1044,7 @@ export default function EditTokenSettings({
             control={control}
             errors={errors}
             tokenType="oauth"
-            disabled={application.isReadOnly}
+            disabled={readOnly}
             accessTokenOnly={isAccessTokenOnly}
           />
         </>
@@ -1058,16 +1063,11 @@ export default function EditTokenSettings({
             highlightedAttributes={visibleHighlightedAttributes}
             onAttributeClick={handleAttributeClick}
             entityLabel={entityLabel}
-            disabled={application.isReadOnly}
+            disabled={readOnly}
           />
 
           {/* Token Validation */}
-          <TokenValidationSection
-            control={control}
-            errors={errors}
-            tokenType="shared"
-            disabled={application.isReadOnly}
-          />
+          <TokenValidationSection control={control} errors={errors} tokenType="shared" disabled={readOnly} />
         </>
       )}
     </Stack>

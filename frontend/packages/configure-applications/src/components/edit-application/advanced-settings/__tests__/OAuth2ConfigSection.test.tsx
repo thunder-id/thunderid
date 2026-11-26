@@ -7,10 +7,17 @@ import {describe, it, expect, vi, beforeEach, afterEach} from 'vitest';
 import type {OAuth2Config} from '../../../../models/oauth';
 import OAuth2ConfigSection from '../OAuth2ConfigSection';
 
+const {mockT} = vi.hoisted(() => ({mockT: vi.fn((key: string) => key)}));
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: mockT,
   }),
+}));
+
+vi.mock('@thunderid/contexts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/contexts')>()),
+  useConfig: () => ({config: {brand: {product_name: 'Acme IAM'}}}),
 }));
 
 const {mockUseThunderID} = vi.hoisted(() => ({
@@ -82,6 +89,22 @@ describe('OAuth2ConfigSection', () => {
       render(<OAuth2ConfigSection oauth2Config={{grantTypes: ['client_credentials'], redirectUris: []}} />);
 
       expect(redirectUrisLabel()).not.toHaveTextContent('*');
+    });
+
+    it('names the configured product in the redirect URIs description', () => {
+      mockT.mockClear();
+
+      render(
+        <OAuth2ConfigSection
+          oauth2Config={{grantTypes: ['authorization_code'], responseTypes: ['code'], redirectUris: []}}
+        />,
+      );
+
+      expect(mockT).toHaveBeenCalledWith(
+        'applications:edit.general.redirectUris.description',
+        'Where {{productName}} sends users back after they sign in. Sign-in requests must use one of these URIs.',
+        {productName: 'Acme IAM'},
+      );
     });
   });
 

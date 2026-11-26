@@ -89,6 +89,17 @@ func ResolveTokenConfig(
 	return tokenConfig
 }
 
+// ResolveUserAttributesCacheTTL keeps the attributes available through redemption and the life of
+// the longest-lived token that can use them. The grant supplies its own redemption window in seconds.
+func ResolveUserAttributesCacheTTL(cfg oauthconfig.Config, app *providers.OAuthClient, redemptionWindow int64) int64 {
+	accessValidity := app.UserAccessTokenConfig().ValidityPeriodOrZero()
+	validity := ResolveTokenConfig(cfg, app, TokenTypeAccess, accessValidity).ValidityPeriod
+	if app.IsAllowedGrantType(providers.GrantTypeRefreshToken) {
+		validity = max(validity, ResolveTokenConfig(cfg, app, TokenTypeRefresh, 0).ValidityPeriod)
+	}
+	return validity + redemptionWindow + constants.AttributeCacheTTLBufferSeconds
+}
+
 // extractStringClaim safely extracts a non-empty string claim from a claims map.
 func extractStringClaim(claims map[string]interface{}, key string) (string, error) {
 	value, ok := claims[key]
@@ -898,7 +909,8 @@ func FilterAuthorizedScopes(scopes []string, evaluations []providers.AccessEvalu
 }
 
 // ApplyMappedAuthorization grants permission scopes from mapped permissions and mapped roles/groups
-// (via the RBAC engine, no local entity id) when the mapping is the sole authority. A no-op otherwise.
+// (via the RBAC engine, no local entity id) when the mapping is the sole authority, as it is for every
+// external token: no targets grant nothing. A no-op otherwise.
 func ApplyMappedAuthorization(
 	ctx context.Context,
 	authzService providers.AuthorizationProvider,
@@ -912,6 +924,13 @@ func ApplyMappedAuthorization(
 	if !authorityIsMapping || len(permissionScopes) == 0 {
 		return permissionScopes, nil
 	}
+
+	roleIDs, groupIDs, mappedPermissions := idp.SplitAuthorizationTargets(authorizationTargets)
+	granted := idp.UnionMappedPermissionTargets(nil, permissionScopes, mappedPermissions, resourceServerID)
+	if len(roleIDs) == 0 && len(groupIDs) == 0 {
+		return granted, nil
+	}
+
 	if authzService == nil {
 		logger.Error(ctx, "Authorization provider unavailable while mapping is the sole authority for scopes")
 		return nil, &model.ErrorResponse{
@@ -919,21 +938,13 @@ func ApplyMappedAuthorization(
 			ErrorDescription: "Failed to generate token",
 		}
 	}
-
-	roleIDs, groupIDs, mappedPermissions := idp.SplitAuthorizationTargets(authorizationTargets)
-	groupIDs, err := expandMappedGroupAncestors(ctx, actorProvider, groupIDs)
+	groupIDs, err := ExpandMappedGroupAncestors(ctx, actorProvider, groupIDs)
 	if err != nil {
 		logger.Error(ctx, "Failed to resolve ancestors of a mapped group", log.Error(err))
 		return nil, &model.ErrorResponse{
 			Error:            constants.ErrorServerError,
 			ErrorDescription: "Failed to generate token",
 		}
-	}
-
-	granted := idp.UnionMappedPermissionTargets(nil, permissionScopes, mappedPermissions, resourceServerID)
-
-	if len(roleIDs) == 0 && len(groupIDs) == 0 {
-		return granted, nil
 	}
 	pending := make([]string, 0, len(permissionScopes))
 	for _, scope := range permissionScopes {
@@ -959,9 +970,9 @@ func ApplyMappedAuthorization(
 	return append(granted, FilterAuthorizedScopes(pending, authzResp.Evaluations)...), nil
 }
 
-// expandMappedGroupAncestors adds each mapped group's ancestor groups. Fails closed, like
+// ExpandMappedGroupAncestors adds each mapped group's ancestor groups. Fails closed, like
 // resolveMappedAuthorization above.
-func expandMappedGroupAncestors(
+func ExpandMappedGroupAncestors(
 	ctx context.Context, actorProvider providers.ActorProvider, groupIDs []string,
 ) ([]string, error) {
 	if actorProvider == nil || len(groupIDs) == 0 {

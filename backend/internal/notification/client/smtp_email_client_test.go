@@ -32,6 +32,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/cmodels"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/system/outboundauth/smtpauth"
@@ -103,7 +104,7 @@ func (suite *SMTPEmailClientTestSuite) newClient(port int, overrides map[string]
 	for name, value := range overrides {
 		props[name] = value
 	}
-	client, err := newSMTPEmailClient(context.Background(), suite.senderFor(props))
+	client, err := newSMTPEmailClient(context.Background(), suite.senderFor(props), privateAllowed)
 	suite.Require().NoError(err)
 	return client.(*smtpEmailClient)
 }
@@ -120,7 +121,7 @@ func (suite *SMTPEmailClientTestSuite) TestNewClient_DefaultsToSTARTTLS() {
 	props := suite.baseProps(587)
 	delete(props, common.SMTPPropKeyTLS)
 
-	client, err := newSMTPEmailClient(context.Background(), suite.senderFor(props))
+	client, err := newSMTPEmailClient(context.Background(), suite.senderFor(props), privateAllowed)
 	suite.Require().NoError(err)
 	suite.Equal("Test SMTP", client.GetName())
 	suite.Equal(common.TLSModeSTARTTLS, client.(*smtpEmailClient).config.tlsMode)
@@ -132,7 +133,7 @@ func (suite *SMTPEmailClientTestSuite) TestNewClient_ParsesAllProperties() {
 	props = withBasicAuth(props, "user", "pass")
 	props[common.SenderPropertySupportedChannels] = string(common.ChannelTypeEmail)
 
-	client, err := newSMTPEmailClient(context.Background(), suite.senderFor(props))
+	client, err := newSMTPEmailClient(context.Background(), suite.senderFor(props), privateAllowed)
 	suite.Require().NoError(err)
 
 	config := client.(*smtpEmailClient).config
@@ -151,14 +152,14 @@ func (suite *SMTPEmailClientTestSuite) TestNewClient_DoesNotWarnOnAuthentication
 	props := withBasicAuth(suite.baseProps(2525), "user", "pass")
 	props[common.SMTPPropKeyTLS] = string(common.TLSModeSTARTTLS)
 
-	client, err := newSMTPEmailClient(context.Background(), suite.senderFor(props))
+	client, err := newSMTPEmailClient(context.Background(), suite.senderFor(props), privateAllowed)
 	suite.Require().NoError(err)
 	suite.Equal(outboundauth.TypeBasic, client.(*smtpEmailClient).config.auth.Type)
 }
 
 // An omitted authentication block leaves the client presenting no credentials at all.
 func (suite *SMTPEmailClientTestSuite) TestNewClient_NoAuthenticationConfigured() {
-	client, err := newSMTPEmailClient(context.Background(), suite.senderFor(suite.baseProps(2525)))
+	client, err := newSMTPEmailClient(context.Background(), suite.senderFor(suite.baseProps(2525)), privateAllowed)
 	suite.Require().NoError(err)
 
 	config := client.(*smtpEmailClient).config
@@ -217,7 +218,7 @@ func (suite *SMTPEmailClientTestSuite) TestNewClient_InvalidConfig() {
 		suite.Run(testCase.name, func() {
 			props := suite.baseProps(587)
 			testCase.mutate(props)
-			_, err := newSMTPEmailClient(context.Background(), suite.senderFor(props))
+			_, err := newSMTPEmailClient(context.Background(), suite.senderFor(props), privateAllowed)
 			suite.Error(err)
 		})
 	}
@@ -300,6 +301,7 @@ func (suite *SMTPEmailClientTestSuite) clientWithAuth(port int, authConfig outbo
 			auth:    authConfig,
 		},
 		auth:   authenticator,
+		dialer: privateAllowed.NewDialer(0),
 		logger: log.GetLogger(),
 	}
 }
@@ -983,5 +985,45 @@ func newSelfSignedTLSConfig(t *testing.T) *tls.Config {
 	return &tls.Config{
 		Certificates: []tls.Certificate{{Certificate: [][]byte{certificateDER}, PrivateKey: privateKey}},
 		MinVersion:   tls.VersionTLS12,
+	}
+}
+
+// guardTestClient builds an SMTP client with clients against host and port.
+func (suite *SMTPEmailClientTestSuite) guardTestClient(clients syshttp.OutboundClientFactoryInterface, host string,
+	port int, tlsMode common.TLSMode) EmailClientInterface {
+	client, err := newSMTPEmailClient(context.Background(), common.NotificationSenderDTO{
+		Name:     "smtp",
+		Type:     common.NotificationSenderTypeEmail,
+		Provider: common.NotificationProviderTypeSMTP,
+		Properties: []cmodels.Property{
+			createProperty(common.SMTPPropKeyHost, host, false),
+			createProperty(common.SMTPPropKeyPort, strconv.Itoa(port), false),
+			createProperty(common.SMTPPropKeyFromAddress, "noreply@example.com", false),
+			createProperty(common.SMTPPropKeyTLS, string(tlsMode), false),
+		},
+	}, clients)
+	suite.Require().NoError(err)
+	return client
+}
+
+func (suite *SMTPEmailClientTestSuite) TestSend_RefusesPrivateAddresses() {
+	email := common.EmailData{To: []string{"user@example.com"}, Subject: "Hello", Body: "Body"}
+	for _, host := range privateTargets {
+		for _, tlsMode := range []common.TLSMode{common.TLSModeNone, common.TLSModeSTARTTLS, common.TLSModeImplicit} {
+			err := suite.guardTestClient(syshttp.Initialize(false), host, 2525, tlsMode).
+				Send(context.Background(), email)
+			suite.ErrorIs(err, syshttp.ErrPrivateAddress, "reached %s with TLS mode %s", host, tlsMode)
+		}
+	}
+}
+
+func (suite *SMTPEmailClientTestSuite) TestSend_ReachesPrivateAddressesWhenAllowed() {
+	email := common.EmailData{To: []string{"user@example.com"}, Subject: "Hello", Body: "Body"}
+	for _, host := range []string{"127.0.0.1", "localhost"} {
+		server := newMockSMTPServer(suite.T(), mockSMTPOptions{})
+		err := suite.guardTestClient(syshttp.Initialize(true), host, server.port(), common.TLSModeNone).
+			Send(context.Background(), email)
+		server.close()
+		suite.NoError(err, host)
 	}
 }

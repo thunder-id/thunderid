@@ -335,8 +335,7 @@ describe('TrustedIssuerDetailPage', () => {
     expect(mockMutate.mock.calls[0]?.[0]).not.toHaveProperty('ouId');
   });
 
-  it('should hide delete and disable save when the admin may only view connections', async () => {
-    const user = userEvent.setup();
+  it('should hide delete and lock the form when the admin may only view connections', () => {
     render(
       <CapabilitiesProvider capabilities={viewOnly}>
         <TrustedIssuerDetailPage />
@@ -346,11 +345,7 @@ describe('TrustedIssuerDetailPage', () => {
     expect(screen.queryByTestId('trusted-issuer-delete-button')).not.toBeInTheDocument();
     expect(screen.queryByTestId('trusted-issuer-tab-advanced')).not.toBeInTheDocument();
 
-    const nameField = screen.getByLabelText(/^Name/);
-    await user.clear(nameField);
-    await user.type(nameField, 'Updated Acme Okta');
-
-    expect(await screen.findByRole('button', {name: 'Save changes'})).toBeDisabled();
+    expect(screen.getByLabelText(/^Name/)).toBeDisabled();
   });
 
   it('should navigate back to connections when Back is clicked', async () => {
@@ -576,7 +571,9 @@ describe('TrustedIssuerDetailPage', () => {
 
     const section = screen.getByTestId('authz-section');
     expect(section).toHaveAttribute('data-ou-id', 'ou-1');
-    expect(section).toHaveTextContent('When a mapping is set, these tokens carry only the permissions it grants.');
+    expect(section).toHaveTextContent(
+      'Tokens from this issuer carry only the permissions the mapping grants, and none without a mapping.',
+    );
   });
 
   it('should mark dirty and send the edited direct mapping when saved', async () => {

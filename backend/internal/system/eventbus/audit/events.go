@@ -34,6 +34,9 @@ const (
 	// EventUserCredentialUpdate names an attempt to set credentials of a user. It never carries a
 	// credential or its type.
 	EventUserCredentialUpdate = "user.credential.update" //nolint:gosec // an event name, not a credential
+	// EventUserCredentialInvalidate names an attempt to invalidate a credential of a user. It carries the
+	// credential's type, never a value.
+	EventUserCredentialInvalidate = "user.credential.invalidate" //nolint:gosec // an event name, not a credential
 	// EventUserSharingPolicyCreate names an attempt to create a sharing policy of a user.
 	EventUserSharingPolicyCreate = "user.sharing_policy.create"
 	// EventUserSharingPolicyUpdate names an attempt to change a sharing policy of a user.
@@ -221,6 +224,30 @@ const (
 	EventProjectUpdate = "project.update"
 	// EventProjectDelete names an attempt to delete a project.
 	EventProjectDelete = "project.delete"
+	// EventUserLock names a lock that failed authentication attempts placed on a user.
+	EventUserLock = "user.lock"
+	// EventUserUnlock names an attempt to release every automatic lock on a user.
+	EventUserUnlock = "user.unlock"
+	// EventUserSuspend names an attempt to suspend a user.
+	EventUserSuspend = "user.suspend"
+	// EventUserUnsuspend names an attempt to release the suspension of a user.
+	EventUserUnsuspend = "user.unsuspend"
+	// EventAgentLock names a lock that failed authentication attempts placed on an agent.
+	EventAgentLock = "agent.lock"
+	// EventAgentUnlock names an attempt to release every automatic lock on an agent.
+	EventAgentUnlock = "agent.unlock"
+	// EventAgentSuspend names an attempt to suspend an agent.
+	EventAgentSuspend = "agent.suspend"
+	// EventAgentUnsuspend names an attempt to release the suspension of an agent.
+	EventAgentUnsuspend = "agent.unsuspend"
+	// EventApplicationLock names a lock that failed authentication attempts placed on an application.
+	EventApplicationLock = "application.lock"
+	// EventApplicationUnlock names an attempt to release every automatic lock on an application.
+	EventApplicationUnlock = "application.unlock"
+	// EventApplicationSuspend names an attempt to suspend an application.
+	EventApplicationSuspend = "application.suspend"
+	// EventApplicationUnsuspend names an attempt to release the suspension of an application.
+	EventApplicationUnsuspend = "application.unsuspend"
 )
 
 const (
@@ -312,8 +339,21 @@ var principalTargetTypes = map[string]string{
 // DetailGrantType is the detail key of the grant type a token was requested with.
 const DetailGrantType = "grant_type"
 
+// DetailCredentialType is the detail key of the type of the credential an event acted on, such as password.
+const DetailCredentialType = "credential_type" //nolint:gosec // a detail key, not a credential
+
 // DetailDryRun records whether an import only predicted its outcome, as "true" or "false".
 const DetailDryRun = "dry_run"
+
+// DetailAuthenticationMethod is the detail key of the authentication method a lock holds.
+const DetailAuthenticationMethod = "authentication_method"
+
+// DetailAppliedBy is the detail key of who placed or lifted a suspension: organization, owner or cascade.
+const DetailAppliedBy = "applied_by"
+
+// DetailSelfService records whether an unlock was a recovery the identity completed itself, as "true" or
+// "false".
+const DetailSelfService = "self_service"
 
 // auditedEvents maps every audited event to the detail keys it may carry, so what is audited, and what
 // each event may record, is reviewed in one place. An event not listed here is never written.
@@ -332,8 +372,9 @@ var auditedEvents = map[string][]string{
 	EventUserUpdate: nil,
 	EventUserDelete: nil,
 
-	EventUserCredentialEnroll: nil,
-	EventUserCredentialUpdate: nil,
+	EventUserCredentialEnroll:     nil,
+	EventUserCredentialUpdate:     nil,
+	EventUserCredentialInvalidate: {DetailCredentialType},
 
 	EventUserSharingPolicyCreate: nil,
 	EventUserSharingPolicyUpdate: nil,
@@ -447,4 +488,19 @@ var auditedEvents = map[string][]string{
 	EventProjectCreate: nil,
 	EventProjectUpdate: nil,
 	EventProjectDelete: nil,
+
+	EventUserLock:      {DetailAuthenticationMethod},
+	EventUserUnlock:    {DetailSelfService},
+	EventUserSuspend:   {DetailAppliedBy},
+	EventUserUnsuspend: {DetailAppliedBy},
+
+	EventAgentLock:      {DetailAuthenticationMethod},
+	EventAgentUnlock:    {DetailSelfService},
+	EventAgentSuspend:   {DetailAppliedBy},
+	EventAgentUnsuspend: {DetailAppliedBy},
+
+	EventApplicationLock:      {DetailAuthenticationMethod},
+	EventApplicationUnlock:    {DetailSelfService},
+	EventApplicationSuspend:   {DetailAppliedBy},
+	EventApplicationUnsuspend: {DetailAppliedBy},
 }

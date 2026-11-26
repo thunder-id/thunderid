@@ -349,7 +349,7 @@ paths:
         the first stage of the configured pipeline, and left out to keep it. `autoSync: null` without
         `firstGateway`, or an update that leaves the entry with neither, removes the entry.
 
-        Refused with `400` (`SCF-1003`) while a declarative `gateway` section is set, as a write to the
+        Refused with `403` (`SCF-1007`) while a declarative `gateway` section is set, as a write to the
         section is. Needs the same permission as `PUT /server-config/gateway`.
       requestBody:
         required: true
@@ -379,7 +379,7 @@ paths:
           description: The project's entry was removed
         "400":
           description: |
-            The body is invalid, or the section is set declaratively (`SCF-1003`).
+            The body is invalid (`SCF-1003`).
           content:
             application/json:
               schema:
@@ -387,7 +387,12 @@ paths:
         "401":
           $ref: '#/components/responses/Unauthorized'
         "403":
-          $ref: '#/components/responses/Forbidden'
+          description: |
+            The caller is not permitted, or the section is set declaratively (`SCF-1007`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         "404":
           description: The project (`GTW-1038`) or the first gateway is unknown.
           content:

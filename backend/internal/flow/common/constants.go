@@ -69,6 +69,13 @@ const (
 	DataIDPName = "idpName"
 	// DataConsentPrompt is the key used for the consent prompt data in the flow response.
 	DataConsentPrompt = "consentPrompt"
+	// DataPromptConsentValidity is set to "true" when the consent prompt lets the user choose how long their
+	// consent lasts.
+	DataPromptConsentValidity = "promptConsentValidity"
+	// DataMaxConsentValidity is the longest validity period, in seconds, the user can choose on the consent
+	// prompt. It is 0 when the application or agent sets no period, a period of zero or less, or the largest
+	// period, so the consent does not expire.
+	DataMaxConsentValidity = "maxConsentValidity"
 	// DataStepTimeout is the key used for the step expiry timestamp in the flow response.
 	DataStepTimeout = "stepTimeout"
 	// DataClientIDHost is the key used for the client ID host shown with the consent prompt.
@@ -381,25 +388,31 @@ const (
 	// cookie. Like RuntimeKeySSOSessionHandle it rides the engine-only EngineData channel, keeping SSO
 	// concepts off the reusable engine contract.
 	RuntimeKeySSOSessionCleared = "ssoSessionCleared"
-	// RuntimeKeyTokenFamilyID carries the token family id (tfid) minted once per login flow execution
-	// by the Session node. It is stamped onto the auth assertion, and from there onto the grant's
-	// access and refresh tokens, so revocation can target a whole family. It is deliberately excluded
-	// from the SSO checkpoint snapshot so each flow execution mints a fresh tfid rather than reusing a
-	// prior one on SSO reuse.
+	// RuntimeKeyTokenFamilyID carries the token family id (tfid) of the joining session participant, which the
+	// auth assertion stamps onto the grant's tokens so revocation can target a whole family. It is excluded
+	// from the SSO checkpoint snapshot, since other applications replay the snapshot.
 	RuntimeKeyTokenFamilyID = "tokenFamilyId"
 	// RuntimeKeyLogoutPromptRequired is set by the OAuth RP-initiated logout layer when a logout was
 	// requested without a valid id_token_hint. A sign-out flow's session sign-out node reads it to
 	// decide whether the End-User must confirm the logout before the session is terminated.
 	RuntimeKeyLogoutPromptRequired = "logoutPromptRequired"
-	// RuntimeKeyMappedRoleIDs holds the space-separated role IDs a federated login's authorization
-	// mapping (rule-based or direct) resolved.
-	RuntimeKeyMappedRoleIDs = "mapped_role_ids"
-	// RuntimeKeyMappedGroupIDs holds the space-separated group IDs a federated login's authorization
-	// mapping (rule-based or direct) resolved.
-	RuntimeKeyMappedGroupIDs = "mapped_group_ids"
 	// RuntimeKeyMappedPermissions holds the JSON-encoded []providers.AuthorizationTarget permission
 	// targets a federated login's authorization mapping (rule-based or direct) resolved.
 	RuntimeKeyMappedPermissions = "mapped_permissions"
+	// RuntimeKeySessionAttributes holds the JSON-encoded attributes a federated login keeps to the
+	// session. They win over the stored values in tokens.
+	RuntimeKeySessionAttributes = "session_attributes"
+	// RuntimeKeySessionGroupIDs holds the space-separated mapped groups, with their ancestors, that a
+	// federated login grants for the session only, because the connection keeps them to the session or
+	// the group store can't hold memberships.
+	RuntimeKeySessionGroupIDs = "session_group_ids"
+	// RuntimeKeySessionDirectGroupIDs holds the groups of RuntimeKeySessionGroupIDs without their
+	// ancestors, which a refresh resolves again.
+	RuntimeKeySessionDirectGroupIDs = "session_direct_group_ids"
+	// RuntimeKeySessionRoleIDs holds the space-separated mapped roles that a federated login grants for
+	// the session only, because the connection keeps them to the session or the role store can't hold
+	// assignments.
+	RuntimeKeySessionRoleIDs = "session_role_ids"
 	// RuntimeKeyExtensionAttemptCount holds the number of FAILED and INCOMPLETE answers an extension
 	// step has had in the current flow execution, scoped to the step by ExtensionAttemptCountKey.
 	RuntimeKeyExtensionAttemptCount = "extensionAttemptCount"
@@ -413,6 +426,15 @@ const (
 	// RuntimeKeyDeliveredRecipients holds, on shared runtime data, the JSON list of distinct recipients
 	// sent to since an earlier node cleared it.
 	RuntimeKeyDeliveredRecipients = "deliveredRecipients"
+	// RuntimeKeyResetCredential holds the credential an administrator-initiated reset invalidates and the
+	// user replaces, such as password. The user is asked for one input named after it.
+	RuntimeKeyResetCredential = "resetCredential" //nolint:gosec // a runtime data key, not a credential
+	// RuntimeKeyResetCredentialMarker holds the credential marker the reset's invalidation wrote. A later
+	// change to the user's credentials moves the marker, which voids the reset.
+	RuntimeKeyResetCredentialMarker = "resetCredentialMarker" //nolint:gosec // a runtime data key, not a credential
+	// RuntimeKeyResetCredentialRequested marks that the reset's set step asked the user for the new credential,
+	// in the request that opened the link. The value is read only from a later request.
+	RuntimeKeyResetCredentialRequested = "resetCredentialRequested" //nolint:gosec // a runtime data key
 )
 
 // ExtensionDataKeyPrefix starts every runtime-data key an extension step stores from its service's

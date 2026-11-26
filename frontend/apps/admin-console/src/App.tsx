@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {PageLoader} from '@thunderid/components';
+import {CapabilityGuard, PageLoader} from '@thunderid/components';
 import {GroupCreateProvider} from '@thunderid/configure-groups';
 import {RoleCreateProvider} from '@thunderid/configure-roles';
 import {RoutesProvider, ToastProvider} from '@thunderid/contexts';
@@ -58,7 +58,14 @@ export default function App(): JSX.Element {
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<UserAddPage />} />
+                <Route
+                  index
+                  element={
+                    <CapabilityGuard resource="user" action="create">
+                      <UserAddPage />
+                    </CapabilityGuard>
+                  }
+                />
               </Route>
               <Route
                 path={RouteConfig.agents.create()}
@@ -68,7 +75,14 @@ export default function App(): JSX.Element {
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<AgentOnboardPage />} />
+                <Route
+                  index
+                  element={
+                    <CapabilityGuard resource="agent" action="create">
+                      <AgentOnboardPage />
+                    </CapabilityGuard>
+                  }
+                />
               </Route>
               <Route
                 path={RouteConfig.groups.create()}
@@ -80,7 +94,14 @@ export default function App(): JSX.Element {
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<CreateGroupPage />} />
+                <Route
+                  index
+                  element={
+                    <CapabilityGuard resource="group" action="create">
+                      <CreateGroupPage />
+                    </CapabilityGuard>
+                  }
+                />
               </Route>
               <Route
                 path={RouteConfig.roles.create()}
@@ -92,7 +113,14 @@ export default function App(): JSX.Element {
                   </ProtectedRoute>
                 }
               >
-                <Route index element={<CreateRolePage />} />
+                <Route
+                  index
+                  element={
+                    <CapabilityGuard resource="role" action="create">
+                      <CreateRolePage />
+                    </CapabilityGuard>
+                  }
+                />
               </Route>
             </Routes>
           </Suspense>

@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
+	"strconv"
 
 	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -62,6 +64,9 @@ func (h *FlowConfigHandler) Validate(ctx context.Context, incoming, _, _ any) er
 		return fmt.Errorf("flow: unexpected config type %T", incoming)
 	}
 
+	if cfg.DefaultReturnURL != "" && !isValidReturnURL(cfg.DefaultReturnURL) {
+		return fmt.Errorf("flow: defaultReturnUrl must be an absolute http or https URL with a host and no credentials")
+	}
 	if cfg.SelfFlow.DefaultHandle != "" {
 		return fmt.Errorf("flow: selfFlow.defaultHandle is not supported")
 	}
@@ -84,6 +89,7 @@ func (h *FlowConfigHandler) Validate(ctx context.Context, incoming, _, _ any) er
 		{cfg.AdminInitiatedFlow, providers.FlowTypeAdminInitiated, "adminInitiatedFlow"},
 		{cfg.AgentOnboardingFlow, providers.FlowTypeAdministration, "agentOnboardingFlow"},
 		{cfg.AdminAttributeVerificationFlow, providers.FlowTypeAdminInitiated, "adminAttributeVerificationFlow"},
+		{cfg.AdminUserCredentialResetFlow, providers.FlowTypeAdminInitiated, "adminUserCredentialResetFlow"},
 		{cfg.UserUnlockFlow, providers.FlowTypeAdministration, "userUnlockFlow"},
 		{cfg.UserSuspendFlow, providers.FlowTypeAdministration, "userSuspendFlow"},
 		{cfg.UserUnsuspendFlow, providers.FlowTypeAdministration, "userUnsuspendFlow"},
@@ -109,13 +115,33 @@ func (h *FlowConfigHandler) Validate(ctx context.Context, incoming, _, _ any) er
 	return nil
 }
 
+// isValidReturnURL reports whether a URL is one a sign-in page may send the user to: an absolute http or https
+// URL that names a host, carries no credentials, and has a port a browser accepts.
+func isValidReturnURL(value string) bool {
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Hostname() == "" || parsed.User != nil {
+		return false
+	}
+	if port := parsed.Port(); port != "" {
+		if n, err := strconv.Atoi(port); err != nil || n > 65535 {
+			return false
+		}
+	}
+	return parsed.Scheme == "http" || parsed.Scheme == "https"
+}
+
 // Merge overlays the writable (db) layer onto the read-only (declarative) layer. A non-empty
-// writable handle or a positive writable expiry wins for its sub-field; otherwise the read-only
-// value stands.
+// writable return URL or handle, or a positive writable expiry, wins for its field; otherwise the
+// read-only value stands.
 func (h *FlowConfigHandler) Merge(readOnly, writable any) any {
 	ro, _ := readOnly.(flowconfig.FlowSectionConfig)
 	wr, _ := writable.(flowconfig.FlowSectionConfig)
+	defaultReturnURL := ro.DefaultReturnURL
+	if wr.DefaultReturnURL != "" {
+		defaultReturnURL = wr.DefaultReturnURL
+	}
 	return flowconfig.FlowSectionConfig{
+		DefaultReturnURL:    defaultReturnURL,
 		AuthFlow:            mergeFlowTypeConfig(ro.AuthFlow, wr.AuthFlow),
 		RegistrationFlow:    mergeFlowTypeConfig(ro.RegistrationFlow, wr.RegistrationFlow),
 		UserOnboardingFlow:  mergeFlowTypeConfig(ro.UserOnboardingFlow, wr.UserOnboardingFlow),
@@ -126,6 +152,8 @@ func (h *FlowConfigHandler) Merge(readOnly, writable any) any {
 		AgentOnboardingFlow: mergeFlowTypeConfig(ro.AgentOnboardingFlow, wr.AgentOnboardingFlow),
 		AdminAttributeVerificationFlow: mergeFlowTypeConfig(
 			ro.AdminAttributeVerificationFlow, wr.AdminAttributeVerificationFlow),
+		AdminUserCredentialResetFlow: mergeFlowTypeConfig(
+			ro.AdminUserCredentialResetFlow, wr.AdminUserCredentialResetFlow),
 
 		UserUnlockFlow:         mergeFlowTypeConfig(ro.UserUnlockFlow, wr.UserUnlockFlow),
 		UserSuspendFlow:        mergeFlowTypeConfig(ro.UserSuspendFlow, wr.UserSuspendFlow),
@@ -137,6 +165,16 @@ func (h *FlowConfigHandler) Merge(readOnly, writable any) any {
 		ApplicationUnsuspendFlow: mergeFlowTypeConfig(ro.ApplicationUnsuspendFlow,
 			wr.ApplicationUnsuspendFlow),
 	}
+}
+
+// Default returns nil: an unset flow type falls back to its built-in default when it is read.
+func (h *FlowConfigHandler) Default() any {
+	return nil
+}
+
+// IsReadOnly returns false: a declarative document is the baseline a write overrides.
+func (h *FlowConfigHandler) IsReadOnly(_ any) bool {
+	return false
 }
 
 // mergeFlowTypeConfig overlays the writable (db) layer onto the read-only (declarative) layer

@@ -297,6 +297,13 @@ describe('exampleDetail', () => {
     const field = {...newField('string'), name: '__proto__'};
     expect(Object.keys(exampleDetail([field], 'payment'))).toEqual(['type', '__proto__']);
   });
+
+  it('uses each name as the schema writes it', () => {
+    const field = {...newField('string'), name: 'merchant\uFEFF'};
+    expect(Object.keys(exampleDetail([field], 'payment'))).toEqual(['type', 'merchant\uFEFF']);
+    expect(Object.keys(fieldsToSchema([field]).properties as object)).toEqual(['merchant\uFEFF']);
+    expect(flattenFields([field])[0].path).toBe('merchant\uFEFF');
+  });
 });
 
 describe('droppedSettings', () => {
@@ -308,7 +315,31 @@ describe('droppedSettings', () => {
       minItems: '1',
       policy: {modification: 'removeItems', modifiableBy: ['user']},
     };
-    expect(droppedSettings(list, changeKind(list, 'string'))).toEqual(['allowedValues', 'minItems', 'change']);
+    // A text field can keep allowed values, so only the list's own settings go.
+    expect(droppedSettings(list, changeKind(list, 'string'))).toEqual(['minItems', 'change']);
+    expect(droppedSettings(list, changeKind(list, 'boolean'))).toEqual(['allowedValues', 'minItems', 'change']);
+
+    const code: SchemaField = {
+      ...newField('string'),
+      minLength: '3',
+      maxLength: '3',
+      pattern: '^[A-Z]+$',
+      fixedValue: 'USD',
+    };
+    expect(droppedSettings(code, changeKind(code, 'number'))).toEqual(['minLength', 'maxLength', 'pattern']);
+    expect(droppedSettings(code, changeKind(code, 'date'))).toEqual([
+      'minLength',
+      'maxLength',
+      'pattern',
+      'fixedValue',
+    ]);
+
+    const quantity: SchemaField = {...newField('number'), step: '1', exclusiveMinimum: true, policy: {minimum: '0'}};
+    expect(changeKind(quantity, 'string').exclusiveMinimum).toBeUndefined();
+    expect(droppedSettings(quantity, changeKind(quantity, 'string'))).toEqual(['step', 'limits']);
+
+    const tags: SchemaField = {...newField('array'), maxItems: '5', uniqueItems: true};
+    expect(droppedSettings(tags, changeKind(tags, 'string'))).toEqual(['maxItems', 'uniqueItems']);
 
     const object: SchemaField = {...newField('object'), name: 'money', children: [newField('number')]};
     expect(droppedSettings(object, changeKind(object, 'number'))).toEqual(['fields']);
@@ -316,6 +347,10 @@ describe('droppedSettings', () => {
     const amount: SchemaField = {...newField('number'), policy: {minimum: '1', maximum: ''}};
     expect(droppedSettings(amount, changeKind(amount, 'date'))).toEqual([]);
     expect(droppedSettings(amount, changeKind(amount, 'boolean'))).toEqual(['limits']);
+
+    // U+FEFF is not white space the server trims, so a fixed value of it is written and its loss is named.
+    const marker: SchemaField = {...newField('string'), name: 'marker', fixedValue: '\uFEFF'};
+    expect(droppedSettings(marker, changeKind(marker, 'object'))).toEqual(['fixedValue']);
   });
 });
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {SettingsCard} from '@thunderid/components';
-import {useCapabilitiesContext, useConfig} from '@thunderid/contexts';
+import {useConfig} from '@thunderid/contexts';
 import {Button, FormControl, FormLabel, Stack, TextField, Typography} from '@wso2/oxygen-ui';
 import {useCallback, useState} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -53,6 +53,10 @@ interface EditCredentialsSettingsProps {
    * (feeds the page's Save bar).
    */
   onValidationChange?: (hasErrors: boolean) => void;
+  /**
+   * Whether the application can't be edited here
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -74,9 +78,9 @@ export default function EditCredentialsSettings({
   onFieldChange,
   showAttestation = false,
   onValidationChange = undefined,
+  readOnly = false,
 }: EditCredentialsSettingsProps) {
   const {config} = useConfig();
-  const {can} = useCapabilitiesContext();
   const {t} = useTranslation();
 
   const [regenerateDialogOpen, setRegenerateDialogOpen] = useState(false);
@@ -249,7 +253,7 @@ export default function EditCredentialsSettings({
                   variant="contained"
                   color="error"
                   onClick={handleSecretRegenerateClick}
-                  disabled={Boolean(application.isReadOnly) || isConsoleClient || !can('app', 'update')}
+                  disabled={readOnly || isConsoleClient}
                   sx={{flex: '0 0 20%'}}
                 >
                   {t('applications:edit.general.sections.dangerZone.regenerateSecret.button', 'Regenerate')}
@@ -264,14 +268,14 @@ export default function EditCredentialsSettings({
           onCertificateChange={handleCertificateChange}
           required={oauth2Config?.tokenEndpointAuthMethod === 'private_key_jwt'}
           encryptionDependsOnCert={encryptionDependsOnCert}
-          disabled={application.isReadOnly}
+          disabled={readOnly}
         />
 
         {showAttestation && (
           <AttestationSection
             attestation={currentAttestation}
             onAttestationChange={handleAttestationChange}
-            disabled={application.isReadOnly}
+            disabled={readOnly}
             onValidationChange={onValidationChange}
           />
         )}

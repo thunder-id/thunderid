@@ -57,6 +57,7 @@ sequenceDiagram
 6. Leave **Enable token exchange** at its default (on), or turn it off if you do not also want this issuer's tokens accepted for RFC 8693 token exchange. When token exchange is on, a **Trusted token audience** field appears; leave it empty for ID-JAG-only use cases.
 7. Turn on **Enable Identity Assertion JWT Authorization Grant (ID-JAG)**. This toggle is off by default. If the deployment's discovery document does not list the ID-JAG grant profile, the Console shows a hint and does not let you turn it on.
 8. Click **Create connection**.
+9. To grant permission scopes, open the new issuer, go to the **Attribute configuration** tab, and add an **Authorization mapping** that maps values in the assertion, such as group membership, to local roles, groups, or permissions. Without a mapping, issued tokens carry only OIDC scopes such as `openid`. See [Authorization Mapping](../../../../identity-providers/add-oidc-provider#authorization-mapping).
 
 :::note
 **Enable token exchange** and **Enable Identity Assertion JWT Authorization Grant (ID-JAG)** are independent trust settings. Enabling one does not enable the other.
@@ -122,7 +123,7 @@ The external identity provider's ID-JAG must satisfy these requirements for <Pro
 | `client_id` | Equal to the authenticated client's id |
 | `sub` | Present |
 | `exp`, `iat`, `jti` | Present. <ProductName /> accepts each `jti` once. See [Limitations](#limitations). |
-| `scope` | Optional. Bounds what can be granted. When the request also carries a `scope` parameter, the issued scope is the intersection of the two. When the request omits `scope`, this claim is the candidate in full, narrowed further only by the connection's Authorization Mapping when one is configured — see below. |
+| `scope` | Optional. Bounds what can be granted. When the request also carries a `scope` parameter, the issued scope is the intersection of the two. When the request omits `scope`, this claim is the candidate in full. Permission scopes among the candidates are granted only through the connection's Authorization Mapping — see below. |
 | `resource` | Optional. When present, the request's `resource` parameter must be a subset of this claim. When absent, any valid resource is accepted. |
 
 The client then presents the assertion to <ProductName />'s token endpoint using the `jwt-bearer` grant:
@@ -150,7 +151,7 @@ curl -X POST https://thunderid.example.com/oauth2/token \
 | `access_token` | The issued access token |
 | `token_type` | `Bearer`, or `DPoP` when the request includes a DPoP proof |
 | `expires_in` | Token lifetime in seconds. See [Token lifetime](#token-lifetime) |
-| `scope` | The granted scope (intersection of the request scope and the assertion's scope) |
+| `scope` | The granted scope: the OIDC scopes among the candidates, plus the permission scopes the connection's Authorization Mapping grants among them. The candidates are the assertion's `scope` claim, narrowed by the request's `scope` when present. |
 
 No `issued_token_type` or `refresh_token` is returned.
 
@@ -173,7 +174,7 @@ Requests missing the `assertion` parameter fail with `invalid_request` - `Missin
 
 The issued access token's `sub` claim is the assertion's subject verbatim, an external identifier rather than a local user id. An `idp` claim carries the assertion's issuer. <ProductName /> does not link this subject to a local account or run just-in-time provisioning for it, and no refresh token is issued.
 
-It does apply the connection's [Authorization Mapping](../../../../identity-providers/add-oidc-provider#authorization-mapping) when one is configured, resolving roles, groups, and permissions from the assertion's own claims into the granted scope, the same mapping and the same group-ancestor expansion a sign-in or a token exchange through that connection would use. A `scope` parameter in the request narrows the candidate scope by intersection; omitting it does not empty the grant, it leaves the assertion's `scope` claim as the candidate in full, which mapping then narrows to whatever it actually authorizes. If mapping is configured but fails to resolve, the request fails outright rather than falling back to no mapping, since there is no already-issued session to fall back to the way a sign-in has.
+Permission scopes come only from the connection's [Authorization Mapping](../../../../identity-providers/add-oidc-provider#authorization-mapping), which resolves roles, groups, and permissions from the assertion's own claims, the same mapping and the same group-ancestor expansion a sign-in or a token exchange through that connection would use. A `scope` parameter in the request narrows the candidate scope by intersection; omitting it does not empty the grant, it leaves the assertion's `scope` claim as the candidate in full, which mapping then narrows to whatever it actually authorizes. The claim names candidates, not grants: a connection without Authorization Mapping grants none, and the token carries only OIDC scopes such as `openid`. If mapping is configured but fails to resolve, the request fails outright rather than falling back to no mapping, since there is no already-issued session to fall back to the way a sign-in has.
 
 The token is DPoP-bound when the request includes a DPoP proof. A `resource` parameter must be a subset of the assertion's `resource` claim, selecting one resource server when the assertion authorizes several.
 
@@ -199,7 +200,7 @@ The token carries none of the user attributes selected for the client's user acc
 
 - Each assertion is redeemable once. <ProductName /> records its `jti` until the assertion expires and rejects a second redemption with `invalid_grant`. Request a fresh ID-JAG from the identity provider for each redemption, including a retry.
 - No local account mapping occurs, regardless of Authorization Mapping. The token's `sub` is the external identifier as-is; nothing links it to a local user record.
-- The Console's Authorization Mapping tab is not yet available on a connection created through the **Trusted token issuer** wizard, even though it is the same OIDC connection type and the backend applies its mapping the same way. Configure it through the Connections API directly until the Console adds it.
+- <ProductName />'s own APIs, the management APIs, the MCP server, and the UserInfo endpoint, do not accept the token, even when Authorization Mapping is configured, because its `sub` is not a local user. To call those APIs with an identity from an external provider, use the [trusted issuer](../../../../trusted-issuer).
 
 :::note
 This page covers accepting assertions for token issuance. The [Secure <ProductName /> Using a Third-Party Identity Provider](../../../../trusted-issuer) guide is a different feature: it validates external tokens directly against <ProductName />'s own APIs without issuing a new token.

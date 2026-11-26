@@ -257,13 +257,7 @@ describe('EditAgentAttributes', () => {
 
   describe('read-only agents', () => {
     it('shows the read-only attribute summary instead of the edit form', () => {
-      render(
-        <EditAgentAttributes
-          agent={{...baseAgent, isReadOnly: true}}
-          editedAgent={{}}
-          onFieldChange={mockOnFieldChange}
-        />,
-      );
+      render(<EditAgentAttributes agent={baseAgent} readOnly editedAgent={{}} onFieldChange={mockOnFieldChange} />);
 
       expect(screen.getByText('email')).toBeInTheDocument();
       expect(screen.getByText('a@b.com')).toBeInTheDocument();
@@ -271,13 +265,7 @@ describe('EditAgentAttributes', () => {
     });
 
     it('still shows the lifespan, without letting it be changed', () => {
-      render(
-        <EditAgentAttributes
-          agent={{...baseAgent, isReadOnly: true}}
-          editedAgent={{}}
-          onFieldChange={mockOnFieldChange}
-        />,
-      );
+      render(<EditAgentAttributes agent={baseAgent} readOnly editedAgent={{}} onFieldChange={mockOnFieldChange} />);
 
       expect(screen.getByText('Lifespan')).toBeInTheDocument();
       expect(screen.getByRole('button', {name: /choose date/i})).toBeDisabled();

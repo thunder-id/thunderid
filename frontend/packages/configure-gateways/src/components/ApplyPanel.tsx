@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {QueryErrorNotice} from '@thunderid/components';
-import {useHiddenResources} from '@thunderid/contexts';
+import {useCapabilitiesContext, useHiddenResources} from '@thunderid/contexts';
 import {
   Alert,
   AlertTitle,
@@ -33,7 +33,7 @@ import MissingValuesFields from './MissingValuesFields';
 import RefusedFixes from './RefusedFixes';
 import {useApplyCheck, useApplyVersion} from '../api/useGatewayVersions';
 import {useRefused} from '../api/useMaster';
-import {useSetStoredValue, useStoredValues} from '../api/useStoredValues';
+import {useSetStoredValue, useStoredValuesNamed} from '../api/useStoredValues';
 import {useVersion} from '../api/useVersions';
 import useProjectScope from '../contexts/ProjectScope';
 import ResourceNamesContext from '../contexts/ResourceNames';
@@ -103,6 +103,7 @@ export default function ApplyPanel({
   const {t} = useTranslation('deploy');
   const tForErrors = useGatewayErrorTranslator();
   const {canSetValues} = useGatewayValueAccess();
+  const {can} = useCapabilitiesContext();
   const [target, setTarget] = useState<string>(gatewayId ?? gateways[0]?.id ?? '');
   const gateway = gateways.find((entry: Gateway) => entry.id === target);
   const drawer = variant === 'drawer';
@@ -126,7 +127,6 @@ export default function ApplyPanel({
 
   const refusedEntries = useRefused(target);
   const references = useVersion(version.version, true, target).data?.references;
-  const storedVariables = useStoredValues(target, 'variable').data;
   // What was typed over a value a refused resource uses, by its field key.
   const [fixValues, setFixValues] = useState<Record<string, string>>({});
   // Only the panel opened to retry what was refused starts with just those ticked; another gateway
@@ -297,6 +297,16 @@ export default function ApplyPanel({
         return {change, failure: entry?.failure, predicted: predicted.get(change.key), fields: [...byKey.values()]};
       });
   }, [active, ticked, references, fields, refusedEntries, predicted]);
+  // What the gateway holds for the variables the fixes show, looked up by name rather than read in full.
+  const fixNames = useMemo(
+    () =>
+      fixes
+        .flatMap((fix: RefusedFix) => fix.fields)
+        .filter((field: MissingField) => field.kind === 'variable')
+        .map((field: MissingField) => field.name),
+    [fixes],
+  );
+  const storedVariables = useStoredValuesNamed(target, 'variable', fixNames).data;
   const heldValue = (field: MissingField): string => {
     if (field.kind === 'secret') return '';
     const held = storedVariables?.find((stored: StoredValue) => stored.name === field.name)?.value ?? '';
@@ -316,7 +326,13 @@ export default function ApplyPanel({
     ).values(),
   ];
   const unfilled = fields.filter((field: MissingField) => (values[fieldKey(field)] ?? '').trim() === '');
-  const canDeploy = Boolean(gateway) && check.isSuccess && selected.size > 0 && unfilled.length === 0 && !isWriting;
+  const canDeploy =
+    can('gateway', 'update') &&
+    Boolean(gateway) &&
+    check.isSuccess &&
+    selected.size > 0 &&
+    unfilled.length === 0 &&
+    !isWriting;
   const removals = active.filter((change: Change) => change.change === 'deleted' && selected.has(change.key)).length;
 
   // A confirmation covers the removals the user was warned about, so changing what is ticked drops it.

@@ -1,0 +1,297 @@
+---
+displayed_sidebar: null
+title: FlowVariablesForm
+docType: reference
+description: Flutter widget that lets a delegated admin override the variables a flow shares with their organization unit, with a presentational base widget for custom UI.
+---
+
+# `FlowVariablesForm`
+
+The `FlowVariablesForm` widget lets a delegated admin override the variables a flow declares for their organization unit. It loads the variables the flow shares with the unit, the values the unit has set, and what the unit may change, shows them as a form, and saves the values that differ from their defaults.
+
+For a shared flow, a variable is offered to a unit only when a sharing policy names it. A variable the unit may not set is shown as set by its owner. This form saves the overrides of a unit the flow was shared with, not the owner's defaults. Change the defaults in the flow's `VARIABLES` node.
+
+`FlowVariablesForm` requires a `ThunderIDProvider` ancestor. The signed-in user's access token needs the permissions the server requires to read and update the flow's variables.
+
+:::note
+The widget strings are available in English only. The Flutter SDK ships a single built-in string bundle, so the other locales that the iOS and Android SDKs support are not available here.
+:::
+
+## Usage
+
+```dart
+import 'package:thunderid_flutter/thunderid_flutter.dart';
+
+class FlowSettings extends StatelessWidget {
+  const FlowSettings({super.key, required this.flowId, required this.ouId});
+
+  final String flowId;
+  final String ouId;
+
+  @override
+  Widget build(BuildContext context) {
+    return FlowVariablesForm(
+      flowId: flowId,
+      ouId: ouId,
+      onSaved: (values) => debugPrint('Saved'),
+    );
+  }
+}
+```
+
+To let the admin pick the flow first, pair it with [`SharedFlowList`](../shared-flow-list).
+
+## Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `flowId` | `String` | ✅ | Identifier of the flow whose variables are configured. |
+| `ouId` | `String` | ✅ | The organization unit the overrides belong to. |
+| `onSaved` | `ValueChanged<FlowVariableValues>?` | ❌ | Called with the unit's values after they are saved. |
+| `onCancel` | `VoidCallback?` | ❌ | Called when the admin taps Cancel. The button appears only when this is set. |
+| `onCreateConnection` | `VoidCallback?` | ❌ | Called when the admin asks to create a connection from the hint under a connection variable. Without it, the hint does not offer one. |
+| `readOnly` | `bool` | ❌ | Shows the variables without letting them be changed. Defaults to `false`. |
+| `ouName` | `String?` | ❌ | The name of the organization unit, used in the notice and the connection hint. |
+| `ownerName` | `String?` | ❌ | The name of whoever owns the flow, shown on a variable the unit may not set. |
+| `showScopeNotice` | `bool` | ❌ | Shows a notice that the settings apply to the organization unit only. Defaults to `false`. |
+| `title` | `String?` | ❌ | Heading of the form. |
+| `description` | `String?` | ❌ | Text under the heading. |
+| `preferences` | `ThunderIDPreferences?` | ❌ | Internationalization preferences. |
+| `builder` | `AdminWidgetBuilder<FlowVariablesFormState>?` | ❌ | Builds custom UI in place of the default form. See [Custom Rendering](#custom-rendering). |
+
+`FlowVariableValues` is a `Map<String, Object>` keyed by the variable's identifier. Each value is a `String`, a `num`, or a `bool`. Only the values that differ from their defaults are saved. A variable left at its default keeps following the default, even when the owner changes it later.
+
+## Custom Rendering
+
+Pass a `builder` to build the form with any UI while keeping the SDK's validation and rules. `FlowVariablesForm` still loads and saves the data, and passes the current state to the builder as a `FlowVariablesFormState`.
+
+```dart
+FlowVariablesForm(
+  flowId: flowId,
+  ouId: ouId,
+  builder: (context, state) {
+    return Column(
+      children: [
+        for (final definition in state.variables)
+          if (state.getRule(definition).editable)
+            TextField(
+              decoration: InputDecoration(
+                labelText: definition.label ?? definition.identifier,
+                errorText: state.errors[definition.identifier],
+              ),
+              onChanged: (text) => state.onChanged(definition.identifier, text),
+            )
+          else
+            Text('${definition.label ?? definition.identifier}: set by owner'),
+        FilledButton(
+          onPressed: state.isValid && !state.isSubmitting ? state.submit : null,
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  },
+)
+```
+
+### `FlowVariablesFormState` Properties
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `variables` | `List<FlowVariableDefinition>` | The variables to render. |
+| `values` | `FlowVariableValues` | The current value of each variable, keyed by identifier. |
+| `errors` | `Map<String, String>` | The translated message to show under each invalid variable, keyed by identifier. A variable appears once it was changed or a submit was attempted. |
+| `getRule` | `ResolvedFlowVariableRule Function(FlowVariableDefinition)` | What the unit may do with a variable: whether it can set its own value, and the default it starts from. |
+| `getOptions` | `List<FlowVariableOption> Function(FlowVariableDefinition)` | The choices of a select variable, narrowed to what the unit may pick. |
+| `onChanged` | `void Function(String identifier, Object value)` | Sets the value of one variable. |
+| `resetToDefaults` | `VoidCallback` | Returns every variable to its default. |
+| `isValid` | `bool` | Whether every variable the unit may set holds a valid value. |
+| `isSubmitting` | `bool` | Whether a submission is in progress. |
+| `error` | `String?` | The form-level error, or `null`. |
+| `submit` | `VoidCallback` | Submits the current values. Does nothing while they are not valid. |
+| `onCancel` | `VoidCallback?` | The `onCancel` parameter. |
+
+## `BaseFlowVariables`
+
+`BaseFlowVariables` is the presentational form. It holds no data of its own: pass the variables and handle the submission. Use it to preview a flow's variables or to build a form from data you load yourself.
+
+```dart
+BaseFlowVariables(variables: variables)
+```
+
+Without `overlay`, every variable is editable. Without `onSubmit`, the form has no save button.
+
+### `BaseFlowVariables` Parameters
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `variables` | `List<FlowVariableDefinition>` | ✅ | The variables to render, as the flow declares them. |
+| `connections` | `List<ConnectionInstance>` | ❌ | The connections a `CONNECTION_SELECT` variable can take. Defaults to none. |
+| `initialValues` | `FlowVariableValues?` | ❌ | The values the form starts with, over each variable's default. A variable left out starts at its default. |
+| `overlay` | `ResolvedOverlay?` | ❌ | What the unit may do with each variable, as `getFlowOverlayRules` returns it. |
+| `onSubmit` | `void Function(FlowVariableValues values, FlowVariableValues overrides)?` | ❌ | Called when the form is submitted and valid. `values` holds every value. `overrides` holds the values of the variables the unit may set that differ from their default. |
+| `onChange` | `ValueChanged<FlowVariableValues>?` | ❌ | Called with every value after one changes. |
+| `onCancel` | `VoidCallback?` | ❌ | Called when the admin taps Cancel. |
+| `onCreateConnection` | `VoidCallback?` | ❌ | Called when the admin asks to create a connection from the hint under a connection variable. |
+| `isSubmitting` | `bool` | ❌ | Disables the form and shows a loading state on the save button. Defaults to `false`. |
+| `error` | `String?` | ❌ | An already-translated error message. Never pass the server's text here. |
+| `readOnly` | `bool` | ❌ | Shows the variables without letting them be changed. Defaults to `false`. |
+| `ouName` | `String?` | ❌ | The name of the organization unit, used in the notice and the connection hint. |
+| `ownerName` | `String?` | ❌ | The name of whoever owns the flow, shown on a variable the unit may not set. |
+| `showScopeNotice` | `bool` | ❌ | Shows a notice that the settings apply to the organization unit only. Defaults to `false`. |
+| `title` | `String?` | ❌ | Heading of the form. |
+| `description` | `String?` | ❌ | Text under the heading. |
+| `preferences` | `ThunderIDPreferences?` | ❌ | Internationalization preferences. |
+| `builder` | `AdminWidgetBuilder<FlowVariablesFormState>?` | ❌ | Builds custom UI in place of the default form. |
+
+## `FlowVariableField`
+
+`FlowVariableField` renders one variable in a card with its label, description, status, and the input its type calls for. `BaseFlowVariables` uses it for each variable, and you can use it to lay out the variables yourself.
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :---: | :--- |
+| `definition` | `FlowVariableDefinition` | ✅ | The variable to render. |
+| `value` | `Object?` | ✅ | The current value. |
+| `onChanged` | `ValueChanged<Object>` | ✅ | Called when the value changes. |
+| `defaultValue` | `Object?` | ❌ | The value the variable falls back to. The field is marked customized while `value` differs. |
+| `editable` | `bool` | ❌ | Whether the unit may set its own value. A variable it may not set is shown as set by its owner. Defaults to `true`. |
+| `disabled` | `bool` | ❌ | Disables the input. Defaults to `false`. |
+| `error` | `String?` | ❌ | The message to show under the input. |
+| `hint` | `Widget?` | ❌ | Extra content under the input. |
+| `options` | `List<FlowVariableOption>` | ❌ | The choices of a `SELECT` or `CONNECTION_SELECT`. |
+| `ownerName` | `String?` | ❌ | Who set the variable, shown while it is not editable. |
+| `preferences` | `ThunderIDPreferences?` | ❌ | Internationalization preferences. |
+
+Each type renders its own input:
+
+| Variable type | Input |
+| :--- | :--- |
+| `TEXT_INPUT`, `EMAIL_INPUT`, `PHONE_INPUT`, `NUMBER_INPUT`, `DATE_INPUT` | Text field with the keyboard the type calls for |
+| `BOOLEAN_INPUT` | Switch |
+| `SELECT`, `CONNECTION_SELECT` | Dropdown. The first entry shows the default, for example "Use the default: Dark", and returns the variable to it. |
+
+## Load the Data Yourself
+
+`FlowVariablesController` loads the data behind the form, for a screen built entirely by your app. It is the counterpart of the React SDK's `useFlowVariables` hook. It loads on creation and notifies its listeners on every change. Dispose it when done.
+
+```dart
+class CustomSettings extends StatefulWidget {
+  const CustomSettings({super.key, required this.flowId, required this.ouId});
+
+  final String flowId;
+  final String ouId;
+
+  @override
+  State<CustomSettings> createState() => _CustomSettingsState();
+}
+
+class _CustomSettingsState extends State<CustomSettings> {
+  FlowVariablesController? _controller;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _controller ??= FlowVariablesController(
+      ThunderIDProvider.of(context).managementResources,
+      flowId: widget.flowId,
+      ouId: widget.ouId,
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = _controller!;
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, _) {
+        if (!controller.isLoaded) return const CircularProgressIndicator();
+        return BaseFlowVariables(
+          variables: controller.definitions,
+          connections: controller.connections,
+          initialValues: controller.overrides,
+          overlay: controller.overlay,
+          isSubmitting: controller.isSaving,
+          onSubmit: (_, overrides) => controller.save(overrides),
+        );
+      },
+    );
+  }
+}
+```
+
+| Property or method | Description |
+| :--- | :--- |
+| `flow` | The flow as the organization unit sees it. |
+| `definitions` | The variables the flow declares for the unit. |
+| `overrides` | The values the unit has set. A variable it has not set is absent, and its default applies. |
+| `overlay` | What the unit may do with each variable. |
+| `connections` | The connections a `CONNECTION_SELECT` variable can take. Empty until loaded, and when no variable needs them. |
+| `isLoaded`, `isLoading`, `error` | Whether everything has arrived, whether a load is in progress, and why it could not be loaded. |
+| `isSaving`, `saveError` | Whether a save is in progress, and why the last one failed. |
+| `save(values)` | Replaces the unit's values. A variable left out returns to its default. Resolves with the saved values, or `null` when the save failed. |
+
+## Flow Variable Helpers
+
+The form is built on these top-level functions. Use them with any UI.
+
+| Function | Description |
+| :--- | :--- |
+| `getFlowVariableDefinitions(flow)` | Reads the variables a flow declares. A flow shared with the unit lists them in `variables`. A flow the unit owns declares them on its `VARIABLES` node. Returns an empty list when the flow declares none. |
+| `resolveFlowVariableRule(definition, [overlay])` | Works out what the unit may do with a variable. Returns a `ResolvedFlowVariableRule` with `editable`, `defaultValue`, `allowedValues`, and `excludedValues`. Without an `overlay`, every variable is editable. |
+| `getFlowVariableOptions(definition, {connections, allowedValues, excludedValues})` | Lists what a select variable can take. A `SELECT` takes the values it declares. A `CONNECTION_SELECT` takes the connections that match its `category` and `connectionTypes`. Any other type returns an empty list. |
+| `validateFlowVariableValue(definition, value)` | Checks a value against the variable's type, options, and rules. Returns a `FlowVariableValidationError`, or `null` when the value is valid. A `BOOLEAN_INPUT` is valid when it is a boolean or not set. Every other type requires a value. |
+
+```dart
+final management = ThunderIDProvider.of(context).management;
+
+final flow = await management.getFlow(flowId, ouId: ouId);
+final overlay = await management.getFlowOverlayRules(flowId, ouId);
+
+for (final definition in getFlowVariableDefinitions(flow)) {
+  final rule = resolveFlowVariableRule(definition, overlay);
+  final problem = validateFlowVariableValue(definition, rule.defaultValue);
+}
+```
+
+The owning unit does not use these helpers: the server rejects an override saved for it with HTTP 400, so it changes defaults in the flow's `VARIABLES` node.
+
+A `SELECT` value is validated by its text, as the server does, so `"true"` is valid for an option `true`.
+
+The `FlowVariableValidationErrorCode` values are:
+
+| Code | Meaning |
+| :--- | :--- |
+| `required` | The value is empty. |
+| `invalid` | The value is not valid for the type, such as text that is not an email address or a number that is not numeric. |
+| `min` | A number is below `min`. |
+| `max` | A number is above `max`. |
+| `notOption` | A `SELECT` value is not one of its `options`. |
+| `minLength` | Text is shorter than a `minLength` rule allows. |
+| `maxLength` | Text is longer than a `maxLength` rule allows. |
+| `pattern` | Text does not match a `regex` rule. |
+
+For the three text rules, the error also carries the rule's `message` when it has one. The text rules are checked for `TEXT_INPUT` only, so a value can pass here and still be rejected by the server, which validates again on save. A `regex` rule that cannot be compiled is skipped, and the server judges it.
+
+### `FlowVariableDefinition`
+
+| Property | Type | Description |
+| :--- | :--- | :--- |
+| `identifier` | `String` | Name of the variable, which a `{{var(name)}}` placeholder uses. |
+| `type` | `String` | The input the variable is edited with. Use the `FlowVariableTypes` constants: `textInput`, `emailInput`, `phoneInput`, `numberInput`, `dateInput`, `booleanInput`, `select`, or `connectionSelect`. |
+| `label` | `String?` | Display name. |
+| `description` | `String?` | Help text. |
+| `defaultValue` | `Object?` | The value the variable has until another is set. |
+| `options` | `List<Object>` | For a `SELECT`: the values it can take. |
+| `category` | `String?` | For a `CONNECTION_SELECT`: the kind of connection it takes. The server accepts only `IDENTITY_PROVIDER`. |
+| `connectionTypes` | `List<String>` | For a `CONNECTION_SELECT`: limits it to these vendors. The server accepts `google`, `github`, `oidc`, and `oauth`. |
+| `min`, `max` | `num?` | For a `NUMBER_INPUT`: the lowest and highest value. |
+| `validation` | `List<FlowVariableValidationRule>` | Rules a text value has to meet. |
+
+## Internationalization
+
+The labels, errors, and notices come from the `admin.flowVariables` keys in the SDK's built-in strings, which are English only. Override them through `preferences`.

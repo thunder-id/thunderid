@@ -224,10 +224,6 @@
         "onSuccess": "",
         "onFailure": "",
         "onIncomplete": ""
-      },
-      "properties": {
-        "relyingPartyId": "localhost",
-        "relyingPartyName": "{{productName}}"
       }
     }
   },
@@ -278,8 +274,10 @@
         "onIncomplete": ""
       },
       "properties": {
-        "relyingPartyId": "localhost",
-        "relyingPartyName": "{{productName}}"
+        "authenticatorSelection": {
+          "residentKey": "required",
+          "requireResidentKey": true
+        }
       }
     }
   },
@@ -882,6 +880,59 @@
         "onSuccess": "",
         "onFailure": "",
         "onIncomplete": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Credential Setter",
+      "label": "Validate Credential Reset",
+      "description": "In an administrator-initiated flow, check that the user's credential can be reset before the link is sent",
+      "image": "assets/images/icons/password.svg",
+      "showOnResourcePanel": false
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "CredentialSetter",
+          "mode": "validate",
+          "inputs": [
+            {
+              "identifier": "credential",
+              "type": "TEXT_INPUT",
+              "required": true
+            }
+          ]
+        },
+        "onSuccess": "",
+        "onFailure": ""
+      }
+    }
+  },
+  {
+    "resourceType": "STEP",
+    "category": "EXECUTOR",
+    "type": "TASK_EXECUTION",
+    "display": {
+      "header": "Credential Setter",
+      "label": "Remove Credential",
+      "description": "In an administrator-initiated flow, remove the credential being reset once its link is sent",
+      "image": "assets/images/icons/password.svg",
+      "showOnResourcePanel": false
+    },
+    "data": {
+      "action": {
+        "type": "EXECUTOR",
+        "executor": {
+          "name": "CredentialSetter",
+          "mode": "invalidate"
+        },
+        "onSuccess": "",
+        "onFailure": ""
       }
     }
   },

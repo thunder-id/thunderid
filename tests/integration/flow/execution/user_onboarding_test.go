@@ -23,6 +23,9 @@ const (
 
 	onboardingDynamicTypeName   = "onboarding-dynamic-person"
 	onboardingDynamicFlowHandle = "user_onboarding_dynamic_inputs_test"
+	onboardingInviteFlowHandle  = "user_onboarding_invite_test"
+
+	onboardingInviteNoProviderFlowHandle = "user_onboarding_invite_no_provider_test"
 
 	errCodeOUNotFound            = "FET-1030"
 	errCodeUserTypeNotAllowed    = "FET-1054"
@@ -651,12 +654,10 @@ func (ts *UserOnboardingTestSuite) TestOnboarding_DefaultAndConstantAreAppliedWi
 	ts.Equal("Engineering", ts.userAttribute(user, "faculty"), "The constant must be applied")
 }
 
-// A value the flow already holds wins over a default, but never over a constant.
+// A department sent when starting onboarding wins over a default. A faculty sent with it never beats the constant.
 func (ts *UserOnboardingTestSuite) TestOnboarding_SuppliedValueBeatsDefaultButNotConstant() {
-	step := ts.initiateOnboarding(map[string]string{"department": "Mathematics", "faculty": "Arts"})
-	step, err := common.CompleteFlow(step.ExecutionID,
-		map[string]string{"ouId": ts.rootOUID}, "action_ou", step.ChallengeToken)
-	ts.Require().NoError(err, "Failed to submit the OU selection")
+	step := ts.initiateOnboarding(map[string]string{
+		"ouId": ts.rootOUID, "department": "Mathematics", "faculty": "Arts"})
 	ts.Require().True(common.HasInput(step.Data.Inputs, "username"),
 		"The flow should move on to collecting user details")
 
@@ -729,6 +730,134 @@ func (ts *UserOnboardingTestSuite) TestOnboarding_SubmittedConstantNeverReachesA
 
 	user := ts.findOnboardedUser(username)
 	ts.Equal(ts.rootTypeName, user.Type, "The user type must come from the resolver, not the submission")
+}
+
+func (ts *UserOnboardingTestSuite) TestOnboarding_InviteGoesToTheEnteredEmail() {
+	smtp := testutils.NewMockSMTPServer(0)
+	ts.Require().NoError(smtp.Start(), "Failed to start mock SMTP server")
+	defer func() {
+		_ = smtp.Stop()
+	}()
+	senderID, err := testutils.CreateSMTPEmailProvider("Onboarding Invite Test Provider",
+		"localhost", smtp.GetPort(), "noreply@thunderid.test")
+	ts.Require().NoError(err, "Failed to create the SMTP email provider")
+	defer func() {
+		if err := testutils.DeleteNotificationSender(senderID); err != nil {
+			ts.T().Logf("Failed to delete the email provider: %v", err)
+		}
+	}()
+
+	flowID, err := testutils.CreateFlow(onboardingInviteFlow(onboardingInviteFlowHandle, senderID))
+	ts.Require().NoError(err, "Failed to create the onboarding invite flow")
+	defer func() {
+		if err := testutils.DeleteFlow(flowID); err != nil {
+			ts.T().Logf("Failed to delete the onboarding invite flow: %v", err)
+		}
+	}()
+	ts.setOnboardingDefaultHandle(onboardingInviteFlowHandle)
+
+	step := ts.initiateOnboarding(nil)
+	ts.Require().True(common.HasInput(step.Data.Inputs, "email"), "The invitee's email should be requested")
+	step, err = common.CompleteFlow(step.ExecutionID, map[string]string{"email": "invitee@onboarding.test"},
+		"action_email", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the invitee's email")
+	ts.NotEmpty(step.Data.AdditionalData["inviteLink"], "The onboarding admin gets the invite link")
+
+	email := common.AwaitEmail(ts.Require(), smtp)
+	ts.Equal([]string{"invitee@onboarding.test"}, email.To, "The invite goes to the entered email")
+}
+
+func (ts *UserOnboardingTestSuite) TestOnboarding_UndeliveredInviteKeepsTheLink() {
+	flowID, err := testutils.CreateFlow(onboardingInviteFlow(onboardingInviteNoProviderFlowHandle, ""))
+	ts.Require().NoError(err, "Failed to create the onboarding invite flow without a provider")
+	defer func() {
+		if err := testutils.DeleteFlow(flowID); err != nil {
+			ts.T().Logf("Failed to delete the onboarding invite flow without a provider: %v", err)
+		}
+	}()
+	ts.setOnboardingDefaultHandle(onboardingInviteNoProviderFlowHandle)
+
+	step := ts.initiateOnboarding(nil)
+	step, err = common.CompleteFlow(step.ExecutionID, map[string]string{"email": "invitee@onboarding.test"},
+		"action_email", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the invitee's email")
+	ts.NotEmpty(step.Data.AdditionalData["inviteLink"], "The onboarding admin gets the invite link to share")
+}
+
+// onboardingInviteFlow asks for the invitee's email and emails them an invite. An empty senderID leaves the email
+// step without a provider.
+func onboardingInviteFlow(handle, senderID string) testutils.Flow {
+	emailProperties := map[string]interface{}{"emailTemplate": "user-invite"}
+	if senderID != "" {
+		emailProperties["senderId"] = senderID
+	}
+
+	return testutils.Flow{
+		Name:     "User Onboarding Invite Test Flow",
+		FlowType: "USER_ONBOARDING",
+		Handle:   handle,
+		Nodes: []map[string]interface{}{
+			{"id": "start", "type": "START", "onSuccess": "prompt_email"},
+			{
+				"id":   "prompt_email",
+				"type": "PROMPT",
+				"prompts": []map[string]interface{}{
+					{
+						"inputs": []map[string]interface{}{
+							{"ref": "input_email", "identifier": "email", "type": "EMAIL_INPUT", "required": true},
+						},
+						"action": map[string]interface{}{"ref": "action_email", "nextNode": "invite_generate"},
+					},
+				},
+			},
+			{
+				"id":        "invite_generate",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "InviteExecutor", "mode": "generate"},
+				"onSuccess": "send_invite_email",
+			},
+			{
+				"id":         "send_invite_email",
+				"type":       "TASK_EXECUTION",
+				"properties": emailProperties,
+				"executor": map[string]interface{}{
+					"name": "EmailExecutor",
+					"mode": "send",
+					"inputs": []map[string]interface{}{
+						{"ref": "input_email", "identifier": "email", "type": "EMAIL_INPUT", "required": true},
+					},
+				},
+				"onSuccess": "invite_sent",
+				"onFailure": "invite_sent",
+			},
+			{"id": "invite_sent", "type": "PROMPT", "next": "invite_verify"},
+			{
+				"id":   "invite_verify",
+				"type": "TASK_EXECUTION",
+				"executor": map[string]interface{}{
+					"name": "InviteExecutor",
+					"mode": "verify",
+					"inputs": []map[string]interface{}{
+						{"ref": "input_invite_token", "identifier": "inviteToken", "type": "HIDDEN", "required": true},
+					},
+				},
+				"onSuccess": "user_type_resolver",
+			},
+			{
+				"id":        "user_type_resolver",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "UserTypeResolver"},
+				"onSuccess": "provisioning",
+			},
+			{
+				"id":        "provisioning",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "ProvisioningExecutor"},
+				"onSuccess": "end",
+			},
+			{"id": "end", "type": "END"},
+		},
+	}
 }
 
 // The attributes the provisioning node asks for come from the user type schema, so they must reach

@@ -50,11 +50,15 @@ func (ts *ProjectAPITestSuite) TestCreateApplicationInProject() {
 	ts.Equal(shop.ID, fetched.ProjectID)
 }
 
-// An application is still created without a project while the project scope does not require one.
-func (ts *ProjectAPITestSuite) TestCreateApplicationWithoutProject() {
-	app := ts.createApp(ts.appBody("unscoped", `"ouId":%q`, defaultOUID))
-	ts.Empty(app.ProjectID)
-	ts.Equal(defaultOUID, app.OUID)
+// The Control Plane serves projects, so an application must name one, even with an organization unit, whether
+// it is created through the API or an import. The create_application tool is covered with the other MCP tools.
+func (ts *ProjectAPITestSuite) TestCreateApplicationRequiresProject() {
+	status, body := ts.do(http.MethodPost, "/applications", ts.appBody("unscoped", `"ouId":%q`, defaultOUID))
+	ts.Equal(http.StatusBadRequest, status, body)
+	ts.Equal("APP-1067", codeOf(ts.T(), body))
+
+	ts.Equal("APP-1067", ts.importFailure(fmt.Sprintf("resource_type: application\nname: %s\ntype: m2m\nouId: %s\n",
+		ts.handle("app-import-unscoped"), defaultOUID), false))
 }
 
 // An update keeps an application in its project and organization unit unless it names others, and
@@ -130,6 +134,28 @@ func (ts *ProjectAPITestSuite) TestDeleteProjectWithApplicationIsRefused() {
 	ts.Equal(http.StatusNoContent, status, body)
 }
 
+func (ts *ProjectAPITestSuite) TestProjectDeletionCheck() {
+	created := ts.create(fmt.Sprintf(`{"handle":%q,"displayName":"Checked"}`, ts.handle("deletion-check")))
+	checkPath := "/projects/" + created.ID + "/deletion-check"
+
+	status, body := ts.do(http.MethodGet, checkPath, "")
+	ts.Equal(http.StatusNoContent, status, body)
+
+	app := ts.createApp(ts.appBody("deletion-check", `"projectId":%q`, created.ID))
+	status, body = ts.do(http.MethodGet, checkPath, "")
+	ts.Equal(http.StatusConflict, status, body)
+	ts.Equal("PRJ-1013", codeOf(ts.T(), body))
+	ts.Equal(http.StatusOK, ts.getJSON("/projects/"+created.ID, &project{}), "the check deletes nothing")
+
+	ts.Require().NoError(testutils.DeleteApplication(app.ID))
+	status, body = ts.do(http.MethodGet, checkPath, "")
+	ts.Equal(http.StatusNoContent, status, body)
+	ts.Equal(http.StatusOK, ts.getJSON("/projects/"+created.ID, &project{}), "the check deletes nothing")
+
+	status, body = ts.do(http.MethodGet, "/projects/019a0000-0000-7000-8000-00000000dead/deletion-check", "")
+	ts.Equal(http.StatusNotFound, status, body)
+}
+
 func (ts *ProjectAPITestSuite) TestApplicationWithUnknownProject() {
 	const unknownProjectID = "019a0000-0000-7000-8000-00000000dead"
 
@@ -166,8 +192,11 @@ func (ts *ProjectAPITestSuite) TestApplicationMCPToolsInProject() {
 	inDefault := ts.createMCPApp(map[string]any{"name": ts.handle("app-mcp-default"), "projectId": shop.ID})
 	ts.Equal(defaultOUID, inDefault["ouId"])
 
-	unscoped := ts.createMCPApp(map[string]any{"name": ts.handle("app-mcp-unscoped"), "ouId": defaultOUID})
-	ts.Empty(unscoped["projectId"])
+	unscoped, raw := ts.callMCPTool("create_application", map[string]any{
+		"name": ts.handle("app-mcp-unscoped"), "ouId": defaultOUID,
+		"type": "fullstack", "isRegistrationFlowEnabled": false, "isRecoveryFlowEnabled": false,
+	})
+	ts.Truef(unscoped.Result.IsError, "an application without a project was created: %s", raw)
 
 	args := map[string]any{
 		"name": ts.handle("app-mcp-child"), "projectId": shop.ID, "ouId": childOUID,

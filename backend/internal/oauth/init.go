@@ -7,7 +7,6 @@ package oauth
 import (
 	"net/http"
 	"slices"
-	"time"
 
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
@@ -41,6 +40,7 @@ import (
 
 // Initialize initializes all OAuth-related services and registers their routes. bus is required: every
 // token request, every revocation request and every refused client authentication is audited on it.
+// outbound builds the clients back-channel logout delivers through.
 func Initialize(
 	mux *http.ServeMux,
 	actorProvider providers.ActorProvider,
@@ -69,14 +69,19 @@ func Initialize(
 	authzDetailTypes providers.AuthorizationDetailTypeProvider,
 	cfg oauthconfig.Config,
 	bus eventbus.EventBusInterface,
+	outbound syshttp.OutboundClientFactoryInterface,
+	strictOutbound syshttp.OutboundClientFactoryInterface,
 ) (tokenservice.TokenValidatorInterface, backchannel.DispatcherInterface, error) {
 	if bus == nil {
 		return nil, nil, errNilEventBus
 	}
 	jwks.Initialize(mux, runtimeCrypto)
-	httpClient := syshttp.NewHTTPClientWithCheckRedirect(func(req *http.Request, _ []*http.Request) error {
-		return syshttp.IsSSRFSafeURL(req.URL.String())
-	})
+	// A relying party's JWKS URI can come from dynamic client registration, so its keys are retrieved
+	// through strictOutbound, whose clients always refuse private and loopback addresses.
+	httpClient := strictOutbound.NewHTTPClientWithCheckRedirect(jwksFetchTimeout,
+		func(req *http.Request, _ []*http.Request) error {
+			return syshttp.IsSSRFSafeURL(req.URL.String())
+		})
 	resolver := jwksresolver.Initialize(httpClient)
 	scopeValidator := scope.Initialize()
 	discoveryService := discovery.Initialize(mux, runtimeCrypto, jweService, authzDetailTypes, cfg)
@@ -118,15 +123,11 @@ func Initialize(
 
 	// A device secret lasts as long as an SSO session can. The embedded engine has no session service,
 	// so it issues none.
-	var deviceSecretValidity time.Duration
-	if ssoSession != nil {
-		deviceSecretValidity = ssoSession.AbsoluteTimeout()
-	}
 	grantHandlerProvider := granthandlers.Initialize(
 		jwtService, oauth2AuthzService, tokenBuilder, tokenValidator,
 		attributeCacheSvc, ouService, authzService, actorProvider, resourceService,
 		cibaService, deviceAuthService, revocationSvc, revocationSvc, enforcementService, governance, authzDetails,
-		deviceSecretValidity, ssoSession, cfg)
+		ssoSession, cfg)
 
 	token.Initialize(mux, jwtService, actorProvider, authnProvider, grantHandlerProvider,
 		scopeValidator, observabilitySvc, discoveryService, dpopVerifier, jtiStore, ouService, governance, cfg, bus)
@@ -142,6 +143,6 @@ func Initialize(
 	}
 	// Sessions also end without the logout endpoint, such as on user deletion, so delivery follows
 	// only its own flag.
-	dispatcher := backchannel.Initialize(tokenBuilder, actorProvider, observabilitySvc, cfg)
+	dispatcher := backchannel.Initialize(tokenBuilder, actorProvider, observabilitySvc, cfg, outbound)
 	return tokenValidator, dispatcher, nil
 }

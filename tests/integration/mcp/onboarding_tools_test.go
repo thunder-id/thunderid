@@ -22,7 +22,7 @@ func flowActions(out map[string]any) []string {
 }
 
 // The user onboarding flow runs through onboard_users step by step: it asks whether to create the user
-// or invite them, then how to deliver the invite, and a link shared by hand comes back as a step that
+// or invite them, then for the invitee's email, then how to deliver the invite, and a link shared by hand comes back as a step that
 // only shows it, since the invited user finishes the flow.
 func (ts *MCPTestSuite) TestOnboarding_UserOnboardingInvite() {
 	token := ts.mcpScopedAdminToken()
@@ -44,7 +44,12 @@ func (ts *MCPTestSuite) TestOnboarding_UserOnboardingInvite() {
 	ts.Require().NotEmpty(executionID)
 
 	out = ts.onboard(token, "onboard_users", map[string]any{"executionId": executionID,
-		"challengeToken": out["challengeToken"], "action": "action_invite_user",
+		"challengeToken": out["challengeToken"], "action": "action_invite_user"})
+	ts.Require().Equalf("needs_input", out["status"], "the flow must ask for the invitee's email: %v", out)
+	ts.Contains(fmt.Sprint(out["inputs"]), "email")
+
+	out = ts.onboard(token, "onboard_users", map[string]any{"executionId": executionID,
+		"challengeToken": out["challengeToken"], "action": "action_submit_email",
 		"inputs": map[string]any{"email": fmt.Sprintf("%s@example.com", handle)}})
 	ts.Require().Equalf("needs_input", out["status"], "the flow must ask how to deliver the invite: %v", out)
 	ts.Subset(flowActions(out), []string{"action_send_email_invite", "action_share_manually"})

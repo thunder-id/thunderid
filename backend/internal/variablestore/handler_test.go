@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -222,13 +223,6 @@ func TestPaginationLinksKeepTheFilter(t *testing.T) {
 	}
 }
 
-func TestPageBoundsClampsPastTheEnd(t *testing.T) {
-	start, end := pageBounds(3, listQuery{limit: 10, offset: 50})
-	if start != 3 || end != 3 {
-		t.Fatalf("expected an empty page at the end, got [%d:%d]", start, end)
-	}
-}
-
 func (s *HandlerTestSuite) TestReplacingAVariableReturnsOK() {
 	s.service.On("UpdateVariable", mock.Anything, "API_URL",
 		VariableUpdateRequest{Value: "https://new.test"}).
@@ -412,4 +406,79 @@ func (s *HandlerTestSuite) TestPuttingANewSecretAnswersCreated() {
 	response := s.send(http.MethodPut, pathSecrets+"/NEW", `{"value":"v"}`)
 
 	s.Equal(http.StatusCreated, response.Code)
+}
+
+// A delete of many names answers 200 with those removed, for variables and secrets alike, and an empty
+// list rather than null when none was held.
+func (s *HandlerTestSuite) TestBulkDeleteAnswersWithTheDeletedNames() {
+	s.service.On("DeleteVariables", mock.Anything, []string{"A", "B"}, time.Duration(0)).
+		Return([]string{"A"}, nil).Once()
+	s.service.On("DeleteSecrets", mock.Anything, []string{"S"}, time.Duration(0)).Return(nil, nil).Once()
+
+	response := s.send(http.MethodDelete, pathVariables+"?names=A,%20B", "")
+	s.Equal(http.StatusOK, response.Code)
+	s.JSONEq(`{"deleted":["A"]}`, response.Body.String())
+
+	response = s.send(http.MethodDelete, pathSecrets+"?names=S", "")
+	s.Equal(http.StatusOK, response.Code)
+	s.JSONEq(`{"deleted":[]}`, response.Body.String())
+}
+
+// A delete of many names needs names, once, of 1 to 100 valid names, and nothing else.
+func (s *HandlerTestSuite) TestBulkDeleteRefusesABadQuery() {
+	tooMany := strings.TrimSuffix(strings.Repeat("N,", maxNamesPerQuery+1), ",")
+	cases := []struct {
+		query string
+		code  string
+	}{
+		{"", ErrorNamesRequired.Code},
+		{"?names=", ErrorNamesRequired.Code},
+		{"?names=A&names=B", ErrorNamesRequired.Code},
+		{"?names=" + tooMany, ErrorTooManyNames.Code},
+		{"?names=A,1-bad", ErrorInvalidName.Code},
+		{"?names=A,,B", ErrorInvalidName.Code},
+		{"?names=A&limit=1", ErrorUnknownDeleteParameter.Code},
+		// A pair that cannot be decoded is not dropped, leaving the delete to go ahead on the rest.
+		{"?names=A&names=%ZZ", ErrorInvalidDeleteQuery.Code},
+		{"?names=A&x=%ZZ", ErrorInvalidDeleteQuery.Code},
+		// An age must be a whole number of seconds of at least 1, given once: 0 or less would leave no
+		// guard at all.
+		{"?names=A&unchangedFor=", ErrorInvalidUnchangedFor.Code},
+		{"?names=A&unchangedFor=0", ErrorInvalidUnchangedFor.Code},
+		{"?names=A&unchangedFor=-5", ErrorInvalidUnchangedFor.Code},
+		{"?names=A&unchangedFor=1.5", ErrorInvalidUnchangedFor.Code},
+		{"?names=A&unchangedFor=1h", ErrorInvalidUnchangedFor.Code},
+		{"?names=A&unchangedFor=3153600001", ErrorInvalidUnchangedFor.Code},
+		{"?names=A&unchangedFor=99999999999999999999", ErrorInvalidUnchangedFor.Code},
+		{"?names=A&unchangedFor=60&unchangedFor=60", ErrorInvalidUnchangedFor.Code},
+		{"?names=A&updatedBefore=2026-01-02T03:04:05Z", ErrorUnknownDeleteParameter.Code},
+	}
+	for _, path := range []string{pathVariables, pathSecrets} {
+		for _, tc := range cases {
+			response := s.send(http.MethodDelete, path+tc.query, "")
+			s.Equal(http.StatusBadRequest, response.Code, path+tc.query)
+			s.Contains(response.Body.String(), tc.code, path+tc.query)
+		}
+	}
+}
+
+// unchangedFor reaches the service as the age it names, for variables and secrets alike.
+func (s *HandlerTestSuite) TestBulkDeletePassesUnchangedFor() {
+	s.service.On("DeleteVariables", mock.Anything, []string{"A"}, time.Hour).Return([]string{"A"}, nil).Once()
+	s.service.On("DeleteSecrets", mock.Anything, []string{"S"}, time.Second).Return([]string{}, nil).Once()
+
+	response := s.send(http.MethodDelete, pathVariables+"?names=A&unchangedFor=3600", "")
+	s.Equal(http.StatusOK, response.Code)
+	response = s.send(http.MethodDelete, pathSecrets+"?names=S&unchangedFor=1", "")
+	s.Equal(http.StatusOK, response.Code)
+	s.JSONEq(`{"deleted":[]}`, response.Body.String())
+}
+
+func (s *HandlerTestSuite) TestBulkDeleteServiceFailureIs500() {
+	s.service.On("DeleteSecrets", mock.Anything, []string{"S"}, time.Duration(0)).
+		Return(nil, &ErrorInternalServerError).Once()
+
+	response := s.send(http.MethodDelete, pathSecrets+"?names=S", "")
+
+	s.Equal(http.StatusInternalServerError, response.Code)
 }

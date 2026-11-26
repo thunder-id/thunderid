@@ -3538,6 +3538,30 @@ func TestImportResources_ApplicationAttestationPassedToService(t *testing.T) {
 	assert.Equal(t, `{"type":"service_account"}`, attestation.Android.ServiceAccountCredentials)
 }
 
+func TestImportResources_ApplicationPasskeyAllowedOriginsPassedToService(t *testing.T) {
+	appSvc := &fakeApplicationService{existing: map[string]*providers.Application{}}
+	svc := newImportService(
+		appSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		discardingBus{})
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: strings.Join([]string{
+			"resource_type: application",
+			"name: My App",
+			"type: browser",
+			"passkeyAllowedOrigins:",
+			"  - https://login.example.com",
+			"",
+		}, "\n"),
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	require.Len(t, appSvc.created, 1)
+	assert.Equal(t, []string{"https://login.example.com"}, appSvc.created[0].PasskeyAllowedOrigins)
+}
+
 func TestImportResources_ApplicationAuthFlowHandlePassedToService(t *testing.T) {
 	appSvc := &fakeApplicationService{existing: map[string]*providers.Application{}}
 	svc := newImportService(

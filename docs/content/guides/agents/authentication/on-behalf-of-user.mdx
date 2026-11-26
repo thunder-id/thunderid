@@ -181,7 +181,7 @@ curl -X POST https://localhost:8090/oauth2/token \
 - `subject_token` is the user's token; the issued token keeps its `sub` (the user), and the user's scopes in it are the ceiling for the exchange.
 - `actor_token` is the agent's own token; the agent is recorded in the new token's `act` claim.
 - `resource` (RFC 8707) sets the new token's audience to that [Resource Server](../../../resource-servers) and downscopes the permission scopes to the scopes it defines. The subject and actor tokens do not need to be bound to this resource.
-- The issued permission scopes are the intersection of the scopes requested (or all of the subject token's scopes when no `scope` is sent), the subject token's scopes, the scopes the target resource server defines, and the scopes the agent itself is authorized for. Anything outside that intersection is dropped, not rejected.
+- The issued permission scopes are the intersection of the scopes requested (or all of the subject token's scopes when no `scope` is sent), the subject token's scopes, the scopes the target resource server defines, and the scopes the agent itself is authorized for. Anything outside that intersection is dropped, not rejected. When the subject token comes from an external identity provider, that connection's [Authorization Mapping](../../../identity-providers/add-oidc-provider#authorization-mapping) decides the permission scopes instead of the subject token's own scopes, and a connection without one grants none.
 - The RFC 8693 `audience` parameter is accepted but does not set the token's `aud`. Use `resource` to control the audience.
 - With no `resource` and no permission scopes, the token is not bound to a resource server: its audience falls back to the agent's default audience, or its client ID when no default audience is set, and only OIDC scopes such as `openid` remain.
 - See [Token Exchange](../../../protocols/oauth-oidc/token-exchange) for the full request and its parameters.
@@ -215,11 +215,11 @@ A resource reads `sub` to apply the user's permissions and `act` to see which ag
 
 | Claim | Value |
 |---|---|
-| `sub` | The user's subject identifier. For an access token from redeeming an ID-JAG with the JWT bearer grant, the subject of the external identity provider's assertion, not a local user ID. |
+| `sub` | The user's subject identifier. For a user of an external identity provider, from redeeming an ID-JAG with the JWT bearer grant or from exchanging that provider's token, the provider's subject identifier, not a local user ID. |
 | `iss` | The <ProductName /> instance URL. |
-| `idp` | Present only on an access token from redeeming an ID-JAG with the JWT bearer grant: the issuer of the assertion, which identifies the external identity provider that `sub` belongs to. |
+| `idp` | Present only when `sub` belongs to an external identity provider: on an access token from redeeming an ID-JAG with the JWT bearer grant, from exchanging that provider's token, or from exchanging such a token again. The provider's issuer, which identifies the provider that `sub` belongs to. |
 | `aud` | The resolved resource server, or the agent's default audience (its client ID when none is set) when the request carries no permission scopes or `resource`. |
-| `scope` | A subset of the user's scopes, never more than the user's own token held. For a JWT bearer token, bounded by the assertion's `scope` claim and narrowed by the request's `scope`. |
+| `scope` | A subset of the user's scopes, never more than the user's own token held. For a user of an external identity provider, the permission scopes are only those the connection's [Authorization Mapping](../../../identity-providers/add-oidc-provider#authorization-mapping) grants; the provider's own token or assertion names candidates, not grants. |
 | `client_id` | The agent's client ID. |
 | `act` | The agent acting for the user, on the access token only and never the ID token. It is appended automatically on the `authorization_code`, Device Code, CIBA, `refresh_token`, and JWT bearer grants. On a token exchange it names the `actor_token`'s subject, or the agent itself when the request has no `actor_token`. Earlier actors in a `subject_token` that <ProductName /> issued stay nested beneath it. See [The nested act claim](../agent-to-agent#the-nested-act-claim). |
 | `exp`, `iat`, `nbf`, `jti` | Standard JWT lifetime and identity claims. |

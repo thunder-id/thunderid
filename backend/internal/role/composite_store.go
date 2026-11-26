@@ -844,6 +844,14 @@ func (c *compositeRoleStore) crossStoreRoleNames(
 	return names, nil
 }
 
+// GetDirectEntityRoleIDs returns the entity's removable direct roles from the database store only,
+// since declared assignments are not writable.
+func (c *compositeRoleStore) GetDirectEntityRoleIDs(
+	ctx context.Context, entityID, assignmentOUID string,
+) ([]string, error) {
+	return c.dbStore.GetDirectEntityRoleIDs(ctx, entityID, assignmentOUID)
+}
+
 // IsRoleDeclarative checks if a role is immutable (exists in file store).
 func (c *compositeRoleStore) IsRoleDeclarative(ctx context.Context, roleID string) (bool, error) {
 	fileExists, err := c.fileStore.IsRoleExist(ctx, roleID)

@@ -42,7 +42,10 @@ CREATE UNIQUE INDEX idx_revocation_criteria_lookup
 CREATE INDEX idx_revocation_criteria_expiry_time ON "REVOCATION_CRITERIA" (EXPIRY_TIME);
 
 -- Table to store login sessions. TYPE is SSO for a session that later logins can reuse, grouped by
--- flow (FLOW_ID) and resolved by an opaque handle, or DIRECT for a session tied to a single login.
+-- flow (FLOW_ID) and resolved by an opaque handle, or DIRECT for a session tied to a single login. A
+-- direct session has no handle, so no later login can resume it, and records no flow execution, since one
+-- execution can sign in more than one subject. HANDLE_ID and FLOW_EXECUTION_ID are required for SSO
+-- sessions only.
 -- Part of the database.runtime_persistent classification: persistent session state that must survive a
 -- runtime database flush.
 CREATE TABLE "SESSION" (
@@ -52,18 +55,19 @@ CREATE TABLE "SESSION" (
     SUBJECT_ID VARCHAR(36) NOT NULL,
     FLOW_ID VARCHAR(36) NOT NULL,
     FLOW_VERSION INTEGER NOT NULL,
-    FLOW_EXECUTION_ID VARCHAR(255) NOT NULL,
-    HANDLE_ID VARCHAR(255) NOT NULL,
+    FLOW_EXECUTION_ID VARCHAR(255),
+    HANDLE_ID VARCHAR(255),
     AUTHENTICATED_AT DATETIME NOT NULL,
     CREATED_AT TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     LAST_ACTIVE_AT DATETIME NOT NULL,
-    IDLE_EXPIRES_AT DATETIME,
-    ABSOLUTE_EXPIRES_AT DATETIME,
+    IDLE_EXPIRES_AT DATETIME NOT NULL,
+    ABSOLUTE_EXPIRES_AT DATETIME NOT NULL,
     PROPERTIES TEXT,
     STATE VARCHAR(50) NOT NULL,
     VERSION INTEGER NOT NULL,
     UPDATED_AT TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (SESSION_ID, DEPLOYMENT_ID)
+    PRIMARY KEY (SESSION_ID, DEPLOYMENT_ID),
+    CHECK (TYPE <> 'SSO' OR (FLOW_EXECUTION_ID IS NOT NULL AND HANDLE_ID IS NOT NULL))
 );
 
 -- Unique index for handle lookup on SESSION (one session per handle, per deployment)
@@ -91,13 +95,14 @@ CREATE TABLE "SSO_SESSION_CONTEXT" (
 );
 
 -- Table to record the applications participating in a session (1:many by SESSION_ID), one row per
--- application and the organization unit it signed in under ('' when the sign-in had none).
+-- application and the organization unit it signed in under ('' when the sign-in had none). TFID is the
+-- token family the participant's grants carry, which logout revokes, so every participant holds one.
 CREATE TABLE "SESSION_PARTICIPANT" (
     SESSION_ID VARCHAR(36) NOT NULL,
     DEPLOYMENT_ID VARCHAR(255) NOT NULL,
     APP_ID VARCHAR(36) NOT NULL,
     OU_ID VARCHAR(36) NOT NULL DEFAULT '',
-    TFID VARCHAR(36),
+    TFID VARCHAR(36) NOT NULL,
     FIRST_JOINED_AT DATETIME NOT NULL,
     LAST_ACTIVE_AT DATETIME NOT NULL,
     PRIMARY KEY (SESSION_ID, DEPLOYMENT_ID, APP_ID, OU_ID)
@@ -115,6 +120,7 @@ CREATE TABLE "CONSENT" (
     STATUS VARCHAR(20) NOT NULL,
     VALIDITY_TIME DATETIME,
     PURPOSES TEXT,
+    PROPERTIES TEXT,
     CREATED_AT TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UPDATED_AT TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

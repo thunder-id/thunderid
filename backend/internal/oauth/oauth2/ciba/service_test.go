@@ -28,6 +28,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/flowexec"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/authzdetailprovidermock"
@@ -680,24 +681,6 @@ func (suite *CIBAServiceTestSuite) TestResolveExpiresIn_ExceedsMax() {
 
 func (suite *CIBAServiceTestSuite) TestResolveExpiresIn_WithWhitespace() {
 	suite.Equal(int64(30), resolveExpiresIn("  30  "))
-}
-
-// -------------------------------------------------------------------
-// resolveUserAttributesCacheTTL tests
-// -------------------------------------------------------------------
-
-func (suite *CIBAServiceTestSuite) TestResolveUserAttributesCacheTTL_RefreshTokenBranchTakesPrecedence() {
-	app := &providers.OAuthClient{
-		GrantTypes: []providers.GrantType{providers.GrantTypeCIBA, providers.GrantTypeRefreshToken},
-		Token: &providers.OAuthTokenConfig{
-			AccessToken: &providers.AccessTokenConfig{
-				UserConfig: &providers.AccessTokenSubConfig{ValidityPeriod: 3600},
-			},
-			RefreshToken: &providers.RefreshTokenConfig{ValidityPeriod: 86400},
-		},
-	}
-	ttl := (&cibaService{cfg: testhelpers.OAuthConfig()}).resolveUserAttributesCacheTTL(app)
-	suite.Greater(ttl, int64(86400))
 }
 
 // -------------------------------------------------------------------
@@ -1738,7 +1721,8 @@ func (suite *CIBAServiceTestSuite) TestInitiate_InvalidAuthorizationDetailsAreRe
 
 func (suite *CIBAServiceTestSuite) TestInitiate_AuthorizationDetailsUnsupported() {
 	service := newCIBAService(suite.mockStore, suite.mockFlowExec, suite.mockJWTService, nil, suite.mockResourceSvc,
-		nil, authzdetailexec.Initialize(nil, time.Second), suite.service.(*cibaService).cfg)
+		nil, authzdetailexec.Initialize(nil, time.Second, httpservice.Initialize(false)),
+		suite.service.(*cibaService).cfg)
 
 	_, cibaErr := service.InitiateBackchannelAuth(context.Background(), &BackchannelAuthRequest{
 		LoginHint: "alice", Scope: "openid", AuthorizationDetails: testDetailsRaw,

@@ -4,9 +4,6 @@
 package executor
 
 import (
-	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
-	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
-
 	"context"
 	"encoding/json"
 	"testing"
@@ -22,10 +19,13 @@ import (
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/user"
+	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/agentmgtprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
@@ -262,7 +262,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_Success() {
 	suite.mockRoleAssignmentService.AssertExpectations(suite.T())
 }
 
-// Answered with the authentication error, as any failed bind of the created user is.
+// Answered with the authentication error, as any failed sign-in of the created user is.
 func (suite *ProvisioningExecutorTestSuite) TestExecute_AFaultSigningInTheCreatedUserFailsTheNode() {
 	suite.expectSchemaForProvisioning()
 	attrs := map[string]interface{}{"username": "newuser", attributeEmail: "new@example.com"}
@@ -577,6 +577,60 @@ func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_Ext
 	assert.Empty(suite.T(), credentials)
 }
 
+// A connection that keeps the attributes to the session stores only the required claims. Any other
+// mode, and a credential issuer, store every claim the schema has, typed by the attribute and leaving
+// out a value of the wrong shape.
+func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_ClaimsFollowTheAttributesSyncMode() {
+	claims := map[string]interface{}{
+		"username": "claimed", "nickname": "nick", "tags": []interface{}{"a", "b"}, "age": 42,
+		"title": map[string]interface{}{"prefix": "Dr"},
+	}
+	all := map[string]interface{}{
+		"username": "claimed", "nickname": "nick", "tags": []interface{}{"a", "b"}, "age": float64(42),
+	}
+	cases := []struct {
+		name     string
+		identity core.ExternalIdentity
+		want     map[string]interface{}
+	}{
+		{"override received", core.ExternalIdentity{IdpID: "idp-1", Sub: "sub-1", Claims: claims,
+			AttributesSync: providers.SyncModeOverrideReceived}, all},
+		{"no sync", core.ExternalIdentity{IdpID: "idp-1", Sub: "sub-1", Claims: claims,
+			AttributesSync: providers.SyncModeNoSync}, all},
+		{"session only", core.ExternalIdentity{IdpID: "idp-1", Sub: "sub-1", Claims: claims,
+			AttributesSync: providers.SyncModeSessionOnly}, map[string]interface{}{"username": "claimed"}},
+		{"credential issuer", core.ExternalIdentity{Claims: claims}, all},
+	}
+	suite.mockEntityTypeService.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
+		model.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).
+		Return([]model.AttributeInfo{
+			{Attribute: "username", Type: model.TypeString, Required: true},
+			{Attribute: "nickname", Type: model.TypeString},
+			{Attribute: "tags", Type: model.TypeArray},
+			{Attribute: "age", Type: model.TypeNumber},
+			{Attribute: "title", Type: model.TypeString},
+		}, nil)
+
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			encoded, err := json.Marshal(tc.identity)
+			suite.Require().NoError(err)
+			ctx := &providers.NodeContext{
+				RuntimeData: map[string]string{
+					categoryTypeKey:                   testUserType,
+					common.RuntimeKeyExternalIdentity: string(encoded),
+				},
+				NodeInputs: []providers.Input{},
+			}
+
+			identifying, _, err := suite.executor.getAttributesForProvisioning(ctx, entitytype.TypeCategoryUser)
+
+			suite.Require().NoError(err)
+			suite.Equal(tc.want, identifying)
+		})
+	}
+}
+
 // A claim never stands in for a credential, so a password the flow has not collected is still prompted
 // even when the external identity asserts one.
 func (suite *ProvisioningExecutorTestSuite) TestBuildMissingInputs_ExternalClaimDoesNotSatisfyCredential() {
@@ -595,6 +649,24 @@ func (suite *ProvisioningExecutorTestSuite) TestBuildMissingInputs_ExternalClaim
 	assert.Empty(suite.T(), ncRequired)
 	assert.Len(suite.T(), credRequired, 1)
 	assert.Equal(suite.T(), "password", credRequired[0].Identifier)
+}
+
+// A claim of the wrong shape for its attribute can't be stored, so the attribute is still prompted.
+func (suite *ProvisioningExecutorTestSuite) TestBuildMissingInputs_ClaimOfTheWrongShapeIsPrompted() {
+	ctx := &providers.NodeContext{
+		RuntimeData: map[string]string{
+			common.RuntimeKeyExternalIdentity: externalIdentityEntry("idp-1", "sub-1",
+				map[string]interface{}{"username": "claimed", "title": map[string]interface{}{"prefix": "Dr"}}),
+		},
+	}
+
+	_, _, ncRequired, _ := suite.executor.buildMissingInputs(ctx, []model.AttributeInfo{
+		{Attribute: "username", Type: model.TypeString, Required: true},
+		{Attribute: "title", Type: model.TypeString, Required: true},
+	}, map[string]providers.Input{})
+
+	suite.Require().Len(ncRequired, 1)
+	suite.Equal("title", ncRequired[0].Identifier)
 }
 
 // A claim named after the entity type key does not choose the type the user is created as.
@@ -664,6 +736,70 @@ func (suite *ProvisioningExecutorTestSuite) TestGetAttributesForProvisioning_Sch
 	assert.Equal(suite.T(), "testuser", result["username"])
 	assert.NotContains(suite.T(), result, "userID")
 	assert.NotContains(suite.T(), result, "code")
+	assert.Equal(suite.T(), []string{"username"}, ctx.GetConsumedInputs(),
+		"Only the submitted schema attributes are consumed")
+}
+
+func (suite *ProvisioningExecutorTestSuite) TestApplyPinnedValue() {
+	schema := []entitytype.AttributeInfo{{Attribute: attributeEmail, Type: "email"}}
+	pinned := func(subject string) map[string]string {
+		shared, err := sharedVerificationEvidence(verificationEvidence{Pin: &providers.AttributeVerificationPin{
+			Subject: subject, Attribute: attributeEmail, Value: "alice@example.com",
+			Channel: providers.VerificationChannelEmail,
+		}})
+		suite.Require().NoError(err)
+		return shared
+	}
+	tests := []struct {
+		name      string
+		shared    map[string]string
+		collected string
+		expected  string
+	}{
+		{"a different value is replaced by the pinned one", pinned(""), "mallory@example.com",
+			"alice@example.com"},
+		{"the same address in another form is kept", pinned(""), "alice@EXAMPLE.com", "alice@EXAMPLE.com"},
+		{"a pin on an existing user changes nothing", pinned("user-1"), "mallory@example.com",
+			"mallory@example.com"},
+		{"no pin changes nothing", nil, "mallory@example.com", "mallory@example.com"},
+	}
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			ctx := &providers.NodeContext{SharedRuntimeData: tt.shared}
+			attrs := map[string]interface{}{attributeEmail: tt.collected}
+
+			suite.Require().NoError(applyPinnedValue(ctx, schema, attrs))
+			suite.Equal(tt.expected, attrs[attributeEmail])
+		})
+	}
+}
+
+func (suite *ProvisioningExecutorTestSuite) TestCollectedValue_ConsumesTheSubmittedValueItReturns() {
+	tests := []struct {
+		name       string
+		nodeInputs []providers.Input
+		runtime    map[string]string
+		expected   string
+		consumed   []string
+	}{
+		{"submitted value", nil, map[string]string{}, "submitted", []string{"description"}},
+		{"resolved value wins", nil, map[string]string{"description": "resolved"}, "resolved", nil},
+		{"constant input is read first",
+			[]providers.Input{{Identifier: "description", Constant: true}},
+			map[string]string{"description": "resolved"}, "submitted", []string{"description"}},
+	}
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			ctx := &providers.NodeContext{
+				NodeInputs:  tt.nodeInputs,
+				UserInputs:  map[string]string{"description": "submitted"},
+				RuntimeData: tt.runtime,
+			}
+
+			assert.Equal(suite.T(), tt.expected, collectedValue(ctx, "description"))
+			assert.Equal(suite.T(), tt.consumed, ctx.GetConsumedInputs())
+		})
+	}
 }
 
 // TestGetAttributesForProvisioning_RequiredAttrsFromMultipleSources verifies that required schema
@@ -2674,122 +2810,6 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_GroupWithExistingMembers
 	suite.mockGroupService.AssertExpectations(suite.T())
 }
 
-// Seeding is additive: the mapped role/group combine with the fixed assignGroup/assignRole lists,
-// deduplicated, when both flags are enabled.
-func (suite *ProvisioningExecutorTestSuite) TestExecute_SeedGroupsAndRolesFromMapping() {
-	suite.expectSchemaForProvisioning()
-	attrs := map[string]interface{}{"username": "newuser"}
-	attrsJSON, _ := json.Marshal(attrs)
-
-	runtimeData := map[string]string{
-		ouIDKey:         testOUID,
-		categoryTypeKey: testUserType,
-	}
-	for k, v := range seedMappedAuthorizationTargets(suite.T(), []providers.AuthorizationTarget{
-		{Type: providers.AuthorizationTargetRole, ID: "mapped-role-id"},
-		{Type: providers.AuthorizationTargetGroup, ID: "mapped-group-id"},
-		// A permission target has no seeding equivalent and must be ignored.
-		{Type: providers.AuthorizationTargetPermission, ResourceServerID: "rs-1", Permission: "read"},
-	}) {
-		runtimeData[k] = v
-	}
-
-	ctx := &providers.NodeContext{
-		ExecutionID: "flow-123",
-		FlowType:    providers.FlowTypeRegistration,
-		UserInputs:  map[string]string{"username": "newuser"},
-		RuntimeData: runtimeData,
-		NodeInputs: []providers.Input{
-			{Identifier: "username", Type: "string", Required: true},
-		},
-		NodeProperties: map[string]interface{}{
-			"assignGroup":           "static-group-id",
-			"assignRole":            "static-role-id",
-			"seedGroupsFromMapping": true,
-			"seedRolesFromMapping":  true,
-		},
-	}
-
-	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, attrs).Return(nil,
-		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
-
-	createdUser := &providers.User{
-		ID: testNewUserID, OUID: testOUID, Type: testUserType, Attributes: attrsJSON,
-	}
-	suite.mockUserMgtProvider.On("CreateUser", mock.Anything, mock.Anything).Return(createdUser, nil)
-
-	suite.mockGroupService.On("AddMembersToGroups",
-		mock.Anything, []group.Member{{ID: testNewUserID, Type: group.MemberTypeUser}},
-		[]string{"static-group-id", "mapped-group-id"}).
-		Return((*tidcommon.ServiceError)(nil))
-	suite.mockRoleAssignmentService.On("AddAssigneesToRoles", mock.Anything,
-		[]role.RoleAssignment{{ID: testNewUserID, Type: role.AssigneeTypeUser}},
-		[]string{"static-role-id", "mapped-role-id"}).
-		Return((*tidcommon.ServiceError)(nil))
-
-	resp, err := suite.executor.Execute(ctx)
-
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
-	suite.mockGroupService.AssertExpectations(suite.T())
-	suite.mockRoleAssignmentService.AssertExpectations(suite.T())
-}
-
-// Without the seeding flags, mapped targets carried in runtime data are ignored entirely: only the
-// fixed assignGroup/assignRole lists are applied.
-func (suite *ProvisioningExecutorTestSuite) TestExecute_SeedFromMappingDisabled_MappedTargetsIgnored() {
-	suite.expectSchemaForProvisioning()
-	attrs := map[string]interface{}{"username": "newuser"}
-	attrsJSON, _ := json.Marshal(attrs)
-
-	runtimeData := map[string]string{
-		ouIDKey:         testOUID,
-		categoryTypeKey: testUserType,
-	}
-	for k, v := range seedMappedAuthorizationTargets(suite.T(), []providers.AuthorizationTarget{
-		{Type: providers.AuthorizationTargetRole, ID: "mapped-role-id"},
-		{Type: providers.AuthorizationTargetGroup, ID: "mapped-group-id"},
-	}) {
-		runtimeData[k] = v
-	}
-
-	ctx := &providers.NodeContext{
-		ExecutionID: "flow-123",
-		FlowType:    providers.FlowTypeRegistration,
-		UserInputs:  map[string]string{"username": "newuser"},
-		RuntimeData: runtimeData,
-		NodeInputs: []providers.Input{
-			{Identifier: "username", Type: "string", Required: true},
-		},
-		NodeProperties: map[string]interface{}{
-			"assignGroup": "static-group-id",
-			"assignRole":  "static-role-id",
-		},
-	}
-
-	suite.mockEntityProvider.On("IdentifyEntity", mock.Anything, attrs).Return(nil,
-		entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "", ""))
-
-	createdUser := &providers.User{
-		ID: testNewUserID, OUID: testOUID, Type: testUserType, Attributes: attrsJSON,
-	}
-	suite.mockUserMgtProvider.On("CreateUser", mock.Anything, mock.Anything).Return(createdUser, nil)
-
-	suite.mockGroupService.On("AddMembersToGroups",
-		mock.Anything, []group.Member{{ID: testNewUserID, Type: group.MemberTypeUser}}, []string{"static-group-id"}).
-		Return((*tidcommon.ServiceError)(nil))
-	suite.mockRoleAssignmentService.On("AddAssigneesToRoles", mock.Anything,
-		[]role.RoleAssignment{{ID: testNewUserID, Type: role.AssigneeTypeUser}}, []string{"static-role-id"}).
-		Return((*tidcommon.ServiceError)(nil))
-
-	resp, err := suite.executor.Execute(ctx)
-
-	assert.NoError(suite.T(), err)
-	assert.Equal(suite.T(), providers.ExecComplete, resp.Status)
-	suite.mockGroupService.AssertExpectations(suite.T())
-	suite.mockRoleAssignmentService.AssertExpectations(suite.T())
-}
-
 // Test authentication flow with auto-provisioning still assigns groups/roles
 func (suite *ProvisioningExecutorTestSuite) TestExecute_AuthFlow_AutoProvisioning_AssignsGroupsAndRoles() {
 	suite.expectSchemaForProvisioning()
@@ -3659,6 +3679,27 @@ func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_RequiredCreden
 	assert.True(suite.T(), ok)
 	assert.Len(suite.T(), fwdInputs, 1)
 	assert.Equal(suite.T(), providers.InputTypePassword, fwdInputs[0].Type)
+}
+
+func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_ConsumesSubmittedAttributes() {
+	suite.mockEntityTypeService.On("GetAttributes", mock.Anything, mock.Anything, testUserType,
+		model.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).
+		Return([]model.AttributeInfo{
+			{Attribute: attributeEmail, DisplayName: "Email", Required: true},
+			{Attribute: attributePassword, DisplayName: "Password", Required: true, Credential: true},
+		}, nil).Once()
+
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		UserInputs:  map[string]string{attributePassword: "secret"},
+		RuntimeData: map[string]string{categoryTypeKey: testUserType},
+	}
+	execResp := &providers.ExecutorResponse{RuntimeData: make(map[string]string)}
+
+	result := suite.executor.HasRequiredInputs(ctx, execResp)
+
+	assert.False(suite.T(), result)
+	assert.Equal(suite.T(), []string{attributePassword}, ctx.GetConsumedInputs())
 }
 
 func (suite *ProvisioningExecutorTestSuite) TestHasRequiredInputs_RequiredCredentialSatisfied_ReturnsTrue() {
@@ -5427,6 +5468,53 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_Federated_ResolvedUserIs
 	assert.Empty(suite.T(), resp.Inputs)
 }
 
+// A federated sign-up creates the user with the claims and its link. What the sync at creation keeps to
+// the session reaches runtime data.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_Federated_CreationStoresTheClaims() {
+	suite.expectSchemaForProvisioning()
+	suite.mockUserMgtProvider.On("CreateUser", mock.Anything,
+		mock.MatchedBy(func(u *providers.User) bool {
+			var attrs map[string]interface{}
+			_ = json.Unmarshal(u.Attributes, &attrs)
+			return attrs["username"] == "github-login" &&
+				attrs[attributeEmail] == federatedTestClaims()[attributeEmail] &&
+				u.LinkedAccount != nil && u.LinkedAccount.IdpID == testFederatedIdpID
+		})).Return(&providers.User{ID: testNewUserID, OUID: testOUID, Type: testUserType},
+		(*tidcommon.ServiceError)(nil))
+	suite.ownSignIn = true
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything,
+		map[string]interface{}{authnprovidercm.CredentialTypeProvisionedEntityID: testNewUserID}, mock.Anything,
+		mock.MatchedBy(func(m *providers.AuthnMetadata) bool { return m != nil && m.Created }), mock.Anything).
+		Return(newAuthenticatedAuthUser(), providers.AuthenticatedClaims{
+			authnprovidercm.ClaimSessionValues: &authnprovidercm.SessionValues{RoleIDs: []string{"role-a"}},
+		}, (*tidcommon.ServiceError)(nil)).Once()
+
+	resp, err := suite.executor.Execute(suite.federatedCtx(false))
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal("role-a", resp.RuntimeData[common.RuntimeKeySessionRoleIDs])
+	suite.NotContains(resp.RuntimeData, authnprovidercm.ClaimSessionValues)
+}
+
+// A sync at creation that is rejected fails the step with the sync error. The account stays.
+func (suite *ProvisioningExecutorTestSuite) TestExecute_Federated_CreationSyncFails() {
+	suite.expectSchemaForProvisioning()
+	suite.mockUserMgtProvider.On("CreateUser", mock.Anything, mock.Anything).
+		Return(&providers.User{ID: testNewUserID, OUID: testOUID, Type: testUserType},
+			(*tidcommon.ServiceError)(nil))
+	suite.ownSignIn = true
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, providers.AuthenticatedClaims(nil), &authnprovidermgr.ErrorFederatedSyncFailed)
+
+	resp, err := suite.executor.Execute(suite.federatedCtx(false))
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.Equal(ErrFederatedUserSyncFailed.Code, resp.Error.Code)
+}
+
 // A federated identity with no local user is provisioned with its link, which the user service
 // records in the same write that creates the user. The attribute lookup is skipped, since on
 // this path it would complete the node as whichever user shares an attribute and record nothing.
@@ -5504,6 +5592,8 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_Federated_RegistrationDo
 func (suite *ProvisioningExecutorTestSuite) TestExecute_Federated_RegistrationCompletesAsLinkedUser() {
 	ctx := suite.linkedRegistrationCtx()
 	ctx.RuntimeData[common.RuntimeKeyAllowRegistrationWithExistingUser] = dataValueTrue
+	// The one holder is bound, which syncs the federated sign-in to it.
+	suite.expectProvisionedSignIn(testExistingUser123ID)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -5593,6 +5683,7 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_Federated_CrossOURegistr
 			ctx.NodeProperties = map[string]interface{}{common.NodePropertyAllowCrossOUProvisioning: true}
 			if tc.allowExist {
 				ctx.RuntimeData[common.RuntimeKeyAllowRegistrationWithExistingUser] = dataValueTrue
+				suite.expectProvisionedSignIn(testExistingUser123ID)
 			}
 
 			resp, err := suite.executor.Execute(ctx)
@@ -5763,6 +5854,11 @@ func (suite *ProvisioningExecutorTestSuite) TestExecute_NoFederatedIdentifiers_U
 
 	ctx := suite.federatedCtx(false)
 	ctx.RuntimeData[common.RuntimeKeyExternalIdentity] = externalIdentityEntry("", "", federatedTestClaims())
+	// Claims are saved for required attributes only.
+	ctx.NodeInputs = []providers.Input{
+		{Identifier: "username", Required: true}, {Identifier: attributeEmail, Required: true},
+		{Identifier: userAttributeSub, Required: true},
+	}
 
 	suite.expectNoExistingUserFor(map[string]interface{}{
 		"username":       "github-login",

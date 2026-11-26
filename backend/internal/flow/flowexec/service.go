@@ -32,16 +32,14 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
-// serverConfigProvider is the narrow subset of serverconfig.ServerConfigService consumed by flowexec
-// for reading the "flow" section (per-type default handles and expiries). Defined locally so flowexec
-// does not import the serverconfig package.
-type serverConfigProvider interface {
-	GetMergedConfig(ctx context.Context, name string) (any, *tidcommon.ServiceError)
-}
-
 // flowVisibilityProvider tells whether an organization unit owns a flow or was shared it.
 type flowVisibilityProvider interface {
 	IsFlowVisible(ctx context.Context, flowID, ouID string) (bool, *tidcommon.ServiceError)
+}
+
+// sessionLifetime says how long an SSO session started now lasts. The session service implements it.
+type sessionLifetime interface {
+	AbsoluteTimeout(ctx context.Context) time.Duration
 }
 
 // flowExecService is the implementation of FlowExecServiceInterface
@@ -57,13 +55,14 @@ type flowExecService struct {
 	cryptoSvc           providers.RuntimeCryptoProvider
 	attestationVerifier providers.AttestationProvider
 	jwtService          jwt.JWTServiceInterface
-	serverConfigSvc     serverConfigProvider
+	serverConfigSvc     flowconfig.ServerConfigReader
 	governance          providers.IdentityGovernanceProvider
 	flowVisibility      flowVisibilityProvider
 	permissionProvider  providers.PermissionProvider
 	cfg                 flowconfig.Config
-	// ssoHandleTTL is how long a handle returned in the response body stays usable.
-	ssoHandleTTL time.Duration
+	// sessions says how long a handle returned in the response body stays usable. It is nil where
+	// the deployment keeps no SSO sessions.
+	sessions sessionLifetime
 }
 
 // newFlowExecService creates a new instance of flowExecService with the provided dependencies.
@@ -77,12 +76,12 @@ func newFlowExecService(flowProvider providers.FlowProvider,
 	attestationVerifier providers.AttestationProvider,
 	graphBuilder graphbuilder.GraphBuilderInterface,
 	jwtService jwt.JWTServiceInterface,
-	serverConfigSvc serverConfigProvider,
+	serverConfigSvc flowconfig.ServerConfigReader,
 	governance providers.IdentityGovernanceProvider,
 	flowVisibility flowVisibilityProvider,
 	permissionProvider providers.PermissionProvider,
 	cfg flowconfig.Config,
-	ssoHandleTTL time.Duration) FlowExecServiceInterface {
+	sessions sessionLifetime) FlowExecServiceInterface {
 	return &flowExecService{
 		flowProvider:        flowProvider,
 		flowStore:           flowStore,
@@ -100,7 +99,7 @@ func newFlowExecService(flowProvider providers.FlowProvider,
 		flowVisibility:      flowVisibility,
 		permissionProvider:  permissionProvider,
 		cfg:                 cfg,
-		ssoHandleTTL:        ssoHandleTTL,
+		sessions:            sessions,
 	}
 }
 
@@ -221,7 +220,7 @@ func (s *flowExecService) execute(ctx context.Context, flowID, appID, executionI
 	}
 
 	// Return the SSO session this step started or ended in the response body too.
-	s.applyOutboundSSO(&flowStep)
+	s.applyOutboundSSO(ctx, &flowStep)
 
 	// Surface the OAuth callback type (grant type) from runtime data onto the terminal response so the
 	// Gate/SDK routes the completion or failure to the correct callback handler (e.g. CIBA).
@@ -485,14 +484,14 @@ func applyInboundSSO(engineCtx *EngineContext, ctx context.Context, sessionData 
 
 // applyOutboundSSO adds the SSO session this step started, reused or ended to the step, keyed by flow
 // identifier, for the response body to return to a caller that holds its handles itself.
-func (s *flowExecService) applyOutboundSSO(flowStep *FlowStep) {
+func (s *flowExecService) applyOutboundSSO(ctx context.Context, flowStep *FlowStep) {
 	if flowStep.SSOHandleOut != "" && flowStep.SSOFlowID != "" {
 		flowStep.SessionData = []IssuedSessionData{{
 			SessionData: SessionData{
 				FlowIdentifier: session.FlowIdentifier(flowStep.SSOFlowID),
 				SessionHandle:  flowStep.SSOHandleOut,
 			},
-			ExpiresIn: s.handleExpiresIn(flowStep.SSOHandleExpiresAt, time.Now()),
+			ExpiresIn: s.handleExpiresIn(flowStep.SSOHandleExpiresAt, time.Now(), ssoHandleTTL(ctx, s.sessions)),
 		}}
 	}
 	if flowStep.SSOClearFlowID != "" {
@@ -501,12 +500,12 @@ func (s *flowExecService) applyOutboundSSO(flowStep *FlowStep) {
 }
 
 // handleExpiresIn returns the seconds from now a returned handle stays usable: the time its session has left
-// when known, never more than the configured handle lifetime. Rounded up, so a session started in this
-// request reports the whole lifetime.
-func (s *flowExecService) handleExpiresIn(expiresAt, now time.Time) int64 {
-	remaining := s.ssoHandleTTL
+// when known, never more than the handle lifetime ttl. Rounded up, so a session started in this request
+// reports the whole lifetime.
+func (s *flowExecService) handleExpiresIn(expiresAt, now time.Time, ttl time.Duration) int64 {
+	remaining := ttl
 	if !expiresAt.IsZero() {
-		remaining = min(max(expiresAt.Sub(now), 0), s.ssoHandleTTL)
+		remaining = min(max(expiresAt.Sub(now), 0), ttl)
 	}
 	return int64(math.Ceil(remaining.Seconds()))
 }
@@ -858,11 +857,11 @@ func (s *flowExecService) initContext(ctx context.Context, requestedFlowID, appI
 	return &engineCtx, nil
 }
 
-// boundSignIn marks a sign-in flow as bounded and fixes its organization unit: the one the request names,
-// or the application's own when the application is not shared.
+// boundSignIn applies the sign-in boundary to authentication and device grant flows. A named unit
+// fixes the sign-in to that unit, and an unshared application fixes it to its own.
 func (s *flowExecService) boundSignIn(ctx context.Context, engineCtx *EngineContext,
 	logger *log.Logger) *tidcommon.ServiceError {
-	if engineCtx.FlowType != providers.FlowTypeAuthentication {
+	if engineCtx.FlowType != providers.FlowTypeAuthentication && engineCtx.FlowType != providers.FlowTypeDeviceGrant {
 		return nil
 	}
 	engineCtx.SignInBounded = true
@@ -960,7 +959,7 @@ func (s *flowExecService) loadPrevContext(ctx context.Context, executionID, acti
 		return nil, err
 	}
 
-	prepareContext(engineCtx, action, inputs)
+	prepareContext(engineCtx, action, engineCtx.onlyRequestedInputs(inputs))
 	return engineCtx, nil
 }
 
@@ -1343,10 +1342,7 @@ func withoutConstantInputs(graph core.GraphInterface, inputs map[string]string) 
 // prepareContext prepares the flow context by merging any data. Inputs the flow holds constant are left
 // out, so no way of starting or continuing a flow can set one.
 func prepareContext(ctx *EngineContext, action string, inputs map[string]string) {
-	// Append any inputs present to the context
-	if inputs = withoutConstantInputs(ctx.Graph, inputs); len(inputs) > 0 {
-		ctx.UserInputs = sysutils.MergeStringMaps(ctx.UserInputs, inputs)
-	}
+	ctx.mergeInputs(withoutConstantInputs(ctx.Graph, inputs))
 
 	if ctx.UserInputs == nil {
 		ctx.UserInputs = make(map[string]string)
@@ -1607,32 +1603,7 @@ func (s *flowExecService) getFlowContext(ctx context.Context, executionID string
 // Returns a zero FlowSectionConfig when the serverconfig service is not wired or the section is
 // absent, letting callers fall back to built-in defaults.
 func (s *flowExecService) getFlowSectionConfig(ctx context.Context) flowconfig.FlowSectionConfig {
-	return readFlowSectionConfig(ctx, s.serverConfigSvc)
-}
-
-// readFlowSectionConfig reads the "flow" section from serverConfigSvc, as getFlowSectionConfig does.
-func readFlowSectionConfig(ctx context.Context, serverConfigSvc serverConfigProvider) flowconfig.FlowSectionConfig {
-	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "FlowExecService"))
-
-	if serverConfigSvc == nil {
-		return flowconfig.FlowSectionConfig{}
-	}
-
-	merged, svcErr := serverConfigSvc.GetMergedConfig(ctx, "flow")
-	if svcErr != nil {
-		logger.Error(ctx, "Failed to retrieve merged flow section from serverconfig",
-			log.String("error", svcErr.Error.DefaultValue))
-		return flowconfig.FlowSectionConfig{}
-	}
-
-	cfg, ok := merged.(flowconfig.FlowSectionConfig)
-	if !ok {
-		logger.Error(ctx, "Unexpected type for merged flow server config; using built-in defaults",
-			log.String("type", fmt.Sprintf("%T", merged)))
-		return flowconfig.FlowSectionConfig{}
-	}
-
-	return cfg
+	return flowconfig.ReadFlowSectionConfig(ctx, s.serverConfigSvc)
 }
 
 // getFlowExpirySeconds returns the context TTL for the given flow type.

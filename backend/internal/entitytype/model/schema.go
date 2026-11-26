@@ -7,9 +7,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
+	"reflect"
+	"strconv"
 	"strings"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
+	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -157,6 +161,53 @@ func (cs *Schema) ValidateAsPrimaryContact(name, contactType string) PrimaryCont
 // IsStringBackedType reports whether values of the attribute type are JSON strings.
 func IsStringBackedType(attrType string) bool {
 	return attrType == TypeString || attrType == TypeEmail || attrType == TypeMobile
+}
+
+// ConvertReceivedValue returns the value an external party sent for an attribute, as the attribute type
+// stores it, or nil when it's null or an empty string. Arrays and objects keep their structure, and a
+// single value received for an array becomes a one-item array. Other values are converted to the type.
+// It returns false when the value has the wrong shape for the type, or converts to a number JSON can't
+// hold.
+func ConvertReceivedValue(received interface{}, attrType string) (interface{}, bool) {
+	if text, ok := received.(string); received == nil || ok && text == "" {
+		return nil, true
+	}
+	_, isObject := received.(map[string]interface{})
+	isArray := false
+	if !isObject {
+		kind := reflect.ValueOf(received).Kind()
+		isArray = kind == reflect.Slice || kind == reflect.Array
+	}
+
+	switch attrType {
+	case TypeArray:
+		if isObject {
+			return nil, false
+		}
+		if !isArray {
+			return []interface{}{received}, true
+		}
+		return received, true
+	case TypeObject:
+		return received, isObject
+	}
+	if isObject || isArray {
+		return nil, false
+	}
+
+	value := systemutils.ConvertInterfaceValueToString(received)
+	if value == "" {
+		return nil, true
+	}
+	switch attrType {
+	case TypeBoolean:
+		parsed, err := strconv.ParseBool(value)
+		return parsed, err == nil
+	case TypeNumber:
+		parsed, err := strconv.ParseFloat(value, 64)
+		return parsed, err == nil && !math.IsNaN(parsed) && !math.IsInf(parsed, 0)
+	}
+	return value, true
 }
 
 // IsContactType reports whether the attribute type is a verifiable contact: an email or a mobile number.

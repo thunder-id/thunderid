@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"slices"
-	"strings"
 
 	"github.com/thunder-id/thunderid/internal/actorprovider"
 	"github.com/thunder-id/thunderid/internal/attributecache"
@@ -321,11 +320,14 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 		return nil, errResp
 	}
 
+	// An external subject token's sub names no local account, so its permission scopes come only from
+	// its connection's authorization mapping; without one, none. Its own scope claim is not an authority.
+	externalSubject := subjectClaims.Iss != h.cfg.JWT.Issuer
+
 	// Determine final scopes
-	delimiter := h.exchangeDelimiter(ctx, tokenRequest, subjectClaims.Authorization.Configured)
+	delimiter := h.exchangeDelimiter(ctx, tokenRequest, externalSubject)
 	finalScopes, errResp := h.getScopes(
-		tokenRequest, subjectClaims.Scopes, oauthApp.ScopeClaims,
-		delimiter, subjectClaims.Authorization.Configured)
+		tokenRequest, subjectClaims.Scopes, oauthApp.ScopeClaims, delimiter, externalSubject)
 	if errResp != nil {
 		return nil, errResp
 	}
@@ -358,7 +360,7 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 
 		permissionScopes, errResp = tokenservice.ApplyMappedAuthorization(
 			ctx, h.authzService, h.actorProvider, subjectClaims.Authorization.Targets, targetRS.ID,
-			permissionScopes, subjectClaims.Authorization.Configured, logger)
+			permissionScopes, externalSubject, logger)
 		if errResp != nil {
 			return nil, errResp
 		}
@@ -372,7 +374,8 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 
 	finalScopes = compactPermissionScopes(finalScopes, oidcScopes, targetRS)
 
-	// Build access token using token builder
+	// Build access token using token builder. It joins the subject token's token family, so revoking the grant
+	// it came from, or ending the session that grant belongs to, also revokes it.
 	userSubConfig := oauthApp.UserAccessTokenConfig()
 	accessToken, err := h.tokenBuilder.BuildAccessToken(ctx, &tokenservice.AccessTokenBuildContext{
 		Subject:           subjectClaims.Sub,
@@ -385,9 +388,10 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 		ActorClaims:       actorClaims,
 		ValidityPeriod:    userSubConfig.ValidityPeriodOrZero(),
 		DPoPJkt:           dpop.GetJkt(ctx),
-		TokenFamilyID:     h.exchangedTokenFamilyID(ctx, subjectClaims, logger),
+		TokenFamilyID:     subjectClaims.TokenFamilyID,
 		SubjectEntityID:   subjectEntityID,
 		SubjectCategory:   subjectCategory,
+		SourceIDP:         subjectClaims.SourceIDP,
 	})
 	if err != nil {
 		return nil, tokenBuildErrorResponse(ctx, logger, err, "Failed to generate token")
@@ -610,8 +614,7 @@ func (h *tokenExchangeGrantHandler) validateAccessTokenType(
 		}
 	}
 
-	if typ, _ := header["typ"].(string); !strings.EqualFold(typ, jwt.TokenTypeAccessToken) &&
-		!strings.EqualFold(typ, jwt.TokenTypeAccessTokenWithPrefix) {
+	if typ, _ := header["typ"].(string); !jwt.IsAccessTokenType(typ) {
 		return &model.ErrorResponse{
 			Error:            constants.ErrorInvalidRequest,
 			ErrorDescription: "The " + tokenLabel + " is not an access token (missing at+jwt typ header)",
@@ -621,9 +624,10 @@ func (h *tokenExchangeGrantHandler) validateAccessTokenType(
 	return nil
 }
 
-// getScopes validates and determines the scopes for the new token. When authorityIsMapping, the
-// subject token's own scope claim is skipped; requested scopes are only candidates for
-// ApplyMappedAuthorization to decide, with no fallback if the mapping resolves nothing.
+// getScopes validates and determines the scopes for the new token. When authorityIsMapping (an external
+// subject token), the subject token's own scope claim is skipped; requested scopes are only candidates
+// for ApplyMappedAuthorization to decide, with no fallback when the mapping resolves nothing or the
+// connection has none.
 func (h *tokenExchangeGrantHandler) getScopes(
 	tokenRequest *model.TokenRequest,
 	subjectScopes []string,
@@ -649,8 +653,8 @@ func (h *tokenExchangeGrantHandler) getScopes(
 		return requestedScopes, nil
 	}
 
-	// If subject token has no scopes, reject requests asking for scopes: with no mapping configured,
-	// the subject token's own scope claim is the only possible authority.
+	// If subject token has no scopes, reject requests asking for scopes: for a self-issued subject
+	// token, its own scope claim is the only authority.
 	if len(subjectScopes) == 0 {
 		return nil, &model.ErrorResponse{
 			Error: constants.ErrorInvalidScope,
@@ -693,23 +697,9 @@ func isCurrentActor(
 ) bool {
 	sub, _ := act["sub"].(string)
 	iss, _ := act["iss"].(string)
-	return sub == actorClaims.Sub && cmp.Or(iss, serverIssuer) == cmp.Or(actorClaims.Iss, serverIssuer)
-}
-
-// exchangedTokenFamilyID resolves how the exchanged token relates to the subject token's revocation
-// family: inherit joins the subject's family (both revoked together); none (the default, and the empty
-// value) issues an independent token with no tfid. An unrecognized value is treated as none and surfaced.
-func (h *tokenExchangeGrantHandler) exchangedTokenFamilyID(ctx context.Context,
-	subjectClaims *tokenservice.SubjectTokenClaims, logger *log.Logger) string {
-	switch h.cfg.OAuth.TokenExchange.TokenFamily {
-	case constants.TokenExchangeTokenFamilyInherit:
-		return subjectClaims.TokenFamilyID
-	case constants.TokenExchangeTokenFamilyNone, "":
-	default:
-		logger.Warn(ctx, "Unrecognized oauth.token_exchange.token_family mode; issuing an independent token",
-			log.String("mode", h.cfg.OAuth.TokenExchange.TokenFamily))
-	}
-	return ""
+	// act.iss is the actor's source IdP when the actor is an external identity provider's subject.
+	return sub == actorClaims.Sub &&
+		cmp.Or(iss, serverIssuer) == cmp.Or(actorClaims.SourceIDP, actorClaims.Iss, serverIssuer)
 }
 
 // resolveExchangeParties names the subject and the actor by resource ID and category, even where the
@@ -732,9 +722,10 @@ func (h *tokenExchangeGrantHandler) resolveExchangeParties(ctx context.Context,
 }
 
 // resolveExchangedEntity returns the resource ID and category of the entity a self-issued subject or
-// actor token names, and empty strings when it cannot tell. An external issuer's sub names no local
-// account, even when it equals a local entity's ID, so it is never resolved. The category is empty
-// when the attribute cache entry does not record it.
+// actor token names, and empty strings when it cannot tell. An external identity provider's sub names
+// no local account, even when it equals a local entity's ID, so it is never resolved, whether the token
+// came from that provider or was issued here for its subject. The category is empty when the attribute
+// cache entry does not record it.
 // sub is the resource ID unless the issuing application mapped it to an attribute, in which case the
 // token's aci entry records the entity, as the refresh grant relies on. A sub the actor provider does
 // not find, or cannot look up because the entity provider does not support it, falls back to that
@@ -744,7 +735,7 @@ func (h *tokenExchangeGrantHandler) resolveExchangeParties(ctx context.Context,
 func (h *tokenExchangeGrantHandler) resolveExchangedEntity(ctx context.Context,
 	claims *tokenservice.SubjectTokenClaims, slot string, logger *log.Logger) (
 	string, string, *model.ErrorResponse) {
-	if h.actorProvider == nil || claims.Sub == "" || claims.Iss != h.cfg.JWT.Issuer {
+	if h.actorProvider == nil || claims.Sub == "" || claims.Iss != h.cfg.JWT.Issuer || claims.SourceIDP != "" {
 		return "", "", nil
 	}
 
@@ -787,7 +778,7 @@ func (h *tokenExchangeGrantHandler) resolveExchangedEntity(ctx context.Context,
 }
 
 // exchangeDelimiter returns the target server's enabled hierarchy delimiter when requested scopes are
-// narrowed against the subject token, which a configured mapping replaces as the authority.
+// narrowed against the subject token, which the mapping replaces as the authority for an external one.
 // Missing or unreadable metadata preserves exact matching; audience binding is validated later.
 func (h *tokenExchangeGrantHandler) exchangeDelimiter(ctx context.Context, tokenRequest *model.TokenRequest,
 	authorityIsMapping bool) string {

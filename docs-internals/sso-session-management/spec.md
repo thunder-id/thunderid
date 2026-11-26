@@ -1,7 +1,7 @@
 # SSO Session Management Specification
 
 - **Status:** Draft
-- **Version:** 0.1
+- **Version:** 0.3
 - **Related documents:** [Feature issue #3400: Self-service and admin session management](https://github.com/thunder-id/thunderid/issues/3400), [Design discussion #4130: Session visibility](https://github.com/thunder-id/thunderid/discussions/4130), [Revised design: session visibility and revocation](https://github.com/thunder-id/thunderid/discussions/4130#discussioncomment-18580774), [Client IP design](https://github.com/thunder-id/thunderid/discussions/4130#discussioncomment-18771408), [Design discussion #6322: Session tracking, token lifecycle and session management](https://github.com/thunder-id/thunderid/discussions/6322), [OIDC back-channel logout specification](../back-channel-logout/spec.md)
 
 ## Summary
@@ -23,7 +23,7 @@ Three decisions govern the rest:
 
 Out of scope:
 
-- Sign-ins through a flow without a session step, such as the client credentials grant. They create no session, so nothing is listed for them. [#6322](https://github.com/thunder-id/thunderid/discussions/6322) proposes recording such sign-ins as `DIRECT` sessions in the same table, with the same properties, so they can join these listings later.
+- Direct sessions, which a sign-in through a flow without a session step records ([#6985](https://github.com/thunder-id/thunderid/pull/6985)). These listings return only SSO sessions, so a direct session isn't listed. Listing them as well can follow, since they are in the same table with the same properties.
 - Approximate location from the IP, which needs a GeoIP dependency. It can be added later as a new key in `PROPERTIES`.
 - Revoking an application's earlier grants in a session, and tracking access token use, which belong to the session and token policy in #3403.
 - The SDK components that call the self-service API. They follow the [SDK development specification](../sdk-development/spec.md).
@@ -37,12 +37,12 @@ Out of scope:
 | Session step | Reads the client IP and the User-Agent from the request metadata, and passes both to the session service |
 | Session service | Writes the client metadata, lists live sessions with their participants, and revokes sessions through the termination path that sign-out uses |
 | Session store | Persists the metadata in `SESSION.PROPERTIES`, and pages and counts live sessions by subject or by application |
-| `sessionmgt` package | The session management API under `backend/internal/flow/session/mgt`: routes, request validation, current session marking, and name resolution |
-| Security middleware | Requires `system:session:view` or `system:session:delete` on the administrator routes, and only a signed-in user on the `/users/me/sessions` routes |
+| Session management API | Part of the session package (`backend/internal/flow/session`): the handler and routes, and the session service's listing methods, which validate the request, scope it to an organization unit, mark the current session, and resolve names. `Initialize` registers the routes. The application service is injected afterwards with `SetApplicationProvider`, since the application package depends on the session package |
+| Security middleware | Requires `org:session:view` or `org:session:delete` on the administrator routes, and only a signed-in user on the `/users/me/sessions` routes |
 | `configure-sessions` package | The Sessions panel the Console and the Admin Console show on the user and application edit pages |
 | Access log | Adds the resolved client IP as the last field of each line |
 
-Ownership boundary: the session area owns sessions, their metadata, and termination. The `sessionmgt` package owns only the HTTP surface, and reaches sessions only through the session service. Token revocation and back-channel logout are reached through seams the session service already has, so the management API depends on the OAuth layer only for the name of the `tfid` claim it reads from the access token.
+Ownership boundary: the session area owns sessions, their metadata, and termination. The session management handler owns only the HTTP surface, and reaches sessions only through the session service's listing methods. Token revocation and back-channel logout are reached through seams the session service already has, so the management API depends on the OAuth layer only for the name of the `tfid` claim it reads from the access token.
 
 The feature uses these existing seams without changing their contracts:
 
@@ -53,14 +53,14 @@ The feature uses these existing seams without changing their contracts:
 | Session participant record | Names the applications in a session and holds each one's current token family, which identifies the current session and the grants to revoke |
 | Criteria revoker | Revokes the token families of a revoked session's participants |
 | Termination topic | Notifies listeners, such as back-channel logout, after a revocation commits |
-| User and application services | Resolve the user and application names shown in an administrator listing |
+| Entity, entity type and application services | Resolve the user or agent display names, and the application names and logos, shown in a listing |
 
 ```mermaid
 flowchart LR
     C[Browser or app] --> P[Reverse proxy, optional]
     P --> CIP[RequestMetadataMiddleware]
     CIP --> FE[Flow execution and authorize endpoints]
-    CIP --> API[sessionmgt API]
+    CIP --> API[Session management API]
     FE --> SS[Session service]
     API --> SS
     SS --> DB[(SESSION, SESSION_PARTICIPANT)]
@@ -100,12 +100,13 @@ The properties are display metadata. A `PROPERTIES` value that cannot be decoded
 
 ### Listing live sessions
 
-A session is live when its state is `ACTIVE` and neither its idle nor its absolute deadline has passed. Only live sessions are listed, so an expired row that has not been cleaned up never appears.
+A session is live when its state is `ACTIVE` and neither its idle nor its absolute deadline has passed. Only live sessions are listed, so an expired row that has not been cleaned up never appears. Only SSO sessions are listed; a `DIRECT` session, tied to a single sign-in, is not.
 
 - Sessions are ordered by `LAST_ACTIVE_AT` descending, then `SESSION_ID`, so the most recent session comes first and the order is the same on every request. Each page is read fresh, so a session that expires or becomes active between two requests can shift later pages by one.
 - Paging uses `offset` and `limit`. `limit` is 1 to 100 and defaults to 30. The response carries `totalResults`, `startIndex` (the 1-based position of the first session on the page), `count`, and `first`, `prev`, `next` and `last` links.
 - The participants of a page are read in one query for the whole page.
-- An administrator listing resolves each user's display name and each application's name, once per page. A name that can't be resolved is left out rather than failing the listing.
+- An administrator listing resolves each user's display name and each application's name, once per page. The display names are read through the entity service in one read, so a session of a user or an agent gets one. Applications are read as the runtime, since the session permission doesn't let the caller read applications. A name that can't be resolved is left out rather than failing the listing.
+- An offset at or past the total is answered from the count alone, without reading a page.
 - A session in the response never carries its handle, its checkpoint contexts, or its token family ids.
 - `lastActiveAt` moves with the sign-ins the session backs and with `refresh_token` grants issued under it. Both writes are throttled, so it can lag the latest use by up to the activity refresh interval, 60 seconds by default. Access token use doesn't move it.
 
@@ -167,16 +168,18 @@ ALTER TABLE "SESSION" ADD COLUMN PROPERTIES TEXT;
 
 | Method and path | Caller | Behavior |
 |---|---|---|
-| `GET /sessions?userId=` or `?appId=` | Administrator, `system:session:view` | One page of the user's live sessions, or of the live sessions the application has joined. Exactly one filter is required |
-| `DELETE /sessions?userId=` | Administrator, `system:session:delete` | Revokes every session of the user. `204`, also when there were none |
-| `DELETE /sessions/{sessionId}` | Administrator, `system:session:delete` | Revokes the session. `204`, also when it was already gone |
-| `GET /users/me/sessions` | Any signed-in user | One page of the caller's live sessions, each with `isCurrent`. User names are not resolved |
+| `GET /sessions?userId=` or `?appId=` | Administrator, `org:session:view` | One page of the user's live sessions, or of the live sessions the application has joined. Exactly one filter is required. An administrator confined to an organization unit gets, by user, only the sessions with an application signed in under it, and, by application, only the sessions that application itself signed in to under it. Either way only the participants of that unit are shown |
+| `DELETE /sessions?userId=` | Administrator, `org:session:delete` | Revokes every session of the user. `204`, also when there were none |
+| `DELETE /sessions/{sessionId}` | Administrator, `org:session:delete` | Revokes the session. `204`, also when it was already gone |
+| `GET /users/me/sessions` | Any signed-in user | One page of the caller's live sessions, each with `isCurrent`. Only the sessions with an application signed in under the organization unit of the sign-in that issued the token, and only those participants. User names are not resolved |
 | `DELETE /users/me/sessions` | Any signed-in user | Revokes the caller's sessions. `exceptCurrent=true` keeps the current one |
 | `DELETE /users/me/sessions/{sessionId}` | Any signed-in user | Revokes one of the caller's sessions. `404` when the caller has no such session |
 
-The administrator routes have their own permissions, as `/applications` and `/roles` do. A `session` resource with the actions `view` and `delete` is added under `system` on the System resource server, giving `system:session:view` for listing and `system:session:delete` for revoking. A role that holds `system`, such as the Administrator role, holds both. Only the Data Plane serves sessions, so the Control Plane declares no session permission and leaves the routes out. The self-service routes take the user from the access token and accept no user id. The permission table maps `GET /users/me/**` and the two `DELETE /users/me/sessions` routes to no permission, and the `DELETE` entries are narrow so they don't open `DELETE /users/me`.
+The administrator routes have their own permissions, as `/applications` and `/roles` do. A `session` resource is added under `org` on the System resource server, with the action `view`, giving `org:session:view`, and the action `delete`, giving `org:session:delete`. Listing requires `org:session:view` and revoking requires `org:session:delete`. Each reaches the organization unit the token names: the sessions with an application signed in under it, and only those participants. A token that holds one of them but names no organization unit is refused with `403`. Only the `system` permission reaches past one organization unit, as it does on every other route, so a role that holds `system`, such as the Administrator role, lists and revokes every session. There is no `system:session` permission, so there is one rule for what reaches every organization unit. Only the Data Plane serves sessions, so the Control Plane declares no session permission and its routes require `system`. The self-service routes take the user from the access token and accept no user id. `GET /capabilities` reports the `session` resource with its `view` action, answered by whether the caller's token holds the permission the server requires for `GET /sessions`. A route a plane doesn't serve reports `false`, so the Control Plane reports `session.view: false` even to a `system` token. The permission table maps `GET /users/me/**` and the two `DELETE /users/me/sessions` routes to no permission, and the `DELETE` entries are narrow so they don't open `DELETE /users/me`.
 
-Each session in a response carries `id`, `userId`, `userName` (administrator listing only), `userAgent`, `creationIp`, `lastActiveIp`, `authenticatedAt`, `createdAt`, `lastActiveAt`, `idleExpiresAt`, `absoluteExpiresAt`, `isCurrent` (self-service listing only), and `participants`, each with `appId`, `appName`, `firstJoinedAt` and `lastActiveAt`. A value that wasn't recorded or can't be resolved is left out.
+Each session in a response carries `id`, `userId`, `userDisplayName` (administrator listing only), `userAgent`, `creationIp`, `lastActiveIp`, `authenticatedAt`, `createdAt`, `lastActiveAt`, `idleExpiresAt`, `absoluteExpiresAt`, `isCurrent` (self-service listing only), and `participants`, each with `appId`, `ouId`, `appName`, `appLogoUrl`, `firstJoinedAt` and `lastActiveAt`. An application signed in under two organization units, such as after an organization switch, is two participants of the same session. A value that wasn't recorded or can't be resolved is left out. `userAgent` is supplied by the client and not checked, so a client renders it as text only. The session's own fields, such as `lastActiveAt`, `lastActiveIp` and `userAgent`, describe the whole session, so a listing confined to one organization unit can show activity under another.
+
+The self-service listing reads the organization unit from the participant that holds the access token's token family (`tfid`), which the server recorded at sign-in, and never from the token's `ouId` claim, which the application's token configuration decides. A participant recorded under no organization unit lists the sessions with a participant under none. A token with no token family, or one no participant of the caller's sessions holds, lists no session.
 
 Error codes, in the standard error envelope:
 
@@ -210,7 +213,7 @@ The `configure-sessions` package provides a Sessions panel, shown as a tab on th
 - Each session shows the browser, operating system and device described from its User-Agent, its last-active IP, when it was last active, and its applications. The User-Agent the mobile SDKs send is recognized as a native app.
 - The creation IP is shown as well when it differs from the last-active IP. On an application's panel, a user whose name can't be resolved is shown by their user id.
 - A revocation asks for confirmation first, and the list refreshes after it.
-- An administrator without `system:session:view` sees a message that they don't have permission to view the sessions, with no retry. A revocation refused for want of `system:session:delete` shows the same kind of message in the confirmation dialog.
+- An administrator without `org:session:view` sees a message that they don't have permission to view the sessions, with no retry. A revocation refused for want of `org:session:delete` shows the same kind of message in the confirmation dialog.
 
 ### Configuration
 
@@ -286,11 +289,16 @@ The key is also exposed through the Helm chart as `configuration.server.trustedP
 
 **Acceptance criteria:**
 
-- **AC6.1:** Given a caller with the `system:session:view` permission, when they call `GET /sessions?userId=<id>`, then the response holds that user's live sessions, most recently active first, each with its participants and the resolved user and application names.
+- **AC6.1:** Given a caller with the `system` permission, when they call `GET /sessions?userId=<id>`, then the response holds that user's live sessions, most recently active first, each with its participants and the resolved user and application names.
 - **AC6.2:** Given an application that has joined sessions, when an administrator calls `GET /sessions?appId=<id>`, then the response holds only the live sessions that application has joined.
 - **AC6.3:** Given a session past its idle or absolute deadline, when sessions are listed, then it is not in the response.
 - **AC6.4:** Given neither or both of `userId` and `appId`, when `GET /sessions` is called, then it returns `400` with `SSM-1001`.
-- **AC6.5:** Given a caller without `system:session:view`, when they call `GET /sessions`, then it returns `403`.
+- **AC6.5:** Given a caller without `org:session:view` or `system`, when they call `GET /sessions`, then it returns `403`.
+- **AC6.6:** Given a user signed in to an application shared into two organization units, under both, and a caller with `org:session:view` whose token names one of them, when the caller calls `GET /sessions?userId=<id>`, then the session is listed with only the participant of that unit, each participant carrying its `ouId`.
+- **AC6.7:** Given a caller with `org:session:view` whose token names an organization unit no application of the user's sessions signed in under, when they call `GET /sessions?userId=<id>`, then the response holds no sessions.
+- **AC6.8:** Given a session with application A signed in under organization unit X and application B signed in under unit Y, and a caller with `org:session:view` whose token names X, when the caller calls `GET /sessions?appId=<A>`, then the session is listed with only A's participant under X, and when they call `GET /sessions?appId=<B>`, then the response holds no sessions.
+- **AC6.9:** Given an application signed in to one session under two organization units, when a caller with `system` calls `GET /sessions?appId=<id>`, then the session is listed once, with both participants.
+- **AC6.10:** Given a Control Plane, when a caller with `system` calls `GET /capabilities`, then `session.view` is `false`. On the Data Plane it is `true` for a token with `org:session:view` or `system`.
 
 ### R7. See my own sessions
 
@@ -300,6 +308,8 @@ The key is also exposed through the Helm chart as `configuration.server.trustedP
 
 - **AC7.1:** Given a signed-in user with sessions on two devices, when they call `GET /users/me/sessions`, then the response holds both sessions and no session of another user.
 - **AC7.2:** Given the access token was issued in the latest grant of one of those sessions, when the user lists their sessions, then that session has `isCurrent: true` and the others `false`.
+- **AC7.3:** Given a user signed in to an application shared into two organization units, under both, when they call `GET /users/me/sessions` with the token of one of those sign-ins, then the session is listed with only the participant of that unit, whether or not the token carries an `ouId` claim.
+- **AC7.4:** Given an access token whose token family no participant of the caller's SSO sessions holds, such as one issued by a flow without a session step, when the caller calls `GET /users/me/sessions`, then the response holds no sessions.
 
 ### R8. End a user's sessions as an administrator
 
@@ -310,7 +320,7 @@ The key is also exposed through the Helm chart as `configuration.server.trustedP
 - **AC8.1:** Given a live session, when an administrator calls `DELETE /sessions/{id}`, then it returns `204`, the session no longer appears in a listing, and the next sign-in to its applications asks for credentials.
 - **AC8.2:** Given a user with several sessions, when an administrator calls `DELETE /sessions?userId=<id>`, then every session of the user is revoked.
 - **AC8.3:** Given a session that is already gone, when an administrator revokes it, then it returns `204`.
-- **AC8.4:** Given a caller with `system:session:view` but without `system:session:delete`, when they call `DELETE /sessions/{id}` or `DELETE /sessions?userId=<id>`, then it returns `403` and nothing is revoked.
+- **AC8.4:** Given a caller with `org:session:view` but without `org:session:delete`, when they call `DELETE /sessions/{id}` or `DELETE /sessions?userId=<id>`, then it returns `403` and nothing is revoked.
 
 ### R9. End my own sessions
 
@@ -359,3 +369,5 @@ The key is also exposed through the Helm chart as `configuration.server.trustedP
 | Version | Date | Change |
 |---|---|---|
 | 0.1 | 2026-11-04 | Initial specification, from design discussion #4130 and the session table in #6322, as built in #5575, #6150, #6152 and #6159. |
+| 0.2 | 2026-11-16 | Participants carry the application's logo URL, and both listings resolve names and logos regardless of the caller's user and application permissions. |
+| 0.3 | 2026-11-24 | Session listing by organization unit: `org:session:view` and `org:session:delete`, with only `system` reaching every unit, the self-service listing confined to the unit its own participant was recorded under, the participant's `ouId`, `userDisplayName` in place of `userName`, display names resolved for users and agents, only SSO sessions listed, the management API made part of the session service, with its routes registered in `Initialize`, the `?appId=` listing under an organization unit and the `session` capability made explicit. |

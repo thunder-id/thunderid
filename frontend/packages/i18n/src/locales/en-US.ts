@@ -256,6 +256,8 @@ const translations = {
     'errors.SSE-4030': 'You do not have permission to perform this action in this organization unit.',
     'errors.DCR-1002': 'This resource is managed declaratively and cannot be modified.',
     'errors.DCR-1003': 'This resource is managed declaratively and cannot be deleted.',
+    'errors.SCF-1006': 'The control plane manages these settings, so they can only be changed there.',
+    'errors.SCF-1007': "Declarative resources set these settings, so they can't be changed here.",
     'errors.SAZ-4030':
       'You cannot grant permissions that you do not hold. Ask an administrator who holds them to make this change.',
     'errors.ROL-1035':
@@ -303,6 +305,18 @@ const translations = {
     'discardChanges.description': 'You have unsaved changes. If you leave now, they will be lost.',
     'discardChanges.keepEditing': 'Keep editing',
     'discardChanges.confirm': 'Discard changes',
+
+    // Duration units and validation (used by the duration field)
+    'duration.invalid': 'Enter a whole number of 1 or more.',
+    'units.label': 'Unit',
+    'units.seconds': 'Seconds',
+    'units.minutes': 'Minutes',
+    'units.hours': 'Hours',
+    'units.days': 'Days',
+    'units.second': 'Second',
+    'units.minute': 'Minute',
+    'units.hour': 'Hour',
+    'units.day': 'Day',
 
     // Content Security Policy hints shown next to fields that load external resources.
     'csp.hint.image':
@@ -567,6 +581,14 @@ const translations = {
     'credentialReset.dialog.mismatch': 'Values do not match.',
     'credentialReset.dialog.resetting': 'Resetting…',
     'credentialReset.dialog.resetButton': 'Reset {{label}}',
+    'credentialReset.dialog.method.label': 'How should the {{label}} be reset?',
+    'credentialReset.dialog.method.set': 'Set a new {{label}} now',
+    'credentialReset.dialog.method.link': 'Email the user a link to set a new {{label}}',
+    'credentialReset.dialog.link.message': 'The user will receive an email with a link to set a new {{label}}.',
+    'credentialReset.dialog.link.warning':
+      '{{label}} stops working once the email is sent, and the user is signed out everywhere. It stays unusable until the user sets a new value from the link.',
+    'credentialReset.dialog.link.sendButton': 'Send reset link',
+    'credentialReset.dialog.sending': 'Sending…',
   },
 
   // ============================================================================
@@ -805,6 +827,12 @@ const translations = {
     'verification.sendExpired': "This user's account has expired, so a verification link cannot be sent.",
     'verification.saveToVerify': 'Save to verify',
 
+    // Credential reset link
+    'credentialResetLink.sent': 'Reset link sent. {{credential}} no longer works until the user sets a new one.',
+    'credentialResetLink.error': 'Could not send the reset link. Please try again.',
+    'credentialResetLink.heldSuspended': 'Unsuspend the user to send a reset link.',
+    'credentialResetLink.heldExpired': "This user's account has expired, so a reset link cannot be sent.",
+
     // Update credentials
     'updateCredentials.button': 'Update credentials',
     'updateCredentials.hint': 'Fill in only the credentials you want to update. Empty fields will be skipped.',
@@ -812,9 +840,13 @@ const translations = {
     'updateCredentials.error': 'Failed to update credentials. Please try again.',
 
     // Backend error code translations (per user service error envelope).
-    // Raised by the verification flow; scoped here so other flows keep their own copy.
+    // Raised by the verification and credential reset flows; scoped here so other flows keep their own copy.
+    'errors.FET-1037': 'This user has no email address, so the link was not sent. Add an email address and try again.',
     'errors.FET-1038': 'Email provider is not configured.',
     'errors.FET-1114': 'This user is suspended. Unsuspend the user and try again.',
+    'errors.FET-1139': 'The reset link was not sent, so the current credential still works.',
+    'errors.FET-1140':
+      'The reset failed after the email was sent. The emailed link will not work, and the current credential may already be removed. Send a new reset link.',
     'errors.USR-1003': 'This user no longer exists. It may have already been deleted.',
     'errors.USR-1005': 'The organization unit for this user no longer exists. Refresh and try again.',
     'errors.USR-1014': 'A user with the same unique attribute value already exists.',
@@ -1723,6 +1755,8 @@ const translations = {
     'edit.page.logoUpdate.label': 'Update logo',
     'edit.page.copyOuId': 'Copy organization unit ID',
     'edit.page.back': 'Back to organization units',
+    'edit.page.editName': 'Edit organization unit name',
+    'edit.page.editDescription': 'Edit description',
     'edit.page.backToOU': 'Back to {{name}}',
     'edit.page.description.empty': 'No description',
     'edit.page.description.placeholder': 'Enter a description...',
@@ -2654,6 +2688,28 @@ const translations = {
     'attributeMapping.linking.placeholder': 'e.g. email',
     'attributeMapping.linking.addAttribute': 'Add attribute',
     'attributeMapping.linking.and': 'AND',
+    // Section 4: sync
+    'attributeMapping.sync.title': 'Sync',
+    'attributeMapping.sync.description':
+      'How sign-ins through this connection keep the account in line with the provider.',
+    'attributeMapping.sync.attributes.label': 'Attributes sync',
+    'attributeMapping.sync.attributes.hint.override_received':
+      'Each sign-in updates the attributes in the attribute mappings when the provider sends them. Other attributes are kept.',
+    'attributeMapping.sync.attributes.hint.no_sync':
+      "The provider's attributes are stored when a sign-in creates the account, and are not updated after.",
+    'attributeMapping.sync.attributes.hint.session_only':
+      "The account stores only the required attributes and the values the user enters. The provider's other attributes apply to the session.",
+    'attributeMapping.sync.groupsAndRoles.label': 'Groups and roles sync',
+    'attributeMapping.sync.groupsAndRoles.hint.no_sync':
+      'The groups and roles the authorization mapping resolves are assigned when a sign-in creates the account, and are not updated after.',
+    'attributeMapping.sync.groupsAndRoles.hint.override_all':
+      "Returning sign-ins match the account's direct groups and roles to the authorization mapping, removing unmapped ones of each type the mapping targets. Protected assignments are kept.",
+    'attributeMapping.sync.groupsAndRoles.hint.session_only':
+      'The groups and roles the authorization mapping resolves apply to the session and are not assigned to the account.',
+    'attributeMapping.sync.mode.no_sync': 'No sync',
+    'attributeMapping.sync.mode.session_only': 'Session only',
+    'attributeMapping.sync.mode.override_received': 'Override received',
+    'attributeMapping.sync.mode.override_all': 'Override all',
 
     // Authorization mapping (federated role, group, and permission assignment)
     'authorizationMapping.title': 'Authorization mapping',
@@ -2870,7 +2926,7 @@ const translations = {
     'detail.idJag.enabledNote': 'Identity assertions from this issuer are accepted via the ID-JAG protocol.',
     'detail.authorizationMapping.description':
       'Map values in tokens from this issuer to local roles, groups, or permissions. ' +
-      'When a mapping is set, these tokens carry only the permissions it grants.',
+      'Tokens from this issuer carry only the permissions the mapping grants, and none without a mapping.',
     'detail.dangerZone.title': 'Danger zone',
     'detail.dangerZone.delete.title': 'Delete trusted issuer',
     'detail.dangerZone.delete.description':
@@ -2996,6 +3052,9 @@ const translations = {
     'authorizationDetails.invalidNumber': 'Enter a number.',
     'authorizationDetails.numberMax': 'Enter {{value}} or less.',
     'authorizationDetails.numberMin': 'Enter {{value}} or more.',
+    'authorizationDetails.numberAbove': 'Enter more than {{value}}.',
+    'authorizationDetails.numberBelow': 'Enter less than {{value}}.',
+    'authorizationDetails.numberMultiple': 'Enter a multiple of {{value}}.',
     'authorizationDetails.invalidDate': 'Enter a date.',
     'authorizationDetails.dateMax': 'Choose {{value}} or earlier.',
     'authorizationDetails.dateMin': 'Choose {{value}} or later.',
@@ -3006,6 +3065,17 @@ const translations = {
     'client.hosts': 'Published by {{clientIdHost}}. Returns to {{redirectUriHost}}.',
     'client.deviceWarning':
       'This app runs on your device. Other programs on your device can use the same address, so continue only if you started this app.',
+    'validity.label': 'Ask me again',
+    'validity.remember': 'Remember my decision',
+    'validity.optionNever': 'No expiry',
+    'validity.optionCustom': 'Custom',
+    'validity.customLabel': 'Custom validity',
+    'validity.customUnitLabel': 'Unit',
+    'validity.hintOnce': 'You will be asked again the next time you sign in.',
+    'validity.hintExpires': 'Your consent expires in {{duration}}.',
+    'validity.hintNever': 'You will not be asked again unless this application asks for more access.',
+    'validity.hintCustom': 'Enter a whole number.',
+    'validity.hintCustomMax': 'Enter a whole number, up to {{max}}.',
   },
 
   // ============================================================================
@@ -3309,7 +3379,10 @@ const translations = {
     'onboarding.configure.passkey.description': 'Configure the Relying Party details for Passkey authentication.',
     'onboarding.configure.details.relyingPartyId.label': 'Relying party ID',
     'onboarding.configure.details.relyingPartyId.placeholder': 'e.g., example.com',
-    'onboarding.configure.details.relyingPartyId.helperText': 'The domain where the WebAuthn credential is valid',
+    'onboarding.configure.details.relyingPartyId.helperText':
+      'The domain where the passkey is valid. Leave empty to use the host of the sign-in page.',
+    'onboarding.configure.details.relyingPartyId.embeddedHelperText':
+      'The domain of your application, where users create and use their passkeys.',
     'onboarding.configure.details.relyingPartyName.label': 'Relying party name',
     'onboarding.configure.details.relyingPartyName.placeholder': 'e.g., my application',
     'onboarding.configure.details.relyingPartyName.helperText': 'A user-friendly name for the relying party',
@@ -3593,11 +3666,19 @@ const translations = {
     'edit.advanced.passkeys.allowedOrigins.error.empty': 'Origin cannot be empty',
     'edit.advanced.passkeys.allowedOrigins.error.invalid': 'Enter a valid URL',
 
+    /* Login consent section */
+    'edit.advanced.loginConsent.validityPeriod.label': 'Consent validity period',
+    'edit.advanced.loginConsent.validityPeriod.hint':
+      'How long consent is remembered before the user is asked again. Choose No expiry for consent that does not expire.',
+    'edit.advanced.loginConsent.validityPeriod.noExpiry': 'No expiry',
+
     /* -------------------- Edit page -------------------- */
     // Common
     'edit.page.error': 'Failed to load application information',
     'edit.page.notFound': 'Application not found',
     'edit.page.back': 'Back to applications',
+    'edit.page.editName': 'Edit application name',
+    'edit.page.editDescription': 'Edit description',
     'edit.page.logoUpdate.label': 'Update logo',
     'edit.page.description.empty': 'No description',
     'edit.page.description.placeholder': 'Add a description',
@@ -3792,7 +3873,7 @@ const translations = {
     'edit.general.contacts.error.invalid': 'Please enter a valid email address',
     'edit.general.redirectUris.title': 'Authorized redirect URIs',
     'edit.general.redirectUris.description':
-      'Where ThunderID sends users back after they sign in. Sign-in requests must use one of these URIs.',
+      'Where {{productName}} sends users back after they sign in. Sign-in requests must use one of these URIs.',
     'edit.general.redirectUris.tooltip': 'OAuth2 redirect URIs where users will be redirected after authentication',
     'edit.general.redirectUris.addUri': 'Add URI',
     'edit.general.redirectUris.error.empty': 'Invalid redirect: URI must not be empty.',
@@ -4641,12 +4722,15 @@ const translations = {
 
     // Consent executor
     'core.executions.consent.description': 'Configure the consent executor settings.',
-    'core.executions.consent.timeout.label': 'Consent timeout (seconds)',
+    'core.executions.consent.timeout.label': 'Consent prompt timeout (seconds)',
     'core.executions.consent.timeout.placeholder': '0',
     'core.executions.consent.timeout.hint': 'Time in seconds before the consent request expires. Use 0 for no timeout.',
     'core.executions.consent.failOnDeny.label': 'Fail flow when user denies consent',
     'core.executions.consent.failOnDeny.hint':
       'When enabled, the flow fails if the user denies the consent prompt or lets it time out, even if all requested attributes and permissions are optional.',
+    'core.executions.consent.promptValidityPeriod.label': 'Let the user choose the consent validity period',
+    'core.executions.consent.promptValidityPeriod.hint':
+      'The user picks a period or types their own, up to the application or agent period.',
 
     // Identifying executor modes
     'core.executions.identifying.mode.identify': 'Identify',
@@ -4732,6 +4816,14 @@ const translations = {
     'core.executions.identityGovernance.mode.hint':
       'Suspend and unlock act on different holds, so releasing one leaves the other in place. Suspend acts on the identity a Pre Suspend Executor planned.',
     'core.executions.identityGovernance.description': 'Run one lifecycle operation on the identity the flow resolved.',
+    'core.executions.credentialSetter.description': "Sets, validates or removes a user's credential.",
+    'core.executions.credentialSetter.mode.label': 'Operation',
+    'core.executions.credentialSetter.mode.placeholder': 'Select an operation',
+    'core.executions.credentialSetter.mode.set': 'Set credentials',
+    'core.executions.credentialSetter.mode.validate': 'Validate credential reset',
+    'core.executions.credentialSetter.mode.invalidate': 'Remove credential',
+    'core.executions.credentialSetter.mode.hint':
+      'In an administrator-initiated flow, Validate credential reset runs before the link is sent, Remove credential after it is emailed, and Set credentials when the user submits the new value.',
 
     // Passkey executor modes
     'core.executions.passkey.mode.challenge': 'Challenge',
@@ -4744,12 +4836,13 @@ const translations = {
 
     // Passkey relying party configuration
     'core.executions.passkey.relyingPartyId.label': 'Relying party ID',
-    'core.executions.passkey.relyingPartyId.placeholder': 'e.g., localhost or example.com',
+    'core.executions.passkey.relyingPartyId.placeholder': 'e.g., example.com',
     'core.executions.passkey.relyingPartyId.hint':
-      'The domain identifier for passkey registration (typically your domain name)',
+      'The domain the passkey is valid for. Leave empty to use the host of the sign-in page.',
     'core.executions.passkey.relyingPartyName.label': 'Relying party name',
     'core.executions.passkey.relyingPartyName.placeholder': 'e.g., my application',
-    'core.executions.passkey.relyingPartyName.hint': 'A human-readable name shown to users during passkey registration',
+    'core.executions.passkey.relyingPartyName.hint':
+      "A name shown to users during passkey registration. Leave empty to use the application's name.",
 
     // OU Resolver executor
     'core.executions.ouResolver.description': 'Configure the OU resolution strategy.',
@@ -4859,12 +4952,8 @@ const translations = {
     'core.executions.provisioning.assignRole.noOptions': 'No roles found',
     'core.executions.provisioning.assignRole.noneExist': 'No roles exist. Create one, then select it here.',
     'core.executions.provisioning.assignRole.loadError': 'Failed to load roles.',
-    'core.executions.provisioning.seedGroupsFromMapping.label': 'Seed groups from authorization mapping',
-    'core.executions.provisioning.seedGroupsFromMapping.hint':
-      "Assign groups the connection's authorization mapping resolved for this subject.",
-    'core.executions.provisioning.seedRolesFromMapping.label': 'Seed roles from authorization mapping',
-    'core.executions.provisioning.seedRolesFromMapping.hint':
-      "Assign roles the connection's authorization mapping resolved for this subject.",
+    'core.executions.provisioning.federatedOverrideWarning':
+      "With Override all sync, a later federated sign-in removes groups assigned here that the connection's authorization mapping doesn't resolve when it has a group target, and roles when it has a role target.",
 
     // Session sign out executor
     'core.executions.sessionSignOut.description': 'Configure the session sign out executor settings.',
@@ -5417,6 +5506,8 @@ const translations = {
     'core.variables.preview.empty': 'Add a variable to see it here.',
     'core.headerPanel.share': 'Share',
     'core.sharing.dialog.title': 'Share flow',
+    'core.sharing.sharedIntoUnit':
+      "This flow is shared into this organization unit. Its steps aren't shown here and can't be changed here.",
     'core.sharing.dialog.saveError': 'Failed to update how the flow is shared. Please try again.',
     'core.sharing.dialog.saved': 'Sharing updated.',
     'core.sharing.dialog.savedWithFlow': 'These changes are saved when you save the flow.',
@@ -6573,18 +6664,39 @@ const translations = {
     'composer.kindChange.allowedValues': 'the allowed values',
     'composer.kindChange.change': 'the rule for changing it',
     'composer.kindChange.fields': 'the fields inside it',
+    'composer.kindChange.fixedValue': 'the fixed value',
     'composer.kindChange.limits': 'the minimum and maximum',
+    'composer.kindChange.maxItems': 'the maximum number of items',
     'composer.kindChange.maxLength': 'the maximum length',
     'composer.kindChange.minItems': 'the minimum number of items',
+    'composer.kindChange.minLength': 'the minimum length',
     'composer.kindChange.notice': 'Changing the type removed {{settings}}, which the new type cannot keep.',
+    'composer.kindChange.pattern': 'the pattern',
+    'composer.kindChange.step': 'the step',
+    'composer.kindChange.uniqueItems': 'the rule that each item appears once',
+    'composer.limits.above': 'Above {{min}}',
+    'composer.limits.below': 'Below {{max}}',
+    'composer.limits.itemRange': '{{min}} to {{max}} items',
+    'composer.limits.lengthRange': '{{min}} to {{max}} characters',
     'composer.limits.length_one': 'Up to {{count}} character',
     'composer.limits.length_other': 'Up to {{count}} characters',
     'composer.limits.max': 'Up to {{max}}',
+    'composer.limits.maxItems_one': 'Up to {{count}} item',
+    'composer.limits.maxItems_other': 'Up to {{count}} items',
     'composer.limits.min': 'From {{min}}',
     'composer.limits.minItems_one': 'At least {{count}} item',
     'composer.limits.minItems_other': 'At least {{count}} items',
+    'composer.limits.minLength_one': 'At least {{count}} character',
+    'composer.limits.minLength_other': 'At least {{count}} characters',
     'composer.limits.none': 'No limits',
+    'composer.limits.pattern': 'Pattern',
     'composer.limits.range': '{{min}} to {{max}}',
+    'composer.limits.rangeAbove': 'Above {{min}}, up to {{max}}',
+    'composer.limits.rangeBelow': '{{min}} to below {{max}}',
+    'composer.limits.rangeBetween': 'Above {{min}}, below {{max}}',
+    'composer.limits.step': 'Steps of {{step}}',
+    'composer.limits.unique': 'Each item once',
+    'composer.limits.wholeNumbers': 'Whole numbers',
     'composer.move.down': 'Move down',
     'composer.move.indent': 'Move into the object above',
     'composer.move.outdent': 'Move out of this object',
@@ -6721,36 +6833,64 @@ const translations = {
     'fields.allowedValueBlank': 'Enter a value, not only spaces.',
     'fields.allowedValueRepeated': '{{value}} is already allowed.',
     'fields.allowedValues': 'Allowed values',
+    'fields.allowedValuesFieldHint': 'Leave empty to allow any value.',
+    'fields.atLeast': 'At least',
+    'fields.atMost': 'At most',
     'fields.allowedValuesHint': 'Each item must be one of these values. Leave empty to allow any value.',
     'fields.anyValue': 'Any value. Type a value and press Enter',
     'fields.dateTimeHint': 'e.g., {{example}}',
+    'fields.description': 'Description',
+    'fields.descriptionHint': 'Shown under the display name on the consent screen.',
+    'fields.descriptionPlaceholder': 'Optional',
     'fields.errors.allowedValuesDuplicate': 'Each allowed value can appear only once.',
     'fields.errors.allowedValuesSpaces': 'An allowed value cannot start or end with a space.',
     'fields.errors.allowedValuesInvalid': 'Enter each allowed value as a number.',
+    'fields.errors.allowedValuesPrecision': 'Enter each allowed value with at most 15 significant digits.',
     'fields.errors.dateTimeUser':
       'The consent screen cannot change a date and time, so only the client or the external processor can change it.',
+    'fields.errors.fixedValueBoolean': 'Choose true or false as the fixed value.',
+    'fields.errors.fixedValueInvalid': 'Enter the fixed value as a number.',
+    'fields.errors.fixedValuePrecision': 'Enter the fixed value with at most 15 significant digits.',
+    'fields.errors.exclusiveLimitRequired': 'Enter the limit that the value must be above or below.',
+    'fields.errors.itemsOrder': 'The minimum number of items cannot be greater than the maximum.',
+    'fields.errors.lengthOrder': 'The minimum length cannot be greater than the maximum length.',
     'fields.errors.limitInvalid': 'Enter the minimum and maximum as values of this type.',
     'fields.errors.limitOrder': 'The minimum cannot be greater than the maximum.',
+    'fields.errors.limitPrecision': 'Enter the minimum and maximum with at most 15 significant digits.',
+    'fields.errors.maxItemsInvalid': 'Enter the maximum number of items as a whole number.',
+    'fields.errors.maxItemsTooLarge': 'The maximum number of items can be at most 2147483647.',
     'fields.errors.maxLengthInvalid': 'Enter the maximum length as a whole number.',
     'fields.errors.maxLengthTooLarge': 'The maximum length can be at most 2147483647.',
     'fields.errors.minItemsInvalid': 'Enter the minimum number of items as a whole number.',
     'fields.errors.minItemsTooLarge': 'The minimum number of items can be at most 2147483647.',
+    'fields.errors.minLengthInvalid': 'Enter the minimum length as a whole number.',
+    'fields.errors.minLengthTooLarge': 'The minimum length can be at most 2147483647.',
     'fields.errors.modifiableByRequired': 'Choose who can change this field.',
     'fields.errors.modifiableInSupplied':
       'Your external processor fills in the object this field belongs to, so nobody can change it after the request.',
     'fields.errors.nameDot': 'A field name cannot contain a dot.',
-    'fields.errors.nameInnerSpace': 'A field name cannot contain a space.',
     'fields.errors.nameSpaces': 'A field name cannot start or end with a space.',
     'fields.errors.nameDuplicate': 'Another field at this level has the same name.',
     'fields.errors.nameRequired': 'Enter a field name.',
     'fields.errors.json.nameDuplicate':
       'Another field at this level has the same name. Rename it to edit the schema as JSON.',
     'fields.errors.json.nameRequired': 'Enter a field name to edit the schema as JSON.',
+    'fields.errors.patternIncomplete':
+      'The pattern is incomplete. Check that each group and character class is closed.',
+    'fields.errors.patternUnsupported': 'The pattern uses a lookaround or a backreference, which is not supported.',
     'fields.errors.policyRefused':
       "The server refused this field's rules. Check its type, limits and who can change it.",
     'fields.errors.processorMissing': 'The external processor sets or changes this field, but no processor is set.',
+    'fields.errors.stepInvalid': 'Enter the step as a number greater than 0.',
+    'fields.errors.stepPrecision': 'Enter the step with at most 15 significant digits.',
     'fields.errors.typeKind': 'The type identifies the request, so it must be plain text.',
+    'fields.errors.typeValueExcluded':
+      'The fixed value or allowed values of the type must include the type identifier.',
     'fields.errors.typeSupplied': 'The type identifies the request, so the external processor cannot set it.',
+    'fields.fixedFalse': 'Always false',
+    'fields.fixedTrue': 'Always true',
+    'fields.fixedValue': 'Fixed value',
+    'fields.fixedValueHint': 'Every request must carry exactly this value.',
     'fields.itemKind.label': 'Item type',
     'fields.itemKind.number': 'Number',
     'fields.itemKind.string': 'Text',
@@ -6762,24 +6902,40 @@ const translations = {
     'fields.kind.number': 'Number',
     'fields.kind.object': 'Object',
     'fields.kind.string': 'Text',
+    'fields.maxItems': 'Maximum number of items',
     'fields.maxLength': 'Maximum length',
     'fields.maxLengthHint': 'Values are shown to the user on the consent screen, so keep free text short.',
+    'fields.lessThan': 'Less than',
     'fields.maximum': 'Maximum',
+    'fields.maximumComparison': 'Maximum comparison',
     'fields.minItems': 'Minimum number of items',
     'fields.minItemsHint': 'A request must list at least this many items.',
+    'fields.minLength': 'Minimum length',
     'fields.minimum': 'Minimum',
+    'fields.minimumComparison': 'Minimum comparison',
+    'fields.moreThan': 'More than',
     'fields.name': 'Field name',
     'fields.namePlaceholder': 'e.g., amount',
     'fields.new': 'New field',
+    'fields.noFixedValue': 'None',
+    'fields.noMaxItems': 'No maximum',
     'fields.noMaxLength': 'No limit',
     'fields.noMaximum': 'No maximum',
     'fields.noMinItems': 'No minimum',
+    'fields.noMinLength': 'No minimum',
     'fields.noMinimum': 'No minimum',
+    'fields.noPattern': 'Any text',
+    'fields.noStep': 'Any number',
+    'fields.pattern': 'Pattern',
+    'fields.patternHint': 'An RE2 regular expression, such as ^[A-Z]{3}$.',
     'fields.remove': 'Remove field',
     'fields.requiredTooltip': 'Every request must include this field',
+    'fields.step': 'Step',
+    'fields.stepHint': 'For example, 1 for whole numbers or 0.01 for cents.',
     'fields.title': 'Display name',
     'fields.titleHint': 'Shown to the user on the consent screen.',
     'fields.titlePlaceholder': 'e.g., Amount',
+    'fields.uniqueItems': 'Each item can appear only once',
     'form.description': 'Description',
     'form.descriptionPlaceholder': 'e.g., A single payment from the user’s account',
     'form.name': 'Name',
@@ -6833,6 +6989,8 @@ const translations = {
     'save.error': 'Failed to save the intent. Please try again.',
     'schema.builderUnavailable':
       'This schema uses features the composer cannot show, so it can be edited only as JSON. It is checked when you save.',
+    'schema.builderUnavailableAt':
+      'The field {{path}} uses features the composer cannot show, such as a list of objects, so this schema can be edited only as JSON. It is checked when you save.',
     'schema.composerUnavailable': 'The composer cannot show this schema. Edit it as JSON.',
     'schema.composerUnavailableInvalid': 'Fix the JSON to open it in the composer.',
     'schema.description':
@@ -7471,6 +7629,10 @@ const translations = {
     'card.undoHint_other':
       "Puts this project's resources back as they were before the last deploy of {{version}} ({{count}} changes).",
     'card.undoHintUncounted': "Puts this project's resources back as they were before the last deploy of {{version}}.",
+    'gateway.allSecrets': 'Secrets on {{name}}',
+    'gateway.allValuesHint':
+      'Values belong to the gateway: these are all it holds, including the ones the resources above use.',
+    'gateway.allVariables': 'Variables on {{name}}',
     'gateway.deployed': 'Deployed configuration',
     'resourceStatus.changed': 'Changes not deployed',
     'resourceStatus.changedHint':
@@ -7554,9 +7716,6 @@ const translations = {
     'gateway.historyTitle': 'Deployment history',
     'gateway.issuer': 'Issuer',
     'gateway.notRunning': 'Not running',
-    'gateway.otherSecrets': 'Other secrets on {{name}}',
-    'gateway.otherValuesHint': 'Values belong to the gateway: no resource shown above uses these.',
-    'gateway.otherVariables': 'Other variables on {{name}}',
     'gateway.savedRedeploy_one': 'Saved. {{count}} value changed since the last deploy: redeploy to apply it.',
     'gateway.savedRedeploy_other': 'Saved. {{count}} values changed since the last deploy: redeploy to apply them.',
     'gateway.shared': 'Shared',
@@ -7840,7 +7999,9 @@ const translations = {
     'values.description':
       'The variables and secrets this gateway holds. The configuration refers to them by name; each gateway holds its own.',
     'values.edit': 'Edit',
+    'values.editLabel': 'Edit {{name}}',
     'values.empty': '(empty)',
+    'values.hiddenUse': 'Used by a resource not shown here',
     'values.listHint': 'One per line.',
     'values.missing_one': 'The version {{gateway}} runs refers to {{count}} value it does not hold.',
     'values.missing_other': 'The version {{gateway}} runs refers to {{count}} values it does not hold.',
@@ -7848,17 +8009,28 @@ const translations = {
     'values.more': '+{{count}} more',
     'values.name': 'Name',
     'values.noSecrets': 'This gateway holds no secrets.',
+    'values.noSecretsMatch': 'No secrets have a name that starts with {{prefix}}.',
     'values.noVariables': 'This gateway holds no variables.',
+    'values.noVariablesMatch': 'No variables have a name that starts with {{prefix}}.',
     'values.notRunning': 'Not used by the running version',
     'values.notSet': 'Not set',
     'values.other': 'Not used by the version this gateway runs',
     'values.readFailed': 'The values {{gateway}} holds could not be read.',
     'values.referencesFailed': 'Which values the version {{gateway}} runs refers to could not be read.',
     'values.replace': 'Replace',
+    'values.replaceLabel': 'Replace {{name}}',
+    'values.resourceLabel': '{{type}}: {{name}}',
     'values.save': 'Save',
     'values.saveFailed': 'The value could not be saved.',
+    'values.searchInvalid':
+      'A name starts with a letter or an underscore and holds only letters, digits and underscores.',
+    'values.searchSecrets': 'Search secrets by the start of their name',
+    'values.searchSecretsLabel': 'Search secrets',
+    'values.searchVariables': 'Search variables by the start of their name',
+    'values.searchVariablesLabel': 'Search variables',
     'values.secretPlaceholder': 'Enter a new value to replace',
     'values.secretsTab': 'Secrets ({{count}})',
+    'values.secretsTabPlain': 'Secrets',
     'values.set': 'Set',
     'values.setLabel': 'Set {{name}}',
     'values.stored': 'Stored',
@@ -7886,6 +8058,7 @@ const translations = {
     'values.types.user_type': 'User types',
     'values.value': 'Value',
     'values.variablesTab': 'Variables ({{count}})',
+    'values.variablesTabPlain': 'Variables',
     'version.hash': 'Hash {{hash}}',
     'versions.deployRow': 'Deploy',
     'versions.alreadyDeployed': 'Already deployed to {{targets}}',
@@ -7900,10 +8073,40 @@ const translations = {
   settings: {
     'page.title': 'Configurations',
     'page.subtitle': 'Configurations that apply across your system.',
+    'page.load.error': 'Failed to load the configurations',
+    'page.refresh.error': 'Failed to refresh the configurations. The tabs show what was loaded before.',
     'tabs.ariaLabel': 'Settings sections',
+    'tabs.sessions': 'Sign-in session',
     'tabs.cors': 'CORS',
     'tabs.csp': 'Content security policy',
     'tabs.accountSecurity': 'Account security',
+
+    // Shared by the cards that edit a server-config section
+    'field.default': 'Default',
+    'field.custom': 'Custom',
+    'field.resetToDefault': 'Reset to default',
+    'lock.declarative':
+      "These values come from a declarative resource, so they can't be changed here. To change them, edit <code>{{file}}</code> and redeploy.",
+    'saveBar.unsavedChanges': 'You have unsaved changes',
+    'saveBar.save': 'Save changes',
+
+    // Session timeouts
+    'session.card.title': 'Session timeouts',
+    'session.card.description':
+      'How long a sign-in session lasts. A change applies without a restart, and a shorter timeout also ends existing sessions that have gone past it.',
+    'session.idleTimeout.label': 'Idle timeout',
+    'session.idleTimeout.hint': 'Signs the user out after this long without activity.',
+    'session.absoluteTimeout.label': 'Absolute timeout',
+    'session.absoluteTimeout.hint': "Signs the user out this long after they sign in, even if they're active.",
+    'session.validation.wholeNumber': 'Enter a whole number greater than zero.',
+    'session.validation.idleExceedsAbsolute': "The idle timeout can't be longer than the absolute timeout.",
+    'session.load.error': 'Failed to load the session settings.',
+    'session.refresh.error': 'Failed to refresh the session settings. The values shown are the ones loaded before.',
+    'session.save.success': 'Session settings updated.',
+    'session.save.error': 'Failed to update the session settings.',
+    'session.errors.SCF-1003':
+      "These session timeouts aren't valid. The idle timeout must be longer than the activity refresh interval (1 minute by default) and no longer than the absolute timeout, and neither may pass the deployment's maximum (30 days idle and 365 days absolute by default).",
+
     'cors.card.title': 'Allowed origins',
     'cors.card.description':
       'Manage which origins are allowed to access your APIs. Each entry is either an exact origin or a regular expression.',
@@ -7937,8 +8140,12 @@ const translations = {
     'csp.card.title': 'Directives',
     'csp.card.description':
       'The directives sent to the Console and Gate. Changing a directive overrides its default value.',
-    'csp.scope.label': 'Applies to',
-    'csp.scope.all': 'All pages',
+    'csp.scope.shared': 'Shared',
+    'csp.scope.sharedDescription':
+      'Applies to the Console and Gate. A directive set in the Console or Gate section replaces the one here for that section.',
+    'csp.scope.console': 'Console',
+    'csp.scope.gate': 'Gate',
+    'csp.scope.pathDescription': 'Applies to pages under {{location}}.',
     'csp.directive.label': 'Directive',
     'csp.sources.label': 'Sources for {{directive}}',
     'csp.sourcesPlaceholder': 'Add a source and press Enter',
@@ -7947,10 +8154,12 @@ const translations = {
     'csp.resetDirective': 'Reset to default',
     'csp.validation.invalidSource': "A source can't contain a semicolon or comma.",
     'csp.validation.noSources': 'Add at least one source, or reset the directive to its default.',
+    'csp.validation.noSourcesNoDefault': 'Add at least one source, or remove the directive.',
     'csp.validation.noneWithOthers': "'none' can't be combined with other sources.",
     'csp.header.label': 'Header sent for {{scope}}',
+    'csp.header.sharedLabel': 'Header sent when the Console or Gate has no section of its own',
     'csp.header.nonceHint':
-      "Each response also adds a one-time nonce to script-src and style-src-elem, unless they allow 'unsafe-inline'.",
+      "Each response also adds a one-time nonce to script-src, and to style-src-elem when it is set, unless the directive allows 'unsafe-inline'.",
     'csp.unsavedChanges': 'You have unsaved changes',
     'csp.reset': 'Reset',
     'csp.save': 'Save changes',
@@ -8074,15 +8283,6 @@ const translations = {
       'Require administrator intervention when the number of consecutive failed authentication attempts reaches this limit.',
     'accountLock.ceiling.ariaLabel': 'Consecutive failure limit',
 
-    'accountLock.units.label': 'Unit',
-    'accountLock.units.seconds': 'Seconds',
-    'accountLock.units.minutes': 'Minutes',
-    'accountLock.units.hours': 'Hours',
-    'accountLock.units.days': 'Days',
-    'accountLock.units.second': 'Second',
-    'accountLock.units.minute': 'Minute',
-    'accountLock.units.hour': 'Hour',
-    'accountLock.units.day': 'Day',
     'accountLock.units.short.second': '{{count}} second',
     'accountLock.units.short.seconds': '{{count}} seconds',
     'accountLock.units.short.minute': '{{count}} minute',
@@ -8097,8 +8297,6 @@ const translations = {
     'accountLock.validation.ceiling':
       'Enter 0 for no limit, or at least the number of failed attempts that locks the account.',
 
-    'accountLock.readOnlyHint':
-      "These settings are read-only because they're managed declaratively. Change them in the declarative configuration.",
     'accountLock.unsavedChanges': 'You have unsaved changes',
     'accountLock.reset': 'Reset',
     'accountLock.save': 'Save changes',

@@ -167,7 +167,7 @@ func (ts *ControlPlaneTestSuite) TestAWrittenApplicationsValuesReachTheDefaultGa
 	clientSecret := unique("cp-capture-secret")
 
 	appID, err := testutils.CreateApplication(testutils.Application{
-		OUID:         ts.ouID,
+		ProjectID:    defaultProjectID,
 		Name:         name,
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
@@ -193,7 +193,7 @@ func (ts *ControlPlaneTestSuite) TestAWrittenApplicationsFlowSecretReachesTheDef
 	g := ts.withDefaultGateway()
 	name := unique("CP Capture Flow Secret App")
 	appID, err := testutils.CreateApplication(testutils.Application{
-		OUID: ts.ouID, Name: name, Type: "custom", Embedded: true,
+		OUID: ts.ouID, ProjectID: defaultProjectID, Name: name, Type: "custom", Embedded: true,
 	})
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteApplication(appID) }()
@@ -225,7 +225,7 @@ func (ts *ControlPlaneTestSuite) TestACapturedValueRefusedOnceIsWrittenAgain() {
 	clientID := unique("cp-retry-client")
 
 	appID, err := testutils.CreateApplication(testutils.Application{
-		OUID:         ts.ouID,
+		ProjectID:    defaultProjectID,
 		Name:         name,
 		ClientID:     clientID,
 		ClientSecret: unique("cp-retry-secret"),
@@ -249,9 +249,9 @@ func (ts *ControlPlaneTestSuite) TestAnApplicationWithoutRedirectURIsAsksNoGatew
 	clientID := unique("cp-machine-client")
 
 	appID, err := testutils.CreateApplication(testutils.Application{
-		OUID: ts.ouID,
-		Name: name,
-		Type: "m2m",
+		ProjectID: defaultProjectID,
+		Name:      name,
+		Type:      "m2m",
 		InboundAuthConfig: []map[string]interface{}{{
 			"type": "oauth2",
 			"config": map[string]interface{}{
@@ -336,14 +336,16 @@ func (ts *ControlPlaneTestSuite) TestAWrittenConnectionsSecretReachesTheDefaultG
 // names its export refers to.
 func (ts *ControlPlaneTestSuite) TestAWrittenAgentsCredentialsReachTheDefaultGateway() {
 	g := ts.withDefaultGateway()
-	// The default agent type is shared, so it is pointed at this suite's unit for the test and put back.
+	// The default agent type is shared, so it is changed for the test and put back.
 	snapshot, err := testutils.SnapshotAgentType()
 	ts.Require().NoError(err)
 	defer func() { ts.NoError(testutils.RestoreAgentType(snapshot)) }()
+	defaultOUID, err := testutils.DefaultOUID()
+	ts.Require().NoError(err)
 	_, err = testutils.CreateAgentType(testutils.UserType{
 		Handle:           "default",
 		DisplayName:      "Default",
-		OUID:             ts.ouID,
+		OUID:             defaultOUID,
 		SystemAttributes: &testutils.UserTypeSystemAttributes{Display: "name"},
 		Schema: map[string]interface{}{
 			"name":        map[string]interface{}{"type": "string"},
@@ -356,7 +358,7 @@ func (ts *ControlPlaneTestSuite) TestAWrittenAgentsCredentialsReachTheDefaultGat
 	clientSecret := unique("cp-capture-agent-secret")
 
 	agentID, err := testutils.CreateAgent(testutils.Agent{
-		OUID:       ts.ouID,
+		ProjectID:  defaultProjectID,
 		Type:       "default",
 		Attributes: map[string]interface{}{"name": name, "description": "captures its credentials"},
 		InboundAuthConfig: []testutils.AgentInboundAuthConfig{{
@@ -388,10 +390,12 @@ func (ts *ControlPlaneTestSuite) TestAWrittenAgentsPasswordReachesTheDefaultGate
 	snapshot, err := testutils.SnapshotAgentType()
 	ts.Require().NoError(err)
 	defer func() { ts.NoError(testutils.RestoreAgentType(snapshot)) }()
+	defaultOUID, err := testutils.DefaultOUID()
+	ts.Require().NoError(err)
 	_, err = testutils.CreateAgentType(testutils.UserType{
 		Handle:           "default",
 		DisplayName:      "Default",
-		OUID:             ts.ouID,
+		OUID:             defaultOUID,
 		SystemAttributes: &testutils.UserTypeSystemAttributes{Display: "name"},
 		Schema: map[string]interface{}{
 			"name":     map[string]interface{}{"type": "string"},
@@ -403,7 +407,7 @@ func (ts *ControlPlaneTestSuite) TestAWrittenAgentsPasswordReachesTheDefaultGate
 	password := unique("Cp-Agent-Pass1!")
 
 	agentID, err := testutils.CreateAgent(testutils.Agent{
-		OUID:       ts.ouID,
+		ProjectID:  defaultProjectID,
 		Type:       "default",
 		Attributes: map[string]interface{}{"name": name, "password": password},
 	})
@@ -437,8 +441,8 @@ func (ts *ControlPlaneTestSuite) TestAWrittenAgentsPasswordReachesTheDefaultGate
 	// An import onto the control plane sets the password through the agent service, which captures it too.
 	imported := unique("Cp-Agent-Imported1!")
 	status, raw = ts.call(http.MethodPost, "/import", map[string]any{
-		"content": fmt.Sprintf("resource_type: agent\nid: %s\ntype: default\nouId: %s\nattributes:\n  name: %s\n"+
-			"credentials:\n  password: \"{{.PASSWORD}}\"\n", agentID, ts.ouID, name),
+		"content": fmt.Sprintf("resource_type: agent\nid: %s\ntype: default\nprojectId: %s\nattributes:\n  name: %s\n"+
+			"credentials:\n  password: \"{{.PASSWORD}}\"\n", agentID, defaultProjectID, name),
 		"variables": map[string]any{"PASSWORD": imported},
 		"options":   map[string]any{"target": "runtime", "upsert": true},
 	}, nil)

@@ -522,12 +522,14 @@ func (ts *AdminVerificationFlowTestSuite) TestServerConfigNamesTheShippedFlow() 
 	ts.Require().Equal(http.StatusOK, resp.StatusCode)
 
 	var layers struct {
-		Merged map[string]struct {
-			DefaultHandle string `json:"defaultHandle"`
+		Merged struct {
+			AdminAttributeVerificationFlow struct {
+				DefaultHandle string `json:"defaultHandle"`
+			} `json:"adminAttributeVerificationFlow"`
 		} `json:"merged"`
 	}
 	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&layers))
-	ts.Equal(adminVerificationFlowHandle, layers.Merged["adminAttributeVerificationFlow"].DefaultHandle)
+	ts.Equal(adminVerificationFlowHandle, layers.Merged.AdminAttributeVerificationFlow.DefaultHandle)
 }
 
 // The setting takes an administrator-initiated flow and refuses one of any other type.

@@ -160,11 +160,8 @@ func (i *identifyingExecutor) Execute(ctx *providers.NodeContext) (*providers.Ex
 		}
 	}
 
-	loginHint := ctx.UserInputs[userInputLoginHint]
-	loginHintAttr := cibaLoginHintAttribute(ctx)
-
-	if loginHintAttr != "" {
-		if loginHint == "" {
+	if loginHintAttr := cibaLoginHintAttribute(ctx); loginHintAttr != "" {
+		if loginHint, _ := ctx.ConsumeInput(userInputLoginHint); loginHint == "" {
 			execResp.Inputs = append(execResp.Inputs,
 				providers.Input{Identifier: userInputLoginHint, Required: true})
 			execResp.Status = providers.ExecUserInputRequired
@@ -315,12 +312,15 @@ func (i *identifyingExecutor) executeResolve(ctx *providers.NodeContext,
 	// required inputs, so we merge user inputs to ensure they are used for filtering.
 	// We exclude non-searchable inputs and internal identifiers to prevent injection. The login hint is no user
 	// attribute: a CIBA request has already mapped it to the configured attribute, and other requests ignore it.
+	dynamicInputs := make([]string, 0)
 	for key, value := range ctx.UserInputs {
 		if _, exists := userSearchAttributes[key]; !exists && value != "" &&
 			!slices.Contains(nonSearchableInputs, key) && key != userAttributeUserID && key != userInputLoginHint {
 			userSearchAttributes[key] = value
+			dynamicInputs = append(dynamicInputs, key)
 		}
 	}
+	ctx.AppendConsumedInputs(dynamicInputs)
 
 	candidates, err := i.getCandidates(ctx, userSearchAttributes, logger)
 	if err != nil {
@@ -391,7 +391,7 @@ func (i *identifyingExecutor) executeResolveLinkHolders(ctx *providers.NodeConte
 
 	picked := make(map[string]interface{})
 	for _, option := range extractDisambiguationOptions(holders) {
-		if value := ctx.UserInputs[option.Identifier]; value != "" {
+		if value, _ := ctx.ConsumeInput(option.Identifier); value != "" {
 			picked[option.Identifier] = value
 		}
 	}
@@ -440,7 +440,7 @@ func (i *identifyingExecutor) bindLinkHolder(ctx *providers.NodeContext, execRes
 	if i.authnProvider == nil {
 		return nil, errors.New("no authentication provider to bind the resolved link holder")
 	}
-	if svcErr := authenticateEntityByID(ctx, i.authnProvider, entityID, ctx.AuthUser, execResp); svcErr != nil {
+	if svcErr := authenticateEntityByID(ctx, i.authnProvider, entityID, ctx.AuthUser, execResp, false); svcErr != nil {
 		if svcErr.Type == tidcommon.ServerErrorType {
 			return nil, fmt.Errorf("failed to bind the resolved link holder: %s", svcErr.Code)
 		}
@@ -559,7 +559,7 @@ func setEntityStateFromCount(execResp *providers.ExecutorResponse, count int) {
 // the identifier without hardcoding a specific attribute.
 func (i *identifyingExecutor) buildSearchAttributes(ctx *providers.NodeContext) map[string]interface{} {
 	if hintAttr := cibaLoginHintAttribute(ctx); hintAttr != "" {
-		if hint, exists := ctx.UserInputs[userInputLoginHint]; exists && hint != "" {
+		if hint, exists := ctx.ConsumeInput(userInputLoginHint); exists && hint != "" {
 			return map[string]interface{}{hintAttr: hint}
 		}
 	}

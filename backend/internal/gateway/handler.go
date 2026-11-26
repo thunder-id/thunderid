@@ -148,6 +148,9 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *common.Serv
 	if svcErr.Code == ErrorApplyTookTooLong.Code {
 		statusCode = http.StatusServiceUnavailable
 	}
+	if svcErr.Code == serverconfig.ErrorDeclarativeConfig.Code {
+		statusCode = http.StatusForbidden
+	}
 	if svcErr.Code == ErrorGatewayLimitReached.Code || svcErr.Code == ErrorGatewayNameTaken.Code ||
 		svcErr.Code == ErrorGatewayAlreadyRegistered.Code || svcErr.Code == ErrorMissingValues.Code ||
 		svcErr.Code == ErrorVersionRemoved.Code || svcErr.Code == ErrorAppliedChanged.Code ||

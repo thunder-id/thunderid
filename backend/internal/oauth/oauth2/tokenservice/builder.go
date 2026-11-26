@@ -4,6 +4,7 @@
 package tokenservice
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
@@ -165,6 +166,11 @@ func (tb *tokenBuilder) resolveSubjectIdentity(
 		return "", ""
 	}
 
+	// An external identity provider's subject names no local entity, even when it equals one's ID.
+	if tokenCtx.SourceIDP != "" {
+		return "", ""
+	}
+
 	// client_credentials: the subject is the authenticated client, already loaded.
 	if tokenCtx.OAuthApp != nil && tokenCtx.Subject == tokenCtx.OAuthApp.ID {
 		return tokenCtx.OAuthApp.ID, string(tokenCtx.OAuthApp.EntityCategory)
@@ -199,6 +205,11 @@ func (tb *tokenBuilder) resolveActorIdentity(
 	// A grant that resolved the actor itself (token exchange, for a mapped actor_token sub) says so.
 	if tokenCtx.ActorClaims != nil && tokenCtx.ActorClaims.EntityID != "" {
 		return tokenCtx.ActorClaims.EntityID
+	}
+
+	// An external identity provider's subject names no local entity, even when it equals one's ID.
+	if tokenCtx.ActorClaims != nil && tokenCtx.ActorClaims.SourceIDP != "" {
+		return ""
 	}
 
 	// Grants that name the authenticated client as the actor (authorization_code, CIBA, refresh, and
@@ -429,8 +440,8 @@ func (tb *tokenBuilder) buildAccessTokenClaims(
 	}
 
 	// Set after merging user attributes so a federated principal's attributes cannot spoof the source
-	// IdP. For a jwt-bearer-grant (ID-JAG) token the `sub` is an external IdP identifier and MUST be
-	// interpreted together with this claim.
+	// IdP. For a jwt-bearer (ID-JAG) or token exchange token for an external subject the `sub` is an
+	// external IdP identifier and MUST be interpreted together with this claim.
 	if ctx.SourceIDP != "" {
 		claims[constants.ClaimIDP] = ctx.SourceIDP
 	}
@@ -500,8 +511,10 @@ func (tb *tokenBuilder) buildActorClaim(actorClaims *SubjectTokenClaims) map[str
 		"sub": actorClaims.Sub,
 	}
 
-	if actorClaims.Iss != "" {
-		actClaim["iss"] = actorClaims.Iss
+	// iss names the issuer whose namespace sub is in: for an actor token issued here for an external
+	// identity provider's subject, that provider.
+	if iss := cmp.Or(actorClaims.SourceIDP, actorClaims.Iss); iss != "" {
+		actClaim["iss"] = iss
 	}
 
 	if len(actorClaims.NestedAct) > 0 {

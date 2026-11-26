@@ -453,6 +453,7 @@ func (ts *TokenExchangeTestSuite) TestTokenExchange_BasicSuccess() {
 	claims, err := testutils.DecodeJWT(resp.AccessToken)
 	ts.Require().NoError(err, "Access token should be a valid JWT")
 	ts.Equal(ts.userID, claims.Sub, "Subject should match user ID")
+	ts.NotContains(claims.Additional, "idp", "A local subject's token names no external identity provider")
 	ts.assertAudienceEquals(claims, "https://resource.example.com")
 }
 
@@ -556,7 +557,7 @@ func (ts *TokenExchangeTestSuite) TestTokenExchange_SpentAssertionCannotComplete
 func (ts *TokenExchangeTestSuite) TestTokenExchange_ExternalIDP_WithTrustedTokenAudience() {
 	const externalSubject = "external-oidc-subject"
 
-	resp, statusCode := ts.exchangeExternalToken(externalSubject)
+	resp, statusCode, issuer := ts.exchangeExternalToken(externalSubject)
 	ts.Equal(http.StatusOK, statusCode)
 	ts.NotEmpty(resp.AccessToken, "Access token should be present")
 	ts.Equal("urn:ietf:params:oauth:token-type:access_token", resp.IssuedTokenType)
@@ -573,6 +574,11 @@ func (ts *TokenExchangeTestSuite) TestTokenExchange_ExternalIDP_WithTrustedToken
 		claims.Additional["grant_type"],
 		"Issued token should record token exchange grant type",
 	)
+	ts.Equal(issuer, claims.Additional["idp"], "Issued token should name the external issuer")
+	result, err := testutils.IntrospectTokenResult(
+		resp.AccessToken, tokenExchangeClientID, tokenExchangeClientSecret, false)
+	ts.Require().NoError(err)
+	ts.Equal(issuer, result.Idp, "Introspection should name the external issuer")
 }
 
 // An external issuer's subject never selects a local account, even when the string equals a local
@@ -592,15 +598,144 @@ func (ts *TokenExchangeTestSuite) TestTokenExchange_ExternalSubjectIsNotALocalAc
 	ts.Require().Equal("COMPLETE", flowResult.Step.FlowStatus, "the local user must be suspended")
 
 	// Its own IdP address: the server caches an issuer's keys, and the mock mints new ones per start.
-	resp, statusCode := ts.exchangeExternalToken(localID)
+	resp, statusCode, _ := ts.exchangeExternalToken(localID)
 	ts.Require().Equal(http.StatusOK, statusCode, "local governance must not judge an external subject: %+v", resp)
 	ts.Require().NotEmpty(resp.AccessToken)
 }
 
+// An external issuer's subject is not a local account even when it equals an active local user's ID: the
+// exchanged token names the issuer in idp, the self-service APIs do not accept it, and exchanging it
+// again keeps the issuer, so the subject never becomes local.
+func (ts *TokenExchangeTestSuite) TestTokenExchange_ExternalSubjectTokenIsNotALocalUserToken() {
+	resp, statusCode, issuer := ts.exchangeExternalToken(ts.userID)
+	ts.Require().Equal(http.StatusOK, statusCode, "%+v", resp)
+	code, err := testutils.StatusWithBearer("/users/me", resp.AccessToken)
+	ts.Require().NoError(err)
+	ts.Equal(http.StatusUnauthorized, code)
+
+	formData := url.Values{}
+	formData.Set("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange")
+	formData.Set("subject_token", resp.AccessToken)
+	formData.Set("subject_token_type", "urn:ietf:params:oauth:token-type:access_token")
+	formData.Set("resource", "https://resource.example.com")
+	again, statusCode, err := ts.exchangeToken(formData.Encode(),
+		"Basic "+basicAuth(tokenExchangeClientID, tokenExchangeClientSecret))
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, statusCode, "%+v", again)
+
+	claims, err := testutils.DecodeJWT(again.AccessToken)
+	ts.Require().NoError(err)
+	ts.Equal(ts.userID, claims.Sub)
+	ts.Equal(issuer, claims.Additional["idp"], "a re-exchanged token keeps naming the external issuer")
+	code, err = testutils.StatusWithBearer("/users/me", again.AccessToken)
+	ts.Require().NoError(err)
+	ts.Equal(http.StatusUnauthorized, code)
+}
+
+// UserInfo describes users of this deployment, so a token for an external issuer's subject gets no
+// answer there, even with the openid scope and a sub equal to a local user's ID.
+func (ts *TokenExchangeTestSuite) TestTokenExchange_ExternalSubjectTokenGetsNoUserInfo() {
+	resp, statusCode, _ := ts.exchangeExternalTokenWithScope(ts.userID, "openid")
+	ts.Require().Equal(http.StatusOK, statusCode, "%+v", resp)
+	ts.Require().Contains(strings.Fields(resp.Scope), "openid")
+
+	req, err := http.NewRequest(http.MethodGet, testutils.TestServerURL+"/oauth2/userinfo", nil)
+	ts.Require().NoError(err)
+	req.Header.Set("Authorization", "Bearer "+resp.AccessToken)
+	userInfoResp, err := testutils.GetRawHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer userInfoResp.Body.Close()
+	ts.Equal(http.StatusUnauthorized, userInfoResp.StatusCode)
+	var body map[string]string
+	ts.Require().NoError(json.NewDecoder(userInfoResp.Body).Decode(&body))
+	ts.Equal("invalid_token", body["error"])
+	ts.Contains(body["error_description"], "external identity provider")
+}
+
+// A trusted issuer whose connection has no authorization mapping grants no permission scopes: the
+// external token's own scope claim, and the scope requested, are not an authority. OIDC scopes are kept.
+func (ts *TokenExchangeTestSuite) TestTokenExchange_UnmappedExternalIssuerGetsNoPermissionScopes() {
+	const (
+		externalClientID = "external-unmapped-client"
+		rsIdentifier     = "https://unmapped-issuer-rs.example.com"
+	)
+
+	rsID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+		Name: "Token Exchange Unmapped Issuer RS", Identifier: rsIdentifier, OUID: ts.oUID,
+	}, []testutils.Action{{Name: "Read", Handle: "read", Description: "Read permission"}})
+	ts.Require().NoError(err)
+	ts.T().Cleanup(func() {
+		if deleteErr := testutils.DeleteResourceServerWithChildren(rsID); deleteErr != nil {
+			ts.T().Logf("Failed to delete resource server: %v", deleteErr)
+		}
+	})
+
+	mockOIDCServer, err := testutils.NewMockOIDCServer(externalClientID, "mock-oidc-secret")
+	ts.Require().NoError(err)
+	ts.T().Cleanup(func() {
+		if stopErr := mockOIDCServer.Stop(); stopErr != nil {
+			ts.T().Logf("Failed to stop mock OIDC server: %v", stopErr)
+		}
+	})
+
+	idpID, err := testutils.CreateIDP(testutils.IDP{
+		Name:        fmt.Sprintf("Token Exchange Unmapped IdP %d", time.Now().UnixNano()),
+		Description: "Mock OIDC IdP with no authorization mapping",
+		Type:        "OIDC",
+		Properties: []testutils.IDPProperty{
+			{Name: "issuer", Value: mockOIDCServer.GetURL()},
+			{Name: "jwks_endpoint", Value: mockOIDCServer.GetJWKSURL()},
+			{Name: "token_exchange_enabled", Value: "true"},
+			{Name: "trusted_token_audience", Value: externalClientID},
+		},
+	})
+	ts.Require().NoError(err)
+	ts.T().Cleanup(func() {
+		if deleteErr := testutils.DeleteIDP(idpID); deleteErr != nil {
+			ts.T().Logf("Failed to delete mock OIDC IdP: %v", deleteErr)
+		}
+	})
+
+	now := time.Now()
+	externalToken, err := mockOIDCServer.SignJWT(map[string]interface{}{"typ": "JWT"}, map[string]interface{}{
+		"iss":   mockOIDCServer.GetURL(),
+		"sub":   "external-unmapped-subject",
+		"aud":   externalClientID,
+		"scope": "openid read",
+		"iat":   now.Unix(),
+		"exp":   now.Add(5 * time.Minute).Unix(),
+	})
+	ts.Require().NoError(err)
+
+	formData := url.Values{}
+	formData.Set("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange")
+	formData.Set("subject_token", externalToken)
+	formData.Set("subject_token_type", "urn:ietf:params:oauth:token-type:jwt")
+	formData.Set("resource", rsIdentifier)
+	formData.Set("scope", "openid read")
+	resp, statusCode, err := ts.exchangeToken(formData.Encode(),
+		"Basic "+basicAuth(tokenExchangeClientID, tokenExchangeClientSecret))
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, statusCode, "%+v", resp)
+
+	claims, err := testutils.DecodeJWT(resp.AccessToken)
+	ts.Require().NoError(err)
+	ts.Equal([]string{"openid"}, strings.Fields(fmt.Sprint(claims.Additional["scope"])),
+		"an unmapped issuer's token carries no permission scopes")
+	ts.assertAudienceEquals(claims, rsIdentifier)
+}
+
 // exchangeExternalToken obtains an ID token for subject from a new mock external IdP that this
-// server trusts for token exchange, and exchanges it. Each IdP has its own issuer URL, so no test
-// reuses another's cached keys.
-func (ts *TokenExchangeTestSuite) exchangeExternalToken(subject string) (*TokenExchangeResponse, int) {
+// server trusts for token exchange, and exchanges it. It returns the exchange response, its status and
+// the IdP's issuer. Each IdP has its own issuer URL, so no test reuses another's cached keys.
+func (ts *TokenExchangeTestSuite) exchangeExternalToken(subject string) (*TokenExchangeResponse, int, string) {
+	return ts.exchangeExternalTokenWithScope(subject, "")
+}
+
+// exchangeExternalTokenWithScope is exchangeExternalToken with a scope parameter on the request, when set.
+func (ts *TokenExchangeTestSuite) exchangeExternalTokenWithScope(
+	subject, scope string,
+) (*TokenExchangeResponse, int, string) {
 	const (
 		externalClientID     = "external-oidc-client-id"
 		externalClientSecret = "mock-oidc-secret"
@@ -653,12 +788,15 @@ func (ts *TokenExchangeTestSuite) exchangeExternalToken(subject string) (*TokenE
 	formData.Set("subject_token", externalIDToken)
 	formData.Set("subject_token_type", "urn:ietf:params:oauth:token-type:jwt")
 	formData.Set("resource", "https://resource.example.com")
+	if scope != "" {
+		formData.Set("scope", scope)
+	}
 
 	authHeader := "Basic " + basicAuth(tokenExchangeClientID, tokenExchangeClientSecret)
 
 	resp, statusCode, err := ts.exchangeToken(formData.Encode(), authHeader)
 	ts.Require().NoError(err)
-	return resp, statusCode
+	return resp, statusCode, mockOIDCServer.GetURL()
 }
 
 // TestTokenExchange_ExternalSubjectActNotCarried verifies that an act claim inside an external issuer's

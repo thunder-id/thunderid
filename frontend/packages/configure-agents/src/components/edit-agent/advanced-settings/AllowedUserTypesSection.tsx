@@ -15,6 +15,8 @@ interface AllowedUserTypesSectionProps {
   editedAgent: Partial<Agent>;
   oauth2Config?: OAuthAgentConfig;
   onFieldChange: (field: keyof Agent, value: unknown) => void;
+  /** Whether the signed-in admin may change the agent here. */
+  readOnly?: boolean;
 }
 
 export default function AllowedUserTypesSection({
@@ -22,6 +24,7 @@ export default function AllowedUserTypesSection({
   editedAgent,
   oauth2Config = undefined,
   onFieldChange,
+  readOnly = false,
 }: AllowedUserTypesSectionProps): JSX.Element | null {
   const {t} = useTranslation();
   const {data: userTypesData, isLoading} = useGetUserTypes();
@@ -61,7 +64,7 @@ export default function AllowedUserTypesSection({
           getOptionLabel={(option) => getUserTypeLabel(userTypesData?.types ?? [], option)}
           value={value}
           onChange={(_event, newValue) => onFieldChange('allowedUserTypes', newValue)}
-          disabled={agent.isReadOnly}
+          disabled={readOnly}
           renderInput={(params) => (
             <TextField
               {...params}

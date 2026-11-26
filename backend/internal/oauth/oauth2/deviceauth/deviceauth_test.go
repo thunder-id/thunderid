@@ -90,6 +90,8 @@ func (s *DeviceAuthTestSuite) TestCreateGeneratesCodesAndPersistsRequest() {
 	s.Require().Equal(hashDeviceCode(result.DeviceCode), record.DeviceCodeHash)
 	s.Require().Equal("openid profile", record.StandardScopes)
 	s.Require().Equal("name", record.RequiredOptionalAttributes)
+	wantTTL := cfg.JWT.ValidityPeriod + result.ExpiresIn + oauth2const.AttributeCacheTTLBufferSeconds
+	s.Equal(wantTTL, record.UserAttributesCacheTTLSeconds)
 	s.Require().Empty(record.RequestedPermissions)
 	s.Require().Empty(record.Resources)
 	s.Require().Equal(DeviceStatePending, record.State)
@@ -165,7 +167,7 @@ func (s *DeviceAuthTestSuite) TestVerifyUserCodeUsesStoredApplication() {
 		DeviceCodeHash: hashDeviceCode("device-code"), UserCode: "BCDF-GHJK",
 		State: DeviceStatePending, ExpiryTime: time.Now().Add(2 * time.Minute),
 		RequestedPermissions: "booking:read", Resources: []string{"https://api.example.com"},
-		RequiredOptionalAttributes: "email",
+		RequiredOptionalAttributes: "email", UserAttributesCacheTTLSeconds: 4200,
 	}
 	s.Require().NoError(store.Add(context.Background(), record))
 	verifier := NewUserCodeVerifier(runtimeStore)
@@ -177,6 +179,7 @@ func (s *DeviceAuthTestSuite) TestVerifyUserCodeUsesStoredApplication() {
 	s.Require().Equal("booking:read", result.RequestedPermissions)
 	s.Require().Equal("https://api.example.com", result.ResourceServerIdentifier)
 	s.Require().Equal("email", result.RequiredOptionalAttributes)
+	s.Equal(int64(4200), result.UserAttributesCacheTTLSeconds)
 	stored, err := store.GetByRequestID(context.Background(), record.RequestID)
 	s.Require().NoError(err)
 	s.Require().Equal(DeviceStateRedeeming, stored.State)
@@ -207,7 +210,7 @@ func (s *DeviceAuthTestSuite) TestCreateStoresRequestedProfileAttributes() {
 	store := newTestDeviceAuthStore(inmemory.Initialize("test-deployment"))
 	client := &providers.OAuthClient{ID: "application-1", ClientID: "device-client",
 		GrantTypes:  []providers.GrantType{providers.GrantTypeDeviceCode},
-		ScopeClaims: map[string][]string{"email": {"email"}, "profile": {"name"}},
+		ScopeClaims: map[string][]string{"profile": {"name"}},
 		Token: &providers.OAuthTokenConfig{IDToken: &providers.IDTokenConfig{
 			UserAttributes: []string{"email", "name"}}}}
 	service := newDeviceAuthServiceForApplication(s.T(), store, nil, testhelpers.OAuthConfig(), client.ID)

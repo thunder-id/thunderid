@@ -317,6 +317,20 @@ func (suite *GroupFileBasedStoreTestSuite) TestImmutability() {
 	suite.Error(err)
 }
 
+// Declared memberships are not writable, so the writable membership lookup leaves them out.
+func (suite *GroupFileBasedStoreTestSuite) TestGetMemberGroupIDs_IgnoresDeclaredMembers() {
+	suite.seedGroup(groupDeclarativeResource{ID: "declared-grp", Name: "Declared", OUID: "ou1",
+		Members: []Member{{ID: "user1", Type: MemberTypeUser}}})
+	declared, err := suite.store.GetTransitiveGroupsForEntity(context.Background(), "user1")
+	suite.Require().NoError(err)
+	suite.Len(declared, 1)
+
+	groupIDs, err := suite.store.GetMemberGroupIDs(context.Background(), string(memberTypeEntity), "user1")
+
+	suite.NoError(err)
+	suite.Empty(groupIDs)
+}
+
 func (suite *GroupFileBasedStoreTestSuite) TestCreate_ImplementsStorer() {
 	grp := &groupDeclarativeResource{
 		ID:          "grp-create",

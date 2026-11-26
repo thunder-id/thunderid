@@ -25,6 +25,8 @@ type MockSMTPServer struct {
 	mutex    sync.RWMutex
 	port     int
 	done     chan struct{}
+	// rejecting makes the server refuse every session in its greeting, so no email is delivered.
+	rejecting bool
 }
 
 // EmailMessage holds the captured content of a single SMTP email.
@@ -41,6 +43,14 @@ func NewMockSMTPServer(port int) *MockSMTPServer {
 		emails: make([]EmailMessage, 0),
 		done:   make(chan struct{}),
 	}
+}
+
+// NewRejectingMockSMTPServer creates a MockSMTPServer listening on the given port that refuses every
+// session, so a sender naming it fails while the port stays held.
+func NewRejectingMockSMTPServer(port int) *MockSMTPServer {
+	m := NewMockSMTPServer(port)
+	m.rejecting = true
+	return m
 }
 
 // Start begins accepting SMTP connections in a background goroutine.
@@ -129,6 +139,11 @@ func (m *MockSMTPServer) handleConnection(conn net.Conn) {
 	writeLine := func(s string) {
 		fmt.Fprintf(w, "%s\r\n", s)
 		w.Flush()
+	}
+
+	if m.rejecting {
+		writeLine("554 localhost Mock SMTP Server rejects all mail")
+		return
 	}
 
 	// SMTP greeting

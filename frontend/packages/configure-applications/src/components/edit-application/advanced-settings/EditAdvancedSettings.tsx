@@ -1,7 +1,7 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {useCapabilitiesContext, useConfig} from '@thunderid/contexts';
+import {useConfig} from '@thunderid/contexts';
 import {Stack} from '@wso2/oxygen-ui';
 import {useState} from 'react';
 import AudienceSection from './AudienceSection';
@@ -10,7 +10,7 @@ import MetadataSection from './MetadataSection';
 import OAuth2ConfigSection from './OAuth2ConfigSection';
 import PasskeysSection from './PasskeysSection';
 import useValidationReport from '../../../hooks/useValidationReport';
-import type {Application} from '../../../models/application';
+import type {Application, LoginConsentConfig} from '../../../models/application';
 import type {ApplicationTemplate} from '../../../models/application-templates';
 import type {InboundAuthConfig} from '../../../models/inbound-auth';
 import type {OAuth2Config, OAuth2Token} from '../../../models/oauth';
@@ -69,6 +69,10 @@ interface EditAdvancedSettingsProps {
    * Callback invoked after the application is successfully deleted from the Danger Zone.
    */
   onDeleteSuccess?: () => void;
+  /** Whether the signed-in admin may change the application here. */
+  readOnly?: boolean;
+  /** Whether the signed-in admin may delete the application here. */
+  canDelete?: boolean;
 }
 
 /**
@@ -92,9 +96,10 @@ export default function EditAdvancedSettings({
   sectionResetKey = 0,
   onValidationChange = undefined,
   onDeleteSuccess = undefined,
+  readOnly: isReadOnly = false,
+  canDelete = false,
 }: EditAdvancedSettingsProps) {
   const {config} = useConfig();
-  const {can} = useCapabilitiesContext();
 
   // Redirect URIs, identity assertions, and passkeys validate independently; each is tracked
   // separately so one resolving doesn't clobber the other's still-invalid state when both report
@@ -128,6 +133,10 @@ export default function EditAdvancedSettings({
 
   const currentPasskeyOrigins = editedApp.passkeyAllowedOrigins ?? application.passkeyAllowedOrigins ?? [];
 
+  const handleLoginConsentChange = (loginConsent: LoginConsentConfig): void => {
+    onFieldChange('loginConsent', loginConsent);
+  };
+
   const handleTokenConfigChange = (tokenUpdates: Partial<OAuth2Token>, oauth2Updates: Partial<OAuth2Config> = {}) => {
     const currentInboundAuth: InboundAuthConfig[] = editedApp.inboundAuthConfig ?? application.inboundAuthConfig ?? [];
     const updatedInboundAuth = currentInboundAuth.map((auth) =>
@@ -155,21 +164,23 @@ export default function EditAdvancedSettings({
     <>
       <Stack spacing={3}>
         <OAuth2ConfigSection
-          key={sectionResetKey}
+          key={`oauth2-config-${sectionResetKey}`}
           oauth2Config={oauth2Config}
           oauth2Constraints={oauth2Constraints}
           onOAuth2ConfigChange={handleOAuth2ConfigChange}
-          disabled={application.isReadOnly}
+          disabled={isReadOnly}
           allowedGrantTypes={allowedGrantTypes}
           showRedirectUris={showRedirectUris}
           onValidationChange={setRedirectUrisInvalid}
+          loginConsent={editedApp.loginConsent ?? application.loginConsent}
+          onLoginConsentChange={application.isReadOnly ? undefined : handleLoginConsentChange}
         />
         {oauth2Config && (
           <IdentityAssertionsSection
             key={sectionResetKey}
             oauth2Config={oauth2Config}
             onTokenConfigChange={handleTokenConfigChange}
-            disabled={application.isReadOnly}
+            disabled={isReadOnly}
             onValidationChange={setIdentityAssertionsInvalid}
           />
         )}
@@ -177,21 +188,19 @@ export default function EditAdvancedSettings({
           <AudienceSection
             audience={oauth2Config.token?.accessToken?.defaultAudience ?? ''}
             onAudienceChange={handleDefaultAudienceChange}
-            disabled={application.isReadOnly}
+            disabled={isReadOnly}
           />
         )}
         <PasskeysSection
           allowedOrigins={currentPasskeyOrigins}
-          onPasskeysChange={application.isReadOnly ? undefined : handlePasskeysChange}
-          disabled={application.isReadOnly}
+          onPasskeysChange={isReadOnly ? undefined : handlePasskeysChange}
+          disabled={isReadOnly}
           onValidationChange={setPasskeysInvalid}
         />
         <MetadataSection application={application} />
-        {!application.isReadOnly &&
-          can('app', 'delete') &&
-          !isSystemConsoleClient(oauth2Config?.clientId, config?.client?.client_id) && (
-            <DangerZoneSection onDeleteClick={() => setDeleteDialogOpen(true)} />
-          )}
+        {canDelete && !isSystemConsoleClient(oauth2Config?.clientId, config?.client?.client_id) && (
+          <DangerZoneSection onDeleteClick={() => setDeleteDialogOpen(true)} />
+        )}
       </Stack>
 
       {/* Delete Application Confirmation Dialog */}

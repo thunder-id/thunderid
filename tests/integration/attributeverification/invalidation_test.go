@@ -92,7 +92,7 @@ func (ts *InvalidationTestSuite) SetupTest() {
 }
 
 // attributeCollectionFlow signs a user in with their password and then collects the attribute, which
-// it merges into the stored attributes.
+// it adds when the user doesn't have it.
 func attributeCollectionFlow(handle, attribute, inputType string) testutils.Flow {
 	return testutils.Flow{
 		Name:     "Attribute Verification Collection Flow for " + attribute,
@@ -267,26 +267,29 @@ func (ts *InvalidationTestSuite) TestRemovingTheMobileNumberClearsVerification()
 	ts.Empty(verifiedAt(ts.T(), user.id, mobileAttribute), "restoring the number must not restore verification")
 }
 
-// Attribute collection writes only the attribute it collects into the stored set, so a new mobile
-// number clears the mobile number's verification and leaves the email's as it was.
-func (ts *InvalidationTestSuite) TestAttributeCollectionChangingTheMobileNumberClearsOnlyItsVerification() {
+// Attribute collection doesn't replace a mobile number the user already has, so both verifications stay.
+func (ts *InvalidationTestSuite) TestAttributeCollectionKeepsAStoredMobileNumber() {
 	user := ts.newUserWithBothVerified("collect_mobile")
+	mobileVerifiedAt := verifiedAt(ts.T(), user.id, mobileAttribute)
 	emailVerifiedAt := verifiedAt(ts.T(), user.id, emailAttribute)
 
 	ts.signInCollecting(ts.collectionAppID, user, mobileAttribute, ts.fixture.uniqueMobile())
 
-	ts.Empty(verifiedAt(ts.T(), user.id, mobileAttribute), "a collected new mobile number must not stay verified")
+	ts.Equal(mobileVerifiedAt, verifiedAt(ts.T(), user.id, mobileAttribute),
+		"the stored mobile number must keep its verification")
 	ts.Equal(emailVerifiedAt, verifiedAt(ts.T(), user.id, emailAttribute),
 		"collecting the mobile number must keep the email's verification")
 }
 
-// Attribute collection that collects a new email clears the email's verification.
-func (ts *InvalidationTestSuite) TestAttributeCollectionChangingTheEmailClearsVerification() {
+// Attribute collection doesn't replace an email the user already has, so its verification stays.
+func (ts *InvalidationTestSuite) TestAttributeCollectionKeepsAStoredEmail() {
 	user := ts.newVerifiedUser("collect_email")
+	emailVerifiedAt := verifiedAt(ts.T(), user.id, emailAttribute)
 
 	ts.signInCollecting(ts.emailCollectionAppID, user, emailAttribute, otherAddress(user))
 
-	ts.Empty(verifiedAt(ts.T(), user.id, emailAttribute), "a collected new email must not stay verified")
+	ts.Equal(emailVerifiedAt, verifiedAt(ts.T(), user.id, emailAttribute),
+		"the stored email must keep its verification")
 }
 
 // signInCollecting signs the user in through the application, whose sign-in collects attribute, and

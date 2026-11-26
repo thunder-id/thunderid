@@ -40,6 +40,17 @@ vi.mock('../../../api/useUpdateUserCredentials', () => ({
   default: () => ({mutateAsync: mockMutateAsync}),
 }));
 
+let resetFlowHandle = '';
+let heldReason = '';
+vi.mock('../../../hooks/useCredentialResetLink', () => ({
+  default: () => ({handle: resetFlowHandle, heldReason}),
+}));
+
+const mockSendMutateAsync = vi.fn();
+vi.mock('../../../api/useSendUserCredentialReset', () => ({
+  default: () => ({mutateAsync: mockSendMutateAsync}),
+}));
+
 const credentialFields = [{fieldName: 'password', label: 'Password'}];
 
 function failWith(code: string): void {
@@ -61,6 +72,9 @@ describe('CredentialsTabPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockMutateAsync.mockResolvedValue(undefined);
+    mockSendMutateAsync.mockResolvedValue(undefined);
+    resetFlowHandle = '';
+    heldReason = '';
   });
 
   it('offers a reset for each credential field of the user type', () => {
@@ -108,5 +122,98 @@ describe('CredentialsTabPanel', () => {
         'The new value does not meet the requirements set for this user type, such as the allowed length or characters.',
       ),
     ).toBeInTheDocument();
+  });
+
+  describe('reset link', () => {
+    const fields = [
+      {fieldName: 'password', label: 'Password'},
+      {fieldName: 'secret', label: 'Secret'},
+      {fieldName: 'pin', label: 'PIN'},
+    ];
+    const textCredentials = ['password', 'secret'];
+    const LINK_SECRET = {name: 'Email the user a link to set a new secret'};
+
+    beforeEach(() => {
+      resetFlowHandle = 'default-admin-user-credential-reset-flow';
+    });
+
+    function openReset(label: string, accessStatus?: 'SUSPENDED'): void {
+      render(
+        <CredentialsTabPanel
+          userId="user-123"
+          credentialFields={fields}
+          resetLinkFieldNames={textCredentials}
+          accessStatus={accessStatus}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', {name: `Reset ${label}`}));
+    }
+
+    it('keeps one reset button per credential, with no separate link button', () => {
+      render(<CredentialsTabPanel userId="user-123" credentialFields={fields} resetLinkFieldNames={textCredentials} />);
+
+      expect(screen.getAllByRole('button')).toHaveLength(3);
+      expect(screen.queryByRole('button', {name: /link/i})).not.toBeInTheDocument();
+    });
+
+    it('offers the link in the reset dialog of a text credential', () => {
+      openReset('Secret');
+
+      expect(screen.getByRole('radio', LINK_SECRET)).toBeEnabled();
+    });
+
+    it('does not offer the link for a credential that is not text', () => {
+      openReset('PIN');
+
+      expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    });
+
+    it('is not offered when no flow is configured', () => {
+      resetFlowHandle = '';
+      openReset('Secret');
+
+      expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    });
+
+    it('starts the flow for this user and the chosen credential', async () => {
+      openReset('Secret');
+
+      fireEvent.click(screen.getByRole('radio', LINK_SECRET));
+      fireEvent.click(screen.getByRole('button', {name: 'Send reset link'}));
+
+      await waitFor(() => {
+        expect(mockSendMutateAsync).toHaveBeenCalledWith({
+          userId: 'user-123',
+          credential: 'secret',
+          label: 'Secret',
+          handle: 'default-admin-user-credential-reset-flow',
+        });
+      });
+      expect(mockMutateAsync).not.toHaveBeenCalled();
+    });
+
+    it('shows the users message for a refused send', async () => {
+      const error = new Error('Request failed') as Error & {response?: {data?: {code: string}}};
+      error.response = {data: {code: 'UNKNOWN'}};
+      mockSendMutateAsync.mockRejectedValue(error);
+      openReset('Secret');
+
+      fireEvent.click(screen.getByRole('radio', LINK_SECRET));
+      fireEvent.click(screen.getByRole('button', {name: 'Send reset link'}));
+
+      expect(await screen.findByText('Could not send the reset link. Please try again.')).toBeInTheDocument();
+    });
+
+    it('is disabled with the reason for a held user, leaving the direct reset available', async () => {
+      heldReason = 'Unsuspend the user to send a reset link.';
+      openReset('Secret', 'SUSPENDED');
+
+      expect(screen.getByRole('radio', LINK_SECRET)).toBeDisabled();
+      // The dialog fades in, so its text is visible a moment after it opens.
+      await waitFor(() => {
+        expect(screen.getByText('Unsuspend the user to send a reset link.')).toBeVisible();
+      });
+      expect(screen.getByRole('radio', {name: 'Set a new secret now'})).toBeChecked();
+    });
   });
 });

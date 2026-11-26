@@ -261,6 +261,181 @@ func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_Success() {
 	ts.testPassword = newPassword
 }
 
+// TestBasicRecoveryFlow_PasswordSentWithUsername tests that a password sent along with the username
+// is not used for the new password step. Opening the recovery link still prompts for the new password.
+func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_PasswordSentWithUsername() {
+	ts.mockSMTP.ClearEmails()
+	earlyPassword := "SentWithUsername789!"
+	newPassword := "NewPassword789!"
+
+	flowStep, err := common.InitiateRecoveryFlow(ts.testAppID, false, nil, "")
+	ts.Require().NoError(err, "Failed to initiate recovery flow")
+
+	flowStep, err = common.CompleteFlow(
+		flowStep.ExecutionID,
+		map[string]string{"username": ts.testUsername, "password": earlyPassword},
+		"action_submit_username",
+		flowStep.ChallengeToken,
+	)
+	ts.Require().NoError(err, "Failed to submit username")
+	ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus)
+
+	email := common.AwaitEmail(ts.Require(), ts.mockSMTP)
+	recoveryToken := testutils.ExtractQueryParam(email.ExtractRecoveryLink(), "inviteToken")
+	ts.Require().NotEmpty(recoveryToken, "Expected inviteToken query param in recovery link")
+
+	// Open the link the way the gate does: the execution ID and the token, nothing else.
+	flowStep, err = common.CompleteFlow(flowStep.ExecutionID, map[string]string{"inviteToken": recoveryToken}, "", "")
+	ts.Require().NoError(err, "Failed to submit recovery token")
+	ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus, "Opening the link stops at the new password prompt")
+	ts.Require().True(common.HasInput(flowStep.Data.Inputs, "password"),
+		"Expected password input at prompt_new_password")
+
+	ok, err := testutils.AuthenticateWithCredential("username", ts.testUsername, "password", earlyPassword)
+	ts.Require().NoError(err)
+	ts.Require().False(ok, "The password sent with the username is not set")
+	ok, err = testutils.AuthenticateWithCredential("username", ts.testUsername, "password", ts.testPassword)
+	ts.Require().NoError(err)
+	ts.Require().True(ok, "The current password still works until a new one is submitted")
+
+	flowStep, err = common.CompleteFlow(flowStep.ExecutionID, map[string]string{"password": newPassword},
+		"action_submit_password", flowStep.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit new password")
+	ts.Require().Equal("COMPLETE", flowStep.FlowStatus, "Expected COMPLETE after setting new password")
+
+	ok, err = testutils.AuthenticateWithCredential("username", ts.testUsername, "password", newPassword)
+	ts.Require().NoError(err)
+	ts.Require().True(ok, "The password submitted at the prompt is set")
+	ts.testPassword = newPassword
+}
+
+// TestBasicRecoveryFlow_PasswordSentWithFirstRequest tests that a password sent with the request that starts
+// recovery is not used for the new password step.
+func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_PasswordSentWithFirstRequest() {
+	ts.mockSMTP.ClearEmails()
+	flowStep, err := common.InitiateRecoveryFlow(ts.testAppID, false,
+		map[string]string{"username": ts.testUsername, "password": "SentOnStart789!"}, "action_submit_username")
+	ts.Require().NoError(err, "Failed to initiate recovery flow")
+	ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus)
+
+	ts.requireLinkAsksForNewPassword(flowStep, "SentOnStart789!")
+}
+
+// TestBasicRecoveryFlow_PasswordSentThroughSignInForgotPassword tests that a password sent with the sign-in
+// flow's forgot password action, which calls the recovery flow, is not used for the new password step.
+func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_PasswordSentThroughSignInForgotPassword() {
+	ts.mockSMTP.ClearEmails()
+	authFlowID, err := testutils.CreateFlow(buildSignInFlowCallingRecovery(ts.recoveryFlowID))
+	ts.Require().NoError(err, "Failed to create the sign-in flow")
+	defer func() {
+		if err := testutils.DeleteFlow(authFlowID); err != nil {
+			ts.T().Logf("Failed to delete the sign-in flow: %v", err)
+		}
+	}()
+	appID, err := testutils.CreateApplication(testutils.Application{
+		OUID:                  ts.testOUID,
+		Name:                  "Basic Recovery Forgot Password Test App",
+		IsRecoveryFlowEnabled: true,
+		ClientID:              "basic_recovery_forgot_password_client",
+		ClientSecret:          "basic_recovery_forgot_password_secret",
+		RedirectURIs:          []string{"http://localhost:3000/callback"},
+		AllowedUserTypes:      []string{basicRecoveryUserSchema.Handle},
+		AuthFlowID:            authFlowID,
+		RecoveryFlowID:        ts.recoveryFlowID,
+	})
+	ts.Require().NoError(err, "Failed to create the application")
+	defer func() {
+		if err := testutils.DeleteApplication(appID); err != nil {
+			ts.T().Logf("Failed to delete the application: %v", err)
+		}
+	}()
+
+	flowStep, err := common.InitiateAuthenticationFlow(appID, false, nil, "")
+	ts.Require().NoError(err, "Failed to initiate the sign-in flow")
+	flowStep, err = common.CompleteFlow(flowStep.ExecutionID,
+		map[string]string{"username": ts.testUsername, "password": "SentWithForgot789!"}, "action_forgot_password",
+		flowStep.ChallengeToken)
+	ts.Require().NoError(err, "Failed to choose forgot password")
+	ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus)
+
+	ts.requireLinkAsksForNewPassword(flowStep, "SentWithForgot789!")
+}
+
+// requireLinkAsksForNewPassword opens the recovery link the way the gate does, checks that it asks for a new
+// password and that sentPassword was not set, then completes recovery.
+func (ts *EmailLinkPasswordRecoveryTestSuite) requireLinkAsksForNewPassword(flowStep *common.FlowStep,
+	sentPassword string) {
+	email := common.AwaitEmail(ts.Require(), ts.mockSMTP)
+	recoveryToken := testutils.ExtractQueryParam(email.ExtractRecoveryLink(), "inviteToken")
+	ts.Require().NotEmpty(recoveryToken, "Expected inviteToken query param in recovery link")
+
+	flowStep, err := common.CompleteFlow(flowStep.ExecutionID, map[string]string{"inviteToken": recoveryToken}, "", "")
+	ts.Require().NoError(err, "Failed to submit recovery token")
+	ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus, "Opening the link stops at the new password prompt")
+	ts.Require().True(common.HasInput(flowStep.Data.Inputs, "password"),
+		"Expected password input at prompt_new_password")
+
+	ok, err := testutils.AuthenticateWithCredential("username", ts.testUsername, "password", sentPassword)
+	ts.Require().NoError(err)
+	ts.Require().False(ok, "The password sent before the link was opened is not set")
+
+	newPassword := "Chosen" + sentPassword
+	flowStep, err = common.CompleteFlow(flowStep.ExecutionID, map[string]string{"password": newPassword},
+		"action_submit_password", flowStep.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit new password")
+	ts.Require().Equal("COMPLETE", flowStep.FlowStatus, "Expected COMPLETE after setting new password")
+	ts.testPassword = newPassword
+}
+
+// buildSignInFlowCallingRecovery returns a sign-in flow whose forgot password action calls the given recovery
+// flow.
+func buildSignInFlowCallingRecovery(recoveryFlowID string) testutils.Flow {
+	return testutils.Flow{
+		Name:     "Basic Recovery Forgot Password Sign-in Flow",
+		FlowType: "AUTHENTICATION",
+		Handle:   "basic-recovery-forgot-password-signin",
+		Nodes: []map[string]interface{}{
+			{"id": "start", "type": "START", "onSuccess": "prompt_credentials"},
+			{
+				"id":   "prompt_credentials",
+				"type": "PROMPT",
+				"prompts": []map[string]interface{}{
+					{
+						"inputs": []map[string]interface{}{
+							{"ref": "input_username", "identifier": "username", "type": "TEXT_INPUT", "required": true},
+							{"ref": "input_password", "identifier": "password", "type": "PASSWORD_INPUT",
+								"required": true},
+						},
+						"action": map[string]interface{}{"ref": "action_sign_in", "nextNode": "credentials_auth"},
+					},
+					{
+						"action": map[string]interface{}{"ref": "action_forgot_password", "nextNode": "call_recovery"},
+					},
+				},
+			},
+			{
+				"id":        "credentials_auth",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "CredentialsAuthExecutor"},
+				"onSuccess": "auth_assert",
+			},
+			{
+				"id":        "auth_assert",
+				"type":      "TASK_EXECUTION",
+				"executor":  map[string]interface{}{"name": "AuthAssertExecutor"},
+				"onSuccess": "end",
+			},
+			{
+				"id":        "call_recovery",
+				"type":      "CALL",
+				"flow":      map[string]interface{}{"ref": recoveryFlowID},
+				"onSuccess": "end",
+			},
+			{"id": "end", "type": "END"},
+		},
+	}
+}
+
 // TestBasicRecoveryFlow_UnknownUsername tests that an unknown username still reaches
 // email_sent_status (anti-enumeration: same status regardless of username validity).
 func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_UnknownUsername() {
@@ -409,6 +584,72 @@ func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_RevokesTheir
 	ts.False(active, "A token issued before the password reset was still active")
 }
 
+func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_SendsToStoredEmail() {
+	ts.mockSMTP.ClearEmails()
+
+	flowStep := ts.submitUsernameWithEmail(ts.testAppID, ts.testUsername, "other@example.com")
+
+	ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus)
+	email := common.AwaitEmail(ts.Require(), ts.mockSMTP)
+	ts.Equal([]string{ts.testUsername + "@example.com"}, email.To, "The recovery email goes to the stored email")
+}
+
+func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_UserWithoutEmail() {
+	ts.mockSMTP.ClearEmails()
+	username := common.GenerateUniqueUsername("recoverynoemail")
+	userIDs, err := testutils.CreateMultipleUsers(testutils.User{
+		OUID: ts.testOUID,
+		Type: basicRecoveryUserSchema.Handle,
+		Attributes: json.RawMessage(`{
+			"username": "` + username + `",
+			"password": "NoEmail123!"
+		}`),
+	})
+	ts.Require().NoError(err, "Failed to create the user without an email")
+	defer func() {
+		if err := testutils.CleanupUsers(userIDs); err != nil {
+			ts.T().Logf("Failed to delete the user without an email: %v", err)
+		}
+	}()
+
+	flowStep := ts.submitUsernameWithEmail(ts.testAppID, username, "other@example.com")
+
+	ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus)
+	ts.NotContains(flowStep.Data.AdditionalData, "inviteLink", "No recovery link is returned")
+	ts.Nil(ts.mockSMTP.GetLastEmail(), "No email should be sent")
+}
+
+func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_NoEmailProvider() {
+	flow := buildEmailLinkPasswordRecoveryFlow("")
+	flow.Handle = "email-link-recovery-no-provider-test"
+	flowID, err := testutils.CreateFlow(flow)
+	ts.Require().NoError(err, "Failed to create the recovery flow without a provider")
+	ts.config.CreatedFlowIDs = append(ts.config.CreatedFlowIDs, flowID)
+
+	appID, err := testutils.CreateApplication(testutils.Application{
+		OUID:                  ts.testOUID,
+		Name:                  "Recovery Without Provider Test App",
+		IsRecoveryFlowEnabled: true,
+		ClientID:              "recovery_no_provider_client",
+		ClientSecret:          "recovery_no_provider_secret",
+		RedirectURIs:          []string{"http://localhost:3000/callback"},
+		AllowedUserTypes:      []string{basicRecoveryUserSchema.Handle},
+		AuthFlowID:            ts.authFlowID,
+		RecoveryFlowID:        flowID,
+	})
+	ts.Require().NoError(err, "Failed to create the application for the recovery flow without a provider")
+	defer func() {
+		if err := testutils.DeleteApplication(appID); err != nil {
+			ts.T().Logf("Failed to delete the recovery app without a provider: %v", err)
+		}
+	}()
+
+	flowStep := ts.submitUsernameWithEmail(appID, ts.testUsername, "")
+
+	ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus)
+	ts.NotContains(flowStep.Data.AdditionalData, "inviteLink", "No recovery link is returned")
+}
+
 // TestBasicRecoveryFlow_InvalidToken tests that submitting a wrong recovery token
 // causes the token verification to fail and the flow to return an error/incomplete status.
 func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_InvalidToken() {
@@ -469,6 +710,89 @@ func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_RecoveryDisa
 	// Attempting to start a RECOVERY flow on this app must fail.
 	_, err = common.InitiateRecoveryFlow(appID, false, nil, "")
 	ts.Require().Error(err, "Expected error when recovery is disabled for the app")
+}
+
+// TestBasicRecoveryFlow_EmailNotSentWithoutSender tests that a recovery flow whose send step names no email
+// provider reaches email_sent_status with emailSent=false, and that the recovery link travels only by email:
+// the step carries none.
+func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_EmailNotSentWithoutSender() {
+	ts.mockSMTP.ClearEmails()
+	flow := buildEmailLinkPasswordRecoveryFlow("")
+	flow.Name = "Email Link Password Recovery Flow Without Sender Test"
+	flow.Handle = "email-link-based-password-recovery-without-sender-test"
+	for _, node := range flow.Nodes.([]map[string]interface{}) {
+		if node["id"] == "send_recovery_email" {
+			delete(node["properties"].(map[string]interface{}), "senderId")
+		}
+	}
+	flowID, err := testutils.CreateFlow(flow)
+	ts.Require().NoError(err, "Failed to create the recovery flow without a sender")
+	defer func() {
+		if err := testutils.DeleteFlow(flowID); err != nil {
+			ts.T().Logf("Failed to delete the recovery flow without a sender: %v", err)
+		}
+	}()
+	appID, err := testutils.CreateApplication(testutils.Application{
+		OUID:                  ts.testOUID,
+		Name:                  "Recovery Without Sender App",
+		IsRecoveryFlowEnabled: true,
+		ClientID:              "recovery_without_sender_client",
+		ClientSecret:          "recovery_without_sender_secret",
+		RedirectURIs:          []string{"http://localhost:3000/callback"},
+		AllowedUserTypes:      []string{basicRecoveryUserSchema.Handle},
+		AuthFlowID:            ts.authFlowID,
+		RecoveryFlowID:        flowID,
+	})
+	ts.Require().NoError(err, "Failed to create the recovery app without a sender")
+	defer func() {
+		if err := testutils.DeleteApplication(appID); err != nil {
+			ts.T().Logf("Failed to delete the recovery app without a sender: %v", err)
+		}
+	}()
+
+	flowStep, err := common.InitiateRecoveryFlow(appID, false, nil, "")
+	ts.Require().NoError(err, "Failed to initiate recovery flow")
+	flowStep, err = common.CompleteFlow(flowStep.ExecutionID, map[string]string{"username": ts.testUsername},
+		"action_submit_username", flowStep.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit username")
+
+	ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus, "Expected email_sent_status: %+v", flowStep)
+	ts.Equal("false", flowStep.Data.AdditionalData["emailSent"], "No email can be sent without a provider")
+	ts.Empty(flowStep.Data.AdditionalData["inviteLink"], "The recovery link travels only by email")
+	time.Sleep(500 * time.Millisecond)
+	ts.Nil(ts.mockSMTP.GetLastEmail(), "No email is sent without a provider")
+}
+
+// TestBasicRecoveryFlow_EmailNotSentWithoutAddress tests that recovery for a user who has no email address
+// reaches email_sent_status without sending anything, and that the step carries no recovery link.
+func (ts *EmailLinkPasswordRecoveryTestSuite) TestBasicRecoveryFlow_EmailNotSentWithoutAddress() {
+	ts.mockSMTP.ClearEmails()
+	username := common.GenerateUniqueUsername("recoverynoemail")
+	userIDs, err := testutils.CreateMultipleUsers(testutils.User{
+		OUID: ts.testOUID,
+		Type: basicRecoveryUserSchema.Handle,
+		Attributes: json.RawMessage(`{
+			"username": "` + username + `",
+			"password": "NoEmailOld123!"
+		}`),
+	})
+	ts.Require().NoError(err, "Failed to create the user without an email address")
+	defer func() {
+		if err := testutils.CleanupUsers(userIDs); err != nil {
+			ts.T().Logf("Failed to delete the user without an email address: %v", err)
+		}
+	}()
+
+	flowStep, err := common.InitiateRecoveryFlow(ts.testAppID, false, nil, "")
+	ts.Require().NoError(err, "Failed to initiate recovery flow")
+	flowStep, err = common.CompleteFlow(flowStep.ExecutionID, map[string]string{"username": username},
+		"action_submit_username", flowStep.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit username")
+
+	ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus, "Expected email_sent_status: %+v", flowStep)
+	ts.Empty(flowStep.Data.AdditionalData["inviteLink"], "The recovery link travels only by email")
+	time.Sleep(500 * time.Millisecond)
+	ts.Nil(ts.mockSMTP.GetLastEmail(), "No email is sent to a user without an address")
 }
 
 // buildEmailLinkPasswordRecoveryFlow returns the email-link password recovery flow definition.
@@ -598,6 +922,23 @@ func (ts *EmailLinkPasswordRecoveryTestSuite) driveRecoveryToPasswordPromptAs(us
 	return flowStep, email
 }
 
+// submitUsernameWithEmail starts a recovery flow on the application and submits the username, with the email
+// alongside it when one is given.
+func (ts *EmailLinkPasswordRecoveryTestSuite) submitUsernameWithEmail(appID, username, email string) *common.FlowStep {
+	flowStep, err := common.InitiateRecoveryFlow(appID, false, nil, "")
+	ts.Require().NoError(err, "Failed to initiate recovery flow")
+
+	inputs := map[string]string{"username": username}
+	if email != "" {
+		inputs["email"] = email
+	}
+	flowStep, err = common.CompleteFlow(flowStep.ExecutionID, inputs, "action_submit_username",
+		flowStep.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit username")
+
+	return flowStep
+}
+
 // assertPasswordUnchanged confirms the user's current password still authenticates, so a failed
 // credential set is verified by its absence of effect rather than by the flow status alone.
 func (ts *EmailLinkPasswordRecoveryTestSuite) assertPasswordUnchanged() {
@@ -645,6 +986,15 @@ func buildCredentialSetterWithoutUserFlow() testutils.Flow {
 			{"id": "end", "type": "END"},
 		},
 	}
+}
+
+// recoveryEmailProperties returns the send node's properties, naming the provider only when one is given.
+func recoveryEmailProperties(senderID string) map[string]interface{} {
+	properties := map[string]interface{}{"emailTemplate": "password-recovery"}
+	if senderID != "" {
+		properties["senderId"] = senderID
+	}
+	return properties
 }
 
 func buildEmailLinkPasswordRecoveryFlow(senderID string) testutils.Flow {
@@ -706,12 +1056,9 @@ func buildEmailLinkPasswordRecoveryFlow(senderID string) testutils.Flow {
 				"onSuccess": "send_recovery_email",
 			},
 			{
-				"id":   "send_recovery_email",
-				"type": "TASK_EXECUTION",
-				"properties": map[string]interface{}{
-					"emailTemplate": "password-recovery",
-					"senderId":      senderID,
-				},
+				"id":         "send_recovery_email",
+				"type":       "TASK_EXECUTION",
+				"properties": recoveryEmailProperties(senderID),
 				"executor": map[string]interface{}{
 					"name": "EmailExecutor",
 					"mode": "send",

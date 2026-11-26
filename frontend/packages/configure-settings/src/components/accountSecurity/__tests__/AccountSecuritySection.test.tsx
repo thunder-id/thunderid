@@ -116,7 +116,7 @@ describe('AccountSecuritySection', () => {
     );
   });
 
-  it('disables Save when the admin may not update server configuration', async () => {
+  it('locks the lock card when the admin may not update server configuration', () => {
     config.merged = {
       user: {default: {enabled: true, threshold: 5, failureWindowSeconds: 900, lockDurationsSeconds: [300]}},
     };
@@ -127,8 +127,7 @@ describe('AccountSecuritySection', () => {
       </CapabilitiesProvider>,
     );
 
-    await userEvent.click(screen.getByRole('switch', {name: 'Automatic lock for Users'}));
-    expect(screen.getByRole('button', {name: 'Save changes'})).toBeDisabled();
+    expect(screen.getByRole('switch', {name: 'Automatic lock for Users'})).toBeDisabled();
   });
 
   // A declarative accountAccess locks the section on the server, so nothing here may look editable.
@@ -139,8 +138,8 @@ describe('AccountSecuritySection', () => {
 
     expect(screen.getByRole('switch', {name: 'Automatic lock for Users'})).toBeDisabled();
     expect(screen.getByRole('switch', {name: 'Automatic lock for Agents'})).toBeDisabled();
-    expect(within(card('Automatic account lock')).getByTestId('account-lock-read-only-hint')).toHaveTextContent(
-      /managed declaratively/,
+    expect(within(card('Automatic account lock')).getByRole('alert')).toHaveTextContent(
+      'server_configs/accountAccess.yaml',
     );
   });
 
@@ -148,7 +147,7 @@ describe('AccountSecuritySection', () => {
     renderWithProviders(<AccountSecuritySection />);
 
     expect(screen.getByRole('switch', {name: 'Automatic lock for Users'})).toBeEnabled();
-    expect(screen.queryByTestId('account-lock-read-only-hint')).not.toBeInTheDocument();
+    expect(screen.queryByText(/server_configs\/accountAccess.yaml/)).not.toBeInTheDocument();
   });
 
   it('reports a failed read in the lock card but still lists the suspension flows', () => {
@@ -173,6 +172,17 @@ describe('AccountSecuritySection', () => {
         screen.getByText('One or more account security settings are not valid. Check the values and try again.'),
       ).toBeInTheDocument();
       expect(screen.queryByText(/origins are not valid/)).not.toBeInTheDocument();
+    });
+
+    it('reports a section declarative resources set with the wording every section shares', async () => {
+      update.error = Object.assign(new Error('Request failed'), {response: {data: {code: 'SCF-1007'}}});
+
+      renderWithProviders(<AccountSecuritySection />);
+      await userEvent.click(screen.getByRole('switch', {name: 'Automatic lock for Users'}));
+
+      expect(
+        screen.getByText("Declarative resources set these settings, so they can't be changed here."),
+      ).toBeInTheDocument();
     });
   });
 });

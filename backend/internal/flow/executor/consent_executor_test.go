@@ -517,6 +517,11 @@ func (suite *ConsentExecutorTestSuite) TestExecute_NoInputs_PromptRequired_NoTim
 func (suite *ConsentExecutorTestSuite) executePrompt(runtimeData map[string]string) *providers.ExecutorResponse {
 	ctx := buildConsentNodeContext()
 	maps.Copy(ctx.RuntimeData, runtimeData)
+	return suite.executePromptContext(ctx)
+}
+
+// executePromptContext runs the executor with the given context for a user who has not yet consented.
+func (suite *ConsentExecutorTestSuite) executePromptContext(ctx *providers.NodeContext) *providers.ExecutorResponse {
 	suite.setupDefaultAuthnProviderMocks()
 	suite.executor.Executor.(*coremock.ExecutorInterfaceMock).
 		On("ValidatePrerequisites", ctx, mock.AnythingOfType("*providers.ExecutorResponse"), mock.Anything).Return(true)
@@ -1177,7 +1182,7 @@ func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_FailOnDeny_Essentia
 	// The essential-denied branch runs before the failOnDeny check
 	suite.mockConsentEnforcer.On("RecordConsent", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return((*providers.Consent)(nil), &consentauthn.ErrorEssentialConsentDenied)
+		Return((*providers.Consent)(nil), &providers.ErrorEssentialConsentDenied)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -1285,7 +1290,7 @@ func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_EssentialDenied() {
 	// RecordConsent persists the denial and returns an essential-denied error
 	suite.mockConsentEnforcer.On("RecordConsent", mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Return((*providers.Consent)(nil), &consentauthn.ErrorEssentialConsentDenied)
+		Return((*providers.Consent)(nil), &providers.ErrorEssentialConsentDenied)
 
 	resp, err := suite.executor.Execute(ctx)
 
@@ -2647,4 +2652,141 @@ func (suite *ConsentExecutorTestSuite) TestExecute_BindsPermissionsToResourceSer
 	response, err := suite.executor.Execute(ctx)
 	suite.NoError(err)
 	suite.Equal(providers.ExecComplete, response.Status)
+}
+
+func (suite *ConsentExecutorTestSuite) TestExecute_NoInputs_PromptRequired_ValidityInput() {
+	yes, no := true, false
+	tests := []struct {
+		name         string
+		allowed      interface{}
+		loginConsent *inboundmodel.LoginConsentConfig
+		expectInput  bool
+		expectMax    string
+	}{
+		{"option off", nil, &inboundmodel.LoginConsentConfig{ValidityPeriod: 3600}, false, ""},
+		{"option not a boolean", "true", &inboundmodel.LoginConsentConfig{ValidityPeriod: 3600}, false, ""},
+		{"option on with a limit", true, &inboundmodel.LoginConsentConfig{ValidityPeriod: 3600}, true, "3600"},
+		{"option on with a period of zero, which sends no limit", true,
+			&inboundmodel.LoginConsentConfig{ValidityPeriod: 0}, true, "0"},
+		{"option on without consent config", true, nil, true, "0"},
+		{"option on with a negative period", true,
+			&inboundmodel.LoginConsentConfig{ValidityPeriod: -1}, true, "0"},
+		{"option on with the largest period", true,
+			&inboundmodel.LoginConsentConfig{ValidityPeriod: 2147483647}, true, "0"},
+		{"option on with a period above the largest", true,
+			&inboundmodel.LoginConsentConfig{ValidityPeriod: 3000000000}, true, "0"},
+		{"option on with the largest 64-bit period", true,
+			&inboundmodel.LoginConsentConfig{ValidityPeriod: 9223372036854775807}, true, "0"},
+		{"option on with a period just below the largest", true,
+			&inboundmodel.LoginConsentConfig{ValidityPeriod: 2147483646}, true, "2147483646"},
+		{"option on and the client prompts every time", true,
+			&inboundmodel.LoginConsentConfig{ValidityPeriod: 3600, AlwaysPrompt: &yes}, false, ""},
+		{"option on and the client keeps consent", true,
+			&inboundmodel.LoginConsentConfig{ValidityPeriod: 3600, AlwaysPrompt: &no}, true, "3600"},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			ctx := buildConsentNodeContext()
+			ctx.Application.LoginConsent = tc.loginConsent
+			if tc.allowed != nil {
+				ctx.NodeProperties[propertyKeyConsentPromptValidityPeriod] = tc.allowed
+			}
+
+			resp := suite.executePromptContext(ctx)
+
+			if !tc.expectInput {
+				suite.NotContains(resp.AdditionalData, common.DataPromptConsentValidity)
+				suite.NotContains(resp.AdditionalData, common.DataMaxConsentValidity)
+				return
+			}
+			suite.Equal("true", resp.AdditionalData[common.DataPromptConsentValidity])
+			suite.Equal(tc.expectMax, resp.AdditionalData[common.DataMaxConsentValidity])
+		})
+	}
+}
+
+func (suite *ConsentExecutorTestSuite) TestExecute_HasInputs_ResolvesValidityPeriod() {
+	limited := &inboundmodel.LoginConsentConfig{ValidityPeriod: 3600}
+	unlimited := &inboundmodel.LoginConsentConfig{ValidityPeriod: 0}
+	approvedWith := func(chosen string) string {
+		if chosen == "" {
+			return `{"approved":true,"purposes":[]}`
+		}
+		return `{"approved":true,"purposes":[],"validityPeriod":` + chosen + `}`
+	}
+	tests := []struct {
+		name          string
+		prompted      bool
+		loginConsent  *inboundmodel.LoginConsentConfig
+		decisions     string
+		expectPeriod  int64
+		expectOneTime bool
+	}{
+		{"option off ignores the chosen value", false, limited, approvedWith("100"), 3600, false},
+		{"value within the limit", true, limited, approvedWith("100"), 100, false},
+		{"value equal to the limit", true, limited, approvedWith("3600"), 3600, false},
+		{"one second is kept, which is how a decision that is not remembered is recorded", true, limited,
+			approvedWith("1"), 1, false},
+		{"value above the limit is capped", true, limited, approvedWith("7200"), 3600, false},
+		{"fraction is rounded down", true, limited, approvedWith("100.9"), 100, false},
+		{"fraction below one second uses the limit", true, limited, approvedWith("0.5"), 3600, false},
+		{"no value uses the limit", true, limited, approvedWith(""), 3600, false},
+		{"zero uses the limit", true, limited, approvedWith("0"), 3600, false},
+		{"negative uses the limit", true, limited, approvedWith("-5"), 3600, false},
+		{"string uses the limit", true, limited, approvedWith(`"100"`), 3600, false},
+		{"boolean uses the limit", true, limited, approvedWith("true"), 3600, false},
+		{"array uses the limit", true, limited, approvedWith("[100]"), 3600, false},
+		{"null uses the limit", true, limited, approvedWith("null"), 3600, false},
+		{"largest value is capped to the limit", true, limited, approvedWith("2147483647"), 3600, false},
+		{"no limit accepts the value", true, unlimited, approvedWith("31536000"), 31536000, false},
+		{"a period above the largest never expires", false,
+			&inboundmodel.LoginConsentConfig{ValidityPeriod: 3000000000}, approvedWith(""), 0, false},
+		{"no consent config accepts the value", true, nil, approvedWith("100"), 100, false},
+		{"no limit and no value never expires", true, unlimited, approvedWith(""), 0, false},
+		{"no limit takes an oversized value as no expiry", true, nil, approvedWith("1e30"), 0, false},
+		{"no limit takes the largest allowed value as no expiry", true, nil, approvedWith("2147483647"), 0, false},
+		{"no limit takes the value just above it as no expiry", true, nil, approvedWith("2147483648"), 0, false},
+		{"user chose not to remember", true, limited,
+			`{"approved":true,"purposes":[],"oneTime":true,"validityPeriod":1}`, 1, true},
+		{"not remembering decides the period, not the one sent", true, limited,
+			`{"approved":true,"purposes":[],"oneTime":true,"validityPeriod":60}`, 1, true},
+		{"not remembering without a period", true, limited, `{"approved":true,"purposes":[],"oneTime":true}`, 1, true},
+		{"not remembering where the application sets no period", true, nil,
+			`{"approved":true,"purposes":[],"oneTime":true,"validityPeriod":1}`, 1, true},
+		{"user typed one second where the application sets no period", true, nil, approvedWith("1"), 1, false},
+		{"node does not let the user choose", false, limited,
+			`{"approved":true,"purposes":[],"oneTime":true,"validityPeriod":1}`, 3600, false},
+		{"user denied", true, limited, `{"approved":false,"purposes":[],"oneTime":true,"validityPeriod":1}`, 3600,
+			false},
+		{"application period of one second, not chosen by the user", true,
+			&inboundmodel.LoginConsentConfig{ValidityPeriod: 1}, approvedWith(""), 1, false},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			suite.SetupTest()
+			ctx := buildConsentNodeContext()
+			ctx.Application.LoginConsent = tc.loginConsent
+			if tc.prompted {
+				ctx.NodeProperties[propertyKeyConsentPromptValidityPeriod] = true
+			}
+			ctx.UserInputs[userInputConsentDecisions] = tc.decisions
+
+			suite.setupDefaultAuthnProviderMocks()
+			suite.executor.Executor.(*coremock.ExecutorInterfaceMock).
+				On("ValidatePrerequisites", ctx, mock.AnythingOfType("*providers.ExecutorResponse"), mock.Anything).
+				Return(true)
+			suite.executor.Executor.(*coremock.ExecutorInterfaceMock).
+				On("HasRequiredInputs", ctx, mock.AnythingOfType("*providers.ExecutorResponse")).Return(true)
+			suite.mockConsentEnforcer.On("RecordConsent", mock.Anything, "default", "app-123", "user-123",
+				mock.MatchedBy(func(d *providers.ConsentDecisions) bool { return d.OneTime == tc.expectOneTime }),
+				mock.Anything, tc.expectPeriod, mock.Anything).
+				Return(&providers.Consent{ID: "consent-001"}, nil)
+
+			resp, err := suite.executor.Execute(ctx)
+
+			suite.Require().NoError(err)
+			suite.Equal(providers.ExecComplete, resp.Status)
+		})
+	}
 }

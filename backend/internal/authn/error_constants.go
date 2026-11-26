@@ -128,4 +128,18 @@ var (
 			DefaultValue: "The federated authentication attempt failed",
 		},
 	}
+	// ErrorFederatedSyncFailed is the error when a federated sign-in cannot be synced to the account
+	// holding its link.
+	ErrorFederatedSyncFailed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AUTHN-FED-1002",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.authnservice.federated_sync_failed",
+			DefaultValue: "Federated sync failed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.authnservice.federated_sync_failed_description",
+			DefaultValue: "The account could not be updated with the identity provider's data",
+		},
+	}
 )

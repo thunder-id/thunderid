@@ -32,3 +32,29 @@ export function fakeHttp(routes: Record<string, unknown>): FakeHttp {
   });
   return {request, calls};
 }
+
+/**
+ * A gateway's store listing as the server answers it: narrowed by `names` and a `name sw` filter, then
+ * paged by `limit` and `offset`, with how many match in all.
+ */
+export function storeListing(collection: 'variables' | 'secrets', values: {name: string}[]): (call: Call) => unknown {
+  return (call: Call): unknown => {
+    const params = new URL(call.url).searchParams;
+    let matched = [...values];
+    const names = params.get('names');
+    if (names) {
+      const wanted = new Set(names.split(','));
+      matched = matched.filter((value) => wanted.has(value.name));
+    }
+    const prefix = /^name sw "(.*)"$/.exec(params.get('filter') ?? '')?.[1];
+    if (prefix) matched = matched.filter((value) => value.name.startsWith(prefix));
+    const limit = Number(params.get('limit') ?? 30);
+    const offset = Number(params.get('offset') ?? 0);
+    return {totalResults: matched.length, [collection]: matched.slice(offset, offset + limit)};
+  };
+}
+
+/** The query a call was made with, as a plain object. */
+export function queryOf(call: Call): Record<string, string> {
+  return Object.fromEntries(new URL(call.url).searchParams.entries());
+}

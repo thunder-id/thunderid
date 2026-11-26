@@ -82,7 +82,7 @@ func (e *ValidationError) Error() string { return "Validation Failed" }
 func DecodeJSONBody[T any](r *http.Request) (*T, error) {
 	var data T
 	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
-		return nil, errors.New("failed to decode JSON: " + err.Error())
+		return nil, fmt.Errorf("failed to decode JSON: %w", err)
 	}
 	if fieldErrors := validateStructNatively(data); fieldErrors != nil {
 		return nil, &ValidationError{Errors: fieldErrors}

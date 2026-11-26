@@ -256,26 +256,24 @@ func (ts *OtherFlowTypesTestSuite) TestRegistrationVerifiesTheNewUsersEmail() {
 	requireVerifiedSince(ts.T(), user.ID, emailAttribute, started)
 }
 
-// An address entered after the code check is the one the user is created with, and it is not verified:
-// the code went to another address.
-func (ts *OtherFlowTypesTestSuite) TestRegistrationWithAnAddressChangedAfterTheCodeRecordsNothing() {
+// An address sent with the code is not taken: the step waiting for the code asks for the code only. The user
+// is created with the address the code was sent to, and that address is verified.
+func (ts *OtherFlowTypesTestSuite) TestRegistrationIgnoresAnAddressSentWithTheCode() {
 	appID := ts.registrationApp("changed", registrationFlow(ts.fixture.senderID, nil,
 		promptNode("prompt_email_again", actionSubmitEmail, emailAttribute),
 		taskNode("provisioning", "ProvisioningExecutor", ""), recordNode("")))
 	username, address := ts.newUserDetails("registration_changed")
-	changed := "changed." + address
+	started := time.Now()
 
-	// A prompt does not ask again for an input the flow holds, so the new address comes with the code,
-	// in the request the prompt runs in.
 	step := ts.startRegistration(appID, username, address)
 	done := ts.continueFlow(step, map[string]string{"otp": ts.fixture.awaitCode(ts.T(), address),
-		emailAttribute: changed}, actionSubmitOTP)
+		emailAttribute: "changed." + address}, actionSubmitOTP)
 
+	ts.Require().Equal(flowStatusComplete, done.FlowStatus, "the registration must complete: %+v", done)
 	user, attributes := ts.createdUser(username)
 	ts.Require().NotNil(user, "the registration must create the user")
-	ts.Equal(changed, attributes[emailAttribute], "the user must be created with the address entered last")
-	ts.requireStepRefused(done, errCodeVerificationRefused, "recording must fail for an address not proven")
-	ts.Empty(verifiedAt(ts.T(), user.ID, emailAttribute), "an address the code was not sent to must not be verified")
+	ts.Equal(address, attributes[emailAttribute], "the user must have the address the code was sent to")
+	requireVerifiedSince(ts.T(), user.ID, emailAttribute, started)
 }
 
 // Recording before the flow has created its user fails and records nothing, and the pin is not kept for
@@ -380,6 +378,29 @@ func (ts *OtherFlowTypesTestSuite) TestOnboardingByEmailedInviteVerifiesTheNewUs
 	link := ts.fixture.awaitEmailTo(ts.T(), address).ExtractRecoveryLink()
 	ts.Require().NotEmpty(link, "the email must carry the invite link")
 	done := ts.finishOnboarding(link, username)
+
+	ts.Require().Equal(flowStatusComplete, done.FlowStatus, "the onboarding must complete: %+v", done)
+	user, attributes := ts.createdUser(username)
+	ts.Require().NotNil(user, "the onboarding must create the user")
+	ts.Equal(address, attributes[emailAttribute], "the user must have the invited address")
+	requireVerifiedSince(ts.T(), user.ID, emailAttribute, started)
+}
+
+// An address the invitee sends with the details doesn't replace the invited one. The user is created with the
+// address the invite went to, and that address is verified.
+func (ts *OtherFlowTypesTestSuite) TestOnboardingKeepsTheInvitedAddress() {
+	username, address := ts.newUserDetails("onboarding_changed")
+	started := time.Now()
+
+	step := ts.startOnboarding(address)
+	step = ts.continueFlow(step, nil, actionSendInvite)
+	ts.Require().Equal(flowStatusIncomplete, step.FlowStatus, "the flow must wait for the invitee: %+v", step)
+	link := ts.fixture.awaitEmailTo(ts.T(), address).ExtractRecoveryLink()
+	ts.Require().NotEmpty(link, "the email must carry the invite link")
+
+	step = openLink(ts.T(), link, testutils.ExtractQueryParam(link, "inviteToken"))
+	done := ts.continueFlow(step, map[string]string{"username": username, emailAttribute: "changed." + address},
+		actionSubmitDetails)
 
 	ts.Require().Equal(flowStatusComplete, done.FlowStatus, "the onboarding must complete: %+v", done)
 	user, attributes := ts.createdUser(username)

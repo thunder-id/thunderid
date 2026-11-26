@@ -7,7 +7,7 @@ export {default as useGetApplications} from './api/useGetApplications';
 export type {UseGetApplicationsParams} from './api/useGetApplications';
 
 // Models & Types
-export type {Application, ApplicationType, BasicApplication} from './models/application';
+export type {Application, ApplicationType, BasicApplication, LoginConsentConfig} from './models/application';
 export type {ApplicationListResponse} from './models/responses';
 export {InboundAuthTypes} from './models/inbound-auth';
 export type {InboundAuthConfig, InboundAuthType} from './models/inbound-auth';
@@ -69,6 +69,7 @@ export type {
 } from './components/edit-application/integration-guides/QuickstartGuide';
 export {default as EnvironmentClientIdField} from './components/edit-application/integration-guides/EnvironmentClientIdField';
 export {default as CopyableField} from './components/common/CopyableField';
+export {default as LoginConsentField} from './components/common/LoginConsentField';
 export type {CopyableFieldProps} from './components/common/CopyableField';
 export {default as SettingsLockNotice} from './components/common/SettingsLockNotice';
 export {default as TokenAudienceSelector} from './components/common/TokenAudienceSelector';

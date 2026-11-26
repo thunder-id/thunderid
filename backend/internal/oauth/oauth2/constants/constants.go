@@ -107,6 +107,7 @@ const (
 	SessionDataKeyConsent string = "sessionDataKeyConsent"
 	ShowInsecureWarning   string = "showInsecureWarning"
 	AppID                 string = "applicationId"
+	Ref                   string = "ref"
 	ExecutionID           string = "executionId"
 )
 
@@ -324,9 +325,9 @@ const (
 	// ClaimRefreshAuthorizationDetailVersions carries the granted type versions on a refresh token.
 	ClaimRefreshAuthorizationDetailVersions string = "access_token_authorization_detail_versions"
 
-	// ClaimIDP identifies the source identity provider (by issuer) that authenticated the subject of a
-	// jwt-bearer-grant (ID-JAG) access token, so downstream consumers can distinguish a federated
-	// principal from a local one.
+	// ClaimIDP identifies the source identity provider (by issuer) that authenticated the subject of an
+	// access token issued for an external subject (jwt-bearer/ID-JAG, or token exchange of such a
+	// subject), so downstream consumers can distinguish a federated principal from a local one.
 	ClaimIDP string = "idp"
 	// ClaimSubType identifies the identity class of the token subject, so a resource server can apply
 	// policy that differs by class. Emitted on client_credentials tokens.
@@ -374,14 +375,6 @@ var SurfaceableClientSystemClaims = map[string]bool{
 // OIDC subject types.
 const (
 	SubjectTypePublic string = "public"
-)
-
-// Token-exchange token family modes (oauth.token_exchange.token_family).
-const (
-	// TokenExchangeTokenFamilyNone issues an exchanged token with no token family id (independent).
-	TokenExchangeTokenFamilyNone string = "none"
-	// TokenExchangeTokenFamilyInherit copies the subject token's token family id onto the exchanged token.
-	TokenExchangeTokenFamilyInherit string = "inherit"
 )
 
 // User attribute constants.

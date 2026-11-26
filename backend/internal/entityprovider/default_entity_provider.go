@@ -322,6 +322,7 @@ func toProviderEntity(e *providers.Entity) *providers.Entity {
 		OUHandle:         e.OUHandle,
 		Attributes:       e.Attributes,
 		SystemAttributes: e.SystemAttributes,
+		IsReadOnly:       e.IsReadOnly,
 	}
 }
 

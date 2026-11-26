@@ -421,6 +421,11 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
           label: 'Community',
         },
         {
+          to: '/events',
+          label: 'Events',
+          position: 'right',
+        },
+        {
           type: 'custom-GitHubStarButton',
           position: 'right',
         },

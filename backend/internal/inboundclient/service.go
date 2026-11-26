@@ -123,6 +123,9 @@ type inboundClientService struct {
 	keepsReferences bool
 	// systemFlows is nil where system flows are off.
 	systemFlows systemFlowProvider
+	// allowPrivateAddresses is server.allow_private_addresses: whether a back-channel logout URI may
+	// name a loopback, link-local, private or unspecified host.
+	allowPrivateAddresses bool
 }
 
 // newInboundClientService creates and returns an inboundClientService with all dependencies wired.
@@ -187,8 +190,8 @@ func (s *inboundClientService) CreateInboundClient(ctx context.Context, client *
 		if err := s.validateCIMD(oauthClientID, oauthProfile, hasClientSecret, "", nil); err != nil {
 			return err
 		}
-		if vErr := validateOAuthProfile(
-			ctx, s.profileToValidate(oauthProfile), hasClientSecret, s.cryptoProvider, s.jweService); vErr != nil {
+		if vErr := validateOAuthProfile(ctx, s.profileToValidate(oauthProfile), hasClientSecret,
+			s.cryptoProvider, s.jweService, s.allowPrivateAddresses); vErr != nil {
 			return vErr
 		}
 	}
@@ -285,8 +288,8 @@ func (s *inboundClientService) UpdateInboundClient(ctx context.Context, client *
 			existing); err != nil {
 			return err
 		}
-		if vErr := validateOAuthProfile(
-			ctx, s.profileToValidate(oauthProfile), hasClientSecret, s.cryptoProvider, s.jweService); vErr != nil {
+		if vErr := validateOAuthProfile(ctx, s.profileToValidate(oauthProfile), hasClientSecret,
+			s.cryptoProvider, s.jweService, s.allowPrivateAddresses); vErr != nil {
 			return vErr
 		}
 	}
@@ -347,8 +350,8 @@ func (s *inboundClientService) Validate(ctx context.Context, client *inboundmode
 		if err := s.validateCIMD(oauthClientID, oauthProfile, hasClientSecret, "", nil); err != nil {
 			return err
 		}
-		if vErr := validateOAuthProfile(
-			ctx, s.profileToValidate(oauthProfile), hasClientSecret, s.cryptoProvider, s.jweService); vErr != nil {
+		if vErr := validateOAuthProfile(ctx, s.profileToValidate(oauthProfile), hasClientSecret,
+			s.cryptoProvider, s.jweService, s.allowPrivateAddresses); vErr != nil {
 			return vErr
 		}
 	}
@@ -1067,16 +1070,18 @@ func (s *inboundClientService) profileToValidate(p *providers.OAuthProfile) *pro
 	return &checked
 }
 
-// validateOAuthProfile validates all fields of an OAuth profile data object.
+// validateOAuthProfile validates all fields of an OAuth profile data object. allowPrivateAddresses is
+// server.allow_private_addresses, which decides whether a back-channel logout URI may name a private host.
 func validateOAuthProfile(ctx context.Context, p *providers.OAuthProfile, hasClientSecret bool,
-	cryptoProvider providers.RuntimeCryptoProvider, jweService jwe.JWEServiceInterface) error {
+	cryptoProvider providers.RuntimeCryptoProvider, jweService jwe.JWEServiceInterface,
+	allowPrivateAddresses bool) error {
 	if p == nil {
 		return nil
 	}
 	if err := validateRedirectURIs(p); err != nil {
 		return err
 	}
-	if err := validateBackchannelLogoutURI(p); err != nil {
+	if err := validateBackchannelLogoutURI(p, allowPrivateAddresses); err != nil {
 		return err
 	}
 	if err := validateGrantAndResponseTypes(p); err != nil {
@@ -1106,9 +1111,9 @@ func validateOAuthProfile(ctx context.Context, p *providers.OAuthProfile, hasCli
 }
 
 // validateBackchannelLogoutURI checks the back-channel logout URI: an absolute http or https URL
-// with a host, no userinfo, fragment or wildcard, https for a public client, and no private host when
-// configuration rejects them.
-func validateBackchannelLogoutURI(p *providers.OAuthProfile) error {
+// with a host, no userinfo, fragment or wildcard, https for a public client, and no private host unless
+// allowPrivateAddresses.
+func validateBackchannelLogoutURI(p *providers.OAuthProfile, allowPrivateAddresses bool) error {
 	uri := p.BackchannelLogoutURI
 	if uri == "" {
 		return nil
@@ -1121,8 +1126,7 @@ func validateBackchannelLogoutURI(p *providers.OAuthProfile) error {
 	if err != nil || parsed.Hostname() == "" || parsed.User != nil {
 		return ErrOAuthInvalidBackchannelLogoutURI
 	}
-	if config.GetServerRuntime().Config.OAuth.Logout.Backchannel.RejectsPrivateAddresses() &&
-		syshttp.IsPrivateHost(parsed.Hostname()) {
+	if !allowPrivateAddresses && syshttp.IsPrivateHost(parsed.Hostname()) {
 		return ErrOAuthBackchannelLogoutURIPrivateHost
 	}
 	switch parsed.Scheme {
@@ -1290,7 +1294,10 @@ func validateIDTokenConfig(ctx context.Context, p *providers.OAuthProfile,
 			return ErrOAuthIDTokenEncryptionFieldsNotAllowed
 		}
 	case providers.IDTokenResponseTypeJWE, providers.IDTokenResponseTypeNESTEDJWT:
-		if cfg.EncryptionAlg == "" || cfg.EncryptionEnc == "" {
+		if cfg.EncryptionAlg == "" {
+			return ErrOAuthIDTokenEncryptionEncRequiresAlg
+		}
+		if cfg.EncryptionEnc == "" {
 			return ErrOAuthIDTokenEncryptionAlgRequiresEnc
 		}
 		if !slices.Contains(jweService.SupportedKeyEncryptionAlgorithms(), cfg.EncryptionAlg) {

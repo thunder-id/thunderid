@@ -14,6 +14,7 @@ interface LifespanSectionProps {
   editedAgent: Partial<Agent>;
   onFieldChange: (field: keyof Agent, value: unknown) => void;
   onValidationChange?: (hasError: boolean) => void;
+  readOnly?: boolean;
 }
 
 /**
@@ -25,6 +26,7 @@ export default function LifespanSection({
   editedAgent,
   onFieldChange,
   onValidationChange = undefined,
+  readOnly = false,
 }: LifespanSectionProps): JSX.Element {
   const {t} = useTranslation();
   const lifespanEndText = useLifespanEndText();
@@ -66,7 +68,7 @@ export default function LifespanSection({
           value={validUntil}
           // Only a newly chosen end must be in the future; the stored one is shown even once it has passed.
           disablePast={isEdited}
-          disabled={agent.isReadOnly}
+          disabled={readOnly}
           helperText={helperText}
           onErrorChange={handleErrorChange}
           onChange={(value) => onFieldChange('validUntil', value)}

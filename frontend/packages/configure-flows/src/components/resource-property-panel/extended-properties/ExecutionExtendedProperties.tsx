@@ -7,6 +7,7 @@ import AccessChangeValidatorProperties from './execution-properties/AccessChange
 import AgentTypeResolverProperties from './execution-properties/AgentTypeResolverProperties';
 import ConsentProperties from './execution-properties/ConsentProperties';
 import {EXECUTOR_TO_IDP_TYPE_MAP, EXECUTORS_WITH_FIXED_INPUTS} from './execution-properties/constants';
+import CredentialSetterProperties from './execution-properties/CredentialSetterProperties';
 import CriteriaRevocationProperties from './execution-properties/CriteriaRevocationProperties';
 import EmailProperties from './execution-properties/EmailProperties';
 import ExecutorInputsEditor from './execution-properties/ExecutorInputsEditor';
@@ -152,8 +153,10 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
     case ExecutionTypes.SessionSignOut:
       executorSpecificProperties = <SessionSignOutProperties resource={resource} onChange={onChange} />;
       break;
-    case ExecutionTypes.AttributeUniquenessValidator:
     case ExecutionTypes.CredentialSetter:
+      executorSpecificProperties = <CredentialSetterProperties resource={resource} onChange={onChange} />;
+      break;
+    case ExecutionTypes.AttributeUniquenessValidator:
     case ExecutionTypes.PreSuspend:
     case ExecutionTypes.Session:
     case ExecutionTypes.OwnerResolver:

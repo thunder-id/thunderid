@@ -176,11 +176,13 @@ func (h *HeldValues) changedFrom(variables, secrets []string, snapshot string) *
 	return changed
 }
 
-// gatewayClient reaches a gateway over HTTPS.
-type gatewayClient struct{}
+// gatewayClient reaches a gateway over HTTPS, through clients from its factory.
+type gatewayClient struct {
+	clients syshttp.OutboundClientFactoryInterface
+}
 
-func newGatewayClient() *gatewayClient {
-	return &gatewayClient{}
+func newGatewayClient(clients syshttp.OutboundClientFactoryInterface) *gatewayClient {
+	return &gatewayClient{clients: clients}
 }
 
 func (c *gatewayClient) Import(ctx context.Context, gw *Gateway, key string,
@@ -229,7 +231,7 @@ func (c *gatewayClient) post(ctx context.Context, gw *Gateway, key, path string,
 	// authenticator reads.
 	httpReq.Header.Set(constants.APIKeyHeaderName, key)
 
-	client, err := httpClientFor(gw, importTimeout)
+	client, err := c.httpClientFor(gw, importTimeout)
 	if err != nil {
 		return nil, 0, fmt.Errorf("%w: %w", errImportNotWritten, err)
 	}
@@ -295,7 +297,7 @@ const importTimeout = 2 * time.Minute
 // deployment allows gateways on private addresses, a host that resolves to a loopback, link-local or
 // private address is refused as it is dialed, so a registered name cannot be pointed at something
 // inside this plane's network after the fact.
-func httpClientFor(gw *Gateway, timeout time.Duration) (syshttp.HTTPClientInterface, error) {
+func (c *gatewayClient) httpClientFor(gw *Gateway, timeout time.Duration) (syshttp.HTTPClientInterface, error) {
 	if !strings.HasPrefix(strings.ToLower(gw.BaseURL), "https://") {
 		return nil, fmt.Errorf("the gateway's baseUrl is not https, so its key is not sent")
 	}
@@ -306,7 +308,7 @@ func httpClientFor(gw *Gateway, timeout time.Duration) (syshttp.HTTPClientInterf
 	if gw.CACertificate != "" && !roots.AppendCertsFromPEM([]byte(gw.CACertificate)) {
 		return nil, fmt.Errorf("the gateway's caCertificate is not a PEM certificate")
 	}
-	return syshttp.NewHTTPClientWithRootCAs(timeout, roots, !allowPrivateAddresses()), nil
+	return c.clients.NewHTTPClientWithRootCAs(timeout, roots), nil
 }
 
 // releaseConnections closes a client's idle connections. A client is built per gateway call, for the

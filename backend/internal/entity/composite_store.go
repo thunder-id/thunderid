@@ -114,6 +114,12 @@ func (c *entityCompositeStore) LockEntity(ctx context.Context, id string) (provi
 	return c.dbStore.LockEntity(ctx, id)
 }
 
+// LockEntityWithCredentials locks an entity in the database store only and returns its credentials.
+func (c *entityCompositeStore) LockEntityWithCredentials(ctx context.Context,
+	id string) (*entityWithCredentials, error) {
+	return c.dbStore.LockEntityWithCredentials(ctx, id)
+}
+
 // ResolveLinkedAccounts returns the entities linked to a subject at a connection in both stores. An
 // entity in both stores is returned once, so it does not read as several holders.
 func (c *entityCompositeStore) ResolveLinkedAccounts(ctx context.Context,

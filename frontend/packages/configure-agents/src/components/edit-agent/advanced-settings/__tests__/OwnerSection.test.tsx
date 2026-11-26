@@ -85,9 +85,7 @@ describe('OwnerSection', () => {
   });
 
   it('disables the picker for read-only agents', () => {
-    render(
-      <OwnerSection agent={{...mockAgent, isReadOnly: true}} editedAgent={{}} onFieldChange={mockOnFieldChange} />,
-    );
+    render(<OwnerSection agent={mockAgent} editedAgent={{}} onFieldChange={mockOnFieldChange} readOnly />);
 
     expect(screen.getByRole('combobox')).toHaveAttribute('aria-disabled', 'true');
   });
@@ -182,9 +180,7 @@ describe('OwnerSection', () => {
   });
 
   it('does not let the owner kind change on a read-only agent', () => {
-    render(
-      <OwnerSection agent={{...mockAgent, isReadOnly: true}} editedAgent={{}} onFieldChange={mockOnFieldChange} />,
-    );
+    render(<OwnerSection agent={mockAgent} editedAgent={{}} onFieldChange={mockOnFieldChange} readOnly />);
 
     expect(screen.getByRole('radio', {name: 'Internal'})).toBeDisabled();
     expect(screen.getByRole('radio', {name: 'External'})).toBeDisabled();

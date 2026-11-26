@@ -9,7 +9,7 @@ import type {CspScopeRow} from '../models/cspDirectiveRow';
  *
  * @public
  */
-export type CspDirectiveRowError = 'invalidSource' | 'noSources' | 'noneWithOthers';
+export type CspDirectiveRowError = 'invalidSource' | 'noSources' | 'noSourcesNoDefault' | 'noneWithOthers';
 
 /**
  * The English copy for each issue code, used as the fallback when resolving
@@ -20,6 +20,7 @@ export type CspDirectiveRowError = 'invalidSource' | 'noSources' | 'noneWithOthe
 export const CspDirectiveRowIssueFallbacks: Record<CspDirectiveRowError, string> = {
   invalidSource: "A source can't contain a semicolon or comma.",
   noSources: 'Add at least one source, or reset the directive to its default.',
+  noSourcesNoDefault: 'Add at least one source, or remove the directive.',
   noneWithOthers: "'none' can't be combined with other sources.",
 };
 
@@ -55,6 +56,8 @@ export default function validateCspDirectiveRows(rows: CspScopeRow[]): Record<st
       errors[row.draftId] = 'invalidSource';
     } else if (sources.length === 0 && row.base.length > 0) {
       errors[row.draftId] = 'noSources';
+    } else if (sources.length === 0 && row.saved) {
+      errors[row.draftId] = 'noSourcesNoDefault';
     } else if (sources.includes(CSP_NONE_SOURCE) && sources.length > 1) {
       errors[row.draftId] = 'noneWithOthers';
     }

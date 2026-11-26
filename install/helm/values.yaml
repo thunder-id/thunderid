@@ -137,6 +137,11 @@ configuration:
   server:
     port: 8090
     httpOnly: false
+    # Let calls to destinations an administrator configures (identity providers, email and SMS
+    # providers, HTTP request steps and extensions in flows, AuthZEN policy decision points,
+    # authorization details processors and back-channel logout URIs) reach a loopback, link-local
+    # or private address. Leave it off unless those destinations run on internal networks.
+    allowPrivateAddresses: false
     # Logical deployment identifier. Every record is scoped to it, so give each
     # deployment sharing a database its own value. Defaults to "default-deployment".
     identifier: ""
@@ -230,11 +235,27 @@ configuration:
   # productName: Display name shown in the browser tab and UI.
   # favicon: Path or URL to the favicon icons. Use an object with `light` and `dark`
   #          keys for color-scheme-aware icons (both keys are required).
+  # slogan: Content shown beside the Gate sign-in card when no application design applies
+  #         (for example a direct visit to the Gate page). Empty keeps the built-in ThunderID
+  #         items. A string is a single title, a map is a single item and a list is several
+  #         items. An item has `title`, an optional `description` and an optional `icon`, a
+  #         path under the Gate base path such as `assets/images/icon.svg`. The icon files
+  #         themselves must be present in the Gate assets of the image.
   brand:
     productName: "ThunderID"
     favicon:
       light: "assets/images/favicon.ico"
       dark: "assets/images/favicon-inverted.ico"
+    slogan: []
+    # slogan: "Sign in to Acme"
+    # slogan:
+    #   title: "Title"
+    #   description: "Description."
+    #   icon: "assets/images/icon.svg"
+    # slogan:
+    #   - title: "Title"
+    #     description: "Description."
+    #     icon: "assets/images/icon.svg"
 
   # Console client configuration
   consoleClient:
@@ -493,9 +514,6 @@ configuration:
     logout:
       backchannel:
         enabled: true
-        # Reject back-channel logout URIs naming localhost or a private IP address, and refuse a
-        # hostname that resolves to one. Set to false when relying parties run on internal networks.
-        rejectPrivateAddresses: true
     # Validation policy for private_key_jwt client assertions, in seconds.
     clientAssertion:
       maxLifetime: 300
@@ -552,8 +570,15 @@ configuration:
   # applyTimeoutSeconds bounds a request to apply a configuration version to a gateway, or to revert
   # one, in place of server.timeouts.writeSeconds. It covers waiting for an apply already running on
   # that gateway and the gateway's import, so keep it above the gateway's import.timeoutSeconds.
+  # unusedValueGraceSeconds: after each apply, the values this plane named for a resource that nothing
+  # refers to any more are removed from the gateway's store once last set longer ago than this. Below 1
+  # it is raised to 1; a negative number turns the removal off.
+  # unusedValueSweepIntervalSeconds is the least time between two such removals from the same gateway;
+  # 0 removes after every apply.
   gateway:
     applyTimeoutSeconds: 300
+    unusedValueGraceSeconds: 3600
+    unusedValueSweepIntervalSeconds: 300
 
   # Flow configuration
   flow:
@@ -568,6 +593,19 @@ configuration:
     # Storage mode for flows: "mutable", "declarative", or "composite".
     # Leave empty to inherit the global declarativeResources.enabled setting.
     store: ""
+
+  # Session configuration. Set tracking.enabled to false to record no session for a login through a flow
+  # without a Session node; a flow with a Session node still records its SSO session. The SSO session
+  # timeouts are runtime settings in the session server-config section; activityRefreshIntervalSeconds is
+  # the shortest time between two writes of a session's activity, which an idle timeout must exceed, and
+  # maxIdleTimeoutSeconds and maxAbsoluteTimeoutSeconds are the longest timeouts the section may set (30
+  # and 365 days).
+  session:
+    tracking:
+      enabled: true
+    activityRefreshIntervalSeconds: 60
+    maxIdleTimeoutSeconds: 2592000
+    maxAbsoluteTimeoutSeconds: 31536000
 
   # Direct API authentication endpoints (/auth/**, /register/passkey/**). Set enabled to false to
   # remove them from the server. AuthZEN access endpoints are not affected.

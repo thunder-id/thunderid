@@ -212,6 +212,15 @@ func (s *PayloadTestSuite) TestValidate() {
 		{"a user credential detail", EventUserCredentialUpdate,
 			NewPayload(ctx, testTarget, ActionUpdate, OutcomeSucceeded).
 				WithDetails(map[string]string{"credential_type": "password"}), errDetailNotAllowed},
+		{"a user credential update with a flow execution ID", EventUserCredentialUpdate,
+			NewPayload(ctx, testTarget, ActionUpdate, OutcomeSucceeded).
+				WithDetails(map[string]string{"flow_execution_id": "exec-1"}), errDetailNotAllowed},
+		{"a user credential invalidate", EventUserCredentialInvalidate,
+			NewPayload(ctx, testTarget, ActionUpdate, OutcomeSucceeded).
+				WithDetails(map[string]string{"credential_type": "password"}), nil},
+		{"a user credential invalidate value", EventUserCredentialInvalidate,
+			NewPayload(ctx, testTarget, ActionUpdate, OutcomeSucceeded).
+				WithDetails(map[string]string{"credential_type": "password", "value": "s3cr3t"}), errDetailNotAllowed},
 		{"a user credential enroll without a resolved user", EventUserCredentialEnroll,
 			NewPayload(ctx, Ref{Type: TargetTypeUser}, ActionEnroll, OutcomeFailed("authn_mgr_1002")), nil},
 		{"a user credential enroll refused by a suspension", EventUserCredentialEnroll,
@@ -399,6 +408,22 @@ func (s *PayloadTestSuite) TestValidate() {
 		{"a consent purpose", EventConsentUpdate,
 			NewPayload(ctx, Ref{Type: TargetTypeConsent, ID: "consent-1"}, ActionUpdate, OutcomeSucceeded).
 				WithDetails(map[string]string{"purpose": "attributes:app-1"}), errDetailNotAllowed},
+		{"a user lock with its authentication method", EventUserLock,
+			NewPayload(ctx, testTarget, ActionLock, OutcomeSucceeded).WithSubject(testTarget).
+				WithDetails(map[string]string{DetailAuthenticationMethod: "credential"}), nil},
+		{"a user unlock", EventUserUnlock,
+			NewPayload(ctx, testTarget, ActionUnlock, OutcomeSucceeded), nil},
+		{"a user suspend", EventUserSuspend,
+			NewPayload(ctx, testTarget, ActionSuspend, OutcomeDenied(reasonForbidden)), nil},
+		{"a user unsuspend failure", EventUserUnsuspend,
+			NewPayload(ctx, Ref{Type: TargetTypeUser, ID: "e-1"}, ActionUnsuspend, OutcomeFailed("igs_1003")),
+			nil},
+		{"a user suspend note", EventUserSuspend,
+			NewPayload(ctx, testTarget, ActionSuspend, OutcomeSucceeded).
+				WithDetails(map[string]string{"operator_note": "fraud"}), errDetailNotAllowed},
+		{"a user unlock method", EventUserUnlock,
+			NewPayload(ctx, testTarget, ActionUnlock, OutcomeSucceeded).
+				WithDetails(map[string]string{DetailAuthenticationMethod: "credential"}), errDetailNotAllowed},
 		{"an event that is not audited", "user.rename",
 			NewPayload(ctx, testTarget, ActionUpdate, OutcomeSucceeded), errUnknownEvent},
 		{"a detail the event does not allow", EventUserUpdate,

@@ -42,10 +42,14 @@ var catalog = map[string]providers.ExecutorMeta{
 		SupportedProperties: []providers.ExecutorSupportedProperties{
 			{Property: "timeout"},
 			{Property: "failOnDeny"},
+			{Property: "promptValidityPeriod"},
 		},
 	},
-	ExecutorNameCredentialSetter: {},
-	ExecutorNameCredentialsAuth:  {},
+	ExecutorNameCredentialSetter: {
+		DefaultMode:    ExecutorModeSet,
+		SupportedModes: []string{ExecutorModeInvalidate, ExecutorModeSet, ExecutorModeValidate},
+	},
+	ExecutorNameCredentialsAuth: {},
 	ExecutorNameDeviceCode: {
 		SupportedFlowTypes: []providers.FlowType{providers.FlowTypeDeviceGrant},
 	},
@@ -107,7 +111,7 @@ var catalog = map[string]providers.ExecutorMeta{
 	},
 	ExecutorNameIdentityGovernance: {
 		SupportedModes:     []string{ExecutorModeUnlock, ExecutorModeSuspend, ExecutorModeUnsuspend},
-		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION", "RECOVERY"},
+		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION", "RECOVERY", "ADMIN_INITIATED"},
 	},
 	ExecutorNameInviteExecutor: {
 		SupportedModes: []string{"generate", "verify"},
@@ -167,7 +171,7 @@ var catalog = map[string]providers.ExecutorMeta{
 	ExecutorNamePasskeyAuth: {
 		SupportedModes: []string{"challenge", "verify", "register_start", "register_finish"},
 		SupportedProperties: []providers.ExecutorSupportedProperties{
-			{Property: "relyingPartyId", IsRequired: true, ApplicableModes: []string{"challenge", "register_start"}},
+			{Property: "relyingPartyId", ApplicableModes: []string{"challenge", "register_start"}},
 			{Property: "relyingPartyName"},
 			{Property: "authenticatorSelection"},
 			{Property: "attestation"},
@@ -197,8 +201,6 @@ var catalog = map[string]providers.ExecutorMeta{
 			{Property: "maxPerPrompt"},
 			{Property: "assignGroup"},
 			{Property: "assignRole"},
-			{Property: "seedGroupsFromMapping"},
-			{Property: "seedRolesFromMapping"},
 			{Property: "allowCrossOUProvisioning"},
 			{Property: "provisioningOU"},
 		},

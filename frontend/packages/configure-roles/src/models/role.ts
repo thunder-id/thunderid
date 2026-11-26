@@ -37,6 +37,8 @@ export interface RoleSummary {
   projectId?: string;
   /** Whether this role is read-only (declarative/immutable) */
   isReadOnly?: boolean;
+  /** False for a role shared into the organization unit it is read in, which that unit cannot change */
+  isOwnedByOU?: boolean;
 }
 
 /**

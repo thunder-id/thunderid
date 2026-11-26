@@ -15,6 +15,8 @@ import (
 const (
 	passkeyFlowRelyingPartyID   = "localhost"
 	passkeyFlowRelyingPartyName = "ThunderID Test"
+	// passkeyFlowGateHost is the host of the test server's sign-in page.
+	passkeyFlowGateHost = "localhost"
 )
 
 // passkeyFlowOrigin is set as the application's only allowed passkey origin, which is what the
@@ -24,7 +26,7 @@ const (
 var passkeyFlowOrigin = testutils.TestServerURL
 
 // passkeyChallengeNode builds the challenge node, optionally omitting the relying party ID so the
-// misconfiguration case can be exercised.
+// default to the sign-in page host can be exercised.
 func passkeyChallengeNode(includeRelyingPartyID bool, nextNode string) map[string]interface{} {
 	node := map[string]interface{}{
 		"id":   "passkey_challenge",
@@ -394,16 +396,25 @@ func (ts *PasskeyAuthFlowTestSuite) TestPasskeyAuthFlow_Usernameless() {
 	ts.Require().NotEmpty(finalStep.Assertion, "A JWT assertion should be returned")
 }
 
-// TestPasskeyAuthFlow_MissingRelyingPartyIdRejectedAtCreation covers a misconfigured challenge
-// node. The executor carries a runtime guard for a missing relying party ID, but that guard is
-// unreachable through the management API: relyingPartyId is declared required for the challenge
-// mode, so the flow is rejected when it is created rather than when it runs.
-func (ts *PasskeyAuthFlowTestSuite) TestPasskeyAuthFlow_MissingRelyingPartyIdRejectedAtCreation() {
-	_, err := testutils.CreateFlow(buildUsernameFlow(
-		"Passkey Auth Flow Without RP ID Test", "auth_flow_passkey_no_rp_test", false, true))
-	ts.Require().Error(err, "A challenge node without a relying party ID should be rejected")
-	ts.Contains(err.Error(), "relyingPartyId",
-		"The rejection should name the missing executor property")
+// TestPasskeyAuthFlow_RelyingPartyIDDefault covers a challenge node with no relying party ID. The
+// flow is accepted, and the challenge is issued for the host of the test server's sign-in page.
+func (ts *PasskeyAuthFlowTestSuite) TestPasskeyAuthFlow_RelyingPartyIDDefault() {
+	ts.useFlow(ts.createFlow(buildUsernameFlow(
+		"Passkey Auth Flow Without RP ID Test", "auth_flow_passkey_no_rp_test", false, true)))
+
+	step := ts.startUsernameFlow()
+	var options struct {
+		RpID string `json:"rpId"`
+	}
+	ts.Require().NoError(json.Unmarshal([]byte(step.Data.AdditionalData["passkeyChallenge"]), &options),
+		"Failed to decode passkey challenge options")
+	ts.Equal(passkeyFlowGateHost, options.RpID, "The relying party ID should default to the sign-in page host")
+
+	finalStep, err := common.CompleteFlow(step.ExecutionID, ts.assertionInputs(ts.challengeFromStep(step)),
+		"action_assertion", step.ChallengeToken)
+	ts.Require().NoError(err, "Failed to submit the passkey assertion")
+	ts.Require().Equal("COMPLETE", finalStep.FlowStatus, "Expected flow status to be COMPLETE")
+	ts.Require().NotEmpty(finalStep.Assertion, "A JWT assertion should be returned")
 }
 
 // TestPasskeyAuthFlow_InvalidSignature rejects an assertion whose signature does not verify.

@@ -46,7 +46,7 @@ func Initialize(mux *http.ServeMux, crypto kmprovider.ConfigCryptoProvider,
 
 func registerRoutes(mux *http.ServeMux, h *handler) {
 	collectionCORS := middleware.CORSOptions{
-		AllowedMethods:   []string{"GET", "POST"},
+		AllowedMethods:   []string{"GET", "POST", "DELETE"},
 		AllowedHeaders:   middleware.DefaultAllowedHeaders,
 		AllowCredentials: true,
 		MaxAge:           600,
@@ -60,6 +60,8 @@ func registerRoutes(mux *http.ServeMux, h *handler) {
 
 	mux.HandleFunc(middleware.WithCORS("GET "+pathVariables, h.HandleVariableListRequest, collectionCORS))
 	mux.HandleFunc(middleware.WithCORS("POST "+pathVariables, h.HandleVariablePostRequest, collectionCORS))
+	mux.HandleFunc(middleware.WithCORS("DELETE "+pathVariables, h.HandleVariableBulkDeleteRequest,
+		collectionCORS))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS "+pathVariables, noContent, collectionCORS))
 
 	mux.HandleFunc(middleware.WithCORS("GET "+pathVariables+"/{name}", h.HandleVariableGetRequest, itemCORS))
@@ -69,6 +71,7 @@ func registerRoutes(mux *http.ServeMux, h *handler) {
 
 	mux.HandleFunc(middleware.WithCORS("GET "+pathSecrets, h.HandleSecretListRequest, collectionCORS))
 	mux.HandleFunc(middleware.WithCORS("POST "+pathSecrets, h.HandleSecretPostRequest, collectionCORS))
+	mux.HandleFunc(middleware.WithCORS("DELETE "+pathSecrets, h.HandleSecretBulkDeleteRequest, collectionCORS))
 	mux.HandleFunc(middleware.WithCORS("OPTIONS "+pathSecrets, noContent, collectionCORS))
 
 	mux.HandleFunc(middleware.WithCORS("GET "+pathSecrets+"/{name}", h.HandleSecretGetRequest, itemCORS))

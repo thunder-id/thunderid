@@ -212,8 +212,23 @@ vi.mock('@thunderid/configure-resource-sharing', () => ({
 }));
 
 vi.mock('@/components/edit-user/CredentialsTabPanel', () => ({
-  default: ({userId, credentialFields}: {userId: string; credentialFields: {fieldName: string}[]}) => (
-    <div data-testid="credentials-tab-panel" data-user-id={userId}>
+  default: ({
+    userId,
+    credentialFields,
+    resetLinkFieldNames = [],
+    accessStatus = undefined,
+  }: {
+    userId: string;
+    credentialFields: {fieldName: string}[];
+    resetLinkFieldNames?: string[];
+    accessStatus?: string;
+  }) => (
+    <div
+      data-testid="credentials-tab-panel"
+      data-user-id={userId}
+      data-reset-link-fields={resetLinkFieldNames.join(',')}
+      data-access-status={accessStatus ?? ''}
+    >
       {credentialFields.map((field) => field.fieldName).join(',')}
     </div>
   ),
@@ -1175,6 +1190,34 @@ describe('UserEditPage', () => {
       const panel = screen.getByTestId('credentials-tab-panel');
       expect(panel).toHaveAttribute('data-user-id', 'user123');
       expect(panel).toHaveTextContent('password,pin');
+    });
+
+    // The flow resets only a text credential, so a number credential gets no reset link.
+    it('offers a reset link only for text credentials, and passes the access status', async () => {
+      const user = userEvent.setup();
+      mockUseGetUser.mockReturnValue({
+        data: {...mockUserData, status: {value: 'SUSPENDED'}},
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      });
+      mockUseGetUserType.mockReturnValue({
+        data: {
+          ...schemaWithCredentials,
+          schema: {...schemaWithCredentials.schema, pin: {type: 'number', credential: true}},
+        },
+        isLoading: false,
+        error: null,
+      });
+
+      render(<UserEditPage />);
+
+      await user.click(screen.getByRole('tab', {name: 'Credentials'}));
+
+      const panel = screen.getByTestId('credentials-tab-panel');
+      expect(panel).toHaveTextContent('password,pin');
+      expect(panel).toHaveAttribute('data-reset-link-fields', 'password');
+      expect(panel).toHaveAttribute('data-access-status', 'SUSPENDED');
     });
   });
 

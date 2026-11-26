@@ -30,6 +30,10 @@ describe('validateCspDirectiveRows', () => {
     expect(validateCspDirectiveRows([row([], ["'self'"])])).toEqual({a: 'noSources'});
   });
 
+  it('rejects emptying a saved directive that has no default value', () => {
+    expect(validateCspDirectiveRows([{...row([]), saved: true}])).toEqual({a: 'noSourcesNoDefault'});
+  });
+
   it("rejects 'none' combined with other sources", () => {
     expect(validateCspDirectiveRows([row(["'none'", "'self'"])])).toEqual({a: 'noneWithOthers'});
   });

@@ -17,11 +17,13 @@ value:
   selfFlow:
     expirySeconds: 1800
   adminInitiatedFlow:
-    expirySeconds: 86400
+    expirySeconds: 21600
   agentOnboardingFlow:
     defaultHandle: default-agent-onboarding-flow
   adminAttributeVerificationFlow:
     defaultHandle: default-admin-attribute-verification-flow
+  adminUserCredentialResetFlow:
+    defaultHandle: default-admin-user-credential-reset-flow
   userUnlockFlow:
     defaultHandle: default-user-unlock-flow
   userSuspendFlow:

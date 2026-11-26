@@ -9,7 +9,9 @@ package providers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"reflect"
 	"regexp"
 	"slices"
 	"sort"
@@ -25,12 +27,13 @@ import (
 
 // DeviceVerificationResult contains trusted request data returned after a Device Grant user code check.
 type DeviceVerificationResult struct {
-	InvalidCode                bool
-	ApplicationID              string
-	AuthID                     string
-	RequestedPermissions       string
-	ResourceServerIdentifier   string
-	RequiredOptionalAttributes string
+	InvalidCode                   bool
+	ApplicationID                 string
+	AuthID                        string
+	RequestedPermissions          string
+	ResourceServerIdentifier      string
+	RequiredOptionalAttributes    string
+	UserAttributesCacheTTLSeconds int64
 }
 
 // LanguageTranslationsResponse represents all translations for a language, organized by namespace.
@@ -332,7 +335,7 @@ type InputDefinition struct {
 	Type         string                     `json:"type"                 yaml:"type"                 jsonschema:"Input type (e.g., 'text', 'password', 'email')."`
 	Identifier   string                     `json:"identifier"           yaml:"identifier"           jsonschema:"Field identifier or name."`
 	Required     bool                       `json:"required"             yaml:"required"             jsonschema:"Whether this input is mandatory."`
-	OneTimeUse   bool                       `json:"oneTimeUse,omitempty" yaml:"oneTimeUse,omitempty" jsonschema:"When true, the input is removed from the flow context after being consumed."`
+	OneTimeUse   bool                       `json:"oneTimeUse,omitempty" yaml:"oneTimeUse,omitempty" jsonschema:"When true, the input is removed from the flow context after being consumed. Supported on executor inputs only."`
 	DefaultValue string                     `json:"defaultValue,omitempty" yaml:"defaultValue,omitempty" jsonschema:"Value the flow supplies for the input when it has none. On a prompt input the person still sees it, prefilled. For a constant input, the fixed value."`
 	Constant     bool                       `json:"constant,omitempty"   yaml:"constant,omitempty"   jsonschema:"When true, DefaultValue always replaces any existing value for this input. Supported on executor inputs only and requires a non-empty DefaultValue."`
 	Validation   []ValidationRuleDefinition `json:"validation,omitempty" yaml:"validation,omitempty" jsonschema:"Server-enforced validation rules applied to the submitted value."`
@@ -395,6 +398,11 @@ type ConditionDefinition struct {
 // AuthnMetadata contains metadata for authentication.
 type AuthnMetadata struct {
 	RuntimeMetadata map[string][]string `json:"runtimeMetadata,omitempty"`
+	// DeferSync asks the authn provider manager not to sync a federated sign-in to the account holding its
+	// link yet, and to keep it pending for a later authentication by entity ID instead. Providers ignore it.
+	DeferSync bool `json:"deferSync,omitempty"`
+	// Created marks the authentication of an entity the flow has just created.
+	Created bool `json:"created,omitempty"`
 }
 
 // AuthenticatedClaims holds claims produced by an authentication mechanism.
@@ -409,6 +417,17 @@ type AuthnResult struct {
 	// AttributeToken can be nil, iff attribute values are included
 	AttributeToken any                 `json:"attributeToken"`
 	Attributes     *AttributesResponse `json:"attributes,omitempty"`
+	// FederatedIdentity is the federated sign-in the provider verified, if any. The authn provider manager
+	// syncs it to the account holding its link.
+	FederatedIdentity *FederatedIdentity `json:"federatedIdentity,omitempty"`
+}
+
+// FederatedIdentity is a federated sign-in an authn provider verified.
+type FederatedIdentity struct {
+	IdpID string `json:"idpId"`
+	Sub   string `json:"sub"`
+	// Claims holds the raw claims from the identity provider, before mapping.
+	Claims map[string]interface{} `json:"claims,omitempty"`
 }
 
 // AssuranceMetadataResponse contains assurance metadata for an attribute.
@@ -506,6 +525,9 @@ type AuthState struct {
 	EntityReference      *EntityReference    `json:"entityReference,omitempty"`
 	AttributeToken       any                 `json:"attributeToken"`
 	Attributes           *AttributesResponse `json:"attributes,omitempty"`
+	// PendingIdentity is a federated sign-in the authn provider manager has not synced yet, kept until a
+	// deferred sync uses it up. Resolving the entity reference or the attributes leaves it unchanged.
+	PendingIdentity *FederatedIdentity `json:"pendingIdentity,omitempty"`
 }
 
 // AuthUser accumulates per-provider authentication state produced during flow execution.
@@ -885,7 +907,7 @@ func (l AgentOwnerLocality) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON reads a boolean, or text, which is how a reference arrives. A null leaves the
-// locality unstated.
+// locality unstated. Any other value is a type error that names this type.
 func (l *AgentOwnerLocality) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return nil
@@ -897,6 +919,10 @@ func (l *AgentOwnerLocality) UnmarshalJSON(data []byte) error {
 	}
 	var text string
 	if err := json.Unmarshal(data, &text); err != nil {
+		var typeErr *json.UnmarshalTypeError
+		if errors.As(err, &typeErr) {
+			return &json.UnmarshalTypeError{Value: typeErr.Value, Type: reflect.TypeFor[AgentOwnerLocality]()}
+		}
 		return err
 	}
 	*l = AgentOwnerLocality(text)
@@ -1097,6 +1123,47 @@ type AttributeConfiguration struct {
 	UserTypeAttributeMappings []UserTypeAttributeMapping `json:"userTypeAttributeMappings,omitempty" yaml:"user_type_attribute_mappings,omitempty"` //nolint:lll
 	AccountLinking            *AccountLinking            `json:"accountLinking,omitempty"           yaml:"accountLinking,omitempty"`                //nolint:lll
 	AuthorizationMapping      *AuthorizationMapping      `json:"authorizationMapping,omitempty"      yaml:"authorizationMapping,omitempty"`         //nolint:lll
+	Sync                      *SyncConfiguration         `json:"sync,omitempty"                      yaml:"sync,omitempty"`                         //nolint:lll
+}
+
+// SyncMode controls how a federated sign-in keeps the local account in line with the provider.
+type SyncMode string
+
+const (
+	// SyncModeNoSync writes the provider's data when the account is created, and never after.
+	SyncModeNoSync SyncMode = "no_sync"
+	// SyncModeSessionOnly applies the provider's data to the session and tokens without storing it. The
+	// attributes the user type or the Provisioning step requires are still stored when the account is created.
+	SyncModeSessionOnly SyncMode = "session_only"
+	// SyncModeOverrideReceived overwrites the attributes the connection maps and the provider sends, and
+	// keeps the rest. Valid for attributes only.
+	SyncModeOverrideReceived SyncMode = "override_received"
+	// SyncModeOverrideAll sets the account's groups and roles to what the authorization mapping resolves,
+	// removals included. Valid for groups and roles only.
+	SyncModeOverrideAll SyncMode = "override_all"
+)
+
+// SyncConfiguration holds a connection's sync modes. An unset mode takes its default:
+// SyncModeOverrideReceived for attributes and SyncModeNoSync for groups and roles.
+type SyncConfiguration struct {
+	Attributes     SyncMode `json:"attributes,omitempty"     yaml:"attributes,omitempty"`
+	GroupsAndRoles SyncMode `json:"groupsAndRoles,omitempty" yaml:"groupsAndRoles,omitempty"`
+}
+
+// AttributesMode returns the attributes sync mode, SyncModeOverrideReceived when unset.
+func (s *SyncConfiguration) AttributesMode() SyncMode {
+	if s == nil || s.Attributes == "" {
+		return SyncModeOverrideReceived
+	}
+	return s.Attributes
+}
+
+// GroupsAndRolesMode returns the groups and roles sync mode, SyncModeNoSync when unset.
+func (s *SyncConfiguration) GroupsAndRolesMode() SyncMode {
+	if s == nil || s.GroupsAndRoles == "" {
+		return SyncModeNoSync
+	}
+	return s.GroupsAndRoles
 }
 
 // AuthorizationMapping holds a connection's authorization mapping configuration: explicit
@@ -1356,6 +1423,21 @@ type ConsentDetailRow struct {
 	Origin string `json:"origin,omitempty"`
 	// Options lists the values the user may add to a list field, when the schema restricts them.
 	Options json.RawMessage `json:"options,omitempty"`
+	// Description is the description the type declares for the field, if any.
+	Description string `json:"description,omitempty"`
+	// Minimum and Maximum are the inclusive limits of a number or a date the user may change: the schema's
+	// own for a number, the field policy's for a date.
+	Minimum json.RawMessage `json:"minimum,omitempty"`
+	Maximum json.RawMessage `json:"maximum,omitempty"`
+	// ExclusiveMinimum and ExclusiveMaximum are the exclusive limits of a number the user may change.
+	ExclusiveMinimum json.RawMessage `json:"exclusiveMinimum,omitempty"`
+	ExclusiveMaximum json.RawMessage `json:"exclusiveMaximum,omitempty"`
+	// MultipleOf is the step a number the user may change must be a multiple of.
+	MultipleOf json.RawMessage `json:"multipleOf,omitempty"`
+	// MinItems is the fewest items the user may keep in a list whose items they may remove.
+	MinItems json.RawMessage `json:"minItems,omitempty"`
+	// MaxItems is the most items a list whose items the user may add may hold.
+	MaxItems json.RawMessage `json:"maxItems,omitempty"`
 }
 
 // AuthorizationDetailType is a registered RFC 9396 authorization details type.
@@ -1432,6 +1514,10 @@ type ConsentDecisions struct {
 	Reason ConsentDecisionReason `json:"reason,omitempty"`
 	// Purposes contains the per-purpose element approval decisions
 	Purposes []PurposeDecision `json:"purposes"`
+	// OneTime is set when the user approved but chose not to remember the decision. The consent is kept for audit
+	// and expires at once. The consent executor honors it only where the node lets the user choose how long
+	// consent lasts.
+	OneTime bool `json:"oneTime,omitempty"`
 }
 
 // PurposeDecision holds the consent decisions for a single purpose
@@ -1705,8 +1791,10 @@ type NodeContext struct {
 
 	NodeProperties map[string]interface{}
 	NodeInputs     []Input
-	UserInputs     map[string]string
-	RuntimeData    map[string]string
+	// UserInputs holds the inputs submitted to the flow. Read them through ConsumeInput. A request continuing a
+	// paused flow carries only the inputs the paused step asks for, and an unused input is dropped on a pause.
+	UserInputs  map[string]string
+	RuntimeData map[string]string
 	// SharedRuntimeData contains trusted data shared by every frame in the execution.
 	SharedRuntimeData map[string]string
 	ForwardedData     map[string]interface{}

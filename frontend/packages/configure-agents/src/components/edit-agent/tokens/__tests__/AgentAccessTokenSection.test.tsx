@@ -354,7 +354,8 @@ describe('AgentAccessTokenSection', () => {
   it('disables attribute selection and the validity input for read-only agents', () => {
     render(
       <AgentAccessTokenSection
-        agent={{...baseAgent, isReadOnly: true, inboundAuthConfig: baseInboundAuthConfig}}
+        readOnly
+        agent={{...baseAgent, inboundAuthConfig: baseInboundAuthConfig}}
         editedAgent={{}}
         oauth2Config={{grantTypes: ['client_credentials'], responseTypes: []}}
         onFieldChange={mockOnFieldChange}

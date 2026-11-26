@@ -34,9 +34,9 @@ func newIdentityGovernanceExecutor(factory core.FlowFactoryInterface,
 			{Identifier: revocationInputSubject, Type: providers.InputTypeText, Required: true},
 			{Identifier: governanceInputOperatorNote, Type: providers.InputTypeText, Required: false},
 		}, nil, &providers.ExecutorMeta{
-			// Execute refuses every mode but unlock in a recovery flow.
+			// Execute refuses every mode but unlock in a recovery or administrator-initiated flow.
 			SupportedFlowTypes: []providers.FlowType{
-				providers.FlowTypeAdministration, providers.FlowTypeRecovery,
+				providers.FlowTypeAdministration, providers.FlowTypeRecovery, providers.FlowTypeAdminInitiated,
 			},
 			// No default mode, so a flow that omits the mode cannot be saved.
 			SupportedModes: []string{
@@ -68,7 +68,8 @@ func (e *identityGovernanceExecutor) Execute(
 }
 
 // executeUnlock releases every automatic lock on the subject: the subject input in an administration
-// flow, and the proven subject in a recovery flow.
+// flow, and the proven subject in a recovery or administrator-initiated flow. An administrator-initiated
+// flow releases only the user it was started for.
 func (e *identityGovernanceExecutor) executeUnlock(
 	ctx *providers.NodeContext) (*providers.ExecutorResponse, error) {
 	logger := e.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID))
@@ -84,6 +85,9 @@ func (e *identityGovernanceExecutor) executeUnlock(
 	// A recovery flow never trusts a subject input; it is consumed so it is not re-prompted.
 	ctx.ConsumeInput(revocationInputSubject)
 	subject := ctx.SharedRuntimeData[common.RuntimeKeyProvenSubject]
+	if ctx.FlowType == providers.FlowTypeAdminInitiated && subject != ctx.GetBoundSubject() {
+		subject = ""
+	}
 	if subject == "" {
 		logger.Debug(ctx.Context, "Release node reached with no proof of control recorded",
 			log.String("mode", ctx.ExecutorMode))

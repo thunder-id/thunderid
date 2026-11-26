@@ -14,6 +14,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	"github.com/thunder-id/thunderid/internal/system/mcp/tool"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -27,7 +28,7 @@ type onboardMCPInput struct {
 	ExecutionID    string            `json:"executionId,omitempty" jsonschema:"ID of a run that paused, from an earlier result of this tool, to go on with it. Leave it out to start a new run."`
 	ChallengeToken string            `json:"challengeToken,omitempty" jsonschema:"The challengeToken from the result that paused, when it had one. It changes on every step, so always send the latest."`
 	Action         string            `json:"action,omitempty" jsonschema:"The action to take, one of the actions the paused step returned. Send it every time you go on with a paused run, even when the step offers only one."`
-	Inputs         map[string]string `json:"inputs,omitempty" jsonschema:"Values for the flow's inputs, by identifier, such as name or ouId. Every value you already know can be given at once, and each step takes the ones it asks for."`
+	Inputs         map[string]string `json:"inputs,omitempty" jsonschema:"Values for the flow's inputs, by identifier, such as name or ouId. To start, give every value you already know. To go on, send the inputs the paused step asks for, since other values are ignored."`
 }
 
 // flowInputMCPItem is one input a paused step asks for.
@@ -70,15 +71,16 @@ type flowNextCallMCPItem struct {
 type flowTools struct {
 	service      FlowExecServiceInterface
 	flows        providers.FlowProvider
-	serverConfig serverConfigProvider
+	serverConfig flowconfig.ServerConfigReader
 }
 
 // stepsGuide says how a client drives an onboarding flow, for both onboarding tools.
 const stepsGuide = `The administrator configures the flow, so its steps and inputs vary. Start with every ` +
-	`value you already know in inputs. When a step needs more, the result has status needs_input, the inputs ` +
-	`it asks for, the actions it offers, in error why a value was refused, and in next the call that goes on: ` +
-	`ask the administrator for what's missing, then send next with those inputs, choosing an action when next ` +
-	`has none. status info means a step shows the values in data and asks for nothing, and status complete ` +
+	`value you already know in inputs. A value a step past the first pause needs isn't kept, so give it again ` +
+	`when that step asks. When a step needs more, the result has status needs_input, the inputs it asks for, ` +
+	`the actions it offers, in error why a value was refused, and in next the call that goes on: take what you ` +
+	`know and ask the administrator for what's missing, then send next with those inputs, choosing an action ` +
+	`when next has none. status info means a step shows the values in data and asks for nothing, and status complete ` +
 	`means the flow finished.`
 
 // registerMCPTools registers the onboarding MCP tools with the server, one for each onboarding flow.
@@ -176,7 +178,7 @@ func (t *flowTools) onboard(purpose onboardingFlow) func(context.Context, *mcp.C
 
 // onboardingFlowID returns the ID of the flow the server configuration names for the given purpose.
 func (t *flowTools) onboardingFlowID(ctx context.Context, purpose onboardingFlow) (string, error) {
-	cfg := readFlowSectionConfig(ctx, t.serverConfig)
+	cfg := flowconfig.ReadFlowSectionConfig(ctx, t.serverConfig)
 	key, handle, flowType := "agentOnboardingFlow", cfg.AgentOnboardingFlow.DefaultHandle,
 		providers.FlowTypeAdministration
 	if purpose == flowUserOnboarding {

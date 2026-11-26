@@ -19,7 +19,8 @@ vi.mock('react-i18next', async (importOriginal) => ({
 }));
 
 // Mock contexts
-vi.mock('@thunderid/contexts', () => ({
+vi.mock('@thunderid/contexts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/contexts')>()),
   useConfig: () => ({
     getServerUrl: () => 'https://localhost:8090',
   }),

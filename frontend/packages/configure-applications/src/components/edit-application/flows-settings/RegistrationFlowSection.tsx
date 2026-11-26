@@ -31,6 +31,10 @@ interface RegistrationFlowSectionProps {
    * Singular noun used to refer to the entity in user-visible copy (default: 'application').
    */
   entityLabel?: string;
+  /**
+   * Whether the application can't be edited here
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -51,6 +55,7 @@ export default function RegistrationFlowSection({
   editedApp,
   onFieldChange,
   entityLabel = 'application',
+  readOnly = false,
 }: RegistrationFlowSectionProps) {
   const routes = useApplicationRoutes();
   const {t} = useTranslation();
@@ -68,7 +73,7 @@ export default function RegistrationFlowSection({
         {entity: entityLabel},
       )}
       enabled={editedApp.isRegistrationFlowEnabled ?? application.isRegistrationFlowEnabled ?? false}
-      onToggle={application.isReadOnly ? undefined : (enabled) => onFieldChange('isRegistrationFlowEnabled', enabled)}
+      onToggle={readOnly ? undefined : (enabled) => onFieldChange('isRegistrationFlowEnabled', enabled)}
     >
       {selectedFlowId && (
         <Alert severity="info" sx={{mb: 2}}>
@@ -96,7 +101,7 @@ export default function RegistrationFlowSection({
         value={regFlowOptions.find((flow) => flow.id === selectedFlowId) ?? null}
         onChange={(_event, newValue) => onFieldChange('registrationFlowId', newValue?.id ?? '')}
         loading={loadingRegFlows}
-        disabled={application.isReadOnly}
+        disabled={readOnly}
         renderInput={(params) => (
           <TextField
             {...params}

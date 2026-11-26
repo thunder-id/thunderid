@@ -776,6 +776,10 @@ func CreateApplication(app Application) (string, error) {
 		appData["signOutFlowId"] = app.SignOutFlowID
 	}
 
+	if app.ProjectID != "" {
+		appData["projectId"] = app.ProjectID
+	}
+
 	// Add allowed_user_types if provided
 	if len(app.AllowedUserTypes) > 0 {
 		appData["allowedUserTypes"] = app.AllowedUserTypes
@@ -2143,7 +2147,8 @@ func PutWritableServerConfigWithStatus(section string, body []byte) (int, []byte
 // importServerConfig imports the section with the management API key. A section it writes is answered
 // with 200 and the section's layers. A refusal is answered with the status the server configuration API
 // gives it and an error body in the API's shape carrying the import's code and message: 403 for an
-// unauthorized caller, 500 for a server error and 400 for any other.
+// unauthorized caller or a section declarative resources set, 500 for a server error and 400 for any
+// other.
 func importServerConfig(section string, body []byte) (int, []byte, error) {
 	item, err := ImportResourceOutcome("server_config",
 		map[string]any{"name": section, "value": json.RawMessage(body)}, true)
@@ -2160,7 +2165,7 @@ func importServerConfig(section string, body []byte) (int, []byte, error) {
 
 	status := http.StatusBadRequest
 	switch item.Code {
-	case "SSE-4030":
+	case "SSE-4030", "SCF-1006", "SCF-1007":
 		status = http.StatusForbidden
 	case "SSE-5000":
 		status = http.StatusInternalServerError
@@ -2658,7 +2663,13 @@ func SetFlowNodeProperty(flow *Flow, nodeID, key string, value interface{}) erro
 // default registration and recovery flows. The handle is caller-supplied so tests can craft unique
 // values per suite and clean up deterministically.
 func CreateIsolatedAuthFlow(handle string) (string, error) {
-	return CreateFlow(Flow{
+	return CreateFlow(IsolatedAuthFlow(handle))
+}
+
+// IsolatedAuthFlow returns the flow CreateIsolatedAuthFlow creates, for a test that sets more of it
+// before creating it.
+func IsolatedAuthFlow(handle string) Flow {
+	return Flow{
 		Name:     "Isolated Auth Flow " + handle,
 		FlowType: "AUTHENTICATION",
 		Handle:   handle,
@@ -2679,7 +2690,7 @@ func CreateIsolatedAuthFlow(handle string) (string, error) {
 				"type": "END",
 			},
 		},
-	})
+	}
 }
 
 // ExtensionAuthFlow returns the smallest login flow with one extension step, placed after the user is

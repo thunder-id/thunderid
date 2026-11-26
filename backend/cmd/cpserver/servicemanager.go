@@ -44,11 +44,13 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/graphbuilder"
 	"github.com/thunder-id/thunderid/internal/flow/interceptor"
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
+	flowsession "github.com/thunder-id/thunderid/internal/flow/session"
 	"github.com/thunder-id/thunderid/internal/gateway"
 	"github.com/thunder-id/thunderid/internal/group"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/idp"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
+	inboundclientconfig "github.com/thunder-id/thunderid/internal/inboundclient/config"
 	"github.com/thunder-id/thunderid/internal/notification"
 	notificationconfig "github.com/thunder-id/thunderid/internal/notification/config"
 	"github.com/thunder-id/thunderid/internal/notificationtemplate"
@@ -70,6 +72,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/export"
 	healthcheckservice "github.com/thunder-id/thunderid/internal/system/healthcheck/service"
+	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	i18nmgt "github.com/thunder-id/thunderid/internal/system/i18n/mgt"
 	"github.com/thunder-id/thunderid/internal/system/importer"
 	"github.com/thunder-id/thunderid/internal/system/jose"
@@ -106,7 +109,7 @@ var changeCapture = gateway.NewChangeCapture()
 func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterface,
 	auditBus eventbus.EventBusInterface) (
 	jwt.JWTServiceInterface, kmprovider.RuntimeCryptoProvider, importer.ImportServiceInterface,
-	*mcpsdk.Server) {
+	*mcpsdk.Server, gateway.StopperInterface) {
 	logger := log.GetLogger()
 
 	// Service registration runs during application startup, outside any request.
@@ -133,7 +136,14 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 		Leeway:         runtime.Config.JWT.Leeway,
 		JWKSCacheTTL:   time.Duration(runtime.Config.Server.SecurityConfig.JWKSCacheTTL) * time.Second,
 	}
-	jwtService, jweService, err := jose.Initialize(runtimeCryptoSvc, joseCfg)
+	// Calls to destinations an administrator configures, such as identity providers' JWKS and
+	// notification providers, go through clients from this factory, which refuse private addresses
+	// unless the deployment allows them. Calls to destinations a client names, such as its JWKS URI or
+	// metadata document, go through strictOutboundClients, which always refuse them.
+	outboundClients := httpservice.Initialize(runtime.Config.Server.AllowPrivateAddresses)
+	strictOutboundClients := httpservice.Initialize(false)
+
+	jwtService, jweService, err := jose.Initialize(runtimeCryptoSvc, joseCfg, outboundClients, strictOutboundClients)
 	fatalOnError(ctx, logger, err, "Failed to initialize JOSE services")
 
 	observabilitySvc = observability.Initialize(config.GetServerRuntime().Config.Observability)
@@ -231,7 +241,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Notification: only the sender-management (CRUD) service and the notification section handler are
 	// kept. The OTP and sender runtime services this returns are data plane concerns and are dropped.
 	notifSenderMgtSvc, _, _, notificationConfigHandler, err :=
-		notification.Initialize(jwtService, notificationconfig.FromServerRuntime(), ouService, auditBus)
+		notification.Initialize(jwtService, notificationconfig.FromServerRuntime(), ouService, auditBus,
+			outboundClients)
 	fatalOnError(ctx, logger, err, "Failed to initialize NotificationService")
 
 	// Create the flow server-config handler early so it can be registered before serverconfig is
@@ -239,11 +250,13 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// is available.
 	flowConfigHandler := flowmgt.NewFlowConfigHandler()
 
-	// Server-wide configuration handlers. The "session" handler is omitted because SSO session
-	// lifetime is a data plane concern. The account access policy is authored here and exported.
+	// Server-wide configuration handlers. Every portable section is authored here and exported, the SSO
+	// session timeouts and the account access policy included, though this server runs neither.
+	flowConfig := flowconfig.FromServerRuntime()
 	serverConfigHandlers := map[serverconfig.ConfigName]serverconfig.ServerConfigHandlerInterface{
 		serverconfig.ConfigNameCORS:                  cors.OriginHandler{},
 		serverconfig.ConfigNameDefaultResourceServer: resource.NewDefaultResourceServerConfigHandler(resourceService),
+		serverconfig.ConfigNameSession:               flowsession.InitializeConfigHandler(flowConfig),
 		serverconfig.ConfigNameFlow:                  flowConfigHandler,
 		serverconfig.ConfigNameCSP:                   csp.PolicyHandler{},
 		serverconfig.ConfigNameAccountAccess:         identitygovernance.NewAccountAccessHandler(governanceCfg),
@@ -264,7 +277,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// Identity governance derives the status management reads report. The Control Plane sends no lock
 	// email.
 	governanceService, _, err := identitygovernance.Initialize(dbprovider.GetDBProvider(), entityService,
-		serverConfigService, governanceCfg, nil, ouAuthzService, observabilitySvc)
+		serverConfigService, governanceCfg, nil, ouAuthzService, observabilitySvc, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize IdentityGovernanceService")
 
 	userService, ouUserResolver, userExporter, err := user.Initialize(
@@ -353,7 +366,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// Flow MANAGEMENT: CRUD plus definition validation, with no execution behind it.
 	flowFactory, execRegistry, interceptorRegistry, graphBuilder := initializeFlowValidation(ctx, logger,
-		cacheManager, flowconfig.FromServerRuntime())
+		cacheManager, flowConfig)
 
 	flowMgtService, flowMgtExporter, err := flowmgt.Initialize(
 		mux, mcpServer, cacheManager, flowFactory, execRegistry, interceptorRegistry, graphBuilder,
@@ -377,11 +390,11 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	projectService.AddResourceCheck(layoutMgtService.ProjectHasLayouts)
 	exporters = append(exporters, layoutExporter)
 
-	cimdService := cimd.Initialize(mux)
+	cimdService := cimd.Initialize(mux, strictOutboundClients)
 	inboundClientService, err := inboundclient.Initialize(
 		cacheManager, certservice, entityProvider,
 		themeMgtService, layoutMgtService, flowMgtService, entityTypeService, runtimeCryptoSvc, jweService,
-		cimdService, nil, nil, inboundclient.KeepingValueReferences())
+		cimdService, nil, nil, inboundclientconfig.FromServerRuntime(), inboundclient.KeepingValueReferences())
 	fatalOnError(ctx, logger, err, "Failed to initialize InboundClientService")
 
 	// TODO: Remove entityService dependency after finalizing declarative resource loading pattern
@@ -442,8 +455,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 
 	// The gateways this control plane administers. Registration is bounded by gateway.max_gateways,
 	// which is one unless a deployment raises it.
-	gatewayService, err := gateway.Initialize(mux, mcpServer, exportService, valueCapture, exporters, changeCapture,
-		serverConfigService, projectService, auditBus)
+	gatewayService, gatewayStopper, err := gateway.Initialize(mux, mcpServer, exportService, valueCapture, exporters,
+		changeCapture, serverConfigService, projectService, auditBus, outboundClients,
+		httpservice.Initialize(runtime.Config.Gateway.AllowPrivateAddresses))
 	fatalOnError(ctx, logger, err, "Failed to initialize gateway service")
 
 	// Initialize import service
@@ -488,7 +502,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	healthSvc := healthcheckservice.Initialize(dbprovider.GetDBProvider(), dbprovider.GetRedisProvider())
 	services.NewHealthCheckService(mux, healthSvc)
 
-	return jwtService, runtimeCryptoSvc, importService, mcpServer
+	return jwtService, runtimeCryptoSvc, importService, mcpServer, gatewayStopper
 }
 
 // initializeFlowValidation builds the flow services needed to validate a flow definition, without

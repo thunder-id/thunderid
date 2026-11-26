@@ -84,7 +84,7 @@ var testFlowExecCfg = flowconfig.Config{
 	Flow: testFlowConfig,
 }
 
-// stubServerConfig is a test implementation of serverConfigProvider that returns
+// stubServerConfig is a test implementation of flowconfig.ServerConfigReader that returns
 // a pre-configured FlowSectionConfig for the "flow" section.
 type stubServerConfig struct {
 	cfg flowconfig.FlowSectionConfig
@@ -4152,6 +4152,7 @@ func (s *ServiceTestSuite) TestLoadNewContext_IgnoresConstantInputs() {
 	s.Require().NotNil(engineCtx)
 	s.Equal("user-1", engineCtx.UserInputs["subject"])
 	s.NotContains(engineCtx.UserInputs, "locale")
+	s.Equal(map[string]struct{}{"subject": {}}, engineCtx.additionalInputs)
 }
 
 // A client that continues a flow cannot set an input the flow holds constant either.
@@ -4178,7 +4179,73 @@ func (s *ServiceTestSuite) TestLoadPrevContext_IgnoresConstantInputs() {
 	s.Nil(svcErr)
 	s.Require().NotNil(engineCtx)
 	s.Equal("alice", engineCtx.UserInputs["username"])
+	s.Equal(map[string]struct{}{"username": {}}, engineCtx.additionalInputs)
 	s.NotContains(engineCtx.UserInputs, "locale")
+}
+
+// A value the flow already holds is replaced by a resent one, and is not counted as first submitted.
+func (s *ServiceTestSuite) TestPrepareContext_ResentHeldInputIsNotNew() {
+	ctx := &EngineContext{UserInputs: map[string]string{"ouId": "ou-1", "userType": "person"}}
+
+	prepareContext(ctx, "", map[string]string{"ouId": "ou-2", "userType": "person", "name": "agent"})
+
+	s.Equal(map[string]string{"ouId": "ou-2", "userType": "person", "name": "agent"}, ctx.UserInputs)
+	s.Equal(map[string]struct{}{"name": {}}, ctx.additionalInputs)
+}
+
+// A request continuing a flow carries only the inputs the paused step asks for, and never the authorization params.
+func (s *ServiceTestSuite) TestLoadPrevContext_LimitsInputsToThePausedStep() {
+	t := s.T()
+	rawCtx := "{\"executionID\":\"exec-1\",\"appID\":\"app-1\",\"flowType\":\"ADMINISTRATION\"," +
+		"\"graphID\":\"graph-1\",\"currentNodeID\":\"node-1\"," +
+		"\"userInputs\":\"{\\\"email\\\":\\\"alice@example.com\\\"}\"," +
+		"\"runtimeData\":\"{}\",\"requestedInputs\":[\"otp\",\"requested_permissions\"]," +
+		"\"executionHistory\":\"{}\"}"
+	mockStore := newFlowStoreInterfaceMock(t)
+	mockStore.EXPECT().GetFlowContext(mock.Anything, "exec-1").
+		Return(&FlowContextDB{ExecutionID: "exec-1", Context: rawCtx}, nil)
+	mockFlowProvider := NewFlowProviderMock(t)
+	mockFlowProvider.EXPECT().GetFlow(mock.Anything, mock.Anything).Return(&providers.CompleteFlowDefinition{}, nil)
+	mockGraphBuilder := NewGraphBuilderInterfaceMock(t)
+	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, mock.Anything).
+		Return(s.graphWithConstantInput(providers.FlowTypeAdministration), nil)
+	service := &flowExecService{
+		flowStore: mockStore, graphBuilder: mockGraphBuilder, flowProvider: mockFlowProvider, cfg: testFlowExecCfg,
+	}
+
+	engineCtx, svcErr := service.loadPrevContext(context.Background(), "exec-1", "",
+		map[string]string{"otp": "123456", "email": "other@example.com",
+			common.RuntimeKeyRequestedPermissions: "read"}, log.GetLogger())
+
+	s.Nil(svcErr)
+	s.Require().NotNil(engineCtx)
+	s.Equal(map[string]string{"email": "alice@example.com", "otp": "123456"}, engineCtx.UserInputs)
+}
+
+// The request that starts a flow can set the authorization params.
+func (s *ServiceTestSuite) TestLoadNewContext_TakesAuthorizationParams() {
+	security.InitControlPlanePermissions("")
+	graph := s.graphWithConstantInput(providers.FlowTypeAdministration)
+	flow := &providers.CompleteFlowDefinition{
+		ID: "administration-1", FlowType: providers.FlowTypeAdministration, ActiveVersion: 1,
+	}
+	mockFlowProvider := NewFlowProviderMock(s.T())
+	mockFlowProvider.EXPECT().GetFlow(mock.Anything, "administration-1").Return(flow, nil).Once()
+	mockGraphBuilder := NewGraphBuilderInterfaceMock(s.T())
+	mockGraphBuilder.EXPECT().GetGraph(mock.Anything, flow).Return(graph, nil)
+	service := &flowExecService{
+		flowProvider: mockFlowProvider, graphBuilder: mockGraphBuilder, cfg: testFlowExecCfg,
+		flowVisibility: s.administrationFlowVisible(),
+	}
+
+	engineCtx, svcErr := service.loadNewContext(authenticatedAdminContext([]string{"system:user"}),
+		"administration-1", "", "", "", true, "",
+		map[string]string{"subject": "user-1", common.RuntimeKeyRequestedPermissions: "read"}, "", "",
+		log.GetLogger())
+
+	s.Nil(svcErr)
+	s.Require().NotNil(engineCtx)
+	s.Equal("read", engineCtx.UserInputs[common.RuntimeKeyRequestedPermissions])
 }
 
 // The initial inputs of a flow started by the server, such as the login hint of a CIBA request, come
@@ -4572,6 +4639,7 @@ const (
 	boundaryNamedOUID  = "boundary-named-ou"
 	boundaryAuthFlowID = "boundary-auth-flow"
 	boundaryRegFlowID  = "boundary-registration-flow"
+	boundaryDGFlowID   = "boundary-device-grant-flow"
 	boundaryUserID     = "boundary-user"
 )
 
@@ -4606,13 +4674,16 @@ func (s *ServiceTestSuite) newBoundaryFixture(flowType providers.FlowType) *boun
 	flowFactory, _ := core.Initialize(cache.Initialize(config.GetServerRuntime().Config.Cache, "test-deployment"))
 
 	flowID := boundaryAuthFlowID
-	if flowType == providers.FlowTypeRegistration {
+	switch flowType {
+	case providers.FlowTypeRegistration:
 		flowID = boundaryRegFlowID
+	case providers.FlowTypeDeviceGrant:
+		flowID = boundaryDGFlowID
 	}
 	actor := actorprovidermock.NewActorProviderMock(s.T())
 	actor.EXPECT().GetInboundClientByID(mock.Anything, boundaryAppID).Return(&providers.InboundClient{
 		ID: boundaryAppID, AuthFlowID: boundaryAuthFlowID,
-		RegistrationFlowID: boundaryRegFlowID, IsRegistrationFlowEnabled: true,
+		RegistrationFlowID: boundaryRegFlowID, IsRegistrationFlowEnabled: true, DeviceGrantFlowID: boundaryDGFlowID,
 	}, nil)
 	actor.EXPECT().GetActor(mock.Anything, boundaryAppID).Return(&providers.Entity{
 		ID: boundaryAppID, OUID: boundaryAppOUID, Category: providers.EntityCategoryApp,
@@ -4657,8 +4728,8 @@ func (f *boundaryFixture) initContext(ctx context.Context, flowType providers.Fl
 	return f.service.initContext(ctx, "", boundaryAppID, flowType, nil, nil, true, log.GetLogger())
 }
 
-// The start fixes the organization unit when it can: the one the request names, or the application's
-// own when it is not shared. A shared application with no unit named leaves it open.
+// A sign-in or device grant start fixes the organization unit when it can: the one the request names, or the
+// application's own when it is not shared. A shared application with no unit named leaves it open.
 func (s *ServiceTestSuite) TestBoundSignIn_FixesTheOrganizationUnitAtStart() {
 	cases := []struct {
 		name      string
@@ -4689,23 +4760,25 @@ func (s *ServiceTestSuite) TestBoundSignIn_FixesTheOrganizationUnitAtStart() {
 		},
 	}
 
-	for _, tc := range cases {
-		s.Run(tc.name, func() {
-			f := s.newBoundaryFixture(providers.FlowTypeAuthentication)
-			tc.arrange(f.ou)
-			ctx := context.Background()
-			if tc.namedOUID != "" {
-				ctx = sysContext.WithAccessingOUID(ctx, tc.namedOUID)
-			}
+	for _, flowType := range []providers.FlowType{providers.FlowTypeAuthentication, providers.FlowTypeDeviceGrant} {
+		for _, tc := range cases {
+			s.Run(string(flowType)+" "+tc.name, func() {
+				f := s.newBoundaryFixture(flowType)
+				tc.arrange(f.ou)
+				ctx := context.Background()
+				if tc.namedOUID != "" {
+					ctx = sysContext.WithAccessingOUID(ctx, tc.namedOUID)
+				}
 
-			engineCtx, svcErr := f.initContext(ctx, providers.FlowTypeAuthentication)
+				engineCtx, svcErr := f.initContext(ctx, flowType)
 
-			s.Require().Nil(svcErr)
-			s.True(engineCtx.SignInBounded)
-			ouID, fixed := engineCtx.RuntimeData[common.RuntimeKeyOUID]
-			s.Equal(tc.wantOUID != "", fixed)
-			s.Equal(tc.wantOUID, ouID)
-		})
+				s.Require().Nil(svcErr)
+				s.True(engineCtx.SignInBounded)
+				ouID, fixed := engineCtx.RuntimeData[common.RuntimeKeyOUID]
+				s.Equal(tc.wantOUID != "", fixed)
+				s.Equal(tc.wantOUID, ouID)
+			})
+		}
 	}
 }
 
@@ -4761,7 +4834,7 @@ func (s *ServiceTestSuite) TestBoundSignIn_FlowExecuteRequestNamingAnInaccessibl
 	req.Header.Set(serverconst.FlowSecretHeaderName, "flow-secret")
 	w := httptest.NewRecorder()
 
-	newFlowExecutionHandler(f.service, nil, 0).HandleFlowExecutionRequest(w, req)
+	newFlowExecutionHandler(f.service, nil, nil).HandleFlowExecutionRequest(w, req)
 
 	s.Equal(http.StatusBadRequest, w.Code)
 	s.Contains(w.Body.String(), ErrorInvalidOrganizationUnit.Code)
@@ -4792,7 +4865,7 @@ func (s *ServiceTestSuite) TestBoundSignIn_LookupFailureIsAServerError() {
 	})
 }
 
-// Only sign-in is bounded: another flow type asks nothing about sharing, even with a unit named.
+// Only sign-in and device grant are bounded: another flow type asks nothing about sharing, even with a unit named.
 func (s *ServiceTestSuite) TestBoundSignIn_OtherFlowTypesAreNotBounded() {
 	f := s.newBoundaryFixture(providers.FlowTypeRegistration)
 

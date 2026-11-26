@@ -9,7 +9,7 @@ import {
   type RenderOptions,
   type RenderResult,
 } from '@testing-library/react';
-import {CapabilitiesProvider} from '@thunderid/contexts';
+import {CapabilitiesProvider, ProjectScopeProvider} from '@thunderid/contexts';
 import type {JSX, ReactElement, ReactNode} from 'react';
 import {MemoryRouter} from 'react-router';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
@@ -135,6 +135,28 @@ describe('FlowsListPage', () => {
       );
 
       expect(screen.queryByRole('button', {name: /add flow/i})).not.toBeInTheDocument();
+    });
+
+    it('offers no create action outside a project when flows are created in projects only', () => {
+      render(
+        <MemoryRouter>
+          <FlowsListPage createInProjectsOnly />
+        </MemoryRouter>,
+      );
+
+      expect(screen.queryByRole('button', {name: /add flow/i})).not.toBeInTheDocument();
+    });
+
+    it('offers the create action inside a project when flows are created in projects only', () => {
+      render(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <MemoryRouter>
+            <FlowsListPage createInProjectsOnly />
+          </MemoryRouter>
+        </ProjectScopeProvider>,
+      );
+
+      expect(screen.getByRole('button', {name: /add flow/i})).toBeInTheDocument();
     });
 
     it('should render FlowsList component', () => {

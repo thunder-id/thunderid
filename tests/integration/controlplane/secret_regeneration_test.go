@@ -31,7 +31,7 @@ func (ts *ControlPlaneTestSuite) regenerate(path string) (int, regenerated, []by
 // without revoking anything, and still answers with the new secret once, uncached.
 func (ts *ControlPlaneTestSuite) TestAnApplicationsSecretIsRegeneratedWithoutRevoking() {
 	appID, err := testutils.CreateApplication(testutils.Application{
-		OUID: ts.ouID, Name: unique("cp-regen-app"), ClientID: unique("cp-regen-client"),
+		OUID: ts.ouID, ProjectID: defaultProjectID, Name: unique("cp-regen-app"), ClientID: unique("cp-regen-client"),
 		ClientSecret: unique("CpRegenSecret"),
 	})
 	ts.Require().NoError(err)
@@ -47,7 +47,8 @@ func (ts *ControlPlaneTestSuite) TestAnApplicationsSecretIsRegeneratedWithoutRev
 // The same holds for an agent.
 func (ts *ControlPlaneTestSuite) TestAnAgentsSecretIsRegeneratedWithoutRevoking() {
 	agentID, err := testutils.CreateAgent(testutils.Agent{
-		OUID: ts.ouID, Type: "default", Attributes: map[string]interface{}{"name": unique("cp-regen-agent")},
+		OUID: ts.ouID, ProjectID: defaultProjectID, Type: "default",
+		Attributes: map[string]interface{}{"name": unique("cp-regen-agent")},
 		InboundAuthConfig: []testutils.AgentInboundAuthConfig{{
 			Type: "oauth2",
 			Config: &testutils.AgentOAuthConfig{

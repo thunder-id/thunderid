@@ -7,6 +7,7 @@
     "product_name": "ThunderID",
     "system_ou_id": "",
     "trusted_proxies": [],
+    "allow_private_addresses": false,
     "timeouts": {
       "read_header_seconds": 10,
       "write_seconds": 10,
@@ -204,8 +205,7 @@
         "max_attempts" : 3,
         "retry_delay" : 2,
         "max_in_flight" : 16,
-        "queue_size" : 1024,
-        "reject_private_addresses" : true
+        "queue_size" : 1024
       }
     },
     "authorization_details": {
@@ -221,9 +221,6 @@
       "criteria": {
         "max_entries_per_change": 10000
       }
-    },
-    "token_exchange": {
-      "token_family": "none"
     }
   },
   "flow": {
@@ -401,6 +398,14 @@
       }
     }
   },
+  "session": {
+    "activity_refresh_interval_seconds": 60,
+    "max_idle_timeout_seconds": 2592000,
+    "max_absolute_timeout_seconds": 31536000,
+    "tracking": {
+      "enabled": true
+    }
+  },
   "organization_unit": {
     "store": "composite"
   },
@@ -499,6 +504,8 @@
     "removal_confirmation_threshold": 5,
     "store": "composite",
     "apply_timeout_seconds": 300,
+    "unused_value_grace_seconds": 3600,
+    "unused_value_sweep_interval_seconds": 300,
     "pipeline": []
   },
   "import": {

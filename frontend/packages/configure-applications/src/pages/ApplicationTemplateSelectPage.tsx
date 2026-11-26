@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {DocumentTitle, PageLoader, ResourceAvatar} from '@thunderid/components';
+import {useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {
   Box,
@@ -19,7 +20,7 @@ import {Search} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useEffect, useMemo, useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {Link, useNavigate, useSearchParams} from 'react-router';
+import {Link, Navigate, useNavigate, useSearchParams} from 'react-router';
 import PlatformBasedApplicationTemplateMetadata from '../config/PlatformBasedApplicationTemplateMetadata';
 import TechnologyBasedApplicationTemplateMetadata from '../config/TechnologyBasedApplicationTemplateMetadata';
 import useApplicationCreate from '../contexts/ApplicationCreate/useApplicationCreate';
@@ -55,15 +56,29 @@ const ALL_TEMPLATES: AnyTemplateMetadata[] = [
 const TECHNOLOGY_VALUES = new Set<string>(TechnologyBasedApplicationTemplateMetadata.map((m) => m.value));
 
 /**
+ * Props for the {@link ApplicationTemplateSelectPage} component.
+ */
+export interface ApplicationTemplateSelectPageProps {
+  /**
+   * Whether an application is created in a project only. When set, the page returns to the list outside a
+   * selected project, since an application created there would be refused.
+   */
+  createInProjectsOnly?: boolean;
+}
+
+/**
  * In-console template gallery. Selecting a template seeds the application-create context and
  * launches the full-screen creation wizard.
  *
  * @public
  */
-export default function ApplicationTemplateSelectPage(): JSX.Element {
+export default function ApplicationTemplateSelectPage({
+  createInProjectsOnly = false,
+}: ApplicationTemplateSelectPageProps): JSX.Element {
   const {t} = useTranslation();
   const navigate = useNavigate();
   const routes = useApplicationRoutes();
+  const {projectId} = useProjectScope();
   const [searchParams] = useSearchParams();
   const logger = useLogger('ApplicationTemplateSelectPage');
 
@@ -144,6 +159,10 @@ export default function ApplicationTemplateSelectPage(): JSX.Element {
   // template grid for a frame before the effect above navigates on. Hold the loader the lazy
   // wizard chunk shows anyway, so the hand-off reads as one continuous load.
   const pageTitle = t('applications:onboarding.configure.stack.title', 'Choose a type');
+
+  if (createInProjectsOnly && !projectId) {
+    return <Navigate to={routes.applications.list()} replace />;
+  }
 
   if (preselectedTemplate) {
     return (

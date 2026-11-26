@@ -63,6 +63,16 @@ When the token is delegated, for example an agent acting on behalf of a user, th
 
 Base access decisions on `sub` and the outermost `act` only. Nested actors are a history trail and are informational ([RFC 8693 Section 4.1](https://www.rfc-editor.org/rfc/rfc8693#section-4.1)).
 
+When the token was issued for a user of an external identity provider, through the [`jwt-bearer` grant](../identity-assertion-grant/accept-identity-assertions) or [token exchange](../../../identity-providers/token-exchange-idp) of an external token, the response also includes the `idp` claim naming that provider's issuer. Such a `sub` is the provider's identifier, not a user of <ProductName />, so read it together with `idp`:
+
+```json
+{
+  "active": true,
+  "sub": "partner-user-42",
+  "idp": "https://idp.partner.example.com"
+}
+```
+
 </details>
 
 ## Introspection or Local JWT Validation

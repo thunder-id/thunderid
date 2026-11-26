@@ -71,8 +71,8 @@ func (ts *CIBATestSuite) cibaIDTokenFor(clientID, clientSecret string) string {
 	return tokenRes.idToken
 }
 
-// TestCIBAIDTokenCarriesSidWhenFlowHasSession verifies the CIBA grant carries the SSO session id as
-// sid when the authentication flow establishes a session, and omits it when the flow has none.
+// TestCIBAIDTokenCarriesSidWhenFlowHasSession verifies the CIBA grant carries the session id as sid: the SSO
+// session's when the authentication flow establishes one, and the direct session's when the flow has none.
 func (ts *CIBATestSuite) TestCIBAIDTokenCarriesSidWhenFlowHasSession() {
 	flowID, err := testutils.CreateFlow(testutils.Flow{
 		Name:     "CIBA Session Test Flow",
@@ -92,10 +92,11 @@ func (ts *CIBATestSuite) TestCIBAIDTokenCarriesSidWhenFlowHasSession() {
 	sid, _ := claims["sid"].(string)
 	ts.NotEmpty(sid, "a CIBA flow with a Session node must issue an ID token carrying sid")
 
-	// The suite's main flow has no Session node, so its ID token must not carry sid.
+	// The suite's main flow has no Session node, so its ID token names the direct session the login recorded.
 	withoutSession := ts.cibaIDTokenFor(cibaClientID, cibaClientSecret)
 	claims, err = testutils.DecodeJWTPayloadMap(withoutSession)
 	ts.Require().NoError(err)
-	_, has := claims["sid"]
-	ts.False(has, "a CIBA flow without a Session node must not issue a sid")
+	directSid, _ := claims["sid"].(string)
+	ts.NotEmpty(directSid, "a CIBA flow without a Session node must name its direct session with sid")
+	ts.NotEqual(sid, directSid, "the two logins record different sessions")
 }

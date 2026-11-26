@@ -124,7 +124,7 @@ The `components` array is the only field the runtime acts on. Any other fields i
 | `DYNAMIC_INPUT_PLACEHOLDER` | Marks where dynamically derived inputs (those arriving via `ForwardedData`, not declared in the node's prompts) should be inserted. |
 | Any other type | Treated as a structural or display component (e.g. a text label). Kept as-is; its children are recursively trimmed. |
 
-**Note**: `DYNAMIC_INPUT_PLACEHOLDER` is only valid for a PROMPT node reached via a Provisioning node's `onIncomplete` edge.
+**Note**: `DYNAMIC_INPUT_PLACEHOLDER` is only valid for a PROMPT node reached via the `onIncomplete` edge of a Provisioning node, or of a `CredentialSetter` node that sets the credential of an administrator-initiated reset.
 
 Each component is identified by an `id` field and optionally a `ref` field. When both are present, `ref` takes priority for matching against prompt inputs.
 
@@ -381,7 +381,7 @@ Every flow you deploy must reference only executors that are registered on the s
 | **Validate and Plan Suspension** | Checks that the administrator may suspend the account, then plans which tokens the revocation nodes withdraw. | Administration flows only |
 | **Suspend Identity** | Suspends the account that Validate and Plan Suspension planned. | Administration flows only. Validate and Plan Suspension must have run. See [Suspend and Restore Accounts](../../account-protection/suspend-and-restore-accounts) |
 | **Unsuspend Identity** | Lifts a suspension. A user is left locked until recovery or an unlock. | Administration flows only |
-| **Unlock Identity** | Clears every lock on a user or agent. In a recovery flow, releases the account whose credential the flow set. | In a recovery flow, Set Credentials must have run |
+| **Unlock Identity** | Clears every lock on a user or agent. In a recovery flow, releases the account whose credential the flow set. In an administrator-initiated flow, releases that account only when it is the user the flow was started for. | In a recovery or administrator-initiated flow, Set Credentials must have run |
 | **OpenID4VP Verify** | Initiates an OpenID4VP credential presentation request, returns a QR code and deep link for the user's wallet, and polls until the credential is verified. | OpenID4VP service configured in <ProductName /> |
 | **Authorization** | Evaluates authorization policies for the current user. | - |
 | **Check Intents** | Runs the processors of the requested authorization details before User Consent. | User authenticated |
@@ -593,6 +593,16 @@ Sets credentials (e.g., password) for an existing user. Typically used in regist
   "onSuccess": "recovery_complete"
 }
 ```
+
+**Credential reset modes:** in an administrator-initiated flow, this executor also runs a credential reset that an administrator starts and the user completes from an emailed link, as `default-admin-user-credential-reset-flow` does. `validate` and `invalidate` run only in administrator-initiated flows:
+
+| Mode | What it does |
+|---|---|
+| `validate` | Checks, changing nothing, that the administrator may reset the credential the `credential` input names for the user the flow was started for, and that the user is not suspended. Once it passes, **Send Email** reads the address from the user's stored profile, from the attribute its email input names: `email` by default, or another such as `workEmail`, and not from the request. A constant value on that input is used instead, so give it none. Place it before the link is generated, so a refused reset sends nothing. |
+| `invalidate` | Removes the stored credential, revoking the user's tokens and ending their sessions. It runs only after the link was sent, so place it right after **Send Email**, with no View between them. If it fails, the link that was sent stops working (`FET-1140`). A reset that reaches it with no delivered link fails with `FET-1139`, which only a best-effort **Send Email** can cause. |
+| `set` (default) | In an administrator-initiated flow, sets only the credential the reset removed. Before it asks for anything, it fails, as an invalid link does, when the user's credentials changed after the reset started, such as by a later reset or a forgot password recovery, and refuses a suspended user. A changed credential fails with `FET-1073`. It reads the value only from a request after the one that opened the link, and asks for one masked input named after the credential, labelled with its display name, so point its **On Incomplete** at a View with a dynamic input placeholder. |
+
+Only string credentials can be reset this way; `validate` refuses a number credential. In the flow builder, the **Operation** setting of the node selects the mode: **Set credentials**, **Validate credential reset**, or **Remove credential**. It offers the last two only in administrator-initiated flows. The **Administrator User Credential Reset with Email Link** template wires all three as the shipped flow does.
 
 </details>
 
@@ -829,7 +839,7 @@ Issues a WebAuthn authentication challenge. The browser forwards it to the user'
 
 **Prerequisites:**
 - `userID` (optional): if present in runtime data, the challenge targets only passkeys registered for that user. If absent, a usernameless challenge is issued and any registered passkey can respond. Populated by any prior authentication executor.
-- `relyingPartyId` node property must be set to the domain where the passkey is used (e.g., `app.example.com`). The executor hard-fails if missing.
+- `relyingPartyId` node property: the domain where the passkey is used (e.g., `app.example.com`). If it is not set, the executor uses the host of the sign-in page (the `gate_client` host). Set it when your application runs the passkey ceremony on its own pages (an embedded or app-native integration), since the browser accepts only a relying party ID that matches the page's domain.
 
 **View pairing:** Must be followed by the **Passkey View**, which collects the signed authenticator response.
 
@@ -837,8 +847,8 @@ Issues a WebAuthn authentication challenge. The browser forwards it to the user'
 
 | Property | UI Label | Required | Description |
 |---|---|---|---|
-| `relyingPartyId` | Relying Party ID | Yes | The relying party domain (e.g. `app.example.com`) |
-| `relyingPartyName` | Relying Party Name | No | Display name of the relying party (e.g. `My App`) |
+| `relyingPartyId` | Relying Party ID | No | The relying party domain (e.g. `app.example.com`). Defaults to the host of the sign-in page. |
+| `relyingPartyName` | Relying Party Name | No | Display name of the relying party (e.g. `My App`). Defaults to the application's name. |
 | `authenticatorSelection` | - | No | Authenticator selection criteria object with fields: `authenticatorAttachment`, `requireResidentKey`, `residentKey`, `userVerification` |
 | `attestation` | - | No | Attestation conveyance preference (e.g. `none`, `direct`, `indirect`). Defaults to `none`. |
 
@@ -864,7 +874,6 @@ Issues a WebAuthn authentication challenge. The browser forwards it to the user'
 ```
 
 **Failure conditions:**
-- `relyingPartyId` node property missing or empty
 - No passkeys registered for the user (when userID is provided)
 - Passkey service error
 
@@ -923,14 +932,14 @@ Begins the WebAuthn credential registration ceremony and returns `PublicKeyCrede
 
 **Prerequisites:**
 - `userID` (required): must be present in runtime data. The executor hard-fails if missing. Populated by Provisioning (for new users during registration) or any authentication executor (for existing users adding a passkey).
-- `relyingPartyId` node property must be set to the domain where passkeys will be registered (e.g., `app.example.com`). The executor hard-fails if missing.
+- `relyingPartyId` node property: the domain where passkeys will be registered (e.g., `app.example.com`). If it is not set, the executor uses the host of the sign-in page (the `gate_client` host). Set it when your application runs the passkey ceremony on its own pages (an embedded or app-native integration), since the browser accepts only a relying party ID that matches the page's domain.
 
 **Executor properties:**
 
 | Property | UI Label | Required | Description |
 |---|---|---|---|
-| `relyingPartyId` | Relying Party ID | Yes | The relying party domain (e.g. `app.example.com`) |
-| `relyingPartyName` | Relying Party Name | No | Display name of the relying party (e.g. `My App`) |
+| `relyingPartyId` | Relying Party ID | No | The relying party domain (e.g. `app.example.com`). Defaults to the host of the sign-in page. |
+| `relyingPartyName` | Relying Party Name | No | Display name of the relying party (e.g. `My App`). Defaults to the application's name. |
 | `authenticatorSelection` | - | No | Authenticator selection criteria object with fields: `authenticatorAttachment`, `requireResidentKey`, `residentKey`, `userVerification` |
 | `attestation` | - | No | Attestation conveyance preference (e.g. `none`, `direct`, `indirect`). Defaults to `none`. |
 
@@ -957,7 +966,6 @@ Begins the WebAuthn credential registration ceremony and returns `PublicKeyCrede
 
 **Failure conditions:**
 - `userID` not available
-- `relyingPartyId` node property missing or empty
 - Passkey service error
 
 </details>
@@ -1214,7 +1222,7 @@ Creates a user or agent through its management service. User Type Resolver and A
 
 Without `allowCrossOUProvisioning`, every linked user counts. With it, only linked users in the target OU count, so registering into an OU where nobody holds the link creates a second user with the same link.
 
-**Seeding from authorization mapping:** When the identity being provisioned federated in through a connection with [Authorization Mapping](../../identity-providers/add-oidc-provider#authorization-mapping) configured, `seedGroupsFromMapping` and `seedRolesFromMapping` assign whatever groups and roles that mapping resolves for the asserted attributes, as ordinary direct assignments at account-creation time, alongside anything named in `assignGroup`/`assignRole`. This is a one-time snapshot: it does not keep the account in sync with the provider afterward the way the mapping does on every subsequent sign-in, and it has nothing to resolve when the executor runs outside a federated context.
+**Groups and roles from authorization mapping:** When the identity being provisioned federated in through a connection with [Authorization Mapping](../../identity-providers/add-oidc-provider#authorization-mapping) configured, the groups and roles that mapping resolves are assigned when the account is created, alongside anything named in `assignGroup`/`assignRole`. They're not assigned when the connection's groups and roles sync is session only. Mapped groups also aren't assigned when groups use the `declarative` [store mode](../../../deployment/configuration#store-modes), and mapped roles aren't when roles do. Mapped groups and roles are assigned only to a provisioned user, not to an agent. Mapped groups and roles that no longer exist are skipped, as are groups in an organization unit the user doesn't belong to and roles not shared with the user's organization unit. The connection's [Sync](../../identity-providers/add-oidc-provider#sync) settings decide whether they're updated on later sign-ins.
 
 **Executor properties:**
 
@@ -1228,8 +1236,6 @@ Without `allowCrossOUProvisioning`, every linked user counts. With it, only link
 | `includeOptional` | - | No | `false` | Whether to prompt for optional (non-credential) schema attributes |
 | `includeOptionalCredentials` | Include Optional Credentials | No | `false` | Whether to prompt for optional credential attributes |
 | `maxPerPrompt` | - | No | `0` (all at once) | Maximum number of missing inputs to forward per prompt cycle |
-| `seedGroupsFromMapping` | Seed Groups From Authorization Mapping | No | `false` | Assign groups the connection's authorization mapping resolved for this subject |
-| `seedRolesFromMapping` | Seed Roles From Authorization Mapping | No | `false` | Assign roles the connection's authorization mapping resolved for this subject |
 
 **Input Configuration:** Required attributes are dynamically determined from the resolved schema, so no fixed input defaults are needed. However, you may optionally declare entries in the executor's `inputs` array to set a specific input type for an attribute (e.g., `EMAIL_INPUT` for an email field). Without an explicit override, non-credential inputs default to `TEXT_INPUT`. Attributes that define a fixed set of allowed values (`enum`) in the resolved schema are always forwarded as `SELECT` inputs that list those values as options. A prompt node that declares the attribute as a `SELECT` input receives the same options, and a prompt node that declares it with another type keeps that type. In a prompt node that this executor doesn't forward inputs to, define the options in the flow definition. See [Input Types](#input-types) for valid types.
 
@@ -1322,7 +1328,9 @@ Checks the authenticated user's existing profile attributes against the node's c
 **How missing-input resolution works:**
 1. Checks the user's authenticated attributes.
 2. Falls back to the user's stored profile in the user store.
-3. Only attributes absent from both sources are added to the prompt.
+3. Only attributes absent from both sources are added to the prompt. An attribute stored with an empty value counts as absent.
+
+The executor only adds attributes the user doesn't have. A submitted value for an attribute the user already has is ignored.
 
 **Input Configuration:** No registered defaults. Configure any attribute identifiers as node inputs; the executor checks those attributes and prompts only for missing ones.
 
@@ -1750,7 +1758,7 @@ When the request carries [authorization details](../../protocols/oauth-oidc/rich
 
 If no permissions are configured, the executor completes immediately with an empty permission set.
 
-**Input Configuration:** None. The executor reads `requested_permissions` from user inputs or the OIDC scope; it has no registered node input defaults.
+**Input Configuration:** None. The executor reads `requested_permissions` from user inputs or the OIDC scope; it has no registered node input defaults. A `/flow/execute` caller sends `requested_permissions` and `resource_server_identifier` with the request that starts the flow. A request that continues a flow can't set them.
 
 **Example:**
 
@@ -1833,8 +1841,9 @@ Checks whether the authenticated user has active consent records for the require
 
 | Property | UI Label | Required | Description |
 |---|---|---|---|
-| `timeout` | Consent timeout (seconds) | No | Seconds before the consent prompt expires. `0` means no timeout. A prompt that times out records no consent: the flow goes on with no consented attributes or authorization details, or fails when `failOnDeny` is `true`. |
+| `timeout` | Consent prompt timeout (seconds) | No | Seconds before the consent prompt expires. `0` means no timeout. A prompt that times out records no consent: the flow goes on with no consented attributes or authorization details, or fails when `failOnDeny` is `true`. |
 | `failOnDeny` | Fail flow when user denies consent | No | When `true`, the flow fails if the user denies the prompt or lets it time out, even if every prompted item is optional. Default: `false`. |
+| `promptValidityPeriod` | Let the user choose the consent validity period | No | Boolean, `false` by default. When `true`, the consent prompt lets the user choose when they are asked again, from up to five periods or a period of their own, none longer than the validity period set on the application or agent. When that period is `0` or not set, the choices include **No expiry**. The prompt does not offer the choice to an application or agent with `loginConsent.alwaysPrompt` set to `true`. See [Let users choose the validity period](../consent.mdx#let-users-choose-the-validity-period). |
 
 **Input Configuration:**
 - `consent_decisions` (required): JSON-encoded consent decisions returned by the Consent View. Default: `consent_decisions`
@@ -1968,7 +1977,7 @@ Creates a new Organizational Unit. The created OU is available for use by downst
 
 #### Account Lifecycle
 
-These executors run the suspend, unsuspend, and unlock administration flows, and release an account lock at the end of a recovery flow. See [Suspend and Restore Accounts](../../account-protection/suspend-and-restore-accounts) and [Let Users Recover From a Lock](../../account-protection/configure-account-lockout#let-users-recover-from-a-lock).
+These executors run the suspend, unsuspend, and unlock administration flows, and release an account lock at the end of a recovery flow or an administrator-initiated credential reset. See [Suspend and Restore Accounts](../../account-protection/suspend-and-restore-accounts) and [Let Users Recover From a Lock](../../account-protection/configure-account-lockout#let-users-recover-from-a-lock).
 
 <details>
 <summary>Validate and Plan Suspension</summary>
@@ -2008,10 +2017,10 @@ One executor, `IdentityGovernanceExecutor`, applies one lifecycle operation, sel
 | `unsuspend` | **Unsuspend Identity** | Lifts a suspension. A user receives a permanent account-wide lock, even if automatic locking is disabled. An agent keeps any automatic lock still in force. |
 | `unlock` | **Unlock Identity** | Clears all locks and their history, including the lock left after a user is unsuspended. It does not lift a suspension. |
 
-**When to use:** In the administration flows that suspend, unsuspend, or unlock an account. In a recovery flow, use `unlock` right after **Set Credentials**. Flow validation rejects a `suspend` or `unsuspend` node outside an administration flow, and the flow builder offers only `unlock` there.
+**When to use:** In the administration flows that suspend, unsuspend, or unlock an account. In a recovery flow or an administrator-initiated credential reset, use `unlock` right after **Set Credentials**, as `default-admin-user-credential-reset-flow` does. Flow validation rejects a `suspend` or `unsuspend` node outside an administration flow, and the flow builder offers only `unlock` there.
 
 **Input Configuration:**
-- `subject` (required in administration flows): the ID of the user, agent, or application to unsuspend, or of the user or agent to unlock. The node asks for it when it is missing. In `suspend` mode the account comes from **Validate and Plan Suspension**. In a recovery flow, the account is the one whose credential the flow set, and the input is ignored.
+- `subject` (required in administration flows): the ID of the user, agent, or application to unsuspend, or of the user or agent to unlock. The node asks for it when it is missing. In `suspend` mode the account comes from **Validate and Plan Suspension**. In a recovery flow, the account is the one whose credential the flow set, and the input is ignored. In an administrator-initiated flow, it is that account only when it is the user the flow was started for; otherwise nothing is released.
 - `operatorNote` (optional): a note of at most 100 characters recorded with a suspension and returned on management reads. A suspension with a longer note fails. Other modes accept and ignore it.
 
 **Example:**
@@ -2047,7 +2056,7 @@ Sends a transactional email using a configured template. Runs in the background:
 - **Recovery flows:** Send a password reset link to the user's registered email.
 
 **Prerequisites:**
-- `email` (required): the recipient email address must be resolvable before this executor runs. Not a configurable node input. Resolved in priority order: forwarded data from prior executors (e.g., Generate Invite, Magic Link) → user inputs → user store (looked up via `userID`). The executor fails if none of these resolve to a non-empty address.
+- `email` (required): the recipient email address must be resolvable before this executor runs. Resolved in priority order: the address **Prepare Verification** pinned → a constant node input → the user's address in the user store, when the flow knows the user (from `userID`, or the signed-in user), or else the address their external identity provider asserted, or else the address in user inputs if that user is the one signed in. When the flow knows the user, no other source is read, so an address an earlier step forwards (such as Generate Invite) or any other submitted address is not used. Otherwise: forwarded data from prior executors (e.g., Generate Invite, Magic Link) → runtime data → user inputs → claims from an external identity provider. The executor fails if none of these resolve to a non-empty address.
 - `senderId` (required at runtime): the ID of the email provider the step sends through. A flow step does not use the server-wide default sender in [Notification Defaults](../../../deployment/configuration#notification-defaults); each step names its own provider. See [Configure an Email Provider](../../notifications/email-providers).
 
 **Skip delivery:** If `skipDelivery` is set to `true`, the executor returns complete immediately without sending anything. Use this in test environments. A skipped delivery does not count as a delivery for **Record Verification**.
@@ -2062,7 +2071,7 @@ Sends a transactional email using a configured template. Runs in the background:
 | `emailTemplate` | Email Template | No | `user_invite` | The template scenario to use. If absent or empty, defaults to the user invite template. |
 | `bestEffort` | Not shown | No | `false` | When `true`, a send that fails completes the step instead of failing the flow, and the flow response carries `emailSent` as `"false"`. Server-side failures are logged. Set it through the Flow Management API or a declarative flow file. |
 
-**Input Configuration:** None. The email executor resolves the recipient and template data from runtime context; it has no configurable node input defaults.
+**Input Configuration:** The email executor has no default inputs. It resolves the recipient and template data from runtime context. A node can still set a constant `email` input in its own `inputs`. See [Default and Constant Input Values](#default-and-constant-input-values).
 
 **Example:**
 
@@ -2089,7 +2098,7 @@ Sends a transactional email using a configured template. Runs in the background:
 - Template rendering error
 - SMTP server unreachable or rejecting the message (server error)
 
-When the step fails because the provider is not configured or no recipient resolves, and the flow generated an invite link, the step's response carries the link in `additionalData.inviteLink`, for a screen that shows it instead.
+In a user onboarding or invitation flow, when the step fails because the provider is not configured or no recipient resolves, and the flow generated an invite link, the step's response carries the link in `additionalData.inviteLink`, for the admin's screen that shows it instead. Other flows, such as recovery and self-registration, deliver the link by email only: their response never carries it.
 
 With `bestEffort` set to `true`, none of these fail the step.
 
@@ -2110,9 +2119,12 @@ Sends a transactional SMS using a configured template and sender. Runs in the ba
 - `senderId` node property must be set to the configured sender ID
 
 **Recipient resolution order:**
-1. A phone-type input from the node's configured inputs (from `ForwardedData`)
-2. `mobile_number` from user inputs
-3. Phone attribute from user store (looked up by userID if available)
+1. The number **Prepare Verification** pinned
+2. A constant node input
+3. The user's number in the user store, when the flow knows the user (from `userID`, or the signed-in user), or else the number their external identity provider asserted, or else the number in user inputs if that user is the one signed in. When the flow knows the user, no other source is read.
+4. Otherwise, user inputs, then runtime data, then claims from an external identity provider
+
+The number is read from the attribute named by the node's phone-type input, `mobile_number` by default.
 
 **Pinned contact:** After **Prepare Verification** pins a mobile number, the executor sends to that number before any other source, so an input cannot replace it. The executor records where each SMS went, so that **Record Verification** can check that the code reached the pinned number. A skipped delivery does not count. Without a pin, the executor resolves the recipient as usual.
 
@@ -2616,10 +2628,13 @@ In addition to these fields, any value present in runtime data (set by prior exe
 
 Credential-bearing data is stripped at capture and is never available through this syntax: the headers `Authorization`, `Cookie`, `Set-Cookie`, `Proxy-Authorization`, `Flow-Secret`, and `Attestation-Token`, and the client-credential query parameters `client_secret`, `client_assertion`, and `client_assertion_type`. If a request, header, or query parameter is not present, or the selector is malformed (for example `{{request(header)}}` with no name, or `{{request(notaselector)}}`), the placeholder is kept as-is.
 
+A redirect response (3xx) is not followed, since the step's headers can carry a credential that a redirect would resend to another host, and it is handled as an error status. Configure the final URL of the endpoint.
+
 **Failure conditions:**
 - URL not configured or invalid
+- URL host is, or resolves to, a private address (see [Private Addresses](../../../deployment/configuration#private-addresses))
 - HTTP request timeout
-- HTTP error status code (4xx, 5xx) when `failOnError: true`
+- HTTP redirect or error status code (3xx, 4xx, 5xx) when `failOnError: true`
 - Retries exhausted
 - Response body cannot be parsed as JSON
 - Response mapping references non-existent fields
@@ -2812,7 +2827,7 @@ The following rules are enforced for each executor node:
 
 **Mode validation**: If the node specifies an executor `mode`, the server checks that the mode is one of the values the executor supports. For example, `OTPExecutor` supports `"generate"` and `"verify"`; configuring `"mode": "send"` on an `OTPExecutor` node fails validation. When the node omits the `mode` field, the executor's default mode is used; an executor that supports modes but has no default, such as `IdentityGovernanceExecutor` or `AttributeVerificationExecutor`, fails validation. When the executor does not restrict modes, no check is performed.
 
-**Flow type validation**: Some executors are restricted to specific flow types. For example, an executor that is only valid in registration flows will cause a validation error if referenced in an authentication flow definition. When the executor does not restrict flow types, the node is accepted in any flow type. Some executors restrict a mode further: `IdentityGovernanceExecutor` runs in administration and recovery flows, but accepts `suspend` and `unsuspend` only in administration flows.
+**Flow type validation**: Some executors are restricted to specific flow types. For example, an executor that is only valid in registration flows will cause a validation error if referenced in an authentication flow definition. When the executor does not restrict flow types, the node is accepted in any flow type. Some executors restrict a mode further: `IdentityGovernanceExecutor` runs in administration, recovery, and administrator-initiated flows, but accepts `suspend` and `unsuspend` only in administration flows. `CredentialSetter` accepts `validate` and `invalidate` only in administrator-initiated flows.
 
 **Companion executors validation**: Some executors must appear together with another executor, in a given mode, in any flow type. A flow with an `AttributeVerificationExecutor` node must contain one in `prepare` mode and one in `record` mode, and a flow with `SessionRevocationExecutor` must contain `CriteriaRevocationExecutor` in `revoke` mode. A flow without the companion is rejected with an error that names the missing executor and mode.
 

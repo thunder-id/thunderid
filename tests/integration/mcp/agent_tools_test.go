@@ -57,23 +57,31 @@ func (ts *MCPTestSuite) agentTypeChildOU(token string) string {
 
 // onboardAgentForTest onboards an agent of the default agent type through the data plane's agent
 // onboarding flow, in a unit under the agent type's own, and deletes it when the test ends. The flow
-// offers every agent type, so the default one is chosen up front. A step that asks only for optional
-// inputs, such as the owner, is passed by going on with nothing, as an agent leaving it to the caller
-// would. It returns the flow's final data (agentId, clientId and clientSecret) and the agent's unit.
+// offers every agent type, so the default one is chosen up front. A step answers the inputs it asks for
+// from the known values, and one that asks only for optional inputs it doesn't know, such as the owner, is
+// passed by going on with nothing, as an agent leaving it to the caller would. It returns the flow's final
+// data (agentId, clientId and clientSecret) and the agent's unit.
 func (ts *MCPTestSuite) onboardAgentForTest(token, name string) (map[string]any, string) {
 	ouID := ts.agentTypeChildOU(token)
-	out := ts.onboard(token, "onboard_agents", map[string]any{
-		"inputs": map[string]any{"name": name, "agentType": "default", "ouId": ouID}})
-	for range 3 {
+	known := map[string]any{"name": name, "agentType": "default", "ouId": ouID}
+	out := ts.onboard(token, "onboard_agents", map[string]any{"inputs": known})
+	for range 5 {
 		if out["status"] != "needs_input" {
 			break
 		}
+		answers := map[string]any{}
 		inputs, _ := out["inputs"].([]any)
 		for _, i := range inputs {
 			input, _ := i.(map[string]any)
-			ts.Require().NotEqualf(true, input["required"], "the flow asks again for %v: %v", input, out)
+			identifier, _ := input["identifier"].(string)
+			if value, ok := known[identifier]; ok {
+				answers[identifier] = value
+				continue
+			}
+			ts.Require().NotEqualf(true, input["required"], "the flow asks for an unknown %v: %v", input, out)
 		}
-		next := map[string]any{"executionId": out["executionId"], "challengeToken": out["challengeToken"]}
+		next := map[string]any{"executionId": out["executionId"], "challengeToken": out["challengeToken"],
+			"inputs": answers}
 		if actions, _ := out["actions"].([]any); len(actions) == 1 {
 			next["action"] = actions[0]
 		}

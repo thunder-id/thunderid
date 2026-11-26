@@ -30,9 +30,9 @@ const UserQueryKeys = {
    */
   ASSIGNABLE_ROLES: 'user-assignable-roles',
   /**
-   * Key for the handle of the attribute verification flow the server configures.
+   * Key for the handles of the flows the server configures for each action.
    */
-  ATTRIBUTE_VERIFICATION_FLOW: 'attribute-verification-flow',
+  ADMINISTRATION_FLOW_HANDLES: 'administration-flow-handles',
   /**
    * Base key for user type list queries.
    */

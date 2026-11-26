@@ -1163,7 +1163,7 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_JWKSURI_Success() 
 	assertion := buildFakeJWTWithSub("test-client")
 
 	suite.mockJwtService.EXPECT().
-		VerifyJWTWithJWKS(mock.Anything, assertion, "https://example.com/.well-known/jwks.json",
+		VerifyJWTWithClientJWKS(mock.Anything, assertion, "https://example.com/.well-known/jwks.json",
 			testIssuer, "test-client").
 		Return(nil)
 
@@ -1185,7 +1185,7 @@ func (suite *ClientAuthTestSuite) TestValidateClientAssertion_JWKSURI_Verificati
 	assertion := buildFakeJWTWithSub("test-client")
 
 	suite.mockJwtService.EXPECT().
-		VerifyJWTWithJWKS(mock.Anything, assertion, "https://example.com/.well-known/jwks.json",
+		VerifyJWTWithClientJWKS(mock.Anything, assertion, "https://example.com/.well-known/jwks.json",
 			testIssuer, "test-client").
 		Return(&tidcommon.ServiceError{Error: tidcommon.I18nMessage{DefaultValue: "verification failed"}})
 

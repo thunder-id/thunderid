@@ -27,15 +27,47 @@ const FIELD_KEYS = [
   'type',
   'format',
   'title',
+  'description',
   POLICY_KEYWORD,
   'items',
   'properties',
   'required',
+  'enum',
+  'const',
   'minimum',
   'maximum',
+  'exclusiveMinimum',
+  'exclusiveMaximum',
+  'multipleOf',
+  'minLength',
   'maxLength',
+  'pattern',
   'minItems',
+  'maxItems',
+  'uniqueItems',
 ];
+
+/** The kinds of field that can carry a list of allowed values on the field itself. */
+const ALLOWED_VALUE_KINDS: FieldKind[] = ['string', 'number'];
+
+/** The kinds of field that can carry a fixed value. */
+const FIXED_VALUE_KINDS: FieldKind[] = ['string', 'number', 'boolean'];
+
+/** Reports whether a field can carry a list of allowed values: a list's items, or a text or number field. */
+export function supportsAllowedValues(field: Pick<SchemaField, 'kind'>): boolean {
+  return field.kind === 'array' || ALLOWED_VALUE_KINDS.includes(field.kind);
+}
+
+/** Reports whether a field can carry a fixed value. */
+export function supportsFixedValue(field: Pick<SchemaField, 'kind'>): boolean {
+  return FIXED_VALUE_KINDS.includes(field.kind);
+}
+
+/** Returns the kind of the values a field's allowed values hold: its items' kind for a list, else its own. */
+export function allowedValueKind(field: Pick<SchemaField, 'kind' | 'itemKind'>): ItemKind {
+  if (field.kind === 'array') return field.itemKind;
+  return field.kind === 'number' ? 'number' : 'string';
+}
 const POLICY_KEYS = ['suppliedBy', 'modification', 'modifiableBy', 'minimum', 'maximum'];
 const MODIFICATIONS: Modification[] = ['none', 'decrease', 'increase', 'removeItems', 'addItems'];
 const ITEM_KINDS: ItemKind[] = ['string', 'number'];
@@ -61,7 +93,7 @@ const STANDARD_FIELDS: {name: string; title: string}[] = [
 
 /** Returns the standard fields, a list of text each, that the given fields do not declare yet. */
 export function missingStandardFields(fields: SchemaField[]): SchemaField[] {
-  const names = new Set(fields.map((field) => field.name.trim()));
+  const names = new Set(fields.map((field) => trimSpace(field.name)));
   return STANDARD_FIELDS.filter((standard) => !names.has(standard.name)).map((standard) => ({
     ...newField('array'),
     name: standard.name,
@@ -123,6 +155,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+// The white space the server trims, Go's unicode.IsSpace: unlike String.prototype.trim it counts U+0085 and
+// not U+FEFF, so a name or value the server keeps is never changed here.
+const SPACE = '\\t\\n\\v\\f\\r \\u0085\\u00a0\\u1680\\u2000-\\u200a\\u2028\\u2029\\u202f\\u205f\\u3000';
+const SURROUNDING_SPACE = new RegExp(`^[${SPACE}]+|[${SPACE}]+$`, 'g');
+
+/** Returns text without the white space the server trims from its start and end. */
+export function trimSpace(value: string): string {
+  return value.replace(SURROUNDING_SPACE, '');
+}
+
+/** Reports whether a value is text with nothing but white space in it, which the builder treats as no value. */
+function isBlankText(value: unknown): boolean {
+  return typeof value === 'string' && trimSpace(value) === '';
+}
+
 function onlyKeys(value: Record<string, unknown>, allowed: string[]): boolean {
   return Object.keys(value).every((key) => allowed.includes(key));
 }
@@ -166,8 +213,12 @@ function parsePolicy(raw: unknown): FieldPolicy | null {
 function parseAllowedValues(items: Record<string, unknown>, itemKind: ItemKind): string[] | null {
   const values = items['enum'];
   if (values === undefined) return [];
-  // An empty list allows no value, which the builder cannot show.
-  if (!Array.isArray(values) || values.length === 0 || !values.every((value) => typeof value === itemKind)) {
+  // An empty list allows no value, and a blank value reads as no value, which the builder cannot show.
+  if (
+    !Array.isArray(values) ||
+    values.length === 0 ||
+    !values.every((value) => typeof value === itemKind && !isBlankText(value))
+  ) {
     return null;
   }
   return values.map((value) => String(value));
@@ -206,6 +257,112 @@ function parseKind(
   }
 }
 
+/** Reports whether a value is a count a schema keyword such as maxLength can hold. */
+function isCount(value: unknown): value is number {
+  return Number.isInteger(value) && (value as number) >= 0;
+}
+
+/**
+ * Reads the keywords that restrict a field's value, each only on the kinds of field the server allows it
+ * on: a number's range, step and exclusive bounds, a text's length and pattern, a list's item counts and
+ * uniqueness, the allowed values of a text or number field, and a fixed value. A number's range is kept
+ * in the policy while editing, as the builder edits every range there. Returns null when a keyword is on
+ * a kind of field that cannot carry it, or holds a value the builder cannot show.
+ */
+function parseValueRules(
+  property: Record<string, unknown>,
+  kind: FieldKind,
+  policy: FieldPolicy,
+): {settings: Partial<SchemaField>; allowedValues?: string[]} | null {
+  const settings: Partial<SchemaField> = {};
+  const present = (key: string): boolean => property[key] !== undefined;
+
+  // A number is limited by the schema's own minimum and maximum, inclusive or exclusive, and other
+  // ordered values by their policy.
+  const numberKeys = ['minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum', 'multipleOf'];
+  if (hasSchemaLimits(kind)) {
+    if (policy.minimum !== undefined || policy.maximum !== undefined) return null;
+    for (const [limit, exclusive] of [
+      ['minimum', 'exclusiveMinimum'],
+      ['maximum', 'exclusiveMaximum'],
+    ] as const) {
+      // A bound is either inclusive or exclusive; a schema that sets both cannot be shown as one bound.
+      if (present(limit) && present(exclusive)) return null;
+      const key = present(exclusive) ? exclusive : limit;
+      if (!present(key)) continue;
+      if (typeof property[key] !== 'number') return null;
+      policy[limit] = String(property[key]);
+      if (key === exclusive) settings[exclusive] = true;
+    }
+    const step = property['multipleOf'];
+    if (step !== undefined) {
+      if (typeof step !== 'number' || step <= 0) return null;
+      settings.step = String(step);
+    }
+  } else if (numberKeys.some(present)) {
+    return null;
+  }
+
+  const stringKeys = ['minLength', 'maxLength', 'pattern'];
+  if (kind === 'string') {
+    for (const key of ['minLength', 'maxLength'] as const) {
+      if (!present(key)) continue;
+      if (!isCount(property[key])) return null;
+      settings[key] = String(property[key]);
+    }
+    const pattern = property['pattern'];
+    if (pattern !== undefined) {
+      // A blank pattern reads as no pattern, which would drop it on save.
+      if (typeof pattern !== 'string' || isBlankText(pattern)) return null;
+      settings.pattern = pattern;
+    }
+  } else if (stringKeys.some(present)) {
+    return null;
+  }
+
+  const listKeys = ['minItems', 'maxItems', 'uniqueItems'];
+  if (kind === 'array') {
+    for (const key of ['minItems', 'maxItems'] as const) {
+      if (!present(key)) continue;
+      if (!isCount(property[key])) return null;
+      settings[key] = String(property[key]);
+    }
+    const unique = property['uniqueItems'];
+    if (unique !== undefined) {
+      if (typeof unique !== 'boolean') return null;
+      // Kept as written, false included, so saving does not change the schema.
+      settings.uniqueItems = unique;
+    }
+  } else if (listKeys.some(present)) {
+    return null;
+  }
+
+  // A list's allowed values are on its items, read with its kind.
+  let allowedValues: string[] | undefined;
+  const values = property['enum'];
+  if (values !== undefined) {
+    if (!ALLOWED_VALUE_KINDS.includes(kind)) return null;
+    const valueKind = kind === 'number' ? 'number' : 'string';
+    // An empty list allows no value, and a blank value reads as no value, which the builder cannot show.
+    if (
+      !Array.isArray(values) ||
+      values.length === 0 ||
+      !values.every((value) => typeof value === valueKind && !isBlankText(value))
+    ) {
+      return null;
+    }
+    allowedValues = values.map((value) => String(value));
+  }
+
+  const fixed = property['const'];
+  if (fixed !== undefined) {
+    // A blank fixed value reads as no fixed value, which would drop it on save.
+    if (!FIXED_VALUE_KINDS.includes(kind) || typeof fixed !== kind || isBlankText(fixed)) return null;
+    settings.fixedValue = String(fixed as string | number | boolean);
+  }
+  return {settings, ...(allowedValues && {allowedValues})};
+}
+
 function parseProperties(properties: unknown, required: unknown): SchemaField[] | null {
   if (properties === undefined) return [];
   if (!isRecord(properties)) return null;
@@ -217,49 +374,33 @@ function parseProperties(properties: unknown, required: unknown): SchemaField[] 
   for (const [name, property] of Object.entries(properties)) {
     if (!isRecord(property) || !onlyKeys(property, FIELD_KEYS)) return null;
     const title = property['title'];
-    if (title !== undefined && typeof title !== 'string') return null;
+    // A blank title reads as no title, which would drop it on save.
+    if (title !== undefined && (typeof title !== 'string' || isBlankText(title))) return null;
     const policy = parsePolicy(property[POLICY_KEYWORD]);
     if (!policy) return null;
     const kind = parseKind(property);
     if (!kind) return null;
     // An object only groups fields; a change rule on it is one the builder cannot show.
     if (kind.kind === 'object' && (policy.modification ?? 'none') !== 'none') return null;
-    // A number is limited by the schema's own minimum and maximum, and other ordered values by their policy.
-    const ownLimits = property['minimum'] !== undefined || property['maximum'] !== undefined;
-    if (hasSchemaLimits(kind.kind)) {
-      if (policy.minimum !== undefined || policy.maximum !== undefined) return null;
-      for (const limit of ['minimum', 'maximum'] as const) {
-        if (property[limit] === undefined) continue;
-        if (typeof property[limit] !== 'number') return null;
-        policy[limit] = String(property[limit]);
-      }
-    } else if (ownLimits) {
-      return null;
-    }
-    const maxLength = property['maxLength'];
-    if (
-      maxLength !== undefined &&
-      (kind.kind !== 'string' || !Number.isInteger(maxLength) || (maxLength as number) < 0)
-    ) {
-      return null;
-    }
-    const minItems = property['minItems'];
-    if (minItems !== undefined && (kind.kind !== 'array' || !Number.isInteger(minItems) || (minItems as number) < 0)) {
-      return null;
-    }
+    const description = property['description'];
+    // A blank description reads as no description, which would drop it on save.
+    if (description !== undefined && (typeof description !== 'string' || isBlankText(description))) return null;
+    const rules = parseValueRules(property, kind.kind, policy);
+    if (!rules) return null;
     const children = kind.kind === 'object' ? parseProperties(property['properties'], property['required']) : [];
     if (!children) return null;
+    const allowedValues = kind.kind === 'array' ? kind.allowedValues : rules.allowedValues;
     fields.push({
       key: newFieldKey(),
       name,
       title: title ?? '',
       kind: kind.kind,
       itemKind: kind.itemKind,
-      ...(kind.allowedValues?.length && {allowedValues: kind.allowedValues}),
+      ...(allowedValues?.length && {allowedValues}),
       required: requiredNames.includes(name),
       policy,
-      ...(maxLength !== undefined && {maxLength: String(maxLength as number)}),
-      ...(minItems !== undefined && {minItems: String(minItems as number)}),
+      ...(description !== undefined && {description}),
+      ...rules.settings,
       children,
     });
   }
@@ -268,13 +409,34 @@ function parseProperties(properties: unknown, required: unknown): SchemaField[] 
 
 /**
  * Reads a schema into builder fields. Returns null when the schema uses anything the builder cannot
- * show, such as combinators, patterns, or a list of allowed values on anything but a list's items.
+ * show, such as a list of objects, a list of lists, or a title or description on the schema itself.
  */
 export function schemaToFields(schema: unknown): SchemaField[] | null {
   if (!isRecord(schema) || schema['type'] !== 'object' || !onlyKeys(schema, ['type', 'properties', 'required'])) {
     return null;
   }
   return parseProperties(schema['properties'], schema['required']);
+}
+
+/**
+ * Returns where a schema uses something the composer cannot show: the dotted path of the first such
+ * field, an empty string when it is the schema itself (for example a title on the schema), or null when
+ * the composer can show it all.
+ */
+export function composerUnsupportedPath(schema: unknown, prefix = ''): string | null {
+  if (!isRecord(schema)) return prefix;
+  if (!prefix && (schema['type'] !== 'object' || !onlyKeys(schema, ['type', 'properties', 'required']))) return '';
+  const properties = schema['properties'];
+  if (properties === undefined) return null;
+  if (!isRecord(properties)) return prefix;
+  for (const [name, property] of Object.entries(properties)) {
+    const path = prefix ? `${prefix}.${name}` : name;
+    if (parseProperties({[name]: property}, undefined) !== null) continue;
+    // An object the composer can show as a group points at the field inside it it cannot show.
+    const inner = isRecord(property) && property['type'] === 'object' ? composerUnsupportedPath(property, path) : null;
+    return inner ?? path;
+  }
+  return parseProperties(properties, schema['required']) === null ? prefix : null;
 }
 
 /** Reads a limit as typed, as a JSON number when the field holds numbers, or as text otherwise. */
@@ -311,32 +473,63 @@ function policyToSchema(field: SchemaField): Record<string, unknown> | undefined
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
+/** Writes a count or other number setting as typed, as a JSON number when it reads as one. */
+function writeNumber(property: Record<string, unknown>, key: string, value: string | undefined): void {
+  const text = value?.trim();
+  if (!text) return;
+  const parsed = Number(text);
+  property[key] = Number.isFinite(parsed) ? parsed : text;
+}
+
+/** Returns a fixed value as the JSON value its field's kind holds, or the text as typed when it is not one. */
+function fixedValueOf(field: SchemaField): unknown {
+  const text = field.fixedValue ?? '';
+  if (field.kind === 'number') {
+    const parsed = Number(text.trim());
+    return text.trim() !== '' && Number.isFinite(parsed) ? parsed : text;
+  }
+  if (field.kind === 'boolean') {
+    if (text.trim() === 'true') return true;
+    if (text.trim() === 'false') return false;
+  }
+  return text;
+}
+
 /**
- * Writes the standard keywords that constrain a field's value: a number's range, a text's length, and
- * the fewest items a list holds.
+ * Writes the standard keywords that constrain a field's value: a number's range, exclusive or not, and
+ * step; a text's length and pattern; a list's item counts and uniqueness; the allowed values of a text
+ * or number field; and a fixed value.
  */
 function writeConstraints(field: SchemaField, property: Record<string, unknown>): void {
   if (hasSchemaLimits(field.kind)) {
     const minimum = toLimit(field.policy.minimum, true);
     const maximum = toLimit(field.policy.maximum, true);
-    if (minimum !== undefined) property['minimum'] = minimum;
-    if (maximum !== undefined) property['maximum'] = maximum;
+    if (minimum !== undefined) property[field.exclusiveMinimum ? 'exclusiveMinimum' : 'minimum'] = minimum;
+    if (maximum !== undefined) property[field.exclusiveMaximum ? 'exclusiveMaximum' : 'maximum'] = maximum;
+    writeNumber(property, 'multipleOf', field.step);
   }
-  const maxLength = field.maxLength?.trim();
-  if (field.kind === 'string' && maxLength) {
-    const parsed = Number(maxLength);
-    property['maxLength'] = Number.isFinite(parsed) ? parsed : maxLength;
+  if (field.kind === 'string') {
+    writeNumber(property, 'minLength', field.minLength);
+    writeNumber(property, 'maxLength', field.maxLength);
+    if (field.pattern && trimSpace(field.pattern)) property['pattern'] = field.pattern;
   }
-  const minItems = field.minItems?.trim();
-  if (field.kind === 'array' && minItems) {
-    const parsed = Number(minItems);
-    property['minItems'] = Number.isFinite(parsed) ? parsed : minItems;
+  if (field.kind === 'array') {
+    writeNumber(property, 'minItems', field.minItems);
+    writeNumber(property, 'maxItems', field.maxItems);
+    if (field.uniqueItems !== undefined) property['uniqueItems'] = field.uniqueItems;
+  }
+  if (ALLOWED_VALUE_KINDS.includes(field.kind)) {
+    const allowed = allowedValuesOf(field);
+    if (allowed.length) property['enum'] = field.kind === 'number' ? allowed.map(Number) : allowed;
+  }
+  if (supportsFixedValue(field) && trimSpace(field.fixedValue ?? '') !== '') {
+    property['const'] = fixedValueOf(field);
   }
 }
 
-/** Returns a list field's allowed values, trimmed and without blanks. */
+/** Returns a field's allowed values, trimmed as the server trims them and without blanks. */
 export function allowedValuesOf(field: SchemaField): string[] {
-  return (field.allowedValues ?? []).map((value) => value.trim()).filter(Boolean);
+  return (field.allowedValues ?? []).map((value) => trimSpace(value)).filter(Boolean);
 }
 
 function schemaProperty(kind: FieldKind): Record<string, unknown> {
@@ -360,7 +553,8 @@ function fieldsToProperties(fields: SchemaField[]): {properties: Record<string, 
   const required: string[] = [];
   for (const field of fields) {
     const property: Record<string, unknown> = schemaProperty(field.kind);
-    if (field.title.trim()) property['title'] = field.title;
+    if (trimSpace(field.title)) property['title'] = field.title;
+    if (field.description && trimSpace(field.description)) property['description'] = field.description;
     if (field.kind === 'array') {
       const items: Record<string, unknown> = {type: field.itemKind};
       const allowed = allowedValuesOf(field);
@@ -375,8 +569,8 @@ function fieldsToProperties(fields: SchemaField[]): {properties: Record<string, 
     writeConstraints(field, property);
     const policy = policyToSchema(field);
     if (policy) property[POLICY_KEYWORD] = policy;
-    setOwnProperty(properties, field.name.trim(), property);
-    if (field.required) required.push(field.name.trim());
+    setOwnProperty(properties, trimSpace(field.name), property);
+    if (field.required) required.push(trimSpace(field.name));
   }
   return {properties, required};
 }
@@ -465,17 +659,59 @@ export interface FieldIssue {
 
 const NUMBER = /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/;
 const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
-// As the server parses RFC 3339: an upper case T and Z, and no leap second.
-const DATE_TIME = /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d+)?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)$/;
+// As the server parses RFC 3339: an upper case T and Z, a fraction after a dot or a comma, and no leap
+// second.
+const DATE_TIME =
+  /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):[0-5]\d:[0-5]\d([.,](\d+))?(Z|[+-]([01]\d|2[0-3]):[0-5]\d)$/;
 
 /** Reports whether a value is a JSON number the server holds as a finite double. */
 function isFiniteNumber(value: string): boolean {
   return NUMBER.test(value) && Number.isFinite(Number(value));
 }
 
-/** Reports whether a year, month and day name a day that exists. */
+/**
+ * Splits a JSON number into its sign, its significant digits and the power of ten of the last of them, so
+ * two numbers compare exactly, as the server compares them, whatever their digits.
+ */
+function decimalParts(value: string): {negative: boolean; digits: string; exponent: number} {
+  const match = /^(-?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(value) ?? ['', '', '0', '', '0'];
+  const fraction = match[3] ?? '';
+  let digits = `${match[2]}${fraction}`.replace(/^0+/, '');
+  let exponent = Number(match[4] ?? 0) - fraction.length;
+  const trailing = /0+$/.exec(digits)?.[0].length ?? 0;
+  digits = digits.slice(0, digits.length - trailing);
+  exponent += trailing;
+  return {negative: match[1] === '-' && digits !== '', digits, exponent};
+}
+
+/** Compares two JSON numbers exactly: negative when the first is lower, positive when it is higher. */
+function compareDecimals(a: string, b: string): number {
+  const x = decimalParts(a);
+  const y = decimalParts(b);
+  if (x.negative !== y.negative) return x.negative ? -1 : 1;
+  const sign = x.negative ? -1 : 1;
+  if (!x.digits || !y.digits) return sign * (x.digits.length - y.digits.length);
+  const magnitude = x.digits.length + x.exponent - (y.digits.length + y.exponent);
+  if (magnitude !== 0) return sign * magnitude;
+  const length = Math.max(x.digits.length, y.digits.length);
+  const xs = x.digits.padEnd(length, '0');
+  const ys = y.digits.padEnd(length, '0');
+  if (xs === ys) return 0;
+  return sign * (xs < ys ? -1 : 1);
+}
+
+/**
+ * Reports whether a number as typed is kept exactly once saved. The page holds numbers as doubles, so a
+ * number with more digits than a double holds would be saved as a nearby one.
+ */
+function isExactNumber(value: string): boolean {
+  return compareDecimals(value, String(Number(value))) === 0;
+}
+
+/** Reports whether a year, month and day name a day that exists, from year 0000 on, as the server reads it. */
 function isCalendarDate(year: string, month: string, day: string): boolean {
-  const date = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  const date = new Date(0);
+  date.setUTCFullYear(Number(year), Number(month) - 1, Number(day));
   return (
     date.getUTCFullYear() === Number(year) &&
     date.getUTCMonth() === Number(month) - 1 &&
@@ -502,9 +738,22 @@ export function isValidLimit(value: string, valueType: ValueType): boolean {
   }
 }
 
-/** Returns a valid limit as a number that orders the way its value type does. */
-function limitValue(value: string, valueType: ValueType): number {
-  return valueType === 'number' ? Number(value) : Date.parse(value);
+/**
+ * Compares two valid limits the way the server does: numbers exactly, dates as days, and dates and times
+ * as instants to the nanosecond. Returns a negative number when the first is earlier or lower.
+ */
+function compareLimits(a: string, b: string, valueType: ValueType): number {
+  if (valueType === 'number') return compareDecimals(a, b);
+  if (valueType === 'date') return a === b ? 0 : a < b ? -1 : 1;
+  // The browser reads an instant to the millisecond, so a tie is decided by the digits after it.
+  const instant = (value: string): {ms: number; rest: string} => {
+    const fraction = DATE_TIME.exec(value)?.[6] ?? '';
+    return {ms: Date.parse(value.replace(',', '.')), rest: fraction.padEnd(9, '0').slice(3, 9)};
+  };
+  const x = instant(a);
+  const y = instant(b);
+  if (x.ms !== y.ms) return x.ms - y.ms;
+  return x.rest === y.rest ? 0 : x.rest < y.rest ? -1 : 1;
 }
 
 /**
@@ -518,24 +767,97 @@ function isWholeNumber(value: string): boolean {
   return /^\d+$/.test(value);
 }
 
-function collectIssues(fields: SchemaField[], atRoot: boolean, inSupplied: boolean, issues: FieldIssue[]): void {
+/** Returns the index just past the character class a pattern opens at `start`, or -1 when it is not closed. */
+function patternClassEnd(pattern: string, start: number): number {
+  let i = start + 1;
+  if (pattern[i] === '^') i += 1;
+  // Read as RE2 reads a class: a closing bracket first in it is a literal one, and a hyphen makes a range
+  // only after a single character, so a hyphen first in the class or after a POSIX class is a literal one.
+  let first = true;
+  while (i < pattern.length && (pattern[i] !== ']' || first)) {
+    first = false;
+    const posixEnd = pattern.startsWith('[:', i) ? pattern.indexOf(':]', i + 2) : -1;
+    if (posixEnd >= 0) {
+      i = posixEnd + 2;
+      continue;
+    }
+    i += pattern[i] === '\\' ? 2 : 1;
+    if (pattern[i] === '-' && i + 1 < pattern.length && pattern[i + 1] !== ']') {
+      // The end of a range is one character, even a bracket, never the start of a POSIX class.
+      i += pattern[i + 1] === '\\' ? 3 : 2;
+    }
+  }
+  return i < pattern.length ? i + 1 : -1;
+}
+
+/**
+ * Returns why the server cannot compile a pattern, or null when nothing here rules it out. The server reads
+ * a pattern as Go's RE2, whose syntax a browser does not read, so only what RE2 refuses whatever else the
+ * pattern holds is checked: a lookaround or a backreference, and a group or character class left open, a
+ * group closed without being opened, or a backslash at the end. The server checks the rest when the type
+ * is saved.
+ */
+export function patternProblem(pattern: string): 'unsupported' | 'incomplete' | null {
+  let depth = 0;
+  let i = 0;
+  while (i < pattern.length) {
+    const char = pattern[i];
+    if (char === '\\') {
+      const next = pattern[i + 1];
+      if (next === undefined) return 'incomplete';
+      if (next === 'Q') {
+        // Quoted text runs to \E, or to the end.
+        const end = pattern.indexOf('\\E', i + 2);
+        i = end < 0 ? pattern.length : end + 2;
+        continue;
+      }
+      // A digit from 1 to 7 starts an octal code only when another octal digit follows; alone, or 8 and 9,
+      // it is a backreference, as is \k.
+      if (next === '8' || next === '9' || next === 'k' || (/[1-7]/.test(next) && !/[0-7]/.test(pattern[i + 2] ?? ''))) {
+        return 'unsupported';
+      }
+      i += 2;
+    } else if (char === '[') {
+      const end = patternClassEnd(pattern, i);
+      if (end < 0) return 'incomplete';
+      i = end;
+    } else {
+      if (char === '(') {
+        if (['(?=', '(?!', '(?<=', '(?<!'].some((look) => pattern.startsWith(look, i))) return 'unsupported';
+        depth += 1;
+      } else if (char === ')') {
+        depth -= 1;
+        if (depth < 0) return 'incomplete';
+      }
+      i += 1;
+    }
+  }
+  return depth === 0 ? null : 'incomplete';
+}
+
+function collectIssues(
+  fields: SchemaField[],
+  atRoot: boolean,
+  inSupplied: boolean,
+  typeIdentifier: string,
+  issues: FieldIssue[],
+): void {
   const seen = new Set<string>();
   for (const field of fields) {
-    const name = field.name.trim();
+    const name = trimSpace(field.name);
     const issue = (messageKey: string, defaultMessage: string): void => {
       issues.push({fieldKey: field.key, messageKey, defaultMessage});
     };
+    // A repeated name is reported before surrounding space, since the schema written from the two fields
+    // trims both names to the same key and keeps only one of them.
     if (!name) {
       issue('fields.errors.nameRequired', 'Enter a field name.');
+    } else if (seen.has(name)) {
+      issue('fields.errors.nameDuplicate', 'Another field at this level has the same name.');
     } else if (name !== field.name) {
       issue('fields.errors.nameSpaces', 'A field name cannot start or end with a space.');
     } else if (name.includes('.')) {
       issue('fields.errors.nameDot', 'A field name cannot contain a dot.');
-    } else if (/\s/.test(name)) {
-      // A summary placeholder cannot name a field with a space in it.
-      issue('fields.errors.nameInnerSpace', 'A field name cannot contain a space.');
-    } else if (seen.has(name)) {
-      issue('fields.errors.nameDuplicate', 'Another field at this level has the same name.');
     }
     seen.add(name);
 
@@ -567,13 +889,21 @@ function collectIssues(fields: SchemaField[], atRoot: boolean, inSupplied: boole
     }
     const valueType = valueTypeFor(field);
     if (valueType) {
-      const limits = [policy.minimum, policy.maximum]
-        .map((limit) => (limit === undefined ? '' : String(limit).trim()))
-        .filter(Boolean);
+      const minimum = policy.minimum === undefined ? '' : String(policy.minimum).trim();
+      const maximum = policy.maximum === undefined ? '' : String(policy.maximum).trim();
+      const limits = [minimum, maximum].filter(Boolean);
+      // As on the server, an inclusive limit is compared only with an inclusive one, and an exclusive limit
+      // only with an exclusive one.
+      const comparable = Boolean(field.exclusiveMinimum) === Boolean(field.exclusiveMaximum);
       if (limits.some((limit) => !isValidLimit(limit, valueType))) {
         issue('fields.errors.limitInvalid', 'Enter the minimum and maximum as values of this type.');
-      } else if (limits.length === 2 && limitValue(limits[0], valueType) > limitValue(limits[1], valueType)) {
+      } else if (valueType === 'number' && limits.some((limit) => !isExactNumber(limit))) {
+        issue('fields.errors.limitPrecision', 'Enter the minimum and maximum with at most 15 significant digits.');
+      } else if (limits.length === 2 && comparable && compareLimits(minimum, maximum, valueType) > 0) {
         issue('fields.errors.limitOrder', 'The minimum cannot be greater than the maximum.');
+      }
+      if (field.kind === 'number' && ((field.exclusiveMinimum && !minimum) || (field.exclusiveMaximum && !maximum))) {
+        issue('fields.errors.exclusiveLimitRequired', 'Enter the limit that the value must be above or below.');
       }
     }
     const maxLength = field.maxLength?.trim();
@@ -588,35 +918,112 @@ function collectIssues(fields: SchemaField[], atRoot: boolean, inSupplied: boole
     } else if (field.kind === 'array' && minItems && Number(minItems) > MAX_SCHEMA_COUNT) {
       issue('fields.errors.minItemsTooLarge', 'The minimum number of items can be at most 2147483647.');
     }
-    const allowed = field.kind === 'array' ? allowedValuesOf(field) : [];
-    const written = field.kind === 'array' ? (field.allowedValues ?? []).filter((value) => value.trim()) : [];
-    if (written.some((value) => value !== value.trim())) {
-      issue('fields.errors.allowedValuesSpaces', 'An allowed value cannot start or end with a space.');
-    } else if (field.itemKind === 'number' && allowed.some((value) => !isFiniteNumber(value))) {
-      issue('fields.errors.allowedValuesInvalid', 'Enter each allowed value as a number.');
+    const minLength = field.minLength?.trim();
+    if (field.kind === 'string' && minLength && !isWholeNumber(minLength)) {
+      issue('fields.errors.minLengthInvalid', 'Enter the minimum length as a whole number.');
+    } else if (field.kind === 'string' && minLength && Number(minLength) > MAX_SCHEMA_COUNT) {
+      issue('fields.errors.minLengthTooLarge', 'The minimum length can be at most 2147483647.');
     } else if (
-      new Set<string | number>(field.itemKind === 'number' ? allowed.map(Number) : allowed).size !== allowed.length
+      field.kind === 'string' &&
+      minLength &&
+      maxLength &&
+      isWholeNumber(maxLength) &&
+      Number(minLength) > Number(maxLength)
+    ) {
+      issue('fields.errors.lengthOrder', 'The minimum length cannot be greater than the maximum length.');
+    }
+    const problem = field.kind === 'string' && field.pattern ? patternProblem(field.pattern) : null;
+    if (problem === 'unsupported') {
+      issue(
+        'fields.errors.patternUnsupported',
+        'The pattern uses a lookaround or a backreference, which is not supported.',
+      );
+    } else if (problem === 'incomplete') {
+      issue(
+        'fields.errors.patternIncomplete',
+        'The pattern is incomplete. Check that each group and character class is closed.',
+      );
+    }
+    const maxItems = field.maxItems?.trim();
+    if (field.kind === 'array' && maxItems && !isWholeNumber(maxItems)) {
+      issue('fields.errors.maxItemsInvalid', 'Enter the maximum number of items as a whole number.');
+    } else if (field.kind === 'array' && maxItems && Number(maxItems) > MAX_SCHEMA_COUNT) {
+      issue('fields.errors.maxItemsTooLarge', 'The maximum number of items can be at most 2147483647.');
+    } else if (
+      field.kind === 'array' &&
+      maxItems &&
+      minItems &&
+      isWholeNumber(minItems) &&
+      Number(minItems) > Number(maxItems)
+    ) {
+      issue('fields.errors.itemsOrder', 'The minimum number of items cannot be greater than the maximum.');
+    }
+    const step = field.step?.trim();
+    if (field.kind === 'number' && step && !(isFiniteNumber(step) && Number(step) > 0)) {
+      issue('fields.errors.stepInvalid', 'Enter the step as a number greater than 0.');
+    } else if (field.kind === 'number' && step && !isExactNumber(step)) {
+      issue('fields.errors.stepPrecision', 'Enter the step with at most 15 significant digits.');
+    }
+    const allowed = supportsAllowedValues(field) ? allowedValuesOf(field) : [];
+    const valueKind = allowedValueKind(field);
+    const fixed = trimSpace(field.fixedValue ?? '');
+    if (supportsFixedValue(field) && fixed) {
+      if (field.kind === 'number' && !isFiniteNumber(fixed)) {
+        issue('fields.errors.fixedValueInvalid', 'Enter the fixed value as a number.');
+      } else if (field.kind === 'number' && !isExactNumber(fixed)) {
+        issue('fields.errors.fixedValuePrecision', 'Enter the fixed value with at most 15 significant digits.');
+      } else if (field.kind === 'boolean' && fixed !== 'true' && fixed !== 'false') {
+        issue('fields.errors.fixedValueBoolean', 'Choose true or false as the fixed value.');
+      }
+    }
+    if (atRoot && name === TYPE_FIELD && typeIdentifier) {
+      // As on the server, a fixed value and allowed values on the type must each let it hold the type
+      // identifier, since a request must satisfy both. The fixed value is written as typed, untrimmed, so it
+      // is compared as written.
+      const fixedExcludes = supportsFixedValue(field) && fixed && String(fixedValueOf(field)) !== typeIdentifier;
+      if ((allowed.length && !allowed.includes(typeIdentifier)) || fixedExcludes) {
+        issue(
+          'fields.errors.typeValueExcluded',
+          'The fixed value or allowed values of the type must include the type identifier.',
+        );
+      }
+    }
+    const written = supportsAllowedValues(field) ? (field.allowedValues ?? []).filter((value) => trimSpace(value)) : [];
+    if (written.some((value) => value !== trimSpace(value))) {
+      issue('fields.errors.allowedValuesSpaces', 'An allowed value cannot start or end with a space.');
+    } else if (valueKind === 'number' && allowed.some((value) => !isFiniteNumber(value))) {
+      issue('fields.errors.allowedValuesInvalid', 'Enter each allowed value as a number.');
+    } else if (valueKind === 'number' && allowed.some((value) => !isExactNumber(value))) {
+      issue('fields.errors.allowedValuesPrecision', 'Enter each allowed value with at most 15 significant digits.');
+    } else if (
+      new Set<string | number>(valueKind === 'number' ? allowed.map(Number) : allowed).size !== allowed.length
     ) {
       // Numbers are compared by value, as the server compares them, so 1 and 1.0 are the same.
       issue('fields.errors.allowedValuesDuplicate', 'Each allowed value can appear only once.');
     }
     if (field.kind === 'object') {
-      collectIssues(field.children, false, inSupplied || policy.suppliedBy === 'processor', issues);
+      collectIssues(field.children, false, inSupplied || policy.suppliedBy === 'processor', typeIdentifier, issues);
     }
   }
 }
 
-/** Checks builder fields against the rules the server applies to a schema and its policies. */
-export function validateFields(fields: SchemaField[]): FieldIssue[] {
+/**
+ * Checks builder fields against the rules the server applies to a schema and its policies. With the type
+ * identifier, it also checks that a fixed value or allowed values on the `type` field let it hold it.
+ */
+export function validateFields(fields: SchemaField[], typeIdentifier = ''): FieldIssue[] {
   const issues: FieldIssue[] = [];
-  collectIssues(fields, true, false, issues);
+  collectIssues(fields, true, false, typeIdentifier, issues);
   return issues;
 }
 
 /** The number a sample starts from, moved inside the field's limits when it is outside them. */
 const SAMPLE_NUMBER = 100;
 
-/** Returns a sample number for a field, within its minimum and maximum. */
+/**
+ * Returns a sample number for a field that meets every limit it sets: its minimum and maximum, either of
+ * them exclusive, and its step. A field no number meets gets the nearest limit.
+ */
 function sampleNumber(field: SchemaField): number {
   const limit = (value?: number | string): number | undefined => {
     const text = value === undefined ? '' : String(value).trim();
@@ -624,6 +1031,26 @@ function sampleNumber(field: SchemaField): number {
   };
   const minimum = limit(field.policy.minimum);
   const maximum = limit(field.policy.maximum);
+  const stepLimit = limit(field.step);
+  const step = stepLimit !== undefined && stepLimit > 0 ? stepLimit : undefined;
+  // Rounded, so a multiple such as 3 times 0.1 is 0.3.
+  const round = (value: number): number => Number(value.toPrecision(15));
+  const fits = (value: number): boolean =>
+    (minimum === undefined || (field.exclusiveMinimum ? value > minimum : value >= minimum)) &&
+    (maximum === undefined || (field.exclusiveMaximum ? value < maximum : value <= maximum)) &&
+    (step === undefined || Math.abs(value / step - Math.round(value / step)) < 1e-9);
+  const anchors = [SAMPLE_NUMBER, maximum, minimum].filter((value): value is number => value !== undefined);
+  const candidates = step
+    ? anchors.flatMap((anchor) => {
+        const below = Math.floor(anchor / step);
+        return [below, below + 1, below - 1].map((multiple) => round(multiple * step));
+      })
+    : [
+        ...anchors.flatMap((anchor) => [anchor, anchor - 1, anchor + 1]),
+        ...(minimum !== undefined && maximum !== undefined ? [round((minimum + maximum) / 2)] : []),
+      ];
+  const sample = candidates.find(fits);
+  if (sample !== undefined) return sample;
   if (maximum !== undefined && SAMPLE_NUMBER > maximum) return maximum;
   if (minimum !== undefined && SAMPLE_NUMBER < minimum) return minimum;
   return SAMPLE_NUMBER;
@@ -642,8 +1069,8 @@ function sampleDate(field: SchemaField, valueType: 'date' | 'dateTime'): string 
   const sample = valueType === 'date' ? SAMPLE_DATE : SAMPLE_DATE_TIME;
   const minimum = limit(field.policy.minimum);
   const maximum = limit(field.policy.maximum);
-  if (maximum !== undefined && limitValue(sample, valueType) > limitValue(maximum, valueType)) return maximum;
-  if (minimum !== undefined && limitValue(sample, valueType) < limitValue(minimum, valueType)) return minimum;
+  if (maximum !== undefined && compareLimits(sample, maximum, valueType) > 0) return maximum;
+  if (minimum !== undefined && compareLimits(sample, minimum, valueType) < 0) return minimum;
   return sample;
 }
 
@@ -661,6 +1088,10 @@ function sampleText(field: SchemaField): string {
  * field's limits, a date, a list of the first allowed values, or the fields of an object.
  */
 export function sampleData(field: SchemaField): unknown {
+  // A field with a fixed value, or with allowed values on the field itself, holds one of them.
+  if (supportsFixedValue(field) && trimSpace(field.fixedValue ?? '') !== '') return fixedValueOf(field);
+  const allowed = ALLOWED_VALUE_KINDS.includes(field.kind) ? allowedValuesOf(field) : [];
+  if (allowed.length) return field.kind === 'number' ? Number(allowed[0]) : allowed[0];
   switch (field.kind) {
     case 'number':
       return sampleNumber(field);
@@ -686,7 +1117,7 @@ export function sampleData(field: SchemaField): unknown {
     case 'object': {
       const out: Record<string, unknown> = {};
       for (const child of field.children) {
-        const name = child.name.trim();
+        const name = trimSpace(child.name);
         if (name) setOwnProperty(out, name, sampleData(child));
       }
       return out;
@@ -708,7 +1139,7 @@ export function sampleValue(field: SchemaField): string {
 
 function collectSamples(fields: SchemaField[], prefix: string, samples: Map<string, string>): void {
   for (const field of fields) {
-    const path = prefix ? `${prefix}.${field.name.trim()}` : field.name.trim();
+    const path = prefix ? `${prefix}.${trimSpace(field.name)}` : trimSpace(field.name);
     samples.set(path, sampleValue(field));
     if (field.kind === 'object') collectSamples(field.children, path, samples);
   }
@@ -727,7 +1158,7 @@ export function usesProcessor(fields: SchemaField[]): boolean {
 /** Returns the paths of the fields that hold a value, for inserting into a consent summary. */
 export function valuePaths(fields: SchemaField[], prefix = ''): string[] {
   return fields.flatMap((field) => {
-    const name = field.name.trim();
+    const name = trimSpace(field.name);
     if (!name) return [];
     const path = prefix ? `${prefix}.${name}` : name;
     return field.kind === 'object' ? valuePaths(field.children, path) : [path];
@@ -805,7 +1236,7 @@ export function optionalPaths(template: string, fields: SchemaField[]): string[]
   const optional = new Set<string>();
   const walk = (list: SchemaField[], prefix: string, inherited: boolean): void => {
     for (const field of list) {
-      const path = prefix ? `${prefix}.${field.name.trim()}` : field.name.trim();
+      const path = prefix ? `${prefix}.${trimSpace(field.name)}` : trimSpace(field.name);
       const leftOut = inherited || !field.required;
       if (leftOut) optional.add(path);
       if (field.kind === 'object') walk(field.children, path, leftOut);
@@ -946,7 +1377,7 @@ function checkSchemaNode(
     values !== undefined &&
     (!Array.isArray(values) ||
       values.length === 0 ||
-      values.some((value) => typeof value === 'string' && value !== value.trim()) ||
+      values.some((value) => typeof value === 'string' && value !== trimSpace(value)) ||
       values.some((value, index) => values.slice(index + 1).some((other) => sameValue(value, other))))
   ) {
     issue('enum', 'List each allowed value once, with no space around text.');
@@ -977,9 +1408,9 @@ function checkSchemaNode(
     const childIssue = (messageKey: string, defaultMessage: string): void => {
       issues.push({path: child, messageKey, defaultMessage});
     };
-    if (!name.trim()) {
+    if (!trimSpace(name)) {
       childIssue('fields.errors.nameRequired', 'Enter a field name.');
-    } else if (name !== name.trim()) {
+    } else if (name !== trimSpace(name)) {
       childIssue('fields.errors.nameSpaces', 'A field name cannot start or end with a space.');
     } else if (name.includes('.')) {
       childIssue('fields.errors.nameDot', 'A field name cannot contain a dot.');

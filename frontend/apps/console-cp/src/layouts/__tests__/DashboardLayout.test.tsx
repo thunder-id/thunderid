@@ -218,6 +218,20 @@ describe('DashboardLayout', () => {
     expect(screen.getByTestId('outlet')).toHaveTextContent('Outlet Content');
   });
 
+  it('lets a page grow with its content, so it scrolls together with the banner', () => {
+    render(<DashboardLayout />);
+
+    expect(getComputedStyle(screen.getByTestId('outlet')).flexShrink).toBe('0');
+  });
+
+  it('fits a builder page to the space below the banner, so its panels scroll on their own', () => {
+    render(<DashboardLayout fitPage />);
+
+    const page = getComputedStyle(screen.getByTestId('outlet'));
+    expect(page.flexShrink).toBe('1');
+    expect(parseFloat(page.minHeight)).toBe(0);
+  });
+
   it('offers no project selector while there are no projects', () => {
     render(<DashboardLayout />);
 
@@ -657,6 +671,18 @@ describe('DashboardLayout', () => {
       expect(screen.queryByText('navigation:pages.settings')).not.toBeInTheDocument();
       expect(screen.queryByText('navigation:categories.identitySetup')).not.toBeInTheDocument();
       expect(screen.queryByText('navigation:pages.notifications')).not.toBeInTheDocument();
+    });
+
+    it("hides a project's deployment pipeline from admins who cannot view gateways", () => {
+      mockUseProjectSelection.mockReturnValue(inShop());
+      mockCapabilities = {can: (resource) => resource !== 'gateway', isLoading: false};
+      mockPathname = '/project/shop/pipeline';
+      render(<DashboardLayout />);
+
+      expect(screen.getByText('navigation:pages.overview')).toBeInTheDocument();
+      expect(screen.queryByText('navigation:pages.deploymentPipeline')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('outlet')).not.toBeInTheDocument();
+      expect(screen.getByText('navigation:forbidden.description')).toBeInTheDocument();
     });
 
     it('hides Agent types from admins who cannot view agent types', () => {

@@ -9,7 +9,7 @@ description: Renders one RFC 9396 authorization detail on a React consent step, 
 
 The `ConsentAuthorizationDetail` component renders one [RFC 9396 authorization detail](../../../../../guides/protocols/oauth-oidc/rich-authorization-requests) on the consent step: its summary, its fields, and a toggle that approves or declines the detail as a whole. A field is read-only unless the detail's type lets the user change it. Render it inside [`<Consent />`](../consent), once for each element of an authorization details purpose.
 
-The summary and the field labels come from the server, which builds them from the type's consent summary and schema titles. The component does not translate them again.
+The summary, the field labels, and the field descriptions come from the server, which builds them from the type's consent summary and schema titles and descriptions. The component shows a field's description below its label, and does not translate any of them again.
 
 ## Usage
 

@@ -73,6 +73,7 @@ func (ts *OAuthTestSuite) TestAPersonSignsInOnTheDataPlaneWithAPasswordSetOnTheC
 		"description":               "Sign-in application created on the control plane by the pack suite",
 		"type":                      "browser",
 		"ouId":                      packtest.DefaultOUID,
+		"projectId":                 packtest.DefaultProjectID,
 		"authFlowId":                packtest.DefaultAuthFlowID,
 		"isRegistrationFlowEnabled": false,
 		"allowedUserTypes":          []string{"person"},

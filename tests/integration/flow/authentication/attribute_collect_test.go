@@ -411,6 +411,45 @@ func (ts *AttributeCollectFlowTestSuite) TestSingleRequestLogin_WithAllInputs() 
 	ts.Require().NotEmpty(finalStep.Assertion, "Expected assertion after completing flow with all inputs")
 }
 
+func (ts *AttributeCollectFlowTestSuite) TestStoredAttributesAreKept() {
+	username := common.GenerateUniqueUsername("attrstored")
+	userIDs, err := testutils.CreateMultipleUsers(testutils.User{
+		OUID: attrCollectTestOUID,
+		Type: attrCollectEntityType.Handle,
+		Attributes: json.RawMessage(`{
+			"username": "` + username + `",
+			"password": "testpassword",
+			"given_name": "Stored",
+			"family_name": "User",
+			"email": "` + username + `@example.com",
+			"mobile_number": "+1222333444"
+		}`),
+	})
+	ts.Require().NoError(err, "Failed to create the user with stored attributes")
+	defer func() {
+		if err := testutils.CleanupUsers(userIDs); err != nil {
+			ts.T().Logf("Failed to delete the user with stored attributes: %v", err)
+		}
+	}()
+
+	finalStep, err := common.InitiateAuthenticationFlow(attrCollectTestAppID, false, map[string]string{
+		"username":      username,
+		"password":      "testpassword",
+		"email":         "other@example.com",
+		"mobile_number": "+1999888777",
+	}, "")
+	ts.Require().NoError(err, "Failed to complete authentication")
+	ts.Require().Equal("COMPLETE", finalStep.FlowStatus, "Expected flow status to be COMPLETE")
+
+	user, err := testutils.FindUserByAttribute("username", username)
+	ts.Require().NoError(err, "Failed to read the user back")
+	ts.Require().NotNil(user, "The user should exist")
+	attrs, err := testutils.GetUserAttributes(*user)
+	ts.Require().NoError(err, "Failed to read the user's attributes")
+	ts.Equal(username+"@example.com", attrs["email"], "The stored email is kept")
+	ts.Equal("+1222333444", attrs["mobile_number"], "The stored mobile number is kept")
+}
+
 func (ts *AttributeCollectFlowTestSuite) TestInvalidCredentials() {
 	invalidCredentials := map[string]string{
 		"username": "invaliduser",

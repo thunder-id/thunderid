@@ -5,11 +5,14 @@ package dcr
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
@@ -315,6 +318,97 @@ func (ts *DCRTestSuite) TestDCRRegistrationWithInvalidToken() {
 	ts.Assert().Equal("unauthorized_client", errResp.Error)
 }
 
+// TestDCRRegistrationWithRevokedToken verifies that a token that has been revoked can no longer register a
+// client.
+func (ts *DCRTestSuite) TestDCRRegistrationWithRevokedToken() {
+	token := obtainTokenToRevoke(&ts.Suite)
+
+	statusCode, appID := ts.registerClientWithToken(DCRRegistrationRequest{
+		RedirectURIs: []string{"https://revoked-token-before.example.com/callback"},
+		ClientName:   "Revoked Token Client Before",
+	}, token)
+	ts.Require().Equal(http.StatusCreated, statusCode, "the token must register a client before it is revoked")
+	ts.registeredAppIDs = append(ts.registeredAppIDs, appID)
+
+	revokeAndAwaitRejection(&ts.Suite, token)
+
+	resp, errResp := ts.registerWithAuthorization("Bearer " + token)
+	ts.Assert().Equal(http.StatusUnauthorized, resp.StatusCode, "a revoked token must not register a client")
+	ts.Assert().Equal(`Bearer error="invalid_token"`, resp.Header.Get("WWW-Authenticate"))
+	ts.Assert().Equal("unauthorized_client", errResp.Error)
+}
+
+// registerClientWithToken sends a registration request with the given bearer token and returns the
+// status code and, when a client was registered, its application ID.
+func (ts *DCRTestSuite) registerClientWithToken(request DCRRegistrationRequest, token string) (int, string) {
+	requestJSON, err := json.Marshal(request)
+	ts.Require().NoError(err, "Failed to marshal request")
+
+	req, err := http.NewRequest(http.MethodPost, testServerURL+dcrEndpoint, bytes.NewReader(requestJSON))
+	ts.Require().NoError(err, "Failed to create request")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := testutils.GetRawHTTPClient().Do(req)
+	ts.Require().NoError(err, "Failed to send request")
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		return resp.StatusCode, ""
+	}
+	var response DCRRegistrationResponse
+	ts.Require().NoError(json.NewDecoder(resp.Body).Decode(&response), "Failed to decode response")
+	return resp.StatusCode, response.AppID
+}
+
+// obtainTokenToRevoke signs the administrator in again through the CONSOLE client, so a test can revoke
+// the token it gets without touching the token the other tests share.
+func obtainTokenToRevoke(s *suite.Suite) string {
+	tokenResp, err := testutils.ObtainAccessTokenWithPassword("CONSOLE", testServerURL+"/console", "system",
+		testutils.AdminUsername, testutils.AdminPassword, true)
+	s.Require().NoError(err, "Failed to obtain an access token")
+	s.Require().NotEmpty(tokenResp.AccessToken)
+	return tokenResp.AccessToken
+}
+
+// revokeAndAwaitRejection revokes an access token issued to the public CONSOLE client (RFC 7009) and
+// waits until a protected endpoint rejects it. The resource server reads revocations from a snapshot
+// synced on server.security.token_revocation.sync_interval_seconds (2s in
+// tests/integration/resources/deployment.yaml), so the wait keeps a slow sync from being read as a
+// result of the test.
+func revokeAndAwaitRejection(s *suite.Suite, token string) {
+	// One deadline bounds the revocation and every probe, so a server that stops answering fails the test.
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	form := url.Values{"token": {token}, "client_id": {"CONSOLE"}}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, testServerURL+"/oauth2/revoke",
+		strings.NewReader(form.Encode()))
+	s.Require().NoError(err, "Failed to create revoke request")
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	resp, err := testutils.GetRawHTTPClient().Do(req)
+	s.Require().NoError(err, "Failed to send revoke request")
+	_ = resp.Body.Close()
+	s.Require().Equal(http.StatusOK, resp.StatusCode, "revoke request failed")
+
+	// A plain client is used so that the probe carries the revoked token rather than the shared one.
+	s.Require().Eventually(func() bool {
+		probe, err := http.NewRequestWithContext(ctx, http.MethodGet, testServerURL+"/applications", nil)
+		if err != nil {
+			return false
+		}
+		probe.Header.Set("Authorization", "Bearer "+token)
+		probeResp, err := testutils.GetRawHTTPClient().Do(probe)
+		if err != nil {
+			return false
+		}
+		_ = probeResp.Body.Close()
+		return probeResp.StatusCode == http.StatusUnauthorized
+	}, 10*time.Second, 250*time.Millisecond,
+		"a protected endpoint must reject the token once the revocation snapshot has synced")
+}
+
 // registerWithAuthorization sends a public client registration with the given Authorization header,
 // or none when it is empty.
 func (ts *DCRTestSuite) registerWithAuthorization(authorization string) (*http.Response, DCRErrorResponse) {
@@ -472,6 +566,25 @@ func (ts *DCRTestSuite) TestDCRRegistrationJWKSAndJWKSUriConflict() {
 
 	ts.Assert().Equal(http.StatusBadRequest, statusCode)
 	ts.Assert().NotEmpty(errResp.Error)
+}
+
+func (ts *DCRTestSuite) TestDCRRegistrationIDTokenEncryptionEncWithoutAlg() {
+	request := DCRRegistrationRequest{
+		OUID:                        "decl-ou-1",
+		RedirectURIs:                []string{"https://example.com/callback"},
+		GrantTypes:                  []string{"authorization_code"},
+		ResponseTypes:               []string{"code"},
+		ClientName:                  "ID Token Encryption Missing Alg",
+		TokenEndpointAuthMethod:     "client_secret_basic",
+		IDTokenEncryptedResponseEnc: "A256GCM",
+	}
+
+	_, statusCode, errResp := ts.registerClientWithError(request)
+
+	ts.Assert().Equal(http.StatusBadRequest, statusCode)
+	ts.Require().NotNil(errResp)
+	ts.Assert().Equal("invalid_client_metadata", errResp.Error)
+	ts.Assert().Equal("idToken encryptionAlg is required when encryptionEnc is set", errResp.ErrorDescription)
 }
 
 // TestDCRRegistrationJWKSUriNotHTTPS verifies rejection of non-HTTPS JWKS URI per RFC 7591.

@@ -46,6 +46,72 @@ func (_m *CriteriaRevokerMock) EXPECT() *CriteriaRevokerMock_Expecter {
 	return &CriteriaRevokerMock_Expecter{mock: &_m.Mock}
 }
 
+// IsTokenFamilyRevoked provides a mock function for the type CriteriaRevokerMock
+func (_mock *CriteriaRevokerMock) IsTokenFamilyRevoked(ctx context.Context, tokenFamilyID string) (bool, error) {
+	ret := _mock.Called(ctx, tokenFamilyID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsTokenFamilyRevoked")
+	}
+
+	var r0 bool
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (bool, error)); ok {
+		return returnFunc(ctx, tokenFamilyID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) bool); ok {
+		r0 = returnFunc(ctx, tokenFamilyID)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, tokenFamilyID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// CriteriaRevokerMock_IsTokenFamilyRevoked_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsTokenFamilyRevoked'
+type CriteriaRevokerMock_IsTokenFamilyRevoked_Call struct {
+	*mock.Call
+}
+
+// IsTokenFamilyRevoked is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tokenFamilyID string
+func (_e *CriteriaRevokerMock_Expecter) IsTokenFamilyRevoked(ctx any, tokenFamilyID any) *CriteriaRevokerMock_IsTokenFamilyRevoked_Call {
+	return &CriteriaRevokerMock_IsTokenFamilyRevoked_Call{Call: _e.mock.On("IsTokenFamilyRevoked", ctx, tokenFamilyID)}
+}
+
+func (_c *CriteriaRevokerMock_IsTokenFamilyRevoked_Call) Run(run func(ctx context.Context, tokenFamilyID string)) *CriteriaRevokerMock_IsTokenFamilyRevoked_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *CriteriaRevokerMock_IsTokenFamilyRevoked_Call) Return(b bool, err error) *CriteriaRevokerMock_IsTokenFamilyRevoked_Call {
+	_c.Call.Return(b, err)
+	return _c
+}
+
+func (_c *CriteriaRevokerMock_IsTokenFamilyRevoked_Call) RunAndReturn(run func(ctx context.Context, tokenFamilyID string) (bool, error)) *CriteriaRevokerMock_IsTokenFamilyRevoked_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // RevokeTokenFamily provides a mock function for the type CriteriaRevokerMock
 func (_mock *CriteriaRevokerMock) RevokeTokenFamily(ctx context.Context, tokenFamilyID string) error {
 	ret := _mock.Called(ctx, tokenFamilyID)

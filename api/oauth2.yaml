@@ -758,7 +758,7 @@ paths:
                 type: string
                 description: Signed (JWS) or encrypted (JWE) UserInfo response.
         "401":
-          description: Unauthorized — missing or invalid Bearer token.
+          description: Unauthorized — missing or invalid Bearer token, or a token for an external identity provider's subject (one that carries `idp`).
           headers:
             WWW-Authenticate:
               schema:
@@ -797,7 +797,7 @@ paths:
               schema:
                 type: string
         "401":
-          description: Unauthorized — missing or invalid Bearer token.
+          description: Unauthorized — missing or invalid Bearer token, or a token for an external identity provider's subject (one that carries `idp`).
         "403":
           description: Forbidden — token scope is insufficient.
         "500":
@@ -869,6 +869,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OAuthError'
+              examples:
+                missing_id_token_encryption_alg:
+                  summary: Missing ID token encryption algorithm
+                  value:
+                    error: invalid_client_metadata
+                    error_description: idToken encryptionAlg is required when encryptionEnc is set
         "401":
           description: Unauthorized — missing or insufficient access token (when DCR is not insecure).
           headers:
@@ -1601,6 +1607,12 @@ components:
             Identity class of the token subject. Present on tokens issued through the
             `client_credentials` grant, where the OAuth client itself is the subject, so a resource
             server can apply policy that differs by class. Absent for user-subject tokens.
+        idp:
+          type: string
+          description: |
+            Issuer of the external identity provider whose identifier `sub` is. Present on tokens
+            issued for an external subject, through the `jwt-bearer` grant or token exchange of an
+            external token, whose `sub` is not a user of this deployment. Absent otherwise.
         aud:
           description: Audience — may be a string or an array of strings.
           oneOf:
@@ -1829,8 +1841,10 @@ components:
           type: string
         id_token_encrypted_response_alg:
           type: string
+          description: Key-management algorithm for ID token encryption. Required when `id_token_encrypted_response_enc` is set. Supported values are `RSA-OAEP` and `RSA-OAEP-256`.
         id_token_encrypted_response_enc:
           type: string
+          description: Content-encryption algorithm for ID token encryption. Required when `id_token_encrypted_response_alg` is set. Supported values are `A128CBC-HS256` and `A256GCM`.
       description: Language-tagged fields (e.g. `client_name#fr`) are also accepted as top-level properties.
 
     DCRUpdateRequest:
@@ -1926,8 +1940,10 @@ components:
           type: string
         id_token_encrypted_response_alg:
           type: string
+          description: Key-management algorithm configured for ID token encryption.
         id_token_encrypted_response_enc:
           type: string
+          description: Content-encryption algorithm configured for ID token encryption.
       description: Language-tagged variants (e.g. `client_name#fr`) are included as top-level properties in the response.
 
     BackchannelAuthRequest:

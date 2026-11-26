@@ -1,12 +1,11 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
+import {getErrorMessage} from '@thunderid/utils';
 import {
   Alert,
   Box,
-  Button,
   Chip,
-  CircularProgress,
   Collapse,
   IconButton,
   Paper,
@@ -16,19 +15,20 @@ import {
   TableCell,
   TableHead,
   TableRow,
-  TextField,
   Tooltip,
   Typography,
 } from '@wso2/oxygen-ui';
-import {Check, ChevronRight, Pencil, Trash2, X} from '@wso2/oxygen-ui-icons-react';
+import {ChevronRight, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {Fragment, useMemo, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import {useDeleteStoredValue, useSetStoredValue} from '../api/useStoredValues';
+import {SetValueButton, ValueName, ValueText} from './ValueCells';
+import ValueEditDialog from './ValueEditDialog';
+import {pendingWriteOf, useDeleteStoredValue, usePendingValueWrites} from '../api/useStoredValues';
+import useGatewayErrorTranslator from '../hooks/useGatewayErrorTranslator';
 import useGatewayValueAccess from '../hooks/useGatewayValueAccess';
 import type {StoredValue, ValueKind, ValueReference} from '../models/deploy';
 import groupByResource, {humanize, type ResourceGroup, type TypeGroup} from '../utils/groupByResource';
-import {fromListText, toListText} from '../utils/listValue';
-import {fieldLabel, parseValueName} from '../utils/valueLabels';
+import {isHeld} from '../utils/valueRows';
 
 /** One name a gateway holds or is asked to hold, with what refers to it. */
 export interface ValueRow {
@@ -42,6 +42,8 @@ export interface ValueRow {
    * not refer to, so that it can be shown with the resource it belongs to.
    */
   current: ValueReference[];
+  /** Only resources not shown here use it, so it is listed but neither set nor removed here. */
+  hiddenUse?: boolean;
 }
 
 export interface ValuesTableProps {
@@ -69,12 +71,6 @@ const TYPE_LABELS: Record<string, string> = {
   user_type: 'User types',
 };
 
-/** Where a row's value is used: by the running version if it is, otherwise by the current configuration. */
-const placesOf = (row: ValueRow): ValueReference[] => (row.references.length > 0 ? row.references : row.current);
-
-const isHeld = (row: ValueRow, secret: boolean): boolean =>
-  secret ? Boolean(row.stored) && row.stored?.exists !== false : row.stored?.value !== undefined;
-
 const countOf = (resources: ResourceGroup[]): number =>
   resources.reduce((total: number, resource: ResourceGroup) => total + resource.rows.length, 0);
 
@@ -82,18 +78,20 @@ const countOf = (resources: ResourceGroup[]): number =>
  * A gateway's variables or secrets grouped by the type of resource that uses them and then by the
  * resource, each type a row that opens to its values, as the import and export views list resources.
  * Values the running version refers to that the gateway does not hold come first, open and marked, so
- * they are set where they are seen. A secret's value is never shown; setting one replaces it.
+ * they are set where they are seen. A value is set in the same dialog as on the list of what the gateway
+ * holds. A secret's value is never shown; setting one replaces it.
  */
 export default function ValuesTable({gatewayId, kind, rows}: ValuesTableProps): JSX.Element {
   const {t} = useTranslation('deploy');
+  const tForErrors = useGatewayErrorTranslator();
   const {canValue} = useGatewayValueAccess();
   const canSet = canValue(kind, 'update');
   const canDelete = canValue(kind, 'delete');
-  const setValue = useSetStoredValue(gatewayId, kind);
   const deleteValue = useDeleteStoredValue(gatewayId, kind);
-  const [editing, setEditing] = useState<string | null>(null);
-  const [draft, setDraft] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  // Writes started in any view of the gateway, so a value is not set while it is being removed, nor
+  // removed while it is being saved: the one that lands last would undo the other.
+  const pending = usePendingValueWrites(gatewayId);
+  const [editing, setEditing] = useState<ValueRow | null>(null);
   // What was opened or closed by hand. Untouched, the missing values are open and the rest closed.
   const [toggled, setToggled] = useState<Record<string, boolean>>({});
   const secret = kind === 'secret';
@@ -111,43 +109,6 @@ export default function ValuesTable({gatewayId, kind, rows}: ValuesTableProps): 
     resourceType
       ? t(`values.types.${resourceType}`, {defaultValue: TYPE_LABELS[resourceType] ?? humanize(resourceType)})
       : t('values.other', 'Not used by the version this gateway runs');
-  const labelOf = (field: string | undefined): string => fieldLabel(t, field);
-
-  const start = (row: ValueRow): void => {
-    setError(null);
-    setEditing(row.name);
-    setDraft(secret ? '' : toListText(row.stored?.value ?? ''));
-  };
-  const isList = (row: ValueRow): boolean => placesOf(row).some((reference: ValueReference) => reference.list === true);
-  const save = async (row: ValueRow): Promise<void> => {
-    setError(null);
-    try {
-      await setValue.mutateAsync({
-        name: row.name,
-        value: isList(row) ? fromListText(draft) : draft,
-        description: row.stored?.description,
-      });
-      setEditing(null);
-    } catch (caught: unknown) {
-      setError(
-        caught instanceof Error && caught.message
-          ? caught.message
-          : t('values.saveFailed', 'The value could not be saved.'),
-      );
-    }
-  };
-  const remove = async (row: ValueRow): Promise<void> => {
-    setError(null);
-    try {
-      await deleteValue.mutateAsync(row.name);
-    } catch (caught: unknown) {
-      setError(
-        caught instanceof Error && caught.message
-          ? caught.message
-          : t('values.deleteFailed', 'The value could not be removed.'),
-      );
-    }
-  };
 
   if (rows.length === 0) {
     return (
@@ -159,123 +120,21 @@ export default function ValuesTable({gatewayId, kind, rows}: ValuesTableProps): 
     );
   }
 
-  const nameCell = (row: ValueRow): JSX.Element => {
-    const places = placesOf(row);
-    // The running version does not use it: the current configuration does, or nothing does.
-    const notRunning = row.references.length === 0;
-    // A name the server derived reads back as a type and a field, which says more than the name does.
-    const derived = places.length === 0 ? parseValueName(row.name) : null;
-    let title = row.name;
-    if (places.length > 0) {
-      title = labelOf(places[0].field);
-    } else if (derived) {
-      title = `${t(`values.typeNames.${derived.resourceType}`, {defaultValue: humanize(derived.resourceType)})} · ${labelOf(derived.field)}`;
-    }
-    const others = [
-      ...new Set(
-        places
-          .slice(1)
-          .map((reference: ValueReference) =>
-            [reference.resourceName ?? reference.resourceId, labelOf(reference.field)].filter(Boolean).join(' · '),
-          ),
-      ),
-    ];
-    return (
-      <Box>
-        <Stack direction="row" spacing={1} alignItems="center">
-          <Typography variant="body2" sx={{fontWeight: 500}}>
-            {title}
-          </Typography>
-          {notRunning && places.length > 0 && (
-            <Chip size="small" variant="outlined" label={t('values.notRunning', 'Not used by the running version')} />
-          )}
-          {others.length > 0 && (
-            <Tooltip title={others.join(', ')}>
-              <Typography component="span" variant="body2" color="text.secondary">
-                {t('values.more', '+{{count}} more', {count: others.length})}
-              </Typography>
-            </Tooltip>
-          )}
-        </Stack>
-        {(places.length > 0 || derived) && (
-          <Typography variant="caption" color="text.secondary" sx={{fontFamily: 'monospace'}}>
-            {row.name}
-          </Typography>
-        )}
-      </Box>
-    );
-  };
-
-  const valueCell = (row: ValueRow): JSX.Element => {
-    const held = isHeld(row, secret);
-    if (editing === row.name) {
-      return (
-        <TextField
-          size="small"
-          fullWidth
-          type={secret ? 'password' : 'text'}
-          autoComplete={secret ? 'new-password' : 'off'}
-          multiline={!secret && isList(row)}
-          minRows={!secret && isList(row) ? 2 : undefined}
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          placeholder={secret ? t('values.secretPlaceholder', 'Enter a new value to replace') : undefined}
-          helperText={!secret && isList(row) ? t('values.listHint', 'One per line.') : undefined}
-          inputProps={{'aria-label': row.name}}
-          slotProps={{input: {sx: {fontFamily: 'monospace', fontSize: 13}}}}
-        />
-      );
-    }
-    if (!held) return <Chip size="small" color="error" variant="outlined" label={t('values.notSet', 'Not set')} />;
-    if (secret) return <Chip size="small" variant="outlined" label={t('values.stored', 'Stored')} />;
-    return (
-      <Typography
-        variant="body2"
-        sx={{fontFamily: 'monospace', fontSize: 13, whiteSpace: 'pre-wrap', wordBreak: 'break-all'}}
-      >
-        {toListText(row.stored?.value ?? '') || t('values.empty', '(empty)')}
-      </Typography>
-    );
-  };
-
   const actionsCell = (row: ValueRow): JSX.Element | null => {
-    if (!canSet && !canDelete) return null;
+    if (row.hiddenUse) return null;
     const held = isHeld(row, secret);
-    if (editing === row.name) {
-      return (
-        <>
-          <Tooltip title={t('values.save', 'Save')}>
-            <span>
-              <IconButton
-                size="small"
-                aria-label={t('values.save', 'Save')}
-                onClick={() => void save(row)}
-                disabled={setValue.isPending || (secret && draft === '')}
-              >
-                {setValue.isPending ? <CircularProgress size={14} /> : <Check size={16} />}
-              </IconButton>
-            </span>
-          </Tooltip>
-          <Tooltip title={t('values.cancel', 'Cancel')}>
-            <IconButton size="small" aria-label={t('values.cancel', 'Cancel')} onClick={() => setEditing(null)}>
-              <X size={16} />
-            </IconButton>
-          </Tooltip>
-        </>
-      );
-    }
     return (
       <>
         {canSet && (
-          <Button
-            size="small"
-            variant="text"
-            startIcon={<Pencil size={14} />}
-            onClick={() => start(row)}
-            aria-label={t('values.setLabel', 'Set {{name}}', {name: row.name})}
-          >
-            {held ? (secret ? t('values.replace', 'Replace') : t('values.edit', 'Edit')) : t('values.set', 'Set')}
-          </Button>
+          <SetValueButton
+            row={row}
+            kind={kind}
+            onClick={() => {
+              deleteValue.reset();
+              setEditing(row);
+            }}
+            disabled={pending.removing.has(pendingWriteOf(kind, row.name))}
+          />
         )}
         {held && canDelete && (
           <Tooltip title={t('values.delete', 'Remove')}>
@@ -283,8 +142,8 @@ export default function ValuesTable({gatewayId, kind, rows}: ValuesTableProps): 
               size="small"
               color="error"
               aria-label={t('values.deleteLabel', 'Remove {{name}}', {name: row.name})}
-              onClick={() => void remove(row)}
-              disabled={deleteValue.isPending}
+              onClick={() => deleteValue.mutate(row.name)}
+              disabled={deleteValue.isPending || pending.setting.has(pendingWriteOf(kind, row.name))}
             >
               <Trash2 size={16} />
             </IconButton>
@@ -320,9 +179,11 @@ export default function ValuesTable({gatewayId, kind, rows}: ValuesTableProps): 
                 {resource.rows.map((row: ValueRow) => (
                   <TableRow key={row.name} data-testid={`value-row-${row.name}`}>
                     <TableCell sx={{pl: resource.label ? 3 : 2, verticalAlign: 'top', width: '40%'}}>
-                      {nameCell(row)}
+                      <ValueName row={row} />
                     </TableCell>
-                    <TableCell sx={{verticalAlign: 'top', minWidth: 280}}>{valueCell(row)}</TableCell>
+                    <TableCell sx={{verticalAlign: 'top', minWidth: 280}}>
+                      <ValueText row={row} kind={kind} />
+                    </TableCell>
                     <TableCell align="right" sx={{verticalAlign: 'top', whiteSpace: 'nowrap'}}>
                       {actionsCell(row)}
                     </TableCell>
@@ -394,7 +255,16 @@ export default function ValuesTable({gatewayId, kind, rows}: ValuesTableProps): 
 
   return (
     <Stack spacing={2}>
-      {error && <Alert severity="error">{error}</Alert>}
+      {deleteValue.error && (
+        <Alert severity="error" onClose={() => deleteValue.reset()}>
+          {getErrorMessage(
+            deleteValue.error,
+            tForErrors,
+            'deploy:values.deleteFailed',
+            'The value could not be removed.',
+          )}
+        </Alert>
+      )}
       <Paper variant="outlined" sx={{overflow: 'hidden', ...(missing.length > 0 ? {borderColor: 'error.main'} : {})}}>
         <Table size="small" data-testid={`values-${kind}`}>
           <TableBody>
@@ -417,6 +287,7 @@ export default function ValuesTable({gatewayId, kind, rows}: ValuesTableProps): 
           </TableBody>
         </Table>
       </Paper>
+      <ValueEditDialog gatewayId={gatewayId} kind={kind} row={editing} onClose={() => setEditing(null)} />
     </Stack>
   );
 }

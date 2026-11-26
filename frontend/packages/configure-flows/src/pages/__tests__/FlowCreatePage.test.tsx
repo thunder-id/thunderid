@@ -43,6 +43,7 @@ vi.mock('react-router', async () => {
   return {
     ...actual,
     useNavigate: () => mockNavigate,
+    Navigate: ({to}: {to: string}) => <div data-testid="navigate" data-to={to} />,
   };
 });
 
@@ -176,6 +177,23 @@ describe('FlowCreatePage', () => {
   });
 
   describe('Initial Rendering', () => {
+    it('returns to the list outside a project when flows are created in projects only', () => {
+      render(<FlowCreatePage createInProjectsOnly />);
+
+      expect(screen.getByTestId('navigate')).toHaveAttribute('data-to', '/flows');
+      expect(screen.queryByTestId('select-flow-type')).not.toBeInTheDocument();
+    });
+
+    it('opens the wizard inside a project when flows are created in projects only', () => {
+      mockUseProjectScope.mockReturnValue({projectId: 'project-1'});
+
+      render(<FlowCreatePage createInProjectsOnly />);
+
+      expect(screen.queryByTestId('navigate')).not.toBeInTheDocument();
+      expect(screen.getByTestId('select-flow-type')).toBeInTheDocument();
+      mockUseProjectScope.mockReturnValue({});
+    });
+
     it('should render the SelectFlowType step initially', () => {
       render(<FlowCreatePage />);
 

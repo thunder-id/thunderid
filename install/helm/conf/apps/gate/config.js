@@ -10,6 +10,9 @@ window.__THUNDERID_RUNTIME_CONFIG__ = {
       light: {{ .Values.configuration.brand.favicon.light | default "assets/images/favicon.ico" | quote }},
       dark: {{ .Values.configuration.brand.favicon.dark | default "assets/images/favicon-inverted.ico" | quote }},
     },
+    {{- with .Values.configuration.brand.slogan }}
+    slogan: {{ toJson . }},
+    {{- end }}
   },
   client: {
     base: {{ .Values.configuration.gateClient.path | quote }},

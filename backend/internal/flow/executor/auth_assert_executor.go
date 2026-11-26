@@ -26,11 +26,14 @@ import (
 	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
+	"github.com/thunder-id/thunderid/internal/flow/session"
+	"github.com/thunder-id/thunderid/internal/group"
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/security"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 const (
@@ -47,13 +50,24 @@ type authAssertExecutor struct {
 	entityProvider      entityprovider.EntityProviderInterface
 	attributeCacheSvc   attributecache.AttributeCacheServiceInterface
 	roleService         role.RoleServiceInterface
+	groupService        group.GroupServiceInterface
 	entityTypeService   entitytype.EntityTypeServiceInterface
 	resourceService     providers.ResourceServerProvider
 	accessGuard         *accessGuard
+	sessionService      session.Service
+	sessionTracking     bool
 	logger              *log.Logger
 }
 
 var _ providers.Executor = (*authAssertExecutor)(nil)
+
+// sessionBinding is the session id and token family id the assertion carries.
+type sessionBinding struct {
+	sessionID     string
+	tokenFamilyID string
+	// direct is true when the ids are new, for a direct session recorded after the assertion.
+	direct bool
+}
 
 // newAuthAssertExecutor creates a new instance of AuthAssertExecutor.
 func newAuthAssertExecutor(
@@ -65,9 +79,12 @@ func newAuthAssertExecutor(
 	entityProvider entityprovider.EntityProviderInterface,
 	attributeCacheSvc attributecache.AttributeCacheServiceInterface,
 	roleService role.RoleServiceInterface,
+	groupService group.GroupServiceInterface,
 	entityTypeService entitytype.EntityTypeServiceInterface,
 	resourceService providers.ResourceServerProvider,
 	accessGuard *accessGuard,
+	sessionService session.Service,
+	sessionTracking bool,
 ) *authAssertExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, authAssertLoggerComponentName),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameAuthAssert))
@@ -88,9 +105,12 @@ func newAuthAssertExecutor(
 		entityProvider:      entityProvider,
 		attributeCacheSvc:   attributeCacheSvc,
 		roleService:         roleService,
+		groupService:        groupService,
 		entityTypeService:   entityTypeService,
 		resourceService:     resourceService,
 		accessGuard:         accessGuard,
+		sessionService:      sessionService,
+		sessionTracking:     sessionTracking,
 		logger:              logger,
 	}
 }
@@ -133,13 +153,25 @@ func (a *authAssertExecutor) Execute(ctx *providers.NodeContext) (*providers.Exe
 			return execResp, nil
 		}
 
-		token, err := a.generateAuthAssertion(ctx, execResp, entityRef, logger)
+		binding, err := a.sessionBinding(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		token, err := a.generateAuthAssertion(ctx, execResp, entityRef, binding, logger)
 		// A client failure is recorded on the response; a returned error is a server fault.
 		if execResp.Status == providers.ExecFailure {
 			return execResp, nil
 		}
 		if err != nil {
 			return nil, err
+		}
+
+		// Recorded only once the assertion is built, so a failed login leaves no session.
+		if binding.direct {
+			if err := a.recordDirectSession(ctx, entityRef, binding); err != nil {
+				return nil, err
+			}
 		}
 
 		logger.Debug(ctx.Context, "Generated JWT token for authentication assertion")
@@ -266,6 +298,7 @@ var reservedAssertionClaims = map[string]bool{
 	oauth2const.ClaimSubjectType:                 true,
 	oauth2const.ClaimCorrelationID:               true,
 	oauth2const.ClaimSessionID:                   true,
+	oauth2const.ClaimTokenFamilyID:               true,
 	oauth2const.ClaimGrantedAuthorizationDetails: true,
 }
 
@@ -294,6 +327,9 @@ func (a *authAssertExecutor) recordResolvedAttributes(
 ) error {
 	ttlSecondsStr, exists := ctx.RuntimeData[common.RuntimeKeyUserAttributesCacheTTLSeconds]
 	if !exists {
+		ttlSecondsStr, exists = ctx.SharedRuntimeData[common.RuntimeKeyUserAttributesCacheTTLSeconds]
+	}
+	if !exists {
 		for attrKey, attrVal := range resolvedAttributes {
 			if reservedAssertionClaims[attrKey] {
 				continue
@@ -303,7 +339,9 @@ func (a *authAssertExecutor) recordResolvedAttributes(
 		return nil
 	}
 
-	if len(resolvedAttributes) == 0 {
+	// Cache the session-only grants with the attributes, so a refresh can re-check scopes against them.
+	sessionGrants := a.getSessionGrants(ctx)
+	if len(resolvedAttributes) == 0 && sessionGrants == nil {
 		return nil
 	}
 
@@ -324,6 +362,7 @@ func (a *authAssertExecutor) recordResolvedAttributes(
 		TTLSeconds:      ttlSeconds,
 		SubjectID:       entityRef.EntityID,
 		SubjectCategory: entityRef.EntityCategory,
+		SessionGrants:   sessionGrants,
 	}
 	result, creationErr := a.attributeCacheSvc.CreateAttributeCache(ctx.Context, attributeCache)
 	if creationErr != nil {
@@ -336,9 +375,48 @@ func (a *authAssertExecutor) recordResolvedAttributes(
 	return nil
 }
 
+// sessionBinding returns the Session node's binding, or, with tracking on, new ids for a direct session when the
+// flow recorded none.
+func (a *authAssertExecutor) sessionBinding(ctx *providers.NodeContext) (sessionBinding, error) {
+	sessionID := ctx.RuntimeData[common.RuntimeKeySSOSessionID]
+	if a.sessionService == nil || ctx.Application.ID == "" || sessionID != "" {
+		return sessionBinding{sessionID: sessionID, tokenFamilyID: ctx.RuntimeData[common.RuntimeKeyTokenFamilyID]}, nil
+	}
+	// Tracking off: no session, and not the family a Session node offered.
+	if !a.sessionTracking {
+		return sessionBinding{}, nil
+	}
+	sessionID, err := sysutils.GenerateUUIDv7()
+	if err != nil {
+		return sessionBinding{}, fmt.Errorf("failed to generate session id: %w", err)
+	}
+	// Never the family a Session node offered: after a skipped save it may be another subject's.
+	tokenFamilyID, err := sysutils.GenerateUUIDv7()
+	if err != nil {
+		return sessionBinding{}, fmt.Errorf("failed to generate token family id: %w", err)
+	}
+	return sessionBinding{sessionID: sessionID, tokenFamilyID: tokenFamilyID, direct: true}, nil
+}
+
+// recordDirectSession records the direct session the assertion names, with the application as its participant.
+func (a *authAssertExecutor) recordDirectSession(ctx *providers.NodeContext, entityRef *providers.EntityReference,
+	binding sessionBinding) error {
+	flowIn := session.SSOInputsFrom(ctx.Context)
+	return a.sessionService.CreateDirect(ctx.Context, session.CreateDirectInput{
+		SessionID:     binding.sessionID,
+		SubjectID:     entityRef.EntityID,
+		FlowID:        flowIn.FlowID,
+		FlowVersion:   flowIn.FlowVersion,
+		AppID:         ctx.Application.ID,
+		TokenFamilyID: binding.tokenFamilyID,
+		ClientInfo:    session.ClientInfoFrom(ctx.Context),
+	})
+}
+
 // generateAuthAssertion generates the authentication assertion token for the resolved subject.
 func (a *authAssertExecutor) generateAuthAssertion(ctx *providers.NodeContext,
-	execResp *providers.ExecutorResponse, entityRef *providers.EntityReference, logger *log.Logger,
+	execResp *providers.ExecutorResponse, entityRef *providers.EntityReference, binding sessionBinding,
+	logger *log.Logger,
 ) (string, error) {
 	tokenSub := ""
 
@@ -397,15 +475,12 @@ func (a *authAssertExecutor) generateAuthAssertion(ctx *providers.NodeContext,
 
 	addCorrelationClaim(jwtClaims, ctx.ExecutionID)
 
-	// Carry the token family id (minted by the Session node) so the authorization code, and in turn
-	// the grant's access and refresh tokens, are stamped with it for family-scoped revocation.
-	if tokenFamilyID, exists := ctx.RuntimeData[common.RuntimeKeyTokenFamilyID]; exists && tokenFamilyID != "" {
-		jwtClaims[oauth2const.ClaimTokenFamilyID] = tokenFamilyID
+	// Bind the grant's tokens to the login's session.
+	if binding.tokenFamilyID != "" {
+		jwtClaims[oauth2const.ClaimTokenFamilyID] = binding.tokenFamilyID
 	}
-
-	// Carry the SSO session id published by the Session node. Absent when the flow has no Session node.
-	if sessionID, exists := ctx.RuntimeData[common.RuntimeKeySSOSessionID]; exists && sessionID != "" {
-		jwtClaims[oauth2const.ClaimSessionID] = sessionID
+	if binding.sessionID != "" {
+		jwtClaims[oauth2const.ClaimSessionID] = binding.sessionID
 	}
 
 	requiredAttributes := a.getRequiredUserAttributes(ctx)
@@ -632,6 +707,7 @@ func (a *authAssertExecutor) resolveUserAttributes(
 	standardClaims := oauth2const.GetStandardClaims()
 
 	extIdentity := core.GetExternalIdentity(ctx.RuntimeData)
+	sessionAttributes := getSessionAttributes(ctx.RuntimeData)
 	for _, attr := range requestedAttributes {
 		// Skip attributes that are handled separately
 		if attr == oauth2const.UserAttributeGroups ||
@@ -652,6 +728,12 @@ func (a *authAssertExecutor) resolveUserAttributes(
 
 		// Check runtime data
 		if val, exists := ctx.RuntimeData[attr]; exists && val != "" {
+			attributes[attr] = val
+			continue
+		}
+		// A federated sign-in that keeps attributes to the session never updates the stored profile, so
+		// its values win over the stored ones.
+		if val, exists := sessionAttributes[attr]; exists {
 			attributes[attr] = val
 			continue
 		}
@@ -740,13 +822,18 @@ func (a *authAssertExecutor) appendComputedAttributes(
 		if err != nil {
 			return err
 		}
+		mappedGroups, mappedRoleIDs, err := a.getSessionOnlyMappedGroupsAndRoles(ctx, allGroups)
+		if err != nil {
+			return err
+		}
+		allGroups = append(allGroups, mappedGroups...)
 
 		if groupsRequested {
 			a.appendGroupsToClaims(allGroups, attributes)
 		}
 
 		if rolesRequested {
-			if err := a.appendRolesToClaims(ctx, allGroups, attributes, userID); err != nil {
+			if err := a.appendRolesToClaims(ctx, allGroups, mappedRoleIDs, attributes, userID); err != nil {
 				return err
 			}
 		}
@@ -876,6 +963,49 @@ func (a *authAssertExecutor) fetchAllUserGroups(
 	return groups, nil
 }
 
+// getSessionGrants returns the authorization the federated login granted without storing it, or nil
+// when there is none.
+func (a *authAssertExecutor) getSessionGrants(ctx *providers.NodeContext) *attributecache.SessionGrants {
+	// Cache the mapped groups without their ancestors, so a refresh resolves the ancestors they have then.
+	_, sessionRoleIDs := getSessionGroupAndRoleIDs(ctx.RuntimeData)
+	grants := &attributecache.SessionGrants{
+		GroupIDs:    sysutils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeySessionDirectGroupIDs], " "),
+		RoleIDs:     sessionRoleIDs,
+		Permissions: extractMappedPermissions(ctx, a.logger),
+	}
+	if len(grants.GroupIDs) == 0 && len(grants.RoleIDs) == 0 && len(grants.Permissions) == 0 {
+		return nil
+	}
+	return grants
+}
+
+// getSessionOnlyMappedGroupsAndRoles returns the session-only mapped groups not in storedGroups, and
+// the session-only mapped role IDs.
+func (a *authAssertExecutor) getSessionOnlyMappedGroupsAndRoles(
+	ctx *providers.NodeContext, storedGroups []providers.EntityGroup,
+) ([]providers.EntityGroup, []string, error) {
+	mappedGroupIDs, mappedRoleIDs := getSessionGroupAndRoleIDs(ctx.RuntimeData)
+	mappedGroupIDs = slices.DeleteFunc(mappedGroupIDs, func(id string) bool {
+		return slices.ContainsFunc(storedGroups, func(g providers.EntityGroup) bool { return g.ID == id })
+	})
+	if len(mappedGroupIDs) == 0 {
+		return nil, mappedRoleIDs, nil
+	}
+
+	groups, svcErr := a.groupService.GetGroupsByIDs(ctx.Context, mappedGroupIDs)
+	if svcErr != nil {
+		return nil, nil, fmt.Errorf("failed to fetch mapped groups %v: %s",
+			mappedGroupIDs, svcErr.ErrorDescription.DefaultValue)
+	}
+	mappedGroups := make([]providers.EntityGroup, 0, len(groups))
+	for _, id := range mappedGroupIDs {
+		if g, ok := groups[id]; ok {
+			mappedGroups = append(mappedGroups, providers.EntityGroup{ID: g.ID, Name: g.Name, OUID: g.OUID})
+		}
+	}
+	return mappedGroups, mappedRoleIDs, nil
+}
+
 // appendGroupsToClaims appends pre-fetched user groups to the JWT claims.
 func (a *authAssertExecutor) appendGroupsToClaims(
 	groups []providers.EntityGroup, jwtClaims map[string]interface{}) {
@@ -889,9 +1019,10 @@ func (a *authAssertExecutor) appendGroupsToClaims(
 	}
 }
 
-// appendRolesToClaims appends user roles to the JWT claims using pre-fetched groups for role resolution.
-func (a *authAssertExecutor) appendRolesToClaims(
-	ctx *providers.NodeContext, groups []providers.EntityGroup, jwtClaims map[string]interface{}, userID string) error {
+// appendRolesToClaims appends user roles to the JWT claims using pre-fetched groups for role resolution,
+// along with the roles of mappedRoleIDs. Mapped roles that no longer exist are skipped.
+func (a *authAssertExecutor) appendRolesToClaims(ctx *providers.NodeContext, groups []providers.EntityGroup,
+	mappedRoleIDs []string, jwtClaims map[string]interface{}, userID string) error {
 	logger := a.logger.With(log.MaskedString(log.LoggerKeyUserID, userID))
 
 	groupIDs := make([]string, 0, len(groups))
@@ -905,6 +1036,18 @@ func (a *authAssertExecutor) appendRolesToClaims(
 			log.MaskedString(log.LoggerKeyUserID, userID),
 			log.Any("error", svcErr))
 		return errors.New("something went wrong while fetching user roles: " + svcErr.ErrorDescription.DefaultValue)
+	}
+
+	if len(mappedRoleIDs) > 0 {
+		mappedRoles, svcErr := a.roleService.GetRolesByIDs(ctx.Context, mappedRoleIDs)
+		if svcErr != nil {
+			return fmt.Errorf("failed to fetch mapped roles: %s", svcErr.ErrorDescription.DefaultValue)
+		}
+		for _, id := range mappedRoleIDs {
+			if mappedRole, ok := mappedRoles[id]; ok && !slices.Contains(roles, mappedRole.Name) {
+				roles = append(roles, mappedRole.Name)
+			}
+		}
 	}
 
 	if len(roles) > 0 {

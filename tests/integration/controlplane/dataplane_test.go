@@ -75,7 +75,7 @@ func (ts *ControlPlaneTestSuite) TestADataPlaneImportsTheExportWithItsOwnValues(
 
 	name := unique("DP Import App")
 	appID, err := testutils.CreateApplication(testutils.Application{
-		OUID:         ouID,
+		ProjectID:    defaultProjectID,
 		Name:         name,
 		ClientID:     unique("cp-only-client"),
 		ClientSecret: unique("cp-only-secret"),
@@ -181,7 +181,7 @@ func (ts *ControlPlaneTestSuite) TestADataPlaneAcceptsTheFlowSecretTheControlPla
 	defer func() { _ = testutils.DeleteOrganizationUnit(ouID) }()
 
 	appID, err := testutils.CreateApplication(testutils.Application{
-		OUID: ouID, Name: unique("DP Flow Secret App"), Type: "custom", Embedded: true,
+		OUID: ouID, ProjectID: defaultProjectID, Name: unique("DP Flow Secret App"), Type: "custom", Embedded: true,
 	})
 	ts.Require().NoError(err)
 	defer func() { _ = testutils.DeleteApplication(appID) }()

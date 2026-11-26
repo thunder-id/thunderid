@@ -373,6 +373,29 @@ func (ts *FlowAuthzTestSuite) TestAuthorizationFlow_UserWithDirectRoleAssignment
 	ts.Require().Contains(authorizedPerms, "write", "Should contain write")
 }
 
+// TestAuthorizationFlow_PermissionsSentOnContinuationAreIgnored tests that requested permissions are only taken from
+// the request that starts the flow.
+func (ts *FlowAuthzTestSuite) TestAuthorizationFlow_PermissionsSentOnContinuationAreIgnored() {
+	flowStep, err := common.InitiateAuthenticationFlow(authzTestAppID, false,
+		map[string]string{"applicationId": authzTestAppID}, "")
+	ts.Require().NoError(err, "Failed to initiate flow")
+	ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus, "Expected flow status to be INCOMPLETE")
+
+	flowStep, err = common.CompleteFlow(flowStep.ExecutionID, map[string]string{
+		"username":                   "authorized_user",
+		"password":                   "SecurePass123!",
+		"requested_permissions":      "read write",
+		"resource_server_identifier": "document-mgmt",
+	}, "action_001", flowStep.ChallengeToken)
+	ts.Require().NoError(err, "Failed to complete authentication")
+	ts.Require().Equal("COMPLETE", flowStep.FlowStatus, "Flow should be complete")
+
+	claims, err := testutils.DecodeJWT(flowStep.Assertion)
+	ts.Require().NoError(err, "Failed to decode JWT")
+	_, ok := claims.Additional["authorized_permissions"]
+	ts.False(ok, "Permissions requested on a continuation should not be authorized")
+}
+
 // TestAuthorizationFlow_UserWithNoRole tests authorization when user has no role/permissions
 func (ts *FlowAuthzTestSuite) TestAuthorizationFlow_UserWithNoRole() {
 	// Initiate authentication flow with requested permissions

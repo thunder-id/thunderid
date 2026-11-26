@@ -1048,6 +1048,27 @@ function stage_quickstart_pack() {
         echo "  allow_private_addresses: true"
     } >> "$cp_dir/deployment.yaml"
 
+    # The pack runs every plane, and whatever a user tries with it (a local mail catcher, a mock SMS
+    # gateway, an identity provider or HTTP request target on localhost), on one host, so it turns off
+    # the block on private addresses that every other deployment keeps on (server.allow_private_addresses
+    # defaults to false). Inserted under each plane's existing server section: a second top-level server
+    # key would be a duplicate.
+    local plane_deployment
+    for plane_deployment in "$auth_dp_dir/deployment.yaml" "$dp_dir/deployment.yaml" "$cp_dir/deployment.yaml"; do
+        awk '
+            { print }
+            !done && /^server:[[:space:]]*$/ { print "  allow_private_addresses: true"; done = 1 }
+        ' "$plane_deployment" > "$plane_deployment.tmp"
+        mv "$plane_deployment.tmp" "$plane_deployment"
+        # The control plane's gateway section has the same line, so the check is that it sits under
+        # server, not that it appears anywhere.
+        if ! awk 'prev ~ /^server:[[:space:]]*$/ && $0 == "  allow_private_addresses: true" { found = 1 }
+                  { prev = $0 } END { exit !found }' "$plane_deployment"; then
+            echo "Quickstart patch did not apply: expected allow_private_addresses: true under server in $plane_deployment"
+            exit 1
+        fi
+    done
+
     assert_patched "$auth_dp_dir/bootstrap/control-plane-resource-server.yaml" "identifier: https://localhost:$QUICKSTART_CP_PORT"
     assert_patched "$auth_dp_dir/deployment.yaml" "port: $QUICKSTART_AUTH_DP_PORT"
     assert_patched "$dp_dir/bootstrap/01-default-resources.yaml" "Service Desk Administrators"

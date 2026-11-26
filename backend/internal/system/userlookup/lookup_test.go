@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
+	syshttp "github.com/thunder-id/thunderid/internal/system/http"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
@@ -80,7 +81,7 @@ func newIssuer(t *testing.T, users map[string]string) *issuer {
 
 // lookupFor is a lookup against the issuer, with a clock the test moves.
 func lookupFor(i *issuer, now *time.Time) *Lookup {
-	n := New()
+	n := New(syshttp.Initialize(false))
 	n.config = func() engineconfig.UserLookupConfig {
 		return engineconfig.UserLookupConfig{
 			URL: i.server.URL + "/users/{id}", TokenURL: i.server.URL + "/token",
@@ -140,7 +141,7 @@ func TestNoLookupLeavesUsersByID(t *testing.T) {
 	_ = config.InitializeServerRuntime("", &config.Config{})
 	t.Cleanup(config.ResetServerRuntime)
 	i := newIssuer(t, map[string]string{"u-1": "alice"})
-	n := New()
+	n := New(syshttp.Initialize(false))
 	n.do = i.server.Client().Do
 
 	assert.False(t, n.Enabled())
