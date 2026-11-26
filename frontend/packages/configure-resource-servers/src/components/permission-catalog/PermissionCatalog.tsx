@@ -40,7 +40,7 @@ export interface PermissionCatalogProps {
   selected: ResourcePermissions[];
   onChange: (selected: ResourcePermissions[]) => void;
   readOnly?: boolean;
-  /** Lists only the resource servers this organization unit owns. */
+  /** Lists only the resource servers this organization unit owns or is shared. */
   ouId?: string;
 }
 
@@ -422,6 +422,9 @@ function ServerSection({server, selected, readOnly, onChange}: ServerSectionProp
           </Tooltip>
         )}
         <Typography variant="subtitle2">{server.name}</Typography>
+        {server.isOwnedByOU === false && (
+          <Chip size="small" variant="outlined" label={t('resourceServers:permissionCatalog.shared', 'Shared')} />
+        )}
         {selectedCount > 0 && <Chip size="small" label={selectedCount} />}
       </Stack>
       {cascadeError && (

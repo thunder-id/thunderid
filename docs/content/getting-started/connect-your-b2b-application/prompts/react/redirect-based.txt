@@ -29,6 +29,7 @@ I have a React application for a business-to-business (B2B) product, and I want 
 ## Implementation Steps
 1. Set up the application in {{productName}}: run `npx degit thunder-id/samples/quickstarts/react-b2b/thunderid-config thunderid-config` to copy its configuration (the application, user type, roles, and sign-up and sign-in flows). Then tell me to do these in the Control Plane console, and do not do them yourself:
    - Import the resources: Import / Export, then Import, uploading `thunderid-config.yaml` and `thunderid.env`
+   - Share the System resource server with the companies, so the admin role grants `org` in a company: clear the project selection, choose Resource servers, open System, select the Organization Access tab, choose Default and chosen organization units, keep All child organization units, and choose Save
    - Add http://localhost:5173 as an allowed CORS origin: Configurations, then CORS
    - For a local instance with a self-signed certificate, open https://localhost:8090 in the browser once and accept the certificate, or the app's calls to it fail
 2. Create the app: `npm create vite@latest react-b2b -- --template react`, then `cd react-b2b` and `npm install`

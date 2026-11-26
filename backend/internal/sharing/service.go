@@ -93,6 +93,9 @@ type SharingServiceInterface interface {
 	// IsVisible reports whether an organization unit can see a resource, as its owner or as a
 	// sharee. The owner is included, so this is not the same question as "has it been shared".
 	IsVisible(ctx context.Context, rt ResourceType, resourceID, ouID string) (bool, *tidcommon.ServiceError)
+	// IsSharedWith reports whether a sharing policy of a resource reaches an organization unit. It leaves ownership
+	// out, for a caller that has read the resource's owner already and found it is not the unit.
+	IsSharedWith(ctx context.Context, rt ResourceType, resourceID, ouID string) (bool, *tidcommon.ServiceError)
 	// ListVisibleResourceIDs returns the resources of a type an organization unit can see through
 	// a sharing policy, sorted by ID. Resources it owns are not included: ownership is the resource
 	// type's own state, and this framework stores no resource rows to read it from.
@@ -2307,7 +2310,13 @@ func (s *sharingService) IsVisible(
 	if known && owner == ouID {
 		return true, nil
 	}
+	return s.IsSharedWith(ctx, rt, resourceID, ouID)
+}
 
+// IsSharedWith reports whether a sharing policy of a resource reaches an organization unit, leaving ownership out.
+func (s *sharingService) IsSharedWith(
+	ctx context.Context, rt ResourceType, resourceID, ouID string,
+) (bool, *tidcommon.ServiceError) {
 	key := cache.CacheKey{Key: fmt.Sprintf("%s:%s:%s", rt, resourceID, ouID)}
 	if s.visibilityCache != nil {
 		if cached, ok := s.visibilityCache.Get(ctx, key); ok {

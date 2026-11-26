@@ -15,7 +15,9 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
+	"github.com/thunder-id/thunderid/tests/mocks/resourceserverprovidermock"
 )
 
 type ResourceIndicatorsTestSuite struct {
@@ -400,4 +402,132 @@ func (suite *ResourceIndicatorsTestSuite) TestResolveAudienceBinding_Authorizati
 
 	assert.Nil(suite.T(), err)
 	assert.Equal(suite.T(), &rs, resolved)
+}
+
+// Requests acting for an organization unit
+
+const (
+	testAccessingOU = "ou-customer"
+	testOURS        = "rs-ou"
+	testOURSURI     = "https://api.example.com/ou"
+)
+
+func (suite *ResourceIndicatorsTestSuite) forUnit() context.Context {
+	return syscontext.WithAccessingOUID(context.Background(), testAccessingOU)
+}
+
+func (suite *ResourceIndicatorsTestSuite) resolvesOURS() {
+	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, testOURSURI).
+		Return(&providers.ResourceServer{ID: testOURS, Identifier: testOURSURI}, nil)
+}
+
+func (suite *ResourceIndicatorsTestSuite) availableToUnit(available bool, svcErr *tidcommon.ServiceError) {
+	suite.mockResourceService.On("IsResourceServerAvailableInOU", mock.Anything, testOURS, testAccessingOU).
+		Return(available, svcErr)
+}
+
+func (suite *ResourceIndicatorsTestSuite) TestResolveTargetResourceServer_ForAUnit() {
+	suite.Run("a resource server the unit may use", func() {
+		suite.SetupTest()
+		suite.resolvesOURS()
+		suite.availableToUnit(true, nil)
+
+		rs, errResp := ResolveTargetResourceServer(suite.forUnit(), suite.mockResourceService, []string{testOURSURI})
+
+		suite.Nil(errResp)
+		suite.Equal(testOURS, rs.ID)
+	})
+	suite.Run("a resource server the unit may not use answers as an unknown one", func() {
+		suite.SetupTest()
+		suite.resolvesOURS()
+		suite.availableToUnit(false, nil)
+
+		_, errResp := ResolveTargetResourceServer(suite.forUnit(), suite.mockResourceService, []string{testOURSURI})
+
+		suite.Require().NotNil(errResp)
+		suite.Equal(constants.ErrorInvalidTarget, errResp.Error)
+		suite.Equal("The resource parameter does not match any registered resource server", errResp.ErrorDescription)
+	})
+	suite.Run("a default resource server the unit may not use", func() {
+		suite.SetupTest()
+		suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, "").
+			Return(&providers.ResourceServer{ID: testOURS, Identifier: testOURSURI}, nil)
+		suite.availableToUnit(false, nil)
+
+		_, errResp := ResolveTargetResourceServer(suite.forUnit(), suite.mockResourceService, nil)
+
+		suite.Require().NotNil(errResp)
+		suite.Equal(constants.ErrorInvalidTarget, errResp.Error)
+		suite.Equal("No resource parameter supplied and no default resource server is available",
+			errResp.ErrorDescription, "the answer fits a default that exists but the unit may not use")
+	})
+	suite.Run("the check fails", func() {
+		suite.SetupTest()
+		suite.resolvesOURS()
+		suite.availableToUnit(false, &tidcommon.InternalServerError)
+
+		_, errResp := ResolveTargetResourceServer(suite.forUnit(), suite.mockResourceService, []string{testOURSURI})
+
+		suite.Require().NotNil(errResp)
+		suite.Equal(constants.ErrorServerError, errResp.Error)
+	})
+	suite.Run("a provider that cannot tell is not bound", func() {
+		provider := resourceserverprovidermock.NewResourceServerProviderMock(suite.T())
+		provider.On("GetResourceServerByIdentifier", mock.Anything, testOURSURI).
+			Return(&providers.ResourceServer{ID: testOURS, Identifier: testOURSURI}, nil)
+
+		rs, errResp := ResolveTargetResourceServer(suite.forUnit(), provider, []string{testOURSURI})
+
+		suite.Nil(errResp)
+		suite.Equal(testOURS, rs.ID)
+	})
+	suite.Run("a request acting for no unit is not checked", func() {
+		suite.SetupTest()
+		suite.resolvesOURS()
+
+		rs, errResp := ResolveTargetResourceServer(context.Background(), suite.mockResourceService,
+			[]string{testOURSURI})
+
+		suite.Nil(errResp)
+		suite.Equal(testOURS, rs.ID)
+		suite.mockResourceService.AssertNotCalled(suite.T(), "IsResourceServerAvailableInOU",
+			mock.Anything, mock.Anything, mock.Anything)
+	})
+}
+
+func (suite *ResourceIndicatorsTestSuite) TestDownscopeToResourceServer_ForAUnit() {
+	suite.Run("a resource server the unit may not use keeps none of its scopes", func() {
+		suite.SetupTest()
+		suite.availableToUnit(false, nil)
+
+		scopes, errResp := DownscopeToResourceServer(suite.forUnit(), suite.mockResourceService, testOURS,
+			[]string{"orders:read"})
+
+		suite.Nil(errResp)
+		suite.Empty(scopes)
+		suite.mockResourceService.AssertNotCalled(suite.T(), "ValidatePermissions",
+			mock.Anything, mock.Anything, mock.Anything)
+	})
+	suite.Run("a resource server the unit may use", func() {
+		suite.SetupTest()
+		suite.availableToUnit(true, nil)
+		suite.mockResourceService.On("ValidatePermissions", mock.Anything, testOURS, []string{"orders:read"}).
+			Return([]string{}, nil)
+
+		scopes, errResp := DownscopeToResourceServer(suite.forUnit(), suite.mockResourceService, testOURS,
+			[]string{"orders:read"})
+
+		suite.Nil(errResp)
+		suite.Equal([]string{"orders:read"}, scopes)
+	})
+	suite.Run("the check fails", func() {
+		suite.SetupTest()
+		suite.availableToUnit(false, &tidcommon.InternalServerError)
+
+		_, errResp := DownscopeToResourceServer(suite.forUnit(), suite.mockResourceService, testOURS,
+			[]string{"orders:read"})
+
+		suite.Require().NotNil(errResp)
+		suite.Equal(constants.ErrorServerError, errResp.Error)
+	})
 }

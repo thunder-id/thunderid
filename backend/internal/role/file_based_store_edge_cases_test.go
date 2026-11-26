@@ -12,6 +12,7 @@ import (
 
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
+	"github.com/thunder-id/thunderid/internal/system/log"
 )
 
 // RoleFileBasedStoreEdgeCaseTestSuite contains edge case tests for the file-based role store.
@@ -26,7 +27,7 @@ func TestRoleFileBasedStoreEdgeCaseTestSuite(t *testing.T) {
 
 func (suite *RoleFileBasedStoreEdgeCaseTestSuite) SetupTest() {
 	genericStore := declarativeresource.NewGenericFileBasedStoreForTest(entity.KeyTypeRole)
-	suite.store = &fileBasedStore{GenericFileBasedStore: genericStore}
+	suite.store = &fileBasedStore{GenericFileBasedStore: genericStore, logger: log.GetLogger()}
 }
 
 func (suite *RoleFileBasedStoreEdgeCaseTestSuite) seedRole(role RoleWithPermissionsAndAssignments) {

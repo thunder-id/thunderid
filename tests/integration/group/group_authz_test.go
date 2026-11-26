@@ -314,6 +314,9 @@ func (ts *GroupAuthzTestSuite) SetupSuite() {
 	})
 	ts.Require().NoError(err, "create empty OU")
 	ts.emptyOUID = emptyOUID
+	// The empty OU and the declared OU hold roles on OU1's resource server, so it is shared with both roots.
+	ts.Require().NoError(testutils.ShareResourceServerWithOtherTreeRoots(systemRSID, ts.emptyOUID, declGroupOUID),
+		"share the scoped resource server")
 
 	emptySchemaID, err := testutils.CreateUserType(testutils.UserType{
 		Handle:      emptyOUSchemaName,

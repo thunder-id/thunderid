@@ -939,7 +939,7 @@ func (t *agentTools) addAgentDetails(ctx context.Context, details *agentMCPDetai
 	}
 
 	if slices.Contains(include, string(agentDetailPermissions)) {
-		permissions, svcErr := t.roleService.GetAllPermissions(ctx, details.ID, groupIDs)
+		permissions, svcErr := t.roleService.GetUsablePermissions(ctx, details.ID, groupIDs)
 		if svcErr != nil {
 			return errors.New("its permissions could not be read")
 		}

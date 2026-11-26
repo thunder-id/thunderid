@@ -182,7 +182,9 @@ export default function CreateRolePage(): JSX.Element {
           />
         );
       case RoleCreateFlowStep.PERMISSIONS:
-        return <ConfigurePermissions permissions={permissions} onPermissionsChange={setPermissions} />;
+        return (
+          <ConfigurePermissions permissions={permissions} onPermissionsChange={setPermissions} ouId={resolvedOuId} />
+        );
       default:
         return null;
     }

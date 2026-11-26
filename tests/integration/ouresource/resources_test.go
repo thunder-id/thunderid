@@ -341,10 +341,12 @@ func (ts *OUResourceTestSuite) TestConfigurationVersionsNeedSystem() {
 	ts.requireStatus(http.StatusForbidden, http.MethodGet, "/configuration-versions/current", nil)
 }
 
-// The administrator reads and lists the resource servers of the OU above its own, which its roles take
-// permissions from, and can't change them.
+// The administrator reads and lists a resource server of the OU above its own once it is shared with the
+// administrator's OU, and can't change it.
 func (ts *OUResourceTestSuite) TestResourceServerInParentOU() {
 	id := ts.createAsRoot("/resource-servers", resourceServerIn("ou-resource-parent-rs", ts.parentID))
+	ts.requireStatus(http.StatusForbidden, http.MethodGet, "/resource-servers/"+id, nil)
+	ts.Require().NoError(testutils.ShareResourceServerWithChildUnits(id))
 
 	ts.requireStatus(http.StatusOK, http.MethodGet, "/resource-servers/"+id, nil)
 	ts.requireStatus(http.StatusOK, http.MethodGet, "/resource-servers/"+id+"/resources", nil)

@@ -158,6 +158,9 @@ func (suite *AuthorizeServiceTestSuite) SetupTest() {
 		Return(&providers.ResourceServer{ID: "rs-default", Identifier: "https://rs-default.example.com"}, nil).Maybe()
 	suite.mockResourceService.EXPECT().ValidatePermissions(mock.Anything, "rs-default", mock.Anything).
 		Return([]string{}, nil).Maybe()
+	// A request acting for an organization unit may use every resource server unless a test says otherwise.
+	suite.mockResourceService.On("IsResourceServerAvailableInOU", mock.Anything, mock.Anything, mock.Anything).
+		Return(true, nil).Maybe()
 
 	suite.mockJTIStore = jtimock.NewJTIStoreInterfaceMock(suite.T())
 	// Default: every assertion is being redeemed for the first time. Replay tests install their own

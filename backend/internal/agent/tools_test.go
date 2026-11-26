@@ -385,7 +385,7 @@ func (s *AgentToolsTestSuite) TestGetAgent() {
 		s.roles.On("GetUserRoles", mock.Anything, toolAgentID, []string{"g1", "g2"}, "").
 			Return([]string{"Order Viewer", "Order Support"}, (*tidcommon.ServiceError)(nil)).Once()
 		permissions := security.PermissionSet{"rs-1": {"orders:update", "orders:read"}}
-		s.roles.On("GetAllPermissions", mock.Anything, toolAgentID, []string{"g1", "g2"}).
+		s.roles.On("GetUsablePermissions", mock.Anything, toolAgentID, []string{"g1", "g2"}).
 			Return(permissions, (*tidcommon.ServiceError)(nil)).Once()
 		s.resources.On("GetResourceServer", mock.Anything, "rs-1").Return(&providers.ResourceServer{
 			Identifier: "https://api.example.com/orders", Name: "Orders"}, (*tidcommon.ServiceError)(nil)).Once()

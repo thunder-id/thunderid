@@ -1427,3 +1427,33 @@ func (s *CompositeResourceStoreTestSuite) TestGetDeclaredPermissionsPropagatesSt
 		})
 	}
 }
+
+// A read by IDs merges both stores, and a declared resource server is read only.
+func (suite *CompositeResourceStoreTestSuite) TestGetResourceServersByIDs() {
+	ids := []string{"rs-db", "rs-file"}
+	suite.dbStoreMock.On("GetResourceServersByIDs", suite.ctx, ids).
+		Return([]providers.ResourceServer{{ID: "rs-db"}}, nil).Once()
+	suite.fileStoreMock.On("GetResourceServersByIDs", suite.ctx, ids).
+		Return([]providers.ResourceServer{{ID: "rs-file"}}, nil).Once()
+
+	servers, err := suite.compositeStore.GetResourceServersByIDs(suite.ctx, ids)
+
+	suite.Require().NoError(err)
+	suite.Equal([]providers.ResourceServer{{ID: "rs-db"}, {ID: "rs-file", IsReadOnly: true}}, servers)
+}
+
+func (suite *CompositeResourceStoreTestSuite) TestGetResourceServersByIDs_StoreErrors() {
+	ids := []string{"rs-1"}
+	suite.dbStoreMock.On("GetResourceServersByIDs", suite.ctx, ids).Return(nil, errors.New("db down")).Once()
+
+	servers, err := suite.compositeStore.GetResourceServersByIDs(suite.ctx, ids)
+	suite.Error(err)
+	suite.Nil(servers)
+
+	suite.dbStoreMock.On("GetResourceServersByIDs", suite.ctx, ids).Return([]providers.ResourceServer{}, nil).Once()
+	suite.fileStoreMock.On("GetResourceServersByIDs", suite.ctx, ids).Return(nil, errors.New("disk")).Once()
+
+	servers, err = suite.compositeStore.GetResourceServersByIDs(suite.ctx, ids)
+	suite.Error(err)
+	suite.Nil(servers)
+}

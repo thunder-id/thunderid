@@ -45,6 +45,10 @@ paths:
       tags:
         - Resource Servers
       summary: List resource servers
+      description: |
+        Lists the resource servers the caller may read. A caller confined to an organization unit lists the
+        resource servers that organization unit owns, followed by the ones shared with it, as a list filtered
+        by that organization unit does.
       parameters:
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/offsetQueryParam'
@@ -268,7 +272,10 @@ paths:
       tags:
         - Resource Servers
       summary: Get resource server details
-      description: Returns resource server metadata
+      description: |
+        Returns resource server metadata. A caller confined to an organization unit the resource server is
+        shared with reads it under that organization unit, with `isOwnedByOU` set to false and `isReadOnly`
+        set to true, and reads its resources and actions too. It cannot change them.
       parameters:
         - in: path
           name: id
@@ -440,6 +447,16 @@ paths:
                     description:
                       key: "error.resourceservice.shared_resource_server_cannot_move_description"
                       defaultValue: "The resource server is shared into other organization units. Delete its sharing policies before moving it to another organization unit or project"
+                resource-server-used-in-ou:
+                  summary: A move away from an organization unit whose roles use the resource server
+                  value:
+                    code: "RES-1039"
+                    message:
+                      key: "error.resourceservice.resource_server_used_in_ou"
+                      defaultValue: "Resource server is used in an organization unit"
+                    description:
+                      key: "error.resourceservice.resource_server_used_in_ou_description"
+                      defaultValue: "Roles of an organization unit this change takes the resource server from still hold its permissions. Remove those permissions from the roles first"
                 invalid-mcp-identifier:
                   summary: MCP server identifier is not an http or https URL
                   value:
@@ -2531,8 +2548,10 @@ components:
       required: false
       description: |
         Filters resource servers by organization unit with `ouId eq "<id>"`, the only supported
-        expression. Lists the resource servers the organization unit owns, within the project when
-        `projectId` is also given.
+        expression. Lists the resource servers the organization unit owns, followed by the ones shared
+        with it, each with `isOwnedByOU`. A shared resource server is listed under the organization unit
+        and is read-only there. With `projectId` also given, lists only the resource servers the
+        organization unit owns within the project.
       schema:
         type: string
       examples:
@@ -2913,6 +2932,16 @@ components:
                 description:
                   key: "error.resourceservice.sharing_policy_declared_description"
                   defaultValue: "The sharing policy is declared in a resource file and cannot be changed through the API"
+            resourceServerUsedInOU:
+              summary: A change that takes the resource server from an organization unit whose roles use it
+              value:
+                code: "RES-1039"
+                message:
+                  key: "error.resourceservice.resource_server_used_in_ou"
+                  defaultValue: "Resource server is used in an organization unit"
+                description:
+                  key: "error.resourceservice.resource_server_used_in_ou_description"
+                  defaultValue: "Roles of an organization unit this change takes the resource server from still hold its permissions. Remove those permissions from the roles first"
     ResourceServerSharingPolicyDeleteBadRequest:
       description: The policy exists but is not this endpoint's to remove.
       content:
@@ -2950,6 +2979,16 @@ components:
                 description:
                   key: "error.resourceservice.sharing_policy_declared_description"
                   defaultValue: "The sharing policy is declared in a resource file and cannot be changed through the API"
+            resourceServerUsedInOU:
+              summary: A change that takes the resource server from an organization unit whose roles use it
+              value:
+                code: "RES-1039"
+                message:
+                  key: "error.resourceservice.resource_server_used_in_ou"
+                  defaultValue: "Resource server is used in an organization unit"
+                description:
+                  key: "error.resourceservice.resource_server_used_in_ou_description"
+                  defaultValue: "Roles of an organization unit this change takes the resource server from still hold its permissions. Remove those permissions from the roles first"
     ResourceServerOverlayRulesBadRequest:
       description: The request does not say which organization unit to resolve for.
       content:
@@ -3117,6 +3156,15 @@ components:
         isReadOnly:
           type: boolean
           description: Whether the resource server is read-only (system-managed)
+        isOwnedByOU:
+          type: boolean
+          readOnly: true
+          description: |
+            Whether the organization unit the resource server is read in owns it, rather than being shared it.
+            True on a read by ID of a resource server in its owning organization unit, and false on a read of
+            one shared into the organization unit the caller is confined to. In a list filtered by organization
+            unit, or the list of a caller confined to one, true for a resource server the unit owns and false
+            for one shared with it.
 
     CreateResourceServerRequest:
       type: object

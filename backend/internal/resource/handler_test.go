@@ -1702,3 +1702,19 @@ func (suite *HandlerTestSuite) TestHandleOverlayRuleGetRequest() {
 		suite.Equal(http.StatusNotFound, w.Code)
 	})
 }
+
+// A read in an organization unit says whether the unit owns each resource server or is shared it; any other read
+// says neither.
+func (suite *HandlerTestSuite) TestToResourceServerListResponse_Ownership() {
+	inOU := toResourceServerListResponse(&ResourceServerList{ResourceServers: []providers.ResourceServer{
+		{ID: "rs-own", IsOwnedByOU: new(true)}, {ID: "rs-shared", IsReadOnly: true, IsOwnedByOU: new(false)},
+	}})
+	suite.Require().Len(inOU.ResourceServers, 2)
+	suite.Equal(new(true), inOU.ResourceServers[0].IsOwnedByOU)
+	suite.Equal(new(false), inOU.ResourceServers[1].IsOwnedByOU)
+	suite.True(inOU.ResourceServers[1].IsReadOnly)
+
+	plain := toResourceServerListResponse(&ResourceServerList{ResourceServers: []providers.ResourceServer{
+		{ID: "rs-own"}}})
+	suite.Nil(plain.ResourceServers[0].IsOwnedByOU)
+}

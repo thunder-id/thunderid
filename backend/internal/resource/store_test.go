@@ -288,6 +288,44 @@ func (suite *ResourceStoreTestSuite) TestGetResourceServer() {
 	}
 }
 
+// The resource servers with several IDs are read with one query, which takes the IDs as a JSON array.
+func (suite *ResourceStoreTestSuite) TestGetResourceServersByIDs() {
+	suite.Run("reads them in one query", func() {
+		suite.SetupTest()
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+		suite.mockDBClient.On("QueryContext", context.Background(), queryGetResourceServersByIDs,
+			`["rs1","rs2"]`, "test-deployment").Return([]map[string]interface{}{
+			{"id": "rs1", "ou_id": "ou1", "name": "One", "identifier": "one", "properties": []byte(`{}`)},
+		}, nil).Once()
+
+		servers, err := suite.store.GetResourceServersByIDs(context.Background(), []string{"rs1", "rs2"})
+
+		suite.Require().NoError(err)
+		suite.Require().Len(servers, 1)
+		suite.Equal("rs1", servers[0].ID)
+	})
+	suite.Run("no IDs reads nothing", func() {
+		suite.SetupTest()
+
+		servers, err := suite.store.GetResourceServersByIDs(context.Background(), nil)
+
+		suite.NoError(err)
+		suite.Empty(servers)
+		suite.mockDBProvider.AssertNotCalled(suite.T(), "GetConfigDBClient")
+	})
+	suite.Run("a query failure", func() {
+		suite.SetupTest()
+		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
+		suite.mockDBClient.On("QueryContext", context.Background(), queryGetResourceServersByIDs,
+			`["rs1"]`, "test-deployment").Return(nil, errors.New("db down")).Once()
+
+		servers, err := suite.store.GetResourceServersByIDs(context.Background(), []string{"rs1"})
+
+		suite.Error(err)
+		suite.Nil(servers)
+	})
+}
+
 func (suite *ResourceStoreTestSuite) TestGetResourceServerList() {
 	testCases := []struct {
 		name            string

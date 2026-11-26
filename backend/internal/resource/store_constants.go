@@ -25,6 +25,17 @@ var (
 			WHERE ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
 
+	// queryGetResourceServersByIDs retrieves the resource servers with the IDs in a JSON array.
+	queryGetResourceServersByIDs = dbmodel.DBQuery{
+		ID: "RSQ-RES_MGT-48",
+		PostgresQuery: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES
+			FROM "RESOURCE_SERVER"
+			WHERE ID IN (SELECT value::text FROM json_array_elements_text($1::json)) AND DEPLOYMENT_ID = $2`,
+		SQLiteQuery: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION, IDENTIFIER, TYPE, PROPERTIES
+			FROM "RESOURCE_SERVER"
+			WHERE ID IN (SELECT value FROM json_each($1)) AND DEPLOYMENT_ID = $2`,
+	}
+
 	// queryGetResourceServerList retrieves a list of resource servers with pagination.
 	queryGetResourceServerList = dbmodel.DBQuery{
 		ID: "RSQ-RES_MGT-03",

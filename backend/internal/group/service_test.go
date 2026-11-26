@@ -3694,6 +3694,10 @@ func (noopDepRegistry) ValidateReferenceUpdate(
 	return nil
 }
 
+func (noopDepRegistry) HasDependenciesInOU(context.Context, string, string, string) (bool, error) {
+	return false, nil
+}
+
 func (suite *GroupServiceTestSuite) TestCascadeDeleteDependencies_Group_DeletesMemberships() {
 	storeMock := newGroupStoreInterfaceMock(suite.T())
 	storeMock.On("DeleteMembershipsByMember", mock.Anything, string(MemberTypeGroup), "group-1").

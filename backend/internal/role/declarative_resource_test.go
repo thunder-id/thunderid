@@ -16,12 +16,14 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/thunder-id/thunderid/internal/group"
+	resourcepkg "github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/groupmock"
+	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 )
 
@@ -425,7 +427,7 @@ func (suite *RoleExporterTestSuite) TestValidateRoleWrapper_ValidRole() {
 	}
 
 	// Pass nil for fileStore to skip duplicate check (for unit test purposes)
-	err := validateRoleWrapper(role, nil, nil, nil)
+	err := validateRoleWrapper(role, nil, nil, nil, nil)
 
 	assert.NoError(suite.T(), err)
 }
@@ -437,7 +439,7 @@ func (suite *RoleExporterTestSuite) TestValidateRoleWrapper_MissingID() {
 		OUID: "ou1",
 	}
 
-	err := validateRoleWrapper(role, nil, nil, nil)
+	err := validateRoleWrapper(role, nil, nil, nil, nil)
 
 	assert.Error(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "role ID is required")
@@ -450,7 +452,7 @@ func (suite *RoleExporterTestSuite) TestValidateRoleWrapper_MissingName() {
 		OUID: "ou1",
 	}
 
-	err := validateRoleWrapper(role, nil, nil, nil)
+	err := validateRoleWrapper(role, nil, nil, nil, nil)
 
 	assert.Error(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "role name is required")
@@ -463,7 +465,7 @@ func (suite *RoleExporterTestSuite) TestValidateRoleWrapper_MissingOUID() {
 		Name: "Admin",
 	}
 
-	err := validateRoleWrapper(role, nil, nil, nil)
+	err := validateRoleWrapper(role, nil, nil, nil, nil)
 
 	assert.Error(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "ouId or ouHandle is required for role 'Admin'")
@@ -480,7 +482,7 @@ func (suite *RoleExporterTestSuite) TestValidateRoleWrapper_InvalidAssignmentTyp
 		},
 	}
 
-	err := validateRoleWrapper(role, nil, nil, nil)
+	err := validateRoleWrapper(role, nil, nil, nil, nil)
 
 	assert.Error(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "invalid assignment type")
@@ -497,7 +499,7 @@ func (suite *RoleExporterTestSuite) TestValidateRoleWrapper_MissingAssignmentID(
 		},
 	}
 
-	err := validateRoleWrapper(role, nil, nil, nil)
+	err := validateRoleWrapper(role, nil, nil, nil, nil)
 
 	assert.Error(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "assignment ID is required")
@@ -514,10 +516,48 @@ func (suite *RoleExporterTestSuite) TestValidateRoleWrapper_MissingResourceServe
 		},
 	}
 
-	err := validateRoleWrapper(role, nil, nil, nil)
+	err := validateRoleWrapper(role, nil, nil, nil, nil)
 
 	assert.Error(suite.T(), err)
 	assert.Contains(suite.T(), err.Error(), "resource server ID is required")
+}
+
+// A declared role may hold permissions only of resource servers its organization unit owns or is shared.
+func (suite *RoleExporterTestSuite) TestValidateRoleWrapper_ResourceServerAvailability() {
+	role := func() *RoleWithPermissionsAndAssignments {
+		return &RoleWithPermissionsAndAssignments{
+			ID: "role1", Name: "Admin", OUID: "ou-child",
+			Permissions: []ResourcePermissions{{ResourceServerID: "rs-parent", Permissions: []string{"read"}}},
+		}
+	}
+	answers := func(svcErr *tidcommon.ServiceError) *resourcemock.ResourceServiceInterfaceMock {
+		resources := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+		resources.EXPECT().ValidatePermissionsInOU(mock.Anything, "rs-parent", "ou-child", []string{"read"}).
+			Return([]string{}, svcErr)
+		return resources
+	}
+
+	suite.Run("a resource server the unit may use", func() {
+		suite.NoError(validateRoleWrapper(role(), nil, nil, nil, answers(nil)))
+	})
+	suite.Run("a resource server the unit may not use fails the file", func() {
+		err := validateRoleWrapper(role(), nil, nil, nil, answers(&resourcepkg.ErrorResourceServerNotSharedToOU))
+
+		suite.ErrorContains(err, "role 'Admin' holds permissions of resource server 'rs-parent', which "+
+			"organization unit 'ou-child' neither owns nor has shared with it")
+	})
+	suite.Run("a failed check fails the file", func() {
+		err := validateRoleWrapper(role(), nil, nil, nil, answers(&tidcommon.InternalServerError))
+
+		suite.ErrorContains(err, "failed to check the resource server 'rs-parent' of role 'Admin'")
+	})
+	suite.Run("a role naming no permission is not checked", func() {
+		noPermissions := role()
+		noPermissions.Permissions[0].Permissions = nil
+
+		suite.NoError(validateRoleWrapper(noPermissions, nil, nil, nil,
+			resourcemock.NewResourceServiceInterfaceMock(suite.T())))
+	})
 }
 
 // Test toResourcePermissions

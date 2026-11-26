@@ -306,6 +306,7 @@ func (ts *UnshareRevocationTestSuite) createScopedRole(name, resourceID, permiss
 	}, nil)
 	ts.Require().NoError(err, "create resource server")
 	ts.cleanups = append(ts.cleanups, func() { ts.NoError(testutils.DeleteResourceServer(rsID)) })
+	ts.Require().NoError(testutils.ShareResourceServerWithChildUnits(rsID), "share resource server")
 	permissionID, err := testutils.CreateResource(rsID, permission, permission, "")
 	ts.Require().NoError(err, "create resource")
 	ts.cleanups = append(ts.cleanups, func() { ts.NoError(testutils.DeleteResource(rsID, permissionID)) })

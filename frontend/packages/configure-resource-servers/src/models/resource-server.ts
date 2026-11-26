@@ -46,6 +46,12 @@ export interface ResourceServer {
   /** Whether a granted permission on this server authorizes the permissions beneath it. */
   hierarchicalPermissions?: boolean;
   isReadOnly?: boolean;
+  /**
+   * Whether the organization unit the resource server is read in owns it: true for one it owns, false for one shared
+   * with it. Set on a read by ID, in a list narrowed to an organization unit, and in the list of a caller confined to
+   * one.
+   */
+  isOwnedByOU?: boolean;
   type: ResourceServerType;
   authorizationEngine?: AuthorizationEngineConfig;
 }

@@ -107,6 +107,13 @@ func (ts *MCPTestSuite) SetupSuite() {
 		ts.ouID, "MCP Auth Test Resource Server", mcpResourceIdentifier, "user")
 	ts.Require().NoError(err, "failed to create resource server")
 	ts.resourceServerID = resourceServerID
+	// The admin group's role below lives in the default organization unit, another tree's root, so the resource
+	// server is shared there. The organization unit administrators the tests create live beneath it, so the default
+	// organization unit reshares it with them.
+	ts.Require().NoError(testutils.ShareResourceServerWithOtherTreeRoots(ts.resourceServerID, adminGroupOUID),
+		"failed to share resource server")
+	ts.Require().NoError(testutils.ReshareResourceServerWithChildUnits(ts.resourceServerID, adminGroupOUID),
+		"failed to reshare resource server")
 
 	// Grants the "system" permission on this resource server to the same group the bootstrapped
 	// admin user belongs to, so the admin token request below can obtain "system" scope bound to

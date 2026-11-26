@@ -598,6 +598,21 @@ var (
 			DefaultValue: "A personal agent acts only on behalf of its owner, so it cannot be assigned roles",
 		},
 	}
+	// errorResourceServerNotAvailableInOU is returned when a role names permissions of a resource server its
+	// organization unit may not use.
+	errorResourceServerNotAvailableInOU = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "ROL-1047",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.roleservice.resource_server_not_available_in_ou",
+			DefaultValue: "Resource server not available in the organization unit",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.roleservice.resource_server_not_available_in_ou_description",
+			DefaultValue: "A role can hold permissions only of resource servers its organization unit owns or " +
+				"has shared with it",
+		},
+	}
 )
 
 // Internal error constants for role management operations.

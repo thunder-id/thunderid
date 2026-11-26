@@ -96,6 +96,10 @@ func (r *stubDependencyRegistry) ValidateReferenceUpdate(
 	return r.validateErr
 }
 
+func (r *stubDependencyRegistry) HasDependenciesInOU(_ context.Context, _, _, _ string) (bool, error) {
+	return false, nil
+}
+
 func (s *FlowMgtServiceTestSuite) SetupTest() {
 	s.mockStore = newFlowStoreInterfaceMock(s.T())
 	s.mockInference = newFlowInferenceServiceInterfaceMock(s.T())

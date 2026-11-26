@@ -41,6 +41,25 @@ func (c *compositeResourceStore) CreateResourceServer(
 	return c.dbStore.CreateResourceServer(ctx, id, rs)
 }
 
+// GetResourceServersByIDs retrieves the resource servers with the given IDs from both stores, the declared ones read
+// only.
+func (c *compositeResourceStore) GetResourceServersByIDs(
+	ctx context.Context, ids []string,
+) ([]providers.ResourceServer, error) {
+	dbServers, err := c.dbStore.GetResourceServersByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	fileServers, err := c.fileStore.GetResourceServersByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	for i := range fileServers {
+		fileServers[i].IsReadOnly = true
+	}
+	return slices.Concat(dbServers, fileServers), nil
+}
+
 // GetResourceServer retrieves a resource server from the composite store.
 func (c *compositeResourceStore) GetResourceServer(ctx context.Context, id string) (providers.ResourceServer, error) {
 	server, err := declarativeresource.CompositeGetHelper(

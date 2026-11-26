@@ -591,6 +591,10 @@ func (s *stubUsageRegistry) ValidateReferenceUpdate(
 	return nil
 }
 
+func (s *stubUsageRegistry) HasDependenciesInOU(_ context.Context, _, _, _ string) (bool, error) {
+	return false, nil
+}
+
 // Test GetThemeUsages - Empty ID
 func (suite *ThemeServiceTestSuite) TestGetThemeUsages_EmptyID() {
 	result, err := suite.service.GetThemeUsages(testCtx(), "", 10, 0)

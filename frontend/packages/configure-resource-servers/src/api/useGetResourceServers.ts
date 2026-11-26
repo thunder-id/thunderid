@@ -15,7 +15,7 @@ export default function useGetResourceServers(params?: {
   limit?: number;
   offset?: number;
   projectId?: string;
-  /** Lists only the resource servers this organization unit owns. */
+  /** Lists the resource servers this organization unit owns, then the ones shared with it. */
   ouId?: string;
   enabled?: boolean;
 }): UseQueryResult<ResourceServerListResponse> {

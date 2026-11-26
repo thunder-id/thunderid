@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -21,73 +22,85 @@ const (
 	escRSPayroll = "01900000-0000-7000-8000-0000000000aa"
 )
 
-// stubPermissionResolver is a configurable PermissionResolver for testing. It records how often
-// each method was called so tests can assert that short-circuits avoid unnecessary lookups.
-type stubPermissionResolver struct {
+// resolverSetup says what a PermissionResolverMock answers. entities and roles answer per ID where a test needs it,
+// and delimiters left nil reports every resource server named as ":"-delimited, as the system one is.
+type resolverSetup struct {
 	entityPerms security.PermissionSet
 	entityErr   error
-	entityCalls int
+	entities    map[string]security.PermissionSet
 
 	groupPerms security.PermissionSet
 	groupErr   error
-	groupCalls int
 
 	rolePerms security.PermissionSet
 	roleErr   error
-	roleCalls int
+	roles     map[string]security.PermissionSet
 
-	// delimiters is what the resource servers being granted on report. Left nil, every resource
-	// server named is reported as ":"-delimited, which is what the system one is and what the cases
-	// below are about. Set it to override administrative delimiters or model missing metadata.
 	delimiters map[string]string
 }
 
-func (s *stubPermissionResolver) ResolveDelimiters(
-	_ context.Context, resourceServerIDs []string,
-) map[string]string {
-	if s.delimiters != nil {
-		return s.delimiters
+// newResolver returns a PermissionResolverMock answering as setup says, so tests can count the lookups it took.
+func newResolver(t *testing.T, setup resolverSetup) *PermissionResolverMock {
+	resolver := NewPermissionResolverMock(t)
+	entity := func(_ context.Context, entityID string) (security.PermissionSet, error) {
+		if setup.entityErr != nil {
+			return nil, setup.entityErr
+		}
+		if setup.entities != nil {
+			return setup.entities[entityID], nil
+		}
+		return setup.entityPerms, nil
 	}
-	defaults := make(map[string]string, len(resourceServerIDs))
-	for _, id := range resourceServerIDs {
-		defaults[id] = ":"
+	resolver.EXPECT().ResolveForEntity(mock.Anything, mock.Anything).RunAndReturn(entity).Maybe()
+	resolver.EXPECT().ResolveHeldByEntity(mock.Anything, mock.Anything).RunAndReturn(entity).Maybe()
+	resolver.EXPECT().ResolveForGroup(mock.Anything, mock.Anything).Return(setup.groupPerms, setup.groupErr).Maybe()
+	resolver.EXPECT().ResolveForRole(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, roleID string) (security.PermissionSet, error) {
+			if setup.roles != nil {
+				return setup.roles[roleID], setup.roleErr
+			}
+			return setup.rolePerms, setup.roleErr
+		}).Maybe()
+	resolver.EXPECT().ResolveDelimiters(mock.Anything, mock.Anything).RunAndReturn(
+		func(_ context.Context, resourceServerIDs []string) map[string]string {
+			if setup.delimiters != nil {
+				return setup.delimiters
+			}
+			defaults := make(map[string]string, len(resourceServerIDs))
+			for _, id := range resourceServerIDs {
+				defaults[id] = ":"
+			}
+			return defaults
+		}).Maybe()
+	return resolver
+}
+
+// entityCalls counts the entity lookups a resolver took, for what an entity may use or holds.
+func entityCalls(resolver *PermissionResolverMock) int {
+	return calls(resolver, "ResolveForEntity", "ResolveHeldByEntity")
+}
+
+// groupCalls counts the group lookups a resolver took.
+func groupCalls(resolver *PermissionResolverMock) int {
+	return calls(resolver, "ResolveForGroup")
+}
+
+// roleCalls counts the role lookups a resolver took.
+func roleCalls(resolver *PermissionResolverMock) int {
+	return calls(resolver, "ResolveForRole")
+}
+
+// calls counts the lookups a resolver took through the named methods.
+func calls(resolver *PermissionResolverMock, methods ...string) int {
+	count := 0
+	for _, call := range resolver.Calls {
+		for _, method := range methods {
+			if call.Method == method {
+				count++
+			}
+		}
 	}
-	return defaults
-}
-
-func (r *stubPermissionResolver) ResolveForEntity(
-	_ context.Context, _ string,
-) (security.PermissionSet, error) {
-	r.entityCalls++
-	return r.entityPerms, r.entityErr
-}
-
-func (r *stubPermissionResolver) ResolveForGroup(
-	_ context.Context, _ string,
-) (security.PermissionSet, error) {
-	r.groupCalls++
-	return r.groupPerms, r.groupErr
-}
-
-func (r *stubPermissionResolver) ResolveForRole(
-	_ context.Context, _ string,
-) (security.PermissionSet, error) {
-	r.roleCalls++
-	return r.rolePerms, r.roleErr
-}
-
-// perEntityResolver resolves each entity to its own permissions.
-type perEntityResolver struct {
-	stubPermissionResolver
-	entities map[string]security.PermissionSet
-}
-
-func (r *perEntityResolver) ResolveForEntity(_ context.Context, entityID string) (security.PermissionSet, error) {
-	r.entityCalls++
-	if r.entityErr != nil {
-		return nil, r.entityErr
-	}
-	return r.entities[entityID], nil
+	return count
 }
 
 // newGuardService returns a service with the given resolver injected.
@@ -115,15 +128,15 @@ func TestCanGrantMembership_ShortCircuits(t *testing.T) {
 	// Bootstrap seeds the administrator group and role under a runtime context. Denying there
 	// would stop the server from starting.
 	t.Run("RuntimeContextIsAllowedWithoutAnyLookup", func(t *testing.T) {
-		resolver := &stubPermissionResolver{}
+		resolver := newResolver(t, resolverSetup{})
 		svc := newGuardService(resolver)
 
 		svcErr := svc.CanGrantMembership(security.WithRuntimeContext(context.Background()),
 			PrincipalTypeGroup, "grp1")
 
 		assert.Nil(t, svcErr)
-		assert.Zero(t, resolver.groupCalls, "runtime callers must not trigger a lookup")
-		assert.Zero(t, resolver.entityCalls)
+		assert.Zero(t, groupCalls(resolver), "runtime callers must not trigger a lookup")
+		assert.Zero(t, entityCalls(resolver))
 	})
 
 	// A wiring regression must not silently disable the guard.
@@ -137,18 +150,18 @@ func TestCanGrantMembership_ShortCircuits(t *testing.T) {
 	})
 
 	t.Run("RootCallerIsAllowedWithoutAnyLookup", func(t *testing.T) {
-		resolver := &stubPermissionResolver{}
+		resolver := newResolver(t, resolverSetup{})
 		svc := newGuardService(resolver)
 
 		svcErr := svc.CanGrantMembership(callerWith("admin", "system"), PrincipalTypeGroup, "grp1")
 
 		assert.Nil(t, svcErr)
-		assert.Zero(t, resolver.groupCalls, "the root permission already covers everything, so no lookup is needed")
-		assert.Zero(t, resolver.entityCalls)
+		assert.Zero(t, groupCalls(resolver), "the root permission already covers everything, so no lookup is needed")
+		assert.Zero(t, entityCalls(resolver))
 	})
 
 	t.Run("EmptyContainerIDFailsClosed", func(t *testing.T) {
-		svc := newGuardService(&stubPermissionResolver{})
+		svc := newGuardService(newResolver(t, resolverSetup{}))
 
 		svcErr := svc.CanGrantMembership(callerWith("user1", "system:group"), PrincipalTypeGroup, "")
 
@@ -157,7 +170,7 @@ func TestCanGrantMembership_ShortCircuits(t *testing.T) {
 	})
 
 	t.Run("UnknownPrincipalTypeFailsClosed", func(t *testing.T) {
-		svc := newGuardService(&stubPermissionResolver{})
+		svc := newGuardService(newResolver(t, resolverSetup{}))
 
 		svcErr := svc.CanGrantMembership(callerWith("user1", "system:group"),
 			PrincipalType("application"), "app1")
@@ -175,14 +188,14 @@ func TestCanGrantMembership_Coverage(t *testing.T) {
 	// The assistant librarian holds group write and user read. The librarian group confers user
 	// write, which the assistant does not hold, so adding anyone to it is refused.
 	t.Run("AssistantCannotAddAnyoneToLibrarianGroup", func(t *testing.T) {
-		resolver := &stubPermissionResolver{
+		resolver := newResolver(t, resolverSetup{
 			groupPerms: security.PermissionSet{
 				escRSSystem: {"system:user", "system:group"},
 			},
 			entityPerms: security.PermissionSet{
 				escRSSystem: {"system:group", "system:user:view"},
 			},
-		}
+		})
 		svc := newGuardService(resolver)
 
 		svcErr := svc.CanGrantMembership(callerWith("david", "system:group"),
@@ -194,10 +207,10 @@ func TestCanGrantMembership_Coverage(t *testing.T) {
 
 	// Self-assignment is the same comparison; the guard never branches on who benefits.
 	t.Run("AssistantCannotAddSelfEither", func(t *testing.T) {
-		resolver := &stubPermissionResolver{
+		resolver := newResolver(t, resolverSetup{
 			groupPerms:  security.PermissionSet{escRSSystem: {"system:user"}},
 			entityPerms: security.PermissionSet{escRSSystem: {"system:group", "system:user:view"}},
-		}
+		})
 		svc := newGuardService(resolver)
 
 		svcErr := svc.CanGrantMembership(callerWith("david", "system:group"),
@@ -208,10 +221,10 @@ func TestCanGrantMembership_Coverage(t *testing.T) {
 	})
 
 	t.Run("GrantOfExactlyWhatTheCallerHoldsIsAllowed", func(t *testing.T) {
-		resolver := &stubPermissionResolver{
+		resolver := newResolver(t, resolverSetup{
 			groupPerms:  security.PermissionSet{escRSSystem: {"system:group"}},
 			entityPerms: security.PermissionSet{escRSSystem: {"system:group", "system:user:view"}},
-		}
+		})
 		svc := newGuardService(resolver)
 
 		svcErr := svc.CanGrantMembership(callerWith("david", "system:group"),
@@ -221,10 +234,10 @@ func TestCanGrantMembership_Coverage(t *testing.T) {
 	})
 
 	t.Run("GrantOfAChildScopeOfWhatTheCallerHoldsIsAllowed", func(t *testing.T) {
-		resolver := &stubPermissionResolver{
+		resolver := newResolver(t, resolverSetup{
 			groupPerms:  security.PermissionSet{escRSSystem: {"system:group:view"}},
 			entityPerms: security.PermissionSet{escRSSystem: {"system:group"}},
-		}
+		})
 		svc := newGuardService(resolver)
 
 		svcErr := svc.CanGrantMembership(callerWith("david", "system:group"),
@@ -235,37 +248,37 @@ func TestCanGrantMembership_Coverage(t *testing.T) {
 
 	// Most groups carry no roles. This is the hot path and must not resolve the caller at all.
 	t.Run("GroupConferringNothingIsAllowedWithoutResolvingTheCaller", func(t *testing.T) {
-		resolver := &stubPermissionResolver{groupPerms: security.PermissionSet{}}
+		resolver := newResolver(t, resolverSetup{groupPerms: security.PermissionSet{}})
 		svc := newGuardService(resolver)
 
 		svcErr := svc.CanGrantMembership(callerWith("david", "system:group"),
 			PrincipalTypeGroup, "plainGroup")
 
 		assert.Nil(t, svcErr)
-		assert.Equal(t, 1, resolver.groupCalls)
-		assert.Zero(t, resolver.entityCalls, "caller lookup is unnecessary when nothing is conferred")
+		assert.Equal(t, 1, groupCalls(resolver))
+		assert.Zero(t, entityCalls(resolver), "caller lookup is unnecessary when nothing is conferred")
 	})
 
 	t.Run("GroupWithEmptyPermissionListsCountsAsConferringNothing", func(t *testing.T) {
-		resolver := &stubPermissionResolver{
+		resolver := newResolver(t, resolverSetup{
 			groupPerms: security.PermissionSet{escRSSystem: {}, escRSPayroll: {}},
-		}
+		})
 		svc := newGuardService(resolver)
 
 		svcErr := svc.CanGrantMembership(callerWith("david", "system:group"),
 			PrincipalTypeGroup, "plainGroup")
 
 		assert.Nil(t, svcErr)
-		assert.Zero(t, resolver.entityCalls)
+		assert.Zero(t, entityCalls(resolver))
 	})
 
 	// Coverage is per resource server. Root on the system resource server says nothing about a
 	// business resource server, so a non-root caller cannot use it to grant there.
 	t.Run("PermissionsDoNotCoverAcrossResourceServers", func(t *testing.T) {
-		resolver := &stubPermissionResolver{
+		resolver := newResolver(t, resolverSetup{
 			groupPerms:  security.PermissionSet{escRSPayroll: {"payroll:read"}},
 			entityPerms: security.PermissionSet{escRSSystem: {"system:group", "system:user"}},
-		}
+		})
 		svc := newGuardService(resolver)
 
 		svcErr := svc.CanGrantMembership(callerWith("david", "system:group"),
@@ -276,7 +289,7 @@ func TestCanGrantMembership_Coverage(t *testing.T) {
 	})
 
 	t.Run("CoverageAcrossMultipleResourceServersIsAllowedWhenAllAreHeld", func(t *testing.T) {
-		resolver := &stubPermissionResolver{
+		resolver := newResolver(t, resolverSetup{
 			groupPerms: security.PermissionSet{
 				escRSSystem:  {"system:group"},
 				escRSPayroll: {"payroll:read"},
@@ -285,7 +298,7 @@ func TestCanGrantMembership_Coverage(t *testing.T) {
 				escRSSystem:  {"system:group"},
 				escRSPayroll: {"payroll"},
 			},
-		}
+		})
 		svc := newGuardService(resolver)
 
 		svcErr := svc.CanGrantMembership(callerWith("david", "system:group"),
@@ -295,10 +308,10 @@ func TestCanGrantMembership_Coverage(t *testing.T) {
 	})
 
 	t.Run("RolesUseTheSameComparison", func(t *testing.T) {
-		resolver := &stubPermissionResolver{
+		resolver := newResolver(t, resolverSetup{
 			rolePerms:   security.PermissionSet{escRSSystem: {"system"}},
 			entityPerms: security.PermissionSet{escRSSystem: {"system:group"}},
-		}
+		})
 		svc := newGuardService(resolver)
 
 		svcErr := svc.CanGrantMembership(callerWith("david", "system:group"),
@@ -306,8 +319,8 @@ func TestCanGrantMembership_Coverage(t *testing.T) {
 
 		require.NotNil(t, svcErr)
 		assert.Equal(t, ErrorGrantNotPermitted.Code, svcErr.Code)
-		assert.Equal(t, 1, resolver.roleCalls)
-		assert.Zero(t, resolver.groupCalls, "a role container must not be resolved as a group")
+		assert.Equal(t, 1, roleCalls(resolver))
+		assert.Zero(t, groupCalls(resolver), "a role container must not be resolved as a group")
 	})
 }
 
@@ -319,7 +332,7 @@ func TestCanGrantMembership_FailuresAreRefusals(t *testing.T) {
 	// A failed container lookup must never read as "confers nothing", which would permit exactly
 	// the grant this guard exists to refuse.
 	t.Run("ContainerLookupErrorIsRefused", func(t *testing.T) {
-		resolver := &stubPermissionResolver{groupErr: errors.New("database unavailable")}
+		resolver := newResolver(t, resolverSetup{groupErr: errors.New("database unavailable")})
 		svc := newGuardService(resolver)
 
 		svcErr := svc.CanGrantMembership(callerWith("david", "system:group"),
@@ -327,14 +340,14 @@ func TestCanGrantMembership_FailuresAreRefusals(t *testing.T) {
 
 		require.NotNil(t, svcErr)
 		assert.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
-		assert.Zero(t, resolver.entityCalls)
+		assert.Zero(t, entityCalls(resolver))
 	})
 
 	t.Run("CallerLookupErrorIsRefused", func(t *testing.T) {
-		resolver := &stubPermissionResolver{
+		resolver := newResolver(t, resolverSetup{
 			groupPerms: security.PermissionSet{escRSSystem: {"system:user"}},
 			entityErr:  errors.New("database unavailable"),
-		}
+		})
 		svc := newGuardService(resolver)
 
 		svcErr := svc.CanGrantMembership(callerWith("david", "system:group"),
@@ -346,10 +359,10 @@ func TestCanGrantMembership_FailuresAreRefusals(t *testing.T) {
 
 	// A caller whose subject does not resolve to a local principal holds nothing we can verify.
 	t.Run("CallerWithNoResolvablePermissionsIsRefused", func(t *testing.T) {
-		resolver := &stubPermissionResolver{
+		resolver := newResolver(t, resolverSetup{
 			groupPerms:  security.PermissionSet{escRSSystem: {"system:user"}},
 			entityPerms: security.PermissionSet{},
-		}
+		})
 		svc := newGuardService(resolver)
 
 		svcErr := svc.CanGrantMembership(callerWith("federated", "system:group"),
@@ -360,16 +373,16 @@ func TestCanGrantMembership_FailuresAreRefusals(t *testing.T) {
 	})
 
 	t.Run("UnauthenticatedCallerIsRefused", func(t *testing.T) {
-		resolver := &stubPermissionResolver{
+		resolver := newResolver(t, resolverSetup{
 			groupPerms: security.PermissionSet{escRSSystem: {"system:user"}},
-		}
+		})
 		svc := newGuardService(resolver)
 
 		svcErr := svc.CanGrantMembership(context.Background(), PrincipalTypeGroup, "grp1")
 
 		require.NotNil(t, svcErr)
 		assert.Equal(t, ErrorGrantNotPermitted.Code, svcErr.Code)
-		assert.Zero(t, resolver.entityCalls)
+		assert.Zero(t, entityCalls(resolver))
 	})
 }
 
@@ -379,7 +392,7 @@ func TestCanGrantMembership_FailuresAreRefusals(t *testing.T) {
 
 func TestCanGrantPermissions(t *testing.T) {
 	t.Run("RuntimeContextIsAllowed", func(t *testing.T) {
-		svc := newGuardService(&stubPermissionResolver{})
+		svc := newGuardService(newResolver(t, resolverSetup{}))
 
 		svcErr := svc.CanGrantPermissions(security.WithRuntimeContext(context.Background()),
 			security.PermissionSet{escRSSystem: {"system"}})
@@ -398,22 +411,22 @@ func TestCanGrantPermissions(t *testing.T) {
 	})
 
 	t.Run("RootCallerMayGrantAnything", func(t *testing.T) {
-		resolver := &stubPermissionResolver{}
+		resolver := newResolver(t, resolverSetup{})
 		svc := newGuardService(resolver)
 
 		svcErr := svc.CanGrantPermissions(callerWith("admin", "system"),
 			security.PermissionSet{escRSPayroll: {"payroll:write"}})
 
 		assert.Nil(t, svcErr)
-		assert.Zero(t, resolver.entityCalls)
+		assert.Zero(t, entityCalls(resolver))
 	})
 
 	// Defining a role that grants more than the caller holds is refused on the same basis as
 	// adding someone to a group that confers it.
 	t.Run("CallerCannotDefineARoleExceedingItsOwnPermissions", func(t *testing.T) {
-		resolver := &stubPermissionResolver{
+		resolver := newResolver(t, resolverSetup{
 			entityPerms: security.PermissionSet{escRSSystem: {"system:group"}},
-		}
+		})
 		svc := newGuardService(resolver)
 
 		svcErr := svc.CanGrantPermissions(callerWith("david", "system:group"),
@@ -424,21 +437,21 @@ func TestCanGrantPermissions(t *testing.T) {
 	})
 
 	t.Run("EmptyGrantIsAllowedWithoutResolvingTheCaller", func(t *testing.T) {
-		resolver := &stubPermissionResolver{}
+		resolver := newResolver(t, resolverSetup{})
 		svc := newGuardService(resolver)
 
 		svcErr := svc.CanGrantPermissions(callerWith("david", "system:group"), security.PermissionSet{})
 
 		assert.Nil(t, svcErr)
-		assert.Zero(t, resolver.entityCalls)
+		assert.Zero(t, entityCalls(resolver))
 	})
 
 	// Covers refuses a malformed grant, and the guard must surface that as a refusal rather than
 	// letting it through.
 	t.Run("MalformedGrantIsRefused", func(t *testing.T) {
-		resolver := &stubPermissionResolver{
+		resolver := newResolver(t, resolverSetup{
 			entityPerms: security.PermissionSet{escRSSystem: {"system"}},
-		}
+		})
 		svc := newGuardService(resolver)
 
 		svcErr := svc.CanGrantPermissions(callerWith("david", "system:group"),
@@ -455,14 +468,14 @@ func TestCanGrantPermissions(t *testing.T) {
 
 func TestSetPermissionResolver(t *testing.T) {
 	t.Run("NilResolverDoesNotClearAnInjectedOne", func(t *testing.T) {
-		resolver := &stubPermissionResolver{groupPerms: security.PermissionSet{}}
+		resolver := newResolver(t, resolverSetup{groupPerms: security.PermissionSet{}})
 		svc := newGuardService(resolver)
 
 		svc.SetPermissionResolver(nil)
 
 		svcErr := svc.CanGrantMembership(callerWith("david", "system:group"), PrincipalTypeGroup, "grp1")
 		assert.Nil(t, svcErr)
-		assert.Equal(t, 1, resolver.groupCalls, "the previously injected resolver must still be used")
+		assert.Equal(t, 1, groupCalls(resolver), "the previously injected resolver must still be used")
 	})
 }
 
@@ -494,31 +507,18 @@ func TestGrantsNothing(t *testing.T) {
 	}
 }
 
-// perRoleResolver resolves each role to its own permissions and counts the caller lookups.
-type perRoleResolver struct {
-	stubPermissionResolver
-	roles map[string]security.PermissionSet
-}
-
-func (r *perRoleResolver) ResolveForRole(_ context.Context, roleID string) (security.PermissionSet, error) {
-	r.roleCalls++
-	return r.roles[roleID], r.roleErr
-}
-
 func TestGrantableMemberships(t *testing.T) {
 	// A caller who is not root may grant only the roles whose permissions it holds, and its own permissions are
 	// resolved once for the whole list.
 	t.Run("NonRootCallerGetsOnlyTheRolesItCovers", func(t *testing.T) {
-		resolver := &perRoleResolver{
-			stubPermissionResolver: stubPermissionResolver{
-				entityPerms: security.PermissionSet{escRSSystem: {"system:user"}},
-			},
+		resolver := newResolver(t, resolverSetup{
+			entityPerms: security.PermissionSet{escRSSystem: {"system:user"}},
 			roles: map[string]security.PermissionSet{
 				"user-admin":    {escRSSystem: {"system:user"}},
 				"payroll-admin": {escRSPayroll: {"payroll:write"}},
 				"empty":         {},
 			},
-		}
+		})
 		svc := newGuardService(resolver)
 
 		ids, svcErr := svc.GrantableMemberships(callerWith("david", "system:user"), PrincipalTypeRole,
@@ -526,7 +526,7 @@ func TestGrantableMemberships(t *testing.T) {
 
 		require.Nil(t, svcErr)
 		assert.Equal(t, []string{"user-admin", "empty"}, ids)
-		assert.Equal(t, 1, resolver.entityCalls)
+		assert.Equal(t, 1, entityCalls(resolver))
 	})
 
 	t.Run("RootAndRuntimeCallersGetEveryRoleWithoutALookup", func(t *testing.T) {
@@ -534,22 +534,22 @@ func TestGrantableMemberships(t *testing.T) {
 			"root":    callerWith("root", "system"),
 			"runtime": security.WithRuntimeContext(context.Background()),
 		} {
-			resolver := &stubPermissionResolver{}
+			resolver := newResolver(t, resolverSetup{})
 			svc := newGuardService(resolver)
 
 			ids, svcErr := svc.GrantableMemberships(ctx, PrincipalTypeRole, []string{"a", "b"})
 
 			require.Nil(t, svcErr, name)
 			assert.Equal(t, []string{"a", "b"}, ids, name)
-			assert.Zero(t, resolver.entityCalls+resolver.roleCalls, name)
+			assert.Zero(t, entityCalls(resolver)+roleCalls(resolver), name)
 		}
 	})
 
 	t.Run("AnUnauthenticatedCallerGetsOnlyRolesConferringNothing", func(t *testing.T) {
-		resolver := &perRoleResolver{roles: map[string]security.PermissionSet{
+		resolver := newResolver(t, resolverSetup{roles: map[string]security.PermissionSet{
 			"user-admin": {escRSSystem: {"system:user"}},
 			"empty":      {},
-		}}
+		}})
 		svc := newGuardService(resolver)
 
 		ids, svcErr := svc.GrantableMemberships(context.Background(), PrincipalTypeRole,
@@ -557,29 +557,29 @@ func TestGrantableMemberships(t *testing.T) {
 
 		require.Nil(t, svcErr)
 		assert.Equal(t, []string{"empty"}, ids)
-		assert.Zero(t, resolver.entityCalls)
+		assert.Zero(t, entityCalls(resolver))
 	})
 
 	t.Run("AnEmptyListLooksNothingUp", func(t *testing.T) {
-		resolver := &stubPermissionResolver{}
+		resolver := newResolver(t, resolverSetup{})
 		svc := newGuardService(resolver)
 
 		ids, svcErr := svc.GrantableMemberships(callerWith("david", "system:user"), PrincipalTypeRole, nil)
 
 		require.Nil(t, svcErr)
 		assert.Empty(t, ids)
-		assert.Zero(t, resolver.entityCalls+resolver.roleCalls)
+		assert.Zero(t, entityCalls(resolver)+roleCalls(resolver))
 	})
 
 	t.Run("AFailedLookupFailsTheCheck", func(t *testing.T) {
-		for name, resolver := range map[string]*perRoleResolver{
+		for name, setup := range map[string]resolverSetup{
 			"caller": {
-				stubPermissionResolver: stubPermissionResolver{entityErr: errors.New("store down")},
-				roles:                  map[string]security.PermissionSet{"user-admin": {escRSSystem: {"system:user"}}},
+				entityErr: errors.New("store down"),
+				roles:     map[string]security.PermissionSet{"user-admin": {escRSSystem: {"system:user"}}},
 			},
-			"role": {stubPermissionResolver: stubPermissionResolver{roleErr: errors.New("store down")}},
+			"role": {roleErr: errors.New("store down")},
 		} {
-			svc := newGuardService(resolver)
+			svc := newGuardService(newResolver(t, setup))
 
 			ids, svcErr := svc.GrantableMemberships(callerWith("david", "system:user"), PrincipalTypeRole,
 				[]string{"user-admin"})
@@ -604,10 +604,10 @@ func TestGrantableMemberships(t *testing.T) {
 
 // Missing metadata must not enable parent coverage.
 func TestCanGrantPermissions_ExactWhenMatchingMetadataIsUnavailable(t *testing.T) {
-	resolver := &stubPermissionResolver{
+	resolver := newResolver(t, resolverSetup{
 		entityPerms: security.PermissionSet{escRSSystem: {"reservations"}},
 		delimiters:  map[string]string{},
-	}
+	})
 	svc := newGuardService(resolver)
 
 	svcErr := svc.CanGrantPermissions(callerWith("david", "system:group"),
@@ -619,10 +619,10 @@ func TestCanGrantPermissions_ExactWhenMatchingMetadataIsUnavailable(t *testing.T
 
 // A resolved delimiter can represent enabled hierarchy or legacy delegation.
 func TestCanGrantPermissions_CoveredByResolvedDelimiter(t *testing.T) {
-	resolver := &stubPermissionResolver{
+	resolver := newResolver(t, resolverSetup{
 		entityPerms: security.PermissionSet{escRSSystem: {"reservations"}},
 		delimiters:  map[string]string{escRSSystem: ":"},
-	}
+	})
 	svc := newGuardService(resolver)
 
 	svcErr := svc.CanGrantPermissions(callerWith("david", "system:group"),
@@ -644,11 +644,11 @@ func TestGrantableMemberships_UsesResolvedDelimiters(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			resolver := &stubPermissionResolver{
+			resolver := newResolver(t, resolverSetup{
 				entityPerms: security.PermissionSet{tc.server: {tc.held}},
 				rolePerms:   security.PermissionSet{tc.server: {tc.required}},
 				delimiters:  tc.delimiters,
-			}
+			})
 			service := newGuardService(resolver)
 			ids, svcErr := service.GrantableMemberships(callerWith("david", "system:user"), PrincipalTypeRole,
 				[]string{"role-1"})
@@ -658,7 +658,7 @@ func TestGrantableMemberships_UsesResolvedDelimiters(t *testing.T) {
 			} else {
 				assert.Empty(t, ids)
 			}
-			assert.Equal(t, 1, resolver.entityCalls)
+			assert.Equal(t, 1, entityCalls(resolver))
 		})
 	}
 }
@@ -669,63 +669,82 @@ func TestGrantableMemberships_UsesResolvedDelimiters(t *testing.T) {
 
 func TestCanControlEntity(t *testing.T) {
 	t.Run("EntityControlsSelfWithoutLookup", func(t *testing.T) {
-		resolver := &stubPermissionResolver{}
+		resolver := newResolver(t, resolverSetup{})
 		svc := newGuardService(resolver)
 
 		svcErr := svc.CanControlEntity(callerWith("user1", "system:user"), "user1")
 
 		assert.Nil(t, svcErr)
-		assert.Zero(t, resolver.entityCalls, "controlling self must not trigger lookups")
+		assert.Zero(t, entityCalls(resolver), "controlling self must not trigger lookups")
+	})
+
+	// The caller counts only what it may use, and the entity everything its roles hold, since AuthZEN evaluation
+	// counts every assignment.
+	t.Run("ComparesEverythingTheEntityHoldsWithWhatTheCallerMayUse", func(t *testing.T) {
+		resolver := NewPermissionResolverMock(t)
+		resolver.EXPECT().ResolveHeldByEntity(mock.Anything, "bob").Return(security.PermissionSet{
+			escRSSystem: {"system:user:view"}, escRSPayroll: {"payroll:write"},
+		}, nil).Once()
+		resolver.EXPECT().ResolveForEntity(mock.Anything, "david").Return(security.PermissionSet{
+			escRSSystem: {"system:user"},
+		}, nil).Once()
+		resolver.EXPECT().ResolveDelimiters(mock.Anything, mock.Anything).Return(map[string]string{}).Maybe()
+		svc := newGuardService(resolver)
+
+		svcErr := svc.CanControlEntity(callerWith("david", "system:user"), "bob")
+
+		require.NotNil(t, svcErr)
+		assert.Equal(t, ErrorGrantNotPermitted.Code, svcErr.Code)
 	})
 
 	t.Run("AssistantCannotControlAdministratorEntity", func(t *testing.T) {
-		resolver := &perEntityResolver{
+		resolver := newResolver(t, resolverSetup{
 			entities: map[string]security.PermissionSet{
 				"david": {escRSSystem: {"system:user:update"}},
 				"admin": {escRSSystem: {"system:user", "system:group"}},
 			},
-		}
+		})
 		svc := newGuardService(resolver)
 
 		svcErr := svc.CanControlEntity(callerWith("david", "system:user:update"), "admin")
 
 		require.NotNil(t, svcErr)
 		assert.Equal(t, ErrorGrantNotPermitted.Code, svcErr.Code)
-		assert.Equal(t, 2, resolver.entityCalls)
+		assert.Equal(t, 2, entityCalls(resolver))
 	})
 
 	t.Run("AdminCanControlEntityWhosePermissionsAreCovered", func(t *testing.T) {
-		resolver := &perEntityResolver{
+		resolver := newResolver(t, resolverSetup{
 			entities: map[string]security.PermissionSet{
 				"admin": {escRSSystem: {"system:user"}},
 				"bob":   {escRSSystem: {"system:user:view"}},
 			},
-		}
+		})
 		svc := newGuardService(resolver)
 
 		svcErr := svc.CanControlEntity(callerWith("admin", "system:user"), "bob")
 
 		assert.Nil(t, svcErr)
-		assert.Equal(t, 2, resolver.entityCalls)
+		assert.Equal(t, 2, entityCalls(resolver))
 	})
 
 	t.Run("AdminCanControlUnprivilegedEntityConferringNothing", func(t *testing.T) {
-		resolver := &perEntityResolver{
+		resolver := newResolver(t, resolverSetup{
 			entities: map[string]security.PermissionSet{
 				"admin":   {escRSSystem: {"system:user"}},
 				"regular": {},
 			},
-		}
+		})
 		svc := newGuardService(resolver)
 
 		svcErr := svc.CanControlEntity(callerWith("admin", "system:user"), "regular")
 
 		assert.Nil(t, svcErr)
-		assert.Equal(t, 1, resolver.entityCalls, "unprivileged entity confers nothing, avoiding caller lookup")
+		assert.Equal(t, 1, entityCalls(resolver), "unprivileged entity confers nothing, avoiding caller lookup")
 	})
 
 	t.Run("EntityLookupErrorIsRefused", func(t *testing.T) {
-		resolver := &stubPermissionResolver{entityErr: errors.New("database unavailable")}
+		resolver := newResolver(t, resolverSetup{entityErr: errors.New("database unavailable")})
 		svc := newGuardService(resolver)
 
 		svcErr := svc.CanControlEntity(callerWith("david", "system:user"), "otherUser")
@@ -735,13 +754,13 @@ func TestCanControlEntity(t *testing.T) {
 	})
 
 	t.Run("MissingEntityIDFailsClosed", func(t *testing.T) {
-		resolver := &stubPermissionResolver{}
+		resolver := newResolver(t, resolverSetup{})
 		svc := newGuardService(resolver)
 
 		svcErr := svc.CanControlEntity(callerWith("david", "system:user"), "")
 
 		require.NotNil(t, svcErr)
 		assert.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
-		assert.Zero(t, resolver.entityCalls)
+		assert.Zero(t, entityCalls(resolver))
 	})
 }

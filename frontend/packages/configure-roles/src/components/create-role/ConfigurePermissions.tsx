@@ -9,11 +9,14 @@ import {useTranslation} from 'react-i18next';
 interface ConfigurePermissionsProps {
   permissions: ResourcePermissions[];
   onPermissionsChange: (permissions: ResourcePermissions[]) => void;
+  /** The role's organization unit: only the resource servers it owns or is shared are offered. */
+  ouId?: string;
 }
 
 export default function ConfigurePermissions({
   permissions,
   onPermissionsChange,
+  ouId = undefined,
 }: ConfigurePermissionsProps): JSX.Element {
   const {t} = useTranslation();
 
@@ -27,7 +30,7 @@ export default function ConfigurePermissions({
           {t('roles:createWizard.permissions.subtitle')}
         </Typography>
       </Box>
-      <PermissionCatalog selected={permissions} onChange={onPermissionsChange} />
+      <PermissionCatalog selected={permissions} onChange={onPermissionsChange} ouId={ouId} />
       <Divider />
       <Box>
         <FormLabel sx={{display: 'block', mb: 1, fontWeight: 'medium'}}>

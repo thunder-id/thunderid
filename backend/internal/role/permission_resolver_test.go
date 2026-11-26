@@ -22,6 +22,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 )
 
+// What an entity may use is what its roles confer where they are assigned.
 func TestResolveForEntity(t *testing.T) {
 	ctx := context.Background()
 
@@ -39,7 +40,7 @@ func TestResolveForEntity(t *testing.T) {
 		roleSvc := NewRoleServiceInterfaceMock(t)
 		entitySvc.EXPECT().GetTransitiveEntityGroups(ctx, "david").
 			Return([]providers.EntityGroup{{ID: "grpA"}, {ID: "grpB"}}, nil).Once()
-		roleSvc.EXPECT().GetAllPermissions(ctx, "david", []string{"grpA", "grpB"}).
+		roleSvc.EXPECT().GetUsablePermissions(ctx, "david", []string{"grpA", "grpB"}).
 			Return(security.PermissionSet{testRSSystem: {"system:group"}}, nil).Once()
 		resolver := NewEffectivePermissionResolver(roleSvc, nil, entitySvc, nil)
 
@@ -54,7 +55,7 @@ func TestResolveForEntity(t *testing.T) {
 		roleSvc := NewRoleServiceInterfaceMock(t)
 		entitySvc.EXPECT().GetTransitiveEntityGroups(ctx, "loner").
 			Return([]providers.EntityGroup{}, nil).Once()
-		roleSvc.EXPECT().GetAllPermissions(ctx, "loner", []string{}).
+		roleSvc.EXPECT().GetUsablePermissions(ctx, "loner", []string{}).
 			Return(security.PermissionSet{}, nil).Once()
 		resolver := NewEffectivePermissionResolver(roleSvc, nil, entitySvc, nil)
 
@@ -83,7 +84,7 @@ func TestResolveForEntity(t *testing.T) {
 		roleSvc := NewRoleServiceInterfaceMock(t)
 		entitySvc.EXPECT().GetTransitiveEntityGroups(ctx, "david").
 			Return([]providers.EntityGroup{}, nil).Once()
-		roleSvc.EXPECT().GetAllPermissions(ctx, "david", []string{}).
+		roleSvc.EXPECT().GetUsablePermissions(ctx, "david", []string{}).
 			Return(nil, &tidcommon.InternalServerError).Once()
 		resolver := NewEffectivePermissionResolver(roleSvc, nil, entitySvc, nil)
 
@@ -100,7 +101,7 @@ func TestGetEntityPermissions(t *testing.T) {
 	roleSvc := NewRoleServiceInterfaceMock(t)
 	entitySvc.EXPECT().GetTransitiveEntityGroups(ctx, "david").
 		Return([]providers.EntityGroup{{ID: "grpA"}}, nil).Once()
-	roleSvc.EXPECT().GetAllPermissions(ctx, "david", []string{"grpA"}).
+	roleSvc.EXPECT().GetUsablePermissions(ctx, "david", []string{"grpA"}).
 		Return(security.PermissionSet{testRSSystem: {"system:group"}}, nil).Once()
 	var provider providers.PermissionProvider = NewEffectivePermissionResolver(roleSvc, nil, entitySvc, nil)
 
@@ -108,6 +109,46 @@ func TestGetEntityPermissions(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, map[string][]string{testRSSystem: {"system:group"}}, result)
+}
+
+// Everything an entity's roles hold counts, wherever they are assigned, for a check against what an entity holds.
+func TestResolveHeldByEntity(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("EmptyEntityIDYieldsEmptySet", func(t *testing.T) {
+		result, err := NewEffectivePermissionResolver(nil, nil, nil, nil).ResolveHeldByEntity(ctx, "")
+
+		require.NoError(t, err)
+		assert.Empty(t, result)
+	})
+
+	t.Run("EnumeratesEveryHeldPermission", func(t *testing.T) {
+		entitySvc := entitymock.NewEntityServiceInterfaceMock(t)
+		roleSvc := NewRoleServiceInterfaceMock(t)
+		entitySvc.EXPECT().GetTransitiveEntityGroups(ctx, "david").
+			Return([]providers.EntityGroup{{ID: "grpA"}}, nil).Once()
+		roleSvc.EXPECT().GetAllPermissions(ctx, "david", []string{"grpA"}).
+			Return(security.PermissionSet{testRSPayroll: {"payroll:write"}}, nil).Once()
+		resolver := NewEffectivePermissionResolver(roleSvc, nil, entitySvc, nil)
+
+		result, err := resolver.ResolveHeldByEntity(ctx, "david")
+
+		require.NoError(t, err)
+		assert.Equal(t, []string{"payroll:write"}, result[testRSPayroll])
+	})
+
+	t.Run("PermissionLookupErrorPropagates", func(t *testing.T) {
+		entitySvc := entitymock.NewEntityServiceInterfaceMock(t)
+		roleSvc := NewRoleServiceInterfaceMock(t)
+		entitySvc.EXPECT().GetTransitiveEntityGroups(ctx, "david").Return([]providers.EntityGroup{}, nil).Once()
+		roleSvc.EXPECT().GetAllPermissions(ctx, "david", []string{}).Return(nil, &ErrorRoleNotFound).Once()
+		resolver := NewEffectivePermissionResolver(roleSvc, nil, entitySvc, nil)
+
+		result, err := resolver.ResolveHeldByEntity(ctx, "david")
+
+		require.Error(t, err)
+		assert.Nil(t, result)
+	})
 }
 
 func TestResolveForGroup(t *testing.T) {

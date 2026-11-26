@@ -2427,9 +2427,7 @@ func (suite *RoleAPITestSuite) TestListRolesByOU_IncludesSharedRoles() {
 // take its name. A unit the role is not shared with can.
 func (suite *RoleAPITestSuite) TestRoleName_TakenByASharedRole() {
 	const sharedName = "Declarative Shared Role"
-	permissions := []ResourcePermissions{
-		{ResourceServerID: testResourceServer1ID, Permissions: []string{testPermission1}},
-	}
+	permissions := []ResourcePermissions{}
 
 	resp := suite.doRoleRequest(http.MethodPost, rolesBasePath, mustMarshal(suite.T(), CreateRoleRequest{
 		Name: sharedName, OUID: declSharedChildA, Permissions: permissions,
@@ -3672,6 +3670,8 @@ func (suite *RoleAPITestSuite) TestSharedRole_SharedAppsTokenCarriesOnlyItsOwner
 	suite.Require().NoError(err)
 	// Deferred first so it runs last, once the roles holding its permissions are gone.
 	defer func() { suite.NoError(testutils.DeleteResourceServerWithChildren(rsID)) }()
+	// Child A's roles hold its permissions, and the token is issued for child A, so the server is shared there.
+	suite.shareWithChildA("/resource-servers/" + rsID)
 	var roleIDs []string
 	defer func() {
 		for _, id := range roleIDs {

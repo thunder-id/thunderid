@@ -2215,6 +2215,74 @@ func (_c *resourceStoreInterfaceMock_GetResourceServerListCountByProject_Call) R
 	return _c
 }
 
+// GetResourceServersByIDs provides a mock function for the type resourceStoreInterfaceMock
+func (_mock *resourceStoreInterfaceMock) GetResourceServersByIDs(ctx context.Context, ids []string) ([]providers.ResourceServer, error) {
+	ret := _mock.Called(ctx, ids)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetResourceServersByIDs")
+	}
+
+	var r0 []providers.ResourceServer
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []string) ([]providers.ResourceServer, error)); ok {
+		return returnFunc(ctx, ids)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []string) []providers.ResourceServer); ok {
+		r0 = returnFunc(ctx, ids)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]providers.ResourceServer)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []string) error); ok {
+		r1 = returnFunc(ctx, ids)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// resourceStoreInterfaceMock_GetResourceServersByIDs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetResourceServersByIDs'
+type resourceStoreInterfaceMock_GetResourceServersByIDs_Call struct {
+	*mock.Call
+}
+
+// GetResourceServersByIDs is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ids []string
+func (_e *resourceStoreInterfaceMock_Expecter) GetResourceServersByIDs(ctx any, ids any) *resourceStoreInterfaceMock_GetResourceServersByIDs_Call {
+	return &resourceStoreInterfaceMock_GetResourceServersByIDs_Call{Call: _e.mock.On("GetResourceServersByIDs", ctx, ids)}
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServersByIDs_Call) Run(run func(ctx context.Context, ids []string)) *resourceStoreInterfaceMock_GetResourceServersByIDs_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 []string
+		if args[1] != nil {
+			arg1 = args[1].([]string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServersByIDs_Call) Return(resourceServers []providers.ResourceServer, err error) *resourceStoreInterfaceMock_GetResourceServersByIDs_Call {
+	_c.Call.Return(resourceServers, err)
+	return _c
+}
+
+func (_c *resourceStoreInterfaceMock_GetResourceServersByIDs_Call) RunAndReturn(run func(ctx context.Context, ids []string) ([]providers.ResourceServer, error)) *resourceStoreInterfaceMock_GetResourceServersByIDs_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // IsActionExist provides a mock function for the type resourceStoreInterfaceMock
 func (_mock *resourceStoreInterfaceMock) IsActionExist(ctx context.Context, id string, resServerID string, resID *string) (bool, error) {
 	ret := _mock.Called(ctx, id, resServerID, resID)

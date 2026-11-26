@@ -317,6 +317,15 @@ var (
 			`WHERE ASSIGNEE_TYPE = $1 AND ASSIGNEE_ID = $2 AND DEPLOYMENT_ID = $3`,
 	}
 
+	// queryCountOUPermissionsOfResourceServer counts the permissions of a resource server held by the roles an
+	// organization unit owns.
+	queryCountOUPermissionsOfResourceServer = dbmodel.DBQuery{
+		ID: "RLQ-ROLE_MGT-52",
+		Query: `SELECT COUNT(*) as count FROM "ROLE_PERMISSION" P ` +
+			`JOIN "ROLE" R ON R.ID = P.ROLE_ID AND R.DEPLOYMENT_ID = P.DEPLOYMENT_ID ` +
+			`WHERE P.RESOURCE_SERVER_ID = $1 AND R.OU_ID = $2 AND P.DEPLOYMENT_ID = $3`,
+	}
+
 	// queryGetRolesByPermission retrieves the roles that grant a permission on a resource server.
 	queryGetRolesByPermission = dbmodel.DBQuery{
 		ID: "RLQ-ROLE_MGT-44",
@@ -552,7 +561,7 @@ func buildAllPermissionsForAssigneesQuery(
 		}, []interface{}{}
 	}
 
-	baseQuery := `SELECT DISTINCT rp.RESOURCE_SERVER_ID, rp.PERMISSION
+	baseQuery := `SELECT DISTINCT ra.ASSIGNMENT_OU_ID, rp.RESOURCE_SERVER_ID, rp.PERMISSION
 		FROM "ROLE_PERMISSION" rp
 		INNER JOIN "ROLE_ASSIGNMENT" ra ON rp.ROLE_ID = ra.ROLE_ID AND rp.DEPLOYMENT_ID = $1 AND ra.DEPLOYMENT_ID = $1
 		WHERE rp.DEPLOYMENT_ID = $1 AND `
@@ -593,7 +602,7 @@ func buildAllPermissionsForAssigneesQuery(
 				strings.Join(groupPlaceholdersSqlite, ",")))
 	}
 
-	orderBy := " ORDER BY rp.RESOURCE_SERVER_ID, rp.PERMISSION"
+	orderBy := " ORDER BY ra.ASSIGNMENT_OU_ID, rp.RESOURCE_SERVER_ID, rp.PERMISSION"
 	postgresQuery := baseQuery + "(" + strings.Join(postgresWhere, " OR ") + ")" + orderBy
 	sqliteQuery := baseQuery + "(" + strings.Join(sqliteWhere, " OR ") + ")" + orderBy
 
@@ -698,7 +707,31 @@ func buildEntityRoleIDsQuery(
 	assignmentOUID string,
 	deploymentID string,
 ) (dbmodel.DBQuery, []interface{}) {
-	baseQuery := `SELECT DISTINCT ra.ROLE_ID
+	return buildAssigneeAssignmentsQuery("RLQ-ROLE_MGT-22", "ra.ROLE_ID", entityID, groupIDs, assignmentOUID,
+		deploymentID)
+}
+
+// buildEntityRoleAssignmentOUIDsQuery constructs a query for the roles assigned to an entity directly and through
+// group membership, with the organization units each is assigned in.
+func buildEntityRoleAssignmentOUIDsQuery(
+	entityID string,
+	groupIDs []string,
+	deploymentID string,
+) (dbmodel.DBQuery, []interface{}) {
+	return buildAssigneeAssignmentsQuery("RLQ-ROLE_MGT-51", "ra.ROLE_ID, ra.ASSIGNMENT_OU_ID", entityID, groupIDs, "",
+		deploymentID)
+}
+
+// buildAssigneeAssignmentsQuery constructs a query for the distinct values of columns of the role assignments
+// made to an entity directly and/or through group membership, in assignmentOUID when one is given.
+func buildAssigneeAssignmentsQuery(
+	queryID, column string,
+	entityID string,
+	groupIDs []string,
+	assignmentOUID string,
+	deploymentID string,
+) (dbmodel.DBQuery, []interface{}) {
+	baseQuery := `SELECT DISTINCT ` + column + `
 		FROM "ROLE_ASSIGNMENT" ra
 		WHERE ra.DEPLOYMENT_ID = $1 AND `
 
@@ -755,7 +788,7 @@ func buildEntityRoleIDsQuery(
 		"(" + strings.Join(sqliteWhere, " OR ") + ")"
 
 	query := dbmodel.DBQuery{
-		ID:            "RLQ-ROLE_MGT-22",
+		ID:            queryID,
 		Query:         postgresQuery,
 		PostgresQuery: postgresQuery,
 		SQLiteQuery:   sqliteQuery,
@@ -838,14 +871,35 @@ func resourcePermissionsFromMap(byResourceServer map[string][]string) []Resource
 	return result
 }
 
-// mergeResourcePermissions unions permission sets from several sources.
-func mergeResourcePermissions(sources ...[]ResourcePermissions) []ResourcePermissions {
-	byResourceServer := make(map[string][]string)
+// addPermission records a permission of a resource server under the organization unit the role holding it is
+// assigned in.
+func addPermission(byOU map[string]map[string][]string, ouID, resourceServerID, permission string) {
+	if byOU[ouID] == nil {
+		byOU[ouID] = make(map[string][]string)
+	}
+	byOU[ouID][resourceServerID] = append(byOU[ouID][resourceServerID], permission)
+}
+
+// permissionsByOUFromMap groups each organization unit's permissions by resource server.
+func permissionsByOUFromMap(byOU map[string]map[string][]string) map[string][]ResourcePermissions {
+	result := make(map[string][]ResourcePermissions, len(byOU))
+	for ouID, byResourceServer := range byOU {
+		result[ouID] = resourcePermissionsFromMap(byResourceServer)
+	}
+	return result
+}
+
+// mergePermissionsByOU unions permissions keyed by assignment organization unit from several sources.
+func mergePermissionsByOU(sources ...map[string][]ResourcePermissions) map[string][]ResourcePermissions {
+	byOU := make(map[string]map[string][]string)
 	for _, source := range sources {
-		for _, rp := range source {
-			byResourceServer[rp.ResourceServerID] = append(
-				byResourceServer[rp.ResourceServerID], rp.Permissions...)
+		for ouID, permissions := range source {
+			for _, rp := range permissions {
+				for _, permission := range rp.Permissions {
+					addPermission(byOU, ouID, rp.ResourceServerID, permission)
+				}
+			}
 		}
 	}
-	return resourcePermissionsFromMap(byResourceServer)
+	return permissionsByOUFromMap(byOU)
 }

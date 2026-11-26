@@ -181,6 +181,12 @@ type UpdateValidator interface {
 	ValidateReferenceUpdate(ctx context.Context, resourceType, id string) *tidcommon.ServiceError
 }
 
+// OUDependencyReporter is an optional interface a Provider may implement to report whether resources an organization
+// unit owns depend on a target resource, such as the roles of a unit holding permissions of a resource server.
+type OUDependencyReporter interface {
+	HasDependenciesInOU(ctx context.Context, resourceType, id, ouID string) (bool, error)
+}
+
 // Registry fans out dependency lookups to all registered providers.
 type Registry interface {
 	RegisterProvider(p Provider)
@@ -188,6 +194,7 @@ type Registry interface {
 	CascadeDelete(ctx context.Context, resourceType, id string) (int, error)
 	SuspensionDependents(ctx context.Context, resourceType, id string) ([]string, error)
 	ValidateReferenceUpdate(ctx context.Context, resourceType, id string) *tidcommon.ServiceError
+	HasDependenciesInOU(ctx context.Context, resourceType, id, ouID string) (bool, error)
 }
 
 // registry is the default implementation of Registry.
@@ -316,4 +323,27 @@ func (r *registry) ValidateReferenceUpdate(ctx context.Context, resourceType, id
 	}
 
 	return nil
+}
+
+// HasDependenciesInOU asks every provider that implements OUDependencyReporter whether resources ouID owns depend on
+// (resourceType, id). It answers true on the first provider that reports a dependency, and stops and returns the error
+// on the first failure.
+func (r *registry) HasDependenciesInOU(ctx context.Context, resourceType, id, ouID string) (bool, error) {
+	for _, p := range r.providers {
+		reporter, ok := p.(OUDependencyReporter)
+		if !ok {
+			continue
+		}
+		used, err := reporter.HasDependenciesInOU(ctx, resourceType, id, ouID)
+		if err != nil {
+			r.logger.Error(ctx, "Failed to check the dependencies of a resource in an organization unit",
+				log.String("resourceType", resourceType), log.String("id", id), log.String("ouID", ouID),
+				log.Error(err))
+			return false, err
+		}
+		if used {
+			return true, nil
+		}
+	}
+	return false, nil
 }

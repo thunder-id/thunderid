@@ -274,6 +274,23 @@ func (s *ContextTestSuite) TestAccessingOUIDRoundTrips() {
 	s.Equal("customer-a", GetAccessingOUID(ctx))
 }
 
+// A request acting for an organization unit carries a memo for the rest of the request, and one that names none
+// carries no memo.
+func (s *ContextTestSuite) TestAccessingOUMemo() {
+	ctx := WithAccessingOUID(context.Background(), "customer-a")
+	memo := GetAccessingOUMemo(ctx)
+	s.Require().NotNil(memo)
+	memo.Store("key", true)
+
+	derived := context.WithValue(ctx, contextKey("other"), "value")
+	value, ok := GetAccessingOUMemo(derived).Load("key")
+	s.True(ok, "a context derived from the request's shares its memo")
+	s.Equal(true, value)
+
+	s.Nil(GetAccessingOUMemo(context.Background()))
+	s.Nil(GetAccessingOUMemo(nil)) //nolint:staticcheck // Testing nil context handling
+}
+
 // A request that names no organization unit reads back empty rather than failing, because the bare
 // token endpoint shares one handler with the prefixed one and passes through untouched.
 func (s *ContextTestSuite) TestGetAccessingOUIDWithoutOne() {

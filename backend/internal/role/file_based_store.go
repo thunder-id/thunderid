@@ -20,12 +20,14 @@ import (
 
 type fileBasedStore struct {
 	*declarativeresource.GenericFileBasedStore
+	logger *log.Logger
 }
 
 // newFileBasedStore creates a new file-based store for roles.
 func newFileBasedStore() (roleStoreInterface, providers.Transactioner) {
 	return &fileBasedStore{
 		GenericFileBasedStore: declarativeresource.NewGenericFileBasedStore(entity.KeyTypeRole),
+		logger:                log.GetLogger().With(log.String(log.LoggerKeyComponentName, "RoleFileBasedStore")),
 	}, transaction.NewNoOpTransactioner()
 }
 
@@ -314,6 +316,32 @@ func (f *fileBasedStore) GetRolesByIDs(ctx context.Context, ids []string) ([]Rol
 		})
 	}
 	return roles, nil
+}
+
+// IsResourceServerUsedInOU reports whether a declared role the organization unit owns holds a permission of the
+// resource server.
+func (f *fileBasedStore) IsResourceServerUsedInOU(ctx context.Context, resourceServerID, ouID string) (bool, error) {
+	list, err := f.GenericFileBasedStore.List()
+	if err != nil {
+		return false, err
+	}
+	for _, item := range list {
+		roleData, err := roleFromDeclarativeData(item.ID.ID, item.Data)
+		if err != nil {
+			f.logger.Warn(ctx, "Skipping malformed role in IsResourceServerUsedInOU",
+				log.String("roleID", item.ID.ID), log.Error(err))
+			continue
+		}
+		if roleData.OUID != ouID {
+			continue
+		}
+		for _, p := range roleData.Permissions {
+			if p.ResourceServerID == resourceServerID && len(p.Permissions) > 0 {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
 // IsRoleExist checks if a role exists in the file-based store.
@@ -659,17 +687,70 @@ func (f *fileBasedStore) CheckRoleNameExistsExcludingID(
 }
 
 // GetAllPermissionsForAssignees returns every permission granted to the entity and/or groups by
-// declarative roles assigned to them, grouped by resource server.
+// declarative roles assigned to them, keyed by assignment organization unit and grouped by resource server.
 func (f *fileBasedStore) GetAllPermissionsForAssignees(
 	ctx context.Context, entityID string, groupIDs []string,
-) ([]ResourcePermissions, error) {
+) (map[string][]ResourcePermissions, error) {
 	if entityID == "" && len(groupIDs) == 0 {
-		return []ResourcePermissions{}, nil
+		return map[string][]ResourcePermissions{}, nil
 	}
 
-	list, err := f.GenericFileBasedStore.List()
+	roles, groupSet, err := f.listForAssignees(ctx, groupIDs)
 	if err != nil {
 		return nil, err
+	}
+
+	byOU := make(map[string]map[string][]string)
+	for _, roleData := range roles {
+		for _, assignment := range declaredAssignments(roleData, "", "") {
+			if !matchesAssignee([]RoleAssignment{assignment}, entityID, groupSet) {
+				continue
+			}
+			for _, resourcePerms := range roleData.Permissions {
+				for _, permission := range resourcePerms.Permissions {
+					addPermission(byOU, assignment.OUID, resourcePerms.ResourceServerID, permission)
+				}
+			}
+		}
+	}
+
+	return permissionsByOUFromMap(byOU), nil
+}
+
+// GetEntityRoleAssignmentOUIDs returns, for each declarative role assigned to the entity and/or groups, the
+// organization units it is assigned in.
+func (f *fileBasedStore) GetEntityRoleAssignmentOUIDs(
+	ctx context.Context, entityID string, groupIDs []string,
+) (map[string][]string, error) {
+	if entityID == "" && len(groupIDs) == 0 {
+		return map[string][]string{}, nil
+	}
+	roles, groupSet, err := f.listForAssignees(ctx, groupIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	ouIDsByRole := make(map[string][]string)
+	for _, roleData := range roles {
+		for _, assignment := range declaredAssignments(roleData, "", "") {
+			if matchesAssignee([]RoleAssignment{assignment}, entityID, groupSet) &&
+				!slices.Contains(ouIDsByRole[roleData.ID], assignment.OUID) {
+				ouIDsByRole[roleData.ID] = append(ouIDsByRole[roleData.ID], assignment.OUID)
+			}
+		}
+	}
+	return ouIDsByRole, nil
+}
+
+// listForAssignees reads every declarative role for an enumeration that feeds an authorization decision, with the
+// groups as a set. A malformed role fails the read rather than being skipped:
+// GetAuthorizedPermissionsByResourceServer keeps skipping, since it filters against an explicit requested set.
+func (f *fileBasedStore) listForAssignees(
+	ctx context.Context, groupIDs []string,
+) ([]RoleWithPermissionsAndAssignments, map[string]bool, error) {
+	list, err := f.GenericFileBasedStore.List()
+	if err != nil {
+		return nil, nil, err
 	}
 
 	groupSet := make(map[string]bool, len(groupIDs))
@@ -677,29 +758,19 @@ func (f *fileBasedStore) GetAllPermissionsForAssignees(
 		groupSet[groupID] = true
 	}
 
-	byResourceServer := make(map[string][]string)
+	roles := make([]RoleWithPermissionsAndAssignments, 0, len(list))
 	for _, item := range list {
 		roleData, err := roleFromDeclarativeData(item.ID.ID, item.Data)
 		if err != nil {
-			// Return the error rather than skipping: this enumeration feeds an authorization
-			// decision. GetAuthorizedPermissionsByResourceServer keeps skipping, since it filters
-			// against an explicit requested set.
-			log.GetLogger().Error(ctx, "Malformed declarative role while enumerating permissions",
+			f.logger.Error(ctx, "Malformed declarative role while enumerating permissions",
 				log.String("roleID", item.ID.ID),
 				log.Error(err))
-			return nil, fmt.Errorf("declarative role %q could not be parsed while enumerating "+
+			return nil, nil, fmt.Errorf("declarative role %q could not be parsed while enumerating "+
 				"permissions: %w", item.ID.ID, err)
 		}
-		if !matchesAssignee(roleData.Assignments, entityID, groupSet) {
-			continue
-		}
-		for _, resourcePerms := range roleData.Permissions {
-			byResourceServer[resourcePerms.ResourceServerID] = append(
-				byResourceServer[resourcePerms.ResourceServerID], resourcePerms.Permissions...)
-		}
+		roles = append(roles, roleData)
 	}
-
-	return resourcePermissionsFromMap(byResourceServer), nil
+	return roles, groupSet, nil
 }
 
 // GetAuthorizedPermissionsByResourceServer returns permissions from roles assigned to the entity or groups in

@@ -18,6 +18,7 @@ import (
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
@@ -25,6 +26,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/tests/mocks/managedresourcemock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/resourcedependencymock"
 	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
@@ -76,7 +78,7 @@ func (s *SharingTestSuite) newService(authz *sysauthzmock.SystemAuthorizationSer
 		s.sharing)
 	s.Require().NoError(err)
 	service.SetDependencyRegistry(resourcedependency.Initialize(service))
-	return service.(*resourceService)
+	return service
 }
 
 func (s *SharingTestSuite) denyAll() {
@@ -322,7 +324,7 @@ func (s *SharingTestSuite) auditedSharingService() (*resourceService, func() []p
 	bus, published := newRecordingBus(s.T())
 	service, err := newResourceService(s.ou, s.store, &fakeTransactioner{}, nil, nil, nil, bus, authz, s.sharing)
 	s.Require().NoError(err)
-	return service.(*resourceService), published
+	return service, published
 }
 
 // requireOnlySharingEvent checks that exactly one event was published, named name, for an attempt on the policy. A
@@ -831,6 +833,204 @@ func (s *SharingTestSuite) TestResolveSharingOverlay() {
 		_, svcErr := s.svc.ResolveSharingOverlay(context.Background(), testSharingServerID, "ou-missing")
 
 		s.Equal(ErrorResourceServerNotSharedToOU.Code, svcErr.Code)
+	})
+}
+
+func (s *SharingTestSuite) TestIsResourceServerAvailableInOU() {
+	s.Run("the owner", func() {
+		s.serverExists()
+
+		available, svcErr := s.svc.IsResourceServerAvailableInOU(context.Background(), testSharingServerID,
+			testSharingOwnerOU)
+
+		s.Nil(svcErr)
+		s.True(available)
+		s.sharing.AssertNotCalled(s.T(), "IsSharedWith", mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	})
+	s.Run("a unit a policy reaches", func() {
+		s.serverExists()
+		s.sharing.On("IsSharedWith", mock.Anything, ResourceServerSharingType, testSharingServerID, testSharingChildOU).
+			Return(true, nil)
+
+		available, svcErr := s.svc.IsResourceServerAvailableInOU(context.Background(), testSharingServerID,
+			testSharingChildOU)
+
+		s.Nil(svcErr)
+		s.True(available)
+	})
+	s.Run("a unit no policy reaches", func() {
+		s.serverExists()
+		s.sharing.On("IsSharedWith", mock.Anything, ResourceServerSharingType, testSharingServerID, testSharingChildOU).
+			Return(false, nil)
+
+		available, svcErr := s.svc.IsResourceServerAvailableInOU(context.Background(), testSharingServerID,
+			testSharingChildOU)
+
+		s.Nil(svcErr)
+		s.False(available)
+	})
+	s.Run("a unit that does not exist", func() {
+		s.serverExists()
+		s.sharing.On("IsSharedWith", mock.Anything, ResourceServerSharingType, testSharingServerID, "ou-missing").
+			Return(false, &oupkg.ErrorOrganizationUnitNotFound)
+
+		available, svcErr := s.svc.IsResourceServerAvailableInOU(context.Background(), testSharingServerID,
+			"ou-missing")
+
+		s.Nil(svcErr)
+		s.False(available)
+	})
+	s.Run("the sharing lookup fails", func() {
+		s.serverExists()
+		s.sharing.On("IsSharedWith", mock.Anything, ResourceServerSharingType, testSharingServerID, testSharingChildOU).
+			Return(false, &tidcommon.InternalServerError)
+
+		_, svcErr := s.svc.IsResourceServerAvailableInOU(context.Background(), testSharingServerID,
+			testSharingChildOU)
+
+		s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+	})
+	s.Run("an unknown resource server", func() {
+		s.serverMissing()
+
+		_, svcErr := s.svc.IsResourceServerAvailableInOU(context.Background(), testSharingServerID,
+			testSharingChildOU)
+
+		s.Equal(ErrorResourceServerNotFound.Code, svcErr.Code)
+	})
+}
+
+func (s *SharingTestSuite) TestValidatePermissionsInOU() {
+	permissions := []string{"orders:read", "orders:nope"}
+	s.Run("a resource server the unit may use answers the undefined permissions", func() {
+		s.serverExists()
+		s.store.On("ValidatePermissions", mock.Anything, testSharingServerID, permissions).
+			Return([]string{"orders:nope"}, nil)
+
+		invalid, svcErr := s.svc.ValidatePermissionsInOU(context.Background(), testSharingServerID,
+			testSharingOwnerOU, permissions)
+
+		s.Nil(svcErr)
+		s.Equal([]string{"orders:nope"}, invalid)
+	})
+	s.Run("a resource server the unit may not use is refused", func() {
+		s.serverExists()
+		s.sharing.On("IsSharedWith", mock.Anything, ResourceServerSharingType, testSharingServerID, testSharingChildOU).
+			Return(false, nil)
+
+		_, svcErr := s.svc.ValidatePermissionsInOU(context.Background(), testSharingServerID, testSharingChildOU,
+			permissions)
+
+		s.Equal(ErrorResourceServerNotSharedToOU.Code, svcErr.Code)
+	})
+	s.Run("an unknown resource server defines none of them", func() {
+		s.serverMissing()
+
+		invalid, svcErr := s.svc.ValidatePermissionsInOU(context.Background(), testSharingServerID,
+			testSharingChildOU, permissions)
+
+		s.Nil(svcErr)
+		s.Equal(permissions, invalid)
+	})
+	s.Run("the sharing lookup fails", func() {
+		s.serverExists()
+		s.sharing.On("IsSharedWith", mock.Anything, ResourceServerSharingType, testSharingServerID, testSharingChildOU).
+			Return(false, &tidcommon.InternalServerError)
+
+		_, svcErr := s.svc.ValidatePermissionsInOU(context.Background(), testSharingServerID, testSharingChildOU,
+			permissions)
+
+		s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+	})
+}
+
+// A request acting for an organization unit works out each answer once: the resource server is read once and the
+// sharing framework asked once, however many times the request asks.
+func (s *SharingTestSuite) TestIsResourceServerAvailableInOU_OncePerRequest() {
+	s.store.On("GetResourceServer", mock.Anything, testSharingServerID).Return(providers.ResourceServer{
+		ID: testSharingServerID, Name: "Booking API", Identifier: "booking", OUID: testSharingOwnerOU, Delimiter: ":",
+	}, nil).Once()
+	s.sharing.On("IsSharedWith", mock.Anything, ResourceServerSharingType, testSharingServerID, testSharingChildOU).
+		Return(true, nil).Once()
+	ctx := syscontext.WithAccessingOUID(context.Background(), testSharingChildOU)
+
+	for range 3 {
+		available, svcErr := s.svc.IsResourceServerAvailableInOU(ctx, testSharingServerID, testSharingChildOU)
+		s.Nil(svcErr)
+		s.True(available)
+	}
+}
+
+// A failure to answer is not remembered, so the next ask tries again.
+func (s *SharingTestSuite) TestIsResourceServerAvailableInOU_DoesNotRememberAFailure() {
+	s.serverExists()
+	s.sharing.On("IsSharedWith", mock.Anything, ResourceServerSharingType, testSharingServerID, testSharingChildOU).
+		Return(false, &tidcommon.InternalServerError).Once()
+	s.sharing.On("IsSharedWith", mock.Anything, ResourceServerSharingType, testSharingServerID, testSharingChildOU).
+		Return(true, nil).Once()
+	ctx := syscontext.WithAccessingOUID(context.Background(), testSharingChildOU)
+
+	_, svcErr := s.svc.IsResourceServerAvailableInOU(ctx, testSharingServerID, testSharingChildOU)
+	s.Require().NotNil(svcErr)
+
+	available, svcErr := s.svc.IsResourceServerAvailableInOU(ctx, testSharingServerID, testSharingChildOU)
+	s.Nil(svcErr)
+	s.True(available)
+}
+
+func (s *SharingTestSuite) TestTakingTheServerFromAUnitThatUsesIt() {
+	usage := func(used bool, err error) *resourcedependencymock.RegistryMock {
+		registry := resourcedependencymock.NewRegistryMock(s.T())
+		registry.On("HasDependenciesInOU", mock.Anything, resourcedependency.ResourceTypeResourceServer,
+			testSharingServerID, testSharingChildOU).Return(used, err)
+		return registry
+	}
+	s.Run("a unit whose roles use it refuses the change", func() {
+		s.serverExists()
+		s.svc.dependencyRegistry = usage(true, nil)
+
+		_, err := newResourceServerSharingDeclaration(s.svc).DeleteOverlayValues(context.Background(),
+			testSharingServerID, testSharingChildOU)
+
+		var refusal *sharing.ResourceTypeError
+		s.Require().ErrorAs(err, &refusal)
+		s.Contains(err.Error(), errorResourceServerUsedInOU.Code)
+	})
+	s.Run("a unit whose roles do not use it", func() {
+		s.serverExists()
+		s.svc.dependencyRegistry = usage(false, nil)
+
+		_, err := newResourceServerSharingDeclaration(s.svc).DeleteOverlayValues(context.Background(),
+			testSharingServerID, testSharingChildOU)
+		s.NoError(err)
+	})
+	s.Run("the usage check fails", func() {
+		s.serverExists()
+		s.svc.dependencyRegistry = usage(false, errors.New("db down"))
+
+		_, err := newResourceServerSharingDeclaration(s.svc).DeleteOverlayValues(context.Background(),
+			testSharingServerID, testSharingChildOU)
+
+		s.ErrorContains(err, "db down")
+	})
+	s.Run("a resource server being deleted lets the change through", func() {
+		s.serverMissing()
+
+		_, err := newResourceServerSharingDeclaration(s.svc).DeleteOverlayValues(context.Background(),
+			testSharingServerID, testSharingChildOU)
+		s.NoError(err)
+	})
+	s.Run("the resource server cannot be read", func() {
+		s.store.On("GetResourceServer", mock.Anything, testSharingServerID).
+			Return(providers.ResourceServer{}, errors.New("db down"))
+
+		_, err := newResourceServerSharingDeclaration(s.svc).DeleteOverlayValues(context.Background(),
+			testSharingServerID, testSharingChildOU)
+
+		s.ErrorContains(err, "db down")
+	})
+	s.Run("the refusal keeps its own code", func() {
+		s.Equal(errorResourceServerUsedInOU.Code, translateSharingError(&errorResourceServerUsedInOU).Code)
 	})
 }
 

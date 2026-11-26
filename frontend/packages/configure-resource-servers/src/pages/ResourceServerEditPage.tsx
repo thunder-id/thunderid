@@ -462,8 +462,12 @@ function ResourceServerEdit({resourceServerId}: {resourceServerId: string | unde
               variant="outlined"
               sx={{fontSize: '0.7rem'}}
             />
-            {resourceServer.isReadOnly && (
-              <Chip label={t('resourceServers:edit.systemResourceServer', 'System')} size="small" color="default" />
+            {resourceServer.isOwnedByOU === false ? (
+              <Chip label={t('resourceServers:edit.sharedResourceServer', 'Shared')} size="small" variant="outlined" />
+            ) : (
+              resourceServer.isReadOnly && (
+                <Chip label={t('resourceServers:edit.systemResourceServer', 'System')} size="small" color="default" />
+              )
             )}
           </Box>
         </PageTitle.SubHeader>

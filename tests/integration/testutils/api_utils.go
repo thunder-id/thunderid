@@ -883,12 +883,195 @@ func DeleteApplication(appID string) error {
 
 // ShareApplicationWithChildUnits shares an application with every organization unit beneath its owner.
 func ShareApplicationWithChildUnits(appID string) error {
-	body, err := json.Marshal(map[string]interface{}{"childUnits": map[string]interface{}{"mode": "all"}})
+	return shareWithChildUnits("/applications/"+appID, "application")
+}
+
+// ShareResourceServerWithChildUnits shares a resource server with every organization unit beneath its owner, so roles
+// there may hold its permissions.
+func ShareResourceServerWithChildUnits(resourceServerID string) error {
+	return shareWithChildUnits("/resource-servers/"+resourceServerID, "resource server")
+}
+
+// bootstrapSystemResourceServerID and bootstrapDefaultOUID are the System resource server and the default organization
+// unit the server bootstraps; the default organization unit owns the System resource server.
+const (
+	bootstrapSystemResourceServerID = "01900000-0000-7000-8000-000000000020"
+	bootstrapDefaultOUID            = "01900000-0000-7000-8000-000000000001"
+)
+
+// ShareSystemResourceServerWith adds an organization unit and everything beneath it to the System resource server's
+// sharing, so roles there may hold its permissions and tokens for them may carry them. The bootstrap shares the System
+// resource server with no organization unit. The unit must be the root of another tree, which the owner's policy
+// reaches alone and which then reshares to its children, or a direct child of the default organization unit. The
+// returned function takes the unit out of the policy again, and its reshare with it; call it once the roles holding
+// System permissions there are gone, since the change is refused while they hold them.
+func ShareSystemResourceServerWith(ouID string) (func() error, error) {
+	ou, err := GetOrganizationUnit(ouID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read organization unit %s: %w", ouID, err)
+	}
+	section := "otherTreeRoots"
+	unit := map[string]interface{}{"ouId": ouID}
+	switch {
+	case ou.Parent == nil || *ou.Parent == "":
+	case *ou.Parent == bootstrapDefaultOUID:
+		section = "childUnits"
+		unit["reach"] = "subtree"
+	default:
+		return nil, fmt.Errorf("organization unit %s is neither a root nor a child of the default organization unit",
+			ouID)
+	}
+	if err := editSystemResourceServerPolicy(func(policy map[string]interface{}) {
+		sectionOf(policy, section)["units"] = append(unitsOf(policy, section), unit)
+	}); err != nil {
+		return nil, err
+	}
+	if section == "otherTreeRoots" {
+		reshare := map[string]interface{}{"initiatingOuId": ouID, "childUnits": map[string]interface{}{"mode": "all"}}
+		if err := postSharingPolicy("/resource-servers/"+bootstrapSystemResourceServerID, reshare); err != nil {
+			return nil, fmt.Errorf("failed to reshare the System resource server beneath %s: %w", ouID, err)
+		}
+	}
+	return func() error {
+		return editSystemResourceServerPolicy(func(policy map[string]interface{}) {
+			kept := make([]interface{}, 0)
+			for _, u := range unitsOf(policy, section) {
+				if named, _ := u.(map[string]interface{}); named["ouId"] != ouID {
+					kept = append(kept, u)
+				}
+			}
+			if len(kept) == 0 {
+				delete(policy, section)
+				return
+			}
+			sectionOf(policy, section)["units"] = kept
+		})
+	}, nil
+}
+
+// sectionOf returns a section of a sharing policy body, adding an empty selected one when the policy has none.
+func sectionOf(policy map[string]interface{}, section string) map[string]interface{} {
+	body, ok := policy[section].(map[string]interface{})
+	if !ok {
+		body = map[string]interface{}{"mode": "selected"}
+		policy[section] = body
+	}
+	return body
+}
+
+// unitsOf returns the units a section of a sharing policy body names.
+func unitsOf(policy map[string]interface{}, section string) []interface{} {
+	body, _ := policy[section].(map[string]interface{})
+	units, _ := body["units"].([]interface{})
+	return units
+}
+
+// editSystemResourceServerPolicy rewrites the System resource server's own sharing policy with edit, creating it when
+// there is none and deleting it when no section is left.
+func editSystemResourceServerPolicy(edit func(policy map[string]interface{})) error {
+	collection := TestServerURL + "/resource-servers/" + bootstrapSystemResourceServerID + "/sharing-policies"
+	raw, err := getJSON(collection)
+	if err != nil {
+		return fmt.Errorf("failed to list the System resource server's sharing policies: %w", err)
+	}
+	var list struct {
+		Policies []map[string]interface{} `json:"policies"`
+	}
+	if err := json.Unmarshal(raw, &list); err != nil {
+		return fmt.Errorf("failed to decode the System resource server's sharing policies: %w", err)
+	}
+
+	var current map[string]interface{}
+	for _, p := range list.Policies {
+		if p["initiatingOuId"] == bootstrapDefaultOUID {
+			current = p
+		}
+	}
+	body := map[string]interface{}{}
+	for _, section := range []string{"childUnits", "otherTreeRoots"} {
+		if value, ok := current[section]; ok {
+			body[section] = value
+		}
+	}
+	edit(body)
+
+	method, url := http.MethodPost, collection
+	switch {
+	case current != nil && len(body) == 0:
+		method, url, body = http.MethodDelete, collection+"/"+current["id"].(string), nil
+	case current != nil:
+		method, url = http.MethodPut, collection+"/"+current["id"].(string)
+		body["version"] = current["version"]
+	}
+
+	var reader io.Reader
+	if body != nil {
+		payload, err := json.Marshal(body)
+		if err != nil {
+			return fmt.Errorf("failed to encode the System resource server's sharing policy: %w", err)
+		}
+		reader = bytes.NewReader(payload)
+	}
+	req, err := http.NewRequest(method, url, reader)
+	if err != nil {
+		return fmt.Errorf("failed to create the sharing request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := GetHTTPClient().Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to share the System resource server: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= http.StatusBadRequest {
+		responseBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("sharing the System resource server: status %d. Response: %s", resp.StatusCode,
+			string(responseBody))
+	}
+	return nil
+}
+
+// shareWithChildUnits records a sharing policy reaching every organization unit beneath the owner of the resource at
+// path.
+func shareWithChildUnits(path, kind string) error {
+	policy := map[string]interface{}{"childUnits": map[string]interface{}{"mode": "all"}}
+	if err := postSharingPolicy(path, policy); err != nil {
+		return fmt.Errorf("failed to share %s: %w", kind, err)
+	}
+	return nil
+}
+
+// ShareResourceServerWithOtherTreeRoots shares a resource server with the root organization units of other trees, so
+// roles there may hold its permissions and tokens for them may carry them. It records the owner's policy, so call it
+// once per resource server.
+func ShareResourceServerWithOtherTreeRoots(resourceServerID string, rootOUIDs ...string) error {
+	units := make([]map[string]interface{}, 0, len(rootOUIDs))
+	for _, ouID := range rootOUIDs {
+		units = append(units, map[string]interface{}{"ouId": ouID})
+	}
+	policy := map[string]interface{}{"otherTreeRoots": map[string]interface{}{"mode": "selected", "units": units}}
+	if err := postSharingPolicy("/resource-servers/"+resourceServerID, policy); err != nil {
+		return fmt.Errorf("failed to share resource server %s: %w", resourceServerID, err)
+	}
+	return nil
+}
+
+// ReshareResourceServerWithChildUnits has an organization unit the resource server is shared with share it onward with
+// every unit beneath it, which a policy reaching another tree's root does not reach.
+func ReshareResourceServerWithChildUnits(resourceServerID, ouID string) error {
+	policy := map[string]interface{}{"initiatingOuId": ouID, "childUnits": map[string]interface{}{"mode": "all"}}
+	if err := postSharingPolicy("/resource-servers/"+resourceServerID, policy); err != nil {
+		return fmt.Errorf("failed to reshare resource server %s beneath %s: %w", resourceServerID, ouID, err)
+	}
+	return nil
+}
+
+// postSharingPolicy records a sharing policy of the resource at path.
+func postSharingPolicy(path string, policy map[string]interface{}) error {
+	body, err := json.Marshal(policy)
 	if err != nil {
 		return fmt.Errorf("failed to marshal sharing policy: %w", err)
 	}
-	req, err := http.NewRequest("POST", TestServerURL+"/applications/"+appID+"/sharing-policies",
-		bytes.NewReader(body))
+	req, err := http.NewRequest("POST", TestServerURL+path+"/sharing-policies", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("failed to create sharing request: %w", err)
 	}
@@ -896,7 +1079,7 @@ func ShareApplicationWithChildUnits(appID string) error {
 
 	resp, err := GetHTTPClient().Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to share application: %w", err)
+		return fmt.Errorf("failed to send sharing request: %w", err)
 	}
 	defer resp.Body.Close()
 

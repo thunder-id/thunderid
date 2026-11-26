@@ -31,8 +31,14 @@ const (
 // Implementations must return a complete set. An incomplete result changes the outcome of the
 // checks below, so partial data is not an acceptable degradation.
 type PermissionResolver interface {
-	// ResolveForEntity returns the permissions an entity holds, directly and through its groups.
+	// ResolveForEntity returns the permissions an entity holds, directly and through its groups, that it may use:
+	// for each organization unit its roles are assigned in, only those of the resource servers that unit may use.
 	ResolveForEntity(ctx context.Context, entityID string) (security.PermissionSet, error)
+
+	// ResolveHeldByEntity returns every permission an entity's roles hold, directly and through its groups,
+	// wherever they are assigned. A resolution that names no assignment unit, such as AuthZEN evaluation, counts
+	// them all.
+	ResolveHeldByEntity(ctx context.Context, entityID string) (security.PermissionSet, error)
 
 	// ResolveForGroup returns the permissions membership in a group confers, including those
 	// carried by its ancestor groups.
@@ -88,7 +94,7 @@ func (s *systemAuthorizationService) CanControlEntity(
 	}
 	return s.requireCovers(ctx, entityID, "entity",
 		func(ctx context.Context, id string) (security.PermissionSet, error) {
-			return s.permissionResolver.ResolveForEntity(ctx, id)
+			return s.permissionResolver.ResolveHeldByEntity(ctx, id)
 		})
 }
 

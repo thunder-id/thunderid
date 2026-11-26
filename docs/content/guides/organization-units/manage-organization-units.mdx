@@ -368,7 +368,7 @@ curl -kL -X DELETE "https://localhost:8090/organization-units/tree/{path}" \
 
 ## Manage the Organization Units Beneath Your Own
 
-On a Data Plane, a token that holds `org` or `org:ou`, and not `system`, acts for the OU its `ouId` claim names. It manages the OUs directly beneath that OU, and nothing further:
+On a Data Plane, a token that holds `org` or `org:ou`, and not `system`, acts for the OU its `ouId` claim names. A role assigned in that OU confers `org` only when the OU owns the System resource server or the System resource server is shared with it. See [Where Its Permissions Can Be Used](../resource-servers.mdx#where-its-permissions-can-be-used). The token manages the OUs directly beneath that OU, and nothing further:
 
 | Request | Allowed for |
 |---|---|

@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"sync"
 )
 
 type contextKey string
@@ -31,6 +32,10 @@ const (
 
 	// RequestMetadataKey is the context key for the client metadata of a request.
 	RequestMetadataKey contextKey = "request_metadata"
+
+	// accessingOUMemoKey is the context key for the answers about the accessing organization unit a request has
+	// worked out.
+	accessingOUMemoKey contextKey = "accessing_ou_memo"
 )
 
 // ============================================================================
@@ -135,12 +140,23 @@ func GetAccessingOUID(ctx context.Context) string {
 	return ouID
 }
 
-// WithAccessingOUID records the organization unit a request is made on behalf of.
+// WithAccessingOUID records the organization unit a request is made on behalf of, and starts a memo for the answers
+// about that unit the request works out, which hold for the rest of the request.
 func WithAccessingOUID(ctx context.Context, ouID string) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return context.WithValue(ctx, AccessingOUIDKey, ouID)
+	ctx = context.WithValue(ctx, AccessingOUIDKey, ouID)
+	return context.WithValue(ctx, accessingOUMemoKey, &sync.Map{})
+}
+
+// GetAccessingOUMemo returns the memo WithAccessingOUID started, or nil when the request named no organization unit.
+func GetAccessingOUMemo(ctx context.Context) *sync.Map {
+	if ctx == nil {
+		return nil
+	}
+	memo, _ := ctx.Value(accessingOUMemoKey).(*sync.Map)
+	return memo
 }
 
 // ============================================================================

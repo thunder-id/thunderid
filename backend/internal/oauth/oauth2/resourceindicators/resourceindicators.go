@@ -14,7 +14,47 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 )
+
+// ouResourceServerAvailability is implemented by a resource server provider that can tell whether an organization
+// unit may use a resource server: the unit owns it, or a sharing policy of it reaches the unit. The server's own
+// provider does.
+type ouResourceServerAvailability interface {
+	IsResourceServerAvailableInOU(
+		ctx context.Context, resourceServerID, ouID string,
+	) (bool, *tidcommon.ServiceError)
+}
+
+// availableToAccessingOU reports whether the organization unit the request acts for may use the resource server. A
+// request acting for none is not bound, and neither is one whose provider cannot tell: a provider without resource
+// server sharing makes every resource server available, as before.
+func availableToAccessingOU(
+	ctx context.Context, resourceService providers.ResourceServerProvider, resourceServerID string,
+) (bool, *model.ErrorResponse) {
+	ouID := syscontext.GetAccessingOUID(ctx)
+	if ouID == "" {
+		return true, nil
+	}
+	checker, ok := resourceService.(ouResourceServerAvailability)
+	if !ok {
+		return true, nil
+	}
+	// The resource service logs a failure to answer.
+	available, svcErr := checker.IsResourceServerAvailableInOU(ctx, resourceServerID, ouID)
+	if svcErr != nil {
+		return false, serverErrorResolvingResourceServer()
+	}
+	return available, nil
+}
+
+// serverErrorResolvingResourceServer answers a failure to resolve a resource server.
+func serverErrorResolvingResourceServer() *model.ErrorResponse {
+	return &model.ErrorResponse{
+		Error:            constants.ErrorServerError,
+		ErrorDescription: "Failed to resolve resource server",
+	}
+}
 
 // ValidateResourceURIs returns an error response when any resource URI is not absolute
 // or contains a fragment component (RFC 8707 §2, RFC 3986 §4.3).
@@ -65,7 +105,9 @@ func ResolveTargetResourceServer(
 	}
 
 	identifier := ""
-	invalidTargetDescription := "No resource parameter supplied and no default resource server is configured"
+	// It fits a default resource server that is not configured and one the organization unit may not use alike, so
+	// a request cannot tell the two apart.
+	invalidTargetDescription := "No resource parameter supplied and no default resource server is available"
 	if len(resources) == 1 {
 		identifier = resources[0]
 		invalidTargetDescription = "The resource parameter does not match any registered resource server"
@@ -73,6 +115,18 @@ func ResolveTargetResourceServer(
 	rs, svcErr := resourceService.GetResourceServerByIdentifier(ctx, identifier)
 	if svcErr != nil {
 		return nil, resolveTargetError(svcErr, invalidTargetDescription)
+	}
+	// A resource server the organization unit may not use answers as one that does not exist, so a request cannot
+	// tell the two apart.
+	available, errResp := availableToAccessingOU(ctx, resourceService, rs.ID)
+	if errResp != nil {
+		return nil, errResp
+	}
+	if !available {
+		return nil, &model.ErrorResponse{
+			Error:            constants.ErrorInvalidTarget,
+			ErrorDescription: invalidTargetDescription,
+		}
 	}
 	return rs, nil
 }
@@ -98,10 +152,7 @@ func ResolveAudienceBinding(
 // resolveTargetError maps a resource-service error to invalid_target (client) or server_error.
 func resolveTargetError(svcErr *tidcommon.ServiceError, invalidTargetDescription string) *model.ErrorResponse {
 	if svcErr.Type == tidcommon.ServerErrorType {
-		return &model.ErrorResponse{
-			Error:            constants.ErrorServerError,
-			ErrorDescription: "Failed to resolve resource server",
-		}
+		return serverErrorResolvingResourceServer()
 	}
 	return &model.ErrorResponse{
 		Error:            constants.ErrorInvalidTarget,
@@ -125,10 +176,7 @@ func ResolveResourceServers(
 		rs, svcErr := resourceService.GetResourceServerByIdentifier(ctx, identifier)
 		if svcErr != nil {
 			if svcErr.Type == tidcommon.ServerErrorType {
-				return nil, &model.ErrorResponse{
-					Error:            constants.ErrorServerError,
-					ErrorDescription: "Failed to resolve resource server",
-				}
+				return nil, serverErrorResolvingResourceServer()
 			}
 			return nil, &model.ErrorResponse{
 				Error:            constants.ErrorInvalidTarget,
@@ -226,6 +274,14 @@ func DownscopeToResourceServer(
 ) ([]string, *model.ErrorResponse) {
 	if len(scopes) == 0 {
 		return scopes, nil
+	}
+	// A permission the organization unit the request acts for may not use is treated as undefined.
+	available, errResp := availableToAccessingOU(ctx, resourceService, resourceServerID)
+	if errResp != nil {
+		return nil, errResp
+	}
+	if !available {
+		return []string{}, nil
 	}
 	invalid, svcErr := resourceService.ValidatePermissions(ctx, resourceServerID, scopes)
 	if svcErr != nil {
