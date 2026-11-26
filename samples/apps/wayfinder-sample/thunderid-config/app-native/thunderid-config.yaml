@@ -1,3 +1,12 @@
+# Project for the Wayfinder sample. A Control Plane requires flows, applications and agents to belong to a
+# project; a Data Plane skips this document. Keep the id and handle identical in both Wayfinder variants.
+resource_type: project
+id: 019e5a00-0000-7000-8000-000000000002
+handle: wayfinder
+displayName: Wayfinder
+description: Project for the Wayfinder sample application
+
+---
 resource_type: user_type
 id: wayfinder-customer-type
 category: user
@@ -154,6 +163,7 @@ authentication:
 
 ---
 resource_type: flow
+projectId: 019e5a00-0000-7000-8000-000000000002
 id: 0193b0a1-1001-7000-8000-000000000001
 ouHandle: default
 name: Wayfinder Registration Flow
@@ -312,6 +322,7 @@ nodes:
 
 ---
 resource_type: flow
+projectId: 019e5a00-0000-7000-8000-000000000002
 id: 0193b0a1-1001-7000-8000-000000000002
 ouHandle: default
 name: Wayfinder Password Recovery Flow
@@ -504,6 +515,7 @@ nodes:
 
 ---
 resource_type: flow
+projectId: 019e5a00-0000-7000-8000-000000000002
 id: 0193b0a1-1001-7000-8000-000000000003
 ouHandle: default
 name: Wayfinder Sign Out Flow
@@ -553,6 +565,7 @@ nodes:
 
 ---
 resource_type: flow
+projectId: 019e5a00-0000-7000-8000-000000000002
 id: 0193b0a1-1001-7000-8000-000000000005
 ouHandle: default
 name: Wayfinder Staff Onboarding Flow
@@ -906,6 +919,7 @@ nodes:
 
 ---
 resource_type: flow
+projectId: 019e5a00-0000-7000-8000-000000000002
 id: 0193b0a1-1001-7000-8000-000000000008
 ouHandle: default
 name: Wayfinder Registration with Auto Sign-In Flow
@@ -1059,6 +1073,7 @@ nodes:
 
 ---
 resource_type: flow
+projectId: 019e5a00-0000-7000-8000-000000000002
 id: 0193b0a1-1001-7000-8000-000000000010
 ouHandle: default
 name: Wayfinder App Authentication Flow
@@ -1174,6 +1189,7 @@ nodes:
 
 ---
 resource_type: application
+projectId: 019e5a00-0000-7000-8000-000000000002
 id: wayfinder-app
 name: Wayfinder
 description: Wayfinder Travel sample application
@@ -1240,6 +1256,7 @@ inboundAuthConfig:
 
 ---
 resource_type: flow
+projectId: 019e5a00-0000-7000-8000-000000000002
 id: 0193b0a1-1001-7000-8000-000000000006
 ouHandle: default
 name: Default Wayfinder CIBA Email Notification Flow
@@ -1444,6 +1461,7 @@ nodes:
 
 ---
 resource_type: flow
+projectId: 019e5a00-0000-7000-8000-000000000002
 id: 0193b0a1-1001-7000-8000-000000000007
 ouHandle: default
 name: Default Wayfinder CIBA SMS Notification Flow
@@ -1647,6 +1665,7 @@ nodes:
 
 ---
 resource_type: flow
+projectId: 019e5a00-0000-7000-8000-000000000002
 id: 0193b0a1-1001-7000-8000-000000000004
 ouHandle: default
 name: Wayfinder Agent Authentication Flow
@@ -1784,6 +1803,7 @@ nodes:
 
 ---
 resource_type: agent
+projectId: 019e5a00-0000-7000-8000-000000000002
 id: wayfinder-concierge
 owner:
   id: "{{.AGENT_OWNER_ID}}"
@@ -1818,6 +1838,7 @@ inboundAuthConfig:
 
 ---
 resource_type: agent
+projectId: 019e5a00-0000-7000-8000-000000000002
 # CIBA-only client used by the upgrade scheduler to initiate backchannel
 # authentication for users who have a pending upgrade request.
 # Uses wayfinder-ciba-email-flow so ThunderID sends an email notification to the
@@ -1858,6 +1879,7 @@ inboundAuthConfig:
 
 ---
 resource_type: application
+projectId: 019e5a00-0000-7000-8000-000000000002
 # Public OAuth client used by external MCP clients (e.g. MCP Inspector)
 # to call the Wayfinder MCP server on /mcp.
 # Used by the MCP Authorization tryout to demonstrate ThunderID-secured MCP

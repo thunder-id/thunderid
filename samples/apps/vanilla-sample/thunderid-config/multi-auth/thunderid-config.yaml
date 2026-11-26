@@ -8,6 +8,15 @@
 # - SAMPLE_APP_GITHUB_REDIRECT_URI
 # - SAMPLE_APP_SMS_SENDER_ID
 #
+# Project shared by all ThunderID samples. A Control Plane requires flows, applications and agents to
+# belong to a project; a Data Plane skips this document. Keep the id and handle identical in every sample.
+resource_type: project
+id: 019e5a00-0000-7000-8000-000000000001
+handle: samples
+displayName: Samples
+description: Project for the ThunderID sample applications
+
+---
 resource_type: user_type
 id: 019e3a5c-04ea-7d18-8ae6-f828b1f3d60f
 category: user
@@ -88,6 +97,7 @@ redirectUri: "{{.SAMPLE_APP_GITHUB_REDIRECT_URI}}"
 
 ---
 resource_type: flow
+projectId: 019e5a00-0000-7000-8000-000000000001
 id: 9b52a0a4-8c63-4b2d-9dc9-1e6c2befc0c0
 ouHandle: default
 name: Sample Vanilla Multi Auth Single Step with SMS and Passkey
@@ -465,6 +475,7 @@ nodes:
   type: END
 ---
 resource_type: flow
+projectId: 019e5a00-0000-7000-8000-000000000001
 id: 0a840a2f-daf7-476c-8f7f-40e100666d19
 ouHandle: default
 name: Sample Vanilla Multi Auth Dual Step with SMS
@@ -689,6 +700,7 @@ nodes:
   type: END
 ---
 resource_type: flow
+projectId: 019e5a00-0000-7000-8000-000000000001
 id: 6b8aa940-e8e7-42d8-88b6-4411a09fad85
 ouHandle: default
 name: Sample Vanilla Multi Auth Single Step Registration with SMS and Passkey
@@ -1130,6 +1142,7 @@ nodes:
   type: END
 ---
 resource_type: flow
+projectId: 019e5a00-0000-7000-8000-000000000001
 id: 58bb4b15-700c-4114-a744-f55650990259
 ouHandle: default
 name: Sample Vanilla Multi Auth Dual Step Registration with SMS
@@ -1399,6 +1412,7 @@ nodes:
 
 ---
 resource_type: application
+projectId: 019e5a00-0000-7000-8000-000000000001
 id: 019e3a5c-0500-7f3e-a66e-66fc7918c3a7
 ouHandle: default
 name: Sample App
