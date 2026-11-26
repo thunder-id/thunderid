@@ -470,8 +470,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	sessionRevoker := sessionCriteriaRevoker{revoker: revocationSvc}
 	// The termination hook is kept for the back-channel logout dispatcher, which OAuth builds and which
 	// is added to the hook once OAuth is initialized.
-	sessionService, terminationHook, sessionCfg := initSessionService(ctx, serverConfigService,
-		runtime.Config.Server.Identifier, sessionRevoker, ouProvider, logger)
+	sessionService, terminationHook, sessionCfg := initSessionService(ctx, mux, serverConfigService,
+		runtime.Config.Server.Identifier, sessionRevoker, ouProvider, entityService, entityTypeService, logger)
 	flowConfig.Session = sessionCfg
 	flowFactory, execRegistry, interceptorRegistry, graphBuilder := initializeFlowCoreAndExecutor(ctx, logger,
 		cacheManager, executor.ExecutorDependencies{
@@ -561,6 +561,11 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, executor.SetApplicationProvider(execRegistry, applicationService),
 		"Failed to inject the application provider into the flow executors")
 	exporters = append(exporters, applicationExporter)
+
+	// Two-phase initialization: the session management API resolves application names through the
+	// application service, which is built after the session service.
+	fatalOnError(ctx, logger, flowsession.SetApplicationProvider(sessionService, applicationService),
+		"Failed to inject the application provider into the session service")
 
 	agentService, agentExporter, err := agent.Initialize(mux, mcpServer, entityService, sharingService,
 		inboundClientService, ouService, roleService, resourceService, flowMgtService, ouAuthzService,
@@ -786,16 +791,17 @@ func unregisterServices() {
 	observabilitySvc.Shutdown()
 }
 
-// initSessionService reads the effective SSO session configuration from the server-config section and
-// builds the session service, returning the service, its termination hook, and the config so the caller
-// can thread the config into flowexec too.
-func initSessionService(ctx context.Context, svc serverconfig.ServerConfigService, deploymentID string,
-	criteriaRevoker flowsession.CriteriaRevoker, ouEligibility flowsession.OUEligibility, logger *log.Logger,
+// initSessionService reads the effective SSO session configuration from the server-config section,
+// builds the session service and registers its management routes, returning the service, its termination
+// hook, and the config so the caller can thread the config into flowexec too.
+func initSessionService(ctx context.Context, mux *http.ServeMux, svc serverconfig.ServerConfigService,
+	deploymentID string, criteriaRevoker flowsession.CriteriaRevoker, ouEligibility flowsession.OUEligibility,
+	entities entity.EntityServiceInterface, entityTypes entitytype.EntityTypeServiceInterface, logger *log.Logger,
 ) (flowsession.Service, flowsession.TerminationHook, flowsession.Config) {
 	cfg := readSessionConfig(ctx, svc, logger)
-	sessionService, terminationHook, err := flowsession.Initialize(dbprovider.GetDBProvider(), deploymentID,
+	sessionService, terminationHook, err := flowsession.Initialize(mux, dbprovider.GetDBProvider(), deploymentID,
 		flowsession.NewTimeouts(cfg.IdleTimeoutSeconds, cfg.AbsoluteTimeoutSeconds,
-			cfg.ActivityRefreshIntervalSeconds), criteriaRevoker, ouEligibility)
+			cfg.ActivityRefreshIntervalSeconds), criteriaRevoker, ouEligibility, entities, entityTypes)
 	fatalOnError(ctx, logger, err, "Failed to initialize SSO session service")
 	return sessionService, terminationHook, cfg
 }

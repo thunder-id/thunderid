@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
@@ -132,20 +133,41 @@ func (ts *SSOLogoutTestSuite) TestSessionConfig_IncoherentTimeoutsRejected() {
 }
 
 // An SSO session left untouched past its idle timeout must not satisfy a later authorize, so an
-// abandoned browser session cannot skip authentication indefinitely.
+// abandoned browser session cannot skip authentication indefinitely. It also leaves both session listings,
+// although the row stays in the table until cleanup, because the listings apply the liveness rule in SQL.
 func (ts *SSOLogoutTestSuite) TestSSOSession_IdleTimeoutForcesReauthentication() {
 	// A generous absolute timeout isolates the idle deadline as the only thing that can expire.
 	ts.applySessionTimeouts(2, 600, 1)
 
+	const username = "sso_idle_timeout_user"
+	userID := ts.createUser(username)
+	adminList := "/sessions?userId=" + url.QueryEscape(userID)
 	client := ts.newSessionClient()
-	ts.login(client, ssoReuseUsername, "idle_timeout_state_1")
+	tokens := ts.loginTokens(client, username, "idle_timeout_state_1")
 	ts.Require().NotEmpty(ts.ssoCookieNames(client), "an SSO cookie should be set after first login")
 
 	ts.Require().True(ts.sessionSurvives(client, "idle_timeout_state_2"),
 		"the session should still be live immediately after login")
+	var before testutils.SessionListView
+	status, raw, err := testutils.GetSessions(testutils.GetHTTPClient(), adminList, &before)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, status, raw)
+	ts.Require().Equal(1, before.TotalResults, "the session is listed while it is live")
 
-	// Idle past the deadline with no activity at all.
+	// Idle past the deadline with no activity at all. Listing does not touch the session.
 	time.Sleep(4 * time.Second)
+
+	var after testutils.SessionListView
+	status, raw, err = testutils.GetSessions(testutils.GetHTTPClient(), adminList, &after)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, status, raw)
+	ts.Zero(after.TotalResults, "the idle-expired session is gone from the admin list")
+	var mine testutils.SessionListView
+	status, raw, err = testutils.GetSessions(testutils.GetHTTPClientWithToken(tokens.AccessToken), "/users/me/sessions",
+		&mine)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, status, raw)
+	ts.Zero(mine.TotalResults, "the idle-expired session is gone from the user's own list")
 
 	ts.False(ts.sessionSurvives(client, "idle_timeout_state_3"),
 		"an idle-expired session must not skip authentication")

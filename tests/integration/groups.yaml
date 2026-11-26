@@ -38,6 +38,7 @@ groups:
       - export
       - agenttype
       - flow/flowmeta
+      - session
       - oauth/discovery
       - managementapikey
       - healthcheck

@@ -15,13 +15,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"net/url"
+	"strings"
 	"time"
 
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/eventlistener"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -180,6 +186,9 @@ type service struct {
 	ouEligibility    OUEligibility
 	terminationTopic *eventlistener.Topic[TerminatedSession]
 	timeouts         Timeouts
+	entities         entity.EntityServiceInterface
+	entityTypes      entitytype.EntityTypeServiceInterface
+	apps             applicationProvider
 	logger           *log.Logger
 }
 
@@ -744,6 +753,214 @@ func (s *service) DetachApplication(ctx context.Context, appID string) error {
 	return nil
 }
 
+// listLiveBySubject returns one page of the subject's live SSO sessions at now, most recently active first,
+// each with the applications that have joined it. A non-nil ouID keeps only the sessions with an application
+// signed in under that organization unit, and only those participants. The sessions carry the handle, so
+// callers must never expose it.
+func (s *service) listLiveBySubject(ctx context.Context, subjectID string, ouID *string, now time.Time,
+	limit, offset int) (*sessionPage, error) {
+	total, err := s.store.CountLiveBySubject(ctx, subjectID, ouID, now)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count sessions by subject: %w", err)
+	}
+	if offset >= total {
+		return &sessionPage{Sessions: []sessionDetail{}, TotalResults: total}, nil
+	}
+	sessions, err := s.store.ListLiveBySubject(ctx, subjectID, ouID, now, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list sessions by subject: %w", err)
+	}
+	return s.page(ctx, sessions, total, ouID)
+}
+
+// listLiveByApp returns one page of the live SSO sessions at now that the application has joined, most
+// recently active first, each with the applications that have joined it. A non-nil ouID keeps only the
+// sessions the application joined under that organization unit, and only the participants signed in under it.
+func (s *service) listLiveByApp(ctx context.Context, appID string, ouID *string, now time.Time,
+	limit, offset int) (*sessionPage, error) {
+	total, err := s.store.CountLiveByApp(ctx, appID, ouID, now)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count sessions by application: %w", err)
+	}
+	if offset >= total {
+		return &sessionPage{Sessions: []sessionDetail{}, TotalResults: total}, nil
+	}
+	sessions, err := s.store.ListLiveByApp(ctx, appID, ouID, now, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list sessions by application: %w", err)
+	}
+	return s.page(ctx, sessions, total, ouID)
+}
+
+// getSubjectParticipantByTokenFamily returns the participant of one of the subject's SSO sessions that holds
+// the token family, or nil when none does.
+func (s *service) getSubjectParticipantByTokenFamily(ctx context.Context, subjectID, tokenFamilyID string) (
+	*Participant, error) {
+	participant, err := s.store.GetSubjectParticipantByTokenFamily(ctx, subjectID, tokenFamilyID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get participant by token family: %w", err)
+	}
+	return participant, nil
+}
+
+// ListSessions returns one page of the live sessions of a user (userID) or of an application (appID). Exactly
+// one of them must be given.
+func (s *service) ListSessions(ctx context.Context, userID, appID string, limit, offset int) (
+	*sessionListResponse, *tidcommon.ServiceError) {
+	userID = strings.TrimSpace(userID)
+	appID = strings.TrimSpace(appID)
+	if (userID == "") == (appID == "") {
+		return nil, &ErrorInvalidListFilter
+	}
+	// The system permission reaches every organization unit, so its holder sees every session. Any other
+	// caller sees only the sessions with an application signed in under the unit its token names, and only
+	// those applications. The security middleware refuses such a caller when its token names no unit.
+	var ouID *string
+	if !security.HasSystemPermission(security.GetPermissions(ctx)) {
+		tokenOUID := security.GetOUID(ctx)
+		if tokenOUID == "" {
+			return nil, &tidcommon.ErrorUnauthorized
+		}
+		ouID = &tokenOUID
+	}
+
+	var (
+		page       *sessionPage
+		err        error
+		extraQuery string
+	)
+	now := time.Now().UTC()
+	if userID != "" {
+		page, err = s.listLiveBySubject(ctx, userID, ouID, now, limit, offset)
+		extraQuery = "&userId=" + url.QueryEscape(userID)
+	} else {
+		page, err = s.listLiveByApp(ctx, appID, ouID, now, limit, offset)
+		extraQuery = "&appId=" + url.QueryEscape(appID)
+	}
+	if err != nil {
+		s.logger.Error(ctx, "Failed to list sessions", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	displays := s.subjectDisplays(ctx, page.Sessions)
+	// A session permission doesn't let the caller read applications, so they are read as the runtime.
+	apps := s.appDisplays(security.WithRuntimeContext(ctx), page.Sessions)
+	sessions := make([]sessionResponse, 0, len(page.Sessions))
+	for _, sess := range page.Sessions {
+		sessions = append(sessions, toSessionResponse(sess, displays, apps))
+	}
+
+	return s.buildListResponse(sessions, page.TotalResults, "/sessions", limit, offset, extraQuery), nil
+}
+
+// ListOwnSessions returns one page of the authenticated caller's own live sessions, with the one behind the
+// caller's access token marked as current.
+func (s *service) ListOwnSessions(ctx context.Context, limit, offset int) (
+	*sessionListResponse, *tidcommon.ServiceError) {
+	subject := security.GetSubject(ctx)
+
+	// The caller sees only the sessions with an application signed in under the organization unit its own
+	// sign-in was recorded under, and only those applications, so an application in one unit can't see the
+	// user's sign-ins in another. The unit is read from the participant that holds the token's family, not
+	// from the token's claims, which the application's token configuration decides. A token that no
+	// participant of an SSO session holds, such as one from a direct session's sign-in, sees no session.
+	tokenFamilyID, _ := security.GetAttribute(ctx, oauth2const.ClaimTokenFamilyID).(string)
+	if tokenFamilyID == "" {
+		return s.buildListResponse([]sessionResponse{}, 0, "/users/me/sessions", limit, offset, ""), nil
+	}
+	participant, err := s.getSubjectParticipantByTokenFamily(ctx, subject, tokenFamilyID)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to read the caller's session participant", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	if participant == nil {
+		return s.buildListResponse([]sessionResponse{}, 0, "/users/me/sessions", limit, offset, ""), nil
+	}
+
+	page, err := s.listLiveBySubject(ctx, subject, &participant.OUID, time.Now().UTC(), limit, offset)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to list own sessions", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	// The caller already knows who they are, so only the applications are resolved. The caller signed in to
+	// these applications but may not be allowed to read them, so they are read as the runtime.
+	apps := s.appDisplays(security.WithRuntimeContext(ctx), page.Sessions)
+	sessions := make([]sessionResponse, 0, len(page.Sessions))
+	for _, sess := range page.Sessions {
+		resp := toSessionResponse(sess, nil, apps)
+		isCurrent := isCurrentSession(sess, tokenFamilyID)
+		resp.IsCurrent = &isCurrent
+		sessions = append(sessions, resp)
+	}
+
+	return s.buildListResponse(sessions, page.TotalResults, "/users/me/sessions", limit, offset, ""), nil
+}
+
+// subjectDisplays resolves the display name of each distinct user or agent across the sessions in one read.
+// A subject that can't be found, or a failed read, leaves the name out.
+func (s *service) subjectDisplays(ctx context.Context, sessions []sessionDetail) map[string]string {
+	seen := make(map[string]bool, len(sessions))
+	subjectIDs := make([]string, 0, len(sessions))
+	for _, sess := range sessions {
+		if !seen[sess.SubjectID] {
+			seen[sess.SubjectID] = true
+			subjectIDs = append(subjectIDs, sess.SubjectID)
+		}
+	}
+	if len(subjectIDs) == 0 {
+		return nil
+	}
+	subjects, err := s.entities.GetEntitiesByIDs(ctx, subjectIDs)
+	if err != nil {
+		s.logger.Warn(ctx, "Failed to read the session subjects for their display names", log.Error(err))
+		return nil
+	}
+	return entitytype.ResolveEntityDisplays(ctx, subjects, s.entityTypes, s.logger)
+}
+
+// appDisplays resolves the name and logo of each distinct participating application across the sessions,
+// once per application. An application that can't be found gets neither.
+func (s *service) appDisplays(ctx context.Context, sessions []sessionDetail) map[string]appDisplay {
+	apps := make(map[string]appDisplay)
+	for _, sess := range sessions {
+		for _, p := range sess.Participants {
+			if _, seen := apps[p.AppID]; seen {
+				continue
+			}
+			apps[p.AppID] = appDisplay{}
+			if a, svcErr := s.apps.GetApplication(ctx, p.AppID); svcErr == nil && a != nil {
+				apps[p.AppID] = appDisplay{name: a.Name, logoURL: a.LogoURL}
+			}
+		}
+	}
+	return apps
+}
+
+// isCurrentSession reports whether the session issued the caller's access token: one of its participants
+// holds the token's family.
+func isCurrentSession(sess sessionDetail, tokenFamilyID string) bool {
+	for _, p := range sess.Participants {
+		if p.TokenFamilyID == tokenFamilyID {
+			return true
+		}
+	}
+	return false
+}
+
+// buildListResponse assembles the paginated list body. basePath is the route the pagination links point
+// back to, and extraQuery carries the list filter into them.
+func (s *service) buildListResponse(sessions []sessionResponse, total int, basePath string, limit, offset int,
+	extraQuery string) *sessionListResponse {
+	return &sessionListResponse{
+		TotalResults: total,
+		StartIndex:   offset + 1,
+		Count:        len(sessions),
+		Sessions:     sessions,
+		Links:        sysutils.BuildPaginationLinks(basePath, limit, offset, total, extraQuery),
+	}
+}
+
 // revokeFamilies revokes each participant's token family, so signing out drops all of the login's
 // grants. It is a no-op when no revoker is wired; the revoker skips an empty tfid.
 func (s *service) revokeFamilies(ctx context.Context, participants []Participant) error {
@@ -779,6 +996,32 @@ func (s *service) participantsForTermination(ctx context.Context, sessions []Ses
 		grouped[p.SessionID] = append(grouped[p.SessionID], p)
 	}
 	return grouped
+}
+
+// page attaches the participants to a page of sessions, reading them for the whole page in one query. A
+// non-nil ouID keeps only the participants signed in under that organization unit.
+func (s *service) page(ctx context.Context, sessions []Session, total int, ouID *string) (*sessionPage, error) {
+	sessionIDs := make([]string, 0, len(sessions))
+	for _, sess := range sessions {
+		sessionIDs = append(sessionIDs, sess.SessionID)
+	}
+	participants, err := s.store.ListBySessionIDs(ctx, sessionIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list session participants: %w", err)
+	}
+	bySession := make(map[string][]Participant, len(sessions))
+	for _, p := range participants {
+		if ouID != nil && p.OUID != *ouID {
+			continue
+		}
+		bySession[p.SessionID] = append(bySession[p.SessionID], p)
+	}
+
+	details := make([]sessionDetail, 0, len(sessions))
+	for _, sess := range sessions {
+		details = append(details, sessionDetail{Session: sess, Participants: bySession[sess.SessionID]})
+	}
+	return &sessionPage{Sessions: details, TotalResults: total}, nil
 }
 
 // targetSession returns the session this execution's checkpoints attach to, establishing one when

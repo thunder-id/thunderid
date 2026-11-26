@@ -36,3 +36,12 @@ func ParseDBTimeField(field interface{}, fieldName string) (time.Time, error) {
 		return time.Time{}, fmt.Errorf("unexpected type for %s", fieldName)
 	}
 }
+
+// FormatRFC3339 renders t as RFC 3339 in UTC, or as an empty string for the zero time, such as a deadline
+// that isn't set.
+func FormatRFC3339(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339)
+}

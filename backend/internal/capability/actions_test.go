@@ -63,8 +63,10 @@ func (s *ActionsTestSuite) TestRequiredActionsMatchTheCatalog() {
 }
 
 // TestRequiredRoutesAreListed keeps the route table in step with the API permission map, so each route
-// resolves to the permission the server requires for it, and no route resource shadows a catalog one.
+// resolves to the permission the server requires for it, and no route resource shadows a catalog one. The
+// Data Plane serves every route the table lists.
 func (s *ActionsTestSuite) TestRequiredRoutesAreListed() {
+	security.InitDataPlanePermissions("")
 	for resource, names := range requiredRoutes {
 		s.NotContains(requiredActions, resource)
 		s.NotEmpty(names, resource)
