@@ -3,11 +3,14 @@
 
 import {render} from '@testing-library/react';
 import {describe, expect, it} from 'vitest';
+import AndroidIcon from '../AndroidIcon';
 import AndroidLogo from '../AndroidLogo';
 import AppleIcon from '../AppleIcon';
 import BunIcon from '../BunIcon';
+import ChromeIcon from '../ChromeIcon';
 import DenoIcon from '../DenoIcon';
 import ExpressIcon from '../ExpressIcon';
+import FirefoxIcon from '../FirefoxIcon';
 import FlutterLogo from '../FlutterLogo';
 import GithubIcon from '../GithubIcon';
 import GoogleIcon from '../GoogleIcon';
@@ -16,18 +19,22 @@ import JavaScriptIcon from '../JavaScriptIcon';
 import JsonLogo from '../JsonLogo';
 import JwtLogo from '../JwtLogo';
 import LangChainLogo from '../LangChainLogo';
+import LinuxIcon from '../LinuxIcon';
 import LissiIcon from '../LissiIcon';
 import NextjsIcon from '../NextjsIcon';
 import NodeIcon from '../NodeIcon';
 import NpmIcon from '../NpmIcon';
 import NuxtIcon from '../NuxtIcon';
 import OAuth2Logo from '../OAuth2Logo';
+import OperaIcon from '../OperaIcon';
 import PnpmIcon from '../PnpmIcon';
 import PythonLogo from '../PythonLogo';
 import ReactIcon from '../ReactIcon';
+import SafariIcon from '../SafariIcon';
 import StackblitzIcon from '../StackblitzIcon';
 import TypeScriptLogo from '../TypeScriptLogo';
 import VueIcon from '../VueIcon';
+import WindowsIcon from '../WindowsIcon';
 import YarnIcon from '../YarnIcon';
 
 function renderSvg(element: React.ReactElement): SVGSVGElement {
@@ -54,21 +61,28 @@ interface SquareIconCase {
 }
 
 const SQUARE_ICONS: SquareIconCase[] = [
+  {Component: AndroidIcon, defaultSize: 20, name: 'AndroidIcon'},
   {Component: AppleIcon, defaultSize: 20, name: 'AppleIcon'},
+  {Component: ChromeIcon, defaultSize: 20, name: 'ChromeIcon'},
   {Component: ExpressIcon, defaultSize: 20, name: 'ExpressIcon'},
+  {Component: FirefoxIcon, defaultSize: 20, name: 'FirefoxIcon'},
   {Component: GithubIcon, defaultSize: 20, name: 'GithubIcon'},
   {Component: GoogleIcon, defaultSize: 20, name: 'GoogleIcon'},
   {Component: JavaScriptIcon, defaultSize: 20, name: 'JavaScriptIcon'},
   {Component: LangChainLogo, defaultSize: 64, name: 'LangChainLogo'},
+  {Component: LinuxIcon, defaultSize: 20, name: 'LinuxIcon'},
   {Component: NextjsIcon, defaultSize: 20, name: 'NextjsIcon'},
   {Component: NuxtIcon, defaultSize: 20, name: 'NuxtIcon'},
   {Component: OAuth2Logo, defaultSize: 36, name: 'OAuth2Logo'},
+  {Component: OperaIcon, defaultSize: 20, name: 'OperaIcon'},
   {Component: ReactIcon, defaultSize: 20, name: 'ReactIcon'},
+  {Component: SafariIcon, defaultSize: 20, name: 'SafariIcon'},
   {Component: NpmIcon, defaultSize: 20, name: 'NpmIcon'},
   {Component: YarnIcon, defaultSize: 20, name: 'YarnIcon'},
   {Component: PnpmIcon, defaultSize: 20, name: 'PnpmIcon'},
   {Component: BunIcon, defaultSize: 20, name: 'BunIcon'},
   {Component: DenoIcon, defaultSize: 20, name: 'DenoIcon'},
+  {Component: WindowsIcon, defaultSize: 20, name: 'WindowsIcon'},
 ];
 
 describe.each(SQUARE_ICONS)('$name', ({Component, defaultSize}) => {

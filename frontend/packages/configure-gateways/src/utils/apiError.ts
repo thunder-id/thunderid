@@ -23,11 +23,6 @@ export const SETTINGS_DECLARATIVE = 'SCF-1007';
 /** The apply would remove more resources than the deployment's threshold and was not confirmed. */
 export const REMOVALS_NEED_CONFIRMATION = 'GTW-1030';
 
-/** Whether a failed call was refused for want of a permission. */
-export function isForbidden(error: unknown): boolean {
-  return (error as {response?: {status?: number}} | undefined)?.response?.status === 403;
-}
-
 /** A refusal's interpolation params, each resource key in them named as the caller names that resource. */
 function namedParams(error: Error, nameOf?: (key: string) => string | undefined): Record<string, string> {
   const data = (error as {response?: {data?: {description?: unknown; message?: unknown}}}).response?.data;

@@ -1,7 +1,7 @@
 // Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {CapabilityGuard, PageLoader} from '@thunderid/components';
+import {CapabilityGuard, PageLoader, PageLoadingAnimation} from '@thunderid/components';
 import type {NotificationChannel} from '@thunderid/configure-notification-templates';
 import {RoutesProvider, ToastProvider} from '@thunderid/contexts';
 import {ProtectedRoute} from '@thunderid/react-router';
@@ -44,6 +44,7 @@ const TranslationCreateProvider = lazy(
 const UserTypeCreateProvider = lazy(
   () => import('@thunderid/configure-user-types/contexts/UserTypeCreate/UserTypeCreateProvider'),
 );
+const SessionsPanel = lazy(() => import('@thunderid/configure-sessions/components/SessionsPanel'));
 const AgentTypesListPage = lazy(() => import('@thunderid/configure-agent-types/pages/AgentTypesListPage'));
 const CreateAgentTypePage = lazy(() => import('@thunderid/configure-agent-types/pages/CreateAgentTypePage'));
 const ViewAgentTypePage = lazy(() => import('@thunderid/configure-agent-types/pages/ViewAgentTypePage'));
@@ -191,7 +192,19 @@ export default function App(): JSX.Element {
                 <Route index element={<HomePage />} />
                 <Route path={ROUTE_SEGMENTS.home} element={<HomePage />} />
                 <Route path={ROUTE_SEGMENTS.users} element={<UsersListPage />} />
-                <Route path={`${ROUTE_SEGMENTS.users}/:userId`} element={<UserEditPage />} />
+                <Route
+                  path={`${ROUTE_SEGMENTS.users}/:userId`}
+                  element={
+                    <UserEditPage
+                      renderSessions={(userId) => (
+                        // Its own boundary, so loading the panel doesn't swap the whole console for the page loader.
+                        <Suspense fallback={<PageLoadingAnimation />}>
+                          <SessionsPanel key={userId} filter={{userId}} />
+                        </Suspense>
+                      )}
+                    />
+                  }
+                />
                 <Route path={ROUTE_SEGMENTS.userTypes} element={<UserTypesListPage />} />
                 <Route path={`${ROUTE_SEGMENTS.userTypes}/:id`} element={<ViewUserTypePage />} />
                 <Route path={ROUTE_SEGMENTS.agentTypes} element={<AgentTypesListPage />} />
@@ -225,7 +238,18 @@ export default function App(): JSX.Element {
                   element={<VerifiableCredentialEditPage />}
                 />
                 <Route path={ROUTE_SEGMENTS.applications} element={<ApplicationsListPage />} />
-                <Route path={`${ROUTE_SEGMENTS.applications}/:applicationId`} element={<ApplicationEditPage />} />
+                <Route
+                  path={`${ROUTE_SEGMENTS.applications}/:applicationId`}
+                  element={
+                    <ApplicationEditPage
+                      renderSessions={(appId) => (
+                        <Suspense fallback={<PageLoadingAnimation />}>
+                          <SessionsPanel key={appId} filter={{appId}} />
+                        </Suspense>
+                      )}
+                    />
+                  }
+                />
                 <Route path={ROUTE_SEGMENTS.agents} element={<AgentsListPage />} />
                 <Route path={`${ROUTE_SEGMENTS.agents}/:agentId`} element={<AgentEditPage />} />
                 <Route path={ROUTE_SEGMENTS.flows} element={<FlowsListPage />} />

@@ -882,6 +882,9 @@ const translations = {
     'manageUser.loadError': 'Failed to load user information',
     'manageUser.notFound': 'User not found',
 
+    // Sessions
+    'manageUser.tabs.sessions': 'Sessions',
+
     // Roles
     'manageUser.tabs.roles': 'Roles',
 
@@ -3689,6 +3692,7 @@ const translations = {
     'edit.page.tabs.flows': 'Flows',
     'edit.page.tabs.customization': 'Customization',
     'edit.page.tabs.token': 'Token',
+    'edit.page.tabs.sessions': 'Sessions',
     'edit.page.tabs.organizationAccess': 'Organization Access',
     'edit.organizationAccess.save.error': 'Failed to update organization access. Please try again.',
     'organizationAccess.title': 'Where {{resource}} is available',
@@ -7477,6 +7481,39 @@ const translations = {
     'errors.VAR-1004': 'The gateway holds nothing by that name. It may have been deleted.',
     'errors.VAR-1008': 'A description can be at most 1000 characters.',
     'errors.VAR-1009': 'The gateway already holds something by that name.',
+  },
+
+  // ============================================================================
+  // Sessions namespace - SSO session management feature translations
+  // ============================================================================
+  sessions: {
+    'panel.title': 'Active sessions',
+    'panel.userDescription': 'Where this user is signed in.',
+    'panel.appDescription': 'Sessions that signed in to this application.',
+    'panel.loadError': 'Failed to load sessions',
+    'panel.empty': 'No active sessions',
+    'panel.loading': 'Loading sessions',
+    'panel.forbidden': "You don't have permission to view these sessions.",
+    'panel.rowsPerPage': 'Rows per page:',
+    'panel.displayedRows': '{{from}}–{{to}} of {{count}}',
+    'item.lastActive': 'Last active {{time}}',
+    'item.userLastActive': '{{user}}, last active {{time}}',
+    'device.browserOnOs': '{{browser}} on {{os}}',
+    'device.unknown': 'Unknown device',
+    'details.user': 'User',
+    'details.device': 'Device',
+    'details.osAndBrowser': 'OS and browser',
+    'details.applications': 'Active applications',
+    'details.noApplications': 'None',
+    'applications.scrollLeft': 'Scroll applications left',
+    'applications.scrollRight': 'Scroll applications right',
+    'details.signedIn': 'Signed in',
+    'details.lastAuthenticated': 'Last entered credentials {{time}}',
+    'details.lastActive': 'Last active',
+    'details.creationIp': 'Signed in from {{ip}}',
+    'details.lastActiveIp': 'IP address',
+    'details.sessionEnds': 'Session ends',
+    'details.notRecorded': 'Not recorded',
   },
 
   // ============================================================================

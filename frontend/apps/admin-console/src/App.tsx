@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {CapabilityGuard, PageLoader} from '@thunderid/components';
+import {CapabilityGuard, PageLoader, PageLoadingAnimation} from '@thunderid/components';
 import {GroupCreateProvider} from '@thunderid/configure-groups';
 import {RoleCreateProvider} from '@thunderid/configure-roles';
 import {RoutesProvider, ToastProvider} from '@thunderid/contexts';
@@ -21,6 +21,7 @@ const GroupsListPage = lazy(() => import('@thunderid/configure-groups/pages/Grou
 const CreateRolePage = lazy(() => import('@thunderid/configure-roles/pages/CreateRolePage'));
 const RoleEditPage = lazy(() => import('@thunderid/configure-roles/pages/RoleEditPage'));
 const RolesListPage = lazy(() => import('@thunderid/configure-roles/pages/RolesListPage'));
+const SessionsPanel = lazy(() => import('@thunderid/configure-sessions/components/SessionsPanel'));
 const UserAddPage = lazy(() => import('@thunderid/configure-users/pages/UserAddRoute'));
 const UserEditPage = lazy(() => import('@thunderid/configure-users/pages/UserEditPage'));
 const UsersListPage = lazy(() => import('@thunderid/configure-users/pages/UsersListPage'));
@@ -42,7 +43,19 @@ export default function App(): JSX.Element {
               >
                 <Route index element={<Navigate to={RouteConfig.users.list()} replace />} />
                 <Route path={ROUTE_SEGMENTS.users} element={<UsersListPage />} />
-                <Route path={`${ROUTE_SEGMENTS.users}/:userId`} element={<UserEditPage />} />
+                <Route
+                  path={`${ROUTE_SEGMENTS.users}/:userId`}
+                  element={
+                    <UserEditPage
+                      renderSessions={(userId) => (
+                        // Its own boundary, so loading the panel doesn't swap the whole console for the page loader.
+                        <Suspense fallback={<PageLoadingAnimation />}>
+                          <SessionsPanel key={userId} filter={{userId}} />
+                        </Suspense>
+                      )}
+                    />
+                  }
+                />
                 <Route path={ROUTE_SEGMENTS.agents} element={<AgentsListPage />} />
                 <Route path={`${ROUTE_SEGMENTS.agents}/:agentId`} element={<AgentEditPage />} />
                 <Route path={ROUTE_SEGMENTS.groups} element={<GroupsListPage />} />
