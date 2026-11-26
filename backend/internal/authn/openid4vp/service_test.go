@@ -18,7 +18,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -166,6 +168,7 @@ func newTestServiceWithDefs(
 	require.NoError(t, err)
 	stateEntries := map[string]*RequestState{}
 	store := newStatefulStore(t, stateEntries)
+	rootCert, _ := sharedTestRoot(t)
 	cfg := serviceConfig{
 		RequestURIBase:    "https://verifier.example/openid4vp/request",
 		ResponseURIBase:   "https://verifier.example/openid4vp/response",
@@ -182,6 +185,9 @@ func newTestServiceWithDefs(
 			Format:          presentation.DefaultCredentialFormat,
 			RequestedClaims: []string{"given_name", "family_name", "birthdate"},
 			MandatoryClaims: []string{"given_name", "family_name"},
+			TrustedAuthorities: []presentation.TrustedAuthority{
+				{Name: "test-root", Certificate: certPEM(rootCert)},
+			},
 		},
 	}
 	defStore := newStatefulDefinitionReader(t, byHandle)
@@ -233,7 +239,7 @@ func (suite *OpenID4VPServiceTestSuite) TestNewServiceValidation() {
 func (suite *OpenID4VPServiceTestSuite) TestInitiateStoresPendingState() {
 	svc, store := newTestService(suite.T())
 
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
 	suite.Require().Nil(svcErr)
 
 	suite.NotEmpty(init.State)
@@ -250,7 +256,7 @@ func (suite *OpenID4VPServiceTestSuite) TestInitiateStoresPendingState() {
 func (suite *OpenID4VPServiceTestSuite) TestRequestObjectBuildsSignedJAR() {
 	svc, store := newTestService(suite.T())
 
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
 	suite.Require().Nil(svcErr)
 
 	jar, svcErr := svc.GetRequestObject(context.Background(), init.State)
@@ -285,7 +291,7 @@ func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseHappyPath() {
 	svc.jwtSvc = stubResultTokenIssuer(suite.T())
 	svc.issuerURL = testIssuerURL
 
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
 	suite.Require().Nil(svcErr)
 	rs := store[init.State]
 
@@ -302,6 +308,7 @@ func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseHappyPath() {
 	pid, _, svcErr := svc.SubmitResponse(context.Background(), init.State, []byte(jweToken))
 	suite.Require().Nil(svcErr)
 	suite.Equal("Erika", pid.Claims["given_name"])
+	suite.Equal(testIssuer, pid.Issuer)
 
 	stored := store[init.State]
 	suite.Equal(StatusCompleted, stored.Status)
@@ -319,7 +326,7 @@ func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseAcceptsFirstValidOfMan
 	b := newPIDBuilder(suite.T())
 	svc, store := newTestService(suite.T())
 
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
 	suite.Require().Nil(svcErr)
 	rs := store[init.State]
 
@@ -345,15 +352,13 @@ func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseRestrictsTrustedAuthor
 
 	// The definition enables trust enforcement and pins an anchor the credential's leaf does NOT chain to.
 	unrelatedRoot, _ := newTestRootCA(suite.T())
-	enforceIssuer := true
 	def := byHandle[testDefinitionID]
-	def.EnforceTrustedIssuer = &enforceIssuer
 	def.TrustedAuthorities = []presentation.TrustedAuthority{
 		{Name: "unrelated-root", Certificate: certPEM(unrelatedRoot)},
 	}
 	byHandle[testDefinitionID] = def
 
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
 	suite.Require().Nil(svcErr)
 	rs := store[init.State]
 
@@ -375,15 +380,13 @@ func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseAcceptsCorrectTrustedA
 	b := newPIDBuilder(suite.T())
 	svc, store, byHandle := newTestServiceWithDefs(suite.T())
 
-	enforceIssuer := true
 	def := byHandle[testDefinitionID]
-	def.EnforceTrustedIssuer = &enforceIssuer
 	def.TrustedAuthorities = []presentation.TrustedAuthority{
 		{Name: "test-root", Certificate: certPEM(b.rootCert)},
 	}
 	byHandle[testDefinitionID] = def
 
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
 	suite.Require().Nil(svcErr)
 	rs := store[init.State]
 
@@ -398,21 +401,52 @@ func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseAcceptsCorrectTrustedA
 	pid, _, svcErr := svc.SubmitResponse(context.Background(), init.State, []byte(jweToken))
 	suite.Require().Nil(svcErr)
 	suite.Equal("Erika", pid.Claims["given_name"])
+	// The definition whose authorities verified the issuer scopes the holder's link.
+	suite.True(pid.IssuerTrusted)
+	suite.Equal(def.ID, pid.DefinitionID)
+}
+
+// A connection id too long for the identifier column records no link, so the issuer is not trusted for
+// sign-in even though its certificate carries it.
+func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseConnectionIDTooLongIsNotTrusted() {
+	b := newPIDBuilder(suite.T())
+	svc, store, byHandle := newTestServiceWithDefs(suite.T())
+
+	def := byHandle[testDefinitionID]
+	def.ID = strings.Repeat("d", maxLinkedConnectionIDLength-len(LinkedConnectionID("", testIssuer))+1)
+	def.TrustedAuthorities = []presentation.TrustedAuthority{
+		{Name: "test-root", Certificate: certPEM(b.rootCert)},
+	}
+	byHandle[testDefinitionID] = def
+
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
+	suite.Require().Nil(svcErr)
+	rs := store[init.State]
+
+	presentation := b.build(rs.Nonce, map[string]interface{}{"given_name": "Erika", "family_name": "M"})
+	body, err := json.Marshal(map[string]interface{}{
+		"state":    init.State,
+		"vp_token": map[string]interface{}{credentialID: []string{presentation}},
+	})
+	suite.Require().NoError(err)
+	jweToken := fabricateResponseJWE(suite.T(), &rs.EphemeralKey.PublicKey, body)
+
+	pid, _, svcErr := svc.SubmitResponse(context.Background(), init.State, []byte(jweToken))
+	suite.Require().Nil(svcErr)
+	suite.False(pid.IssuerTrusted)
 }
 
 func (suite *OpenID4VPServiceTestSuite) TestRequestObjectEmitsTrustedAuthorityAKI() {
 	b := newPIDBuilder(suite.T())
 	svc, _, byHandle := newTestServiceWithDefs(suite.T())
 
-	enforceIssuer := true
 	def := byHandle[testDefinitionID]
-	def.EnforceTrustedIssuer = &enforceIssuer
 	def.TrustedAuthorities = []presentation.TrustedAuthority{
 		{Name: "test-root", Certificate: certPEM(b.rootCert)},
 	}
 	byHandle[testDefinitionID] = def
 
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
 	suite.Require().Nil(svcErr)
 
 	jar, svcErr := svc.GetRequestObject(context.Background(), init.State)
@@ -436,43 +470,16 @@ func (suite *OpenID4VPServiceTestSuite) TestRequestObjectEmitsTrustedAuthorityAK
 	suite.Equal([]interface{}{ski}, entry["values"])
 }
 
-func (suite *OpenID4VPServiceTestSuite) TestRequestObjectOmitsTrustedAuthoritiesWhenNotEnforced() {
-	b := newPIDBuilder(suite.T())
-	svc, _, byHandle := newTestServiceWithDefs(suite.T())
-
-	def := byHandle[testDefinitionID]
-	def.TrustedAuthorities = []presentation.TrustedAuthority{
-		{Name: "test-root", Certificate: certPEM(b.rootCert)},
-	}
-	byHandle[testDefinitionID] = def
-
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
-	suite.Require().Nil(svcErr)
-	jar, svcErr := svc.GetRequestObject(context.Background(), init.State)
-	suite.Require().Nil(svcErr)
-
-	parts := strings.Split(jar, ".")
-	suite.Require().Len(parts, 3)
-	payloadJSON, err := base64.RawURLEncoding.DecodeString(parts[1])
-	suite.Require().NoError(err)
-	var claims map[string]interface{}
-	suite.Require().NoError(json.Unmarshal(payloadJSON, &claims))
-
-	dcql := claims["dcql_query"].(map[string]interface{})
-	cred := dcql["credentials"].([]interface{})[0].(map[string]interface{})
-	suite.NotContains(cred, "trusted_authorities")
-}
-
-func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseEnforcedWithoutTrustedAuthoritiesFails() {
+// A definition stored before trusted authorities were required, with none, accepts no presentation.
+func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseWithoutTrustedAuthoritiesFails() {
 	b := newPIDBuilder(suite.T())
 	svc, store, byHandle := newTestServiceWithDefs(suite.T())
 
-	enforceIssuer := true
 	def := byHandle[testDefinitionID]
-	def.EnforceTrustedIssuer = &enforceIssuer
+	def.TrustedAuthorities = nil
 	byHandle[testDefinitionID] = def
 
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
 	suite.Require().Nil(svcErr)
 	rs := store[init.State]
 
@@ -493,7 +500,7 @@ func (suite *OpenID4VPServiceTestSuite) TestInitiateFailsOnCorruptTrustedAuthori
 	def.TrustedAuthorities = []presentation.TrustedAuthority{{Name: "broken", Certificate: "not pem"}}
 	byHandle[testDefinitionID] = def
 
-	_, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	_, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
 	suite.Require().NotNil(svcErr)
 	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
@@ -502,7 +509,7 @@ func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseWrongNonceMarksFailed(
 	b := newPIDBuilder(suite.T())
 	svc, store := newTestService(suite.T())
 
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
 	suite.Require().Nil(svcErr)
 	rs := store[init.State]
 
@@ -526,7 +533,7 @@ func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseStateMismatch() {
 	b := newPIDBuilder(suite.T())
 	svc, store := newTestService(suite.T())
 
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
 	suite.Require().Nil(svcErr)
 	rs := store[init.State]
 
@@ -546,7 +553,7 @@ func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseStateMismatch() {
 func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseUndecryptable() {
 	svc, _ := newTestService(suite.T())
 
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
 	suite.Require().Nil(svcErr)
 
 	// JWE encrypted to an unrelated key cannot be decrypted by the stored key.
@@ -569,7 +576,7 @@ func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseUnknownState() {
 func (suite *OpenID4VPServiceTestSuite) TestSubmitErrorMarksFailed() {
 	svc, store := newTestService(suite.T())
 
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
 	suite.Require().Nil(svcErr)
 
 	svcErr = svc.SubmitError(context.Background(), init.State,
@@ -592,7 +599,7 @@ func (suite *OpenID4VPServiceTestSuite) TestSubmitErrorUnknownState() {
 func (suite *OpenID4VPServiceTestSuite) TestExpiredStateRejected() {
 	svc, store := newTestService(suite.T())
 
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
 	suite.Require().Nil(svcErr)
 
 	// Force expiry.
@@ -617,7 +624,7 @@ func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseRedirectURI() {
 	submitVP := func(svc *openid4vpService, store map[string]*RequestState, b *pidBuilder) (
 		string, *tidcommon.ServiceError,
 	) {
-		init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+		init, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
 		suite.Require().Nil(svcErr)
 		rs := store[init.State]
 		presentation := b.build(rs.Nonce, map[string]interface{}{
@@ -661,9 +668,79 @@ func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseRedirectURI() {
 func (suite *OpenID4VPServiceTestSuite) TestInitiateRejectsUnknownDefinition() {
 	svc, _ := newTestService(suite.T())
 
-	_, err := svc.Initiate(context.Background(), "no-such-def")
+	_, err := svc.Initiate(context.Background(), "no-such-def", false)
 	suite.Require().NotNil(err)
 	suite.Equal(ErrorUnknownDefinition.Code, err.Code)
+}
+
+func (suite *OpenID4VPServiceTestSuite) TestInitiateForSignInRequiresSubjectClaim() {
+	svc, store, byHandle := newTestServiceWithDefs(suite.T())
+
+	_, err := svc.Initiate(context.Background(), testDefinitionID, true)
+	suite.Require().NotNil(err)
+	suite.Equal(ErrorDefinitionNotForSignIn.Code, err.Code)
+	suite.Empty(store)
+
+	// Verification alone does not need one.
+	_, err = svc.Initiate(context.Background(), testDefinitionID, false)
+	suite.Require().Nil(err)
+
+	def := byHandle[testDefinitionID]
+	def.SubjectClaim = "family_name"
+	byHandle[testDefinitionID] = def
+	_, err = svc.Initiate(context.Background(), testDefinitionID, true)
+	suite.Require().Nil(err)
+}
+
+func (suite *OpenID4VPServiceTestSuite) TestSubmitResponseSubjectClaim() {
+	cases := map[string]struct {
+		claims      map[string]interface{}
+		wantSubject string
+		wantErr     bool
+	}{
+		"string value identifies the holder": {
+			claims:      map[string]interface{}{"given_name": "Erika", "family_name": "M", "birthdate": "1984-01-26"},
+			wantSubject: "1984-01-26",
+		},
+		"absent value fails": {
+			claims:  map[string]interface{}{"given_name": "Erika", "family_name": "M"},
+			wantErr: true,
+		},
+		"non-string value fails": {
+			claims:  map[string]interface{}{"given_name": "Erika", "family_name": "M", "birthdate": 1984},
+			wantErr: true,
+		},
+	}
+	for name, c := range cases {
+		suite.Run(name, func() {
+			b := newPIDBuilder(suite.T())
+			svc, store, byHandle := newTestServiceWithDefs(suite.T())
+			def := byHandle[testDefinitionID]
+			def.SubjectClaim = "birthdate"
+			byHandle[testDefinitionID] = def
+
+			init, svcErr := svc.Initiate(context.Background(), testDefinitionID, true)
+			suite.Require().Nil(svcErr)
+			rs := store[init.State]
+			body, err := json.Marshal(map[string]interface{}{
+				"state":    init.State,
+				"vp_token": map[string]interface{}{credentialID: []string{b.build(rs.Nonce, c.claims)}},
+			})
+			suite.Require().NoError(err)
+
+			pid, _, svcErr := svc.SubmitResponse(context.Background(), init.State,
+				[]byte(fabricateResponseJWE(suite.T(), &rs.EphemeralKey.PublicKey, body)))
+			if c.wantErr {
+				suite.Require().NotNil(svcErr)
+				suite.Equal(ErrorVerificationFailed.Code, svcErr.Code)
+				suite.Equal(StatusFailed, store[init.State].Status)
+				return
+			}
+			suite.Require().Nil(svcErr)
+			suite.Equal("birthdate", pid.SubjectClaim)
+			suite.Equal(c.wantSubject, pid.Subject)
+		})
+	}
 }
 
 func (suite *OpenID4VPServiceTestSuite) TestWithState() {
@@ -697,33 +774,106 @@ func (suite *OpenID4VPServiceTestSuite) TestAuthenticate_NilCredential() {
 func (suite *OpenID4VPServiceTestSuite) TestAuthenticate_ValidCredential() {
 	svc, _ := newTestService(suite.T())
 	cred := &authncommon.OpenID4VPCredential{
-		Subject: "sub-42",
-		Claims:  map[string]interface{}{"given_name": "Ada", "family_name": "Lovelace"},
+		DefinitionID:  "def-1",
+		Issuer:        testIssuer,
+		IssuerTrusted: true,
+		Subject:       "national_id:sub-42",
+		Claims: map[string]interface{}{
+			"given_name": "Ada", "family_name": "Lovelace", "national_id": "sub-42", "sub": "wallet-sub",
+		},
 	}
 	result, err := svc.Authenticate(context.Background(), cred)
 	suite.Require().Nil(err)
 	suite.Require().NotNil(result)
-	// Identification token keys on subject only so IdentifyEntity matches by sub.
-	suite.Equal("sub-42", result.Token["sub"])
-	suite.Len(result.Token, 1)
-	// AuthenticatedClaims carries subject + all disclosed claims.
-	suite.Equal("sub-42", result.AuthenticatedClaims["sub"])
-	suite.Equal("Ada", result.AuthenticatedClaims["given_name"])
-	suite.Equal("Lovelace", result.AuthenticatedClaims["family_name"])
+	// The identification token names the link scoped to the definition and issuer, and the subject prefixed
+	// with its claim, so the holder resolves through it.
+	suite.Equal(map[string]interface{}{
+		"federatedIdpId": "openid4vp:def-1:" + testIssuer,
+		"sub":            "national_id:sub-42",
+	}, result.Token)
+	// AuthenticatedClaims carries the disclosed claims as presented.
+	suite.Equal(cred.Claims, result.AuthenticatedClaims)
+}
+
+func (suite *OpenID4VPServiceTestSuite) TestLinkedSubject() {
+	suite.Equal("national_id:DE123", LinkedSubject("national_id", "DE123"))
+}
+
+// An untrusted issuer's subject is not matched: anyone can mint it, so it must not reach an existing
+// user.
+func (suite *OpenID4VPServiceTestSuite) TestAuthenticate_UntrustedIssuer() {
+	svc, _ := newTestService(suite.T())
+	cred := &authncommon.OpenID4VPCredential{
+		Subject: "sub-42",
+		Claims:  map[string]interface{}{"given_name": "Ada"},
+	}
+	result, err := svc.Authenticate(context.Background(), cred)
+	suite.Nil(result)
+	suite.Require().NotNil(err)
+	suite.Equal(ErrorUntrustedHolderIssuer.Code, err.Code)
+
+	// Trust is reported first, since it is what the definition must change to sign anyone in.
+	_, err = svc.Authenticate(context.Background(), &authncommon.OpenID4VPCredential{})
+	suite.Require().NotNil(err)
+	suite.Equal(ErrorUntrustedHolderIssuer.Code, err.Code)
+}
+
+// A trusted issuer without the definition that trusted it names no link scope.
+func (suite *OpenID4VPServiceTestSuite) TestAuthenticate_NoDefinition() {
+	svc, _ := newTestService(suite.T())
+	cred := &authncommon.OpenID4VPCredential{Issuer: testIssuer, IssuerTrusted: true, Subject: "sub-42"}
+	result, err := svc.Authenticate(context.Background(), cred)
+	suite.Nil(result)
+	suite.Require().NotNil(err)
+	suite.Equal(ErrorUntrustedHolderIssuer.Code, err.Code)
 }
 
 func (suite *OpenID4VPServiceTestSuite) TestAuthenticate_NoSubject() {
 	svc, _ := newTestService(suite.T())
 	cred := &authncommon.OpenID4VPCredential{
-		Claims: map[string]interface{}{"tax_id": "DE123456"},
+		DefinitionID:  "def-1",
+		Issuer:        testIssuer,
+		IssuerTrusted: true,
+		Claims:        map[string]interface{}{"given_name": "Ada"},
 	}
 	result, err := svc.Authenticate(context.Background(), cred)
-	suite.Require().Nil(err)
-	suite.Require().NotNil(result)
-	// With no subject the identification token is empty — IdentifyEntity finds
-	// nothing and the holder is provisioned just-in-time.
-	suite.Empty(result.Token)
-	suite.Equal("DE123456", result.AuthenticatedClaims["tax_id"])
+	// Nothing identifies the holder, so no user is resolved or provisioned for the presentation.
+	suite.Nil(result)
+	suite.Require().NotNil(err)
+	suite.Equal(ErrorNoHolderIdentifier.Code, err.Code)
+}
+
+func (suite *OpenID4VPServiceTestSuite) TestSubjectDeriverFor() {
+	vp := &VerifiedPresentation{
+		Subject: "sub-1",
+		Claims:  map[string]interface{}{"sub": "sub-1", "national_id": "DE123", "age": 42},
+	}
+	// Without a subject claim nothing identifies the holder, not even sub.
+	suite.Empty(subjectDeriverFor("")(vp))
+	suite.Equal("DE123", subjectDeriverFor("national_id")(vp))
+	suite.Equal("sub-1", subjectDeriverFor("sub")(vp))
+	// A configured claim that is absent or not a string never falls back to sub.
+	suite.Empty(subjectDeriverFor("missing")(vp))
+	suite.Empty(subjectDeriverFor("age")(vp))
+}
+
+// The holder's key identifies a wallet, not a person, so nothing stands in for a missing subject.
+func (suite *OpenID4VPServiceTestSuite) TestGetResult_NoSubjectIssuesTokenWithoutSub() {
+	svc, store := newTestService(suite.T())
+	svc.jwtSvc = stubResultTokenIssuer(suite.T())
+	svc.issuerURL = testIssuerURL
+
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
+	suite.Require().Nil(svcErr)
+	store[init.State].Status = StatusCompleted
+	store[init.State].Result = &VerifiedPresentation{Issuer: "https://issuer.example"}
+
+	rs, svcErr := svc.GetResult(context.Background(), init.State)
+	suite.Require().Nil(svcErr)
+	suite.Require().NotEmpty(rs.ResultToken)
+	claims := decodeFakeToken(suite.T(), rs.ResultToken)
+	suite.NotContains(claims, "sub")
+	suite.Equal("https://issuer.example", claims["credential_issuer"])
 }
 
 func (suite *OpenID4VPServiceTestSuite) TestGetResultDeletesOnCompleted() {
@@ -731,7 +881,7 @@ func (suite *OpenID4VPServiceTestSuite) TestGetResultDeletesOnCompleted() {
 	svc.jwtSvc = stubResultTokenIssuer(suite.T())
 	svc.issuerURL = testIssuerURL
 
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
 	suite.Require().Nil(svcErr)
 	store[init.State].Status = StatusCompleted
 	store[init.State].Result = &VerifiedPresentation{Subject: "sub-1"}
@@ -747,7 +897,7 @@ func (suite *OpenID4VPServiceTestSuite) TestGetResultDeletesOnCompleted() {
 func (suite *OpenID4VPServiceTestSuite) TestGetResultDeletesOnFailed() {
 	svc, store := newTestService(suite.T())
 
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
 	suite.Require().Nil(svcErr)
 	store[init.State].Status = StatusFailed
 	store[init.State].FailureReason = "nonce mismatch"
@@ -956,36 +1106,37 @@ const (
 // root CA and issuer certificate, for use as test fixtures.
 type pidBuilder struct {
 	t          *testing.T
+	issuer     string
 	issuerKey  *ecdsa.PrivateKey
 	issuerCert *x509.Certificate
 	holderKey  *ecdsa.PrivateKey
 	rootCert   *x509.Certificate
 }
 
+var (
+	sharedRootOnce sync.Once
+	sharedRootCert *x509.Certificate
+	sharedRootKey  *ecdsa.PrivateKey
+)
+
+// sharedTestRoot returns the root CA every pidBuilder's issuer chains to, which the default test definition
+// trusts, since every definition verifies presentations against its trusted authorities.
+func sharedTestRoot(t *testing.T) (*x509.Certificate, *ecdsa.PrivateKey) {
+	t.Helper()
+	sharedRootOnce.Do(func() { sharedRootCert, sharedRootKey = newTestRootCA(t) })
+	return sharedRootCert, sharedRootKey
+}
+
 func newPIDBuilder(t *testing.T) *pidBuilder {
 	t.Helper()
-	rootKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	require.NoError(t, err)
-	rootTmpl := &x509.Certificate{
-		SerialNumber:          big.NewInt(1),
-		Subject:               pkix.Name{CommonName: "test-root"},
-		NotBefore:             time.Now().Add(-time.Hour),
-		NotAfter:              time.Now().Add(10 * time.Hour),
-		IsCA:                  true,
-		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
-		BasicConstraintsValid: true,
-		SubjectKeyId:          []byte{1, 2, 3, 4},
-	}
-	rootDER, err := x509.CreateCertificate(rand.Reader, rootTmpl, rootTmpl, &rootKey.PublicKey, rootKey)
-	require.NoError(t, err)
-	rootCert, err := x509.ParseCertificate(rootDER)
-	require.NoError(t, err)
+	rootCert, rootKey := sharedTestRoot(t)
 
 	issuerKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 	issuerTmpl := &x509.Certificate{
 		SerialNumber:          big.NewInt(2),
 		Subject:               pkix.Name{CommonName: "test-issuer"},
+		DNSNames:              []string{"pid.bundesdruckerei.de"},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().Add(10 * time.Hour),
 		KeyUsage:              x509.KeyUsageDigitalSignature,
@@ -1002,6 +1153,7 @@ func newPIDBuilder(t *testing.T) *pidBuilder {
 
 	return &pidBuilder{
 		t:          t,
+		issuer:     testIssuer,
 		issuerKey:  issuerKey,
 		issuerCert: issuerCert,
 		holderKey:  holderKey,
@@ -1033,7 +1185,7 @@ func (b *pidBuilder) build(nonce string, claims map[string]interface{}) string {
 			"alg": "ES256", "typ": "dc+sd-jwt",
 			"x5c": []string{base64.StdEncoding.EncodeToString(b.issuerCert.Raw)},
 		},
-		Issuer:          testIssuer,
+		Issuer:          b.issuer,
 		VCT:             testVCT,
 		IssuedAt:        time.Now(),
 		ExpiresAt:       time.Now().Add(time.Hour),
@@ -1098,7 +1250,7 @@ func (v *testVerifier) verifyResponse(body []byte, credID, nonce string) (*Verif
 	cred, err := verifySDJWTPresentation(
 		presentations[0], v.trust, v.policy.Audience, nonce,
 		v.policy.Leeway, v.policy.KeyBindingMaxAge,
-		v.policy.EnforceTrustedIssuer, v.policy.EnforceKeyBinding)
+		v.policy.EnforceKeyBinding)
 	if err != nil {
 		return nil, err
 	}
@@ -1107,12 +1259,11 @@ func (v *testVerifier) verifyResponse(body []byte, credID, nonce string) (*Verif
 
 func defaultPolicy() policy {
 	return policy{
-		ExpectedVCT:          testVCT,
-		Audience:             testAudience,
-		RequestedClaims:      []string{"given_name", "family_name", "birthdate"},
-		MandatoryClaims:      []string{"given_name", "family_name"},
-		EnforceTrustedIssuer: true,
-		EnforceKeyBinding:    true,
+		ExpectedVCT:       testVCT,
+		Audience:          testAudience,
+		RequestedClaims:   []string{"given_name", "family_name", "birthdate"},
+		MandatoryClaims:   []string{"given_name", "family_name"},
+		EnforceKeyBinding: true,
 	}
 }
 
@@ -1202,6 +1353,7 @@ func (suite *OpenID4VPServiceTestSuite) TestVerifyResponse_HappyPath() {
 	pid, err := v.verifyResponse(body, credentialID, testNonce)
 	suite.Require().NoError(err)
 	suite.Equal("Erika", pid.Claims["given_name"])
+	suite.True(pid.IssuerTrusted)
 }
 
 func (suite *OpenID4VPServiceTestSuite) TestVerifyResponse_PropagatesVerificationFailure() {
@@ -1222,6 +1374,64 @@ func (suite *OpenID4VPServiceTestSuite) TestVerifyResponse_MissingCredential() {
 
 	_, err := v.verifyResponse(body, "other-credential", testNonce)
 	suite.ErrorIs(err, ErrInvalidResponse)
+}
+
+// A credential whose iss is not in its certificate still verifies, since issuers do not always follow
+// the SAN convention, but it does not identify a holder: iss is then the issuer's own claim, and one
+// trusted issuer could otherwise assert another's subjects.
+func (suite *OpenID4VPServiceTestSuite) TestVerifyResponse_IssuerNotInCertificateIsNotBound() {
+	b := newPIDBuilder(suite.T())
+	b.issuer = "https://other-issuer.example"
+	claims := map[string]interface{}{"given_name": "Erika", "family_name": "M"}
+
+	v := newTestVerifier(suite.T(), b, defaultPolicy())
+	pid, err := v.verifyResponse(
+		responseBody(suite.T(), b.build(testNonce, claims), "state-123"), credentialID, testNonce)
+	suite.Require().NoError(err)
+	suite.False(pid.IssuerTrusted)
+}
+
+func (suite *OpenID4VPServiceTestSuite) TestIssuerFromCertificate() {
+	uri, err := url.Parse("https://issuer.example/tenant-a")
+	suite.Require().NoError(err)
+	suite.Equal("https://issuer.example/tenant-a",
+		issuerFromCertificate(&x509.Certificate{DNSNames: []string{"pid.example"}, URIs: []*url.URL{uri}}))
+	suite.Equal("https://pid.example", issuerFromCertificate(&x509.Certificate{DNSNames: []string{"pid.example"}}))
+	suite.Equal("https://pid.example",
+		issuerFromCertificate(&x509.Certificate{DNSNames: []string{"*.wild.example", "pid.example"}}))
+	suite.Empty(issuerFromCertificate(&x509.Certificate{DNSNames: []string{"*.wild.example"}}))
+	suite.Empty(issuerFromCertificate(&x509.Certificate{}))
+}
+
+func (suite *OpenID4VPServiceTestSuite) TestIssuerMatchesCertificate() {
+	uri, err := url.Parse("https://issuer.example/tenant-a")
+	suite.Require().NoError(err)
+	leaf := &x509.Certificate{DNSNames: []string{"pid.example", "*.wild.example"}, URIs: []*url.URL{uri}}
+
+	cases := map[string]struct {
+		iss  string
+		want bool
+	}{
+		"https origin matches DNS SAN":     {"https://pid.example", true},
+		"DNS SAN match ignores case":       {"https://PID.example", true},
+		"path under DNS SAN host":          {"https://pid.example/tenant-a", false},
+		"trailing slash under DNS SAN":     {"https://pid.example/", false},
+		"port on DNS SAN host":             {"https://pid.example:8443", false},
+		"query on DNS SAN origin":          {"https://pid.example?tenant=a", false},
+		"wildcard SAN as written":          {"https://*.wild.example", false},
+		"host under wildcard SAN":          {"https://a.wild.example", false},
+		"iss equals URI SAN":               {"https://issuer.example/tenant-a", true},
+		"iss under URI SAN host only":      {"https://issuer.example/tenant-b", false},
+		"host not in SANs":                 {"https://other.example", false},
+		"http scheme not matched to DNS":   {"http://pid.example", false},
+		"non-URL issuer":                   {"pid.example", false},
+		"subdomain of DNS SAN not matched": {"https://sub.pid.example", false},
+	}
+	for name, c := range cases {
+		suite.Run(name, func() {
+			suite.Equal(c.want, issuerMatchesCertificate(c.iss, leaf))
+		})
+	}
 }
 
 // policyWithValues returns the default policy with claim value constraints added.
@@ -1262,14 +1472,22 @@ func (suite *OpenID4VPServiceTestSuite) TestVerifyResponse_ClaimValueConstraint(
 
 // stubResultTokenIssuer returns a mock JWT service that emits an unsigned JWT, so
 // API tests can decode and assert on the payload without standing up a real signer.
+// Like the real service, it sets iss, and sets sub only when one is given.
 func stubResultTokenIssuer(t *testing.T) *jwtmock.JWTServiceInterfaceMock {
 	t.Helper()
 	jwtSvc := jwtmock.NewJWTServiceInterfaceMock(t)
 	jwtSvc.EXPECT().GenerateJWT(mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 		mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, _ string, _ string, _ int64,
+		RunAndReturn(func(_ context.Context, sub string, iss string, _ int64,
 			claims map[string]interface{}, _ string, _ string) (string, int64, *tidcommon.ServiceError) {
-			payload, _ := json.Marshal(claims)
+			body := map[string]interface{}{"iss": iss}
+			if sub != "" {
+				body["sub"] = sub
+			}
+			for k, v := range claims {
+				body[k] = v
+			}
+			payload, _ := json.Marshal(body)
 			header, _ := json.Marshal(map[string]string{"alg": "none", "typ": "JWT"})
 			token := base64.RawURLEncoding.EncodeToString(header) + "." +
 				base64.RawURLEncoding.EncodeToString(payload) + "."
@@ -1311,7 +1529,7 @@ func (suite *OpenID4VPServiceTestSuite) TestGetStatusUnknownTxn() {
 func (suite *OpenID4VPServiceTestSuite) TestGetStatusPending() {
 	svc, _ := newTestService(suite.T())
 
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
 	suite.Require().Nil(svcErr)
 
 	ts, svcErr := svc.GetResult(context.Background(), init.State)
@@ -1323,7 +1541,7 @@ func (suite *OpenID4VPServiceTestSuite) TestGetStatusPending() {
 func (suite *OpenID4VPServiceTestSuite) TestGetStatusFailed() {
 	svc, store := newTestService(suite.T())
 
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
 	suite.Require().Nil(svcErr)
 
 	store[init.State].Status = StatusFailed
@@ -1338,7 +1556,7 @@ func (suite *OpenID4VPServiceTestSuite) TestGetStatusFailed() {
 func (suite *OpenID4VPServiceTestSuite) TestGetStatusExpired() {
 	svc, store := newTestService(suite.T())
 
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
 	suite.Require().Nil(svcErr)
 
 	store[init.State].ExpiresAt = time.Now().Add(-time.Minute)
@@ -1354,11 +1572,12 @@ func (suite *OpenID4VPServiceTestSuite) TestGetStatusCompletedWithIssuer() {
 	svc.jwtSvc = stubResultTokenIssuer(t)
 	svc.issuerURL = testIssuerURL
 
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
 	suite.Require().Nil(svcErr)
 
 	store[init.State].Status = StatusCompleted
 	store[init.State].Result = &VerifiedPresentation{
+		Issuer:  "https://issuer.example",
 		Subject: "sub",
 		Claims:  map[string]interface{}{"given_name": "Erika"},
 	}
@@ -1369,6 +1588,9 @@ func (suite *OpenID4VPServiceTestSuite) TestGetStatusCompletedWithIssuer() {
 	suite.NotEmpty(ts.ResultToken)
 
 	claims := decodeFakeToken(t, ts.ResultToken)
+	suite.Equal(testIssuerURL, claims["iss"])
+	suite.Equal("sub", claims["sub"])
+	suite.Equal("https://issuer.example", claims["credential_issuer"])
 	suite.Equal(testIssuerURL, claims["aud"])
 	suite.Equal(init.State, claims["jti"])
 	suite.Equal(init.State, claims["txn"])
@@ -1377,7 +1599,7 @@ func (suite *OpenID4VPServiceTestSuite) TestGetStatusCompletedWithIssuer() {
 func (suite *OpenID4VPServiceTestSuite) TestGetStatusCompletedNoIssuer() {
 	svc, store := newTestService(suite.T())
 
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
 	suite.Require().Nil(svcErr)
 
 	store[init.State].Status = StatusCompleted
@@ -1394,7 +1616,7 @@ func (suite *OpenID4VPServiceTestSuite) TestGetStatusCompletedIssuerError() {
 	svc.jwtSvc = failingResultTokenIssuer(t)
 	svc.issuerURL = testIssuerURL
 
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
 	suite.Require().Nil(svcErr)
 
 	store[init.State].Status = StatusCompleted
@@ -1408,7 +1630,7 @@ func (suite *OpenID4VPServiceTestSuite) TestGetStatusCompletedIssuerError() {
 func (suite *OpenID4VPServiceTestSuite) TestGetStatusUnknownStatusValue() {
 	svc, store := newTestService(suite.T())
 
-	init, svcErr := svc.Initiate(context.Background(), testDefinitionID)
+	init, svcErr := svc.Initiate(context.Background(), testDefinitionID, false)
 	suite.Require().Nil(svcErr)
 
 	store[init.State].Status = Status("BOGUS")

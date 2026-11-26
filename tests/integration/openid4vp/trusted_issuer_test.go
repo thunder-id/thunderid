@@ -55,18 +55,17 @@ func (ts *OpenID4VPTrustedIssuerTestSuite) TearDownSuite() {
 
 // definition returns a definition body that requests the test credential.
 func (ts *OpenID4VPTrustedIssuerTestSuite) definition(
-	handle string, enforce bool, authorities ...testutils.TrustedAuthority,
+	handle string, authorities ...testutils.TrustedAuthority,
 ) testutils.PresentationDefinition {
 	return testutils.PresentationDefinition{
-		Handle:               handle,
-		OUID:                 ts.ouID,
-		Name:                 "Trusted Issuer Test Presentation",
-		VCT:                  trustedIssuerVCT,
-		Format:               "dc+sd-jwt",
-		RequestedClaims:      []string{"given_name", "family_name"},
-		MandatoryClaims:      []string{"given_name"},
-		EnforceTrustedIssuer: &enforce,
-		TrustedAuthorities:   authorities,
+		Handle:             handle,
+		OUID:               ts.ouID,
+		Name:               "Trusted Issuer Test Presentation",
+		VCT:                trustedIssuerVCT,
+		Format:             "dc+sd-jwt",
+		RequestedClaims:    []string{"given_name", "family_name"},
+		MandatoryClaims:    []string{"given_name"},
+		TrustedAuthorities: authorities,
 	}
 }
 
@@ -110,7 +109,7 @@ func trustedAuthoritiesOf(req *testutils.VPRequestObject) ([]any, bool) {
 func (ts *OpenID4VPTrustedIssuerTestSuite) TestPinnedIssuerCertificateVerifies() {
 	wallet, err := testutils.NewVPWallet()
 	ts.Require().NoError(err)
-	ts.createDefinition(ts.definition("trusted_issuer_pinned", true,
+	ts.createDefinition(ts.definition("trusted_issuer_pinned",
 		testutils.TrustedAuthority{Name: "wallet-issuer", Certificate: wallet.IssuerCertificatePEM()}))
 
 	req, submitStatus, status := ts.present("trusted_issuer_pinned", wallet)
@@ -130,9 +129,9 @@ func (ts *OpenID4VPTrustedIssuerTestSuite) TestPinnedIssuerCertificateVerifies()
 func (ts *OpenID4VPTrustedIssuerTestSuite) TestCertificateIsScopedToDefinition() {
 	wallet, err := testutils.NewVPWallet()
 	ts.Require().NoError(err)
-	ts.createDefinition(ts.definition("trusted_issuer_scope_a", true,
+	ts.createDefinition(ts.definition("trusted_issuer_scope_a",
 		testutils.TrustedAuthority{Name: "wallet-issuer", Certificate: wallet.IssuerCertificatePEM()}))
-	ts.createDefinition(ts.definition("trusted_issuer_scope_b", true,
+	ts.createDefinition(ts.definition("trusted_issuer_scope_b",
 		testutils.TrustedAuthority{Name: "other-issuer", Certificate: ts.otherCertificate()}))
 
 	_, submitStatus, status := ts.present("trusted_issuer_scope_a", wallet)
@@ -147,7 +146,7 @@ func (ts *OpenID4VPTrustedIssuerTestSuite) TestCertificateIsScopedToDefinition()
 func (ts *OpenID4VPTrustedIssuerTestSuite) TestUpdateDrivesIssuerTrust() {
 	wallet, err := testutils.NewVPWallet()
 	ts.Require().NoError(err)
-	def := ts.definition("trusted_issuer_updated", true,
+	def := ts.definition("trusted_issuer_updated",
 		testutils.TrustedAuthority{Name: "wallet-issuer", Certificate: wallet.IssuerCertificatePEM()})
 	id := ts.createDefinition(def)
 
@@ -167,18 +166,4 @@ func (ts *OpenID4VPTrustedIssuerTestSuite) TestUpdateDrivesIssuerTrust() {
 	_, submitStatus, status = ts.present("trusted_issuer_updated", wallet)
 	ts.Equal(http.StatusBadRequest, submitStatus)
 	ts.Equal("FAILED", status.Status)
-}
-
-func (ts *OpenID4VPTrustedIssuerTestSuite) TestCertificatesUnusedWhenNotEnforced() {
-	wallet, err := testutils.NewVPWallet()
-	ts.Require().NoError(err)
-	ts.createDefinition(ts.definition("trusted_issuer_not_enforced", false,
-		testutils.TrustedAuthority{Name: "other-issuer", Certificate: ts.otherCertificate()}))
-
-	req, submitStatus, status := ts.present("trusted_issuer_not_enforced", wallet)
-
-	ts.Equal(http.StatusOK, submitStatus)
-	ts.Equalf("COMPLETED", status.Status, "error=%q", status.Error)
-	_, ok := trustedAuthoritiesOf(req)
-	ts.False(ok, "trusted_authorities must not be advertised when issuer trust is not enforced")
 }

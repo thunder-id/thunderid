@@ -214,12 +214,14 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceRequiresAndValidat
 
 	_, err := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
 		Handle: "eudi-pid", VCT: "urn:eudi:pid:de:1",
+		TrustedAuthorities: testCA(suite.T()),
 	})
 	suite.Require().NotNil(err)
 	suite.Equal(ErrorDefinitionInvalidOU.Code, err.Code)
 
 	created, err := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
 		Handle: "eudi-pid", VCT: "urn:eudi:pid:de:1", OUID: "ou-1",
+		TrustedAuthorities: testCA(suite.T()),
 	})
 	suite.Require().Nil(err)
 	suite.Equal("ou-1", created.OUID)
@@ -235,11 +237,12 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceCreatePersists() {
 	ctx := context.Background()
 
 	created, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
-		Handle:          "eudi-pid",
-		Name:            "EUDI PID",
-		VCT:             "urn:eudi:pid:de:1",
-		MandatoryClaims: []string{"given_name", "family_name"},
-		OptionalClaims:  []string{"birthdate"},
+		Handle:             "eudi-pid",
+		Name:               "EUDI PID",
+		VCT:                "urn:eudi:pid:de:1",
+		MandatoryClaims:    []string{"given_name", "family_name"},
+		OptionalClaims:     []string{"birthdate"},
+		TrustedAuthorities: testCA(suite.T()),
 	})
 	suite.Require().Nil(svcErr)
 	suite.Require().NotEmpty(created.ID)
@@ -256,19 +259,92 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceCreateValidationAn
 	svc, _ := newTestDefinitionService(suite.T())
 	ctx := context.Background()
 
-	_, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{Handle: "", VCT: "x"})
+	_, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
+		Handle: "", VCT: "x", TrustedAuthorities: testCA(suite.T()),
+	})
 	suite.Require().NotNil(svcErr)
 	suite.Equal(ErrorDefinitionInvalidRequest.Code, svcErr.Code)
 
-	_, svcErr = svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{Handle: "h", VCT: ""})
+	_, svcErr = svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
+		Handle: "h", VCT: "", TrustedAuthorities: testCA(suite.T()),
+	})
 	suite.Require().NotNil(svcErr)
 	suite.Equal(ErrorDefinitionInvalidRequest.Code, svcErr.Code)
 
-	_, svcErr = svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{Handle: "dup", VCT: "v"})
+	_, svcErr = svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
+		Handle: "dup", VCT: "v", TrustedAuthorities: testCA(suite.T()),
+	})
 	suite.Require().Nil(svcErr)
-	_, svcErr = svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{Handle: "dup", VCT: "v2"})
+	_, svcErr = svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
+		Handle: "dup", VCT: "v2", TrustedAuthorities: testCA(suite.T()),
+	})
 	suite.Require().NotNil(svcErr)
 	suite.Equal(ErrorDefinitionAlreadyExists.Code, svcErr.Code)
+}
+
+func (suite *DefinitionServiceTestSuite) TestDefinitionServiceSubjectClaimMustBeMandatory() {
+	svc, _ := newTestDefinitionService(suite.T())
+	ctx := context.Background()
+
+	invalid := map[string]*PresentationDefinitionDTO{
+		// A wallet may withhold an optional claim, so it could never identify the holder.
+		"optional claim": {
+			Handle: "optional-subject", VCT: "v", OptionalClaims: []string{"national_id"},
+			SubjectClaim: "national_id",
+		},
+		"unrequested claim": {
+			Handle: "unrequested-subject", VCT: "v", MandatoryClaims: []string{"given_name"},
+			SubjectClaim: "national_id",
+		},
+		// The link subject is the claim name and value joined by a colon.
+		"claim with a colon": {
+			Handle: "colon-subject", VCT: "v", MandatoryClaims: []string{"urn:national_id"},
+			SubjectClaim: "urn:national_id",
+		},
+	}
+	for name, dto := range invalid {
+		suite.Run(name, func() {
+			_, svcErr := svc.CreatePresentationDefinition(ctx, dto)
+			suite.Require().NotNil(svcErr)
+			suite.Equal(ErrorDefinitionInvalidSubjectClaim.Code, svcErr.Code)
+		})
+	}
+
+	// A definition without a subject claim only verifies presentations.
+	created, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
+		Handle: "no-subject", VCT: "v", MandatoryClaims: []string{"national_id"},
+		TrustedAuthorities: testCA(suite.T()),
+	})
+	suite.Require().Nil(svcErr)
+	suite.Empty(created.SubjectClaim)
+
+	created, svcErr = svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
+		Handle: "mandatory-subject", VCT: "v", MandatoryClaims: []string{"national_id"}, SubjectClaim: "national_id",
+		TrustedAuthorities: testCA(suite.T()),
+	})
+	suite.Require().Nil(svcErr)
+	suite.Equal("national_id", created.SubjectClaim)
+}
+
+func (suite *DefinitionServiceTestSuite) TestDefinitionServiceSubjectClaimIsEditable() {
+	svc, _ := newTestDefinitionService(suite.T())
+	ctx := context.Background()
+	claims := []string{"national_id", "tax_id"}
+
+	created, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
+		Handle: "editable-subject", VCT: "v", MandatoryClaims: claims, SubjectClaim: "national_id",
+		TrustedAuthorities: testCA(suite.T()),
+	})
+	suite.Require().Nil(svcErr)
+
+	for _, subjectClaim := range []string{"tax_id", ""} {
+		updated, svcErr := svc.UpdatePresentationDefinition(ctx, created.ID, &PresentationDefinitionDTO{
+			Handle: "editable-subject", VCT: "v", MandatoryClaims: claims, SubjectClaim: subjectClaim,
+			TrustedAuthorities: testCA(suite.T()),
+		})
+		suite.Require().Nil(svcErr)
+		suite.Equal(subjectClaim, updated.SubjectClaim)
+	}
 }
 
 func (suite *DefinitionServiceTestSuite) TestDefinitionServiceRejectsUnsupportedFormat() {
@@ -278,6 +354,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceRejectsUnsupported
 	// An empty format defaults to the supported SD-JWT VC format.
 	created, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
 		Handle: "default-fmt", VCT: "v",
+		TrustedAuthorities: testCA(suite.T()),
 	})
 	suite.Require().Nil(svcErr)
 	suite.Equal(DefaultCredentialFormat, created.Format)
@@ -285,6 +362,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceRejectsUnsupported
 	// An unsupported format is rejected.
 	_, svcErr = svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
 		Handle: "mdoc", VCT: "v", Format: "mso_mdoc",
+		TrustedAuthorities: testCA(suite.T()),
 	})
 	suite.Require().NotNil(svcErr)
 	suite.Equal(ErrorDefinitionUnsupportedFormat.Code, svcErr.Code)
@@ -294,12 +372,16 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceUpdateRehandles() 
 	svc, store := newTestDefinitionService(suite.T())
 	ctx := context.Background()
 
-	created, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{Handle: "old", VCT: "v"})
+	created, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
+		Handle: "old", VCT: "v", TrustedAuthorities: testCA(suite.T()),
+	})
 	suite.Require().Nil(svcErr)
 	_, err := store.GetPresentationDefinitionByHandle(ctx, "old")
 	suite.Require().NoError(err)
 
-	_, svcErr = svc.UpdatePresentationDefinition(ctx, created.ID, &PresentationDefinitionDTO{Handle: "new", VCT: "v2"})
+	_, svcErr = svc.UpdatePresentationDefinition(ctx, created.ID, &PresentationDefinitionDTO{
+		Handle: "new", VCT: "v2", TrustedAuthorities: testCA(suite.T()),
+	})
 	suite.Require().Nil(svcErr)
 
 	_, err = store.GetPresentationDefinitionByHandle(ctx, "old")
@@ -313,7 +395,9 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceGetByHandle() {
 	svc, _ := newTestDefinitionService(suite.T())
 	ctx := context.Background()
 
-	created, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{Handle: "eudi-pid", VCT: "v"})
+	created, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
+		Handle: "eudi-pid", VCT: "v", TrustedAuthorities: testCA(suite.T()),
+	})
 	suite.Require().Nil(svcErr)
 
 	got, svcErr := svc.GetPresentationDefinitionByHandle(ctx, "eudi-pid")
@@ -336,6 +420,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceListSummaries() {
 
 	_, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
 		Handle: "eudi-pid", VCT: "v", OUID: "ou-1",
+		TrustedAuthorities: testCA(suite.T()),
 	})
 	suite.Require().Nil(svcErr)
 
@@ -351,7 +436,9 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceListSummariesNoOUS
 	svc, _ := newTestDefinitionService(suite.T())
 	ctx := context.Background()
 
-	_, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{Handle: "h", VCT: "v"})
+	_, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
+		Handle: "h", VCT: "v", TrustedAuthorities: testCA(suite.T()),
+	})
 	suite.Require().Nil(svcErr)
 
 	summaries, svcErr := svc.ListPresentationDefinitionSummaries(ctx)
@@ -368,14 +455,18 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceGetUpdateDeleteNot
 	suite.Require().NotNil(svcErr)
 	suite.Equal(ErrorDefinitionNotFound.Code, svcErr.Code)
 
-	_, svcErr = svc.UpdatePresentationDefinition(ctx, "missing", &PresentationDefinitionDTO{Handle: "h", VCT: "v"})
+	_, svcErr = svc.UpdatePresentationDefinition(ctx, "missing", &PresentationDefinitionDTO{
+		Handle: "h", VCT: "v", TrustedAuthorities: testCA(suite.T()),
+	})
 	suite.Require().NotNil(svcErr)
 	suite.Equal(ErrorDefinitionNotFound.Code, svcErr.Code)
 
 	// Delete of a missing definition is idempotent.
 	suite.Require().Nil(svc.DeletePresentationDefinition(ctx, "missing"))
 
-	created, _ := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{Handle: "todelete", VCT: "v"})
+	created, _ := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
+		Handle: "todelete", VCT: "v", TrustedAuthorities: testCA(suite.T()),
+	})
 	suite.Require().Nil(svc.DeletePresentationDefinition(ctx, created.ID))
 	_, err := store.GetPresentationDefinitionByHandle(ctx, "todelete")
 	suite.ErrorIs(err, ErrNotFound)
@@ -389,6 +480,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceRejectsMissingOUID
 
 	_, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
 		Handle: "h", VCT: "v",
+		TrustedAuthorities: testCA(suite.T()),
 	})
 	suite.Require().NotNil(svcErr)
 	suite.Equal(ErrorDefinitionInvalidOU.Code, svcErr.Code)
@@ -403,6 +495,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceResolveOUExistsChe
 	// OUID is supplied directly, so existence verification runs and returns an error.
 	_, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
 		Handle: "h", VCT: "v", OUID: "ou-x",
+		TrustedAuthorities: testCA(suite.T()),
 	})
 	suite.Require().NotNil(svcErr)
 	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
@@ -417,6 +510,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceResolveOUNotExists
 
 	_, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
 		Handle: "h", VCT: "v", OUID: "ou-1",
+		TrustedAuthorities: testCA(suite.T()),
 	})
 	suite.Require().NotNil(svcErr)
 	suite.Equal(ErrorDefinitionInvalidOU.Code, svcErr.Code)
@@ -425,7 +519,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceResolveOUNotExists
 func (suite *DefinitionServiceTestSuite) TestDefinitionServiceCreateKeepsSuppliedID() {
 	svc, _ := newTestDefinitionService(suite.T())
 	created, svcErr := svc.CreatePresentationDefinition(context.Background(),
-		&PresentationDefinitionDTO{ID: "imported-id", Handle: "h", VCT: "v"})
+		&PresentationDefinitionDTO{ID: "imported-id", Handle: "h", VCT: "v", TrustedAuthorities: testCA(suite.T())})
 	suite.Require().Nil(svcErr)
 	suite.Equal("imported-id", created.ID)
 }
@@ -433,11 +527,11 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceCreateKeepsSupplie
 func (suite *DefinitionServiceTestSuite) TestDefinitionServiceCreateRejectsTakenID() {
 	svc, _ := newTestDefinitionService(suite.T())
 	created, svcErr := svc.CreatePresentationDefinition(context.Background(),
-		&PresentationDefinitionDTO{Handle: "first", VCT: "v"})
+		&PresentationDefinitionDTO{Handle: "first", VCT: "v", TrustedAuthorities: testCA(suite.T())})
 	suite.Require().Nil(svcErr)
 
 	_, svcErr = svc.CreatePresentationDefinition(context.Background(),
-		&PresentationDefinitionDTO{ID: created.ID, Handle: "second", VCT: "v"})
+		&PresentationDefinitionDTO{ID: created.ID, Handle: "second", VCT: "v", TrustedAuthorities: testCA(suite.T())})
 	suite.Require().NotNil(svcErr)
 	suite.Equal(ErrorDefinitionIDConflict.Code, svcErr.Code)
 }
@@ -449,7 +543,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceCreateIDLookupErro
 	svc := newPresentationDefinitionService(store, nil, allowAllAuthz(suite.T()), nil, false)
 
 	_, svcErr := svc.CreatePresentationDefinition(context.Background(),
-		&PresentationDefinitionDTO{ID: "imported-id", Handle: "h", VCT: "v"})
+		&PresentationDefinitionDTO{ID: "imported-id", Handle: "h", VCT: "v", TrustedAuthorities: testCA(suite.T())})
 	suite.Require().NotNil(svcErr)
 	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
@@ -459,7 +553,9 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceCreateHandleLookup
 		newErroringDefinitionStore(suite.T(), errors.New("db boom")), nil, allowAllAuthz(suite.T()), nil, false)
 	ctx := context.Background()
 
-	_, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{Handle: "h", VCT: "v"})
+	_, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
+		Handle: "h", VCT: "v", TrustedAuthorities: testCA(suite.T()),
+	})
 	suite.Require().NotNil(svcErr)
 	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
@@ -471,7 +567,9 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceCreatePersistError
 	svc := newPresentationDefinitionService(store, nil, allowAllAuthz(suite.T()), nil, false)
 	ctx := context.Background()
 
-	_, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{Handle: "h", VCT: "v"})
+	_, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
+		Handle: "h", VCT: "v", TrustedAuthorities: testCA(suite.T()),
+	})
 	suite.Require().NotNil(svcErr)
 	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
@@ -483,7 +581,9 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceCreateUUIDError() 
 	svc.uuid = func() (string, error) { return "", errors.New("uuid failed") }
 	ctx := context.Background()
 
-	_, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{Handle: "h", VCT: "v"})
+	_, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
+		Handle: "h", VCT: "v", TrustedAuthorities: testCA(suite.T()),
+	})
 	suite.Require().NotNil(svcErr)
 	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
@@ -556,6 +656,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceListPopulatesOUHan
 
 	_, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
 		Handle: "h", VCT: "v", OUID: "ou-1",
+		TrustedAuthorities: testCA(suite.T()),
 	})
 	suite.Require().Nil(svcErr)
 
@@ -599,7 +700,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServicePopulateOUHandleRe
 func (suite *DefinitionServiceTestSuite) TestDefinitionServiceUpdateInvalidRequest() {
 	svc, _ := newTestDefinitionService(suite.T())
 	_, svcErr := svc.UpdatePresentationDefinition(context.Background(), "  ",
-		&PresentationDefinitionDTO{Handle: "h", VCT: "v"})
+		&PresentationDefinitionDTO{Handle: "h", VCT: "v", TrustedAuthorities: testCA(suite.T())})
 	suite.Require().NotNil(svcErr)
 	suite.Equal(ErrorDefinitionInvalidRequest.Code, svcErr.Code)
 }
@@ -607,10 +708,10 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceUpdateInvalidReque
 func (suite *DefinitionServiceTestSuite) TestDefinitionServiceUpdateValidationFails() {
 	svc, _ := newTestDefinitionService(suite.T())
 	created, svcErr := svc.CreatePresentationDefinition(context.Background(),
-		&PresentationDefinitionDTO{Handle: "h", VCT: "v"})
+		&PresentationDefinitionDTO{Handle: "h", VCT: "v", TrustedAuthorities: testCA(suite.T())})
 	suite.Require().Nil(svcErr)
 	_, svcErr = svc.UpdatePresentationDefinition(context.Background(), created.ID,
-		&PresentationDefinitionDTO{Handle: "", VCT: "v"})
+		&PresentationDefinitionDTO{Handle: "", VCT: "v", TrustedAuthorities: testCA(suite.T())})
 	suite.Require().NotNil(svcErr)
 	suite.Equal(ErrorDefinitionInvalidRequest.Code, svcErr.Code)
 }
@@ -619,7 +720,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceUpdateLoadStoreErr
 	svc := newPresentationDefinitionService(
 		newErroringDefinitionStore(suite.T(), errors.New("db boom")), nil, allowAllAuthz(suite.T()), nil, false)
 	_, svcErr := svc.UpdatePresentationDefinition(context.Background(), "id-1",
-		&PresentationDefinitionDTO{Handle: "h", VCT: "v"})
+		&PresentationDefinitionDTO{Handle: "h", VCT: "v", TrustedAuthorities: testCA(suite.T())})
 	suite.Require().NotNil(svcErr)
 	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
@@ -633,7 +734,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceUpdateHandleClashL
 	svc := newPresentationDefinitionService(store, nil, allowAllAuthz(suite.T()), nil, false)
 
 	_, svcErr := svc.UpdatePresentationDefinition(context.Background(), "id-1",
-		&PresentationDefinitionDTO{Handle: "new", VCT: "v"})
+		&PresentationDefinitionDTO{Handle: "new", VCT: "v", TrustedAuthorities: testCA(suite.T())})
 	suite.Require().NotNil(svcErr)
 	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
@@ -647,7 +748,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceUpdateHandleClashC
 	svc := newPresentationDefinitionService(store, nil, allowAllAuthz(suite.T()), nil, false)
 
 	_, svcErr := svc.UpdatePresentationDefinition(context.Background(), "id-1",
-		&PresentationDefinitionDTO{Handle: "new", VCT: "v"})
+		&PresentationDefinitionDTO{Handle: "new", VCT: "v", TrustedAuthorities: testCA(suite.T())})
 	suite.Require().NotNil(svcErr)
 	suite.Equal(ErrorDefinitionAlreadyExists.Code, svcErr.Code)
 }
@@ -660,7 +761,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceUpdateImmutable() 
 	svc := newPresentationDefinitionService(store, nil, allowAllAuthz(suite.T()), nil, false)
 
 	_, svcErr := svc.UpdatePresentationDefinition(context.Background(), "id-1",
-		&PresentationDefinitionDTO{Handle: "h", VCT: "v"})
+		&PresentationDefinitionDTO{Handle: "h", VCT: "v", TrustedAuthorities: testCA(suite.T())})
 	suite.Require().NotNil(svcErr)
 	suite.Equal(ErrorDefinitionImmutable.Code, svcErr.Code)
 }
@@ -673,7 +774,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceUpdatePersistError
 	svc := newPresentationDefinitionService(store, nil, allowAllAuthz(suite.T()), nil, false)
 
 	_, svcErr := svc.UpdatePresentationDefinition(context.Background(), "id-1",
-		&PresentationDefinitionDTO{Handle: "h", VCT: "v"})
+		&PresentationDefinitionDTO{Handle: "h", VCT: "v", TrustedAuthorities: testCA(suite.T())})
 	suite.Require().NotNil(svcErr)
 	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
@@ -740,7 +841,8 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceRejectsDuplicateCl
 	svc, _ := newTestDefinitionService(suite.T())
 	_, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
 		Handle: "dup-mandatory", VCT: "v",
-		MandatoryClaims: []string{"tier", "tier"},
+		MandatoryClaims:    []string{"tier", "tier"},
+		TrustedAuthorities: testCA(suite.T()),
 	})
 	suite.Require().NotNil(svcErr)
 	suite.Equal(ErrorDefinitionDuplicateClaim.Code, svcErr.Code)
@@ -750,8 +852,9 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceRejectsDuplicateCl
 	svc, _ = newTestDefinitionService(suite.T())
 	_, svcErr = svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
 		Handle: "dup-across", VCT: "v",
-		MandatoryClaims: []string{"tier"},
-		OptionalClaims:  []string{"full_name", "tier"},
+		MandatoryClaims:    []string{"tier"},
+		OptionalClaims:     []string{"full_name", "tier"},
+		TrustedAuthorities: testCA(suite.T()),
 	})
 	suite.Require().NotNil(svcErr)
 	suite.Equal(ErrorDefinitionDuplicateClaim.Code, svcErr.Code)
@@ -763,7 +866,8 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceRejectsEmptyClaimN
 
 	_, svcErr := svc.CreatePresentationDefinition(context.Background(), &PresentationDefinitionDTO{
 		Handle: "blank-claim", VCT: "v",
-		OptionalClaims: []string{"  "},
+		OptionalClaims:     []string{"  "},
+		TrustedAuthorities: testCA(suite.T()),
 	})
 	suite.Require().NotNil(svcErr)
 	suite.Equal(ErrorDefinitionEmptyClaimName.Code, svcErr.Code)
@@ -774,8 +878,9 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceAcceptsDistinctCla
 
 	created, svcErr := svc.CreatePresentationDefinition(context.Background(), &PresentationDefinitionDTO{
 		Handle: "distinct-claims", VCT: "v",
-		MandatoryClaims: []string{"tier"},
-		OptionalClaims:  []string{"full_name"},
+		MandatoryClaims:    []string{"tier"},
+		OptionalClaims:     []string{"full_name"},
+		TrustedAuthorities: testCA(suite.T()),
 	})
 	suite.Require().Nil(svcErr)
 	suite.Equal([]string{"tier"}, created.MandatoryClaims)
@@ -788,7 +893,8 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceRejectsInvalidRequ
 	svc, _ := newTestDefinitionService(suite.T())
 	_, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
 		Handle: "dup-requested", VCT: "v",
-		RequestedClaims: []string{"tier", "tier"},
+		RequestedClaims:    []string{"tier", "tier"},
+		TrustedAuthorities: testCA(suite.T()),
 	})
 	suite.Require().NotNil(svcErr)
 	suite.Equal(ErrorDefinitionDuplicateClaim.Code, svcErr.Code)
@@ -797,7 +903,8 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceRejectsInvalidRequ
 	svc, _ = newTestDefinitionService(suite.T())
 	_, svcErr = svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
 		Handle: "blank-requested", VCT: "v",
-		RequestedClaims: []string{"  "},
+		RequestedClaims:    []string{"  "},
+		TrustedAuthorities: testCA(suite.T()),
 	})
 	suite.Require().NotNil(svcErr)
 	suite.Equal(ErrorDefinitionEmptyClaimName.Code, svcErr.Code)
@@ -810,9 +917,10 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceAcceptsRequestedCl
 
 	created, svcErr := svc.CreatePresentationDefinition(context.Background(), &PresentationDefinitionDTO{
 		Handle: "requested-superset", VCT: "v",
-		RequestedClaims: []string{"tier", "full_name"},
-		MandatoryClaims: []string{"tier"},
-		OptionalClaims:  []string{"full_name"},
+		RequestedClaims:    []string{"tier", "full_name"},
+		MandatoryClaims:    []string{"tier"},
+		OptionalClaims:     []string{"full_name"},
+		TrustedAuthorities: testCA(suite.T()),
 	})
 	suite.Require().Nil(svcErr)
 	suite.Equal([]string{"tier", "full_name"}, created.RequestedClaims)
@@ -821,11 +929,10 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceAcceptsRequestedCl
 func (suite *DefinitionServiceTestSuite) TestDefinitionServiceCreateTrustedAuthorities() {
 	svc, store := newTestDefinitionService(suite.T())
 	ctx := context.Background()
-	enforce := true
 	certA := validTestCertificatePEM(suite.T(), "root-a")
 
 	created, svcErr := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
-		Handle: "h", VCT: "v", EnforceTrustedIssuer: &enforce,
+		Handle: "h", VCT: "v",
 		TrustedAuthorities: []TrustedAuthority{{Name: "root-a", Certificate: certA}},
 	})
 	suite.Require().Nil(svcErr)
@@ -836,7 +943,6 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceCreateTrustedAutho
 }
 
 func (suite *DefinitionServiceTestSuite) TestDefinitionServiceCreateTrustedAuthorityValidation() {
-	enforce := true
 	certA := validTestCertificatePEM(suite.T(), "root-a")
 	expired := newTestCertificatePEM(suite.T(), "expired", time.Now().Add(-time.Hour))
 	tooMany := make([]TrustedAuthority, 0, maxTrustedAuthorities+1)
@@ -849,32 +955,31 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceCreateTrustedAutho
 	cases := []struct {
 		name        string
 		authorities []TrustedAuthority
-		enforce     *bool
 		wantCode    string
 	}{
-		{"missing certificate", []TrustedAuthority{{Name: "root-a"}}, nil,
+		{"missing certificate", []TrustedAuthority{{Name: "root-a"}},
 			ErrorDefinitionInvalidTrustedAuthorityCertificate.Code},
-		{"invalid certificate", []TrustedAuthority{{Name: "root-a", Certificate: "not pem"}}, nil,
+		{"invalid certificate", []TrustedAuthority{{Name: "root-a", Certificate: "not pem"}},
 			ErrorDefinitionInvalidTrustedAuthorityCertificate.Code},
-		{"expired certificate", []TrustedAuthority{{Name: "old", Certificate: expired}}, nil,
+		{"expired certificate", []TrustedAuthority{{Name: "old", Certificate: expired}},
 			ErrorDefinitionExpiredTrustedAuthorityCertificate.Code},
-		{"empty name", []TrustedAuthority{{Name: "  ", Certificate: certA}}, nil,
+		{"empty name", []TrustedAuthority{{Name: "  ", Certificate: certA}},
 			ErrorDefinitionEmptyTrustedAuthorityName.Code},
 		{"duplicate name", []TrustedAuthority{
 			{Name: "root-a", Certificate: certA},
 			{Name: "root-a", Certificate: validTestCertificatePEM(suite.T(), "root-b")},
-		}, nil, ErrorDefinitionDuplicateTrustedAuthority.Code},
+		}, ErrorDefinitionDuplicateTrustedAuthority.Code},
 		{"duplicate certificate", []TrustedAuthority{
 			{Name: "root-a", Certificate: certA}, {Name: "root-a-again", Certificate: certA},
-		}, nil, ErrorDefinitionDuplicateTrustedAuthority.Code},
-		{"too many", tooMany, nil, ErrorDefinitionTooManyTrustedAuthorities.Code},
-		{"enforced without authorities", nil, &enforce, ErrorDefinitionTrustedIssuerWithoutAuthorities.Code},
+		}, ErrorDefinitionDuplicateTrustedAuthority.Code},
+		{"too many", tooMany, ErrorDefinitionTooManyTrustedAuthorities.Code},
+		{"no authorities", nil, ErrorDefinitionTrustedIssuerWithoutAuthorities.Code},
 	}
 	for _, tc := range cases {
 		suite.Run(tc.name, func() {
 			svc, _ := newTestDefinitionService(suite.T())
 			_, svcErr := svc.CreatePresentationDefinition(context.Background(), &PresentationDefinitionDTO{
-				Handle: "h", VCT: "v", EnforceTrustedIssuer: tc.enforce, TrustedAuthorities: tc.authorities,
+				Handle: "h", VCT: "v", TrustedAuthorities: tc.authorities,
 			})
 			suite.Require().NotNil(svcErr)
 			suite.Equal(tc.wantCode, svcErr.Code)
@@ -946,7 +1051,7 @@ func (suite *DefinitionServiceTestSuite) TestDefinitionServiceUpdateTrustedAutho
 		suite.Run(tc.name, func() {
 			svc, _ := newTestDefinitionService(suite.T())
 			created, svcErr := svc.CreatePresentationDefinition(context.Background(),
-				&PresentationDefinitionDTO{Handle: "h", VCT: "v"})
+				&PresentationDefinitionDTO{Handle: "h", VCT: "v", TrustedAuthorities: testCA(suite.T())})
 			suite.Require().Nil(svcErr)
 
 			_, svcErr = svc.UpdatePresentationDefinition(context.Background(), created.ID,
@@ -965,10 +1070,12 @@ func (suite *DefinitionServiceTestSuite) TestListSummariesByOUID() {
 	svc := newPresentationDefinitionService(
 		newStatefulDefinitionStore(suite.T()), resolver, allowAllAuthz(suite.T()), nil, false)
 	ctx := context.Background()
-	first := &PresentationDefinitionDTO{Handle: "first", VCT: "v1", OUID: "ou-1"}
+	first := &PresentationDefinitionDTO{Handle: "first", VCT: "v1", OUID: "ou-1", TrustedAuthorities: testCA(suite.T())}
 	_, svcErr := svc.CreatePresentationDefinition(ctx, first)
 	suite.Require().Nil(svcErr)
-	second := &PresentationDefinitionDTO{Handle: "second", VCT: "v2", OUID: "ou-2"}
+	second := &PresentationDefinitionDTO{
+		Handle: "second", VCT: "v2", OUID: "ou-2", TrustedAuthorities: testCA(suite.T()),
+	}
 	_, svcErr = svc.CreatePresentationDefinition(ctx, second)
 	suite.Require().Nil(svcErr)
 
@@ -1092,6 +1199,7 @@ func (suite *DefinitionServiceTestSuite) TestCreateInProjectPlacesTheDefinitionI
 
 	created, err := svc.CreatePresentationDefinition(context.Background(), &PresentationDefinitionDTO{
 		Handle: "pid", VCT: "urn:pid", ProjectID: testProjectID,
+		TrustedAuthorities: testCA(suite.T()),
 	})
 	suite.Require().Nil(err)
 	suite.Equal("sys-ou", created.OUID)
@@ -1123,6 +1231,7 @@ func (suite *DefinitionServiceTestSuite) TestCreateRefusesTheProjectsTheValidato
 
 		_, err := svc.CreatePresentationDefinition(context.Background(), &PresentationDefinitionDTO{
 			Handle: "pid", VCT: "urn:pid", ProjectID: testProjectID, OUID: "ou-1",
+			TrustedAuthorities: testCA(suite.T()),
 		})
 		suite.Require().NotNil(err, code)
 		suite.Equal(expected, err.Code, code)
@@ -1134,6 +1243,7 @@ func (suite *DefinitionServiceTestSuite) TestCreateRequiresAProjectWhereProjects
 
 	_, err := svc.CreatePresentationDefinition(context.Background(), &PresentationDefinitionDTO{
 		Handle: "pid", VCT: "urn:pid", OUID: "ou-1",
+		TrustedAuthorities: testCA(suite.T()),
 	})
 	suite.Require().NotNil(err)
 	suite.Equal(ErrorDefinitionProjectRequired.Code, err.Code)
@@ -1151,6 +1261,7 @@ func (suite *DefinitionServiceTestSuite) TestCreateFailsWhenTheSystemOUCannotBeR
 
 	_, err := svc.CreatePresentationDefinition(context.Background(), &PresentationDefinitionDTO{
 		Handle: "pid", VCT: "urn:pid", ProjectID: testProjectID,
+		TrustedAuthorities: testCA(suite.T()),
 	})
 	suite.Require().NotNil(err)
 	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
@@ -1161,12 +1272,14 @@ func (suite *DefinitionServiceTestSuite) TestCreateWithoutProjectsKeepsTheProjec
 
 	created, err := svc.CreatePresentationDefinition(context.Background(), &PresentationDefinitionDTO{
 		Handle: "pid", VCT: "urn:pid", ProjectID: testProjectID,
+		TrustedAuthorities: testCA(suite.T()),
 	})
 	suite.Require().Nil(err)
 	suite.Equal(testProjectID, created.ProjectID)
 
 	_, err = svc.CreatePresentationDefinition(context.Background(), &PresentationDefinitionDTO{
 		Handle: "pid-2", VCT: "urn:pid", ProjectID: fmt.Sprintf("%037d", 0),
+		TrustedAuthorities: testCA(suite.T()),
 	})
 	suite.Require().NotNil(err)
 	suite.Equal(ErrorDefinitionInvalidProject.Code, err.Code)
@@ -1183,11 +1296,15 @@ func (suite *DefinitionServiceTestSuite) TestUpdateToAnotherOUInTheProjectIsChec
 	ctx := context.Background()
 	created, err := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
 		Handle: "pid", VCT: "urn:pid", ProjectID: testProjectID,
+		TrustedAuthorities: testCA(suite.T()),
 	})
 	suite.Require().Nil(err)
 
 	_, err = svc.UpdatePresentationDefinition(ctx, created.ID,
-		&PresentationDefinitionDTO{Handle: "pid", VCT: "urn:pid", ProjectID: testProjectID, OUID: "ou-1"})
+		&PresentationDefinitionDTO{
+			Handle: "pid", VCT: "urn:pid", ProjectID: testProjectID, OUID: "ou-1",
+			TrustedAuthorities: testCA(suite.T()),
+		})
 	suite.Require().NotNil(err)
 	suite.Equal(ErrorDefinitionOUNotInProject.Code, err.Code)
 
@@ -1206,22 +1323,29 @@ func (suite *DefinitionServiceTestSuite) TestUpdateKeepsOrMovesTheProject() {
 	ctx := context.Background()
 	created, err := svc.CreatePresentationDefinition(ctx, &PresentationDefinitionDTO{
 		Handle: "pid", VCT: "urn:pid", ProjectID: testProjectID,
+		TrustedAuthorities: testCA(suite.T()),
 	})
 	suite.Require().Nil(err)
 
 	updated, err := svc.UpdatePresentationDefinition(ctx, created.ID,
-		&PresentationDefinitionDTO{Handle: "pid", VCT: "urn:pid", Name: "Renamed"})
+		&PresentationDefinitionDTO{
+			Handle: "pid", VCT: "urn:pid", Name: "Renamed", TrustedAuthorities: testCA(suite.T()),
+		})
 	suite.Require().Nil(err)
 	suite.Equal(testProjectID, updated.ProjectID, "an update without a project keeps it")
 	suite.Equal("sys-ou", updated.OUID, "an update without an organization unit keeps it")
 
 	updated, err = svc.UpdatePresentationDefinition(ctx, created.ID,
-		&PresentationDefinitionDTO{Handle: "pid", VCT: "urn:pid", ProjectID: "proj-2"})
+		&PresentationDefinitionDTO{
+			Handle: "pid", VCT: "urn:pid", ProjectID: "proj-2", TrustedAuthorities: testCA(suite.T()),
+		})
 	suite.Require().Nil(err)
 	suite.Equal("proj-2", updated.ProjectID)
 
 	_, err = svc.UpdatePresentationDefinition(ctx, created.ID,
-		&PresentationDefinitionDTO{Handle: "pid", VCT: "urn:pid", ProjectID: "proj-gone"})
+		&PresentationDefinitionDTO{
+			Handle: "pid", VCT: "urn:pid", ProjectID: "proj-gone", TrustedAuthorities: testCA(suite.T()),
+		})
 	suite.Require().NotNil(err)
 	suite.Equal(ErrorDefinitionInvalidProject.Code, err.Code)
 }

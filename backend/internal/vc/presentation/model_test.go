@@ -10,23 +10,22 @@ import (
 )
 
 func TestToResponse(t *testing.T) {
-	enforce := true
 	dto := PresentationDefinitionDTO{
-		ID:                   "def-1",
-		Handle:               "eudi-pid",
-		OUID:                 "ou-1",
-		OUHandle:             "default",
-		Name:                 "EUDI PID",
-		VCT:                  "urn:eudi:pid:1",
-		Format:               DefaultCredentialFormat,
-		RequestedClaims:      []string{"given_name"},
-		MandatoryClaims:      []string{"family_name"},
-		OptionalClaims:       []string{"birthdate"},
-		ClaimValues:          map[string][]string{"address.country": {"DE"}},
-		EnforceTrustedIssuer: &enforce,
+		ID:              "def-1",
+		Handle:          "eudi-pid",
+		OUID:            "ou-1",
+		OUHandle:        "default",
+		Name:            "EUDI PID",
+		VCT:             "urn:eudi:pid:1",
+		Format:          DefaultCredentialFormat,
+		RequestedClaims: []string{"given_name"},
+		MandatoryClaims: []string{"family_name"},
+		OptionalClaims:  []string{"birthdate"},
+		ClaimValues:     map[string][]string{"address.country": {"DE"}},
 		TrustedAuthorities: []TrustedAuthority{
 			{Name: "root-a", Certificate: "pem-a"}, {Name: "root-b", Certificate: "pem-b"},
 		},
+		SubjectClaim: "family_name",
 	}
 
 	resp := toResponse(dto)
@@ -42,8 +41,8 @@ func TestToResponse(t *testing.T) {
 	assert.Equal(t, dto.MandatoryClaims, resp.MandatoryClaims)
 	assert.Equal(t, dto.OptionalClaims, resp.OptionalClaims)
 	assert.Equal(t, dto.ClaimValues, resp.ClaimValues)
-	assert.Equal(t, dto.EnforceTrustedIssuer, resp.EnforceTrustedIssuer)
 	assert.Equal(t, []string{"root-a", "root-b"}, resp.TrustedAuthorities)
+	assert.Equal(t, dto.SubjectClaim, resp.SubjectClaim)
 }
 
 func TestToResponseOmitsEmptyTrustedAuthorities(t *testing.T) {

@@ -446,9 +446,9 @@ func lengthPrefixed(data []byte) []byte {
 
 // OpenID4VP wallet simulator.
 
-// vpWalletIssuer is the "iss" claim placed in the self-signed SD-JWT VC. Issuer
-// trust is established by pinning the wallet's issuer certificate on a definition,
-// so any non-empty issuer is accepted.
+// vpWalletIssuer is the "iss" claim placed in the self-signed SD-JWT VC. Issuer trust is established
+// by pinning the wallet's issuer certificate on a definition, and iss matches a DNS SAN of that
+// certificate so a sign-in can identify the holder.
 const vpWalletIssuer = "https://integration-test-issuer.thunderid.local"
 
 // VPWallet is a self-contained OpenID4VP wallet. It owns a self-signed issuer
@@ -474,6 +474,7 @@ func NewVPWallet() (*VPWallet, error) {
 	tmpl := &x509.Certificate{
 		SerialNumber:          big.NewInt(1),
 		Subject:               pkix.Name{CommonName: "ThunderID Integration Test Issuer"},
+		DNSNames:              []string{"integration-test-issuer.thunderid.local"},
 		NotBefore:             time.Now().Add(-time.Hour),
 		NotAfter:              time.Now().Add(24 * time.Hour),
 		KeyUsage:              x509.KeyUsageDigitalSignature,
@@ -536,6 +537,24 @@ func NewSelfSignedCertificatePEM(commonName string, notAfter time.Time) (string,
 	}
 	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})), nil
 }
+
+// TrustedAuthoritiesYAML is a top-level trustedAuthorities block for a presentation_definition YAML
+// document. It pins the declarative fixture's issuer certificate, valid until 2126.
+const TrustedAuthoritiesYAML = `trustedAuthorities:
+  - name: decl-issuer-ca
+    certificate: |
+      -----BEGIN CERTIFICATE-----
+      MIIBoTCCAUegAwIBAgIUdkoZQ4jMyJ7nESmgpI/zd+L7YRIwCgYIKoZIzj0EAwIw
+      JTEjMCEGA1UEAwwaRGVjbGFyYXRpdmUgVGVzdCBJc3N1ZXIgQ0EwIBcNMjYxMTA1
+      MTMwOTU1WhgPMjEyNjEwMTIxMzA5NTVaMCUxIzAhBgNVBAMMGkRlY2xhcmF0aXZl
+      IFRlc3QgSXNzdWVyIENBMFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAESg4ipczj
+      Rl/suVJvuATor/gGJSj2eFpVNUvmNBgFKXu3pmhItoL//PcfsM1HStmpV0RKUl3i
+      OgmDj+PA3GsYtaNTMFEwHQYDVR0OBBYEFJ6sVW3IduB9x4vmrmOcu5uUEFQTMB8G
+      A1UdIwQYMBaAFJ6sVW3IduB9x4vmrmOcu5uUEFQTMA8GA1UdEwEB/wQFMAMBAf8w
+      CgYIKoZIzj0EAwIDSAAwRQIhALqy/o5RC8Doei+jyMDLDFCx47OE/IEDfU8+YmCk
+      Sw+jAiA/Vp2/isHGmXeF/dz+Ty8Rvq2Mwh6PkmySUk7CTU1wKg==
+      -----END CERTIFICATE-----
+`
 
 // VPRequestObject is the decoded authorization request the wallet fetches from
 // /openid4vp/request. Only the fields a wallet needs are surfaced.

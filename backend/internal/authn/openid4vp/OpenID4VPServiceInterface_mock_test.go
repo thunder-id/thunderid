@@ -189,8 +189,8 @@ func (_c *OpenID4VPServiceInterfaceMock_GetResult_Call) RunAndReturn(run func(ct
 }
 
 // Initiate provides a mock function for the type OpenID4VPServiceInterfaceMock
-func (_mock *OpenID4VPServiceInterfaceMock) Initiate(ctx context.Context, definitionID string) (*Initiation, *common0.ServiceError) {
-	ret := _mock.Called(ctx, definitionID)
+func (_mock *OpenID4VPServiceInterfaceMock) Initiate(ctx context.Context, definitionID string, forSignIn bool) (*Initiation, *common0.ServiceError) {
+	ret := _mock.Called(ctx, definitionID, forSignIn)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Initiate")
@@ -198,18 +198,18 @@ func (_mock *OpenID4VPServiceInterfaceMock) Initiate(ctx context.Context, defini
 
 	var r0 *Initiation
 	var r1 *common0.ServiceError
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*Initiation, *common0.ServiceError)); ok {
-		return returnFunc(ctx, definitionID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, bool) (*Initiation, *common0.ServiceError)); ok {
+		return returnFunc(ctx, definitionID, forSignIn)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *Initiation); ok {
-		r0 = returnFunc(ctx, definitionID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, bool) *Initiation); ok {
+		r0 = returnFunc(ctx, definitionID, forSignIn)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*Initiation)
 		}
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) *common0.ServiceError); ok {
-		r1 = returnFunc(ctx, definitionID)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, bool) *common0.ServiceError); ok {
+		r1 = returnFunc(ctx, definitionID, forSignIn)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*common0.ServiceError)
@@ -226,11 +226,12 @@ type OpenID4VPServiceInterfaceMock_Initiate_Call struct {
 // Initiate is a helper method to define mock.On call
 //   - ctx context.Context
 //   - definitionID string
-func (_e *OpenID4VPServiceInterfaceMock_Expecter) Initiate(ctx any, definitionID any) *OpenID4VPServiceInterfaceMock_Initiate_Call {
-	return &OpenID4VPServiceInterfaceMock_Initiate_Call{Call: _e.mock.On("Initiate", ctx, definitionID)}
+//   - forSignIn bool
+func (_e *OpenID4VPServiceInterfaceMock_Expecter) Initiate(ctx any, definitionID any, forSignIn any) *OpenID4VPServiceInterfaceMock_Initiate_Call {
+	return &OpenID4VPServiceInterfaceMock_Initiate_Call{Call: _e.mock.On("Initiate", ctx, definitionID, forSignIn)}
 }
 
-func (_c *OpenID4VPServiceInterfaceMock_Initiate_Call) Run(run func(ctx context.Context, definitionID string)) *OpenID4VPServiceInterfaceMock_Initiate_Call {
+func (_c *OpenID4VPServiceInterfaceMock_Initiate_Call) Run(run func(ctx context.Context, definitionID string, forSignIn bool)) *OpenID4VPServiceInterfaceMock_Initiate_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -240,9 +241,14 @@ func (_c *OpenID4VPServiceInterfaceMock_Initiate_Call) Run(run func(ctx context.
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
+		var arg2 bool
+		if args[2] != nil {
+			arg2 = args[2].(bool)
+		}
 		run(
 			arg0,
 			arg1,
+			arg2,
 		)
 	})
 	return _c
@@ -253,7 +259,7 @@ func (_c *OpenID4VPServiceInterfaceMock_Initiate_Call) Return(initiation *Initia
 	return _c
 }
 
-func (_c *OpenID4VPServiceInterfaceMock_Initiate_Call) RunAndReturn(run func(ctx context.Context, definitionID string) (*Initiation, *common0.ServiceError)) *OpenID4VPServiceInterfaceMock_Initiate_Call {
+func (_c *OpenID4VPServiceInterfaceMock_Initiate_Call) RunAndReturn(run func(ctx context.Context, definitionID string, forSignIn bool) (*Initiation, *common0.ServiceError)) *OpenID4VPServiceInterfaceMock_Initiate_Call {
 	_c.Call.Return(run)
 	return _c
 }

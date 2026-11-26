@@ -528,12 +528,11 @@ func (ts *GatewayVersionsTestSuite) TestAppliedCredentialsShowAsTheirReads() {
 	defer func() { _ = testutils.DeleteCredentialConfiguration(configurationID) }()
 	certificate, err := testutils.NewSelfSignedCertificatePEM("Viewed Issuer CA", time.Now().Add(24*time.Hour))
 	ts.Require().NoError(err)
-	enforce := true
 	definitionID, err := testutils.CreatePresentationDefinition(testutils.PresentationDefinition{
 		Handle: "viewed-presentation-" + suffix, OUID: ouID, Name: "Viewed Presentation", Description: "Viewed",
 		VCT: "urn:viewed:credential:" + suffix, Format: "dc+sd-jwt",
 		RequestedClaims: []string{"given_name", "email"}, MandatoryClaims: []string{"given_name"},
-		OptionalClaims: []string{"email"}, EnforceTrustedIssuer: &enforce,
+		OptionalClaims:     []string{"email"},
 		TrustedAuthorities: []testutils.TrustedAuthority{{Name: "viewed-issuer", Certificate: certificate}},
 	})
 	ts.Require().NoError(err)

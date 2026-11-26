@@ -1936,6 +1936,12 @@ mandatoryClaims:
   - tier
 optionalClaims:
   - full_name
+# Only a pass signed by a trusted issuer verifies. This server issues the Sky Pass, so the
+# definition trusts the server's credential signing certificate. The double quotes turn the
+# \n escapes of the one-line value in thunderid.env back into PEM line breaks.
+trustedAuthorities:
+  - name: wayfinder-sky-pass-issuer
+    certificate: "{{.SKYPASS_ISSUER_CERTIFICATE}}"
 
 ---
 resource_type: application

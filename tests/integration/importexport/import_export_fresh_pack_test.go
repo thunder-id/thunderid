@@ -499,15 +499,13 @@ func (suite *ImportExportFreshPackSuite) TestPresentationDefinitionTrustedAuthor
 	wallet, err := testutils.NewVPWallet()
 	suite.Require().NoError(err)
 	handle := "import_vp_trust_" + suffix
-	enforce := true
 	id, err := testutils.CreatePresentationDefinition(testutils.PresentationDefinition{
-		Handle:               handle,
-		OUID:                 ouID,
-		VCT:                  "https://credentials.thunderid.local/ImportTrustedPresentation",
-		Format:               "dc+sd-jwt",
-		RequestedClaims:      []string{"given_name", "family_name"},
-		MandatoryClaims:      []string{"given_name"},
-		EnforceTrustedIssuer: &enforce,
+		Handle:          handle,
+		OUID:            ouID,
+		VCT:             "https://credentials.thunderid.local/ImportTrustedPresentation",
+		Format:          "dc+sd-jwt",
+		RequestedClaims: []string{"given_name", "family_name"},
+		MandatoryClaims: []string{"given_name"},
 		TrustedAuthorities: []testutils.TrustedAuthority{
 			{Name: "wallet-issuer", Certificate: wallet.IssuerCertificatePEM()},
 		},
@@ -569,7 +567,7 @@ id: %s
 handle: import-vp-%s
 ouId: %s
 vct: https://credentials.thunderid.local/ImportPresentation
-`, credentialID, suffix, ouID, presentationID, suffix, ouID)
+`, credentialID, suffix, ouID, presentationID, suffix, ouID) + testutils.TrustedAuthoritiesYAML
 
 	response, err := suite.importResources(testutils.ImportRequest{
 		Content: validContent,
@@ -605,7 +603,7 @@ id: %s
 handle: import-vp-taken-id-%s
 ouId: %s
 vct: https://credentials.thunderid.local/ImportPresentation
-`, credentialID, suffix, ouID, presentationID, suffix, ouID)
+`, credentialID, suffix, ouID, presentationID, suffix, ouID) + testutils.TrustedAuthoritiesYAML
 	response, err = suite.importResources(testutils.ImportRequest{
 		Content: takenIDContent,
 		Options: testutils.ImportOptions{Upsert: false, ContinueOnError: true, Target: "runtime"},
@@ -633,7 +631,7 @@ id: decl-presentation-def-1
 handle: import-vp-declared-id-%s
 ouId: %s
 vct: https://credentials.thunderid.local/ImportPresentation
-`, suffix, ouID, suffix, ouID)
+`, suffix, ouID, suffix, ouID) + testutils.TrustedAuthoritiesYAML
 	response, err = suite.importResources(testutils.ImportRequest{
 		Content: declaredIDContent,
 		Options: testutils.ImportOptions{Upsert: false, ContinueOnError: true, Target: "runtime"},
@@ -661,7 +659,7 @@ handle: import-vp-%s
 ouId: %s
 name: Updated imported presentation
 vct: https://credentials.thunderid.local/ImportPresentation
-`, credentialID, suffix, ouID, presentationID, suffix, ouID)
+`, credentialID, suffix, ouID, presentationID, suffix, ouID) + testutils.TrustedAuthoritiesYAML
 	response, err = suite.importResources(testutils.ImportRequest{
 		Content: updatedContent,
 		Options: testutils.ImportOptions{Upsert: true, ContinueOnError: true, Target: "runtime"},
@@ -685,7 +683,7 @@ id: %s
 handle: import-vp-with-handle-%s
 ouHandle: import-vc-ou-%s
 vct: https://credentials.thunderid.local/ImportPresentation
-`, credentialID, suffix, suffix, presentationID, suffix, suffix)
+`, credentialID, suffix, suffix, presentationID, suffix, suffix) + testutils.TrustedAuthoritiesYAML
 
 	response, err = suite.importResources(testutils.ImportRequest{
 		Content: handleContent,
@@ -714,7 +712,7 @@ id: vp-invalid-ou-%s
 handle: import_vp_invalid_ou_%s
 ouHandle: missing-import-ou-%s
 vct: urn:import:invalid-ou
-`, suffix, suffix, suffix, suffix, suffix, suffix)
+`, suffix, suffix, suffix, suffix, suffix, suffix) + testutils.TrustedAuthoritiesYAML
 
 	response, err := suite.importResources(testutils.ImportRequest{
 		Content: content,
@@ -971,7 +969,7 @@ format: dc+sd-jwt
 vct: urn:import:prefer-id
 requestedClaims:
   - email
-`, credentialID, suffix, firstOU, suffix, presentationID, suffix, firstOU, suffix)
+`, credentialID, suffix, firstOU, suffix, presentationID, suffix, firstOU, suffix) + testutils.TrustedAuthoritiesYAML
 
 	response, err := suite.importResources(testutils.ImportRequest{
 		Content: content,

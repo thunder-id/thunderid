@@ -17,7 +17,6 @@ claimValues:
   country:
     - LK
     - US
-enforceTrustedIssuer: false
 trustedAuthorities:
   - name: decl-issuer-ca
     certificate: |

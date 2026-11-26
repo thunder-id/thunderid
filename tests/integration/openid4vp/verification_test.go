@@ -38,6 +38,7 @@ type OpenID4VPTestSuite struct {
 	suite.Suite
 	ouID         string
 	definitionID string
+	wallet       *testutils.VPWallet
 }
 
 // TestOpenID4VPTestSuite is the single entrypoint that runs every Test* method.
@@ -50,17 +51,21 @@ func (ts *OpenID4VPTestSuite) SetupSuite() {
 	ts.Require().NoError(err, "create test OU")
 	ts.ouID = ouID
 
-	enforceTrustedIssuer := false
+	ts.wallet, err = testutils.NewVPWallet()
+	ts.Require().NoError(err, "create wallet")
+
 	definitionID, err := testutils.CreatePresentationDefinition(testutils.PresentationDefinition{
-		Handle:               presentationDefinitionHandle,
-		OUID:                 ts.ouID,
-		Name:                 "Integration Test Presentation",
-		Description:          "Presentation definition for OpenID4VP integration testing",
-		VCT:                  presentationVCT,
-		Format:               "dc+sd-jwt",
-		RequestedClaims:      []string{"given_name", "family_name"},
-		MandatoryClaims:      []string{"given_name"},
-		EnforceTrustedIssuer: &enforceTrustedIssuer,
+		Handle:          presentationDefinitionHandle,
+		OUID:            ts.ouID,
+		Name:            "Integration Test Presentation",
+		Description:     "Presentation definition for OpenID4VP integration testing",
+		VCT:             presentationVCT,
+		Format:          "dc+sd-jwt",
+		RequestedClaims: []string{"given_name", "family_name"},
+		MandatoryClaims: []string{"given_name"},
+		TrustedAuthorities: []testutils.TrustedAuthority{
+			{Name: "wallet-issuer", Certificate: ts.wallet.IssuerCertificatePEM()},
+		},
 	})
 	ts.Require().NoError(err, "create presentation definition")
 	ts.definitionID = definitionID
@@ -135,14 +140,12 @@ func (ts *OpenID4VPTestSuite) TestFullVerification_HappyPath() {
 	req, err := testutils.ParseVPRequestObject(jar)
 	ts.Require().NoError(err)
 
-	wallet, err := testutils.NewVPWallet()
-	ts.Require().NoError(err)
-	presentation, err := wallet.BuildPresentation(req, map[string]any{
+	presentation, err := ts.wallet.BuildPresentation(req, map[string]any{
 		"given_name":  "Ada",
 		"family_name": "Lovelace",
 	})
 	ts.Require().NoError(err)
-	response, err := wallet.EncryptResponse(req, presentation)
+	response, err := ts.wallet.EncryptResponse(req, presentation)
 	ts.Require().NoError(err)
 
 	res, err := testutils.SubmitVPResponse(init.TxnID, response)

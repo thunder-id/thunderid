@@ -29,8 +29,10 @@ export interface CreateVerifiablePresentationRequest {
   mandatoryClaims?: string[];
   optionalClaims?: string[];
   claimValues?: Record<string, string[]>;
-  enforceTrustedIssuer?: boolean;
-  trustedAuthorities?: TrustedAuthorityInput[];
+  /** The trusted issuer certificates. At least one is required. */
+  trustedAuthorities: TrustedAuthorityInput[];
+  /** The mandatory claim that identifies the holder at sign-in. Omitted, the definition cannot sign users in. */
+  subjectClaim?: string;
 }
 
 /** Request body for updating a presentation definition. */

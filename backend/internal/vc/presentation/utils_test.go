@@ -53,6 +53,12 @@ func validTestCertificatePEM(t *testing.T, commonName string) string {
 	return newTestCertificatePEM(t, commonName, time.Now().Add(24*time.Hour))
 }
 
+// testCA returns the one trusted authority every definition needs, for tests that are not about issuer trust.
+func testCA(t *testing.T) []TrustedAuthority {
+	t.Helper()
+	return []TrustedAuthority{{Name: "test-ca", Certificate: validTestCertificatePEM(t, "test-ca")}}
+}
+
 func (s *UtilsTestSuite) TestParseTrustedAuthorityCertificate() {
 	certificatePEM := validTestCertificatePEM(s.T(), "issuer-ca")
 

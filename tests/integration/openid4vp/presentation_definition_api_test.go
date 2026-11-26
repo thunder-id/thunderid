@@ -168,19 +168,17 @@ func (ts *PresentationDefinitionAPITestSuite) errorCodeOf(body []byte) string {
 
 // baseDefinition returns a valid definition body owned by the suite's OU.
 func (ts *PresentationDefinitionAPITestSuite) baseDefinition(handle string) testutils.PresentationDefinition {
-	enforceTrustedIssuer := true
 	return testutils.PresentationDefinition{
-		Handle:               handle,
-		OUID:                 ts.ouID,
-		Name:                 "CRUD Test Presentation",
-		Description:          "Presentation definition for CRUD testing",
-		VCT:                  crudDefinitionVCT,
-		Format:               "dc+sd-jwt",
-		RequestedClaims:      []string{"given_name", "family_name", "email"},
-		MandatoryClaims:      []string{"given_name"},
-		OptionalClaims:       []string{"email"},
-		ClaimValues:          map[string][]string{"country": {"LK", "US"}},
-		EnforceTrustedIssuer: &enforceTrustedIssuer,
+		Handle:          handle,
+		OUID:            ts.ouID,
+		Name:            "CRUD Test Presentation",
+		Description:     "Presentation definition for CRUD testing",
+		VCT:             crudDefinitionVCT,
+		Format:          "dc+sd-jwt",
+		RequestedClaims: []string{"given_name", "family_name", "email"},
+		MandatoryClaims: []string{"given_name"},
+		OptionalClaims:  []string{"email"},
+		ClaimValues:     map[string][]string{"country": {"LK", "US"}},
 		TrustedAuthorities: []testutils.TrustedAuthority{
 			{Name: "integration-test-anchor", Certificate: ts.certA},
 		},
@@ -210,7 +208,8 @@ func (ts *PresentationDefinitionAPITestSuite) TestCreateAndGet() {
 	ts.Equal("CRUD Test Presentation", fetched["name"])
 	// The owning OU handle is resolved for display on read.
 	ts.Equal(crudDefinitionOU.Handle, fetched["ouHandle"])
-	ts.Equal(true, fetched["enforceTrustedIssuer"])
+	// Issuer trust is always enforced, so the read does not report it.
+	ts.NotContains(fetched, "enforceTrustedIssuer")
 
 	requested, ok := fetched["requestedClaims"].([]any)
 	ts.Require().Truef(ok, "requestedClaims missing: %s", string(getRes.Body))
@@ -247,7 +246,7 @@ vct: https://credentials.thunderid.local/DeclarativeExplicitOUIDPresentation
 format: dc+sd-jwt
 requestedClaims:
   - given_name
-`
+` + testutils.TrustedAuthoritiesYAML
 	ts.Require().NoError(os.WriteFile(resourcesPath, []byte(resources), 0o600))
 	defer func() {
 		ts.Assert().NoError(testutils.RestartServer())
@@ -272,7 +271,7 @@ id: declarative-presentation-invalid-ou
 handle: declarative_presentation_invalid_ou
 ouHandle: missing/declarative/ou
 vct: https://credentials.thunderid.local/DeclarativeInvalidOU
-`
+` + testutils.TrustedAuthoritiesYAML
 	ts.Require().NoError(os.WriteFile(resourcesPath, []byte(resources), 0o600))
 	defer func() {
 		ts.Assert().NoError(testutils.RestartServer())
@@ -351,13 +350,11 @@ func (ts *PresentationDefinitionAPITestSuite) TestUpdate() {
 	ts.Require().Equalf(http.StatusCreated, res.StatusCode, "create: %s", string(res.Body))
 	id, _ := created["id"].(string)
 
-	enforceTrustedIssuer := false
 	updated := ts.baseDefinition("pd_crud_updated_handle")
 	updated.Name = "Renamed Presentation"
 	updated.RequestedClaims = []string{"email"}
 	updated.MandatoryClaims = []string{"email"}
 	updated.OptionalClaims = nil
-	updated.EnforceTrustedIssuer = &enforceTrustedIssuer
 	updated.TrustedAuthorities = []testutils.TrustedAuthority{
 		{Name: "integration-test-anchor"}, {Name: "anchor-two", Certificate: ts.certB},
 	}
@@ -374,7 +371,6 @@ func (ts *PresentationDefinitionAPITestSuite) TestUpdate() {
 	fetched := ts.decode(getRes.Body)
 	ts.Equal("pd_crud_updated_handle", fetched["handle"])
 	ts.Equal("Renamed Presentation", fetched["name"])
-	ts.Equal(false, fetched["enforceTrustedIssuer"])
 
 	requested, ok := fetched["requestedClaims"].([]any)
 	ts.Require().True(ok, "requestedClaims missing after update")
@@ -414,7 +410,7 @@ func (ts *PresentationDefinitionAPITestSuite) TestUpdate_TrustedAuthorities() {
 	ts.Equalf(http.StatusBadRequest, rejected.StatusCode, "body: %s", string(rejected.Body))
 	ts.Equal(codeDefinitionInvalidTrustedAuthorityCertificate, ts.errorCodeOf(rejected.Body))
 
-	// Removing every trusted authority while enforcing issuer trust is rejected.
+	// Removing every trusted authority is rejected.
 	def.TrustedAuthorities = nil
 	rejected = ts.definitionRequest(http.MethodPut, path, def)
 	ts.Equalf(http.StatusBadRequest, rejected.StatusCode, "body: %s", string(rejected.Body))
@@ -485,10 +481,11 @@ func (ts *PresentationDefinitionAPITestSuite) TestCreate_DefaultsFormat() {
 // TestCreate_RequiresOUID verifies that an output-only OU handle cannot select
 // the owning OU for a REST create request.
 func (ts *PresentationDefinitionAPITestSuite) TestCreate_RequiresOUID() {
-	res := ts.definitionRequest(http.MethodPost, definitionAPIBasePath, map[string]string{
-		"handle":   "pd_crud_without_ou_id",
-		"vct":      crudDefinitionVCT,
-		"ouHandle": crudDefinitionOU.Handle,
+	res := ts.definitionRequest(http.MethodPost, definitionAPIBasePath, map[string]any{
+		"handle":             "pd_crud_without_ou_id",
+		"vct":                crudDefinitionVCT,
+		"ouHandle":           crudDefinitionOU.Handle,
+		"trustedAuthorities": []testutils.TrustedAuthority{{Name: "root-a", Certificate: ts.certA}},
 	})
 
 	ts.Equalf(http.StatusBadRequest, res.StatusCode, "create: %s", string(res.Body))
@@ -502,10 +499,11 @@ func (ts *PresentationDefinitionAPITestSuite) TestUpdate_RequiresOUID() {
 	ts.Require().Equalf(http.StatusCreated, res.StatusCode, "create: %s", string(res.Body))
 	id, _ := created["id"].(string)
 
-	updateRes := ts.definitionRequest(http.MethodPut, definitionAPIBasePath+"/"+id, map[string]string{
-		"handle":   "pd_crud_update_without_ou_id",
-		"vct":      crudDefinitionVCT,
-		"ouHandle": crudDefinitionOU.Handle,
+	updateRes := ts.definitionRequest(http.MethodPut, definitionAPIBasePath+"/"+id, map[string]any{
+		"handle":             "pd_crud_update_without_ou_id",
+		"vct":                crudDefinitionVCT,
+		"ouHandle":           crudDefinitionOU.Handle,
+		"trustedAuthorities": []testutils.TrustedAuthority{{Name: "root-a", Certificate: ts.certA}},
 	})
 
 	ts.Equalf(http.StatusBadRequest, updateRes.StatusCode, "update: %s", string(updateRes.Body))
@@ -670,7 +668,7 @@ func (ts *PresentationDefinitionAPITestSuite) TestCreate_ValidationErrors() {
 			wantCode: codeDefinitionDuplicateTrustedAuthority,
 		},
 		{
-			name: "enforced issuer trust without trusted authorities",
+			name: "no trusted authorities",
 			mutate: func(d *testutils.PresentationDefinition) {
 				d.TrustedAuthorities = nil
 			},
@@ -845,7 +843,9 @@ func (ts *PresentationDefinitionAPITestSuite) TestProjectScope() {
 	systemOUID, err := testutils.FindBootstrapOUID()
 	ts.Require().NoError(err)
 
-	def := testutils.PresentationDefinition{Handle: "it-vp-project-scoped", VCT: crudDefinitionVCT, ProjectID: projectA}
+	trusted := []testutils.TrustedAuthority{{Name: "root-a", Certificate: ts.certA}}
+	def := testutils.PresentationDefinition{Handle: "it-vp-project-scoped", VCT: crudDefinitionVCT, ProjectID: projectA,
+		TrustedAuthorities: trusted}
 	res, created := ts.createDefinition(def)
 	ts.Require().Equalf(http.StatusCreated, res.StatusCode, "create: %s", string(res.Body))
 	id, _ := created["id"].(string)
@@ -868,7 +868,7 @@ func (ts *PresentationDefinitionAPITestSuite) TestProjectScope() {
 	ts.Equal([]string{id}, ts.listIDs("?projectId="+projectB))
 
 	overlong := testutils.PresentationDefinition{Handle: "it-vp-project-overlong", VCT: crudDefinitionVCT,
-		ProjectID: strings.Repeat("p", 37)}
+		ProjectID: strings.Repeat("p", 37), TrustedAuthorities: trusted}
 	res, _ = ts.createDefinition(overlong)
 	ts.Equal(http.StatusBadRequest, res.StatusCode)
 	ts.Equal("VP-2018", ts.errorCodeOf(res.Body))

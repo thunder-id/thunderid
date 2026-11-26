@@ -116,7 +116,14 @@ The `thunderid-config/redirect/` directory contains an importable YAML that crea
 Import the bundle:
 
 1. Start ThunderID and open the Console.
-2. On the **welcome screen** (shown on first login, or accessible from the user profile menu), choose **Open** and upload `thunderid-config/redirect/thunderid-config.yaml`. Then for environment variables, upload `thunderid-config/redirect/thunderid.env`.
+2. Set `SKYPASS_ISSUER_CERTIFICATE` in `thunderid-config/redirect/thunderid.env`. The Skyline Lounge only accepts a Sky Pass signed by a certificate it trusts, and each server generates its own signing certificate on first start. Print the server's certificate on one line, then paste the output after `SKYPASS_ISSUER_CERTIFICATE=`:
+
+   ```bash
+   awk '{printf "%s\\n", $0}' <thunderid-home>/config/certs/ecdsa-signing.cert
+   ```
+
+   On the quickstart pack, use `dp/config/certs/ecdsa-signing.cert`.
+3. On the **welcome screen** (shown on first login, or accessible from the user profile menu), choose **Open** and upload `thunderid-config/redirect/thunderid-config.yaml`. Then for environment variables, upload `thunderid-config/redirect/thunderid.env`.
 
 The import creates:
 
@@ -161,6 +168,7 @@ The agent's client secret defaults to `wayfinder-agent-secret` (set in `thunderi
 | `JOHN_DOE_PASSWORD` | Yes | Password for the `john.doe` demo user |
 | `JANE_SMITH_PASSWORD` | Yes | Password for the `jane.smith` demo user |
 | `ALEX_CARTER_PASSWORD` | Yes | Password for the `alex.carter` demo user |
+| `SKYPASS_ISSUER_CERTIFICATE` | Yes | The certificate the `wayfinder-skypass` presentation definition trusts: the server's credential signing certificate, `config/certs/ecdsa-signing.cert`, on one line with `\n` between its PEM lines. Each server generates its own, so the file ships without a value. See [Import Resources](#import-resources) for the command that prints it. |
 | `CIBA_LOGIN_HINT_ATTRIBUTE` | Yes | Attribute used by the CIBA flow's `IdentifyingExecutor` to resolve the login hint to a user. Set to `email` (default) when using `login_hint`, or `userID` when using `id_token_hint`. |
 | `SMS_SENDER_ID` | **SMS only** | Notification sender ID for the CIBA SMS flow. Required only if you switch the upgrade agent to `wayfinder-ciba-sms-flow`. Obtain the sender ID after completing the [SMS setup](#sms-notifications-optional) in Manual Setup. |
 

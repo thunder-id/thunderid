@@ -1818,6 +1818,21 @@ var (
 				"work. Start the reset again",
 		},
 	}
+
+	// ErrOpenID4VPDefinitionNotForSignIn is returned when the presentation definition names no subject claim,
+	// so it cannot sign users in.
+	ErrOpenID4VPDefinitionNotForSignIn = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1141",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.openid4vp_definition_not_for_sign_in",
+			DefaultValue: "The presentation definition is not set up for sign-in",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.openid4vp_definition_not_for_sign_in_desc",
+			DefaultValue: "Set a subject claim on the presentation definition to sign users in with it",
+		},
+	}
 )
 
 // errForEntityCategory returns a copy of err whose messages name the entity category they are

@@ -31,10 +31,19 @@ import {Navigate, useNavigate} from 'react-router';
 import useCreateVerifiablePresentation from '../api/useCreateVerifiablePresentation';
 import ConfigureName from '../components/create-verifiable-presentation/ConfigureName';
 import ClaimsEditor from '../components/PresentationClaimsEditor';
+import PresentationSignInCard from '../components/PresentationSignInCard';
+import TrustedIssuerCertificates from '../components/TrustedIssuerCertificates';
 import useVerifiableCredentialRoutes from '../hooks/useVerifiableCredentialRoutes';
-import {claimRowsToRequest, emptyClaimRow, findDuplicateClaimNames, type ClaimRow} from '../models/presentation-claims';
+import {
+  claimRowsToRequest,
+  emptyClaimRow,
+  findDuplicateClaimNames,
+  isSignInValid,
+  type ClaimRow,
+} from '../models/presentation-claims';
+import type {TrustedAuthorityInput} from '../models/presentation-requests';
 
-type Step = 'ORGANIZATION_UNIT' | 'NAME' | 'DETAILS' | 'CLAIMS';
+type Step = 'ORGANIZATION_UNIT' | 'NAME' | 'DETAILS' | 'CLAIMS' | 'TRUSTED_ISSUERS';
 
 /**
  * Props for the {@link VerifiablePresentationCreatePage} component.
@@ -71,6 +80,9 @@ export default function VerifiablePresentationCreatePage({
   const [vct, setVct] = useState<string>('');
   const [format, setFormat] = useState<string>('dc+sd-jwt');
   const [claims, setClaims] = useState<ClaimRow[]>([emptyClaimRow()]);
+  const [allowSignIn, setAllowSignIn] = useState<boolean>(false);
+  const [subjectClaim, setSubjectClaim] = useState<string>('');
+  const [trustedAuthorities, setTrustedAuthorities] = useState<TrustedAuthorityInput[]>([]);
 
   const effectiveOuId: string =
     ouId !== '' ? ouId : !isInProject && !hasMultipleOUs && ouList.length === 1 ? ouList[0].id : '';
@@ -88,7 +100,7 @@ export default function VerifiablePresentationCreatePage({
   const stepOrder = useMemo((): Step[] => {
     const base: Step[] = [];
     if (hasMultipleOUs) base.push('ORGANIZATION_UNIT');
-    base.push('NAME', 'DETAILS', 'CLAIMS');
+    base.push('NAME', 'DETAILS', 'CLAIMS', 'TRUSTED_ISSUERS');
     return base;
   }, [hasMultipleOUs]);
 
@@ -97,6 +109,7 @@ export default function VerifiablePresentationCreatePage({
     NAME: t('createWizard.steps.name', 'Details'),
     DETAILS: t('create.steps.details', 'Type'),
     CLAIMS: t('create.steps.claims', 'Claims'),
+    TRUSTED_ISSUERS: t('create.steps.trustedIssuers', 'Trusted issuers'),
   };
 
   const duplicateClaimNames = findDuplicateClaimNames(claims);
@@ -105,11 +118,15 @@ export default function VerifiablePresentationCreatePage({
     ORGANIZATION_UNIT: effectiveOuId !== '',
     NAME: name.trim() !== '' && handle.trim() !== '',
     DETAILS: vct.trim() !== '' && (isInProject || effectiveOuId !== ''),
-    CLAIMS: claims.some((c) => c.name.trim() !== '') && Object.keys(duplicateClaimNames).length === 0,
+    CLAIMS:
+      claims.some((c) => c.name.trim() !== '') &&
+      Object.keys(duplicateClaimNames).length === 0 &&
+      isSignInValid(allowSignIn, subjectClaim, claims),
+    TRUSTED_ISSUERS: trustedAuthorities.length > 0,
   };
 
   const stepIndex = stepOrder.indexOf(effectiveStep);
-  const isLastStep = effectiveStep === 'CLAIMS';
+  const isLastStep = effectiveStep === 'TRUSTED_ISSUERS';
   const progress = ((stepIndex + 1) / stepOrder.length) * 100;
 
   const close = (): void => {
@@ -130,6 +147,8 @@ export default function VerifiablePresentationCreatePage({
         vct: vct.trim(),
         format: format.trim() || undefined,
         ...claimRowsToRequest(claims),
+        subjectClaim: subjectClaim || undefined,
+        trustedAuthorities,
       },
       {
         onSuccess: () => {
@@ -232,6 +251,23 @@ export default function VerifiablePresentationCreatePage({
         </Stack>
       );
     }
+    if (effectiveStep === 'TRUSTED_ISSUERS') {
+      return (
+        <TrustedIssuerCertificates
+          certificates={trustedAuthorities}
+          onAdd={(entry: TrustedAuthorityInput): void => {
+            clearCreateError();
+            setTrustedAuthorities((prev: TrustedAuthorityInput[]) => [...prev, entry]);
+          }}
+          onRemove={(certificateName: string): void => {
+            clearCreateError();
+            setTrustedAuthorities((prev: TrustedAuthorityInput[]) =>
+              prev.filter((entry: TrustedAuthorityInput) => entry.name !== certificateName),
+            );
+          }}
+        />
+      );
+    }
     return (
       <Stack spacing={2}>
         <Typography variant="body2" color="text.secondary">
@@ -243,6 +279,20 @@ export default function VerifiablePresentationCreatePage({
           onChange={(rows: ClaimRow[]): void => {
             clearCreateError();
             setClaims(rows);
+          }}
+        />
+        <PresentationSignInCard
+          claims={claims}
+          allowSignIn={allowSignIn}
+          subjectClaim={subjectClaim}
+          onAllowSignInChange={(on: boolean): void => {
+            clearCreateError();
+            setAllowSignIn(on);
+            if (!on) setSubjectClaim('');
+          }}
+          onSubjectClaimChange={(claim: string): void => {
+            clearCreateError();
+            setSubjectClaim(claim);
           }}
         />
       </Stack>
@@ -331,10 +381,17 @@ export default function VerifiablePresentationCreatePage({
       {effectiveStep !== 'NAME' && (
         <>
           <Typography variant="h4" sx={{mb: 1}}>
-            {t('create.title')}
+            {effectiveStep === 'TRUSTED_ISSUERS'
+              ? t('create.trustedIssuers.title', 'Which issuers do you trust?')
+              : t('create.title')}
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{mb: 4}}>
-            {t('create.subtitle')}
+            {effectiveStep === 'TRUSTED_ISSUERS'
+              ? t(
+                  'form.issuerTrust.description',
+                  'Only credentials whose issuer certificate chain leads to one of these certificates are accepted.',
+                )
+              : t('create.subtitle')}
           </Typography>
         </>
       )}

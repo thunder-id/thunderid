@@ -391,7 +391,14 @@ if [ -z "$PHASE" ] || [ "$PHASE" = "2" ]; then
     start_fresh_server
     import_config "$SCRIPT_DIR/thunderid-config.yaml" "" "E2E admin app"
     wayfinder_config="$PROJECT_ROOT/samples/apps/wayfinder-sample/thunderid-config/redirect"
-    import_config "$wayfinder_config/thunderid-config.yaml" "$wayfinder_config/thunderid.env" "Wayfinder bundle"
+    # thunderid.env ships SKYPASS_ISSUER_CERTIFICATE empty: each server generates its own signing
+    # certificate. The appended line wins over the empty one when the file becomes JSON.
+    wayfinder_env=$(mktemp)
+    { cat "$wayfinder_config/thunderid.env"; echo
+      echo "SKYPASS_ISSUER_CERTIFICATE=$(awk '{printf "%s\\n", $0}' "$DIST_HOME/dp/config/certs/ecdsa-signing.cert")"
+    } > "$wayfinder_env"
+    import_config "$wayfinder_config/thunderid-config.yaml" "$wayfinder_env" "Wayfinder bundle"
+    rm -f "$wayfinder_env"
     start_wayfinder_app
     start_mock_smtp_server
 

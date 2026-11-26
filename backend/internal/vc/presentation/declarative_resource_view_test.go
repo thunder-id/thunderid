@@ -21,14 +21,12 @@ func viewDocument(t *testing.T, content string) *yaml.Node {
 
 // An exported presentation definition is shown as a read returns it, with its references as they are.
 func TestViewResourceShowsAnExportedDefinitionAsItsRead(t *testing.T) {
-	enforce := true
 	dto := &PresentationDefinitionDTO{
 		ID: "pd-1", Handle: "employee-check", OUID: "ou-1", Name: "Employee check",
 		VCT: "var:PRESENTATION_DEFINITION_EMPLOYEE_CHECK_VCT", Format: DefaultCredentialFormat,
 		RequestedClaims: []string{"email"}, MandatoryClaims: []string{"email"}, OptionalClaims: []string{"name"},
-		ClaimValues:          map[string][]string{"department": {"engineering"}},
-		EnforceTrustedIssuer: &enforce,
-		TrustedAuthorities:   []TrustedAuthority{{Name: "corp-ca", Certificate: "pem"}},
+		ClaimValues:        map[string][]string{"department": {"engineering"}},
+		TrustedAuthorities: []TrustedAuthority{{Name: "corp-ca", Certificate: "pem"}},
 	}
 	exported, err := yaml.Marshal(dto)
 	require.NoError(t, err)

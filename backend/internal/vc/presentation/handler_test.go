@@ -256,18 +256,16 @@ func (s *DefinitionHandlerTestSuite) TestHandleDeleteServiceError() {
 }
 
 func (s *DefinitionHandlerTestSuite) TestRequestToDTOSanitizes() {
-	enforce := true
 	dto := requestToDTO(&presentationDefinitionRequest{
-		Handle:               "  eudi-pid  ",
-		OUID:                 "ou-1",
-		Name:                 "  EUDI  ",
-		VCT:                  " v ",
-		Format:               DefaultCredentialFormat,
-		RequestedClaims:      []string{" given_name ", "family_name"},
-		MandatoryClaims:      []string{"given_name"},
-		ClaimValues:          map[string][]string{" address.country ": {" DE ", "", "AT"}, "  ": {"x"}, "empty": {""}},
-		EnforceTrustedIssuer: &enforce,
-		TrustedAuthorities:   []TrustedAuthority{{Name: " root-a ", Certificate: " pem\r\n "}, {Name: "root-b"}},
+		Handle:             "  eudi-pid  ",
+		OUID:               "ou-1",
+		Name:               "  EUDI  ",
+		VCT:                " v ",
+		Format:             DefaultCredentialFormat,
+		RequestedClaims:    []string{" given_name ", "family_name"},
+		MandatoryClaims:    []string{"given_name"},
+		ClaimValues:        map[string][]string{" address.country ": {" DE ", "", "AT"}, "  ": {"x"}, "empty": {""}},
+		TrustedAuthorities: []TrustedAuthority{{Name: " root-a ", Certificate: " pem\r\n "}, {Name: "root-b"}},
 	})
 
 	s.Equal("eudi-pid", dto.Handle)
@@ -278,8 +276,6 @@ func (s *DefinitionHandlerTestSuite) TestRequestToDTOSanitizes() {
 	// Entry with blank path is dropped; entry with only-empty values is dropped.
 	s.Len(dto.ClaimValues, 1)
 	s.Equal([]TrustedAuthority{{Name: "root-a", Certificate: "pem"}, {Name: "root-b"}}, dto.TrustedAuthorities)
-	s.Require().NotNil(dto.EnforceTrustedIssuer)
-	s.True(*dto.EnforceTrustedIssuer)
 }
 
 func (s *DefinitionHandlerTestSuite) TestSanitizeStrings() {

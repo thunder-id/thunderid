@@ -88,6 +88,10 @@ func (s *DefinitionExporterTestSuite) TestGetResourceByID_Success() {
 	s.Require().True(ok)
 	s.Equal("def1", dto.ID)
 	s.Equal("urn:eudi:pid:1", dto.VCT)
+	// A gateway from before issuer trust was mandatory reads a missing value as not enforced.
+	exported, marshalErr := yaml.Marshal(dto)
+	s.Require().NoError(marshalErr)
+	s.Contains(string(exported), "enforceTrustedIssuer: true")
 }
 
 func (s *DefinitionExporterTestSuite) TestGetResourceByID_NotFound() {
@@ -100,7 +104,7 @@ func (s *DefinitionExporterTestSuite) TestGetResourceByID_NotFound() {
 }
 
 func (s *DefinitionExporterTestSuite) TestValidateResource_Success() {
-	dto := &PresentationDefinitionDTO{ID: "def1", Handle: "handle-1", VCT: "v"}
+	dto := &PresentationDefinitionDTO{ID: "def1", Handle: "handle-1", VCT: "v", TrustedAuthorities: testCA(s.T())}
 
 	name, err := s.exporter.ValidateResource(context.Background(), dto, "def1", s.logger)
 
@@ -119,7 +123,7 @@ func (s *DefinitionExporterTestSuite) TestValidateResource_InvalidType() {
 }
 
 func (s *DefinitionExporterTestSuite) TestValidateResource_EmptyHandle() {
-	dto := &PresentationDefinitionDTO{ID: "def1", Handle: "", VCT: "v"}
+	dto := &PresentationDefinitionDTO{ID: "def1", Handle: "", VCT: "v", TrustedAuthorities: testCA(s.T())}
 
 	name, err := s.exporter.ValidateResource(context.Background(), dto, "def1", s.logger)
 
@@ -135,6 +139,16 @@ func (s *DefinitionExporterTestSuite) TestGetResourceRules() {
 	s.Require().NotNil(rules)
 	s.Empty(rules.ArrayVariables)
 	s.Contains(rules.DynamicPropertyFields, "ClaimValues")
+}
+
+// testCAYAML is testCA as the trustedAuthorities of a declarative definition.
+func testCAYAML(t *testing.T) string {
+	t.Helper()
+	out, err := yaml.Marshal(map[string][]TrustedAuthority{"trustedAuthorities": testCA(t)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
 }
 
 func (s *DefinitionExporterTestSuite) TestParseToDefinitionDTO() {
@@ -172,8 +186,6 @@ trustedAuthorities:
 	s.Equal(DefaultCredentialFormat, dto.Format)
 	s.Equal([]string{"given_name", "family_name"}, dto.MandatoryClaims)
 	s.Equal([]string{"DE", "AT"}, dto.ClaimValues["address.country"])
-	s.Require().NotNil(dto.EnforceTrustedIssuer)
-	s.True(*dto.EnforceTrustedIssuer)
 	s.Equal([]TrustedAuthority{
 		{Name: "root-a", Certificate: "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n"},
 		{Name: "root-b", Certificate: "pem-b"},
@@ -187,7 +199,7 @@ func (s *DefinitionExporterTestSuite) TestLoadResourcesThroughStorer() {
 	s.Require().NoError(fileStore.GenericFileBasedStore.ClearByType())
 	storer := &definitionStorer{store: fileStore}
 
-	dto, err := parseToDefinitionDTO([]byte("id: def-1\nhandle: h\nvct: v\nouId: ou-1\n"))
+	dto, err := parseToDefinitionDTO([]byte("id: def-1\nhandle: h\nvct: v\nouId: ou-1\n" + testCAYAML(s.T())))
 	s.Require().NoError(err)
 	s.Require().NoError(validateDefinitionWrapper(dto, fileStore, nil, nil))
 	s.Require().NoError(storer.Create(dto.ID, dto))
@@ -203,18 +215,16 @@ func (s *DefinitionExporterTestSuite) TestExportImportRoundTrip() {
 	// the result through the loader parser must reproduce the definition exactly —
 	// proving the exported keys match the keys the importer expects. Without yaml tags
 	// on the DTO, every field would be dropped and this fails.
-	enforce := true
 	original := &PresentationDefinitionDTO{
-		ID:                   "def-1",
-		Handle:               "eudi-pid",
-		Name:                 "EUDI PID",
-		VCT:                  "urn:eudi:pid:de:1",
-		Format:               DefaultCredentialFormat,
-		RequestedClaims:      []string{"given_name"},
-		MandatoryClaims:      []string{"given_name", "family_name"},
-		OptionalClaims:       []string{"birthdate"},
-		ClaimValues:          map[string][]string{"address.country": {"DE", "AT"}},
-		EnforceTrustedIssuer: &enforce,
+		ID:              "def-1",
+		Handle:          "eudi-pid",
+		Name:            "EUDI PID",
+		VCT:             "urn:eudi:pid:de:1",
+		Format:          DefaultCredentialFormat,
+		RequestedClaims: []string{"given_name"},
+		MandatoryClaims: []string{"given_name", "family_name"},
+		OptionalClaims:  []string{"birthdate"},
+		ClaimValues:     map[string][]string{"address.country": {"DE", "AT"}},
 		TrustedAuthorities: []TrustedAuthority{
 			{Name: "root-a", Certificate: "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----\n"},
 			{Name: "root-b", Certificate: "pem-b"},
@@ -230,14 +240,14 @@ func (s *DefinitionExporterTestSuite) TestExportImportRoundTrip() {
 }
 
 func (s *DefinitionExporterTestSuite) TestValidateDefinitionWrapperRejectsMissingID() {
-	dto := &PresentationDefinitionDTO{Handle: "h", VCT: "v"}
+	dto := &PresentationDefinitionDTO{Handle: "h", VCT: "v", TrustedAuthorities: testCA(s.T())}
 	s.Error(validateDefinitionWrapper(dto, nil, nil, nil))
 }
 
 func (s *DefinitionExporterTestSuite) TestValidateDefinitionWrapperRejectsInvalidDefinition() {
 	// ID is present, so the wrapper proceeds to validateDefinition, which rejects
 	// the missing VCT.
-	dto := &PresentationDefinitionDTO{ID: "def-1", Handle: "h", VCT: ""}
+	dto := &PresentationDefinitionDTO{ID: "def-1", Handle: "h", VCT: "", TrustedAuthorities: testCA(s.T())}
 	s.Error(validateDefinitionWrapper(dto, nil, nil, nil))
 }
 
@@ -332,7 +342,9 @@ func (s *DefinitionExporterTestSuite) TestValidateResolvesOUHandle() {
 	ouSvc := newOUServiceMock(s.T(), map[string]bool{"ou-123": true},
 		map[string]string{"root/eng": "ou-123"}, map[string]string{"ou-123": "root/eng"})
 
-	dto := &PresentationDefinitionDTO{ID: "def-1", Handle: "h", VCT: "v", OUHandle: "root/eng"}
+	dto := &PresentationDefinitionDTO{
+		ID: "def-1", Handle: "h", VCT: "v", OUHandle: "root/eng", TrustedAuthorities: testCA(s.T()),
+	}
 	s.Require().NoError(validateDefinitionWrapper(dto, nil, nil,
 		newPresentationDefinitionService(nil, ouSvc, allowAllAuthz(s.T()), nil, false)))
 	s.Equal("ou-123", dto.OUID)
@@ -343,7 +355,9 @@ func (s *DefinitionExporterTestSuite) TestValidateResolvesOUHandle() {
 func (s *DefinitionExporterTestSuite) TestValidateRejectsUnknownOUHandle() {
 	ouSvc := newOUServiceMock(s.T(), map[string]bool{}, map[string]string{}, map[string]string{})
 
-	dto := &PresentationDefinitionDTO{ID: "def-1", Handle: "h", VCT: "v", OUHandle: "no/such/ou"}
+	dto := &PresentationDefinitionDTO{
+		ID: "def-1", Handle: "h", VCT: "v", OUHandle: "no/such/ou", TrustedAuthorities: testCA(s.T()),
+	}
 	err := validateDefinitionWrapper(dto, nil, nil, newPresentationDefinitionService(
 		nil, ouSvc, allowAllAuthz(s.T()), nil, false))
 	s.Require().Error(err)
@@ -362,7 +376,9 @@ func (s *DefinitionExporterTestSuite) TestValidateResolvesOUHandleUsesRuntimeCon
 		Return(ou.OrganizationUnit{ID: "ou-123"}, nil).Once()
 	ouSvc.EXPECT().IsOrganizationUnitExists(mock.Anything, "ou-123").Return(true, nil).Once()
 
-	dto := &PresentationDefinitionDTO{ID: "def-1", Handle: "h", VCT: "v", OUHandle: "root/eng"}
+	dto := &PresentationDefinitionDTO{
+		ID: "def-1", Handle: "h", VCT: "v", OUHandle: "root/eng", TrustedAuthorities: testCA(s.T()),
+	}
 	s.Require().NoError(validateDefinitionWrapper(dto, nil, nil,
 		newPresentationDefinitionService(nil, ouSvc, allowAllAuthz(s.T()), nil, false)))
 	s.Equal("ou-123", dto.OUID)
@@ -376,6 +392,7 @@ func (s *DefinitionExporterTestSuite) TestValidateOUIDWinsOverOUHandle() {
 
 	dto := &PresentationDefinitionDTO{
 		ID: "def-1", Handle: "h", VCT: "v", OUID: "ou-123", OUHandle: "wrong/path",
+		TrustedAuthorities: testCA(s.T()),
 	}
 	s.Require().NoError(validateDefinitionWrapper(dto, nil, nil,
 		newPresentationDefinitionService(nil, ouSvc, allowAllAuthz(s.T()), nil, false)))
@@ -385,7 +402,7 @@ func (s *DefinitionExporterTestSuite) TestValidateOUIDWinsOverOUHandle() {
 // TestValidateRejectsMissingOU verifies a declarative definition without an organization
 // unit is rejected, matching what the management API enforces on create.
 func (s *DefinitionExporterTestSuite) TestValidateRejectsMissingOU() {
-	dto := &PresentationDefinitionDTO{ID: "def-1", Handle: "h", VCT: "v"}
+	dto := &PresentationDefinitionDTO{ID: "def-1", Handle: "h", VCT: "v", TrustedAuthorities: testCA(s.T())}
 	err := validateDefinitionWrapper(dto, nil, nil, nil)
 	s.Require().Error(err)
 	s.Contains(err.Error(), "ouId or ouHandle is required")
@@ -396,7 +413,9 @@ func (s *DefinitionExporterTestSuite) TestValidateRejectsMissingOU() {
 func (s *DefinitionExporterTestSuite) TestValidateRejectsUnknownExplicitOUID() {
 	ouSvc := newOUServiceMock(s.T(), map[string]bool{}, map[string]string{}, map[string]string{})
 
-	dto := &PresentationDefinitionDTO{ID: "def-1", Handle: "h", VCT: "v", OUID: "no-such-ou"}
+	dto := &PresentationDefinitionDTO{
+		ID: "def-1", Handle: "h", VCT: "v", OUID: "no-such-ou", TrustedAuthorities: testCA(s.T()),
+	}
 	err := validateDefinitionWrapper(dto, nil, nil, newPresentationDefinitionService(
 		nil, ouSvc, allowAllAuthz(s.T()), nil, false))
 	s.Require().Error(err)
@@ -410,16 +429,22 @@ func (s *DefinitionExporterTestSuite) TestValidateRejectsDuplicateIDAndHandle() 
 	s.Require().NoError(fileStore.GenericFileBasedStore.ClearByType())
 	storer := &definitionStorer{store: fileStore}
 
-	first := &PresentationDefinitionDTO{ID: "def-1", Handle: "h", VCT: "v", OUID: "ou-1"}
+	first := &PresentationDefinitionDTO{
+		ID: "def-1", Handle: "h", VCT: "v", OUID: "ou-1", TrustedAuthorities: testCA(s.T()),
+	}
 	s.Require().NoError(validateDefinitionWrapper(first, fileStore, nil, nil))
 	s.Require().NoError(storer.Create(first.ID, first))
 
-	dupID := &PresentationDefinitionDTO{ID: "def-1", Handle: "other", VCT: "v", OUID: "ou-1"}
+	dupID := &PresentationDefinitionDTO{
+		ID: "def-1", Handle: "other", VCT: "v", OUID: "ou-1", TrustedAuthorities: testCA(s.T()),
+	}
 	err := validateDefinitionWrapper(dupID, fileStore, nil, nil)
 	s.Require().Error(err)
 	s.Contains(err.Error(), "duplicate presentation definition ID")
 
-	dupHandle := &PresentationDefinitionDTO{ID: "def-2", Handle: "h", VCT: "v", OUID: "ou-1"}
+	dupHandle := &PresentationDefinitionDTO{
+		ID: "def-2", Handle: "h", VCT: "v", OUID: "ou-1", TrustedAuthorities: testCA(s.T()),
+	}
 	err = validateDefinitionWrapper(dupHandle, fileStore, nil, nil)
 	s.Require().Error(err)
 	s.Contains(err.Error(), "duplicate presentation definition handle")
@@ -434,7 +459,9 @@ func (s *DefinitionExporterTestSuite) TestValidateRejectsHandleAlreadyInDatabase
 	s.Require().NoError(dbStore.CreatePresentationDefinition(context.Background(),
 		PresentationDefinitionDTO{ID: "def-db", Handle: "shared_handle", VCT: "v", OUID: "ou-1"}))
 
-	dto := &PresentationDefinitionDTO{ID: "def-decl", Handle: "shared_handle", VCT: "v", OUID: "ou-1"}
+	dto := &PresentationDefinitionDTO{
+		ID: "def-decl", Handle: "shared_handle", VCT: "v", OUID: "ou-1", TrustedAuthorities: testCA(s.T()),
+	}
 	err := validateDefinitionWrapper(dto, nil, dbStore, nil)
 	s.Require().Error(err)
 	s.Contains(err.Error(), "duplicate presentation definition handle")
@@ -449,7 +476,9 @@ func (s *DefinitionExporterTestSuite) TestValidateRejectsIDAlreadyInDatabase() {
 	s.Require().NoError(dbStore.CreatePresentationDefinition(context.Background(),
 		PresentationDefinitionDTO{ID: "def-db", Handle: "runtime_handle", VCT: "v", OUID: "ou-1"}))
 
-	dto := &PresentationDefinitionDTO{ID: "def-db", Handle: "declarative_handle", VCT: "v", OUID: "ou-1"}
+	dto := &PresentationDefinitionDTO{
+		ID: "def-db", Handle: "declarative_handle", VCT: "v", OUID: "ou-1", TrustedAuthorities: testCA(s.T()),
+	}
 	err := validateDefinitionWrapper(dto, nil, dbStore, nil)
 	s.Require().Error(err)
 	s.Contains(err.Error(), "already exists in the database store")
@@ -460,7 +489,9 @@ func (s *DefinitionExporterTestSuite) TestValidateRejectsIDAlreadyInDatabase() {
 func (s *DefinitionExporterTestSuite) TestValidateAllowsUnusedIDWithDatabaseStore() {
 	dbStore := newStatefulDefinitionStore(s.T())
 
-	dto := &PresentationDefinitionDTO{ID: "def-fresh", Handle: "fresh_handle", VCT: "v", OUID: "ou-1"}
+	dto := &PresentationDefinitionDTO{
+		ID: "def-fresh", Handle: "fresh_handle", VCT: "v", OUID: "ou-1", TrustedAuthorities: testCA(s.T()),
+	}
 	s.NoError(validateDefinitionWrapper(dto, nil, dbStore, nil))
 }
 
@@ -471,7 +502,9 @@ func (s *DefinitionExporterTestSuite) TestValidateSurfacesDatabaseLookupFailure(
 	dbStore.EXPECT().GetPresentationDefinitionByID(mock.Anything, mock.Anything).
 		Return(nil, errors.New("db boom"))
 
-	dto := &PresentationDefinitionDTO{ID: "def-x", Handle: "h", VCT: "v", OUID: "ou-1"}
+	dto := &PresentationDefinitionDTO{
+		ID: "def-x", Handle: "h", VCT: "v", OUID: "ou-1", TrustedAuthorities: testCA(s.T()),
+	}
 	err := validateDefinitionWrapper(dto, nil, dbStore, nil)
 	s.Require().Error(err)
 	s.Contains(err.Error(), "failed to check for duplicate")
@@ -486,7 +519,9 @@ func (s *DefinitionExporterTestSuite) TestValidateSurfacesDatabaseHandleLookupFa
 	dbStore.EXPECT().GetPresentationDefinitionByHandle(mock.Anything, mock.Anything).
 		Return(nil, errors.New("db boom"))
 
-	dto := &PresentationDefinitionDTO{ID: "def-x", Handle: "h", VCT: "v", OUID: "ou-1"}
+	dto := &PresentationDefinitionDTO{
+		ID: "def-x", Handle: "h", VCT: "v", OUID: "ou-1", TrustedAuthorities: testCA(s.T()),
+	}
 	err := validateDefinitionWrapper(dto, nil, dbStore, nil)
 	s.Require().Error(err)
 	s.Contains(err.Error(), "failed to check for duplicate")
@@ -519,7 +554,7 @@ func (s *DefinitionExporterTestSuite) TestLoadDeclarativeResourcesFromDisk() {
 	dir := filepath.Join(home, "config", "resources", "presentation_definitions")
 	s.Require().NoError(os.MkdirAll(dir, 0o750))
 	s.Require().NoError(os.WriteFile(filepath.Join(dir, "def.yaml"), []byte(
-		"id: def-disk\nhandle: disk_handle\nvct: urn:example:vct\nouHandle: root/eng\n"), 0o600))
+		"id: def-disk\nhandle: disk_handle\nvct: urn:example:vct\nouHandle: root/eng\n"+testCAYAML(s.T())), 0o600))
 
 	config.ResetServerRuntime()
 	s.T().Cleanup(config.ResetServerRuntime)
@@ -540,7 +575,8 @@ func (s *DefinitionExporterTestSuite) TestLoadDeclarativeResourcesFromDisk() {
 }
 
 func (s *DefinitionExporterTestSuite) TestDeclarativeDefinitionInAProject() {
-	dto, err := parseToDefinitionDTO([]byte("id: def-p\nhandle: pid-p\nvct: urn:pid\nprojectId: proj-1\n"))
+	dto, err := parseToDefinitionDTO([]byte("id: def-p\nhandle: pid-p\nvct: urn:pid\nprojectId: proj-1\n" +
+		testCAYAML(s.T())))
 	s.Require().NoError(err)
 	s.Equal("proj-1", dto.ProjectID)
 
@@ -553,14 +589,16 @@ func (s *DefinitionExporterTestSuite) TestDeclarativeDefinitionInAProject() {
 	s.Equal("sys-ou", dto.OUID,
 		"a declarative definition in a project without an organization unit is in the system one")
 
-	withoutProject, err := parseToDefinitionDTO([]byte("id: def-q\nhandle: pid-q\nvct: urn:pid\nouId: sys-ou\n"))
+	withoutProject, err := parseToDefinitionDTO([]byte("id: def-q\nhandle: pid-q\nvct: urn:pid\nouId: sys-ou\n" +
+		testCAYAML(s.T())))
 	s.Require().NoError(err)
 	s.Require().ErrorContains(validateDefinitionWrapper(withoutProject, nil, nil, svc),
 		"missing the required projectId")
 }
 
 func (s *DefinitionExporterTestSuite) TestDeclarativeInAProjectWhenTheSystemOUCannotBeRead() {
-	dto, err := parseToDefinitionDTO([]byte("id: def-s\nhandle: pid-s\nvct: urn:pid\nprojectId: proj-1\n"))
+	dto, err := parseToDefinitionDTO([]byte("id: def-s\nhandle: pid-s\nvct: urn:pid\nprojectId: proj-1\n" +
+		testCAYAML(s.T())))
 	s.Require().NoError(err)
 
 	ouMock := oumock.NewOrganizationUnitServiceInterfaceMock(s.T())

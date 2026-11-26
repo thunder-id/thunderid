@@ -24,7 +24,6 @@ const definition: VerifiablePresentation = {
   vct: 'urn:eudi:pid:1',
   format: 'dc+sd-jwt',
   mandatoryClaims: ['given_name'],
-  enforceTrustedIssuer: true,
   trustedAuthorities: ['Existing CA'],
 };
 
@@ -118,18 +117,26 @@ describe('VerifiablePresentationForm issuer trust', () => {
     const list = screen.getByRole('list', {name: 'Trusted issuer certificates'});
     expect(within(list).getByText('Existing CA')).toBeInTheDocument();
     expect(screen.getByRole('button', {name: 'Remove certificate Existing CA'})).toBeInTheDocument();
-    expect(screen.getByRole('switch', {name: 'Enforce trusted issuer'})).toBeEnabled();
-    expect(screen.getByRole('switch', {name: 'Enforce trusted issuer'})).toBeChecked();
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
   });
 
-  it('disables the enforce toggle while the definition has no certificates', async () => {
+  it('refuses to save a definition without certificates until one is added', async () => {
     const user = userEvent.setup();
-    renderForm({initial: {...definition, enforceTrustedIssuer: false, trustedAuthorities: undefined}});
+    renderForm({initial: {...definition, trustedAuthorities: undefined}});
+    await user.click(screen.getByRole('tab', {name: 'Settings'}));
+    await user.type(screen.getByRole('textbox', {name: /Credential type/}), ':v2');
     await openIssuerTrustTab(user);
 
-    expect(screen.getByRole('switch', {name: 'Enforce trusted issuer'})).toBeDisabled();
-    expect(screen.getByText('Add a trusted issuer certificate before enforcing issuer trust.')).toBeInTheDocument();
-    expect(screen.getByText('No trusted issuer certificates added yet.')).toBeInTheDocument();
+    expect(screen.getByText('Add at least one trusted issuer certificate.')).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+
+    await addValidCertificate(user, 'New CA');
+    expect(screen.queryByText('Add at least one trusted issuer certificate.')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', {name: 'Save'}));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({vct: 'urn:eudi:pid:1:v2', trustedAuthorities: [{name: 'New CA', certificate: PEM}]}),
+    );
   });
 
   it('adds a pasted certificate and sends existing entries by name and new ones with their certificate', async () => {
@@ -148,20 +155,10 @@ describe('VerifiablePresentationForm issuer trust', () => {
     expect(onSubmit).toHaveBeenCalledTimes(1);
     expect(onSubmit).toHaveBeenCalledWith(
       expect.objectContaining({
-        enforceTrustedIssuer: true,
         trustedAuthorities: [{name: 'Existing CA'}, {name: 'New CA', certificate: PEM}],
       }),
     );
-  });
-
-  it('enables the enforce toggle once a certificate is added', async () => {
-    const user = userEvent.setup();
-    renderForm({initial: {...definition, enforceTrustedIssuer: false, trustedAuthorities: undefined}});
-    await openIssuerTrustTab(user);
-
-    await addValidCertificate(user, 'New CA');
-
-    expect(screen.getByRole('switch', {name: 'Enforce trusted issuer'})).toBeEnabled();
+    expect(onSubmit.mock.calls[0][0]).not.toHaveProperty('enforceTrustedIssuer');
   });
 
   it('reads an uploaded certificate file into the certificate field', async () => {
@@ -210,7 +207,7 @@ describe('VerifiablePresentationForm issuer trust', () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it('removes a certificate and turns enforcement off when the last one is removed', async () => {
+  it('refuses to save once the last certificate is removed', async () => {
     const user = userEvent.setup();
     renderForm();
     await openIssuerTrustTab(user);
@@ -218,15 +215,8 @@ describe('VerifiablePresentationForm issuer trust', () => {
     await user.click(screen.getByRole('button', {name: 'Remove certificate Existing CA'}));
 
     expect(screen.queryByRole('list', {name: 'Trusted issuer certificates'})).not.toBeInTheDocument();
-    const toggle = screen.getByRole('switch', {name: 'Enforce trusted issuer'});
-    expect(toggle).toBeDisabled();
-    expect(toggle).not.toBeChecked();
-
-    await user.click(screen.getByRole('button', {name: 'Save'}));
-
-    expect(onSubmit).toHaveBeenCalledWith(
-      expect.objectContaining({enforceTrustedIssuer: false, trustedAuthorities: undefined}),
-    );
+    expect(screen.getByText('Add at least one trusted issuer certificate.')).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
   });
 
   it('restores the initial certificates on reset', async () => {
@@ -254,6 +244,118 @@ describe('VerifiablePresentationForm issuer trust', () => {
     rerenderWith({submitting: false, initial: {...definition, trustedAuthorities: ['Existing CA', 'New CA']}});
 
     expect(screen.queryByText('Unsaved')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: 'Save'})).not.toBeInTheDocument();
+  });
+});
+
+describe('VerifiablePresentationForm sign-in', () => {
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const withClaims: VerifiablePresentation = {
+    ...definition,
+    mandatoryClaims: ['given_name', 'national_id', 'urn:id'],
+    optionalClaims: ['email'],
+  };
+
+  async function openClaimsTab(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+    await user.click(screen.getByRole('tab', {name: 'Claims'}));
+  }
+
+  const signInSwitch = (): HTMLElement => screen.getByRole('switch', {name: 'Allow sign-in using this definition'});
+  const subjectSelect = (): HTMLElement => screen.getByRole('combobox', {name: /Subject claim/});
+
+  it('starts off without a subject claim and keeps the subject claim out of the request', async () => {
+    const user = userEvent.setup();
+    renderForm({initial: withClaims});
+    await openClaimsTab(user);
+
+    expect(signInSwitch()).not.toBeChecked();
+    expect(screen.queryByRole('combobox', {name: /Subject claim/})).not.toBeInTheDocument();
+  });
+
+  it('offers only usable mandatory claims and sends the chosen one', async () => {
+    const user = userEvent.setup();
+    renderForm({initial: withClaims});
+    await openClaimsTab(user);
+
+    await user.click(signInSwitch());
+    expect(screen.getByText('Pick a subject claim.')).toBeInTheDocument();
+    await user.click(subjectSelect());
+    const listbox = await screen.findByRole('listbox');
+    expect(
+      within(listbox)
+        .getAllByRole('option')
+        .map((option: HTMLElement) => option.textContent),
+    ).toEqual(['given_name', 'national_id']);
+    await user.click(within(listbox).getByRole('option', {name: 'national_id'}));
+    await user.click(screen.getByRole('button', {name: 'Save'}));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({subjectClaim: 'national_id'}));
+  });
+
+  it('disables Save while sign-in is on without a subject claim', async () => {
+    const user = userEvent.setup();
+    renderForm({initial: withClaims});
+    await openClaimsTab(user);
+
+    await user.click(signInSwitch());
+    // Turning sign-in on alone changes nothing to save, so change a claim to show the save bar.
+    await user.click(screen.getAllByRole('button', {name: 'Remove claim'})[3]);
+
+    expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+  });
+
+  it('keeps a claim that is no longer mandatory selected and blocks Save', async () => {
+    const user = userEvent.setup();
+    renderForm({initial: {...withClaims, subjectClaim: 'national_id'}});
+    await openClaimsTab(user);
+
+    expect(signInSwitch()).toBeChecked();
+    expect(subjectSelect()).toHaveTextContent('national_id');
+    await user.click(screen.getAllByRole('button', {name: 'Remove claim'})[1]);
+
+    expect(subjectSelect()).toHaveTextContent('national_id');
+    expect(screen.getByText('Must be a mandatory claim.')).toBeInTheDocument();
+    expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+  });
+
+  it('warns that returning holders become new users when the stored claim changes', async () => {
+    const user = userEvent.setup();
+    renderForm({initial: {...withClaims, subjectClaim: 'national_id'}});
+    await openClaimsTab(user);
+
+    expect(screen.queryByText('Returning holders will sign in as new users.')).not.toBeInTheDocument();
+    await user.click(subjectSelect());
+    await user.click(within(await screen.findByRole('listbox')).getByRole('option', {name: 'given_name'}));
+
+    expect(screen.getByText('Returning holders will sign in as new users.')).toBeInTheDocument();
+  });
+
+  it('clears the subject claim and warns when sign-in is turned off', async () => {
+    const user = userEvent.setup();
+    renderForm({initial: {...withClaims, subjectClaim: 'national_id'}});
+    await openClaimsTab(user);
+
+    await user.click(signInSwitch());
+
+    expect(screen.queryByRole('combobox', {name: /Subject claim/})).not.toBeInTheDocument();
+    expect(screen.getByText('Sign-in flows using this definition will stop working.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', {name: 'Save'}));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({subjectClaim: undefined}));
+  });
+
+  it('restores the stored subject claim on reset', async () => {
+    const user = userEvent.setup();
+    renderForm({initial: {...withClaims, subjectClaim: 'national_id'}});
+    await openClaimsTab(user);
+
+    await user.click(signInSwitch());
+    await user.click(screen.getByRole('button', {name: 'Reset'}));
+
+    expect(signInSwitch()).toBeChecked();
+    expect(subjectSelect()).toHaveTextContent('national_id');
     expect(screen.queryByRole('button', {name: 'Save'})).not.toBeInTheDocument();
   });
 });

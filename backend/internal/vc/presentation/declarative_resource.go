@@ -72,6 +72,7 @@ func (e *definitionExporter) GetResourceByID(ctx context.Context, id string) (
 		return nil, "", err
 	}
 	dto.OUHandle = ""
+	dto.EnforceTrustedIssuer = true
 	return dto, dto.Handle, nil
 }
 
@@ -112,21 +113,21 @@ func (e *definitionExporter) ViewResource(_ context.Context, document *yaml.Node
 // definition: the management request body plus the stable resource ID. The
 // claim sets, claim/value constraints and trust fields mirror the JSON request.
 type definitionRequestWithID struct {
-	ID                   string              `yaml:"id"`
-	Handle               string              `yaml:"handle"`
-	OUID                 string              `yaml:"ouId"`
-	OUHandle             string              `yaml:"ouHandle"`
-	ProjectID            string              `yaml:"projectId"`
-	Name                 string              `yaml:"name"`
-	Description          string              `yaml:"description"`
-	VCT                  string              `yaml:"vct"`
-	Format               string              `yaml:"format"`
-	RequestedClaims      []string            `yaml:"requestedClaims"`
-	MandatoryClaims      []string            `yaml:"mandatoryClaims"`
-	OptionalClaims       []string            `yaml:"optionalClaims"`
-	ClaimValues          map[string][]string `yaml:"claimValues"`
-	EnforceTrustedIssuer *bool               `yaml:"enforceTrustedIssuer"`
-	TrustedAuthorities   []TrustedAuthority  `yaml:"trustedAuthorities"`
+	ID                 string              `yaml:"id"`
+	Handle             string              `yaml:"handle"`
+	OUID               string              `yaml:"ouId"`
+	OUHandle           string              `yaml:"ouHandle"`
+	ProjectID          string              `yaml:"projectId"`
+	Name               string              `yaml:"name"`
+	Description        string              `yaml:"description"`
+	VCT                string              `yaml:"vct"`
+	Format             string              `yaml:"format"`
+	RequestedClaims    []string            `yaml:"requestedClaims"`
+	MandatoryClaims    []string            `yaml:"mandatoryClaims"`
+	OptionalClaims     []string            `yaml:"optionalClaims"`
+	ClaimValues        map[string][]string `yaml:"claimValues"`
+	TrustedAuthorities []TrustedAuthority  `yaml:"trustedAuthorities"`
+	SubjectClaim       string              `yaml:"subjectClaim"`
 }
 
 // loadDeclarativeResources loads declarative presentation-definition resources from YAML files
@@ -174,21 +175,21 @@ func parseToDefinitionDTO(data []byte) (*PresentationDefinitionDTO, error) {
 // applying the same field mapping the management API uses in requestToDTO.
 func buildDefinitionDTOFromRequest(req definitionRequestWithID) *PresentationDefinitionDTO {
 	return &PresentationDefinitionDTO{
-		ID:                   req.ID,
-		Handle:               req.Handle,
-		OUID:                 req.OUID,
-		OUHandle:             req.OUHandle,
-		ProjectID:            req.ProjectID,
-		Name:                 req.Name,
-		Description:          req.Description,
-		VCT:                  req.VCT,
-		Format:               req.Format,
-		RequestedClaims:      req.RequestedClaims,
-		MandatoryClaims:      req.MandatoryClaims,
-		OptionalClaims:       req.OptionalClaims,
-		ClaimValues:          req.ClaimValues,
-		EnforceTrustedIssuer: req.EnforceTrustedIssuer,
-		TrustedAuthorities:   req.TrustedAuthorities,
+		ID:                 req.ID,
+		Handle:             req.Handle,
+		OUID:               req.OUID,
+		OUHandle:           req.OUHandle,
+		ProjectID:          req.ProjectID,
+		Name:               req.Name,
+		Description:        req.Description,
+		VCT:                req.VCT,
+		Format:             req.Format,
+		RequestedClaims:    req.RequestedClaims,
+		MandatoryClaims:    req.MandatoryClaims,
+		OptionalClaims:     req.OptionalClaims,
+		ClaimValues:        req.ClaimValues,
+		TrustedAuthorities: req.TrustedAuthorities,
+		SubjectClaim:       req.SubjectClaim,
 	}
 }
 

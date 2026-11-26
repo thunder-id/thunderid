@@ -65,9 +65,6 @@ func rowFromDTO(t *testing.T, dto PresentationDefinitionDTO) map[string]interfac
 		"format":      dto.Format,
 		"claims":      claimsJSON,
 	}
-	if dto.EnforceTrustedIssuer != nil {
-		row["enforce_trusted_issuer"] = *dto.EnforceTrustedIssuer
-	}
 	if authorities != nil {
 		row["trusted_authorities"] = authorities
 	}
@@ -75,50 +72,33 @@ func rowFromDTO(t *testing.T, dto PresentationDefinitionDTO) map[string]interfac
 }
 
 func (suite *DefinitionStoreTestSuite) TestDefinitionStoreRoundTripTrustFields() {
-	enforce := true
 	original := PresentationDefinitionDTO{
-		ID:                   "id-1",
-		Handle:               "eudi-pid",
-		VCT:                  "urn:eudi:pid:de:1",
-		Format:               DefaultCredentialFormat,
-		MandatoryClaims:      []string{"given_name"},
-		EnforceTrustedIssuer: &enforce,
+		ID:              "id-1",
+		Handle:          "eudi-pid",
+		VCT:             "urn:eudi:pid:de:1",
+		Format:          DefaultCredentialFormat,
+		MandatoryClaims: []string{"given_name"},
 		TrustedAuthorities: []TrustedAuthority{
 			{Name: "root-a", Certificate: "pem-a"}, {Name: "root-b", Certificate: "pem-b"},
 		},
+		SubjectClaim: "given_name",
 	}
 
 	got, err := buildDefinitionDTOFromRow(rowFromDTO(suite.T(), original))
 	suite.Require().NoError(err)
-	suite.Require().NotNil(got.EnforceTrustedIssuer)
-	suite.True(*got.EnforceTrustedIssuer)
 	suite.Equal(original.TrustedAuthorities, got.TrustedAuthorities)
+	suite.Equal(original.SubjectClaim, got.SubjectClaim)
 }
 
 func (suite *DefinitionStoreTestSuite) TestDefinitionStoreRoundTripTrustFieldsNull() {
-	// Omitted (nil) enforce + empty authorities persist as NULL and reload as
-	// nil/empty, preserving the "inherit / accept any" semantics.
+	// Empty authorities persist as NULL and reload empty.
 	got, err := buildDefinitionDTOFromRow(rowFromDTO(suite.T(), PresentationDefinitionDTO{
 		ID:     "id-2",
 		Handle: "h",
 		VCT:    "v",
 	}))
 	suite.Require().NoError(err)
-	suite.Nil(got.EnforceTrustedIssuer)
 	suite.Empty(got.TrustedAuthorities)
-}
-
-func (suite *DefinitionStoreTestSuite) TestColumnNullableBoolFromInt() {
-	// SQLite returns INTEGER for BOOLEAN columns.
-	got := columnNullableBool(int64(1))
-	suite.Require().NotNil(got)
-	suite.True(*got)
-
-	got = columnNullableBool(int64(0))
-	suite.Require().NotNil(got)
-	suite.False(*got)
-
-	suite.Nil(columnNullableBool(nil))
 }
 
 func (suite *DefinitionStoreTestSuite) TestCreate() {
@@ -139,7 +119,7 @@ func (suite *DefinitionStoreTestSuite) TestCreate() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateDefinition,
 					"def-1", "eudi-pid", "ou-1", "EUDI PID", "", "urn:eudi:pid:de:1", "dc+sd-jwt",
-					mock.Anything, nil, nil, nil, testDeploymentID,
+					mock.Anything, nil, nil, testDeploymentID,
 				).Return(int64(1), nil)
 			},
 		},
@@ -150,7 +130,7 @@ func (suite *DefinitionStoreTestSuite) TestCreate() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryCreateDefinition,
 					mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-					mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+					mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 				).Return(int64(0), errors.New("insert failed"))
 			},
 			shouldErr: true,
@@ -193,17 +173,15 @@ func (suite *DefinitionStoreTestSuite) TestGetByID() {
 			id:   "def-1",
 			setupMocks: func() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
-				enforce := true
 				suite.mockDBClient.On("QueryContext", mock.Anything, queryGetDefinitionByID,
 					"def-1", testDeploymentID,
 				).Return([]map[string]interface{}{
 					rowFromDTO(suite.T(), PresentationDefinitionDTO{
 						ID: "def-1", Handle: "eudi-pid", OUID: "ou-1",
 						VCT: "urn:eudi:pid:de:1", Format: "dc+sd-jwt",
-						MandatoryClaims:      []string{"given_name"},
-						OptionalClaims:       []string{"birthdate"},
-						EnforceTrustedIssuer: &enforce,
-						TrustedAuthorities:   []TrustedAuthority{{Name: "root-ca", Certificate: "pem"}},
+						MandatoryClaims:    []string{"given_name"},
+						OptionalClaims:     []string{"birthdate"},
+						TrustedAuthorities: []TrustedAuthority{{Name: "root-ca", Certificate: "pem"}},
 					}),
 				}, nil)
 			},
@@ -212,8 +190,6 @@ func (suite *DefinitionStoreTestSuite) TestGetByID() {
 				suite.Equal("eudi-pid", got.Handle)
 				suite.Equal([]string{"given_name"}, got.MandatoryClaims)
 				suite.Equal([]string{"birthdate"}, got.OptionalClaims)
-				suite.Require().NotNil(got.EnforceTrustedIssuer)
-				suite.True(*got.EnforceTrustedIssuer)
 				suite.Equal([]TrustedAuthority{{Name: "root-ca", Certificate: "pem"}}, got.TrustedAuthorities)
 			},
 		},
@@ -482,7 +458,7 @@ func (suite *DefinitionStoreTestSuite) TestUpdate() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateDefinition,
 					"def-1", "new-handle", "ou-1", "", "", "urn:eudi:pid:de:1", "dc+sd-jwt",
-					mock.Anything, nil, nil, nil, testDeploymentID,
+					mock.Anything, nil, nil, testDeploymentID,
 				).Return(int64(1), nil)
 			},
 		},
@@ -493,7 +469,7 @@ func (suite *DefinitionStoreTestSuite) TestUpdate() {
 				suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil)
 				suite.mockDBClient.On("ExecuteContext", mock.Anything, queryUpdateDefinition,
 					mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
-					mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+					mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
 				).Return(int64(0), errors.New("update failed"))
 			},
 			shouldErr: true,
@@ -578,25 +554,6 @@ func (suite *DefinitionStoreTestSuite) TestIsDeclarative() {
 	isDeclarative, err := suite.store.IsPresentationDefinitionDeclarative(context.Background(), "any-id")
 	suite.NoError(err)
 	suite.False(isDeclarative)
-}
-
-func (suite *DefinitionStoreTestSuite) TestNullableBool() {
-	suite.Nil(nullableBool(nil))
-
-	enforce := true
-	suite.Equal(true, nullableBool(&enforce))
-
-	disable := false
-	suite.Equal(false, nullableBool(&disable))
-}
-
-func (suite *DefinitionStoreTestSuite) TestColumnNullableBoolFromBool() {
-	got := columnNullableBool(true)
-	suite.Require().NotNil(got)
-	suite.True(*got)
-
-	// An unsupported type yields a nil pointer (inherit the engine default).
-	suite.Nil(columnNullableBool("not-a-bool"))
 }
 
 func (suite *DefinitionStoreTestSuite) TestColumnStringFromBytesAndDefault() {

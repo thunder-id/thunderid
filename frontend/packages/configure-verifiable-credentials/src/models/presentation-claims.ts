@@ -114,3 +114,20 @@ export function claimRowsToRequest(
     claimValues: Object.keys(claimValues).length > 0 ? claimValues : undefined,
   };
 }
+
+/**
+ * Lists the claims that can identify the holder: mandatory, named, not repeated, and without a colon, since
+ * the link subject joins the claim name and value with one.
+ */
+export function subjectClaimOptions(claims: ClaimRow[]): string[] {
+  const duplicates = findDuplicateClaimNames(claims);
+  return claims
+    .filter((row: ClaimRow): boolean => row.requirement === 'mandatory' && !duplicates[row.id])
+    .map((row: ClaimRow): string => row.name.trim())
+    .filter((claimName: string): boolean => claimName !== '' && !claimName.includes(':'));
+}
+
+/** Whether the sign-in settings can be saved: sign-in is off, or a listed claim is picked. */
+export function isSignInValid(allowSignIn: boolean, subjectClaim: string, claims: ClaimRow[]): boolean {
+  return !allowSignIn || subjectClaimOptions(claims).includes(subjectClaim);
+}
