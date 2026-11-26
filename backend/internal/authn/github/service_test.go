@@ -33,6 +33,7 @@ const (
 	testAuthCode            = "auth_code"
 	githubUserInfoEndpoint  = "https://api.github.com/user"
 	githubUserEmailEndpoint = "https://api.github.com/user/emails"
+	githubUserTeamsEndpoint = "https://api.github.com/user/teams"
 )
 
 type GithubOAuthAuthnServiceTestSuite struct {
@@ -689,4 +690,137 @@ func (suite *GithubOAuthAuthnServiceTestSuite) TestBuildFederatedAuthResultDeleg
 		context.Background(), testGithubIDPID, "sub-1", map[string]interface{}{"email": "user@example.com"})
 	suite.Nil(err)
 	suite.Equal(expected, result)
+}
+
+func (suite *GithubOAuthAuthnServiceTestSuite) TestFetchUserInfoNoReadOrgScopeDoesNotFetchTeams() {
+	userInfo := map[string]interface{}{
+		"id":    float64(12345),
+		"login": "testuser",
+		"email": "test@example.com",
+	}
+	config := &oauth.OAuthClientConfig{
+		Scopes: []string{UserEmailScope},
+		OAuthEndpoints: oauth.OAuthEndpoints{
+			UserInfoEndpoint:  githubUserInfoEndpoint,
+			UserTeamsEndpoint: githubUserTeamsEndpoint,
+		},
+	}
+
+	suite.mockOAuthService.On("GetOAuthClientConfig", mock.Anything, testGithubIDPID).Return(config, nil).Once()
+	suite.mockOAuthService.On("FetchUserInfoWithClientConfig", mock.Anything, config, testAccessToken).
+		Return(userInfo, nil).Once()
+
+	result, err := suite.service.FetchUserInfo(context.Background(), testGithubIDPID, testAccessToken)
+	suite.Nil(err)
+	suite.NotNil(result)
+	_, hasTeams := result[teamsClaim]
+	suite.False(hasTeams)
+	suite.mockHTTPClient.AssertNotCalled(suite.T(), "Do", mock.Anything)
+}
+
+func (suite *GithubOAuthAuthnServiceTestSuite) TestFetchUserInfoWithTeamsSuccess() {
+	userInfo := map[string]interface{}{
+		"id":    float64(12345),
+		"login": "testuser",
+		"email": "test@example.com",
+	}
+	teamsPayload := `[{"slug":"platform-engineers","organization":{"login":"my-org"}},` +
+		`{"slug":"","organization":{"login":"my-org"}},` +
+		`{"slug":"sre","organization":{"login":""}}]`
+	config := &oauth.OAuthClientConfig{
+		Scopes: []string{ReadOrgScope},
+		OAuthEndpoints: oauth.OAuthEndpoints{
+			UserInfoEndpoint:  githubUserInfoEndpoint,
+			UserTeamsEndpoint: githubUserTeamsEndpoint,
+		},
+	}
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body:       io.NopCloser(bytes.NewReader([]byte(teamsPayload))),
+	}
+
+	suite.mockOAuthService.On("GetOAuthClientConfig", mock.Anything, testGithubIDPID).Return(config, nil).Once()
+	suite.mockOAuthService.On("FetchUserInfoWithClientConfig", mock.Anything, config, testAccessToken).
+		Return(userInfo, nil).Once()
+	suite.mockHTTPClient.On("Do", mock.MatchedBy(func(req *http.Request) bool {
+		return req.URL.String() == githubUserTeamsEndpoint+"?per_page=100"
+	})).Return(resp, nil).Once()
+
+	result, err := suite.service.FetchUserInfo(context.Background(), testGithubIDPID, testAccessToken)
+	suite.Nil(err)
+	suite.NotNil(result)
+	suite.Equal([]string{"my-org/platform-engineers"}, result[teamsClaim])
+}
+
+func (suite *GithubOAuthAuthnServiceTestSuite) TestFetchUserInfoWithTeamsPaginatedAndDefaultEndpoint() {
+	userInfo := map[string]interface{}{
+		"id":    float64(12345),
+		"login": "testuser",
+		"email": "test@example.com",
+	}
+	config := &oauth.OAuthClientConfig{
+		Scopes: []string{ReadOrgScope},
+		OAuthEndpoints: oauth.OAuthEndpoints{
+			UserInfoEndpoint:  githubUserInfoEndpoint,
+			UserTeamsEndpoint: "", // empty: falls back to defaultUserTeamsEndpoint
+		},
+	}
+	page2URL := defaultUserTeamsEndpoint + "?page=2&per_page=100"
+	page1Headers := http.Header{}
+	page1Headers.Set(linkHeaderName, `<`+page2URL+`>; rel="next", <`+defaultUserTeamsEndpoint+`?page=2>; rel="last"`)
+	resp1 := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     page1Headers,
+		Body: io.NopCloser(bytes.NewReader(
+			[]byte(`[{"slug":"team-a","organization":{"login":"org-one"}}]`))),
+	}
+	resp2 := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(bytes.NewReader(
+			[]byte(`[{"slug":"team-b","organization":{"login":"org-two"}}]`))),
+	}
+
+	suite.mockOAuthService.On("GetOAuthClientConfig", mock.Anything, testGithubIDPID).Return(config, nil).Once()
+	suite.mockOAuthService.On("FetchUserInfoWithClientConfig", mock.Anything, config, testAccessToken).
+		Return(userInfo, nil).Once()
+	suite.mockHTTPClient.On("Do", mock.MatchedBy(func(req *http.Request) bool {
+		return req.URL.String() == defaultUserTeamsEndpoint+"?per_page=100"
+	})).Return(resp1, nil).Once()
+	suite.mockHTTPClient.On("Do", mock.MatchedBy(func(req *http.Request) bool {
+		return req.URL.String() == page2URL
+	})).Return(resp2, nil).Once()
+
+	result, err := suite.service.FetchUserInfo(context.Background(), testGithubIDPID, testAccessToken)
+	suite.Nil(err)
+	suite.NotNil(result)
+	suite.Equal([]string{"org-one/team-a", "org-two/team-b"}, result[teamsClaim])
+}
+
+func (suite *GithubOAuthAuthnServiceTestSuite) TestFetchUserInfoWithTeamsNon2xxError() {
+	userInfo := map[string]interface{}{
+		"id":    float64(12345),
+		"login": "testuser",
+		"email": "test@example.com",
+	}
+	config := &oauth.OAuthClientConfig{
+		Scopes: []string{ReadOrgScope},
+		OAuthEndpoints: oauth.OAuthEndpoints{
+			UserInfoEndpoint:  githubUserInfoEndpoint,
+			UserTeamsEndpoint: githubUserTeamsEndpoint,
+		},
+	}
+	resp := &http.Response{
+		StatusCode: http.StatusForbidden,
+		Body:       io.NopCloser(bytes.NewReader([]byte(`{"message":"Resource not accessible"}`))),
+	}
+
+	suite.mockOAuthService.On("GetOAuthClientConfig", mock.Anything, testGithubIDPID).Return(config, nil).Once()
+	suite.mockOAuthService.On("FetchUserInfoWithClientConfig", mock.Anything, config, testAccessToken).
+		Return(userInfo, nil).Once()
+	suite.mockHTTPClient.On("Do", mock.Anything).Return(resp, nil).Once()
+
+	result, err := suite.service.FetchUserInfo(context.Background(), testGithubIDPID, testAccessToken)
+	suite.Nil(result)
+	suite.NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
 }

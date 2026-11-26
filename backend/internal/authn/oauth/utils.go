@@ -55,6 +55,8 @@ func parseIDPConfig(idp *providers.IDPDTO) (*OAuthClientConfig, error) {
 			oAuthClientConfig.OAuthEndpoints.UserInfoEndpoint = value
 		case idpPkg.PropUserEmailEndpoint:
 			oAuthClientConfig.OAuthEndpoints.UserEmailEndpoint = value
+		case idpPkg.PropUserTeamsEndpoint:
+			oAuthClientConfig.OAuthEndpoints.UserTeamsEndpoint = value
 		case idpPkg.PropJwksEndpoint:
 			oAuthClientConfig.OAuthEndpoints.JwksEndpoint = value
 		case idpPkg.PropIssuer, idpPkg.PropTokenExchangeEnabled:

@@ -62,6 +62,26 @@ The connection requests the `user:email` scope by default. To request different 
 The GitHub connection also accepts a `prompt` field, forwarded as a query parameter on the authorization request. GitHub's OAuth flow supports `select_account` to force the account picker. Set it on the connection's edit page, or through the [Connections API](../../../apis#tag/connections).
 :::
 
+## Team Membership
+
+To resolve a user's GitHub organization team memberships at sign-in, add `read:org` to the connection's **Scopes** (for example, `user:email,read:org`). When `read:org` is requested, <ProductName /> queries the GitHub user teams endpoint and populates a multi-valued `teams` claim with `<org>/<team-slug>` entries (for example, `my-org/platform-engineers`).
+
+Use [Authorization Mapping](../add-oidc-provider#authorization-mapping) to map team membership onto local groups, roles, or permissions with an advanced rule (`valueType: array`, operator `includes`):
+
+```yaml
+attributeConfiguration:
+  authorizationMapping:
+    rules:
+      - claim: teams
+        valueType: array
+        values:
+          - operator: includes
+            value: my-org/platform-engineers
+            targets:
+              - type: group
+                id: <platform-engineers-group-id>
+```
+
 ## Next Steps
 
 - [Connect an IdP to an Application](../connect-idp-to-application): Add this GitHub IdP to an application's authentication flow.

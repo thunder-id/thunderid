@@ -17,7 +17,9 @@ import (
 )
 
 const (
-	loggerComponentName = "GithubAuthnService"
+	loggerComponentName      = "GithubAuthnService"
+	teamsClaim               = "teams"
+	defaultUserTeamsEndpoint = "https://api.github.com/user/teams"
 )
 
 // GithubOAuthAuthnServiceInterface defines the contract for GitHub OAuth based authenticator services.
@@ -54,7 +56,7 @@ func (g *githubOAuthAuthnService) ExchangeCodeForToken(ctx context.Context, idpI
 	return g.internal.ExchangeCodeForToken(ctx, idpID, code, validateResponse)
 }
 
-// FetchUserInfo retrieves user information from the Github API, ensuring email resolution if necessary.
+// FetchUserInfo retrieves user information from the Github API, resolving email and team claims when configured.
 func (g *githubOAuthAuthnService) FetchUserInfo(ctx context.Context, idpID, accessToken string) (
 	map[string]interface{}, *tidcommon.ServiceError) {
 	logger := g.logger
@@ -68,21 +70,26 @@ func (g *githubOAuthAuthnService) FetchUserInfo(ctx context.Context, idpID, acce
 		return userInfo, svcErr
 	}
 
-	// If email is already present in the user info or email scope is not requested, return it directly.
+	// Fetch primary email if absent and an email-capable scope was requested.
 	email := authnoauth.GetStringUserClaimValue(userInfo, "email")
-	if email != "" || !g.shouldFetchEmail(oAuthClientConfig.Scopes) {
+	if email == "" && g.shouldFetchEmail(oAuthClientConfig.Scopes) {
+		primaryEmail, svcErr := g.fetchPrimaryEmail(ctx, oAuthClientConfig, accessToken)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		if primaryEmail != "" {
+			userInfo["email"] = primaryEmail
+		}
+	} else {
 		logger.Debug(ctx, "Email is already present in the user info or email scope not requested")
-		authnoauth.ProcessSubClaim(userInfo)
-		return userInfo, nil
 	}
 
-	// Fetch primary email from the GitHub user emails endpoint.
-	primaryEmail, svcErr := g.fetchPrimaryEmail(ctx, oAuthClientConfig, accessToken)
-	if svcErr != nil {
-		return nil, svcErr
-	}
-	if primaryEmail != "" {
-		userInfo["email"] = primaryEmail
+	if g.shouldFetchTeams(oAuthClientConfig.Scopes) {
+		teams, svcErr := g.fetchUserTeams(ctx, oAuthClientConfig, accessToken)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		userInfo[teamsClaim] = teams
 	}
 
 	authnoauth.ProcessSubClaim(userInfo)
@@ -92,6 +99,51 @@ func (g *githubOAuthAuthnService) FetchUserInfo(ctx context.Context, idpID, acce
 // shouldFetchEmail check whether user email should be fetched from the emails endpoint based on the scopes.
 func (g *githubOAuthAuthnService) shouldFetchEmail(scopes []string) bool {
 	return slices.Contains(scopes, UserScope) || slices.Contains(scopes, UserEmailScope)
+}
+
+// shouldFetchTeams reports whether user team memberships should be fetched based on the scopes.
+func (g *githubOAuthAuthnService) shouldFetchTeams(scopes []string) bool {
+	return slices.Contains(scopes, ReadOrgScope)
+}
+
+// fetchUserTeams fetches all user team memberships from the GitHub user teams endpoint.
+func (g *githubOAuthAuthnService) fetchUserTeams(ctx context.Context,
+	oAuthClientConfig *authnoauth.OAuthClientConfig, accessToken string) (
+	[]string, *tidcommon.ServiceError) {
+	logger := g.logger
+	logger.Debug(ctx, "Fetching user teams from GitHub user teams endpoint")
+
+	nextURL := oAuthClientConfig.OAuthEndpoints.UserTeamsEndpoint
+	if nextURL == "" {
+		nextURL = defaultUserTeamsEndpoint
+	}
+
+	teams := []string{}
+	visited := make(map[string]bool)
+	for nextURL != "" && !visited[nextURL] {
+		visited[nextURL] = true
+
+		req, svcErr := buildUserTeamsRequest(ctx, nextURL, accessToken, logger)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+
+		pageTeams, next, svcErr := sendUserTeamsRequest(req, g.httpClient, logger)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+
+		for _, team := range pageTeams {
+			if team.Organization.Login == "" || team.Slug == "" {
+				continue
+			}
+			teams = append(teams, team.Organization.Login+"/"+team.Slug)
+		}
+
+		nextURL = next
+	}
+
+	return teams, nil
 }
 
 // fetchPrimaryEmail fetches the primary email of the user from the GitHub user emails endpoint.
