@@ -35,6 +35,7 @@ type AuditLine struct {
 	Application   map[string]string `json:"application"`
 	SessionRef    string            `json:"session_ref"`
 	FlowRef       string            `json:"flow_ref"`
+	OU            map[string]string `json:"ou"`
 	Details       map[string]string `json:"details"`
 	// Raw is the line as the server wrote it, for a check on anything the fields above omit.
 	Raw string `json:"-"`

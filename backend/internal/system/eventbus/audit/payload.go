@@ -60,6 +60,7 @@ type Payload struct {
 	sessionRef string
 	appID      string
 	flowRef    string
+	ouID       string
 }
 
 // NewPayload builds the audit payload of an attempt on target. The actor, the principal it acted
@@ -172,6 +173,12 @@ func (p Payload) WithApplication(id string) Payload {
 	return p
 }
 
+// WithOU names the organization unit of the subject or the target by its ID.
+func (p Payload) WithOU(id string) Payload {
+	p.ouID = capID(id)
+	return p
+}
+
 // WithDetails records facts specific to one event. An event whose details carry a key the event does
 // not allow is never written.
 func (p Payload) WithDetails(details map[string]string) Payload {
@@ -227,6 +234,11 @@ func (p Payload) Application() string {
 // FlowRef returns the reference of the flow the event ran in, empty when none.
 func (p Payload) FlowRef() string {
 	return p.flowRef
+}
+
+// OU returns the ID of the organization unit of the subject or the target, empty when none.
+func (p Payload) OU() string {
+	return p.ouID
 }
 
 // Details returns a copy of the facts specific to the event.

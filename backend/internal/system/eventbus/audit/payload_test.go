@@ -449,6 +449,14 @@ func (s *PayloadTestSuite) TestValidate() {
 		{"a session end detail other than the reason", EventSessionEnd,
 			NewPayload(ctx, testTarget, ActionEnd, OutcomeSucceeded).
 				WithDetails(map[string]string{"handle": "cookie-value"}), errDetailNotAllowed},
+		{"a user authentication with its method", EventUserAuthenticate,
+			NewPayload(ctx, testTarget, ActionAuthenticate, OutcomeSucceeded).
+				WithDetails(map[string]string{DetailAuthenticationMethod: "password"}), nil},
+		{"a user authentication refused", EventUserAuthenticate,
+			NewPayload(ctx, testTarget, ActionAuthenticate, OutcomeDenied("account_locked")), nil},
+		{"a user authentication detail other than the method", EventUserAuthenticate,
+			NewPayload(ctx, testTarget, ActionAuthenticate, OutcomeSucceeded).
+				WithDetails(map[string]string{"username": "alice"}), errDetailNotAllowed},
 		{"a detail the event does not allow", EventUserUpdate,
 			NewPayload(ctx, testTarget, ActionUpdate, OutcomeSucceeded).
 				WithDetails(map[string]string{"password": "s3cr3t"}), errDetailNotAllowed},
@@ -493,17 +501,19 @@ func (s *PayloadTestSuite) TestEveryIDIsCutTo128Characters() {
 	s.Equal(exact, NewPayload(ctx, Ref{Type: TargetTypeUser, ID: exact}, ActionUpdate, OutcomeSucceeded).Target().ID)
 }
 
-// The session reference and the application ID are cut like every other ID.
-func (s *PayloadTestSuite) TestTheSessionRefAndTheApplicationAreCutTo128Characters() {
+// The session reference, the application ID and the organization unit ID are cut like every other ID.
+func (s *PayloadTestSuite) TestTheSessionRefTheApplicationAndTheOUAreCutTo128Characters() {
 	long := strings.Repeat("ü", maxIDLength+20)
 
 	payload := NewPayload(context.Background(), testTarget, ActionCreate, OutcomeSucceeded).
-		WithSessionRef(long).WithApplication(long)
+		WithSessionRef(long).WithApplication(long).WithOU(long)
 
 	s.True(utf8.ValidString(payload.SessionRef()))
 	s.Equal(strings.Repeat("ü", maxIDLength), payload.SessionRef())
 	s.True(utf8.ValidString(payload.Application()))
 	s.Equal(strings.Repeat("ü", maxIDLength), payload.Application())
+	s.True(utf8.ValidString(payload.OU()))
+	s.Equal(strings.Repeat("ü", maxIDLength), payload.OU())
 }
 
 func (s *PayloadTestSuite) TestTheFlowRefIsCutTo128Characters() {
@@ -543,15 +553,18 @@ func (s *PayloadTestSuite) TestBuildersReturnIndependentCopies() {
 	details := map[string]string{"reason": "requested"}
 	base := NewPayload(context.Background(), testTarget, ActionCreate, OutcomeSucceeded)
 
-	built := base.WithSubject(testTarget).WithDetails(details).WithSessionRef("s5d1").WithApplication("a17")
+	built := base.WithSubject(testTarget).WithDetails(details).WithSessionRef("s5d1").WithApplication("a17").
+		WithOU("o3")
 	details["reason"] = "changed"
 	built.Details()["reason"] = "changed again"
 
 	s.Equal(Ref{}, base.Subject(), "the receiver is unchanged")
 	s.Empty(base.SessionRef(), "the receiver is unchanged")
 	s.Empty(base.Application(), "the receiver is unchanged")
+	s.Empty(base.OU(), "the receiver is unchanged")
 	s.Equal("s5d1", built.SessionRef())
 	s.Equal("a17", built.Application())
+	s.Equal("o3", built.OU())
 	s.Nil(base.Details())
 	s.Equal(testTarget, built.Subject())
 	s.Equal(map[string]string{"reason": "requested"}, built.Details())
@@ -686,6 +699,19 @@ func (s *PayloadTestSuite) TestPrincipalRef() {
 		s.Run(principalType, func() {
 			s.Equal(Ref{Type: targetType, ID: testUserID}, PrincipalRef(context.Background(), principalType,
 				testUserID))
+		})
+	}
+}
+
+func (s *PayloadTestSuite) TestPrincipalActor() {
+	for principalType, actorType := range map[string]ActorType{
+		"user":    ActorTypeUser,
+		"app":     ActorTypeApplication,
+		"agent":   ActorTypeAgent,
+		"unknown": "unknown",
+	} {
+		s.Run(principalType, func() {
+			s.Equal(Actor{Type: actorType, ID: testUserID}, PrincipalActor(principalType, testUserID))
 		})
 	}
 }

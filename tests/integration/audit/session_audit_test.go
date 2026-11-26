@@ -22,6 +22,7 @@ var systemRef = testutils.AuditRef{Type: "system"}
 // sessionFixture is a user who signs in through an application that starts a session and signs out of it,
 // and a second application on the same sign-in flow that joins the session.
 type sessionFixture struct {
+	ouID         string
 	userID       string
 	username     string
 	signInAppID  string
@@ -232,7 +233,7 @@ func (ts *AuditLogTestSuite) createSessionFixture(name string) sessionFixture {
 		return appID
 	}
 	return sessionFixture{
-		userID: userID, username: username,
+		ouID: ouID, userID: userID, username: username,
 		signInAppID: createApp("signin-app", signOutFlowID), joiningAppID: createApp("joining-app", ""),
 	}
 }
