@@ -49,6 +49,20 @@ func (s *PayloadTestSuite) TestTheClientComesFromTheContext() {
 			ActionCreate, OutcomeSucceeded).Client())
 }
 
+func (s *PayloadTestSuite) TestTheFlowRefAndTheApplicationComeFromTheContext() {
+	ctx := syscontext.WithApplicationID(syscontext.WithFlowRef(context.Background(), "ref-7"), "a17")
+
+	payload := NewPayload(ctx, testTarget, ActionCreate, OutcomeSucceeded)
+	outside := NewPayload(context.Background(), testTarget, ActionCreate, OutcomeSucceeded)
+
+	s.Equal("ref-7", payload.FlowRef())
+	s.Equal("a17", payload.Application())
+	s.Empty(outside.FlowRef())
+	s.Empty(outside.Application())
+	s.Equal("other", payload.WithApplication("other").Application(), "an explicit application wins")
+	s.Empty(payload.WithApplication("").Application(), "an explicit empty application clears the context's")
+}
+
 // A request from a private or loopback peer, such as a proxy or a local caller, has no client: neither
 // its address nor its user agent.
 func (s *PayloadTestSuite) TestANonPublicPeerHasNoClient() {
@@ -490,6 +504,16 @@ func (s *PayloadTestSuite) TestTheSessionRefAndTheApplicationAreCutTo128Characte
 	s.Equal(strings.Repeat("ü", maxIDLength), payload.SessionRef())
 	s.True(utf8.ValidString(payload.Application()))
 	s.Equal(strings.Repeat("ü", maxIDLength), payload.Application())
+}
+
+func (s *PayloadTestSuite) TestTheFlowRefIsCutTo128Characters() {
+	long := strings.Repeat("ü", maxIDLength+20)
+
+	payload := NewPayload(syscontext.WithFlowRef(context.Background(), long), testTarget, ActionCreate,
+		OutcomeSucceeded)
+
+	s.True(utf8.ValidString(payload.FlowRef()))
+	s.Equal(strings.Repeat("ü", maxIDLength), payload.FlowRef())
 }
 
 // An OAuth endpoint names the actor itself, so a bearer token the request also carries decides neither

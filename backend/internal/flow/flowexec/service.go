@@ -195,6 +195,7 @@ func (s *flowExecService) execute(ctx context.Context, flowID, appID, executionI
 	// transport inputs.
 	applyInboundSSO(engineCtx, ctx, sessionData)
 
+	recordFlowOnContext(engineCtx)
 	flowStep, flowErr := s.flowEngine.Execute(engineCtx)
 
 	if flowErr != nil {
@@ -810,6 +811,12 @@ func (s *flowExecService) initContext(ctx context.Context, requestedFlowID, appI
 		return nil, &tidcommon.InternalServerError
 	}
 	engineCtx.ExecutionID = executionID
+	flowRef, err := sysutils.GenerateUUIDv7()
+	if err != nil {
+		logger.Error(ctx, "Failed to generate the flow reference", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	engineCtx.flowRef = flowRef
 
 	flow := resolvedFlow
 	var svcErr *tidcommon.ServiceError
@@ -1485,6 +1492,7 @@ func (s *flowExecService) InitiateAndExecute(ctx context.Context,
 	engineCtx.SetInitiatorRequest(initContext.InitiatorRequest)
 	prepareContext(engineCtx, "", initContext.InitialInputs)
 
+	recordFlowOnContext(engineCtx)
 	flowStep, flowErr := s.flowEngine.Execute(engineCtx)
 	if flowErr != nil {
 		return nil, flowErr
@@ -1525,6 +1533,7 @@ func (s *flowExecService) ExecuteSystemFlow(ctx context.Context, sysCtx *common.
 		engineCtx.setSharedRuntimeData(key, value)
 	}
 
+	recordFlowOnContext(engineCtx)
 	flowStep, svcErr := s.flowEngine.Execute(engineCtx)
 	if svcErr != nil {
 		return nil, svcErr
@@ -1545,6 +1554,13 @@ func (s *flowExecService) ExecuteSystemFlow(ctx context.Context, sysCtx *common.
 			log.String(log.LoggerKeyExecutionID, engineCtx.ExecutionID), log.String("status", string(flowStep.Status)))
 		return nil, &tidcommon.InternalServerError
 	}
+}
+
+// recordFlowOnContext puts the flow's reference and its resolved application on the context every node,
+// interceptor and publisher below the engine runs on, replacing any value the request context carried.
+func recordFlowOnContext(engineCtx *EngineContext) {
+	engineCtx.Context = sysContext.WithApplicationID(
+		sysContext.WithFlowRef(engineCtx.Context, engineCtx.flowRef), engineCtx.Application.ID)
 }
 
 // refuseHeldApplication refuses a flow driven by a suspended application, at the application plane.
