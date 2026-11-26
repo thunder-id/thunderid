@@ -105,6 +105,9 @@ func (e *criteriaRevocationExecutor) removedHolderCriteria(ctx *providers.NodeCo
 	for _, entityID := range holders {
 		for _, scope := range plan.HolderScopes {
 			criterion := entityScopeCriterion(entityID, scope)
+			if plan.OUID != "" {
+				criterion = entityScopeOUCriterion(entityID, scope, plan.OUID)
+			}
 			if _, ok := covered[criterion]; ok {
 				continue
 			}

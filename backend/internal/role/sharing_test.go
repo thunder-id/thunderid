@@ -86,12 +86,16 @@ func (suite *RoleSharingTestSuite) TestDeclaration_DeleteOverlayValuesDropsTheOU
 	decl := suite.decl
 	suite.mockStore.On("ListMandatedAssignmentsForRole", mock.Anything, "role1", mock.Anything).
 		Return([]RoleAssignment{}, nil)
-	suite.mockAssignmentService.EXPECT().DeleteAssignmentsInOU(mock.Anything, "role1", "ou-child").Return(nil).Once()
-	suite.NoError(decl.DeleteOverlayValues(suite.ctx, "role1", "ou-child"))
+	suite.mockAssignmentService.EXPECT().DeleteAssignmentsInOU(mock.Anything, "role1", "ou-child").
+		Return([]string{"user-1"}, nil).Once()
+	holders, err := decl.DeleteOverlayValues(suite.ctx, "role1", "ou-child")
+	suite.NoError(err)
+	suite.Equal([]string{"user-1"}, holders, "the holders the unshare took away come back for its revocation")
 
 	suite.mockAssignmentService.EXPECT().DeleteAssignmentsInOU(mock.Anything, "role1", "ou-gone").
-		Return(errors.New("store down")).Once()
-	suite.Error(decl.DeleteOverlayValues(suite.ctx, "role1", "ou-gone"))
+		Return(nil, errors.New("store down")).Once()
+	_, err = decl.DeleteOverlayValues(suite.ctx, "role1", "ou-gone")
+	suite.Error(err)
 }
 
 // While a user sharing policy mandates the role in the organization unit, losing the role there is
@@ -102,7 +106,7 @@ func (suite *RoleSharingTestSuite) TestDeclaration_DeleteOverlayValuesRefusesWhi
 	}, nil)
 	suite.mockOUService.EXPECT().IsOrganizationUnitExists(mock.Anything, "ou-child").Return(true, nil)
 
-	err := suite.decl.DeleteOverlayValues(suite.ctx, "role1", "ou-child")
+	_, err := suite.decl.DeleteOverlayValues(suite.ctx, "role1", "ou-child")
 
 	var refusal *sharing.ResourceTypeError
 	suite.Require().ErrorAs(err, &refusal)
@@ -118,9 +122,11 @@ func (suite *RoleSharingTestSuite) TestDeclaration_DeleteOverlayValuesClearsADel
 		{ID: "user1", Type: assigneeTypeEntity, OUID: "ou-gone", PolicyID: "user-policy"},
 	}, nil)
 	suite.mockOUService.EXPECT().IsOrganizationUnitExists(mock.Anything, "ou-gone").Return(false, nil)
-	suite.mockAssignmentService.EXPECT().DeleteAssignmentsInOU(mock.Anything, "role1", "ou-gone").Return(nil).Once()
+	suite.mockAssignmentService.EXPECT().DeleteAssignmentsInOU(mock.Anything, "role1", "ou-gone").
+		Return(nil, nil).Once()
 
-	suite.NoError(suite.decl.DeleteOverlayValues(suite.ctx, "role1", "ou-gone"))
+	_, err := suite.decl.DeleteOverlayValues(suite.ctx, "role1", "ou-gone")
+	suite.NoError(err)
 }
 
 // A failure to find out whether the role is mandated there fails the cleanup as an internal error.
@@ -134,7 +140,7 @@ func (suite *RoleSharingTestSuite) TestDeclaration_DeleteOverlayValuesFailures()
 		Return(false, &tidcommon.InternalServerError)
 
 	for _, ouID := range []string{"ou-a", "ou-b"} {
-		err := suite.decl.DeleteOverlayValues(suite.ctx, "role1", ouID)
+		_, err := suite.decl.DeleteOverlayValues(suite.ctx, "role1", ouID)
 
 		suite.Require().Error(err, ouID)
 		var refusal *sharing.ResourceTypeError

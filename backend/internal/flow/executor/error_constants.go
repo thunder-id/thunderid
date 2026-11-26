@@ -1818,6 +1818,19 @@ var (
 				"work. Start the reset again",
 		},
 	}
+	// ErrRoleUnshareNotAllowed is returned when the role an unshare names cannot be revoked from.
+	ErrRoleUnshareNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "FET-1141",
+		Error: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.role_unshare_not_allowed",
+			DefaultValue: "Role unshare not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "flows.executor.errors.role_unshare_not_allowed_desc",
+			DefaultValue: "The role no longer exists",
+		},
+	}
 )
 
 // errForEntityCategory returns a copy of err whose messages name the entity category they are

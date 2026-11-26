@@ -12,7 +12,7 @@ import (
 
 // EnforcerInterface answers revocation checks for the Resource Server enforcement point. A token is
 // rejected when its JTI, token family, ThunderID subject, owning OAuth client, or any scope it carries
-// is cached as revoked.
+// is cached as revoked, everywhere or within the organization unit it was issued in.
 type EnforcerInterface interface {
 	// EnsureNotRevoked returns nil when the token may proceed.
 	EnsureNotRevoked(ctx context.Context, identity security.RevocationIdentity) error
@@ -45,7 +45,37 @@ func (e *enforcer) EnsureNotRevoked(_ context.Context, identity security.Revocat
 	if e.isScopeRevoked(identity) {
 		return errTokenRevoked
 	}
+	if e.isOUScopedRevoked(identity) {
+		return errTokenRevoked
+	}
 	return nil
+}
+
+// isOUScopedRevoked reports whether the token is revoked within the organization unit it was issued in.
+func (e *enforcer) isOUScopedRevoked(identity security.RevocationIdentity) bool {
+	criteria := revocation.OUCriteria(identity.Subject, identity.AppKey, identity.OUID, identity.Audiences,
+		identity.Scopes)
+	for _, criterion := range criteria {
+		switch criterion.Type {
+		case revocation.CriterionTypeSubjectOU:
+			if e.cache.isSubjectOURevoked(criterion.Value, identity.EstablishedAt) {
+				return true
+			}
+		case revocation.CriterionTypeApplicationKeyOU:
+			if e.cache.isAppKeyOURevoked(criterion.Value, identity.EstablishedAt) {
+				return true
+			}
+		case revocation.CriterionTypeEntityScopeOU:
+			if e.cache.isEntityScopeOURevoked(criterion.Value, identity.EstablishedAt) {
+				return true
+			}
+		case revocation.CriterionTypeEntityScopeSubtreeOU:
+			if e.cache.isEntityScopeSubtreeOURevoked(criterion.Value, identity.EstablishedAt) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // isScopeRevoked reports whether any of the token's scopes is revoked for its subject or deployment-wide.

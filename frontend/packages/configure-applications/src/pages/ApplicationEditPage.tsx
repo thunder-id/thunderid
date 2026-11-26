@@ -141,6 +141,8 @@ export default function ApplicationEditPage({renderSessions = undefined}: Applic
     enabled: Boolean(applicationId),
     // The tab's sentences say what access means for an application: `applications:organizationAccess.*`.
     wordingNamespace: 'applications',
+    // Unsharing an application revokes its tokens in the units that lose it.
+    revokesOnUnshare: true,
   });
 
   // Resolves an error through the `applications` catalog. `t` defaults to the `common` namespace,

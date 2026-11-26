@@ -5357,13 +5357,13 @@ func TestSetRoleAssignmentService_AppliesTheWaitingDeclaredMandates(t *testing.T
 	declared.Rules = []sharing.StoredRule{{FieldKey: RolesFieldKey,
 		Grant:     sharing.GrantRef{Section: sharing.SectionChildUnits, OUID: shareChildOU},
 		Requested: sharing.OverlayRule{Value: &roles}, Resolved: sharing.OverlayRule{Value: &roles}}}
-	require.Nil(t, service.sharingDeclaration.OnPolicyWritten(context.Background(), declared))
+	require.Nil(t, refusalOf(service.sharingDeclaration.OnPolicyWritten(context.Background(), declared)))
 
 	assignments := rolemock.NewRoleAssignmentServiceInterfaceMock(t)
 	sharingMock.EXPECT().IsVisible(mock.Anything, role.RoleSharingType, "role-a", shareOwnerOU).Return(true, nil).Once()
 	assignments.EXPECT().ApplyMandatedAssignments(mock.Anything, sharePolicyID,
 		role.RoleAssignment{ID: svcTestUserID1, Type: role.AssigneeTypeUser},
-		map[string][]string{shareChildOU: {"role-a"}}).Return(nil).Once()
+		map[string][]string{shareChildOU: {"role-a"}}).Return(nil, nil).Once()
 
 	require.NoError(t, service.SetRoleAssignmentService(context.Background(), assignments))
 }

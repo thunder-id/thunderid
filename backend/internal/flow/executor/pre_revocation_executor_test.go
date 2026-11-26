@@ -67,7 +67,7 @@ func (s *PreRevocationExecutorTestSuite) TestDeclaresItsModesForSystemFlowsOnly(
 	meta := s.planner.GetMeta()
 	s.Require().NotNil(meta)
 	s.Equal([]string{ExecutorModeClientRemoval, ExecutorModeClientSecretRotation, ExecutorModeCredentialUpdate,
-		ExecutorModeIdentityDeletion}, meta.SupportedModes)
+		ExecutorModeEntityUnshare, ExecutorModeIdentityDeletion}, meta.SupportedModes)
 	s.Equal([]providers.FlowType{providers.FlowTypeSystem}, meta.SupportedFlowTypes)
 }
 
@@ -222,4 +222,66 @@ func (s *PreRevocationExecutorTestSuite) TestAsksForTheEntityWhenItIsMissing() {
 	s.Require().Len(resp.Inputs, 1)
 	s.Equal(revocationInputEntity, resp.Inputs[0].Identifier)
 	s.Empty(resp.SharedRuntimeData)
+}
+
+func (s *PreRevocationExecutorTestSuite) unshare(ouIDs string) (*providers.ExecutorResponse, error) {
+	return s.planner.Execute(&providers.NodeContext{
+		Context:      context.Background(),
+		ExecutorMode: ExecutorModeEntityUnshare,
+		UserInputs:   map[string]string{revocationInputEntity: testPlannedEntityID, revocationInputOUs: ouIDs},
+	})
+}
+
+// One run covers every unit the entity lost, reading its client once.
+func (s *PreRevocationExecutorTestSuite) TestAnUnshareRevokesTheEntityAndItsClientWithinEveryUnit() {
+	s.actors.EXPECT().GetOAuthClientByID(mock.Anything, testPlannedEntityID).
+		Return(&providers.OAuthClient{ID: testPlannedEntityID, ClientID: "client-1"}, nil).Once()
+
+	resp, err := s.unshare(`["ou-a","ou-b"]`)
+
+	s.Require().NoError(err)
+	plan := s.planOf(resp)
+	s.Equal(revocation.ReasonResourceUnshared, plan.Reason)
+	s.Equal(revocation.ModeBeforeAction, plan.Mode)
+	s.Equal([]revocation.Criterion{
+		{Type: revocation.CriterionTypeSubjectOU,
+			Value: revocation.SubjectOUCriterionValue(testPlannedEntityID, "ou-a")},
+		{Type: revocation.CriterionTypeApplicationKeyOU,
+			Value: revocation.ApplicationKeyOUCriterionValue("client-1", "ou-a")},
+		{Type: revocation.CriterionTypeSubjectOU,
+			Value: revocation.SubjectOUCriterionValue(testPlannedEntityID, "ou-b")},
+		{Type: revocation.CriterionTypeApplicationKeyOU,
+			Value: revocation.ApplicationKeyOUCriterionValue("client-1", "ou-b")},
+	}, plan.Criteria)
+	s.Equal(int64(time.Hour/time.Second), plan.TTLSeconds)
+}
+
+func (s *PreRevocationExecutorTestSuite) TestAnUnshareOfAnEntityWithoutAClientRevokesItAsASubject() {
+	s.actors.EXPECT().GetOAuthClientByID(mock.Anything, testPlannedEntityID).Return(nil, nil)
+
+	resp, err := s.unshare(`["ou-a"]`)
+
+	s.Require().NoError(err)
+	s.Equal([]revocation.Criterion{
+		{Type: revocation.CriterionTypeSubjectOU,
+			Value: revocation.SubjectOUCriterionValue(testPlannedEntityID, "ou-a")},
+	}, s.planOf(resp).Criteria)
+}
+
+func (s *PreRevocationExecutorTestSuite) TestAnUnshareWithoutUnitsIsAnError() {
+	for _, ouIDs := range []string{`[]`, `[""]`} {
+		_, err := s.unshare(ouIDs)
+		s.ErrorContains(err, "organization units are required", ouIDs)
+	}
+	_, err := s.unshare("not-a-list")
+	s.ErrorContains(err, "failed to decode the organization units")
+}
+
+func (s *PreRevocationExecutorTestSuite) TestAnUnshareStopsWhenTheClientCannotBeRead() {
+	s.actors.EXPECT().GetOAuthClientByID(mock.Anything, testPlannedEntityID).
+		Return(nil, &tidcommon.InternalServerError)
+
+	_, err := s.unshare(`["ou-a"]`)
+
+	s.ErrorContains(err, "failed to resolve the entity's OAuth client")
 }

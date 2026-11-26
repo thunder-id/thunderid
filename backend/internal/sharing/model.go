@@ -942,6 +942,33 @@ func WithReplayReport(ctx context.Context) (context.Context, *ReplayReport) {
 	return context.WithValue(ctx, replayReportKey{}, report), report
 }
 
+// lossCollectorKey carries, on the context of a sharing change that revokes, the lossCollector its runs record to.
+type lossCollectorKey struct{}
+
+// lossCollector records the organization units a change takes one resource away from, and the revocations its hooks
+// require. With the planned sets present, a loss or a revocation outside them refuses the change.
+type lossCollector struct {
+	rt         ResourceType
+	resourceID string
+	owningOUID string
+	planned    map[string]struct{}
+	lost       []string
+	// required are the revocations the change's hooks asked for, keyed to drop repeats.
+	required        map[string]Revocation
+	plannedRequired map[string]struct{}
+	unplanned       bool
+	// dryRun marks the run that is rolled back, whose reads are not cached.
+	dryRun bool
+	// removedHolders are, by unit, the entities whose access the change's cleanup took away there.
+	removedHolders map[string][]string
+}
+
+// Revocation is a pre system flow a sharing change needs beyond the units that lose the resource, with its inputs.
+type Revocation struct {
+	PreFlow string            `json:"preFlow"`
+	Inputs  map[string]string `json:"inputs"`
+}
+
 // PolicyReplay reports what a replay did that its caller has to say something about. A policy the
 // document carries for an organization unit a declaration already governs is dropped, and the
 // replay still succeeds, so the caller is told which ones lost rather than discovering it later.
@@ -980,4 +1007,6 @@ type PolicyReplayError struct {
 	Index          int
 	InitiatingOUID string
 	Err            *tidcommon.ServiceError
+	// Whole is set when the refusal is of the change as a whole, such as its revocation, so it names no policy.
+	Whole bool
 }

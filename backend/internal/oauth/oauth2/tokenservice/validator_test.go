@@ -2457,6 +2457,55 @@ func (suite *TokenValidatorTestSuite) TestRevocationIdentity_AccessTokenWithoutC
 	}
 }
 
+func (suite *TokenValidatorTestSuite) TestRevocationIdentity_AccessTokenIsCheckedWithinItsUnit() {
+	identity, err := revocationIdentity(map[string]interface{}{
+		"sub":       "user-123",
+		"client_id": "oauth-client",
+		"ouId":      "ou-a",
+		"aud":       "https://api.example.com",
+		"scope":     "orders:read",
+		"iat":       float64(1_700_000_000),
+	}, "at-jti", "at-family")
+	suite.Require().NoError(err)
+
+	for _, criterion := range revocation.OUCriteria("user-123", "oauth-client", "ou-a",
+		[]string{"https://api.example.com"}, []string{"orders:read"}) {
+		assert.Contains(suite.T(), identity.Criteria, criterion)
+	}
+}
+
+func (suite *TokenValidatorTestSuite) TestRevocationIdentity_RefreshTokenIsCheckedWithinItsAccessTokensUnit() {
+	identity, err := revocationIdentity(map[string]interface{}{
+		"sub":                "oauth-client",
+		"access_token_sub":   "user-123",
+		"access_token_ou_id": "ou-a",
+		"iat":                float64(1_700_000_000),
+	}, "refresh-jti", "refresh-family")
+	suite.Require().NoError(err)
+
+	assert.Contains(suite.T(), identity.Criteria, revocation.Criterion{
+		Type: revocation.CriterionTypeSubjectOU, Value: sharedrevocation.SubjectOUCriterionValue("user-123", "ou-a"),
+	})
+	assert.Contains(suite.T(), identity.Criteria, revocation.Criterion{
+		Type:  revocation.CriterionTypeApplicationKeyOU,
+		Value: sharedrevocation.ApplicationKeyOUCriterionValue("oauth-client", "ou-a"),
+	})
+}
+
+func (suite *TokenValidatorTestSuite) TestRevocationIdentity_TokenStatingNoUnitHasNoUnitCriteria() {
+	identity, err := revocationIdentity(map[string]interface{}{
+		"sub":       "user-123",
+		"client_id": "oauth-client",
+		"iat":       float64(1_700_000_000),
+	}, "at-jti", "at-family")
+	suite.Require().NoError(err)
+
+	for _, criterion := range identity.Criteria {
+		assert.NotContains(suite.T(), []revocation.CriterionType{revocation.CriterionTypeSubjectOU,
+			revocation.CriterionTypeApplicationKeyOU}, criterion.Type)
+	}
+}
+
 // When the deny list cannot be consulted, the validator surfaces revocation.ErrEnforcementUnavailable
 // (fail-closed) rather than returning claims.
 func (suite *TokenValidatorTestSuite) TestValidateAccessToken_EnforcementUnavailable() {

@@ -277,6 +277,8 @@ To share a role from the Console:
 
 The Console cannot create a policy that reaches every organization unit in the deployment or the root of every other tree. Only a resource file or an import can set those. A policy that the role's resource file declares is read-only in the Console.
 
+Taking the role away from an organization unit, by narrowing or deleting a policy, revokes the role's permissions from the tokens of those holding it there through an assignment made in that unit. Changing how a policy reaches its units in the Console, such as from chosen child organization units to all of them, deletes the policy and creates a new one, so it revokes in every organization unit the old policy reached. See [Unsharing](../protocols/oauth-oidc/token-revocation.mdx#unsharing).
+
 ### Assignments Turned Off
 
 A policy can turn assignments off for some of the organization units it reaches. Those organization units can use the role but cannot assign it. Only the role's resource file or the Role Sharing API can set this rule.

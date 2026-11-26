@@ -31,8 +31,11 @@ type accessChange struct {
 	// recordsHolderScopes keeps the revoked scopes on the plan, for a change whose holders may grow
 	// before it commits.
 	recordsHolderScopes bool
-	notAllowed          tidcommon.ServiceError
-	validate            func(e *accessChangeValidator, ctx context.Context, inputs map[string]string) (
+	// ouInput names the input holding the organization unit the scopes are revoked within; empty revokes them in
+	// every unit.
+	ouInput    string
+	notAllowed tidcommon.ServiceError
+	validate   func(e *accessChangeValidator, ctx context.Context, inputs map[string]string) (
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError, error)
 }
 
@@ -68,6 +71,30 @@ var accessChangesByMode = map[string]accessChange{
 		argInputs:   []string{revocationInputPermissions},
 		notAllowed:  ErrRolePermissionRemovalNotAllowed,
 		validate:    (*accessChangeValidator).validateRolePermissionRemoval,
+	},
+	ExecutorModeRoleUnshare: {
+		reason: revocation.ReasonResourceUnshared,
+		inputs: []providers.Input{
+			requiredTextInput(revocationInputRole), requiredTextInput(revocationInputOU),
+		},
+		targetInput: revocationInputRole,
+		ouInput:     revocationInputOU,
+		// The unshare removes the assignments made in the unit, including any made after this plan.
+		recordsHolderScopes: true,
+		notAllowed:          ErrRoleUnshareNotAllowed,
+		validate:            (*accessChangeValidator).validateRoleUnshare,
+	},
+	ExecutorModeMandateRemoval: {
+		reason: revocation.ReasonRoleAssignmentRemoved,
+		inputs: []providers.Input{
+			requiredTextInput(revocationInputRole), requiredTextInput(revocationInputAssignee),
+			requiredTextInput(revocationInputAssignmentOU),
+		},
+		targetInput:   revocationInputRole,
+		assigneeInput: revocationInputAssignee,
+		ouInput:       revocationInputAssignmentOU,
+		notAllowed:    ErrRoleAssignmentRemovalNotAllowed,
+		validate:      (*accessChangeValidator).validateMandateRemoval,
 	},
 	ExecutorModeGroupDeletion: {
 		reason:      revocation.ReasonGroupDeleted,
@@ -215,6 +242,9 @@ func (e *accessChangeValidator) buildPlan(change accessChange, inputs map[string
 	if change.recordsHolderScopes && target != nil {
 		plan.HolderScopes = target.Scopes
 	}
+	if change.ouInput != "" {
+		plan.OUID = inputs[change.ouInput]
+	}
 	if target == nil || len(target.Scopes) == 0 ||
 		(!change.deploymentWide && len(target.EntityIDs) == 0) {
 		plan.NothingToRevoke = true
@@ -237,6 +267,10 @@ func (e *accessChangeValidator) buildPlan(change accessChange, inputs map[string
 	}
 	for _, entityID := range target.EntityIDs {
 		for _, scope := range target.Scopes {
+			if change.ouInput != "" {
+				plan.Criteria = append(plan.Criteria, entityScopeOUCriterion(entityID, scope, inputs[change.ouInput]))
+				continue
+			}
 			plan.Criteria = append(plan.Criteria, entityScopeCriterion(entityID, scope))
 		}
 	}
@@ -275,6 +309,29 @@ func (e *accessChangeValidator) validateRolePermissionRemoval(ctx context.Contex
 		return nil, nil, errors.New("role service is not configured")
 	}
 	target, svcErr := e.roles.ValidateUpdateRolePermissions(ctx, inputs[revocationInputRole], permissions)
+	return target, svcErr, nil
+}
+
+// validateRoleUnshare finds who loses the role's scopes in the organization unit the role is unshared from. The
+// sharing service has already decided the change may be made.
+func (e *accessChangeValidator) validateRoleUnshare(ctx context.Context,
+	inputs map[string]string) (*revocation.AccessRevocationTarget, *tidcommon.ServiceError, error) {
+	if e.roles == nil {
+		return nil, nil, errors.New("role service is not configured")
+	}
+	target, svcErr := e.roles.GetUnshareRevocationTarget(ctx, inputs[revocationInputRole], inputs[revocationInputOU])
+	return target, svcErr, nil
+}
+
+// validateMandateRemoval finds what the assignee loses in the organization unit once a sharing policy stops
+// mandating the role there. The sharing service has already decided the change may be made.
+func (e *accessChangeValidator) validateMandateRemoval(ctx context.Context,
+	inputs map[string]string) (*revocation.AccessRevocationTarget, *tidcommon.ServiceError, error) {
+	if e.assignments == nil {
+		return nil, nil, errors.New("role assignment service is not configured")
+	}
+	target, svcErr := e.assignments.GetMandateRemovalRevocationTarget(ctx, inputs[revocationInputRole],
+		inputs[revocationInputAssignmentOU], inputs[revocationInputAssignee])
 	return target, svcErr, nil
 }
 

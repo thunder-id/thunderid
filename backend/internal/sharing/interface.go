@@ -88,8 +88,9 @@ type PolicyHooks interface {
 //
 // A client error wrapped with NewResourceTypeError refuses the change and reaches its caller as given.
 type OverlayCleaner interface {
-	// DeleteOverlayValues removes every value ouID holds for resourceID.
-	DeleteOverlayValues(ctx context.Context, resourceID, ouID string) error
+	// DeleteOverlayValues removes every value ouID holds for resourceID. It returns the entities whose access to the
+	// resource there the removal took away, whose tokens the unit's revocation covers too.
+	DeleteOverlayValues(ctx context.Context, resourceID, ouID string) ([]string, error)
 }
 
 // PolicyWriteHooks is an optional capability letting a resource type act, inside the same transaction, whenever one
@@ -99,10 +100,32 @@ type OverlayCleaner interface {
 // A client error refuses the change, which rolls back and reaches the caller as given. Any other error rolls it back
 // as an internal failure.
 type PolicyWriteHooks interface {
-	// OnPolicyWritten is called once per policy created or rewritten, with the policy as stored.
-	OnPolicyWritten(ctx context.Context, p Policy) *tidcommon.ServiceError
-	// OnPolicyRemoved is called once per policy removed, with the policy as it stood before.
-	OnPolicyRemoved(ctx context.Context, p Policy) *tidcommon.ServiceError
+	// OnPolicyWritten is called once per policy created or rewritten, with the policy as stored. It returns the
+	// revocations the change needs for state it removed in a unit that keeps the resource, which a change that revokes
+	// runs before it is made.
+	OnPolicyWritten(ctx context.Context, p Policy) ([]Revocation, *tidcommon.ServiceError)
+	// OnPolicyRemoved is called once per policy removed, with the policy as it stood before, and returns the
+	// revocations the change needs as OnPolicyWritten does.
+	OnPolicyRemoved(ctx context.Context, p Policy) ([]Revocation, *tidcommon.ServiceError)
+}
+
+// UnshareRevoker is an optional capability for a resource type whose tokens are revoked in the organization units
+// that lose it. A change taking the resource from units runs the pre system flow for them before it is written, and
+// the revocation post flow after.
+type UnshareRevoker interface {
+	// UnshareRevocationFlow returns the pre system flow revoking in the units the resource loses.
+	UnshareRevocationFlow() UnshareFlow
+}
+
+// UnshareFlow is the pre system flow a resource type runs in the organization units it loses.
+type UnshareFlow struct {
+	// Handle is the pre system flow's handle.
+	Handle string
+	// ResourceInput is the flow input naming the resource.
+	ResourceInput string
+	// EveryUnit runs the flow once for every unit the resource loses, listed as a JSON array in `targetOuIds`, rather
+	// than once per unit named in `targetOuId`.
+	EveryUnit bool
 }
 
 // MemberValidator is an optional capability letting a resource type reject members the initiating

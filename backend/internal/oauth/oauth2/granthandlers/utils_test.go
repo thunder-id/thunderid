@@ -31,6 +31,7 @@ const (
 	testGrantAudience         = "https://api.example.com"
 	testGrantCompletedACR     = "urn:acr:pwd"
 	testGrantSubjectID        = "user-entity-id"
+	testGrantOUID             = "ou-a"
 )
 
 // denyListLookup answers like the criteria deny list: boundary rows match artifacts established by their cutoff.
@@ -51,6 +52,8 @@ type GrantHandlerUtilsTestSuite struct {
 	mockEnforcement *revocationmock.EnforcementServiceInterfaceMock
 	issuedAt        time.Time
 	grant           revocation.RevocationIdentity
+	// grantOUID is the organization unit the grant was issued in, empty for one stating none.
+	grantOUID string
 }
 
 func TestGrantHandlerUtilsTestSuite(t *testing.T) {
@@ -58,6 +61,7 @@ func TestGrantHandlerUtilsTestSuite(t *testing.T) {
 }
 
 func (s *GrantHandlerUtilsTestSuite) SetupTest() {
+	s.grantOUID = ""
 	s.mockEnforcement = revocationmock.NewEnforcementServiceInterfaceMock(s.T())
 	s.issuedAt = time.Now().Add(-5 * time.Minute).UTC().Truncate(time.Second)
 	s.grant = revocation.RevocationIdentity{
@@ -83,11 +87,11 @@ func (s *GrantHandlerUtilsTestSuite) scopeRevokedAt(scope string, cutoff time.Ti
 func (s *GrantHandlerUtilsTestSuite) exclude(oidcScopes, permissionScopes []string) (
 	[]string, *model.ErrorResponse) {
 	return excludeRevokedScopes(context.Background(), s.mockEnforcement, s.grant,
-		testGrantSubject, []string{testGrantAudience}, oidcScopes, permissionScopes)
+		testGrantSubject, testClientID, s.grantOUID, []string{testGrantAudience}, oidcScopes, permissionScopes)
 }
 
 func (s *GrantHandlerUtilsTestSuite) TestExcludeRevokedScopes_WithoutEnforcementGrantsEveryScope() {
-	scopes, errResp := excludeRevokedScopes(context.Background(), nil, s.grant, testGrantSubject,
+	scopes, errResp := excludeRevokedScopes(context.Background(), nil, s.grant, testGrantSubject, testClientID, "",
 		[]string{testGrantAudience}, []string{"openid"}, []string{"read"})
 
 	s.Nil(errResp)
@@ -123,6 +127,86 @@ func (s *GrantHandlerUtilsTestSuite) TestExcludeRevokedScopes_RevocationInTheGra
 
 	s.Nil(errResp)
 	s.Equal([]string{"read"}, scopes)
+}
+
+func (s *GrantHandlerUtilsTestSuite) TestExcludeRevokedScopes_ScopeRevokedInTheGrantsUnitIsExcluded() {
+	s.grantOUID = testGrantOUID
+	s.mockEnforcement.EXPECT().EnsureNotRevoked(mock.Anything, mock.Anything).
+		RunAndReturn(denyListLookup(revocation.CriteriaRevocation{
+			Criterion: revocation.Criterion{
+				Type: revocation.CriterionTypeEntityScopeOU,
+				Value: sharedrevocation.EntityScopeOUCriterionValue(testGrantSubject, testGrantAudience, "write",
+					testGrantOUID),
+			},
+			Reason: revocation.RevocationReason("resource_unshared"),
+			Cutoff: s.issuedAt.Add(time.Minute),
+		}))
+
+	scopes, errResp := s.exclude([]string{"openid"}, []string{"read", "write"})
+
+	s.Nil(errResp)
+	s.Equal([]string{"openid", "read"}, scopes)
+}
+
+func (s *GrantHandlerUtilsTestSuite) TestExcludeRevokedScopes_ScopeRevokedInAnotherUnitIsKept() {
+	s.grantOUID = "ou-b"
+	s.mockEnforcement.EXPECT().EnsureNotRevoked(mock.Anything, mock.Anything).
+		RunAndReturn(denyListLookup(revocation.CriteriaRevocation{
+			Criterion: revocation.Criterion{
+				Type: revocation.CriterionTypeEntityScopeOU,
+				Value: sharedrevocation.EntityScopeOUCriterionValue(testGrantSubject, testGrantAudience, "write",
+					testGrantOUID),
+			},
+			Reason: revocation.RevocationReason("resource_unshared"),
+			Cutoff: s.issuedAt.Add(time.Minute),
+		}))
+
+	scopes, errResp := s.exclude(nil, []string{"read", "write"})
+
+	s.Nil(errResp)
+	s.Equal([]string{"read", "write"}, scopes)
+}
+
+func (s *GrantHandlerUtilsTestSuite) TestExcludeRevokedScopes_SubjectUnsharedFromTheGrantsUnitIsRefused() {
+	s.grantOUID = testGrantOUID
+	s.mockEnforcement.EXPECT().EnsureNotRevoked(mock.Anything, mock.Anything).
+		RunAndReturn(denyListLookup(revocation.CriteriaRevocation{
+			Criterion: revocation.Criterion{
+				Type:  revocation.CriterionTypeSubjectOU,
+				Value: sharedrevocation.SubjectOUCriterionValue(testGrantSubject, testGrantOUID),
+			},
+			Reason: revocation.RevocationReason("resource_unshared"),
+			Cutoff: s.issuedAt.Add(time.Minute),
+		}))
+
+	scopes, errResp := s.exclude([]string{"openid"}, []string{"read"})
+
+	s.Nil(scopes)
+	s.Equal(constants.ErrorInvalidGrant, errResp.Error)
+}
+
+func (s *GrantHandlerUtilsTestSuite) TestExcludeRevokedScopes_ClientUnsharedFromTheGrantsUnitIsRefused() {
+	s.grantOUID = testGrantOUID
+	s.mockEnforcement.EXPECT().EnsureNotRevoked(mock.Anything, mock.Anything).
+		RunAndReturn(denyListLookup(revocation.CriteriaRevocation{
+			Criterion: revocation.Criterion{
+				Type:  revocation.CriterionTypeApplicationKeyOU,
+				Value: sharedrevocation.ApplicationKeyOUCriterionValue(testClientID, testGrantOUID),
+			},
+			Reason: revocation.RevocationReason("resource_unshared"),
+			Cutoff: s.issuedAt.Add(time.Minute),
+		}))
+
+	scopes, errResp := s.exclude(nil, []string{"read"})
+
+	s.Nil(scopes)
+	s.Equal(constants.ErrorInvalidGrant, errResp.Error)
+}
+
+func (s *GrantHandlerUtilsTestSuite) TestIssuedOUID_ReadsTheSignInsUnit() {
+	s.Equal(testGrantOUID, issuedOUID(map[string]interface{}{"ouId": testGrantOUID}))
+	s.Empty(issuedOUID(map[string]interface{}{}))
+	s.Empty(issuedOUID(nil))
 }
 
 func (s *GrantHandlerUtilsTestSuite) TestExcludeRevokedScopes_GrantRevokedIsRefused() {

@@ -16,12 +16,17 @@ const (
 // systemFlowRoleDeletePre is the system flow a role deletion runs before the role is removed.
 const systemFlowRoleDeletePre = "system-role-delete-pre"
 
+// systemFlowRoleUnsharePre is the system flow revoking a role's scopes in a unit it is unshared from.
+const systemFlowRoleUnsharePre = "system-role-unshare-pre"
+
 // projectIDQueryParam is the query parameter that lists the roles of one project.
 const projectIDQueryParam = "projectId"
 
-// The role assignment removal pre flow handle and its assignee and organization unit inputs.
+// The role assignment removal pre flow handle, the pre flow revoking a role a sharing policy stops mandating, and
+// their assignee and organization unit inputs.
 const (
 	systemFlowRoleAssignmentRemovalPre = "system-role-assignment-removal-pre"
+	systemFlowMandateRemovalPre        = "system-mandated-role-removal-pre"
 	systemFlowInputAssignee            = "targetAssigneeId"
 	systemFlowInputAssignmentOU        = "targetAssignmentOuId"
 )

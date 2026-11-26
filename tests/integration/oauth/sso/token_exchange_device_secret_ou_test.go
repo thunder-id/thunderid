@@ -18,6 +18,7 @@ const (
 	ouExchangeChildHandle  = "sso-exchange-child"
 	ouExchangeSharedUser   = "sso_exchange_shared_user"
 	ouExchangeUnsharedUser = "sso_exchange_unshared_user"
+	ouExchangeLaterUser    = "sso_exchange_unshared_later_user"
 	ouExchangeChildRole    = "SSO Exchange Child Role"
 	ouExchangeParentRole   = "SSO Exchange Parent Role"
 	accessTokenType        = "urn:ietf:params:oauth:token-type:access_token"
@@ -108,6 +109,63 @@ func (ts *SSOLogoutTestSuite) TestTokenExchange_DeviceSecretSignsInToAChildOU() 
 		ts.Equal("invalid_request", token["error"])
 		ts.Equal(ouScopedGrantRefusal, token["error_description"])
 	})
+
+	ts.Run("a user unshared from the child must sign in, and its token there is revoked", func() {
+		laterUserID := ts.createOUExchangeUser(ouExchangeLaterUser)
+		defer ts.deleteOUExchangeFixture("user", laterUserID, testutils.DeleteUser)
+		ts.shareUserInto(laterUserID, childOUID)
+		first := ts.loginDeviceSecretAs(ouExchangeLaterUser, "ou_exchange_later_state")
+		status, token := ts.exchangeDeviceSecretAt(childTokenPath, ouExchangeClientID, clientSecret,
+			first.DeviceSecret, "openid")
+		ts.Require().Equal(http.StatusOK, status, "the exchange should succeed while shared: %v", token)
+		childToken, _ := token["access_token"].(string)
+		ts.Require().True(ts.introspectsActive(childToken), "the token issued in the child is active")
+
+		ts.unshareUser(laterUserID)
+
+		status, token = ts.exchangeDeviceSecretAt(childTokenPath, ouExchangeClientID, clientSecret,
+			first.DeviceSecret, "openid")
+		ts.Equal(http.StatusBadRequest, status)
+		ts.Equal("interaction_required", token["error"], "the session cannot be used in the child: %v", token)
+		ts.NotContains(token, "access_token")
+		ts.False(ts.introspectsActive(childToken), "the token issued in the child still works after the unshare")
+		ts.True(ts.introspectsActive(first.AccessToken), "the token issued in the parent was revoked")
+	})
+}
+
+// introspectsActive reports whether the token is active, introspected as the OU exchange app.
+func (ts *SSOLogoutTestSuite) introspectsActive(token string) bool {
+	active, err := testutils.IntrospectToken(token, ouExchangeClientID, clientSecret)
+	ts.Require().NoError(err, "introspect the token")
+	return active
+}
+
+// unshareUser deletes every sharing policy of the user.
+func (ts *SSOLogoutTestSuite) unshareUser(userID string) {
+	req, err := http.NewRequest(http.MethodGet, testutils.TestServerURL+"/users/"+userID+"/sharing-policies", nil)
+	ts.Require().NoError(err)
+	resp, err := testutils.GetHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	raw, err := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, string(raw))
+	var list struct {
+		Policies []struct {
+			ID string `json:"id"`
+		} `json:"policies"`
+	}
+	ts.Require().NoError(json.Unmarshal(raw, &list), string(raw))
+	ts.Require().NotEmpty(list.Policies, "the user has a sharing policy")
+	for _, p := range list.Policies {
+		req, err := http.NewRequest(http.MethodDelete,
+			testutils.TestServerURL+"/users/"+userID+"/sharing-policies/"+p.ID, nil)
+		ts.Require().NoError(err)
+		resp, err := testutils.GetHTTPClient().Do(req)
+		ts.Require().NoError(err)
+		_ = resp.Body.Close()
+		ts.Require().Equal(http.StatusNoContent, resp.StatusCode, "delete sharing policy %s", p.ID)
+	}
 }
 
 // loginDeviceSecretAs signs the user in to the suite's app, requesting device_sso, and returns its tokens.

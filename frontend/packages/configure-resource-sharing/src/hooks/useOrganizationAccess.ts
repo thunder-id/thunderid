@@ -34,6 +34,11 @@ export interface UseOrganizationAccessOptions {
    */
   wordingNamespace?: string;
   /**
+   * Whether taking the resource away from an organization unit revokes what was issued for it there, so a switch
+   * whose save replaces the policy warns that it signs everyone out of the units the policy reached.
+   */
+  revokesOnUnshare?: boolean;
+  /**
    * Tells which sharing rules the resource's own screen edits, by field, such as a flow's variables. The draft holds
    * them and a save writes them afresh, while every other rule is kept as saved. Keep the function stable between
    * renders. By default the resource edits none, so none of its rules are touched.
@@ -97,6 +102,10 @@ export interface OrganizationAccessState {
    * The i18n namespace holding the resource's own wording, as given to the hook.
    */
   wordingNamespace?: string;
+  /**
+   * Whether unsharing the resource revokes, as given to the hook.
+   */
+  revokesOnUnshare: boolean;
 }
 
 /**
@@ -119,6 +128,7 @@ export default function useOrganizationAccess({
   resourcePath,
   enabled = true,
   wordingNamespace = undefined,
+  revokesOnUnshare = false,
   editsRule = undefined,
 }: UseOrganizationAccessOptions): OrganizationAccessState {
   const policiesQuery = useGetSharingPolicies(resourcePath, enabled);
@@ -207,5 +217,6 @@ export default function useOrganizationAccess({
     isSaving: saveMutation.isPending,
     saveError: saveMutation.error,
     wordingNamespace,
+    revokesOnUnshare,
   };
 }

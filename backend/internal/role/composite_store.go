@@ -432,7 +432,7 @@ func (c *compositeRoleStore) DeleteAssignmentsByRoleID(ctx context.Context, id s
 
 // DeleteAssignmentsInOU deletes the assignments made in one organization unit from the database
 // store only. A declared assignment is made in the role's owner, which never loses sight of it.
-func (c *compositeRoleStore) DeleteAssignmentsInOU(ctx context.Context, id, ouID string) error {
+func (c *compositeRoleStore) DeleteAssignmentsInOU(ctx context.Context, id, ouID string) ([]RoleAssignment, error) {
 	return c.dbStore.DeleteAssignmentsInOU(ctx, id, ouID)
 }
 
@@ -517,6 +517,13 @@ func (c *compositeRoleStore) ListMandatedRoleUnits(ctx context.Context) ([]Manda
 func (c *compositeRoleStore) ListMandatedAssignmentsForRole(
 	ctx context.Context, roleID, ouID string) ([]RoleAssignment, error) {
 	return c.dbStore.ListMandatedAssignmentsForRole(ctx, roleID, ouID)
+}
+
+// ListMandatedAssignmentsOfAssignee lists the role's mandated assignments to the assignee from the database store
+// only.
+func (c *compositeRoleStore) ListMandatedAssignmentsOfAssignee(
+	ctx context.Context, roleID, ouID, assigneeID string) ([]RoleAssignment, error) {
+	return c.dbStore.ListMandatedAssignmentsOfAssignee(ctx, roleID, ouID, assigneeID)
 }
 
 // GetDirectAssignments returns the direct assignments of the role in ouID to any of assigneeIDs from

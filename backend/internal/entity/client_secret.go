@@ -104,7 +104,7 @@ func (s *entityService) RegenerateClientSecret(ctx context.Context, category pro
 // runs. A failure of the post flow is returned as revocationErr, since the secret is stored by then.
 func (s *entityService) RotateClientSecret(ctx context.Context, entityID string,
 	write func() *tidcommon.ServiceError) (svcErr, revocationErr *tidcommon.ServiceError) {
-	inputs := map[string]string{systemFlowInputEntity: entityID}
+	inputs := map[string]string{SystemFlowInputEntity: entityID}
 	shared, svcErr := s.runSystemFlow(ctx, systemFlowSecretRotatePre, inputs, nil)
 	if svcErr != nil {
 		return svcErr, nil

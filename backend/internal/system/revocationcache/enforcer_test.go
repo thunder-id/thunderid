@@ -247,3 +247,57 @@ func (s *EnforcerScopeTestSuite) TestSubtreeRulesKeepExactAndTimeBoundaries() {
 		})
 	}
 }
+
+func (s *EnforcerScopeTestSuite) TestUnitScopedRevocationRejectsOnlyTokensIssuedInThatUnit() {
+	const user, client, audience = "user-1", "client-1", "https://api.example.com"
+	revokedAt := time.Now().Add(-time.Hour)
+	entry := func(value string) revokedEntry {
+		return revokedEntry{Value: value, ExpiryTime: time.Now().Add(time.Hour), RevokedAt: revokedAt, Boundary: true}
+	}
+	cases := map[string]revokedSnapshot{
+		"subject": {SubjectOUs: []revokedEntry{entry(revocation.SubjectOUCriterionValue(user, "ou-a"))}},
+		"application key": {AppKeyOUs: []revokedEntry{
+			entry(revocation.ApplicationKeyOUCriterionValue(client, "ou-a"))}},
+		"entity scope": {EntityScopeOUs: []revokedEntry{
+			entry(revocation.EntityScopeOUCriterionValue(user, audience, "read", "ou-a"))}},
+		"entity scope subtree": {EntityScopeSubtreeOUs: []revokedEntry{
+			entry(revocation.EntityScopeSubtreeOUCriterionValue(user, audience, "reports", ":", "ou-a"))}},
+	}
+	for name, snapshot := range cases {
+		s.Run(name, func() {
+			cache := newRevokedCache()
+			cache.replace(snapshot)
+			e := newEnforcer(cache)
+			token := security.RevocationIdentity{
+				Subject: user, AppKey: client, Audiences: []string{audience}, Scopes: []string{"read", "reports:view"},
+				OUID: "ou-a", EstablishedAt: revokedAt.Add(-time.Minute),
+			}
+
+			s.ErrorIs(e.EnsureNotRevoked(context.Background(), token), errTokenRevoked)
+
+			otherUnit := token
+			otherUnit.OUID = "ou-b"
+			s.NoError(e.EnsureNotRevoked(context.Background(), otherUnit), "a token issued in another unit survives")
+
+			noUnit := token
+			noUnit.OUID = ""
+			s.NoError(e.EnsureNotRevoked(context.Background(), noUnit), "a token stating no unit is not matched")
+
+			later := token
+			later.EstablishedAt = revokedAt.Add(time.Minute)
+			s.NoError(e.EnsureNotRevoked(context.Background(), later), "a token issued after the cutoff proceeds")
+		})
+	}
+}
+
+func (s *EnforcerScopeTestSuite) TestUnitScopedEntryOfOneTypeDoesNotMatchAnother() {
+	cache := newRevokedCache()
+	cache.replace(revokedSnapshot{AppKeyOUs: []revokedEntry{
+		{Value: revocation.SubjectOUCriterionValue("user-1", "ou-a"), ExpiryTime: time.Now().Add(time.Hour)},
+	}})
+	e := newEnforcer(cache)
+
+	s.NoError(e.EnsureNotRevoked(context.Background(), security.RevocationIdentity{
+		Subject: "user-1", OUID: "ou-a", EstablishedAt: time.Now(),
+	}))
+}

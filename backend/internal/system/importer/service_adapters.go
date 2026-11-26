@@ -1701,11 +1701,14 @@ func (s *importService) applySharingPolicies(
 		return nil
 	}
 
-	// A document names its policies only by position, so the refusal says which one.
+	// A document names its policies only by position, so the refusal says which one, unless it refuses them all.
+	where := fmt.Sprintf("sharing policy %d (organization unit %s)", replayErr.Index+1, replayErr.InitiatingOUID)
+	if replayErr.Whole {
+		where = "sharing policies"
+	}
 	detail := tidcommon.CustomServiceError(*replayErr.Err, tidcommon.I18nMessage{
-		Key: replayErr.Err.ErrorDescription.Key,
-		DefaultValue: fmt.Sprintf("sharing policy %d (organization unit %s): %s",
-			replayErr.Index+1, replayErr.InitiatingOUID, replayErr.Err.ErrorDescription.DefaultValue),
+		Key:          replayErr.Err.ErrorDescription.Key,
+		DefaultValue: fmt.Sprintf("%s: %s", where, replayErr.Err.ErrorDescription.DefaultValue),
 	})
 	outcome := serviceErrorOutcome(resourceType, resourceID, resourceName, operation, detail)
 	// The title alone says what kind of refusal it was; the description is what names the entry.

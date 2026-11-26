@@ -1045,13 +1045,40 @@ func (suite *RoleAssignmentServiceTestSuite) TestGetResourceDependencies_Returns
 	suite.Empty(result)
 }
 
+// The assignments removed in the unit come back as the entities that held the role through them, a group's members
+// included, once each.
 func (suite *RoleAssignmentServiceTestSuite) TestDeleteAssignmentsInOU() {
-	suite.mockStore.On("DeleteAssignmentsInOU", mock.Anything, "role1", "ou-child").Return(nil).Once()
-	suite.NoError(suite.service.DeleteAssignmentsInOU(context.Background(), "role1", "ou-child"))
+	suite.mockStore.On("DeleteAssignmentsInOU", mock.Anything, "role1", "ou-child").Return([]RoleAssignment{
+		{ID: "user-1", Type: AssigneeTypeUser}, {ID: "group-1", Type: AssigneeTypeGroup},
+	}, nil).Once()
+	suite.mockGroupService.On("GetTransitiveMemberEntities", mock.Anything, "group-1").
+		Return([]string{"user-1", "user-2"}, (*tidcommon.ServiceError)(nil)).Once()
+
+	holders, err := suite.service.DeleteAssignmentsInOU(context.Background(), "role1", "ou-child")
+
+	suite.Require().NoError(err)
+	suite.Equal([]string{"user-1", "user-2"}, holders)
 
 	suite.mockStore.On("DeleteAssignmentsInOU", mock.Anything, "role1", "ou-gone").
-		Return(errors.New("db error")).Once()
-	suite.Error(suite.service.DeleteAssignmentsInOU(context.Background(), "role1", "ou-gone"))
+		Return(nil, errors.New("db error")).Once()
+	_, err = suite.service.DeleteAssignmentsInOU(context.Background(), "role1", "ou-gone")
+	suite.Error(err)
+}
+
+// A group nested too deep to expand refuses the change as the role deletion does, and a failure to read it fails it.
+func (suite *RoleAssignmentServiceTestSuite) TestDeleteAssignmentsInOU_AGroupThatCannotBeExpanded() {
+	group := []RoleAssignment{{ID: "group-1", Type: AssigneeTypeGroup}}
+	suite.mockStore.On("DeleteAssignmentsInOU", mock.Anything, "role1", mock.Anything).Return(group, nil).Twice()
+	deep := &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "GRP-1017"}
+	suite.mockGroupService.On("GetTransitiveMemberEntities", mock.Anything, "group-1").
+		Return([]string(nil), deep).Once()
+	suite.mockGroupService.On("GetTransitiveMemberEntities", mock.Anything, "group-1").
+		Return([]string(nil), &tidcommon.InternalServerError).Once()
+
+	_, err := suite.service.DeleteAssignmentsInOU(context.Background(), "role1", "ou-child")
+	suite.Equal(sharing.NewResourceTypeError(deep), err)
+	_, err = suite.service.DeleteAssignmentsInOU(context.Background(), "role1", "ou-child")
+	suite.ErrorContains(err, "failed to expand the holders of role role1")
 }
 
 func (suite *RoleAssignmentServiceTestSuite) TestCascadeDeleteDependencies_User_DeletesAssignments() {
@@ -1146,6 +1173,26 @@ func mandated(roleID, ouID string) MandatedAssignment {
 		ID: testUserID1, Type: assigneeTypeEntity, OUID: ouID, PolicyID: testPolicyID}}
 }
 
+// holdsNothingElse answers that testUserID1 holds no role, directly or through another mandate, once a mandate
+// is dropped.
+func (suite *RoleAssignmentServiceTestSuite) holdsNothingElse() {
+	suite.mockStore.On("GetDirectAssignments", mock.Anything, mock.Anything, mock.Anything, []string{testUserID1}).
+		Return([]RoleAssignment{}, nil)
+	suite.mockStore.On("ListMandatedAssignmentsOfAssignee", mock.Anything, mock.Anything, mock.Anything,
+		testUserID1).Return([]RoleAssignment{}, nil)
+}
+
+// errOf keeps the refusal of a mandate call, for a test about the refusal rather than what it revokes.
+func errOf(_ []sharing.Revocation, svcErr *tidcommon.ServiceError) *tidcommon.ServiceError {
+	return svcErr
+}
+
+// mandateRevocation is the revocation the role asks for when testUserID1 loses roleID in ouID.
+func mandateRevocation(roleID, ouID string) sharing.Revocation {
+	return sharing.Revocation{PreFlow: systemFlowMandateRemovalPre, Inputs: map[string]string{
+		systemFlowInputRole: roleID, systemFlowInputAssignee: testUserID1, systemFlowInputAssignmentOU: ouID}}
+}
+
 // The policy's rows follow desired: a unit that gains a role gets only that role, a unit that loses one
 // is rewritten, a unit no longer named loses its rows, and an unchanged unit is left alone.
 func (suite *RoleAssignmentServiceTestSuite) TestApplyMandatedAssignments_SyncsThePolicysRows() {
@@ -1171,8 +1218,9 @@ func (suite *RoleAssignmentServiceTestSuite) TestApplyMandatedAssignments_SyncsT
 		Return(nil).Once()
 	suite.mockStore.On("AddMandatedAssignments", mock.Anything, testPolicyID, "role-a", "ou-new", mandatedUser).
 		Return(nil).Once()
+	suite.holdsNothingElse()
 
-	err := suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID,
+	revocations, err := suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID,
 		RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}, map[string][]string{
 			"ou-grow":   {"role-a", "role-b", "role-c", "role-c"},
 			"ou-narrow": {"role-b"},
@@ -1182,6 +1230,8 @@ func (suite *RoleAssignmentServiceTestSuite) TestApplyMandatedAssignments_SyncsT
 		})
 
 	suite.Nil(err)
+	suite.ElementsMatch([]sharing.Revocation{mandateRevocation("role-a", "ou-narrow"),
+		mandateRevocation("role-a", "ou-dropped")}, revocations, "each dropped role is revoked in its unit")
 }
 
 // withGrantChecks rebuilds the service around an authorization mock with no grants allowed unless a test
@@ -1203,8 +1253,8 @@ func (suite *RoleAssignmentServiceTestSuite) TestApplyMandatedAssignments_Refuse
 	authz.On("CanGrantMembership", mock.Anything, sysauthz.PrincipalTypeRole, "role-a").
 		Return(&sysauthz.ErrorGrantNotPermitted).Once()
 
-	err := suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID,
-		RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}, map[string][]string{testOwnerOU: {"role-a"}})
+	err := errOf(suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID,
+		RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}, map[string][]string{testOwnerOU: {"role-a"}}))
 
 	suite.Require().NotNil(err)
 	suite.Equal(sysauthz.ErrorGrantNotPermitted.Code, err.Code)
@@ -1235,15 +1285,16 @@ func (suite *RoleAssignmentServiceTestSuite) TestApplyMandatedAssignments_Checks
 		Return(nil).Once()
 	suite.mockStore.On("AddMandatedAssignments", mock.Anything, testPolicyID, "role-b", "ou-3", mandatedUser).
 		Return(nil).Once()
+	suite.holdsNothingElse()
 
-	suite.Nil(suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID,
+	suite.Nil(errOf(suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID,
 		RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}, map[string][]string{
 			"ou-1": {"role-b"},
 			"ou-2": {"role-b"},
 			"ou-3": {"role-b"},
-		}))
+		})))
 	suite.mockStore.On("DeleteMandatedAssignments", mock.Anything, testPolicyID, MandatedFilter{}).Return(nil).Once()
-	suite.Nil(suite.service.RemoveMandatedAssignments(context.Background(), testPolicyID))
+	suite.Nil(errOf(suite.service.RemoveMandatedAssignments(context.Background(), testPolicyID)))
 }
 
 // A declared policy is applied at startup under the runtime context, which the grant check lets through.
@@ -1257,9 +1308,9 @@ func (suite *RoleAssignmentServiceTestSuite) TestApplyMandatedAssignments_Declar
 	suite.mockStore.On("AddMandatedAssignments", mock.Anything, testPolicyID, "role-a", testOwnerOU, mandatedUser).
 		Return(nil).Once()
 
-	suite.Nil(suite.service.ApplyMandatedAssignments(security.WithRuntimeContext(context.Background()),
+	suite.Nil(errOf(suite.service.ApplyMandatedAssignments(security.WithRuntimeContext(context.Background()),
 		testPolicyID, RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser},
-		map[string][]string{testOwnerOU: {"role-a"}}))
+		map[string][]string{testOwnerOU: {"role-a"}})))
 }
 
 // Any client error from the visibility check means the role is not usable in the unit.
@@ -1269,8 +1320,8 @@ func (suite *RoleAssignmentServiceTestSuite) TestApplyMandatedAssignments_Visibi
 	suite.mockSharingService.EXPECT().IsVisible(mock.Anything, RoleSharingType, "role-a", testShareeOU).
 		Return(false, &sharing.ErrorResourceTypeNotRegistered)
 
-	err := suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID,
-		RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}, map[string][]string{testShareeOU: {"role-a"}})
+	err := errOf(suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID,
+		RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}, map[string][]string{testShareeOU: {"role-a"}}))
 
 	suite.Require().NotNil(err)
 	suite.Equal(ErrorMandatedRoleNotInOU.Code, err.Code)
@@ -1286,8 +1337,8 @@ func (suite *RoleAssignmentServiceTestSuite) TestApplyMandatedAssignments_IsIdem
 	suite.mockStore.On("ListMandatedAssignments", mock.Anything, testPolicyID).
 		Return([]MandatedAssignment{mandated("role-a", testShareeOU)}, nil)
 
-	err := suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID,
-		RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}, map[string][]string{testShareeOU: {"role-a"}})
+	err := errOf(suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID,
+		RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}, map[string][]string{testShareeOU: {"role-a"}}))
 
 	suite.Nil(err)
 	suite.mockStore.AssertNotCalled(suite.T(), "AddMandatedAssignments",
@@ -1303,8 +1354,8 @@ func (suite *RoleAssignmentServiceTestSuite) TestApplyMandatedAssignments_InTheR
 	suite.mockStore.On("AddMandatedAssignments", mock.Anything, testPolicyID, "role-a", testOwnerOU, mandatedUser).
 		Return(nil).Once()
 
-	err := suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID,
-		RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}, map[string][]string{testOwnerOU: {"role-a"}})
+	err := errOf(suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID,
+		RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}, map[string][]string{testOwnerOU: {"role-a"}}))
 
 	suite.Nil(err)
 }
@@ -1346,8 +1397,8 @@ func (suite *RoleAssignmentServiceTestSuite) TestApplyMandatedAssignments_Refuse
 			suite.withRoleStore(serverconst.StoreModeMutable)
 			tc.stub()
 
-			err := suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID,
-				RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}, map[string][]string{tc.ouID: tc.roles})
+			err := errOf(suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID,
+				RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}, map[string][]string{tc.ouID: tc.roles}))
 
 			suite.Require().NotNil(err)
 			suite.Equal(tc.code, err.Code)
@@ -1381,10 +1432,14 @@ func (suite *RoleAssignmentServiceTestSuite) TestApplyMandatedAssignments_JoinsT
 	suite.mockStore.On("AddMandatedAssignments", inCallerTx, testPolicyID, "role-a", testShareeOU, mandatedUser).
 		Return(nil).Once()
 	suite.mockStore.On("DeleteMandatedAssignments", inCallerTx, testPolicyID, MandatedFilter{}).Return(nil).Once()
+	suite.mockStore.On("GetDirectAssignments", inCallerTx, "role-a", "ou-dropped", []string{testUserID1}).
+		Return([]RoleAssignment{}, nil)
+	suite.mockStore.On("ListMandatedAssignmentsOfAssignee", inCallerTx, "role-a", "ou-dropped", testUserID1).
+		Return([]RoleAssignment{}, nil)
 
-	suite.Nil(suite.service.ApplyMandatedAssignments(caller, testPolicyID,
-		RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}, map[string][]string{testShareeOU: {"role-a"}}))
-	suite.Nil(suite.service.RemoveMandatedAssignments(caller, testPolicyID))
+	suite.Nil(errOf(suite.service.ApplyMandatedAssignments(caller, testPolicyID,
+		RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}, map[string][]string{testShareeOU: {"role-a"}})))
+	suite.Nil(errOf(suite.service.RemoveMandatedAssignments(caller, testPolicyID)))
 }
 
 // A store failure while writing the policy's rows is a server error.
@@ -1394,8 +1449,8 @@ func (suite *RoleAssignmentServiceTestSuite) TestApplyMandatedAssignments_StoreE
 	suite.mockStore.On("ListMandatedAssignments", mock.Anything, testPolicyID).
 		Return(nil, errors.New("db down"))
 
-	err := suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID,
-		RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}, map[string][]string{testOwnerOU: {"role-a"}})
+	err := errOf(suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID,
+		RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}, map[string][]string{testOwnerOU: {"role-a"}}))
 
 	suite.Require().NotNil(err)
 	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
@@ -1404,13 +1459,13 @@ func (suite *RoleAssignmentServiceTestSuite) TestApplyMandatedAssignments_StoreE
 func (suite *RoleAssignmentServiceTestSuite) TestApplyMandatedAssignments_InvalidAssignee() {
 	suite.withRoleStore(serverconst.StoreModeMutable)
 
-	err := suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID,
-		RoleAssignment{ID: testUserID1, Type: assigneeTypeEntity}, map[string][]string{testOwnerOU: {"role-a"}})
+	err := errOf(suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID,
+		RoleAssignment{ID: testUserID1, Type: assigneeTypeEntity}, map[string][]string{testOwnerOU: {"role-a"}}))
 	suite.Require().NotNil(err)
 	suite.Equal(ErrorInvalidAssigneeType.Code, err.Code)
 
-	err = suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID,
-		RoleAssignment{Type: AssigneeTypeUser}, map[string][]string{testOwnerOU: {"role-a"}})
+	err = errOf(suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID,
+		RoleAssignment{Type: AssigneeTypeUser}, map[string][]string{testOwnerOU: {"role-a"}}))
 	suite.Require().NotNil(err)
 	suite.Equal(ErrorInvalidRequestFormat.Code, err.Code)
 }
@@ -1421,14 +1476,14 @@ func (suite *RoleAssignmentServiceTestSuite) TestMandatedAssignments_Declarative
 	suite.withRoleStore(serverconst.StoreModeDeclarative)
 	assignee := RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}
 
-	err := suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID, assignee,
-		map[string][]string{testShareeOU: {"role-a"}})
+	err := errOf(suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID, assignee,
+		map[string][]string{testShareeOU: {"role-a"}}))
 	suite.Require().NotNil(err)
 	suite.Equal(ErrorMandatedRolesNotSupported.Code, err.Code)
 
-	suite.Nil(suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID, assignee,
-		map[string][]string{testShareeOU: {}}))
-	suite.Nil(suite.service.RemoveMandatedAssignments(context.Background(), testPolicyID))
+	suite.Nil(errOf(suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID, assignee,
+		map[string][]string{testShareeOU: {}})))
+	suite.Nil(errOf(suite.service.RemoveMandatedAssignments(context.Background(), testPolicyID)))
 }
 
 // A declared role is mandated like any other in composite mode, since its assignments live in the
@@ -1442,21 +1497,102 @@ func (suite *RoleAssignmentServiceTestSuite) TestApplyMandatedAssignments_Compos
 	suite.mockStore.On("AddMandatedAssignments", mock.Anything, testPolicyID, "declared-role", testShareeOU,
 		mandatedUser).Return(nil).Once()
 
-	suite.Nil(suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID,
+	suite.Nil(errOf(suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID,
 		RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser},
-		map[string][]string{testShareeOU: {"declared-role"}}))
+		map[string][]string{testShareeOU: {"declared-role"}})))
 }
 
 func (suite *RoleAssignmentServiceTestSuite) TestRemoveMandatedAssignments() {
 	suite.withRoleStore(serverconst.StoreModeMutable)
+	suite.mockStore.On("ListMandatedAssignments", mock.Anything, testPolicyID).Return([]MandatedAssignment{
+		{RoleID: "role1", Assignment: RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser, OUID: testShareeOU}},
+	}, nil).Once()
 	suite.mockStore.On("DeleteMandatedAssignments", mock.Anything, testPolicyID, MandatedFilter{}).Return(nil).Once()
-	suite.Nil(suite.service.RemoveMandatedAssignments(context.Background(), testPolicyID))
+	suite.holdsNothingElse()
+	revocations, svcErr := suite.service.RemoveMandatedAssignments(context.Background(), testPolicyID)
+	suite.Nil(svcErr)
+	suite.Equal([]sharing.Revocation{mandateRevocation("role1", testShareeOU)}, revocations)
 
+	suite.mockStore.On("ListMandatedAssignments", mock.Anything, "broken").Return(nil, nil).Once()
 	suite.mockStore.On("DeleteMandatedAssignments", mock.Anything, "broken", MandatedFilter{}).
 		Return(errors.New("db down")).Once()
-	err := suite.service.RemoveMandatedAssignments(context.Background(), "broken")
+	err := errOf(suite.service.RemoveMandatedAssignments(context.Background(), "broken"))
 	suite.Require().NotNil(err)
 	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+
+	suite.mockStore.On("ListMandatedAssignments", mock.Anything, "unreadable").Return(nil, errors.New("db down")).Once()
+	err = errOf(suite.service.RemoveMandatedAssignments(context.Background(), "unreadable"))
+	suite.Require().NotNil(err)
+	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+	suite.mockStore.AssertNotCalled(suite.T(), "DeleteMandatedAssignments", mock.Anything, "unreadable", mock.Anything)
+}
+
+// An assignee who still holds the role directly where its mandate is dropped keeps it, so nothing is revoked, and
+// the mandates are not read.
+func (suite *RoleAssignmentServiceTestSuite) TestDroppingAMandate_KeptByADirectAssignmentRevokesNothing() {
+	suite.withRoleStore(serverconst.StoreModeMutable)
+	suite.mockStore.On("ListMandatedAssignments", mock.Anything, testPolicyID).
+		Return([]MandatedAssignment{mandated("role-a", testShareeOU)}, nil).Once()
+	suite.mockStore.On("DeleteMandatedAssignments", mock.Anything, testPolicyID, MandatedFilter{}).Return(nil).Once()
+	suite.mockStore.On("GetDirectAssignments", mock.Anything, "role-a", testShareeOU, []string{testUserID1}).
+		Return([]RoleAssignment{{ID: testUserID1, Type: AssigneeTypeUser, OUID: testShareeOU}}, nil).Once()
+
+	revocations, svcErr := suite.service.RemoveMandatedAssignments(context.Background(), testPolicyID)
+
+	suite.Nil(svcErr)
+	suite.Empty(revocations)
+	suite.mockStore.AssertNotCalled(suite.T(), "ListMandatedAssignmentsOfAssignee",
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// An assignee another policy still mandates the role to keeps it, so dropping one mandate revokes nothing.
+func (suite *RoleAssignmentServiceTestSuite) TestDroppingAMandate_KeptByAnotherMandateRevokesNothing() {
+	suite.withRoleStore(serverconst.StoreModeMutable)
+	suite.mockStore.On("ListMandatedAssignments", mock.Anything, testPolicyID).
+		Return([]MandatedAssignment{mandated("role-a", testShareeOU)}, nil).Once()
+	suite.mockStore.On("DeleteMandatedAssignments", mock.Anything, testPolicyID, MandatedFilter{}).Return(nil).Once()
+	suite.mockStore.On("GetDirectAssignments", mock.Anything, "role-a", testShareeOU, []string{testUserID1}).
+		Return([]RoleAssignment{}, nil).Once()
+	suite.mockStore.On("ListMandatedAssignmentsOfAssignee", mock.Anything, "role-a", testShareeOU, testUserID1).
+		Return([]RoleAssignment{{ID: testUserID1, Type: AssigneeTypeUser, OUID: testShareeOU, PolicyID: "other"}},
+			nil).Once()
+
+	revocations, svcErr := suite.service.RemoveMandatedAssignments(context.Background(), testPolicyID)
+
+	suite.Nil(svcErr)
+	suite.Empty(revocations)
+}
+
+// A change dropping both mandates of a role checks each once it is gone, so the first finds the second still there
+// and the last revokes: the assignee is left with neither.
+func (suite *RoleAssignmentServiceTestSuite) TestDroppingTwoMandatesOfARole_RevokesWithTheLast() {
+	suite.withRoleStore(serverconst.StoreModeMutable)
+	var calls []string
+	record := func(name string) func(mock.Arguments) { return func(mock.Arguments) { calls = append(calls, name) } }
+	remaining := []RoleAssignment{{ID: testUserID1, Type: AssigneeTypeUser, OUID: testShareeOU, PolicyID: "second"}}
+	for _, policyID := range []string{"first", "second"} {
+		suite.mockStore.On("ListMandatedAssignments", mock.Anything, policyID).Return([]MandatedAssignment{
+			{RoleID: "role-a", Assignment: RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser, OUID: testShareeOU,
+				PolicyID: policyID}}}, nil).Once()
+		suite.mockStore.On("DeleteMandatedAssignments", mock.Anything, policyID, MandatedFilter{}).Return(nil).
+			Run(record("delete " + policyID)).Once()
+	}
+	suite.mockStore.On("GetDirectAssignments", mock.Anything, "role-a", testShareeOU, []string{testUserID1}).
+		Return([]RoleAssignment{}, nil).Twice()
+	suite.mockStore.On("ListMandatedAssignmentsOfAssignee", mock.Anything, "role-a", testShareeOU, testUserID1).
+		Return(remaining, nil).Run(record("check")).Once()
+	suite.mockStore.On("ListMandatedAssignmentsOfAssignee", mock.Anything, "role-a", testShareeOU, testUserID1).
+		Return([]RoleAssignment{}, nil).Run(record("check")).Once()
+
+	first, svcErr := suite.service.RemoveMandatedAssignments(context.Background(), "first")
+	suite.Nil(svcErr)
+	suite.Empty(first, "the second mandate still gives the role")
+	second, svcErr := suite.service.RemoveMandatedAssignments(context.Background(), "second")
+	suite.Nil(svcErr)
+
+	suite.Equal([]sharing.Revocation{mandateRevocation("role-a", testShareeOU)}, second)
+	suite.Equal([]string{"delete first", "check", "delete second", "check"}, calls,
+		"each mandate is checked only once it is gone")
 }
 
 // Where a role's sharing turns its assignments off, the organization unit cannot assign it directly,
@@ -1484,8 +1620,8 @@ func (suite *RoleAssignmentServiceTestSuite) TestDirectAssignmentRespectsTheRule
 	suite.mockStore.On("AddMandatedAssignments", mock.Anything, testPolicyID, "role1", testShareeOU, mandatedUser).
 		Return(nil).Once()
 
-	suite.Nil(suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID,
-		RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}, map[string][]string{testShareeOU: {"role1"}}))
+	suite.Nil(errOf(suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID,
+		RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}, map[string][]string{testShareeOU: {"role1"}})))
 	suite.mockStore.AssertNotCalled(suite.T(), "AddAssignments", mock.Anything, mock.Anything, mock.Anything)
 }
 
@@ -1961,8 +2097,8 @@ func (suite *RoleAssignmentServiceTestSuite) TestApplyMandatedAssignments_SameDe
 	desired := map[string][]string{testShareeOU: {"role-a"}}
 	assignee := RoleAssignment{ID: testUserID1, Type: AssigneeTypeUser}
 
-	suite.Nil(suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID, assignee, desired))
-	suite.Nil(suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID, assignee, desired))
+	suite.Nil(errOf(suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID, assignee, desired)))
+	suite.Nil(errOf(suite.service.ApplyMandatedAssignments(context.Background(), testPolicyID, assignee, desired)))
 
 	suite.mockStore.AssertNumberOfCalls(suite.T(), "AddMandatedAssignments", 1)
 	suite.mockStore.AssertNotCalled(suite.T(), "DeleteMandatedAssignments", mock.Anything, mock.Anything, mock.Anything)
@@ -2399,4 +2535,39 @@ func (suite *RoleAssignmentServiceTestSuite) TestGetDirectRoleIDs_StoreError() {
 
 	suite.Require().NotNil(err)
 	suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+}
+
+func (s *RoleAssignmentRemovalValidationTestSuite) TestGetMandateRemovalRevocationTarget() {
+	const shareeOU = "sharee-ou"
+	s.Run("TheRolesScopesForTheAssignee", func() {
+		s.SetupTest()
+		s.roleGranting([]ResourcePermissions{{ResourceServerID: californiaRSID, Permissions: []string{"license"}}})
+		stubResourceServer(s.resources, californiaRSID, californiaAud)
+
+		target, svcErr := s.service.GetMandateRemovalRevocationTarget(
+			context.Background(), targetRoleID, shareeOU, targetUserID)
+
+		s.Require().Nil(svcErr)
+		s.Equal([]string{targetUserID}, target.EntityIDs)
+		s.Equal([]revocation.AudienceScope{{Audience: californiaAud, Scope: "license"}}, target.Scopes)
+		s.Equal(string(AssigneeTypeUser), target.AssigneeType)
+	})
+	s.Run("RoleGone", func() {
+		s.SetupTest()
+		s.store.On("GetRole", mock.Anything, targetRoleID).Return(RoleWithPermissions{}, ErrRoleNotFound)
+
+		_, svcErr := s.service.GetMandateRemovalRevocationTarget(
+			context.Background(), targetRoleID, shareeOU, targetUserID)
+
+		s.Equal(&ErrorRoleNotFound, svcErr)
+	})
+	s.Run("RoleUnreadable", func() {
+		s.SetupTest()
+		s.store.On("GetRole", mock.Anything, targetRoleID).Return(RoleWithPermissions{}, errors.New("db down"))
+
+		_, svcErr := s.service.GetMandateRemovalRevocationTarget(
+			context.Background(), targetRoleID, shareeOU, targetUserID)
+
+		s.Equal(&tidcommon.InternalServerError, svcErr)
+	})
 }

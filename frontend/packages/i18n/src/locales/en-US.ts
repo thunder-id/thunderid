@@ -2017,6 +2017,10 @@ const translations = {
     'switch.losesAssignmentsOff':
       'Assignments are turned off for some organization units this drops. Any of them granted again can assign {{resource}}, and only a resource file or the API can turn assignments off again.',
     'switch.notYet': 'Nothing is removed until you save. Until then, Reset brings everything back.',
+    'switch.revokesEverywhere':
+      'When you save, the tokens issued for {{resource}} in every organization unit it reached are revoked.',
+    'switch.revokesOnReplace':
+      'Saving this replaces the sharing policy, so the tokens issued for {{resource}} in every organization unit it reached are revoked, including the ones this choice reaches again.',
     'switch.title': 'Switch to {{choice}}?',
     'switch.titleChangeScope': 'Change the scope?',
     'switch.titleOwner': 'Stop sharing {{resource}}?',

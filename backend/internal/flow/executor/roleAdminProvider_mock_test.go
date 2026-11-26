@@ -49,6 +49,82 @@ func (_m *roleAdminProviderMock) EXPECT() *roleAdminProviderMock_Expecter {
 	return &roleAdminProviderMock_Expecter{mock: &_m.Mock}
 }
 
+// GetUnshareRevocationTarget provides a mock function for the type roleAdminProviderMock
+func (_mock *roleAdminProviderMock) GetUnshareRevocationTarget(ctx context.Context, id string, ouID string) (*revocation.AccessRevocationTarget, *common.ServiceError) {
+	ret := _mock.Called(ctx, id, ouID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetUnshareRevocationTarget")
+	}
+
+	var r0 *revocation.AccessRevocationTarget
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (*revocation.AccessRevocationTarget, *common.ServiceError)); ok {
+		return returnFunc(ctx, id, ouID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *revocation.AccessRevocationTarget); ok {
+		r0 = returnFunc(ctx, id, ouID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*revocation.AccessRevocationTarget)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, id, ouID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// roleAdminProviderMock_GetUnshareRevocationTarget_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetUnshareRevocationTarget'
+type roleAdminProviderMock_GetUnshareRevocationTarget_Call struct {
+	*mock.Call
+}
+
+// GetUnshareRevocationTarget is a helper method to define mock.On call
+//   - ctx context.Context
+//   - id string
+//   - ouID string
+func (_e *roleAdminProviderMock_Expecter) GetUnshareRevocationTarget(ctx any, id any, ouID any) *roleAdminProviderMock_GetUnshareRevocationTarget_Call {
+	return &roleAdminProviderMock_GetUnshareRevocationTarget_Call{Call: _e.mock.On("GetUnshareRevocationTarget", ctx, id, ouID)}
+}
+
+func (_c *roleAdminProviderMock_GetUnshareRevocationTarget_Call) Run(run func(ctx context.Context, id string, ouID string)) *roleAdminProviderMock_GetUnshareRevocationTarget_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *roleAdminProviderMock_GetUnshareRevocationTarget_Call) Return(accessRevocationTarget *revocation.AccessRevocationTarget, serviceError *common.ServiceError) *roleAdminProviderMock_GetUnshareRevocationTarget_Call {
+	_c.Call.Return(accessRevocationTarget, serviceError)
+	return _c
+}
+
+func (_c *roleAdminProviderMock_GetUnshareRevocationTarget_Call) RunAndReturn(run func(ctx context.Context, id string, ouID string) (*revocation.AccessRevocationTarget, *common.ServiceError)) *roleAdminProviderMock_GetUnshareRevocationTarget_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ValidateDeleteRole provides a mock function for the type roleAdminProviderMock
 func (_mock *roleAdminProviderMock) ValidateDeleteRole(ctx context.Context, id string) (*revocation.AccessRevocationTarget, *common.ServiceError) {
 	ret := _mock.Called(ctx, id)

@@ -200,7 +200,7 @@ Mandating roles needs only the permission to manage users (`system:user`), not t
 - A role export leaves mandated assignments out, because they follow the share and would import back as direct assignments.
 
 :::note
-Removing a mandate does not revoke tokens that are already issued. The roles disappear from newly issued tokens. Removing a direct assignment through the REST API, by contrast, revokes the tokens that carry the role's permissions. See [Token Revocation](../protocols/oauth-oidc/token-revocation.mdx#role-assignment-removal).
+Removing a mandate by editing the share, through the REST API, the Console, or an import, revokes the user's tokens issued in that organization unit that carry the role's permissions. While the user stays shared into the unit, a user who still holds the role there through a direct assignment, or through another share's mandate, loses nothing. Deleting the share, or taking the unit out of it, revokes every token issued to the user in that unit, whatever roles the user holds there. Only a token that states its organization unit is revoked this way. See [Unsharing](../protocols/oauth-oidc/token-revocation.mdx#unsharing).
 :::
 
 To import a user whose shares carry roles, put the user, the role, and the share in one import document. <ProductName /> replays the shares after the roles, so the document round-trips. See [Import Resources](../declarative-configurations/import-resources.mdx).

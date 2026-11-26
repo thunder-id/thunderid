@@ -1986,6 +1986,45 @@ func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_OIDCScopesA
 		})
 }
 
+// redeemCodeIssuedIn redeems a bound code whose sign-in recorded ouID, against the given deny list.
+func (suite *AuthorizationCodeGrantHandlerTestSuite) redeemCodeIssuedIn(ouID string,
+	rows ...revocation.CriteriaRevocation) (*model.TokenResponseDTO, *model.ErrorResponse) {
+	suite.testAuthzCode.AttributeCacheID = testCacheID
+	suite.mockAttrCacheService.On("GetAttributeCache", mock.Anything, testCacheID).
+		Return(&attributecache.AttributeCache{ID: testCacheID, Attributes: map[string]interface{}{"ouId": ouID}},
+			(*tidcommon.ServiceError)(nil))
+	return suite.redeemBoundCode(oidcReadWriteScopes, rows...)
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_UserUnsharedFromTheCodesUnitIsRefused() {
+	result, errResp := suite.redeemCodeIssuedIn("ou-a", revocation.CriteriaRevocation{
+		Criterion: revocation.Criterion{
+			Type:  revocation.CriterionTypeSubjectOU,
+			Value: sharedrevocation.SubjectOUCriterionValue(testUserID, "ou-a"),
+		},
+		Reason: revocation.RevocationReason("resource_unshared"),
+		Cutoff: suite.testAuthzCode.TimeCreated.Add(time.Minute),
+	})
+
+	suite.Nil(result)
+	suite.Require().NotNil(errResp)
+	suite.Equal(constants.ErrorInvalidGrant, errResp.Error)
+}
+
+func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_UnsharingFromAnotherUnitLeavesTheCode() {
+	result, errResp := suite.redeemCodeIssuedIn("ou-b", revocation.CriteriaRevocation{
+		Criterion: revocation.Criterion{
+			Type:  revocation.CriterionTypeSubjectOU,
+			Value: sharedrevocation.SubjectOUCriterionValue(testUserID, "ou-a"),
+		},
+		Reason: revocation.RevocationReason("resource_unshared"),
+		Cutoff: suite.testAuthzCode.TimeCreated.Add(time.Minute),
+	})
+
+	suite.Require().Nil(errResp)
+	suite.Equal([]string{"openid", "read", "write"}, result.AccessToken.Scopes)
+}
+
 func (suite *AuthorizationCodeGrantHandlerTestSuite) TestHandleGrant_GrantRevokedAfterIssueIsRefused() {
 	testCases := []struct {
 		name      string

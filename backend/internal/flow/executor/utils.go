@@ -95,6 +95,9 @@ type revocationPlan struct {
 	// be added between the plan and the change, so the post flow can extend the plan to the holders the
 	// change removed that the plan did not see.
 	HolderScopes []revocation.AudienceScope `json:"holderScopes,omitempty"`
+	// OUID is the organization unit the plan revokes within, when it is confined to one, so the holders a post flow
+	// adds are confined to it too.
+	OUID string `json:"ouId,omitempty"`
 	// NothingToRevoke records that the preparatory node established there is no artifact to revoke, which
 	// is how an empty criteria list is distinguished from a missing one. Only a node that verified the
 	// absence sets it; without it an empty list stays an error, so a plan can never be silently skipped.
@@ -721,6 +724,17 @@ func entityScopeCriterion(entityID string, scope revocation.AudienceScope) revoc
 	}
 	return revocation.Criterion{Type: revocation.CriterionTypeEntityScope,
 		Value: revocation.EntityScopeCriterionValue(entityID, scope.Audience, scope.Scope)}
+}
+
+// entityScopeOUCriterion revokes what a scope grants one entity within one organization unit.
+func entityScopeOUCriterion(entityID string, scope revocation.AudienceScope, ouID string) revocation.Criterion {
+	if scope.SubtreeDelimiter != "" {
+		return revocation.Criterion{Type: revocation.CriterionTypeEntityScopeSubtreeOU,
+			Value: revocation.EntityScopeSubtreeOUCriterionValue(entityID, scope.Audience, scope.Scope,
+				scope.SubtreeDelimiter, ouID)}
+	}
+	return revocation.Criterion{Type: revocation.CriterionTypeEntityScopeOU,
+		Value: revocation.EntityScopeOUCriterionValue(entityID, scope.Audience, scope.Scope, ouID)}
 }
 
 // isClientDeletionPlan reports whether the plan removes a client, the only case that detaches session

@@ -5951,6 +5951,22 @@ func TestImportUserWithoutPoliciesAsksTheAdapterNothing(t *testing.T) {
 	assert.Empty(t, sharingSvc.calls)
 }
 
+// A refusal of the change as a whole, such as its revocation, names no single policy of the document.
+func TestImportUserReportsAWholeChangeRefusalWithoutAPolicy(t *testing.T) {
+	sharingSvc := &fakeSharingService{failure: &sharing.PolicyReplayError{
+		Err: &sharing.ErrorSharingChangedDuringRevocation, Whole: true}}
+	svc := newTestUserImportWithSharing(&fakeUserService{}, sharingSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: userDocWithPolicies("user-5"), Options: &ImportOptions{Upsert: boolPtr(false)}})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.True(t, strings.HasPrefix(resp.Results[0].Message, "sharing policies: "), resp.Results[0].Message)
+	assert.NotContains(t, resp.Results[0].Message, "organization unit )")
+}
+
 // A refused policy undoes the create, so a retry does not meet a half-imported user.
 func TestImportUserUndoesTheCreateWhenPoliciesAreRefused(t *testing.T) {
 	userSvc := &fakeUserService{}
@@ -8195,6 +8211,22 @@ func (s *ImportSharingRemovalsTestSuite) TestImportARefusedSharingRemovalFailsTh
 	s.Equal(tidcommon.InternalServerError.Code, resp.Results[0].Code)
 	s.Equal(0, resp.Summary.Imported)
 	s.Equal(1, resp.Summary.Failed)
+}
+
+// A removal refused as a whole, such as by its revocation, names no single unit.
+func (s *ImportSharingRemovalsTestSuite) TestImportAWholeRemovalRefusalNamesNoUnit() {
+	sharingSvc := &fakeSharingService{removalFailure: &sharing.PolicyReplayError{
+		Err: &sharing.ErrorSharingChangedDuringRevocation, Whole: true}}
+	svc := newTestFlowImportWithSharing(existingFlowService(), sharingSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: flowDocWithoutPolicies(),
+		SharingRemovals: []SharingPolicyRemoval{{ResourceType: "flow", ID: "flow-1", InitiatingOUID: "ou-2"}}})
+
+	s.Require().Nil(err)
+	s.Equal(statusFailed, resp.Results[0].Status)
+	s.Equal(sharing.ErrorSharingChangedDuringRevocation.Code, resp.Results[0].Code)
+	s.Contains(resp.Results[0].Message, "removing the sharing policies: ")
+	s.NotContains(resp.Results[0].Message, "organization unit")
 }
 
 // A dry run removes nothing, and a resource the request did not write is left alone.

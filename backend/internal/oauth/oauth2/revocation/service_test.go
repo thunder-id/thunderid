@@ -318,6 +318,36 @@ func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_UsesCutoffAsRevoked
 	s.Nil(svcErr)
 }
 
+func (s *RevocationServiceTestSuite) TestRevokeCriteriaBatch_WritesTheOrganizationUnitScopedTypes() {
+	types := []CriterionType{CriterionTypeSubjectOU, CriterionTypeApplicationKeyOU, CriterionTypeEntityScopeOU,
+		CriterionTypeEntityScopeSubtreeOU}
+	store := newRevocationStoreInterfaceMock(s.T())
+	store.On("insertCriteria", mock.Anything, mock.MatchedBy(func(rows []revocationCriterion) bool {
+		if len(rows) != len(types) {
+			return false
+		}
+		for i, row := range rows {
+			if row.Type != types[i] {
+				return false
+			}
+		}
+		return true
+	})).Return(nil)
+	revocations := make([]CriteriaRevocation, 0, len(types))
+	for _, criterionType := range types {
+		revocations = append(revocations, CriteriaRevocation{
+			Criterion: Criterion{Type: criterionType, Value: "digest-" + string(criterionType)},
+			Mode:      RevocationModeBeforeAction,
+			Cutoff:    time.Now().UTC(),
+			Reason:    RevocationReason("resource_unshared"),
+		})
+	}
+
+	revoker := newRevocationService(nil, store, time.Hour, 0, false, true, nil, testMaxEntriesPerChange)
+
+	s.Nil(revoker.RevokeCriteriaBatch(context.Background(), revocations))
+}
+
 func TestRevokeTokenFamily_PropagatesStoreError(t *testing.T) {
 	store := newRevocationStoreInterfaceMock(t)
 	store.On("insertCriterion", mock.Anything, mock.Anything).Return(errors.New("db down"))

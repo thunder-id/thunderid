@@ -444,6 +444,20 @@ var (
 			DefaultValue: "The resource type does not authorize sharing into an organization unit",
 		},
 	}
+	// ErrorSharingChangedDuringRevocation is returned when a change takes a resource from an organization unit its
+	// revocation did not cover, because the resource's sharing changed while the revocation ran.
+	ErrorSharingChangedDuringRevocation = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SHR-1032",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.sharingservice.sharing_changed_during_revocation",
+			DefaultValue: "Sharing changed during revocation",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.sharingservice.sharing_changed_during_revocation_description",
+			DefaultValue: "The resource's sharing changed while access was being revoked; retry the change",
+		},
+	}
 )
 
 // errPolicyNotFound is the store's own signal that no row carries an id, kept unexported because
@@ -488,7 +502,7 @@ func (t ErrorTranslation) Translate(svcErr *tidcommon.ServiceError) *tidcommon.S
 		mapped = t.PolicyNotFound
 	case ErrorPolicyExists.Code:
 		mapped = t.PolicyExists
-	case ErrorVersionMismatch.Code:
+	case ErrorVersionMismatch.Code, ErrorSharingChangedDuringRevocation.Code:
 		mapped = t.VersionMismatch
 	case ErrorPolicyDeclared.Code:
 		mapped = t.PolicyDeclared
@@ -530,6 +544,14 @@ var (
 	errVersionMismatchEngine = errors.New("policy version mismatch")
 )
 
+// errDryRun rolls back the run of a sharing change that only works out which organization units it takes the
+// resource from.
+var errDryRun = errors.New("sharing change rolled back after a dry run")
+
+// errUnplannedLoss rolls back a sharing change that takes the resource from an organization unit its revocation did
+// not cover. It carries the refusal out as a resource type's error does, so the change reports it as is.
+var errUnplannedLoss = NewResourceTypeError(&ErrorSharingChangedDuringRevocation)
+
 // errReplayRefused rolls a replay's transaction back. The refusal itself travels out separately,
 // because it names which of the document's policies was refused and why.
 var errReplayRefused = errors.New("sharing policy replay refused")
@@ -541,6 +563,9 @@ var errOverlayReplaceRefused = errors.New("overlay replacement refused")
 // errPolicyPurgeRefused rolls back a resource's policy purge. The refusal itself travels out
 // separately, so the caller sees which policy could not be removed.
 var errPolicyPurgeRefused = errors.New("sharing policy purge refused")
+
+// errPolicyDeleteRefused rolls back a policy delete. The refusal itself travels out separately.
+var errPolicyDeleteRefused = errors.New("sharing policy delete refused")
 
 // ResourceTypeError carries a resource type's error out of the sharing change it rolls back.
 type ResourceTypeError struct {

@@ -51,6 +51,7 @@ groups:
       - oauth/introspect
       - authorizationdetail
       - role
+      - sharing
       - authzen
       - projects
       - design

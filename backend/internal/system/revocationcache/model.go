@@ -35,4 +35,12 @@ type revokedSnapshot struct {
 	EntityScopeSubtrees []revokedEntry
 	// Scopes holds revoked deployment-wide scope entries, keyed by digest.
 	Scopes []revokedEntry
+	// SubjectOUs holds subjects revoked within one organization unit, keyed by digest.
+	SubjectOUs []revokedEntry
+	// AppKeyOUs holds OAuth clients revoked within one organization unit, keyed by digest.
+	AppKeyOUs []revokedEntry
+	// EntityScopeOUs holds per-principal scopes revoked within one organization unit, keyed by digest.
+	EntityScopeOUs []revokedEntry
+	// EntityScopeSubtreeOUs holds per-principal subtree rules frozen within one organization unit.
+	EntityScopeSubtreeOUs []revokedEntry
 }

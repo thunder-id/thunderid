@@ -20,10 +20,10 @@ var querySnapshotRevokedTokenFamilies = dbmodel.DBQuery{
 		`WHERE CRITERION_TYPE = $1 AND EXPIRY_TIME > $2 AND DEPLOYMENT_ID = $3`,
 }
 
-// querySnapshotBoundedCriteria reads one dimension's criteria with the reason and action boundary, so
-// permanent revocations can be told from time-bounded ones. The criterion type is a bind parameter.
+// querySnapshotBoundedCriteria reads the criteria of every bounded type, in the order of boundedCriterionTypes, with
+// the type, the reason and the action boundary, so permanent revocations can be told from time-bounded ones.
 var querySnapshotBoundedCriteria = dbmodel.DBQuery{
 	ID: "RVC-SRC-03",
-	Query: `SELECT CRITERION_VALUE, REASON, REVOKED_AT, EXPIRY_TIME FROM "REVOCATION_CRITERIA" ` +
-		`WHERE CRITERION_TYPE = $1 AND EXPIRY_TIME > $2 AND DEPLOYMENT_ID = $3`,
+	Query: `SELECT CRITERION_TYPE, CRITERION_VALUE, REASON, REVOKED_AT, EXPIRY_TIME FROM "REVOCATION_CRITERIA" ` +
+		`WHERE CRITERION_TYPE IN ($1, $2, $3, $4, $5, $6, $7, $8, $9) AND EXPIRY_TIME > $10 AND DEPLOYMENT_ID = $11`,
 }

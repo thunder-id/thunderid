@@ -94,7 +94,14 @@ func (s *SystemFlowTestSuite) TestBuiltInSystemFlowsAreValid() {
 			"AccessChangeValidator:group_membership_removal", "CriteriaRevocationExecutor:revoke",
 		},
 		"system-action-delete-pre": {"AccessChangeValidator:action_deletion", "CriteriaRevocationExecutor:revoke"},
-		"system-revocation-post":   {"CriteriaRevocationExecutor:advance_cutoff"},
+		"system-entity-unshare-pre": {
+			"PreRevocationExecutor:entity_unshare", "CriteriaRevocationExecutor:revoke",
+		},
+		"system-role-unshare-pre": {"AccessChangeValidator:role_unshare", "CriteriaRevocationExecutor:revoke"},
+		"system-mandated-role-removal-pre": {
+			"AccessChangeValidator:mandated_role_removal", "CriteriaRevocationExecutor:revoke",
+		},
+		"system-revocation-post": {"CriteriaRevocationExecutor:advance_cutoff"},
 	}
 	s.Len(flows, len(expected))
 	for handle, steps := range expected {

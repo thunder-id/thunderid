@@ -144,6 +144,34 @@ describe('switchOrganizationAccess', () => {
     expect(switchOrganizationAccess(draft, 'childUnitsAccess', 'all', saved).losesAssignmentsOff).toBe(true);
     expect(switchOrganizationAccess(draft, 'otherTreesAccess', 'none', saved).losesAssignmentsOff).toBe(false);
   });
+
+  it('reports a replaced policy when the switch changes a section reaching a whole group', () => {
+    const saved = policyWith({childUnits: {mode: 'all'}});
+
+    expect(
+      switchOrganizationAccess(sharingPolicyToDraft(saved), 'childUnitsAccess', 'selected', saved).replacesPolicy,
+    ).toBe(true);
+  });
+
+  it('reports a replaced policy when stopping sharing, since the save deletes it', () => {
+    const saved = policyWith({childUnits: {mode: 'selected', units: [{ouId: 'retail', reach: 'unit'}]}});
+
+    expect(switchOrganizationAccess(sharingPolicyToDraft(saved), 'scope', 'owner', saved).replacesPolicy).toBe(true);
+  });
+
+  it('reports no replaced policy for a switch saved in place, or a resource not shared yet', () => {
+    const saved = policyWith({
+      childUnits: {mode: 'selected', units: [{ouId: 'retail', reach: 'unit'}]},
+      otherTreeRoots: {mode: 'selected', units: [{ouId: 'northwind'}]},
+    });
+
+    expect(
+      switchOrganizationAccess(sharingPolicyToDraft(saved), 'childUnitsAccess', 'none', saved).replacesPolicy,
+    ).toBe(false);
+    expect(switchOrganizationAccess(sharingPolicyToDraft(undefined), 'scope', 'chosen', undefined).replacesPolicy).toBe(
+      false,
+    );
+  });
 });
 
 describe('getBlockedNoneReason', () => {

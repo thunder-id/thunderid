@@ -569,6 +569,44 @@ func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_CompactsOnlyHierar
 	}
 }
 
+// redeemIssuedIn redeems an approved request whose sign-in recorded ouID against the given deny list.
+func (suite *DeviceCodeGrantHandlerTestSuite) redeemIssuedIn(ouID string,
+	rows ...revocation.CriteriaRevocation) (*model.TokenResponseDTO, *model.ErrorResponse) {
+	record := suite.request(deviceauth.DeviceStateApproved)
+	record.AuthTime = time.Now().Add(-time.Minute)
+	record.AttributeCacheID = testGrantAttributeCacheID
+	enforcement := revocationmock.NewEnforcementServiceInterfaceMock(suite.T())
+	suite.handler = newDeviceCodeGrantHandler(suite.deviceService, suite.tokenBuilder,
+		suite.attributeCache, suite.resourceService, enforcement, nil)
+	suite.deviceService.EXPECT().GetByDeviceCode(mock.Anything, "device-code-1").Return(record, nil).Once()
+	suite.attributeCache.EXPECT().GetAttributeCache(mock.Anything, testGrantAttributeCacheID).Return(
+		&attributecache.AttributeCache{ID: testGrantAttributeCacheID, Attributes: map[string]interface{}{"ouId": ouID}},
+		nil)
+	enforcement.EXPECT().EnsureNotRevoked(mock.Anything, mock.Anything).RunAndReturn(denyListLookup(rows...))
+	suite.tokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.Anything).
+		Return(&model.TokenDTO{Token: "access-token"}, nil).Maybe()
+	suite.tokenBuilder.EXPECT().BuildIDToken(mock.Anything, mock.Anything).
+		Return(&model.TokenDTO{Token: "id-token"}, nil).Maybe()
+	suite.deviceService.EXPECT().MarkConsumed(mock.Anything, "device-request-1").Return(true, nil).Maybe()
+	return suite.handler.HandleGrant(context.Background(), suite.tokenRequest, suite.oauthApp)
+}
+
+func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_UserUnsharedFromTheRequestsUnitIsRefused() {
+	response, errResp := suite.redeemIssuedIn("ou-a", unsharedFromOUA())
+
+	suite.Nil(response)
+	suite.Require().NotNil(errResp)
+	suite.Equal(constants.ErrorInvalidGrant, errResp.Error)
+	suite.deviceService.AssertNotCalled(suite.T(), "MarkConsumed", mock.Anything, mock.Anything)
+}
+
+func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_UnsharingFromAnotherUnitLeavesTheRequest() {
+	response, errResp := suite.redeemIssuedIn("ou-b", unsharedFromOUA())
+
+	suite.Require().Nil(errResp)
+	suite.Require().NotNil(response)
+}
+
 func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_CompactsAfterRevocationChecks() {
 	record := suite.request(deviceauth.DeviceStateApproved)
 	record.AuthTime = time.Now().Add(-time.Minute)

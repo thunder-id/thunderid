@@ -23,6 +23,9 @@ type revocationChange struct {
 	// byClient revokes what the entity's OAuth client issued. Otherwise the plan revokes what was issued to
 	// the entity as a subject.
 	byClient bool
+	// inOUs revokes, within each organization unit the input lists, what was issued to the entity as a subject and
+	// through its OAuth client.
+	inOUs bool
 }
 
 // revocationChangesByMode maps each mode to the change it plans for, and the reason it is recorded under. The
@@ -32,6 +35,7 @@ var revocationChangesByMode = map[string]revocationChange{
 	ExecutorModeCredentialUpdate:     {reason: revocation.ReasonCredentialUpdated},
 	ExecutorModeClientRemoval:        {reason: revocation.ReasonClientRemoved, byClient: true},
 	ExecutorModeClientSecretRotation: {reason: revocation.ReasonClientSecretRotated, byClient: true},
+	ExecutorModeEntityUnshare:        {reason: revocation.ReasonResourceUnshared, inOUs: true},
 }
 
 // preRevocationExecutor is the preparatory node of the system flows run when an entity, or the OAuth client
@@ -82,11 +86,16 @@ func (e *preRevocationExecutor) Execute(ctx *providers.NodeContext) (*providers.
 		Reason:   change.reason,
 		TargetID: entityID,
 	}
-	if change.byClient {
+	switch {
+	case change.inOUs:
+		if err := e.planInOUs(ctx, entityID, &plan); err != nil {
+			return nil, err
+		}
+	case change.byClient:
 		if err := e.planForClient(ctx, entityID, &plan); err != nil {
 			return nil, err
 		}
-	} else {
+	default:
 		plan.Criteria = []revocation.Criterion{{Type: revocation.CriterionTypeSubject, Value: entityID}}
 	}
 
@@ -133,6 +142,40 @@ func (e *preRevocationExecutor) planForClient(ctx *providers.NodeContext, entity
 		return nil
 	}
 	plan.Criteria = []revocation.Criterion{{Type: revocation.CriterionTypeApplicationKey, Value: clientID}}
+	return nil
+}
+
+// planInOUs points the plan at the entity as a subject within each organization unit the input lists, and at its
+// OAuth client there when it has one. The client is read once for every unit.
+func (e *preRevocationExecutor) planInOUs(ctx *providers.NodeContext, entityID string, plan *revocationPlan) error {
+	encoded, _ := ctx.ConsumeInput(revocationInputOUs)
+	var ouIDs []string
+	if err := json.Unmarshal([]byte(encoded), &ouIDs); err != nil {
+		return fmt.Errorf("failed to decode the organization units: %w", err)
+	}
+	if len(ouIDs) == 0 || slices.Contains(ouIDs, "") {
+		return fmt.Errorf("organization units are required")
+	}
+	if e.actors == nil {
+		return fmt.Errorf("actor provider is not configured")
+	}
+	client, svcErr := e.actors.GetOAuthClientByID(ctx.Context, entityID)
+	if svcErr != nil {
+		return fmt.Errorf("failed to resolve the entity's OAuth client: %s", svcErr.Error.DefaultValue)
+	}
+	hasClient := client != nil && client.ClientID != ""
+	plan.Criteria = make([]revocation.Criterion, 0, 2*len(ouIDs))
+	for _, ouID := range ouIDs {
+		plan.Criteria = append(plan.Criteria, revocation.Criterion{Type: revocation.CriterionTypeSubjectOU,
+			Value: revocation.SubjectOUCriterionValue(entityID, ouID)})
+		if hasClient {
+			plan.Criteria = append(plan.Criteria, revocation.Criterion{Type: revocation.CriterionTypeApplicationKeyOU,
+				Value: revocation.ApplicationKeyOUCriterionValue(client.ClientID, ouID)})
+		}
+	}
+	if hasClient && e.artifactLifetime != nil {
+		plan.TTLSeconds = int64(e.artifactLifetime(client) / time.Second)
+	}
 	return nil
 }
 

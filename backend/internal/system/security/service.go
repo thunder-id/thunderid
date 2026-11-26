@@ -27,8 +27,10 @@ type RevocationIdentity struct {
 	Subject       string
 	AppKey        string
 	// Audiences are the resource servers the token is bound to.
-	Audiences     []string
-	Scopes        []string
+	Audiences []string
+	Scopes    []string
+	// OUID is the organization unit the token was issued in, empty when it states none.
+	OUID          string
 	EstablishedAt time.Time
 }
 

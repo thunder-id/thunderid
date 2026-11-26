@@ -24,9 +24,9 @@ import (
 
 // excludeRevokedScopes returns the OIDC scopes and the permission scopes not revoked since a grant was
 // established, refusing the grant when it was revoked itself, when revocation leaves no scope to grant, or
-// when the deny list cannot be read.
+// when the deny list cannot be read. ouID is the organization unit the grant was issued in, empty when unknown.
 func excludeRevokedScopes(ctx context.Context, enforcementService revocation.EnforcementServiceInterface,
-	grant revocation.RevocationIdentity, subject string, audiences, oidcScopes, scopes []string,
+	grant revocation.RevocationIdentity, subject, clientID, ouID string, audiences, oidcScopes, scopes []string,
 ) ([]string, *model.ErrorResponse) {
 	// Nil only when oauth.token_revocation is disabled, as the token validator also treats it.
 	if enforcementService == nil {
@@ -34,11 +34,12 @@ func excludeRevokedScopes(ctx context.Context, enforcementService revocation.Enf
 	}
 	// Second precision, like a token's iat, so a revocation within the grant's issuing second applies.
 	grant.EstablishedAt = grant.EstablishedAt.UTC().Truncate(time.Second)
+	grant.Criteria = append(grant.Criteria, revocation.OUCriteria(subject, clientID, ouID, nil, nil)...)
 
 	// One lookup answers the common case; only a match is narrowed to the grant or the revoked scopes.
 	err := enforcementService.EnsureNotRevoked(ctx, revocation.RevocationIdentity{
 		EstablishedAt: grant.EstablishedAt,
-		Criteria:      append(revocation.ScopeCriteria(subject, audiences, scopes), grant.Criteria...),
+		Criteria:      append(scopeCriteria(subject, ouID, audiences, scopes), grant.Criteria...),
 	})
 	if err == nil {
 		return slices.Concat(oidcScopes, scopes), nil
@@ -54,7 +55,7 @@ func excludeRevokedScopes(ctx context.Context, enforcementService revocation.Enf
 	for _, scope := range scopes {
 		err := enforcementService.EnsureNotRevoked(ctx, revocation.RevocationIdentity{
 			EstablishedAt: grant.EstablishedAt,
-			Criteria:      revocation.ScopeCriteria(subject, audiences, []string{scope}),
+			Criteria:      scopeCriteria(subject, ouID, audiences, []string{scope}),
 		})
 		if err == nil {
 			kept = append(kept, scope)
@@ -67,6 +68,18 @@ func excludeRevokedScopes(ctx context.Context, enforcementService revocation.Enf
 		return nil, grantRevocationError(revocation.ErrTokenRevoked)
 	}
 	return slices.Concat(oidcScopes, kept), nil
+}
+
+// scopeCriteria returns the criteria revoking scopes for the subject, everywhere and within ouID.
+func scopeCriteria(subject, ouID string, audiences, scopes []string) []revocation.Criterion {
+	return append(revocation.ScopeCriteria(subject, audiences, scopes),
+		revocation.OUScopeCriteria(subject, ouID, audiences, scopes)...)
+}
+
+// issuedOUID returns the organization unit a sign-in recorded as the grant's ouId attribute, empty when none.
+func issuedOUID(attrs map[string]interface{}) string {
+	ouID, _ := attrs[constants.ClaimOUID].(string)
+	return ouID
 }
 
 // grantRevocationError maps a deny-list result to the token error refusing the grant.

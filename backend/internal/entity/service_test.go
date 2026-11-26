@@ -1082,7 +1082,7 @@ func (s *ServiceTestSuite) TestRemoveCredential_RevokesAroundTheRemoval() {
 
 	s.Require().NoError(err)
 	s.NotEmpty(marker)
-	inputs := map[string]string{systemFlowInputEntity: "e-remove-flows"}
+	inputs := map[string]string{SystemFlowInputEntity: "e-remove-flows"}
 	s.Equal([]*flowcommon.SystemFlowContext{
 		{Handle: systemFlowCredentialUpdatePre, Inputs: inputs},
 		{Handle: systemFlowCredentialUpdatePost, Inputs: inputs,
@@ -4573,7 +4573,7 @@ func (s *ServiceTestSuite) TestDeleteEntity_RevokesAroundTheDelete() {
 
 	s.Require().NoError(svc.DeleteEntity(s.ctx, "del-flows"))
 
-	inputs := map[string]string{systemFlowInputEntity: "del-flows"}
+	inputs := map[string]string{SystemFlowInputEntity: "del-flows"}
 	s.Equal([]*flowcommon.SystemFlowContext{
 		{Handle: systemFlowEntityDeletePre, Inputs: inputs},
 		{Handle: systemFlowRevocationPost, Inputs: inputs,
@@ -4647,7 +4647,7 @@ func (s *ServiceTestSuite) TestUpdateCredentials_ReplacingAHeldCredentialRevokes
 
 	s.Require().NoError(svc.UpdateCredentials(s.ctx, "e-replace", creds))
 
-	inputs := map[string]string{systemFlowInputEntity: "e-replace"}
+	inputs := map[string]string{SystemFlowInputEntity: "e-replace"}
 	s.Equal([]*flowcommon.SystemFlowContext{
 		{Handle: systemFlowCredentialUpdatePre, Inputs: inputs},
 		{Handle: systemFlowCredentialUpdatePost, Inputs: inputs,

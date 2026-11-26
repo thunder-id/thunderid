@@ -964,7 +964,8 @@ func revocationIdentity(claims map[string]interface{}, jti, tokenFamilyID string
 	if subject != "" {
 		criteria = append(criteria, revocation.Criterion{Type: revocation.CriterionTypeSubject, Value: subject})
 	}
-	if clientKey := revocationClientKey(claims, isRefreshToken); clientKey != "" {
+	clientKey := revocationClientKey(claims, isRefreshToken)
+	if clientKey != "" {
 		criteria = append(criteria,
 			revocation.Criterion{Type: revocation.CriterionTypeApplicationKey, Value: clientKey})
 	}
@@ -975,6 +976,8 @@ func revocationIdentity(claims map[string]interface{}, jti, tokenFamilyID string
 		return revocation.RevocationIdentity{}, fmt.Errorf("invalid audience claim: %w", err)
 	}
 	criteria = append(criteria, revocation.ScopeCriteria(subject, audiences, scopes)...)
+	criteria = append(criteria, revocation.OUCriteria(subject, clientKey, revocation.TokenOUID(claims),
+		audiences, scopes)...)
 
 	var establishedAt time.Time
 	if issuedAt, ok := claims[constants.ClaimIat].(float64); ok {
