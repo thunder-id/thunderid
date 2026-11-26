@@ -160,11 +160,11 @@ func (st *store) TouchAuthenticatedAt(ctx context.Context, sessionID string, aut
 }
 
 // SlideIdleDeadline implements sessionStore.
-func (st *store) SlideIdleDeadline(ctx context.Context, sessionID string, now, idleExpiresAt,
-	refreshedBefore time.Time) error {
+func (st *store) SlideIdleDeadline(ctx context.Context, sessionID string, slide idleSlide) error {
 	return withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
 		_, err := dbClient.ExecuteContext(ctx, querySlideIdleDeadline,
-			now, nullableTime(idleExpiresAt), sessionID, string(StateActive), refreshedBefore, st.deploymentID)
+			slide.now, nullableTime(slide.idleExpiresAt), sessionID, string(StateActive), slide.refreshedBefore,
+			slide.activeAfter, slide.createdAfter, st.deploymentID)
 		if err != nil {
 			return fmt.Errorf("failed to slide session idle deadline: %w", err)
 		}

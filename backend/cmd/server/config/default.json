@@ -399,6 +399,9 @@
     }
   },
   "session": {
+    "activity_refresh_interval_seconds": 60,
+    "max_idle_timeout_seconds": 2592000,
+    "max_absolute_timeout_seconds": 31536000,
     "tracking": {
       "enabled": true
     }

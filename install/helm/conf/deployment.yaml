@@ -398,6 +398,9 @@ flow:
 session:
   tracking:
     enabled: {{ .Values.configuration.session.tracking.enabled }}
+  activity_refresh_interval_seconds: {{ .Values.configuration.session.activityRefreshIntervalSeconds }}
+  max_idle_timeout_seconds: {{ .Values.configuration.session.maxIdleTimeoutSeconds | int64 }}
+  max_absolute_timeout_seconds: {{ .Values.configuration.session.maxAbsoluteTimeoutSeconds | int64 }}
 
 import:
   timeout_seconds: {{ .Values.configuration.import.timeoutSeconds }}

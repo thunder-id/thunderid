@@ -76,16 +76,31 @@ func (suite *ServiceTestSuite) newService() (*service, *serviceMocks) {
 	}
 	svc := &service{
 		store:            m.store,
-		resolver:         newResolver(m.store),
+		resolver:         newResolver(m.store, defaultTimeouts(suite.T())),
 		transactioner:    m.tx,
 		terminationTopic: eventlistener.NewTopic[TerminatedSession]("test"),
-		timeouts:         DefaultTimeouts(),
+		timeouts:         defaultTimeouts(suite.T()),
 		entities:         m.entities,
 		entityTypes:      m.entityTypes,
 		apps:             m.apps,
 		logger:           log.GetLogger(),
 	}
 	return svc, m
+}
+
+// defaultTimeouts returns a timeouts source that reads the built-in defaults. Most cases never reach
+// the timeouts, so it need not be read; a case about them uses readTimeouts.
+func defaultTimeouts(t *testing.T) timeoutsSource {
+	source := newTimeoutsSourceMock(t)
+	source.EXPECT().current(mock.Anything).Return(newTimeouts(Config{}, deploymentLimits{})).Maybe()
+	return source
+}
+
+// readTimeouts returns a timeouts source with the built-in defaults that the case must read once.
+func readTimeouts(t *testing.T) timeoutsSource {
+	source := newTimeoutsSourceMock(t)
+	source.EXPECT().current(mock.Anything).Return(newTimeouts(Config{}, deploymentLimits{})).Once()
+	return source
 }
 
 // runTx makes the transaction mock execute the callback it is handed (commit-on-success semantics).
@@ -103,8 +118,9 @@ func liveStoreSession() *Session {
 
 func (suite *ServiceTestSuite) TestAbsoluteTimeout() {
 	svc, _ := suite.newService()
+	svc.timeouts = readTimeouts(suite.T())
 
-	suite.Equal(DefaultTimeouts().Absolute, svc.AbsoluteTimeout())
+	suite.Equal(newTimeouts(Config{}, deploymentLimits{}).Absolute, svc.AbsoluteTimeout(context.Background()))
 }
 
 // --- Resolve ---
@@ -780,17 +796,25 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_RefreshKeepsKnownIPWhenClientH
 
 func (suite *ServiceTestSuite) TestRecordActivity_SlidesIdleUnderThrottle() {
 	svc, m := suite.newService()
-	var now, idleAt, cutoff time.Time
-	m.store.EXPECT().SlideIdleDeadline(mock.Anything, "sess-1", mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, _ string, n, i, c time.Time) error {
-			now, idleAt, cutoff = n, i, c
+	svc.timeouts = readTimeouts(suite.T())
+	var slide idleSlide
+	m.store.EXPECT().SlideIdleDeadline(mock.Anything, "sess-1", mock.Anything).
+		RunAndReturn(func(_ context.Context, _ string, s idleSlide) error {
+			slide = s
 			return nil
 		})
 
 	suite.Require().NoError(svc.RecordActivity(context.Background(), "sess-1"))
 
-	suite.Equal(now.Add(svc.timeouts.Idle), idleAt, "idle deadline moves a full idle window past now")
-	suite.Equal(now.Add(-svc.timeouts.ActivityRefresh), cutoff, "writes are throttled by the refresh window")
+	now := slide.now
+	suite.Equal(now.Add(newTimeouts(Config{}, deploymentLimits{}).Idle), slide.idleExpiresAt,
+		"idle deadline moves a full idle window past now")
+	suite.Equal(now.Add(-newTimeouts(Config{}, deploymentLimits{}).ActivityRefresh), slide.refreshedBefore,
+		"writes are throttled by the refresh window")
+	suite.Equal(now.Add(-newTimeouts(Config{}, deploymentLimits{}).Idle), slide.activeAfter,
+		"a session idle past the timeout in effect is not slid")
+	suite.Equal(now.Add(-newTimeouts(Config{}, deploymentLimits{}).Absolute), slide.createdAfter,
+		"a session older than the absolute timeout in effect is not slid")
 }
 
 func (suite *ServiceTestSuite) TestRecordActivity_EmptySessionIDIsNoop() {
@@ -801,7 +825,7 @@ func (suite *ServiceTestSuite) TestRecordActivity_EmptySessionIDIsNoop() {
 
 func (suite *ServiceTestSuite) TestRecordActivity_StoreError() {
 	svc, m := suite.newService()
-	m.store.EXPECT().SlideIdleDeadline(mock.Anything, "sess-1", mock.Anything, mock.Anything, mock.Anything).
+	m.store.EXPECT().SlideIdleDeadline(mock.Anything, "sess-1", mock.Anything).
 		Return(errors.New("db down"))
 
 	suite.Error(svc.RecordActivity(context.Background(), "sess-1"))
@@ -832,10 +856,10 @@ func (suite *ServiceTestSuite) TestTerminate_RevokesParticipantFamilies() {
 	revoker := NewCriteriaRevokerMock(suite.T())
 	svc := &service{
 		store:           m.store,
-		resolver:        newResolver(m.store),
+		resolver:        newResolver(m.store, defaultTimeouts(suite.T())),
 		transactioner:   m.tx,
 		criteriaRevoker: revoker,
-		timeouts:        DefaultTimeouts(),
+		timeouts:        defaultTimeouts(suite.T()),
 		logger:          log.GetLogger(),
 	}
 
@@ -890,10 +914,10 @@ func (suite *ServiceTestSuite) TestTerminateBySubject_DeletesAllSessionsInOneTra
 	revoker := NewCriteriaRevokerMock(suite.T())
 	svc := &service{
 		store:           m.store,
-		resolver:        newResolver(m.store),
+		resolver:        newResolver(m.store, defaultTimeouts(suite.T())),
 		transactioner:   m.tx,
 		criteriaRevoker: revoker,
-		timeouts:        DefaultTimeouts(),
+		timeouts:        defaultTimeouts(suite.T()),
 		logger:          log.GetLogger(),
 	}
 
@@ -926,9 +950,9 @@ func (suite *ServiceTestSuite) TestTerminateBySubject_DeleteFailureRollsBackBatc
 	}
 	svc := &service{
 		store:         m.store,
-		resolver:      newResolver(m.store),
+		resolver:      newResolver(m.store, defaultTimeouts(suite.T())),
 		transactioner: m.tx,
-		timeouts:      DefaultTimeouts(),
+		timeouts:      defaultTimeouts(suite.T()),
 		logger:        log.GetLogger(),
 	}
 
@@ -953,10 +977,10 @@ func (suite *ServiceTestSuite) TestTerminateBySubject_NoSessionsIsNoOp() {
 	revoker := NewCriteriaRevokerMock(suite.T())
 	svc := &service{
 		store:           m.store,
-		resolver:        newResolver(m.store),
+		resolver:        newResolver(m.store, defaultTimeouts(suite.T())),
 		transactioner:   m.tx,
 		criteriaRevoker: revoker,
-		timeouts:        DefaultTimeouts(),
+		timeouts:        defaultTimeouts(suite.T()),
 		logger:          log.GetLogger(),
 	}
 
@@ -1271,10 +1295,10 @@ func (suite *ServiceTestSuite) newServiceWithRevoker() (*service, *serviceMocks,
 	revoker := NewCriteriaRevokerMock(suite.T())
 	svc := &service{
 		store:           m.store,
-		resolver:        newResolver(m.store),
+		resolver:        newResolver(m.store, defaultTimeouts(suite.T())),
 		transactioner:   m.tx,
 		criteriaRevoker: revoker,
-		timeouts:        DefaultTimeouts(),
+		timeouts:        defaultTimeouts(suite.T()),
 		logger:          log.GetLogger(),
 	}
 	return svc, m, revoker
@@ -1663,10 +1687,13 @@ func (suite *ServiceTestSuite) TestTerminateBySubject_NotifiesOnlyForLiveSession
 		{SessionID: "live", IdleExpiresAt: now.Add(time.Hour), AbsoluteExpiresAt: now.Add(2 * time.Hour)},
 		{SessionID: "idle", IdleExpiresAt: now.Add(-time.Minute), AbsoluteExpiresAt: now.Add(time.Hour)},
 		{SessionID: "ended", IdleExpiresAt: now.Add(time.Hour), AbsoluteExpiresAt: now.Add(-time.Minute)},
+		// Within its stored deadlines, but idle longer than the timeout in effect allows.
+		{SessionID: "shortened", LastActiveAt: now.Add(-31 * 24 * time.Hour), IdleExpiresAt: now.Add(time.Hour),
+			AbsoluteExpiresAt: now.Add(2 * time.Hour)},
 	}, nil)
-	m.store.EXPECT().ListBySessionIDs(mock.Anything, []string{"live", "idle", "ended"}).Return(nil, nil)
+	m.store.EXPECT().ListBySessionIDs(mock.Anything, []string{"live", "idle", "ended", "shortened"}).Return(nil, nil)
 	runTx(m)
-	for _, sessionID := range []string{"live", "idle", "ended"} {
+	for _, sessionID := range []string{"live", "idle", "ended", "shortened"} {
 		m.store.EXPECT().DeleteSession(mock.Anything, sessionID).Return(true, nil)
 		m.store.EXPECT().Delete(mock.Anything, sessionID).Return(nil)
 		m.store.EXPECT().DeleteBySessionID(mock.Anything, sessionID).Return(nil)
@@ -1692,6 +1719,7 @@ func directInput() CreateDirectInput {
 
 func (suite *ServiceTestSuite) TestCreateDirect_RecordsTheSessionAndItsParticipant() {
 	svc, m := suite.newService()
+	svc.timeouts = readTimeouts(suite.T())
 	runTx(m)
 	var created Session
 	m.store.EXPECT().Create(mock.Anything, mock.Anything).RunAndReturn(
@@ -1711,8 +1739,9 @@ func (suite *ServiceTestSuite) TestCreateDirect_RecordsTheSessionAndItsParticipa
 	suite.Empty(created.FlowExecutionID, "a direct session records no flow execution")
 	suite.Empty(created.HandleID, "a direct session has no handle to resume it by")
 	suite.Equal(StateActive, created.State)
-	suite.Equal(created.CreatedAt.Add(svc.timeouts.Idle), created.IdleExpiresAt)
-	suite.Equal(created.CreatedAt.Add(svc.timeouts.Absolute), created.AbsoluteExpiresAt)
+	defaults := newTimeouts(Config{}, deploymentLimits{})
+	suite.Equal(created.CreatedAt.Add(defaults.Idle), created.IdleExpiresAt)
+	suite.Equal(created.CreatedAt.Add(defaults.Absolute), created.AbsoluteExpiresAt)
 	suite.Equal("Mozilla/5.0 (Macintosh) Chrome/140.0", created.Properties.UserAgent)
 	suite.Equal("203.0.113.10", created.Properties.CreationIP)
 	suite.Equal("203.0.113.10", created.Properties.LastActiveIP)

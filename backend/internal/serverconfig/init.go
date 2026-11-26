@@ -29,11 +29,16 @@ func Initialize(mux *http.ServeMux, cacheManager cache.CacheManagerInterface,
 	if bus == nil {
 		return nil, nil, errNilEventBus
 	}
-	store, err := initializeStore(cacheManager, handlers)
+	mode, err := getServerConfigStoreMode()
 	if err != nil {
 		return nil, nil, err
 	}
-	service := newServerConfigService(store, handlers, observability, bus, authzService)
+	store, err := initializeStore(mode, cacheManager, handlers)
+	if err != nil {
+		return nil, nil, err
+	}
+	service := newServerConfigService(store, handlers, observability, bus, authzService,
+		mode == serverconst.StoreModeDeclarative)
 	service.(*serverConfigService).managed = managedresource.GetStore()
 
 	registerRoutes(mux, newServerConfigHandler(service))
@@ -41,21 +46,17 @@ func Initialize(mux *http.ServeMux, cacheManager cache.CacheManagerInterface,
 	return service, newServerConfigExporter(service, handlers), nil
 }
 
-// initializeStore selects the backing store based on the configured store mode: a mutable (db) store, a
+// initializeStore selects the backing store for the store mode: a mutable (db) store, a
 // declarative (file) store, or a composite of both. The writable layer is always present in the mutable
 // and composite modes selected by getServerConfigStoreMode. Declarative resources are loaded into the
 // file store in the declarative and composite modes.
-func initializeStore(cacheManager cache.CacheManagerInterface,
+func initializeStore(mode serverconst.StoreMode, cacheManager cache.CacheManagerInterface,
 	handlers map[ConfigName]ServerConfigHandlerInterface) (serverConfigStoreInterface, error) {
 	cachedDB := func() serverConfigStoreInterface {
-		configCache := cache.GetCache[*ServerConfig](cacheManager, serverConfigCacheName)
+		configCache := cache.GetCacheWithTTL[*ServerConfig](cacheManager, serverConfigCacheName, serverConfigCacheTTL)
 		return newCachedBackStore(newServerConfigStore(), configCache)
 	}
 
-	mode, err := getServerConfigStoreMode()
-	if err != nil {
-		return nil, err
-	}
 	switch mode {
 	case serverconst.StoreModeDeclarative:
 		fileStore := newFileBasedStore()

@@ -293,6 +293,24 @@ describe('CorsSection', () => {
     expect(mockReset).toHaveBeenCalled();
   });
 
+  it('shows the shared message for a section declarative resources set', async () => {
+    const user = userEvent.setup();
+    updateState = {isError: true, error: Object.assign(new Error('bad'), {response: {data: {code: 'SCF-1007'}}})};
+    mockUseGetCorsConfig.mockReturnValue({
+      data: makeData({readOnly: {allowedOrigins: []}, writable: {allowedOrigins: []}}),
+      isLoading: false,
+      error: null,
+    });
+    renderWithProviders(<CorsSection />);
+
+    await user.click(screen.getByRole('button', {name: 'Add origin'}));
+    await user.type(screen.getByPlaceholderText('https://app.example.com'), 'https://new.example.com');
+
+    expect(
+      await screen.findByText("Declarative resources set these settings, so they can't be changed here."),
+    ).toBeInTheDocument();
+  });
+
   it('blocks Save when a row is a duplicate', async () => {
     const user = userEvent.setup();
     mockUseGetCorsConfig.mockReturnValue({

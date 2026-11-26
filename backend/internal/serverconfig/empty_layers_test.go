@@ -23,7 +23,7 @@ func TestGetConfig_EmptyLayersSerializeToArrays(t *testing.T) {
 
 	svc := newServerConfigService(store,
 		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: cors.OriginHandler{}}, nil, discardingBus{},
-		allowingAuthz(t))
+		allowingAuthz(t), false)
 
 	layers, svcErr := svc.GetConfig(context.Background(), ConfigNameCORS)
 	require.Nil(t, svcErr)
@@ -31,6 +31,7 @@ func TestGetConfig_EmptyLayersSerializeToArrays(t *testing.T) {
 	out, err := json.Marshal(layers)
 	require.NoError(t, err)
 	assert.JSONEq(t,
-		`{"readOnly":{"allowedOrigins":[]},"writable":{"allowedOrigins":[]},"merged":{"allowedOrigins":[]}}`,
+		`{"readOnly":{"allowedOrigins":[]},"writable":{"allowedOrigins":[]},"default":null,`+
+			`"merged":{"allowedOrigins":[]}}`,
 		string(out))
 }

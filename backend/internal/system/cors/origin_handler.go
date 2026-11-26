@@ -54,3 +54,13 @@ func (OriginHandler) Merge(readOnly, writable any) any {
 	}
 	return OriginConfig{AllowedOrigins: out}
 }
+
+// Default returns nil: the section has no default.
+func (OriginHandler) Default() any {
+	return nil
+}
+
+// IsReadOnly returns false: a declarative document adds origins and leaves the section writable.
+func (OriginHandler) IsReadOnly(_ any) bool {
+	return false
+}

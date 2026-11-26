@@ -25,7 +25,8 @@ type TranslationLookup = (key: string, fallback?: unknown, options?: {productNam
 
 let translationLookup: TranslationLookup = (key) => key;
 
-vi.mock('react-i18next', () => ({
+vi.mock('react-i18next', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-i18next')>()),
   useTranslation: () => ({
     t: (key: string, fallback?: unknown, options?: {productName?: string}) => translationLookup(key, fallback, options),
   }),

@@ -49,16 +49,16 @@ func (_m *ServiceMock) EXPECT() *ServiceMock_Expecter {
 }
 
 // AbsoluteTimeout provides a mock function for the type ServiceMock
-func (_mock *ServiceMock) AbsoluteTimeout() time.Duration {
-	ret := _mock.Called()
+func (_mock *ServiceMock) AbsoluteTimeout(ctx context.Context) time.Duration {
+	ret := _mock.Called(ctx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for AbsoluteTimeout")
 	}
 
 	var r0 time.Duration
-	if returnFunc, ok := ret.Get(0).(func() time.Duration); ok {
-		r0 = returnFunc()
+	if returnFunc, ok := ret.Get(0).(func(context.Context) time.Duration); ok {
+		r0 = returnFunc(ctx)
 	} else {
 		r0 = ret.Get(0).(time.Duration)
 	}
@@ -71,13 +71,20 @@ type ServiceMock_AbsoluteTimeout_Call struct {
 }
 
 // AbsoluteTimeout is a helper method to define mock.On call
-func (_e *ServiceMock_Expecter) AbsoluteTimeout() *ServiceMock_AbsoluteTimeout_Call {
-	return &ServiceMock_AbsoluteTimeout_Call{Call: _e.mock.On("AbsoluteTimeout")}
+//   - ctx context.Context
+func (_e *ServiceMock_Expecter) AbsoluteTimeout(ctx any) *ServiceMock_AbsoluteTimeout_Call {
+	return &ServiceMock_AbsoluteTimeout_Call{Call: _e.mock.On("AbsoluteTimeout", ctx)}
 }
 
-func (_c *ServiceMock_AbsoluteTimeout_Call) Run(run func()) *ServiceMock_AbsoluteTimeout_Call {
+func (_c *ServiceMock_AbsoluteTimeout_Call) Run(run func(ctx context.Context)) *ServiceMock_AbsoluteTimeout_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run()
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
 	})
 	return _c
 }
@@ -87,7 +94,7 @@ func (_c *ServiceMock_AbsoluteTimeout_Call) Return(duration time.Duration) *Serv
 	return _c
 }
 
-func (_c *ServiceMock_AbsoluteTimeout_Call) RunAndReturn(run func() time.Duration) *ServiceMock_AbsoluteTimeout_Call {
+func (_c *ServiceMock_AbsoluteTimeout_Call) RunAndReturn(run func(ctx context.Context) time.Duration) *ServiceMock_AbsoluteTimeout_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -154,12 +154,12 @@ func (s *ServiceSSOTestSuite) TestApplyOutboundSSO() {
 		{"a step that neither started nor ended a session returns none", FlowStep{}, nil, nil},
 	}
 
-	service := &flowExecService{ssoHandleTTL: time.Hour}
+	service := &flowExecService{sessions: hourLongSessions(s.T())}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
 			step := tc.step
 
-			service.applyOutboundSSO(&step)
+			service.applyOutboundSSO(context.Background(), &step)
 
 			s.Equal(tc.wantData, step.SessionData)
 			s.Equal(tc.wantCleared, step.ClearedSessions)
@@ -181,10 +181,10 @@ func (s *ServiceSSOTestSuite) TestHandleExpiresIn() {
 		{"rounded up", now.Add(500 * time.Millisecond), 1},
 		{"no time left for a session that has ended", now.Add(-time.Minute), 0},
 	}
-	service := &flowExecService{ssoHandleTTL: time.Hour}
+	service := &flowExecService{}
 	for _, tc := range cases {
 		s.Run(tc.name, func() {
-			s.Equal(tc.want, service.handleExpiresIn(tc.expiresAt, now))
+			s.Equal(tc.want, service.handleExpiresIn(tc.expiresAt, now, time.Hour))
 		})
 	}
 }

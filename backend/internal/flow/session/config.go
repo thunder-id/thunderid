@@ -4,108 +4,139 @@
 package session
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
+
+	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
+	"github.com/thunder-id/thunderid/internal/serverconfig"
 )
 
-// Config is the value of the server-config "session" section: the SSO session lifetime
-// configuration. Durations are in seconds; a zero or omitted value falls back to the built-in
-// default (see NewTimeouts).
+// Config is the value of the server-config "session" section: how long an SSO session lasts.
+// Durations are in seconds; an omitted value takes its default.
 type Config struct {
-	IdleTimeoutSeconds     int64 `json:"idleTimeoutSeconds"     yaml:"idleTimeoutSeconds"`
-	AbsoluteTimeoutSeconds int64 `json:"absoluteTimeoutSeconds" yaml:"absoluteTimeoutSeconds"`
-	// ActivityRefreshIntervalSeconds is the minimum spacing between persisted activity refreshes: a
-	// session reuse within this window of the last persisted activity refresh skips the idle-slide
-	// write, cutting write load on the hot path. It is honored as configured and must be less than
-	// idleTimeoutSeconds (enforced by Validate), so an active session is never skipped past its idle
-	// deadline.
-	ActivityRefreshIntervalSeconds int64 `json:"activityRefreshIntervalSeconds" yaml:"activityRefreshIntervalSeconds"`
+	IdleTimeoutSeconds     int64 `json:"idleTimeoutSeconds,omitempty"     yaml:"idleTimeoutSeconds,omitempty"`
+	AbsoluteTimeoutSeconds int64 `json:"absoluteTimeoutSeconds,omitempty" yaml:"absoluteTimeoutSeconds,omitempty"`
+	// decodeErr is why a strict decode refused the value, such as a field the section does not have.
+	// Validate refuses a write with it, while a value stored before still loads.
+	decodeErr string
 }
 
-// resolved returns a copy of Config with all unset fields replaced by their effective default values.
-func (c Config) resolved() Config {
-	t := NewTimeouts(c.IdleTimeoutSeconds, c.AbsoluteTimeoutSeconds, c.ActivityRefreshIntervalSeconds)
-	return Config{
-		IdleTimeoutSeconds:             int64(t.Idle.Seconds()),
-		AbsoluteTimeoutSeconds:         int64(t.Absolute.Seconds()),
-		ActivityRefreshIntervalSeconds: int64(t.ActivityRefresh.Seconds()),
-	}
+// sectionValue is a session value as it is written or stored. activityRefreshIntervalSeconds was part of
+// the section before it moved to deployment.yaml, and an export from those versions always carries it,
+// so it is accepted and ignored.
+type sectionValue struct {
+	Config
+	ActivityRefreshIntervalSeconds int64 `json:"activityRefreshIntervalSeconds"`
 }
 
-// Validate ensures the configured session timeouts are coherent. Unset (zero) values are allowed and
-// fall back to defaults; the activity-refresh/idle invariant is checked against the resolved
-// durations so a defaulted side cannot silently violate it.
-func (c Config) Validate() error {
-	if c.IdleTimeoutSeconds < 0 {
-		return fmt.Errorf("session.idleTimeoutSeconds must be greater than or equal to 0")
-	}
-	if c.AbsoluteTimeoutSeconds < 0 {
-		return fmt.Errorf("session.absoluteTimeoutSeconds must be greater than or equal to 0")
-	}
-	if c.ActivityRefreshIntervalSeconds < 0 {
-		return fmt.Errorf("session.activityRefreshIntervalSeconds must be greater than or equal to 0")
-	}
-	// Reject values that would overflow when converted to a time.Duration (nanoseconds); such a value
-	// wraps to a negative duration and would otherwise slip past the invariant check below.
-	if c.IdleTimeoutSeconds > maxTimeoutSeconds || c.AbsoluteTimeoutSeconds > maxTimeoutSeconds ||
-		c.ActivityRefreshIntervalSeconds > maxTimeoutSeconds {
-		return fmt.Errorf("session timeout seconds must not exceed %d", maxTimeoutSeconds)
-	}
-	if c.IdleTimeoutSeconds > 0 && c.AbsoluteTimeoutSeconds > 0 &&
-		c.IdleTimeoutSeconds > c.AbsoluteTimeoutSeconds {
-		return fmt.Errorf("session.idleTimeoutSeconds must not exceed absoluteTimeoutSeconds")
-	}
-	// Check the resolved durations, not the raw config values: a zero means "use the default", so the
-	// activity-refresh/idle invariant must be verified after defaults are substituted (and idle is
-	// clamped to absolute). Comparing only raw positive values lets a defaulted side violate it, e.g.
-	// a small configured idle with a defaulted refresh, or a defaulted idle with a large configured
-	// refresh, either of which could skip an active session past its idle deadline.
-	resolved := NewTimeouts(c.IdleTimeoutSeconds, c.AbsoluteTimeoutSeconds, c.ActivityRefreshIntervalSeconds)
-	if resolved.ActivityRefresh >= resolved.Idle {
-		return fmt.Errorf("session.activityRefreshIntervalSeconds must be less than idleTimeoutSeconds")
-	}
-	return nil
+// isEmpty reports whether the value sets no timeout.
+func (c Config) isEmpty() bool {
+	return c.IdleTimeoutSeconds == 0 && c.AbsoluteTimeoutSeconds == 0
 }
 
-// ConfigHandler decodes, validates, and merges the "session" server-config section. It implements
-// the serverconfig section-handler contract structurally so the section can be registered at the
-// composition root without this package depending on the serverconfig package.
-type ConfigHandler struct{}
+// configHandler decodes, validates and merges the "session" server-config section. A declarative
+// document locks the section.
+type configHandler struct {
+	// limits are the deployment's session limits: the activity refresh interval an idle timeout must
+	// exceed, and the longest timeouts the section may set.
+	limits deploymentLimits
+}
 
-// Decode parses a raw JSON session value into Config. Empty input yields the zero Config, which
-// resolves to the built-in default timeouts.
-func (ConfigHandler) Decode(raw json.RawMessage) (any, error) {
+// newConfigHandler builds the "session" server-config handler over the flow configuration.
+func newConfigHandler(cfg flowconfig.Config) serverconfig.ServerConfigHandlerInterface {
+	return configHandler{limits: newDeploymentLimits(cfg)}
+}
+
+// Decode parses a raw JSON session value into Config. Empty input yields the zero Config, which takes
+// every default. A value the strict decode refuses, such as one with a field the section does not have, is
+// decoded again without the check, since Decode also reads values stored before, and the refusal is kept
+// for Validate.
+func (configHandler) Decode(raw json.RawMessage) (any, error) {
 	if len(raw) == 0 {
 		return Config{}, nil
+	}
+	var value sectionValue
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	strictErr := decoder.Decode(&value)
+	if strictErr == nil {
+		return value.Config, nil
 	}
 	var cfg Config
 	if err := json.Unmarshal(raw, &cfg); err != nil {
 		return nil, err
 	}
+	cfg.decodeErr = strictErr.Error()
 	return cfg, nil
 }
 
-// Validate checks that the incoming value is a coherent session config.
-func (ConfigHandler) Validate(_ context.Context, incoming, _, _ any) error {
-	cfg, _ := incoming.(Config)
-	return cfg.Validate()
+// Validate checks the incoming value: it names no field the section does not have, each timeout is unset
+// or positive and no longer than the deployment's maximum for it, an idle timeout is no longer than the
+// absolute timeout in effect, and the idle timeout in effect, after the defaults apply and it is cut to
+// the absolute one, is longer than the deployment's activity refresh interval, so an active session is
+// never left to expire between two refreshes.
+func (h configHandler) Validate(_ context.Context, incoming, _, _ any) error {
+	cfg, ok := incoming.(Config)
+	if !ok {
+		return fmt.Errorf("%s: unexpected config type %T", serverconfig.ConfigNameSession, incoming)
+	}
+	if cfg.decodeErr != "" {
+		return fmt.Errorf("session: %s", cfg.decodeErr)
+	}
+	if cfg.IdleTimeoutSeconds < 0 {
+		return fmt.Errorf("session.idleTimeoutSeconds must be greater than or equal to 0")
+	}
+	if cfg.AbsoluteTimeoutSeconds < 0 {
+		return fmt.Errorf("session.absoluteTimeoutSeconds must be greater than or equal to 0")
+	}
+	// A larger value overflows when converted to a time.Duration and wraps to a negative one.
+	if cfg.IdleTimeoutSeconds > maxTimeoutSeconds || cfg.AbsoluteTimeoutSeconds > maxTimeoutSeconds {
+		return fmt.Errorf("session timeout seconds must not exceed %d", maxTimeoutSeconds)
+	}
+	if cfg.IdleTimeoutSeconds > int64(h.limits.maxIdle/time.Second) {
+		return fmt.Errorf("session.idleTimeoutSeconds must not exceed the maximum of %d seconds",
+			int64(h.limits.maxIdle/time.Second))
+	}
+	if cfg.AbsoluteTimeoutSeconds > int64(h.limits.maxAbsolute/time.Second) {
+		return fmt.Errorf("session.absoluteTimeoutSeconds must not exceed the maximum of %d seconds",
+			int64(h.limits.maxAbsolute/time.Second))
+	}
+	t := newTimeouts(cfg, h.limits)
+	// The idle timeout in effect is cut to the absolute one, so a longer idle timeout would never apply.
+	if cfg.IdleTimeoutSeconds > int64(t.Absolute/time.Second) {
+		return fmt.Errorf("session.idleTimeoutSeconds must not exceed the absolute timeout of %d seconds",
+			int64(t.Absolute/time.Second))
+	}
+	if t.Idle <= h.limits.activityRefresh {
+		return fmt.Errorf("session.idleTimeoutSeconds must be longer than the activity refresh interval of %d "+
+			"seconds", int64(h.limits.activityRefresh/time.Second))
+	}
+	return nil
 }
 
-// Merge overlays the writable (db) layer onto the read-only (declarative) layer: a positive writable
-// value wins for its field, otherwise the read-only value stands. Fields still unset after the overlay
-// fall back to the built-in defaults (see NewTimeouts), so the merged value reports the timeouts in effect.
-func (ConfigHandler) Merge(readOnly, writable any) any {
-	merged, _ := readOnly.(Config)
+// Merge returns the declarative document when one sets the section, otherwise the writable layer.
+func (configHandler) Merge(readOnly, writable any) any {
+	if ro, ok := readOnly.(Config); ok && !ro.isEmpty() {
+		return ro
+	}
 	wr, _ := writable.(Config)
-	if wr.IdleTimeoutSeconds > 0 {
-		merged.IdleTimeoutSeconds = wr.IdleTimeoutSeconds
+	return wr
+}
+
+// Default returns the built-in timeouts, each cut to the deployment's maximum for it. Sessions cut the
+// idle timeout to the absolute one when they apply the section, not here.
+func (h configHandler) Default() any {
+	return Config{
+		IdleTimeoutSeconds:     int64(min(defaultIdleTimeout, h.limits.maxIdle) / time.Second),
+		AbsoluteTimeoutSeconds: int64(min(defaultAbsoluteTimeout, h.limits.maxAbsolute) / time.Second),
 	}
-	if wr.AbsoluteTimeoutSeconds > 0 {
-		merged.AbsoluteTimeoutSeconds = wr.AbsoluteTimeoutSeconds
-	}
-	if wr.ActivityRefreshIntervalSeconds > 0 {
-		merged.ActivityRefreshIntervalSeconds = wr.ActivityRefreshIntervalSeconds
-	}
-	return merged.resolved()
+}
+
+// IsReadOnly reports whether a declarative document sets the section.
+func (configHandler) IsReadOnly(readOnly any) bool {
+	ro, ok := readOnly.(Config)
+	return ok && !ro.isEmpty()
 }

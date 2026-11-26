@@ -256,6 +256,8 @@ const translations = {
     'errors.SSE-4030': 'You do not have permission to perform this action in this organization unit.',
     'errors.DCR-1002': 'This resource is managed declaratively and cannot be modified.',
     'errors.DCR-1003': 'This resource is managed declaratively and cannot be deleted.',
+    'errors.SCF-1006': 'The control plane manages these settings, so they can only be changed there.',
+    'errors.SCF-1007': "Declarative resources set these settings, so they can't be changed here.",
     'errors.SAZ-4030':
       'You cannot grant permissions that you do not hold. Ask an administrator who holds them to make this change.',
     'errors.ROL-1035':
@@ -8071,10 +8073,40 @@ const translations = {
   settings: {
     'page.title': 'Configurations',
     'page.subtitle': 'Configurations that apply across your system.',
+    'page.load.error': 'Failed to load the configurations',
+    'page.refresh.error': 'Failed to refresh the configurations. The tabs show what was loaded before.',
     'tabs.ariaLabel': 'Settings sections',
+    'tabs.sessions': 'Sign-in session',
     'tabs.cors': 'CORS',
     'tabs.csp': 'Content security policy',
     'tabs.accountSecurity': 'Account security',
+
+    // Shared by the cards that edit a server-config section
+    'field.default': 'Default',
+    'field.custom': 'Custom',
+    'field.resetToDefault': 'Reset to default',
+    'lock.declarative':
+      "These values come from a declarative resource, so they can't be changed here. To change them, edit <code>{{file}}</code> and redeploy.",
+    'saveBar.unsavedChanges': 'You have unsaved changes',
+    'saveBar.save': 'Save changes',
+
+    // Session timeouts
+    'session.card.title': 'Session timeouts',
+    'session.card.description':
+      'How long a sign-in session lasts. A change applies without a restart, and a shorter timeout also ends existing sessions that have gone past it.',
+    'session.idleTimeout.label': 'Idle timeout',
+    'session.idleTimeout.hint': 'Signs the user out after this long without activity.',
+    'session.absoluteTimeout.label': 'Absolute timeout',
+    'session.absoluteTimeout.hint': "Signs the user out this long after they sign in, even if they're active.",
+    'session.validation.wholeNumber': 'Enter a whole number greater than zero.',
+    'session.validation.idleExceedsAbsolute': "The idle timeout can't be longer than the absolute timeout.",
+    'session.load.error': 'Failed to load the session settings.',
+    'session.refresh.error': 'Failed to refresh the session settings. The values shown are the ones loaded before.',
+    'session.save.success': 'Session settings updated.',
+    'session.save.error': 'Failed to update the session settings.',
+    'session.errors.SCF-1003':
+      "These session timeouts aren't valid. The idle timeout must be longer than the activity refresh interval (1 minute by default) and no longer than the absolute timeout, and neither may pass the deployment's maximum (30 days idle and 365 days absolute by default).",
+
     'cors.card.title': 'Allowed origins',
     'cors.card.description':
       'Manage which origins are allowed to access your APIs. Each entry is either an exact origin or a regular expression.',
@@ -8265,8 +8297,6 @@ const translations = {
     'accountLock.validation.ceiling':
       'Enter 0 for no limit, or at least the number of failed attempts that locks the account.',
 
-    'accountLock.readOnlyHint':
-      "These settings are read-only because they're managed declaratively. Change them in the declarative configuration.",
     'accountLock.unsavedChanges': 'You have unsaved changes',
     'accountLock.reset': 'Reset',
     'accountLock.save': 'Save changes',
