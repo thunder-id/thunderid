@@ -16,7 +16,7 @@ Access tokens are self-contained JWTs, so a resource server that validates them 
 | Scope | What it invalidates | Typical trigger |
 |---|---|---|
 | **Single token** | One token, by its `jti` | A client calls `/oauth2/revoke`; a refresh token is rotated |
-| **Grant** | Every token of one authorization grant, by its `tfid` | Sign-out, refresh-token replay, authorization-code replay |
+| **Grant** | Every token of one token family, by its `tfid`: one authorization grant, or an application's grants in one SSO session and organization unit | Sign-out, refresh-token replay, authorization-code replay |
 | **Subject** | Every token issued to one user, agent, or application, by its `sub` | A user, agent, or application is deleted, or suspended; a user's or agent's credential is replaced |
 | **Client** | Every token issued through one OAuth client, by its client ID | An application or agent is deleted, suspended, or has its client secret replaced |
 | **Subject and permission** | Every token issued to one user, agent, or application that carries one of the given permissions for its audience | A group whose roles grant those permissions is deleted, for each of its members, or a member is removed from it; a role stops granting a permission, for each of its holders |
@@ -60,13 +60,13 @@ RFC 7009 §2.1 requires the server to verify that the token was issued to the au
 
 Revoking one token of a grant usually should not leave its siblings working. Five refreshes produce a chain of access and refresh tokens that all descend from the same authorization, and revoking the newest refresh token alone would leave live access tokens behind.
 
-<ProductName /> groups these into a **token family**, identified by a `tfid` claim carried on every token of the grant. By default, revoking any token of a family revokes the family in both directions: revoking a refresh token invalidates the access tokens issued alongside it, and revoking an access token invalidates the refresh token that would mint replacements. [What Revokes a Family](#what-revokes-a-family) below lists the setting that controls this, along with the other triggers.
+<ProductName /> groups these into a **token family**, identified by a `tfid` claim carried on every token of the grant. When an application signs in more than once in the same SSO session and organization unit, those grants share one family, as [Where `tfid` Comes From](#where-tfid-comes-from) describes. By default, revoking any token of a family revokes the family in both directions: revoking a refresh token invalidates the access tokens issued alongside it, and revoking an access token invalidates the refresh token that would mint replacements. [What Revokes a Family](#what-revokes-a-family) below lists the setting that controls this, along with the other triggers.
 
 ### Where `tfid` Comes From
 
 | Flow | Behavior |
 |---|---|
-| Authorization code with SSO | Minted when the session is established and stored against the session participant, which is what makes sign-out revocation possible |
+| Authorization code with SSO | Generated when the application first joins the session and stored against its session participant, which is what makes sign-out revocation possible. Later sign-ins by the same application in that session and organization unit, such as from a second tab or a silent `prompt=none` request, reuse the family. Sign-out revokes all of them, and so does any trigger in [What Revokes a Family](#what-revokes-a-family) that fires for one of them, such as revoking one of their tokens or replaying a refresh token or authorization code. If the family has been revoked, the next sign-in gets a new one |
 | Authorization code without SSO | Minted when the authorization code is created, so the grant is still revocable |
 | Refresh | Copied to the new tokens, so a family survives rotation |
 | Token exchange | Copied from a subject token issued by this server, with or without an `actor_token`. Revoking the grant the subject token came from also revokes the exchanged token. A subject token with no `tfid`, or one issued by another server, gives an exchanged token with none |

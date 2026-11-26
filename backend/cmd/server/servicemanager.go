@@ -814,6 +814,11 @@ func (a sessionCriteriaRevoker) RevokeTokenFamily(ctx context.Context, tokenFami
 	return a.revoker.RevokeTokenFamily(ctx, tokenFamilyID, revocation.RevocationReasonSessionLogout)
 }
 
+// IsTokenFamilyRevoked reports whether the given token family is revoked.
+func (a sessionCriteriaRevoker) IsTokenFamilyRevoked(ctx context.Context, tokenFamilyID string) (bool, error) {
+	return a.revoker.IsTokenFamilyRevoked(ctx, tokenFamilyID)
+}
+
 // initConsentService initializes the consent service backed by the inbound client service, which
 // satisfies consent.InboundClientProvider directly.
 func initConsentService(ctx context.Context, logger *log.Logger,

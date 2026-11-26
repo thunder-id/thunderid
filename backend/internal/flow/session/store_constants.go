@@ -95,18 +95,18 @@ var (
 		Query: `DELETE FROM "SSO_SESSION_CONTEXT" WHERE SESSION_ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
 
-	// queryUpsertParticipant records an application as a participant of a session under an organization
-	// unit, refreshing LAST_ACTIVE_AT and the current-grant TFID (but preserving FIRST_JOINED_AT) when the
-	// application has already joined under that unit. TFID moves to the latest grant so logout revokes the
-	// most recent family; another unit is another row with its own family.
-	// The ON CONFLICT ... DO UPDATE form is valid in both PostgreSQL and SQLite.
+	// queryUpsertParticipant records an application as a participant of a session under an organization unit
+	// and returns its TFID. A rejoin refreshes LAST_ACTIVE_AT and keeps a non-empty TFID. The ON CONFLICT ...
+	// RETURNING form is valid in both PostgreSQL and SQLite.
 	queryUpsertParticipant = model.DBQuery{
 		ID: "SEQ-SESS-09",
 		Query: `INSERT INTO "SESSION_PARTICIPANT" ` +
 			`(SESSION_ID, DEPLOYMENT_ID, APP_ID, OU_ID, FIRST_JOINED_AT, LAST_ACTIVE_AT, TFID) ` +
 			`VALUES ($1, $2, $3, $4, $5, $6, $7) ` +
 			`ON CONFLICT (SESSION_ID, DEPLOYMENT_ID, APP_ID, OU_ID) DO UPDATE SET ` +
-			`LAST_ACTIVE_AT = excluded.LAST_ACTIVE_AT, TFID = excluded.TFID`,
+			`LAST_ACTIVE_AT = excluded.LAST_ACTIVE_AT, ` +
+			`TFID = COALESCE(NULLIF("SESSION_PARTICIPANT".TFID, ''), excluded.TFID) ` +
+			`RETURNING TFID`,
 	}
 
 	// queryListParticipantsBySessionID returns the applications that have joined a session, oldest
@@ -290,6 +290,14 @@ var (
 			`FROM "SESSION_PARTICIPANT" WHERE TFID = $1 AND DEPLOYMENT_ID = $3 ` +
 			`AND SESSION_ID IN (SELECT SESSION_ID FROM "SESSION" ` +
 			`WHERE SUBJECT_ID = $2 AND TYPE = 'SSO' AND DEPLOYMENT_ID = $3)`,
+	}
+
+	// queryReplaceParticipantTokenFamily moves a participant to a new TFID only while it holds the expected one,
+	// so concurrent joins converge, and returns the TFID it holds.
+	queryReplaceParticipantTokenFamily = model.DBQuery{
+		ID: "SEQ-SESS-28",
+		Query: `UPDATE "SESSION_PARTICIPANT" SET TFID = CASE WHEN TFID = $1 THEN $2 ELSE TFID END ` +
+			`WHERE SESSION_ID = $3 AND APP_ID = $4 AND OU_ID = $5 AND DEPLOYMENT_ID = $6 RETURNING TFID`,
 	}
 )
 
