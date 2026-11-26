@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/thunder-id/thunderid/tests/integration/flow/common"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
@@ -126,6 +127,32 @@ func (ts *SessionAPITestSuite) signIn(client *http.Client, username, scope, stat
 func (ts *SessionAPITestSuite) signInAs(client *http.Client, cID, cSecret, username, scope,
 	state string) *testutils.TokenResponse {
 	authID, executionID := ts.authorize(client, cID, scope, state)
+	code, err := testutils.ExtractAuthorizationCode(ts.completeSignIn(client, authID, executionID, username))
+	ts.Require().NoError(err, "failed to extract the authorization code")
+	return ts.exchangeCode(client, cID, cSecret, code)
+}
+
+// signInUnder signs the user in as the client through the organization unit's authorization endpoint, so the
+// sign-in is recorded under that unit, and returns the client redirect carrying the code.
+func (ts *SessionAPITestSuite) signInUnder(client *http.Client, ouID, cID, username, state string) string {
+	params := url.Values{}
+	params.Set("client_id", cID)
+	params.Set("redirect_uri", redirectURI)
+	params.Set("response_type", "code")
+	params.Set("scope", "openid")
+	params.Set("state", state)
+	resp, err := client.Get(testutils.TestServerURL + "/ou/" + ouID + "/oauth2/authorize?" + params.Encode())
+	ts.Require().NoError(err, "authorize request failed")
+	defer func() { _ = resp.Body.Close() }()
+	ts.Require().Equal(http.StatusFound, resp.StatusCode, "authorize should redirect to the sign-in")
+	authID, executionID, err := testutils.ExtractAuthData(resp.Header.Get("Location"))
+	ts.Require().NoError(err, "the redirect should carry the flow")
+	return ts.completeSignIn(client, authID, executionID, username)
+}
+
+// completeSignIn answers a first sign-in's credential prompt and the authorize callback, and returns the client
+// redirect carrying the code.
+func (ts *SessionAPITestSuite) completeSignIn(client *http.Client, authID, executionID, username string) string {
 	initial := ts.flowExecute(client, map[string]interface{}{"executionId": executionID})
 	ts.Require().NotEqual("COMPLETE", initial.FlowStatus, "a first sign-in prompts for credentials")
 
@@ -143,9 +170,7 @@ func (ts *SessionAPITestSuite) signInAs(client *http.Client, cID, cSecret, usern
 
 	authzResponse, err := testutils.CompleteAuthorizationWithSessionData(client, authID, step.Assertion, sessionData)
 	ts.Require().NoError(err, "the authorize callback failed")
-	code, err := testutils.ExtractAuthorizationCode(authzResponse.RedirectURI)
-	ts.Require().NoError(err, "failed to extract the authorization code")
-	return ts.exchangeCode(client, cID, cSecret, code)
+	return authzResponse.RedirectURI
 }
 
 // exchangeCode swaps an authorization code for the client's tokens.
@@ -159,6 +184,103 @@ func (ts *SessionAPITestSuite) exchangeCode(client *http.Client, cID, cSecret, c
 	var token testutils.TokenResponse
 	ts.Require().NoError(json.Unmarshal([]byte(raw), &token), "failed to decode the token response")
 	return &token
+}
+
+// refresh redeems a refresh token as the client and returns the new tokens.
+func (ts *SessionAPITestSuite) refresh(cID, cSecret, refreshToken string) *testutils.TokenResponse {
+	form := url.Values{}
+	form.Set("grant_type", "refresh_token")
+	form.Set("refresh_token", refreshToken)
+	status, raw := ts.tokenRequest(testutils.GetRawHTTPClient(), "/oauth2/token", cID, cSecret, form)
+	ts.Require().Equal(http.StatusOK, status, "the refresh failed: %s", raw)
+	var token testutils.TokenResponse
+	ts.Require().NoError(json.Unmarshal([]byte(raw), &token), "failed to decode the token response")
+	return &token
+}
+
+// createAppNativeApplication creates a confidential client with only the token-exchange grant on the flow, so it is
+// issued a Flow Secret, runs the flow itself and exchanges the assertion for tokens.
+func (ts *SessionAPITestSuite) createAppNativeApplication(name, cID, cSecret, authFlowID string) string {
+	appID, err := testutils.CreateApplication(testutils.Application{
+		Name:             name,
+		Description:      "App-native application for session management API integration tests",
+		OUID:             testOUID,
+		AuthFlowID:       authFlowID,
+		SignOutFlowID:    ts.signOutFlowID,
+		AllowedUserTypes: []string{testUserType.Handle},
+		InboundAuthConfig: []map[string]interface{}{{
+			"type": "oauth2",
+			"config": map[string]interface{}{
+				"clientId":                cID,
+				"clientSecret":            cSecret,
+				"grantTypes":              []string{tokenExchangeGrant},
+				"tokenEndpointAuthMethod": "client_secret_basic",
+			},
+		}},
+	})
+	ts.Require().NoError(err, "Failed to create application %s", name)
+	ts.Require().NotEmpty(testutils.GetFlowSecret(appID), "an app-native application is issued a Flow Secret")
+	return appID
+}
+
+// signInAppNative signs the user in through the application's flow with its Flow Secret, as an app-native
+// application does, and exchanges the assertion for the client's tokens.
+func (ts *SessionAPITestSuite) signInAppNative(appID, cID, cSecret, username string) *testutils.TokenResponse {
+	initial, err := common.InitiateAuthenticationFlow(appID, false, nil, "")
+	ts.Require().NoError(err, "the app-native sign-in should start")
+	ts.Require().Equal("INCOMPLETE", initial.FlowStatus, "an app-native sign-in prompts for credentials")
+	step, err := testutils.ExecuteAuthenticationFlow(initial.ExecutionID,
+		map[string]string{"username": username, "password": testPassword}, "action_001", initial.ChallengeToken)
+	ts.Require().NoError(err, "the credential step failed")
+	ts.Require().Equal("COMPLETE", step.FlowStatus, "the credential sign-in should complete")
+	ts.Require().NotEmpty(step.Assertion, "the sign-in should return an assertion")
+
+	form := url.Values{}
+	form.Set("grant_type", tokenExchangeGrant)
+	form.Set("subject_token", step.Assertion)
+	form.Set("subject_token_type", jwtTokenType)
+	status, raw := ts.tokenRequest(testutils.GetRawHTTPClient(), "/oauth2/token", cID, cSecret, form)
+	ts.Require().Equal(http.StatusOK, status, "the assertion exchange failed: %s", raw)
+	var token testutils.TokenResponse
+	ts.Require().NoError(json.Unmarshal([]byte(raw), &token), "failed to decode the token response")
+	return &token
+}
+
+// assertDirectSessionListed checks that the application's one sign-in recorded a direct session that is listed by
+// the application and as the user's, and that the user lists it with the access token, as the current session. It
+// returns the session's ID.
+func (ts *SessionAPITestSuite) assertDirectSessionListed(appID, userID, accessToken string) string {
+	ts.T().Helper()
+	var byApp testutils.SessionListView
+	status, raw := ts.getSessions(testutils.GetHTTPClient(), "/sessions?appId="+url.QueryEscape(appID), &byApp)
+	ts.Require().Equal(http.StatusOK, status, raw)
+	ts.Require().Len(byApp.Sessions, 1, "the application's one sign-in recorded one session: %s", raw)
+	direct := byApp.Sessions[0]
+	ts.Equal("DIRECT", direct.Type)
+	ts.Equal(userID, direct.UserID)
+	ts.Require().Len(direct.Participants, 1, "a direct session holds only the application that signed in")
+	ts.Equal(appID, direct.Participants[0].AppID)
+
+	listed, err := testutils.ListedSession(testutils.GetHTTPClient(), "/sessions?userId="+url.QueryEscape(userID),
+		direct.ID)
+	ts.Require().NoError(err)
+	ts.Require().NotNil(listed, "the user's sessions include the direct one")
+	ts.Equal("DIRECT", listed.Type)
+
+	var mine testutils.SessionListView
+	status, raw = ts.getSessions(testutils.GetHTTPClientWithToken(accessToken), "/users/me/sessions", &mine)
+	ts.Require().Equal(http.StatusOK, status, raw)
+	current := ""
+	for _, s := range mine.Sessions {
+		ts.Equal(userID, s.UserID, "own sessions are the user's")
+		ts.Require().NotNil(s.IsCurrent, "own sessions always say whether they are current")
+		if *s.IsCurrent {
+			ts.Require().Empty(current, "only one session is current: %s", raw)
+			current = s.ID
+		}
+	}
+	ts.Equal(direct.ID, current, "the access token's own session is current: %s", raw)
+	return direct.ID
 }
 
 // exchangeDeviceSecret exchanges a device secret at the token endpoint at path as the client, signing the user

@@ -221,6 +221,7 @@ type participantResponse struct {
 // IsCurrent is set only on the caller's own sessions.
 type sessionResponse struct {
 	ID                string                `json:"id"`
+	Type              Type                  `json:"type"`
 	UserID            string                `json:"userId"`
 	UserDisplayName   string                `json:"userDisplayName,omitempty"`
 	UserAgent         string                `json:"userAgent,omitempty"`

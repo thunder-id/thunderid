@@ -167,9 +167,9 @@ var (
 			`AND LAST_ACTIVE_AT > $6 AND CREATED_AT > $7 AND DEPLOYMENT_ID = $8`,
 	}
 
-	// The live-session queries below list SSO sessions only, and apply the resolver's liveness rule in
-	// SQL, since expired rows stay in the table until cleanup removes them: STATE is ACTIVE and neither
-	// deadline has been reached at the caller-supplied time. A NULL deadline never expires.
+	// The live-session queries below list SSO and direct sessions alike, and apply the resolver's liveness
+	// rule in SQL, since expired rows stay in the table until cleanup removes them: STATE is ACTIVE and
+	// neither deadline has been reached at the caller-supplied time. A NULL deadline never expires.
 
 	// queryListLiveSessionsBySubject returns one page of a subject's live sessions, most recently
 	// active first. Backed by idx_session_subject.
@@ -178,7 +178,7 @@ var (
 		Query: `SELECT SESSION_ID, TYPE, SUBJECT_ID, FLOW_ID, FLOW_VERSION, FLOW_EXECUTION_ID, HANDLE_ID, ` +
 			`AUTHENTICATED_AT, CREATED_AT, LAST_ACTIVE_AT, IDLE_EXPIRES_AT, ABSOLUTE_EXPIRES_AT, ` +
 			`PROPERTIES, STATE, VERSION ` +
-			`FROM "SESSION" WHERE SUBJECT_ID = $1 AND TYPE = 'SSO' AND STATE = 'ACTIVE' ` +
+			`FROM "SESSION" WHERE SUBJECT_ID = $1 AND STATE = 'ACTIVE' ` +
 			`AND IDLE_EXPIRES_AT > $2 AND ABSOLUTE_EXPIRES_AT > $2 ` +
 			`AND DEPLOYMENT_ID = $5 ` +
 			`ORDER BY LAST_ACTIVE_AT DESC, SESSION_ID DESC LIMIT $3 OFFSET $4`,
@@ -187,7 +187,7 @@ var (
 	// queryCountLiveSessionsBySubject counts a subject's live sessions.
 	queryCountLiveSessionsBySubject = model.DBQuery{
 		ID: "SEQ-SESS-20",
-		Query: `SELECT COUNT(*) AS total FROM "SESSION" WHERE SUBJECT_ID = $1 AND TYPE = 'SSO' AND STATE = 'ACTIVE' ` +
+		Query: `SELECT COUNT(*) AS total FROM "SESSION" WHERE SUBJECT_ID = $1 AND STATE = 'ACTIVE' ` +
 			`AND IDLE_EXPIRES_AT > $2 AND ABSOLUTE_EXPIRES_AT > $2 ` +
 			`AND DEPLOYMENT_ID = $3`,
 	}
@@ -204,7 +204,7 @@ var (
 			`FROM "SESSION" S ` +
 			`WHERE S.SESSION_ID IN (SELECT P.SESSION_ID FROM "SESSION_PARTICIPANT" P ` +
 			`WHERE P.APP_ID = $1 AND P.DEPLOYMENT_ID = $5) ` +
-			`AND S.TYPE = 'SSO' AND S.STATE = 'ACTIVE' ` +
+			`AND S.STATE = 'ACTIVE' ` +
 			`AND S.IDLE_EXPIRES_AT > $2 AND S.ABSOLUTE_EXPIRES_AT > $2 ` +
 			`AND S.DEPLOYMENT_ID = $5 ` +
 			`ORDER BY S.LAST_ACTIVE_AT DESC, S.SESSION_ID DESC LIMIT $3 OFFSET $4`,
@@ -217,7 +217,7 @@ var (
 		Query: `SELECT COUNT(*) AS total FROM "SESSION" S ` +
 			`WHERE S.SESSION_ID IN (SELECT P.SESSION_ID FROM "SESSION_PARTICIPANT" P ` +
 			`WHERE P.APP_ID = $1 AND P.DEPLOYMENT_ID = $3) ` +
-			`AND S.TYPE = 'SSO' AND S.STATE = 'ACTIVE' ` +
+			`AND S.STATE = 'ACTIVE' ` +
 			`AND S.IDLE_EXPIRES_AT > $2 AND S.ABSOLUTE_EXPIRES_AT > $2 ` +
 			`AND S.DEPLOYMENT_ID = $3`,
 	}
@@ -236,7 +236,7 @@ var (
 			`FROM "SESSION" S WHERE S.SUBJECT_ID = $1 ` +
 			`AND EXISTS (SELECT 1 FROM "SESSION_PARTICIPANT" P WHERE P.SESSION_ID = S.SESSION_ID ` +
 			`AND P.DEPLOYMENT_ID = S.DEPLOYMENT_ID AND P.OU_ID = $2) ` +
-			`AND S.TYPE = 'SSO' AND S.STATE = 'ACTIVE' ` +
+			`AND S.STATE = 'ACTIVE' ` +
 			`AND S.IDLE_EXPIRES_AT > $3 AND S.ABSOLUTE_EXPIRES_AT > $3 ` +
 			`AND S.DEPLOYMENT_ID = $6 ` +
 			`ORDER BY S.LAST_ACTIVE_AT DESC, S.SESSION_ID DESC LIMIT $4 OFFSET $5`,
@@ -249,7 +249,7 @@ var (
 		Query: `SELECT COUNT(*) AS total FROM "SESSION" S WHERE S.SUBJECT_ID = $1 ` +
 			`AND EXISTS (SELECT 1 FROM "SESSION_PARTICIPANT" P WHERE P.SESSION_ID = S.SESSION_ID ` +
 			`AND P.DEPLOYMENT_ID = S.DEPLOYMENT_ID AND P.OU_ID = $2) ` +
-			`AND S.TYPE = 'SSO' AND S.STATE = 'ACTIVE' ` +
+			`AND S.STATE = 'ACTIVE' ` +
 			`AND S.IDLE_EXPIRES_AT > $3 AND S.ABSOLUTE_EXPIRES_AT > $3 ` +
 			`AND S.DEPLOYMENT_ID = $4`,
 	}
@@ -264,7 +264,7 @@ var (
 			`FROM "SESSION" S ` +
 			`WHERE S.SESSION_ID IN (SELECT P.SESSION_ID FROM "SESSION_PARTICIPANT" P ` +
 			`WHERE P.APP_ID = $1 AND P.OU_ID = $2 AND P.DEPLOYMENT_ID = $6) ` +
-			`AND S.TYPE = 'SSO' AND S.STATE = 'ACTIVE' ` +
+			`AND S.STATE = 'ACTIVE' ` +
 			`AND S.IDLE_EXPIRES_AT > $3 AND S.ABSOLUTE_EXPIRES_AT > $3 ` +
 			`AND S.DEPLOYMENT_ID = $6 ` +
 			`ORDER BY S.LAST_ACTIVE_AT DESC, S.SESSION_ID DESC LIMIT $4 OFFSET $5`,
@@ -277,19 +277,19 @@ var (
 		Query: `SELECT COUNT(*) AS total FROM "SESSION" S ` +
 			`WHERE S.SESSION_ID IN (SELECT P.SESSION_ID FROM "SESSION_PARTICIPANT" P ` +
 			`WHERE P.APP_ID = $1 AND P.OU_ID = $2 AND P.DEPLOYMENT_ID = $4) ` +
-			`AND S.TYPE = 'SSO' AND S.STATE = 'ACTIVE' ` +
+			`AND S.STATE = 'ACTIVE' ` +
 			`AND S.IDLE_EXPIRES_AT > $3 AND S.ABSOLUTE_EXPIRES_AT > $3 ` +
 			`AND S.DEPLOYMENT_ID = $4`,
 	}
 
-	// queryGetSubjectParticipantByTokenFamily returns the participant of one of the subject's SSO sessions
-	// that holds the token family. The subject's sessions bound the lookup through idx_session_subject.
+	// queryGetSubjectParticipantByTokenFamily returns the participant of one of the subject's sessions, SSO or
+	// direct, that holds the token family. The subject's sessions bound the lookup through idx_session_subject.
 	queryGetSubjectParticipantByTokenFamily = model.DBQuery{
 		ID: "SEQ-SESS-27",
 		Query: `SELECT SESSION_ID, APP_ID, OU_ID, FIRST_JOINED_AT, LAST_ACTIVE_AT, TFID ` +
 			`FROM "SESSION_PARTICIPANT" WHERE TFID = $1 AND DEPLOYMENT_ID = $3 ` +
 			`AND SESSION_ID IN (SELECT SESSION_ID FROM "SESSION" ` +
-			`WHERE SUBJECT_ID = $2 AND TYPE = 'SSO' AND DEPLOYMENT_ID = $3)`,
+			`WHERE SUBJECT_ID = $2 AND DEPLOYMENT_ID = $3)`,
 	}
 
 	// queryReplaceParticipantTokenFamily moves a participant to a new TFID only while it holds the expected one,
