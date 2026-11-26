@@ -15,12 +15,14 @@ vi.mock('@thunderid/configure-resource-servers', async (importOriginal) => {
       selected,
       onChange,
       readOnly = false,
+      ouId = undefined,
     }: {
       selected: ResourcePermissions[];
       onChange: (s: ResourcePermissions[]) => void;
       readOnly?: boolean;
+      ouId?: string;
     }) => (
-      <div data-testid="permission-catalog" data-readonly={readOnly}>
+      <div data-testid="permission-catalog" data-readonly={readOnly} data-ou-id={ouId}>
         <span data-testid="catalog-selected">{JSON.stringify(selected)}</span>
         <button
           type="button"
@@ -76,6 +78,12 @@ describe('EditPermissionsSettings', () => {
     render(<EditPermissionsSettings permissions={permissions} onPermissionsChange={onPermissionsChange} />);
     await user.click(screen.getByTestId('catalog-change'));
     expect(onPermissionsChange).toHaveBeenCalledWith([{resourceServerId: 'rs-2', permissions: ['payments:refund']}]);
+  });
+
+  it("offers the resource servers of the role's organization unit", () => {
+    render(<EditPermissionsSettings permissions={[]} onPermissionsChange={vi.fn()} ouId="ou-1" />);
+
+    expect(screen.getByTestId('permission-catalog')).toHaveAttribute('data-ou-id', 'ou-1');
   });
 
   it('passes readOnly to PermissionCatalog when isReadOnly is true', () => {

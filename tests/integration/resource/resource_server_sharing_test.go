@@ -4,8 +4,11 @@
 package resource
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
+	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -298,6 +301,45 @@ func (s *ResourceServerSharingTestSuite) TestOverlayListsEveryPermission() {
 	}
 }
 
+// A list filtered by organization unit holds the resource servers the unit owns, then the ones shared with it, which
+// are listed under the unit and read only there.
+func (s *ResourceServerSharingTestSuite) TestOUFilteredListIncludesSharedServers() {
+	serverID := s.createServer("Listed Shared API")
+	status, body := s.call(http.MethodPost, policiesURL(serverID), map[string]interface{}{
+		"childUnits": map[string]interface{}{
+			"mode": "selected", "units": []map[string]interface{}{{"ouId": s.childOUID, "reach": "unit"}},
+		},
+	})
+	s.Require().Equal(http.StatusCreated, status, "body: %v", body)
+
+	find := func(ouID string) map[string]interface{} {
+		s.T().Helper()
+		status, list := s.call(http.MethodGet,
+			resourceServerURL("?limit=100&filter=%s", url.QueryEscape(`ouId eq "`+ouID+`"`)), nil)
+		s.Require().Equal(http.StatusOK, status, "body: %v", list)
+		items, _ := list["resourceServers"].([]interface{})
+		for _, item := range items {
+			server := item.(map[string]interface{})
+			if server["id"] == serverID {
+				return server
+			}
+		}
+		return nil
+	}
+
+	owned := find(s.ownerOUID)
+	s.Require().NotNil(owned, "the owner lists its resource server")
+	s.Equal(true, owned["isOwnedByOU"])
+
+	shared := find(s.childOUID)
+	s.Require().NotNil(shared, "the child lists the resource server shared with it")
+	s.Equal(false, shared["isOwnedByOU"])
+	s.Equal(true, shared["isReadOnly"])
+	s.Equal(s.childOUID, shared["ouId"], "a shared resource server is listed under the unit it is shared with")
+
+	s.Nil(find(s.otherOUID), "a unit the resource server is not shared with does not list it")
+}
+
 func (s *ResourceServerSharingTestSuite) TestSecondPolicyOfTheSameUnitIsRefused() {
 	serverID := s.createServer("Duplicate Policy API")
 	status, body := s.call(http.MethodPost, policiesURL(serverID), allChildUnits())
@@ -390,4 +432,156 @@ func (s *ResourceServerSharingTestSuite) TestDeclaredPolicy() {
 	status, overlay = s.call(http.MethodGet, overlayURL(serverID, declaredGrandA), nil)
 	s.Require().Equal(http.StatusOK, status, "body: %v", overlay)
 	s.Equal(true, overlay["visible"])
+}
+
+// adminToken returns a token that holds org in the organization unit: an application there, named after name, with a
+// role assigned to it there. The System resource server is shared with the tree of systemRoot first, so the role can
+// hold org.
+func (s *ResourceServerSharingTestSuite) adminToken(ouID, systemRoot, name string) string {
+	s.T().Helper()
+	unshareSystem, err := testutils.ShareSystemResourceServerWith(systemRoot)
+	s.Require().NoError(err, "share the System resource server")
+	s.T().Cleanup(func() { s.NoError(unshareSystem()) })
+
+	clientID, clientSecret := name, name+"-secret"
+	appID, err := testutils.CreateApplication(testutils.Application{
+		Name: name,
+		OUID: ouID,
+		InboundAuthConfig: []map[string]interface{}{{
+			"type": "oauth2",
+			"config": map[string]interface{}{
+				"clientId":                clientID,
+				"clientSecret":            clientSecret,
+				"grantTypes":              []string{"client_credentials"},
+				"tokenEndpointAuthMethod": "client_secret_basic",
+				// An org permission acts in the unit the token names.
+				"token": map[string]interface{}{"accessToken": map[string]interface{}{
+					"clientConfig": map[string]interface{}{"attributes": []string{"ouId"}},
+				}},
+			},
+		}},
+	})
+	s.Require().NoError(err, "create the admin application")
+	s.T().Cleanup(func() { _ = testutils.DeleteApplication(appID) })
+
+	roleID, err := testutils.CreateRole(testutils.Role{
+		Name: name, OUID: ouID,
+		Permissions: []testutils.ResourcePermissions{{
+			ResourceServerID: "01900000-0000-7000-8000-000000000020", Permissions: []string{"org"},
+		}},
+		Assignments: []testutils.Assignment{{ID: appID, Type: "app"}},
+	})
+	s.Require().NoError(err, "create the admin role")
+	s.T().Cleanup(func() { _ = testutils.DeleteRole(roleID) })
+
+	token, err := testutils.RequestClientCredentialsToken(clientID, clientSecret, "org",
+		testutils.SystemResourceIdentifier)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, token.StatusCode, "token: %s", string(token.Body))
+	s.Require().Equal("org", token.Token.Scope)
+	return token.Token.AccessToken
+}
+
+// An administrator confined to an organization unit reads a resource server another tree shares with that unit, with
+// its resources and actions, as the unit sees it: listed under the unit and read only. It cannot change it, and
+// cannot read a resource server of that tree that is not shared with it.
+func (s *ResourceServerSharingTestSuite) TestSharedServerIsReadableInTheUnitItIsSharedWith() {
+	serverID := s.createServer("Read In Other Tree API")
+	s.T().Cleanup(func() { _ = testutils.DeleteResourceServerWithChildren(serverID) })
+	resourceID, err := createResource(serverID, CreateResourceRequest{Name: "Orders", Handle: "orders"})
+	s.Require().NoError(err)
+	_, err = createActionAtResource(serverID, resourceID, CreateActionRequest{Name: "Read", Handle: "read"})
+	s.Require().NoError(err)
+	status, body := s.call(http.MethodPost, policiesURL(serverID), map[string]interface{}{
+		"otherTreeRoots": map[string]interface{}{
+			"mode": "selected", "units": []map[string]interface{}{{"ouId": s.otherOUID}},
+		},
+	})
+	s.Require().Equal(http.StatusCreated, status, "body: %v", body)
+	unsharedID := s.createServer("Not Shared With Other Tree API")
+
+	call := s.callerWithToken(s.adminToken(s.otherOUID, s.otherOUID, "rs-sharing-other-admin"))
+
+	status, server := call(http.MethodGet, resourceServerURL("/%s", serverID), nil)
+	s.Require().Equal(http.StatusOK, status, "body: %v", server)
+	s.Equal(s.otherOUID, server["ouId"], "the resource server is read under the unit it is shared with")
+	s.Equal(true, server["isReadOnly"])
+	s.Equal(false, server["isOwnedByOU"])
+
+	status, resources := call(http.MethodGet, resourceServerURL("/%s/resources", serverID), nil)
+	s.Require().Equal(http.StatusOK, status, "body: %v", resources)
+	s.Equal(float64(1), resources["totalResults"])
+
+	status, actions := call(http.MethodGet,
+		resourceServerURL("/%s/resources/%s/actions", serverID, resourceID), nil)
+	s.Require().Equal(http.StatusOK, status, "body: %v", actions)
+	s.Equal(float64(1), actions["totalResults"])
+
+	status, body = call(http.MethodPut, resourceServerURL("/%s", serverID),
+		map[string]interface{}{"name": "Renamed", "identifier": server["identifier"], "ouId": s.otherOUID})
+	s.Equal(http.StatusForbidden, status, "a shared resource server cannot be changed there: %v", body)
+
+	status, body = call(http.MethodGet, resourceServerURL("/%s", unsharedID), nil)
+	s.Equal(http.StatusForbidden, status, "a resource server not shared with the unit is not read there: %v", body)
+}
+
+// callerWithToken returns a function that sends a request with the token and returns the status and the decoded body.
+func (s *ResourceServerSharingTestSuite) callerWithToken(
+	token string,
+) func(method, url string, body interface{}) (int, map[string]interface{}) {
+	client := testutils.GetHTTPClientWithToken(token)
+	return func(method, url string, body interface{}) (int, map[string]interface{}) {
+		s.T().Helper()
+		var reader io.Reader
+		if body != nil {
+			raw, err := json.Marshal(body)
+			s.Require().NoError(err)
+			reader = bytes.NewReader(raw)
+		}
+		req, err := http.NewRequest(method, url, reader)
+		s.Require().NoError(err)
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := client.Do(req)
+		s.Require().NoError(err)
+		defer resp.Body.Close()
+		decoded := map[string]interface{}{}
+		_ = json.NewDecoder(resp.Body).Decode(&decoded)
+		return resp.StatusCode, decoded
+	}
+}
+
+// An administrator of a child unit reads and lists a resource server of the unit above it only once it is shared
+// with the child, as the resource servers the child's roles can use.
+func (s *ResourceServerSharingTestSuite) TestParentServerIsReadInTheChildOnlyOnceShared() {
+	serverID := s.createServer("Parent Server Read In Child API")
+	call := s.callerWithToken(s.adminToken(s.childOUID, s.ownerOUID, "rs-sharing-child-admin"))
+	listed := func() bool {
+		s.T().Helper()
+		status, list := call(http.MethodGet, resourceServerURL("?limit=100"), nil)
+		s.Require().Equal(http.StatusOK, status, "body: %v", list)
+		items, _ := list["resourceServers"].([]interface{})
+		for _, item := range items {
+			if item.(map[string]interface{})["id"] == serverID {
+				return true
+			}
+		}
+		return false
+	}
+
+	status, body := call(http.MethodGet, resourceServerURL("/%s", serverID), nil)
+	s.Equal(http.StatusForbidden, status, "the parent's resource server is not shared with the child: %v", body)
+	s.False(listed(), "the child does not list the parent's resource server")
+
+	status, body = s.call(http.MethodPost, policiesURL(serverID), map[string]interface{}{
+		"childUnits": map[string]interface{}{
+			"mode": "selected", "units": []map[string]interface{}{{"ouId": s.childOUID, "reach": "unit"}},
+		},
+	})
+	s.Require().Equal(http.StatusCreated, status, "body: %v", body)
+
+	status, server := call(http.MethodGet, resourceServerURL("/%s", serverID), nil)
+	s.Require().Equal(http.StatusOK, status, "body: %v", server)
+	s.Equal(s.childOUID, server["ouId"])
+	s.Equal(false, server["isOwnedByOU"])
+	s.True(listed(), "the child lists the resource server shared with it")
 }

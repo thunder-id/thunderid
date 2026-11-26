@@ -502,6 +502,21 @@ var (
 				"name a value or excludedValues",
 		},
 	}
+	// errorResourceServerUsedInOU is returned when a sharing change takes a resource server from an organization
+	// unit whose roles still hold its permissions.
+	errorResourceServerUsedInOU = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "RES-1039",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.resourceservice.resource_server_used_in_ou",
+			DefaultValue: "Resource server is used in an organization unit",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key: "error.resourceservice.resource_server_used_in_ou_description",
+			DefaultValue: "Roles of an organization unit this change takes the resource server from still hold " +
+				"its permissions. Remove those permissions from the roles first",
+		},
+	}
 )
 
 // Internal error constants.
@@ -567,6 +582,9 @@ var (
 		Code: ErrorSharingPolicyNotFound.Code,
 	}
 )
+
+// sharingHookRefusals are the refusals this package's sharing hooks raise, which keep their own codes.
+var sharingHookRefusals = []string{ErrorPermissionsRuleNotSupported.Code, errorResourceServerUsedInOU.Code}
 
 // sharingErrors answers the sharing framework's client errors in this service's own codes.
 var sharingErrors = sharing.ErrorTranslation{

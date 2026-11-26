@@ -597,6 +597,10 @@ func (s *stubUsageRegistry) ValidateReferenceUpdate(
 	return nil
 }
 
+func (s *stubUsageRegistry) HasDependenciesInOU(_ context.Context, _, _, _ string) (bool, error) {
+	return false, nil
+}
+
 // Test GetLayoutUsages - Empty ID
 func (suite *LayoutServiceTestSuite) TestGetLayoutUsages_EmptyID() {
 	result, err := suite.service.GetLayoutUsages(testCtx(), "", 10, 0)

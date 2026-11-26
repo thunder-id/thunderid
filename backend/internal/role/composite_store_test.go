@@ -410,6 +410,28 @@ func (suite *CompositeRoleStoreTestSuite) TestCascadeHooks_UseDatabaseStoreOnly(
 		mock.Anything, mock.Anything, mock.Anything)
 }
 
+func (suite *CompositeRoleStoreTestSuite) TestIsResourceServerUsedInOU() {
+	suite.Run("a declared role uses it", func() {
+		suite.SetupTest()
+		suite.mockFileStore.On("IsResourceServerUsedInOU", mock.Anything, "rs1", "ou1").Return(true, nil).Once()
+
+		used, err := suite.store.IsResourceServerUsedInOU(context.Background(), "rs1", "ou1")
+
+		suite.NoError(err)
+		suite.True(used)
+	})
+	suite.Run("a stored role uses it", func() {
+		suite.SetupTest()
+		suite.mockFileStore.On("IsResourceServerUsedInOU", mock.Anything, "rs1", "ou1").Return(false, nil).Once()
+		suite.mockDBStore.On("IsResourceServerUsedInOU", mock.Anything, "rs1", "ou1").Return(true, nil).Once()
+
+		used, err := suite.store.IsResourceServerUsedInOU(context.Background(), "rs1", "ou1")
+
+		suite.NoError(err)
+		suite.True(used)
+	})
+}
+
 func (suite *CompositeRoleStoreTestSuite) TestGetRolesByPermission_MergesBothStores() {
 	suite.mockDBStore.On("GetRolesByPermission", mock.Anything, "rs1", "orders:read").
 		Return([]Role{{ID: "db-role", Name: "DB"}}, nil).Once()

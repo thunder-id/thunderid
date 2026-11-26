@@ -756,6 +756,37 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetEntityRoleIDs_CombinesS
 	assert.ElementsMatch(suite.T(), []string{"role-a", "role-b", "role-c"}, result)
 }
 
+func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetEntityRoleAssignmentOUIDs_CombinesStores() {
+	suite.mockDBStore.On("GetEntityRoleAssignmentOUIDs", suite.ctx, "user1", []string{"group1"}).
+		Return(map[string][]string{"role-a": {"ou-1"}, "role-b": {"ou-2"}}, nil)
+	suite.mockFileStore.On("GetEntityRoleAssignmentOUIDs", suite.ctx, "user1", []string{"group1"}).
+		Return(map[string][]string{"role-b": {"ou-2", "ou-3"}}, nil)
+
+	result, err := suite.store.GetEntityRoleAssignmentOUIDs(suite.ctx, "user1", []string{"group1"})
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), map[string][]string{"role-a": {"ou-1"}, "role-b": {"ou-2", "ou-3"}}, result)
+}
+
+func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetEntityRoleAssignmentOUIDs_PropagatesErrors() {
+	dbErr := errors.New("db error")
+	suite.mockDBStore.On("GetEntityRoleAssignmentOUIDs", suite.ctx, "user1", []string{}).Return(nil, dbErr).Once()
+
+	result, err := suite.store.GetEntityRoleAssignmentOUIDs(suite.ctx, "user1", []string{})
+	assert.ErrorIs(suite.T(), err, dbErr)
+	assert.Nil(suite.T(), result)
+
+	fileErr := errors.New("file error")
+	suite.mockDBStore.On("GetEntityRoleAssignmentOUIDs", suite.ctx, "user1", []string{}).
+		Return(map[string][]string{"role-a": {"ou-1"}}, nil).Once()
+	suite.mockFileStore.On("GetEntityRoleAssignmentOUIDs", suite.ctx, "user1", []string{}).
+		Return(nil, fileErr).Once()
+
+	result, err = suite.store.GetEntityRoleAssignmentOUIDs(suite.ctx, "user1", []string{})
+	assert.ErrorIs(suite.T(), err, fileErr)
+	assert.Nil(suite.T(), result)
+}
+
 // Test GetEntityRoleIDs propagates DB errors.
 func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetEntityRoleIDs_PropagatesDBError() {
 	dbErr := errors.New("db error")

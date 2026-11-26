@@ -4617,6 +4617,10 @@ func (s *stubUsageRegistry) ValidateReferenceUpdate(
 	return nil
 }
 
+func (s *stubUsageRegistry) HasDependenciesInOU(_ context.Context, _, _, _ string) (bool, error) {
+	return false, nil
+}
+
 func newUserForUsages(id string) *providers.Entity {
 	return &providers.Entity{ID: id, Category: providers.EntityCategoryUser, Type: "Person"}
 }

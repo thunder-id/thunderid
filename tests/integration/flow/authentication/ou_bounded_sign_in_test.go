@@ -327,6 +327,8 @@ func (ts *OUBoundedSignInTestSuite) SetupSuite() {
 		{Name: "Write", Handle: "write"},
 	})
 	ts.Require().NoError(err, "create resource server")
+	// The child's role holds a permission of the parent's resource server, which the child may use once shared.
+	ts.Require().NoError(testutils.ShareResourceServerWithChildUnits(ts.rsID), "share resource server")
 	ts.createRole(ouBoundaryParentRole, ts.parentOUID, "read")
 	ts.createRole(ouBoundaryChildRole, ts.childOUID, "write")
 
@@ -667,7 +669,14 @@ func (ts *OUBoundedSignInTestSuite) authorizeWith(client *http.Client, ouID, cli
 func (ts *OUBoundedSignInTestSuite) startAuthorization(client *http.Client, ouID, clientID,
 	state string) (string, string) {
 	ts.T().Helper()
-	resp := ts.authorize(client, ouID, clientID, state)
+	return ts.startAuthorizationWith(client, ouID, clientID, state, nil)
+}
+
+// startAuthorizationWith is startAuthorization with extra request parameters.
+func (ts *OUBoundedSignInTestSuite) startAuthorizationWith(client *http.Client, ouID, clientID, state string,
+	extra map[string]string) (string, string) {
+	ts.T().Helper()
+	resp := ts.authorizeWith(client, ouID, clientID, state, extra)
 	defer resp.Body.Close()
 	ts.Require().Equal(http.StatusFound, resp.StatusCode, "authorize redirects to the gate")
 	authID, executionID, err := testutils.ExtractAuthData(resp.Header.Get("Location"))
@@ -696,9 +705,16 @@ func (ts *OUBoundedSignInTestSuite) redirectSignIn(ouID, clientID, username stri
 // returns the client redirect carrying the code.
 func (ts *OUBoundedSignInTestSuite) redirectSignInForCode(ouID, clientID, username string) string {
 	ts.T().Helper()
+	return ts.redirectSignInForCodeWith(ouID, clientID, username, nil)
+}
+
+// redirectSignInForCodeWith is redirectSignInForCode with extra authorization request parameters.
+func (ts *OUBoundedSignInTestSuite) redirectSignInForCodeWith(ouID, clientID, username string,
+	extra map[string]string) string {
+	ts.T().Helper()
 	client, err := testutils.NewSessionClient()
 	ts.Require().NoError(err)
-	authID, executionID := ts.startAuthorization(client, ouID, clientID, "ou-boundary-state")
+	authID, executionID := ts.startAuthorizationWith(client, ouID, clientID, "ou-boundary-state", extra)
 
 	prompt := ts.executeWith(client, map[string]interface{}{"executionId": executionID})
 	ts.Require().True(common.HasInput(prompt.Data.Inputs, "username"), "expected the credentials prompt")
@@ -1131,6 +1147,70 @@ func (ts *OUBoundedSignInTestSuite) TestOUPathAuthorize_CodeIsRedeemedOnlyAtItsO
 		ts.Equal("The authorization code was not issued for the requested organization unit",
 			body["error_description"])
 	})
+}
+
+// A role shared into the child holds permissions of two resource servers, and only one is shared with the child. A
+// sign-in through the child's OU path gets that one's permissions, and is refused a token for the other as for a
+// resource server that does not exist, until the other is shared with the child too.
+func (ts *OUBoundedSignInTestSuite) TestOUPathAuthorize_SharedRoleConfersOnlyTheChildsResourceServers() {
+	const invoicesIdentifier = "https://ou-boundary.example.com/invoices"
+	invoicesID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+		Name: "OU Boundary Invoices", Identifier: invoicesIdentifier, OUID: ts.parentOUID,
+	}, []testutils.Action{{Name: "Approve", Handle: "approve"}})
+	ts.Require().NoError(err, "create resource server")
+	defer func() { ts.NoError(testutils.DeleteResourceServerWithChildren(invoicesID)) }()
+
+	roleID, err := testutils.CreateRole(testutils.Role{
+		Name: "OU Boundary Shared Two Servers", OUID: ts.parentOUID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: ts.rsID, Permissions: []string{"read"}},
+			{ResourceServerID: invoicesID, Permissions: []string{"approve"}},
+		},
+	})
+	ts.Require().NoError(err, "create role")
+	defer func() { ts.NoError(testutils.DeleteRole(roleID)) }()
+	admin := testutils.GetHTTPClient()
+	status, raw := ts.request(admin, http.MethodPost, "/roles/"+roleID+"/sharing-policies",
+		map[string]interface{}{"childUnits": map[string]interface{}{
+			"mode": "selected", "units": []map[string]string{{"ouId": ts.childOUID, "reach": "unit"}},
+		}})
+	ts.Require().Equal(http.StatusCreated, status, "share role: %s", string(raw))
+	status, raw = ts.request(admin, http.MethodPost, "/roles/"+roleID+"/assignments/add", map[string]interface{}{
+		"ouId": ts.childOUID, "assignments": []map[string]string{{"id": ts.sharedUserID, "type": "user"}},
+	})
+	ts.Require().Equal(http.StatusNoContent, status, "assign role in the child: %s", string(raw))
+
+	signIn := func(resource, scope string) []string {
+		ts.T().Helper()
+		redirect := ts.redirectSignInForCodeWith(ts.childOUID, ts.oauthSharedClientID, ouBoundarySharedUser,
+			map[string]string{"resource": resource, "scope": scope})
+		status, body := ts.redeemCodeAt(redirect, ts.oauthSharedClientID, ts.childOUID)
+		ts.Require().Equal(http.StatusOK, status, "token: %v", body)
+		claims, err := testutils.DecodeJWT(body["access_token"].(string))
+		ts.Require().NoError(err)
+		ts.Equal(resource, claims.Aud)
+		scopes, _ := claims.Additional["scope"].(string)
+		return strings.Fields(scopes)
+	}
+
+	ts.Contains(signIn(ouBoundaryRSIdentifier, "openid read"), "read",
+		"the shared role confers the documents permissions, which the child may use")
+
+	client, err := testutils.NewSessionClient()
+	ts.Require().NoError(err)
+	resp := ts.authorizeWith(client, ts.childOUID, ts.oauthSharedClientID, "ou-boundary-state",
+		map[string]string{"resource": invoicesIdentifier, "scope": "openid approve"})
+	resp.Body.Close()
+	ts.Require().Equal(http.StatusFound, resp.StatusCode)
+	location, err := url.Parse(resp.Header.Get("Location"))
+	ts.Require().NoError(err)
+	ts.Equal("invalid_target", location.Query().Get("error"),
+		"the child may not use the invoices resource server: %s", location)
+
+	ts.Require().NoError(testutils.ShareResourceServerWithChildUnits(invoicesID), "share invoices")
+
+	ts.Contains(signIn(invoicesIdentifier, "openid approve"), "approve",
+		"the invoices resource server is now shared with the child")
 }
 
 // The OU path leaves out a user who is not in that OU.

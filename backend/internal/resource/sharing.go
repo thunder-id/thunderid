@@ -24,17 +24,18 @@ const permissionsFieldKey = "permissions"
 // unit gets every resource, sub-resource and action the server defines. The server keeps living in its own
 // organization unit, and only its owner changes its definition.
 type resourceServerSharingDeclaration struct {
-	service ResourceServiceInterface
+	service *resourceService
 }
 
 // The framework finds these capabilities by type assertion, so a signature that drifts would silently drop them.
 var (
 	_ sharing.FieldDelimiterResolver = (*resourceServerSharingDeclaration)(nil)
 	_ sharing.PolicyWriteHooks       = (*resourceServerSharingDeclaration)(nil)
+	_ sharing.OverlayCleaner         = (*resourceServerSharingDeclaration)(nil)
 )
 
 // newResourceServerSharingDeclaration returns the declaration registered with the sharing framework.
-func newResourceServerSharingDeclaration(service ResourceServiceInterface) *resourceServerSharingDeclaration {
+func newResourceServerSharingDeclaration(service *resourceService) *resourceServerSharingDeclaration {
 	return &resourceServerSharingDeclaration{service: service}
 }
 
@@ -78,6 +79,16 @@ func (d *resourceServerSharingDeclaration) OnPolicyWritten(
 		}
 	}
 	return nil, nil
+}
+
+// DeleteOverlayValues is called for an organization unit a sharing change takes the resource server from. A resource
+// server keeps no values per unit, so there is nothing to delete. The change is refused while roles the unit owns
+// still hold the server's permissions. Shared roles assigned in the unit, and tokens issued there, lose the server's
+// permissions without a refusal.
+func (d *resourceServerSharingDeclaration) DeleteOverlayValues(
+	ctx context.Context, resourceID, ouID string,
+) ([]string, error) {
+	return nil, d.service.requireResourceServerUnusedInOU(ctx, resourceID, ouID)
 }
 
 // OnPolicyRemoved has nothing to undo: a resource server keeps no state per organization unit.

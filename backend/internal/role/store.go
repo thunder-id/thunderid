@@ -72,9 +72,14 @@ type roleStoreInterface interface {
 	GetHeldPermissionsByResourceServer(ctx context.Context, entityID string, groupIDs, roleIDs []string,
 		assignmentOUID, resourceServerID string) ([]string, error)
 	// GetAllPermissionsForAssignees returns every permission the entity and/or groups hold through
-	// their assigned roles, grouped by resource server. It takes no filters: it enumerates.
-	GetAllPermissionsForAssignees(
-		ctx context.Context, entityID string, groupIDs []string) ([]ResourcePermissions, error)
+	// their assigned roles, keyed by the organization unit the roles are assigned in and grouped by resource server
+	// there. It takes no filters: it enumerates.
+	GetAllPermissionsForAssignees(ctx context.Context, entityID string, groupIDs []string,
+	) (map[string][]ResourcePermissions, error)
+	// GetEntityRoleAssignmentOUIDs returns, for each role assigned to the entity directly or through the groups, the
+	// organization units it is assigned in.
+	GetEntityRoleAssignmentOUIDs(ctx context.Context, entityID string, groupIDs []string,
+	) (map[string][]string, error)
 	// GetUserRoles counts only the assignments made in assignmentOUID when one is given.
 	GetUserRoles(ctx context.Context, entityID string, groupIDs []string, assignmentOUID string) ([]string, error)
 	// GetReferencedPermissions returns the distinct permissions referenced by any role, grouped by
@@ -82,6 +87,9 @@ type roleStoreInterface interface {
 	GetReferencedPermissions(ctx context.Context) ([]ResourcePermissions, error)
 	// GetRolesByPermission returns the roles that grant a permission on a resource server.
 	GetRolesByPermission(ctx context.Context, resourceServerID, permission string) ([]Role, error)
+	// IsResourceServerUsedInOU reports whether a role the organization unit owns holds a permission of the
+	// resource server.
+	IsResourceServerUsedInOU(ctx context.Context, resourceServerID, ouID string) (bool, error)
 	// DeleteRolePermission removes the given permission from every role that holds it.
 	DeleteRolePermission(ctx context.Context, resourceServerID, permission string) (int64, error)
 	// GetEntityRoleIDs returns the set of role IDs assigned to the entity directly or via
@@ -706,6 +714,22 @@ func (s *roleStore) GetRolesByPermission(
 	return roles, nil
 }
 
+// IsResourceServerUsedInOU reports whether a role the organization unit owns holds a permission of the resource
+// server.
+func (s *roleStore) IsResourceServerUsedInOU(ctx context.Context, resourceServerID, ouID string) (bool, error) {
+	dbClient, err := s.getConfigDBClient()
+	if err != nil {
+		return false, err
+	}
+
+	results, err := dbClient.QueryContext(ctx, queryCountOUPermissionsOfResourceServer, resourceServerID, ouID,
+		s.scope(ctx))
+	if err != nil {
+		return false, fmt.Errorf("failed to check the use of a resource server in an organization unit: %w", err)
+	}
+	return parseBoolFromCount(results)
+}
+
 // DeleteRolePermission removes the given permission from every role that holds it.
 func (s *roleStore) DeleteRolePermission(
 	ctx context.Context, resourceServerID, permission string) (int64, error) {
@@ -1065,12 +1089,12 @@ func (s *roleStore) CheckRoleNameExistsExcludingID(
 // GetAuthorizedPermissionsByResourceServer retrieves the permissions that an entity is authorized for based on
 // their direct role assignments and group memberships, scoped to a resource server when provided.
 // GetAllPermissionsForAssignees returns every permission granted to the entity and/or groups by
-// their assigned database-backed roles, grouped by resource server.
+// their assigned database-backed roles, keyed by assignment organization unit and grouped by resource server.
 func (s *roleStore) GetAllPermissionsForAssignees(
 	ctx context.Context, entityID string, groupIDs []string,
-) ([]ResourcePermissions, error) {
+) (map[string][]ResourcePermissions, error) {
 	if entityID == "" && len(groupIDs) == 0 {
-		return []ResourcePermissions{}, nil
+		return map[string][]ResourcePermissions{}, nil
 	}
 
 	dbClient, err := s.getConfigDBClient()
@@ -1089,8 +1113,12 @@ func (s *roleStore) GetAllPermissionsForAssignees(
 		return nil, fmt.Errorf("failed to get all permissions for assignees: %w", err)
 	}
 
-	byResourceServer := make(map[string][]string)
+	byOU := make(map[string]map[string][]string)
 	for _, row := range results {
+		ouID, ok := row["assignment_ou_id"].(string)
+		if !ok {
+			return nil, fmt.Errorf("failed to parse assignment_ou_id as string")
+		}
 		resourceServerID, ok := row["resource_server_id"].(string)
 		if !ok {
 			return nil, fmt.Errorf("failed to parse resource_server_id as string")
@@ -1099,10 +1127,48 @@ func (s *roleStore) GetAllPermissionsForAssignees(
 		if !ok {
 			return nil, fmt.Errorf("failed to parse permission as string")
 		}
-		byResourceServer[resourceServerID] = append(byResourceServer[resourceServerID], permission)
+		addPermission(byOU, ouID, resourceServerID, permission)
 	}
 
-	return resourcePermissionsFromMap(byResourceServer), nil
+	return permissionsByOUFromMap(byOU), nil
+}
+
+// GetEntityRoleAssignmentOUIDs returns, for each role assigned to the entity directly or through the groups, the
+// organization units it is assigned in, whether the role is stored here or declared in files.
+func (s *roleStore) GetEntityRoleAssignmentOUIDs(
+	ctx context.Context, entityID string, groupIDs []string,
+) (map[string][]string, error) {
+	if groupIDs == nil {
+		groupIDs = []string{}
+	}
+	if entityID == "" && len(groupIDs) == 0 {
+		return map[string][]string{}, nil
+	}
+
+	dbClient, err := s.getConfigDBClient()
+	if err != nil {
+		return nil, err
+	}
+
+	query, args := buildEntityRoleAssignmentOUIDsQuery(entityID, groupIDs, s.scope(ctx))
+	results, err := dbClient.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get role assignment organization units: %w", err)
+	}
+
+	ouIDsByRole := make(map[string][]string, len(results))
+	for _, row := range results {
+		roleID, ok := row["role_id"].(string)
+		if !ok {
+			return nil, fmt.Errorf("failed to parse role_id as string")
+		}
+		ouID, ok := row["assignment_ou_id"].(string)
+		if !ok {
+			return nil, fmt.Errorf("failed to parse assignment_ou_id as string")
+		}
+		ouIDsByRole[roleID] = append(ouIDsByRole[roleID], ouID)
+	}
+	return ouIDsByRole, nil
 }
 
 func (s *roleStore) GetAuthorizedPermissionsByResourceServer(

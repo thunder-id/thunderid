@@ -36,6 +36,13 @@ type providerDependentsMock struct {
 	*SuspensionDependentsListerMock
 }
 
+// providerUsageMock combines ProviderMock and OUDependencyReporterMock so a single value satisfies both interfaces for
+// the usage type assertion.
+type providerUsageMock struct {
+	*ProviderMock
+	*OUDependencyReporterMock
+}
+
 type RegistryTestSuite struct {
 	suite.Suite
 }
@@ -208,6 +215,60 @@ func (suite *RegistryTestSuite) TestValidateReferenceUpdateStopsOnFirstError() {
 	// The second provider's validator must not be invoked once the first returned an error.
 	second.UpdateValidatorMock.AssertNotCalled(suite.T(), "ValidateReferenceUpdate",
 		mock.Anything, mock.Anything, mock.Anything)
+}
+
+// ----- HasDependenciesInOU -----
+
+func (suite *RegistryTestSuite) newUsageProvider(used bool, err error) providerUsageMock {
+	p := NewProviderMock(suite.T())
+	p.EXPECT().GetResourceDependencies(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	u := NewOUDependencyReporterMock(suite.T())
+	u.EXPECT().HasDependenciesInOU(mock.Anything, "resource_server", "rs-1", "ou-1").Return(used, err).Maybe()
+	return providerUsageMock{ProviderMock: p, OUDependencyReporterMock: u}
+}
+
+func (suite *RegistryTestSuite) TestHasDependenciesInOU() {
+	suite.Run("no reporter answers unused", func() {
+		reg := newRegistry()
+		reg.RegisterProvider(suite.newProvider(nil, nil))
+
+		used, err := reg.HasDependenciesInOU(context.Background(), "resource_server", "rs-1", "ou-1")
+
+		suite.Require().NoError(err)
+		suite.False(used)
+	})
+	suite.Run("a reporter that uses it answers used and stops", func() {
+		reg := newRegistry()
+		first := suite.newUsageProvider(true, nil)
+		second := suite.newUsageProvider(false, nil)
+		reg.RegisterProvider(first)
+		reg.RegisterProvider(second)
+
+		used, err := reg.HasDependenciesInOU(context.Background(), "resource_server", "rs-1", "ou-1")
+
+		suite.Require().NoError(err)
+		suite.True(used)
+		second.OUDependencyReporterMock.AssertNotCalled(suite.T(), "HasDependenciesInOU",
+			mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	})
+	suite.Run("every reporter unused", func() {
+		reg := newRegistry()
+		reg.RegisterProvider(suite.newUsageProvider(false, nil))
+		reg.RegisterProvider(suite.newUsageProvider(false, nil))
+
+		used, err := reg.HasDependenciesInOU(context.Background(), "resource_server", "rs-1", "ou-1")
+
+		suite.Require().NoError(err)
+		suite.False(used)
+	})
+	suite.Run("a reporter failure", func() {
+		reg := newRegistry()
+		reg.RegisterProvider(suite.newUsageProvider(false, errors.New("db down")))
+
+		_, err := reg.HasDependenciesInOU(context.Background(), "resource_server", "rs-1", "ou-1")
+
+		suite.Error(err)
+	})
 }
 
 func (suite *RegistryTestSuite) TestSummarizeBlockingUsagesHumanizesTypes() {

@@ -19,6 +19,9 @@ type resourceStoreInterface interface {
 	// Resource Server operations
 	CreateResourceServer(ctx context.Context, id string, rs providers.ResourceServer) error
 	GetResourceServer(ctx context.Context, id string) (providers.ResourceServer, error)
+	// GetResourceServersByIDs retrieves the resource servers with the given IDs in one read. An ID naming no
+	// resource server is left out.
+	GetResourceServersByIDs(ctx context.Context, ids []string) ([]providers.ResourceServer, error)
 	GetResourceServerList(ctx context.Context, limit, offset int) ([]providers.ResourceServer, error)
 	GetResourceServerListCount(ctx context.Context) (int, error)
 	GetResourceServerListByOUID(ctx context.Context, ouID string, limit, offset int) ([]providers.ResourceServer, error)
@@ -149,6 +152,39 @@ func (s *resourceStore) GetResourceServer(ctx context.Context, id string) (provi
 		return err
 	})
 	return rs, err
+}
+
+// GetResourceServersByIDs retrieves the resource servers with the given IDs in one read.
+func (s *resourceStore) GetResourceServersByIDs(
+	ctx context.Context, ids []string,
+) ([]providers.ResourceServer, error) {
+	if len(ids) == 0 {
+		return []providers.ResourceServer{}, nil
+	}
+	encoded, err := json.Marshal(ids)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode resource server IDs: %w", err)
+	}
+	var resourceServers []providers.ResourceServer
+	err = s.withDBClient(func(dbClient provider.DBClientInterface) error {
+		results, err := dbClient.QueryContext(ctx, queryGetResourceServersByIDs, string(encoded), s.scope(ctx))
+		if err != nil {
+			return fmt.Errorf("failed to get resource servers by IDs: %w", err)
+		}
+		resourceServers = make([]providers.ResourceServer, 0, len(results))
+		for _, row := range results {
+			rs, err := buildResourceServerFromResultRow(row)
+			if err != nil {
+				return fmt.Errorf("failed to build resource server: %w", err)
+			}
+			resourceServers = append(resourceServers, rs)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return resourceServers, nil
 }
 
 // GetResourceServerList retrieves a list of resource servers with pagination.

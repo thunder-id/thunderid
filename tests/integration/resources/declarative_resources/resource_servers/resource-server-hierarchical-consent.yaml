@@ -2,9 +2,16 @@ resource_type: resource_server
 id: decl-hierarchical-consent-rs
 name: Declarative Hierarchical Consent API
 identifier: https://declared-consent.example/api
-ouId: 01900000-0000-7000-8000-000000000001
+ouId: decl-ou-1
 delimiter: "_"
 hierarchicalPermissions: true
+# The permission consent suite assigns this resource server's permissions from a root organization unit of its own,
+# so the server is shared with the root of every other tree. It is owned by a declared organization unit, which
+# exists when resource files load, unlike the default one the bootstrap creates afterwards.
+sharingPolicies:
+  - id: decl-hierarchical-consent-rs-policy-owner
+    otherTreeRoots:
+      mode: all
 resources:
   - name: Reports
     handle: reports

@@ -66,6 +66,10 @@ func (r *stubDependencyRegistry) ValidateReferenceUpdate(
 	return nil
 }
 
+func (r *stubDependencyRegistry) HasDependenciesInOU(_ context.Context, _, _, _ string) (bool, error) {
+	return false, nil
+}
+
 // newNoBlockingDepsRegistry returns a registry reporting confirmed-empty dependencies, so that
 // deletion is permitted by the blocking guard.
 func newNoBlockingDepsRegistry() *stubDependencyRegistry {

@@ -2313,6 +2313,8 @@ const translations = {
       'A user share mandates this role in one of these organization units. Remove the role from that share, then stop sharing it with the unit.',
     'errors.ROL-1039':
       'A user share still mandates this role. Remove the role from the user shares that mandate it, then delete it again.',
+    'errors.ROL-1047':
+      "One or more permissions belong to a resource server this role's organization unit doesn't own and that isn't shared with it. Share the resource server with the organization unit first.",
 
     // Organization Access
     'organizationAccess.title': 'Where {{resource}} is available',
@@ -6377,6 +6379,7 @@ const translations = {
     'listing.columns.actions': 'Actions',
     'listing.actions.more': 'More actions',
     'listing.systemResourceServer': 'System resource server',
+    'listing.sharedResourceServer': 'Shared resource server',
     'listing.default': 'Default',
     'listing.error': 'Failed to load resource servers',
     'actions.setAsDefault': 'Set as default',
@@ -6507,6 +6510,7 @@ const translations = {
     'edit.errorTitle': 'Failed to load resource server',
     'edit.notFound': 'Resource server not found.',
     'edit.systemResourceServer': 'System',
+    'edit.sharedResourceServer': 'Shared',
     'edit.tabs': 'Resource server settings',
     'edit.noDescription': 'No description',
     'edit.descriptionPlaceholder': 'Add a description',
@@ -6541,6 +6545,8 @@ const translations = {
     'edit.dangerZone.deleteServerMcp': 'Delete MCP server',
     'tree.title': 'Resource hierarchy',
     'detail.identifierRequired': 'Identifier is required.',
+    'detail.sharedReadOnlyWarning':
+      'This resource server is shared with this organization unit and cannot be modified here.',
     'tree.add': 'Add',
     'tree.addResource.title': 'Add resource',
     'tree.addServerAction': 'Add server-level action',
@@ -6568,6 +6574,7 @@ const translations = {
     'permissionCatalog.loadServersError': 'Failed to load resource servers.',
     'permissionCatalog.serverNotFound': 'Resource server not found',
     'permissionCatalog.serverUnavailable': 'Unavailable',
+    'permissionCatalog.shared': 'Shared',
     'create.separator.hierarchyLabel': 'Use hierarchy-aware matching',
     'create.separator.hierarchyHint':
       'When enabled, granting a permission also grants its descendants, including permissions added later.',
@@ -6627,6 +6634,8 @@ const translations = {
       'This resource server is available in other organization units. Remove its organization access before moving it to another organization unit or project.',
     'errors.RES-1038':
       'Sharing only part of a resource server is not supported. Share the whole resource server instead.',
+    'errors.RES-1039':
+      'Roles of an organization unit this change removes still use permissions of this resource server. Remove those permissions from the roles first.',
 
     // Organization Access
     'organizationAccess.title': 'Where {{resource}} is available',

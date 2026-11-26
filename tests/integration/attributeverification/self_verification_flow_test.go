@@ -377,6 +377,15 @@ func (ts *SelfVerificationFlowTestSuite) TestADeclarativeUserIsRefusedBeforeSend
 // their own token: the code goes to their email and the verification is recorded.
 func (ts *SelfVerificationFlowTestSuite) TestAUserHoldingTheSystemPermissionVerifiesTheirOwnEmail() {
 	user := ts.fixture.newUser(ts.T(), "system_holder")
+	// The System resource server is shared with no organization unit by default. The unshare is registered before the
+	// role's cleanup so it runs after it, once nothing in the unit holds System permissions.
+	unshare, err := testutils.ShareSystemResourceServerWith(ts.fixture.ouID)
+	ts.Require().NoError(err, "failed to share the System resource server")
+	ts.T().Cleanup(func() {
+		if err := unshare(); err != nil {
+			ts.T().Logf("cleanup: failed to unshare the System resource server: %v", err)
+		}
+	})
 	roleID, err := testutils.CreateRole(testutils.Role{
 		Name: "Attribute Verification System " + ts.fixture.suffix,
 		OUID: ts.fixture.ouID,

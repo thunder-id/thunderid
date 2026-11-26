@@ -1275,6 +1275,19 @@ func (s *ServiceTestSuite) TestIsVisibleFollowsTheChain() {
 	s.False(otherVisible)
 }
 
+// IsSharedWith answers from the policies alone, leaving ownership to a caller that has read the owner already.
+func (s *ServiceTestSuite) TestIsSharedWithLeavesOwnershipOut() {
+	s.share(nil)
+
+	rootShared, svcErr := s.svc.IsSharedWith(context.Background(), testType, testResource, rootOU)
+	s.Require().Nil(svcErr)
+	childShared, svcErr := s.svc.IsSharedWith(context.Background(), testType, testResource, childOU)
+	s.Require().Nil(svcErr)
+
+	s.True(rootShared)
+	s.False(childShared)
+}
+
 // Without the version check two administrators editing one policy silently last-write-wins, and
 // the loser's carve-outs are exactly what must not vanish.
 func (s *ServiceTestSuite) TestUpdateRejectsAStaleVersion() {

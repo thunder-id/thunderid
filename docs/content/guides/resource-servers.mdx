@@ -190,7 +190,7 @@ curl -kL https://localhost:8090/resource-servers?limit=10&offset=0 \
   -H 'Authorization: Bearer <access-token>'
 ```
 
-To list the resource servers an organization unit owns, add `filter=ouId eq "<ou-id>"`. It is the only supported filter expression. Any other filter fails the request with `RES-1027`.
+To list the resource servers an organization unit can use, add `filter=ouId eq "<ou-id>"`. The list holds the ones the organization unit owns, then the ones shared with it, each with `isOwnedByOU`. See [Where Its Permissions Can Be Used](#where-its-permissions-can-be-used). It is the only supported filter expression. Any other filter fails the request with `RES-1027`.
 
 ## Get Resource Server Details
 
@@ -202,7 +202,7 @@ curl -kL https://localhost:8090/resource-servers/<resource-server-id> \
 
 ## Update a Resource Server
 
-Update the name, description, identifier, or organization unit. The `delimiter` cannot be changed. A resource server that has sharing policies cannot move to another organization unit. See [Share a Resource Server With Other Organization Units](#share-a-resource-server-with-other-organization-units).
+Update the name, description, identifier, or organization unit. The `delimiter` cannot be changed. A resource server that has sharing policies cannot move to another organization unit, and neither can one whose permissions roles of its current organization unit hold (`RES-1039`). See [Share a Resource Server With Other Organization Units](#share-a-resource-server-with-other-organization-units).
 
 ```bash
 curl -kL -X PUT https://localhost:8090/resource-servers/<resource-server-id> \
@@ -287,6 +287,21 @@ Keep these rules in mind:
 - The policy of a resource server defined in a resource file, or deployed from the control plane, can only change there, and is read-only in the Console. An organization unit the policy reaches can still share the resource server onward through the API.
 - A resource server that has sharing policies stays in its organization unit and project. An update that moves it fails with `RES-1037` until you delete its sharing policies.
 - Deleting a resource server deletes its sharing policies.
+
+### Where Its Permissions Can Be Used
+
+A resource server is available in the organization unit that owns it and in every organization unit a sharing policy reaches. Its permissions can be used only there:
+
+- A role can hold the resource server's permissions only when the role's organization unit can use the resource server. Creating, updating, or moving a role that breaks this fails with `ROL-1047`. A role defined in a resource file that breaks it stops the server from starting.
+- A role shared into an organization unit the resource server is not shared with keeps the resource server's permissions, but tokens issued to the users, groups, and applications assigned the role in that organization unit leave them out. Read in that organization unit, through `GET /roles/<role-id>?ouId=<organization-unit-id>` or the Console, the role does not list them.
+- A token requested for an organization unit, through `/ou/<organization-unit-id>/oauth2/token`, carries the resource server's permissions only when that organization unit can use the resource server. A request whose `resource` parameter names a resource server the organization unit cannot use, or that names none when the default resource server is one it cannot use, fails with `invalid_target`, as for a resource server that does not exist.
+- A change to a sharing policy that takes the resource server away from an organization unit fails with `RES-1039` while roles of that organization unit hold its permissions. Moving the resource server to another organization unit fails the same way while roles of its current organization unit hold them. Remove those permissions from the roles first. A resource server with sharing policies cannot move at all (`RES-1037`), and that refusal comes first.
+- Sharing the resource server with an organization unit later approves every assignment already made there. A role shared into that organization unit and assigned there starts to confer the resource server's permissions as soon as the share reaches it, without anyone approving the assignments again. Review the roles and assignments in an organization unit before you share a resource server with it.
+- An AuthZEN evaluation names no organization unit, so it counts the permissions of roles assigned in every organization unit and is not narrowed by these rules yet.
+
+The System resource server is not shared with any organization unit when <ProductName /> is set up, so only roles of the default organization unit can hold its permissions. To let the administrators of other organization units hold permissions such as `org`, share the System resource server with those organization units.
+
+To list the resource servers an organization unit can use, filter the list by organization unit: `GET /resource-servers?filter=ouId eq "<organization-unit-id>"`. It returns the resource servers the organization unit owns first, then the ones shared with it. Each carries `isOwnedByOU`, and a shared one is read-only. When you create or edit a role in the Console, the permission picker lists these resource servers for the role's organization unit and marks the shared ones as **Shared**.
 
 ## Delete a Resource Server
 

@@ -610,8 +610,11 @@ export default function AuthorizationMappingSection({
 }: AuthorizationMappingSectionProps): JSX.Element {
   const {t} = useTranslation('connections');
   const {data: serversData} = useGetResourceServers({limit: PICKER_PAGE_SIZE, ouId, enabled: Boolean(ouId)});
-  const servers: PickerOption[] = (serversData?.resourceServers ?? []).map((s) => ({id: s.id, name: s.name}));
-  const serversComplete = serversData !== undefined && serversData.totalResults <= servers.length;
+  const listed = serversData?.resourceServers ?? [];
+  // A connection maps only to the resource servers its organization unit owns, so the ones shared with it are left
+  // out.
+  const servers: PickerOption[] = listed.filter((s) => s.isOwnedByOU !== false).map((s) => ({id: s.id, name: s.name}));
+  const serversComplete = serversData !== undefined && serversData.totalResults <= listed.length;
 
   const [mappings, setMappings] = useState<KeyedAuthorizationMapping[]>(() =>
     fromAuthorizationMappings(initialDirectConfig, initialRuleConfig),

@@ -184,6 +184,7 @@ A flow has no effect until it is assigned to an application.
   To make them work across your organizations:
 
   - Share the roles from the parent OU with all of its child OUs, with their assignments editable, so a role can be assigned in an organization the sign-up just created. See [Share a Role With Other Organization Units](../users/manage-roles.mdx#share-a-role-with-other-organization-units).
+  - Share the resource servers those roles hold permissions of with the child OUs, such as the System resource server for `org`, so the roles confer those permissions in each organization. See [Where Its Permissions Can Be Used](../resource-servers.mdx#where-its-permissions-can-be-used).
   - Share the sign-in flow with the child OUs and make its `enterpriseIdp` variable editable, so each organization sets its own connection. See [Share a Flow](./share-a-flow.mdx).
   - Share the application with the child OUs, so a sign-in can land in any of them.
 

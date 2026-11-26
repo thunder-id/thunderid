@@ -68,6 +68,7 @@ The issued access token carries the resource identifier as its `aud`:
 | Value rules | The `resource` must be an absolute URI with no fragment. A request with more than one `resource` parameter is rejected with `invalid_target`. |
 | Resolution | The URI is matched to a registered resource server's `identifier` |
 | Unknown identifier | Request rejected with `invalid_target` |
+| Organization unit paths | On `/ou/{ouId}/oauth2/authorize` and `/ou/{ouId}/oauth2/token`, a resource server the organization unit cannot use is treated as an unknown identifier. See [Where Its Permissions Can Be Used](../../resource-servers.mdx#where-its-permissions-can-be-used) |
 | No `resource` | Permission-bearing requests and requests with `authorization_details` use `defaultResourceServer` and return `invalid_target` if it is unset. Other OIDC-only and scopeless requests use the application's `token.accessToken.defaultAudience`, or `client_id` when it is unset |
 | CIBA | The request binds to a resource server at `/oauth2/bc-authorize`, before user authorization. A `resource` supplied at token-endpoint polling must equal that binding, or the poll is rejected with `invalid_target` |
 | Scope filtering | Requested scopes are filtered to those defined on the targeted resource server. Scopes not owned by that resource server are silently dropped |

@@ -643,6 +643,15 @@ func runAdministrationFlowAs(t *testing.T, token, handle string, inputs map[stri
 func newRootOperator(t *testing.T, users *userFixture) (userID, username, password, accessToken string) {
 	t.Helper()
 	userID, username, password = users.newUser(t, "root", nil)
+	// The System resource server is shared with no organization unit by default. The unshare is registered before the
+	// role's cleanup so it runs after it, once nothing in the unit holds System permissions.
+	unshare, err := testutils.ShareSystemResourceServerWith(users.ouID)
+	require.NoError(t, err, "failed to share the System resource server")
+	t.Cleanup(func() {
+		if err := unshare(); err != nil {
+			t.Logf("teardown: failed to unshare the System resource server: %v", err)
+		}
+	})
 	roleID, err := testutils.CreateRole(testutils.Role{
 		Name: "Governance Root " + users.suffix,
 		OUID: users.ouID,

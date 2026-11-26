@@ -19,6 +19,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
 	"github.com/thunder-id/thunderid/tests/mocks/groupmock"
+	"github.com/thunder-id/thunderid/tests/mocks/resourcemock"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
@@ -46,6 +47,7 @@ func TestBuildAllPermissionsForAssigneesQuery(t *testing.T) {
 	t.Run("ProjectsResourceServerAlongsidePermission", func(t *testing.T) {
 		query, _ := buildAllPermissionsForAssigneesQuery("user1", nil, deploymentID)
 
+		assert.Contains(t, query.PostgresQuery, "ra.ASSIGNMENT_OU_ID")
 		assert.Contains(t, query.PostgresQuery, "rp.RESOURCE_SERVER_ID")
 		assert.Contains(t, query.PostgresQuery, "rp.PERMISSION")
 	})
@@ -106,13 +108,13 @@ func TestBuildAllPermissionsForAssigneesQuery(t *testing.T) {
 	t.Run("OrdersDeterministically", func(t *testing.T) {
 		query, _ := buildAllPermissionsForAssigneesQuery("user1", nil, deploymentID)
 
-		assert.Contains(t, query.PostgresQuery, "ORDER BY rp.RESOURCE_SERVER_ID, rp.PERMISSION")
-		assert.Contains(t, query.SQLiteQuery, "ORDER BY rp.RESOURCE_SERVER_ID, rp.PERMISSION")
+		assert.Contains(t, query.PostgresQuery, "ORDER BY ra.ASSIGNMENT_OU_ID, rp.RESOURCE_SERVER_ID, rp.PERMISSION")
+		assert.Contains(t, query.SQLiteQuery, "ORDER BY ra.ASSIGNMENT_OU_ID, rp.RESOURCE_SERVER_ID, rp.PERMISSION")
 	})
 }
 
 // ---------------------------------------------------------------------------
-// resourcePermissionsFromMap / mergeResourcePermissions
+// resourcePermissionsFromMap / mergePermissionsByOU
 // ---------------------------------------------------------------------------
 
 func TestResourcePermissionsFromMap(t *testing.T) {
@@ -136,35 +138,34 @@ func TestResourcePermissionsFromMap(t *testing.T) {
 	})
 }
 
-func TestMergeResourcePermissions(t *testing.T) {
-	t.Run("UnionsAcrossSources", func(t *testing.T) {
-		result := mergeResourcePermissions(
-			[]ResourcePermissions{{ResourceServerID: testRSSystem, Permissions: []string{"system:user"}}},
-			[]ResourcePermissions{{ResourceServerID: testRSSystem, Permissions: []string{"system:group"}}},
-			[]ResourcePermissions{{ResourceServerID: testRSPayroll, Permissions: []string{"payroll:read"}}},
+func TestMergePermissionsByOU(t *testing.T) {
+	inUnit := func(ouID, resourceServerID string, permissions ...string) map[string][]ResourcePermissions {
+		return map[string][]ResourcePermissions{
+			ouID: {{ResourceServerID: resourceServerID, Permissions: permissions}},
+		}
+	}
+
+	t.Run("UnionsAcrossSourcesPerOrganizationUnit", func(t *testing.T) {
+		result := mergePermissionsByOU(
+			inUnit("ou-1", testRSSystem, "system:user"),
+			inUnit("ou-1", testRSSystem, "system:group"),
+			inUnit("ou-2", testRSPayroll, "payroll:read"),
 		)
 
-		require.Len(t, result, 2)
-		byRS := map[string][]string{}
-		for _, rp := range result {
-			byRS[rp.ResourceServerID] = rp.Permissions
-		}
-		assert.Equal(t, []string{"system:group", "system:user"}, byRS[testRSSystem])
-		assert.Equal(t, []string{"payroll:read"}, byRS[testRSPayroll])
+		assert.Equal(t, map[string][]ResourcePermissions{
+			"ou-1": {{ResourceServerID: testRSSystem, Permissions: []string{"system:group", "system:user"}}},
+			"ou-2": {{ResourceServerID: testRSPayroll, Permissions: []string{"payroll:read"}}},
+		}, result)
 	})
 
 	t.Run("DeduplicatesOverlapBetweenSources", func(t *testing.T) {
-		result := mergeResourcePermissions(
-			[]ResourcePermissions{{ResourceServerID: testRSSystem, Permissions: []string{"system"}}},
-			[]ResourcePermissions{{ResourceServerID: testRSSystem, Permissions: []string{"system"}}},
-		)
+		result := mergePermissionsByOU(inUnit("ou-1", testRSSystem, "system"), inUnit("ou-1", testRSSystem, "system"))
 
-		require.Len(t, result, 1)
-		assert.Equal(t, []string{"system"}, result[0].Permissions)
+		assert.Equal(t, []string{"system"}, result["ou-1"][0].Permissions)
 	})
 
 	t.Run("NoSourcesYieldsEmpty", func(t *testing.T) {
-		assert.Empty(t, mergeResourcePermissions())
+		assert.Empty(t, mergePermissionsByOU())
 	})
 }
 
@@ -193,20 +194,21 @@ func TestCompositeGetAllPermissionsForAssignees(t *testing.T) {
 	t.Run("UnionsDatabaseAndDeclarativeSources", func(t *testing.T) {
 		dbStore, fileStore, store := newComposite(t)
 		dbStore.EXPECT().GetAllPermissionsForAssignees(ctx, "user1", []string{}).
-			Return([]ResourcePermissions{
+			Return(map[string][]ResourcePermissions{"ou-1": {
 				{ResourceServerID: testRSSystem, Permissions: []string{"system:group"}},
-			}, nil).Once()
+			}}, nil).Once()
 		fileStore.EXPECT().GetAllPermissionsForAssignees(ctx, "user1", []string{}).
-			Return([]ResourcePermissions{
+			Return(map[string][]ResourcePermissions{"ou-1": {
 				{ResourceServerID: testRSSystem, Permissions: []string{"system:user"}},
-			}, nil).Once()
-		dbStore.EXPECT().GetEntityRoleIDs(ctx, "user1", []string{}, "").Return([]string{}, nil).Once()
+			}}, nil).Once()
+		dbStore.EXPECT().GetEntityRoleAssignmentOUIDs(ctx, "user1", []string{}).
+			Return(map[string][]string{}, nil).Once()
 
 		result, err := store.GetAllPermissionsForAssignees(ctx, "user1", []string{})
 
 		require.NoError(t, err)
-		require.Len(t, result, 1)
-		assert.Equal(t, []string{"system:group", "system:user"}, result[0].Permissions)
+		require.Len(t, result["ou-1"], 1)
+		assert.Equal(t, []string{"system:group", "system:user"}, result["ou-1"][0].Permissions)
 	})
 
 	// The third source: a declarative role definition whose assignment was added at runtime and
@@ -214,11 +216,11 @@ func TestCompositeGetAllPermissionsForAssignees(t *testing.T) {
 	t.Run("IncludesCrossStoreDeclarativeRoleWithDatabaseAssignment", func(t *testing.T) {
 		dbStore, fileStore, store := newComposite(t)
 		dbStore.EXPECT().GetAllPermissionsForAssignees(ctx, "user1", []string{}).
-			Return([]ResourcePermissions{}, nil).Once()
+			Return(map[string][]ResourcePermissions{}, nil).Once()
 		fileStore.EXPECT().GetAllPermissionsForAssignees(ctx, "user1", []string{}).
-			Return([]ResourcePermissions{}, nil).Once()
-		dbStore.EXPECT().GetEntityRoleIDs(ctx, "user1", []string{}, "").
-			Return([]string{"declarativeRole"}, nil).Once()
+			Return(map[string][]ResourcePermissions{}, nil).Once()
+		dbStore.EXPECT().GetEntityRoleAssignmentOUIDs(ctx, "user1", []string{}).
+			Return(map[string][]string{"declarativeRole": {"ou-1", "ou-2"}}, nil).Once()
 		fileStore.EXPECT().IsRoleExist(ctx, "declarativeRole").Return(true, nil).Once()
 		fileStore.EXPECT().GetRole(ctx, "declarativeRole").Return(RoleWithPermissions{
 			ID: "declarativeRole",
@@ -230,18 +232,20 @@ func TestCompositeGetAllPermissionsForAssignees(t *testing.T) {
 		result, err := store.GetAllPermissionsForAssignees(ctx, "user1", []string{})
 
 		require.NoError(t, err)
-		require.Len(t, result, 1)
-		assert.Equal(t, []string{"system"}, result[0].Permissions,
-			"a declarative role assigned at runtime must still be reported")
+		assert.Equal(t, map[string][]ResourcePermissions{
+			"ou-1": {{ResourceServerID: testRSSystem, Permissions: []string{"system"}}},
+			"ou-2": {{ResourceServerID: testRSSystem, Permissions: []string{"system"}}},
+		}, result, "a declarative role assigned at runtime must still be reported, in each unit it is assigned in")
 	})
 
 	t.Run("SkipsDatabaseOnlyRolesInCrossStorePass", func(t *testing.T) {
 		dbStore, fileStore, store := newComposite(t)
 		dbStore.EXPECT().GetAllPermissionsForAssignees(ctx, "user1", []string{}).
-			Return([]ResourcePermissions{}, nil).Once()
+			Return(map[string][]ResourcePermissions{}, nil).Once()
 		fileStore.EXPECT().GetAllPermissionsForAssignees(ctx, "user1", []string{}).
-			Return([]ResourcePermissions{}, nil).Once()
-		dbStore.EXPECT().GetEntityRoleIDs(ctx, "user1", []string{}, "").Return([]string{"dbRole"}, nil).Once()
+			Return(map[string][]ResourcePermissions{}, nil).Once()
+		dbStore.EXPECT().GetEntityRoleAssignmentOUIDs(ctx, "user1", []string{}).
+			Return(map[string][]string{"dbRole": {"ou-1"}}, nil).Once()
 		fileStore.EXPECT().IsRoleExist(ctx, "dbRole").Return(false, nil).Once()
 
 		result, err := store.GetAllPermissionsForAssignees(ctx, "user1", []string{})
@@ -253,10 +257,11 @@ func TestCompositeGetAllPermissionsForAssignees(t *testing.T) {
 	t.Run("SkipsRemovedDeclarativeRole", func(t *testing.T) {
 		dbStore, fileStore, store := newComposite(t)
 		dbStore.EXPECT().GetAllPermissionsForAssignees(ctx, "user1", []string{}).
-			Return([]ResourcePermissions{}, nil).Once()
+			Return(map[string][]ResourcePermissions{}, nil).Once()
 		fileStore.EXPECT().GetAllPermissionsForAssignees(ctx, "user1", []string{}).
-			Return([]ResourcePermissions{}, nil).Once()
-		dbStore.EXPECT().GetEntityRoleIDs(ctx, "user1", []string{}, "").Return([]string{"gone"}, nil).Once()
+			Return(map[string][]ResourcePermissions{}, nil).Once()
+		dbStore.EXPECT().GetEntityRoleAssignmentOUIDs(ctx, "user1", []string{}).
+			Return(map[string][]string{"gone": {"ou-1"}}, nil).Once()
 		fileStore.EXPECT().IsRoleExist(ctx, "gone").Return(true, nil).Once()
 		fileStore.EXPECT().GetRole(ctx, "gone").Return(RoleWithPermissions{}, ErrRoleNotFound).Once()
 
@@ -271,10 +276,11 @@ func TestCompositeGetAllPermissionsForAssignees(t *testing.T) {
 	t.Run("UnexpectedFileStoreErrorPropagates", func(t *testing.T) {
 		dbStore, fileStore, store := newComposite(t)
 		dbStore.EXPECT().GetAllPermissionsForAssignees(ctx, "user1", []string{}).
-			Return([]ResourcePermissions{}, nil).Once()
+			Return(map[string][]ResourcePermissions{}, nil).Once()
 		fileStore.EXPECT().GetAllPermissionsForAssignees(ctx, "user1", []string{}).
-			Return([]ResourcePermissions{}, nil).Once()
-		dbStore.EXPECT().GetEntityRoleIDs(ctx, "user1", []string{}, "").Return([]string{"r1"}, nil).Once()
+			Return(map[string][]ResourcePermissions{}, nil).Once()
+		dbStore.EXPECT().GetEntityRoleAssignmentOUIDs(ctx, "user1", []string{}).
+			Return(map[string][]string{"r1": {"ou-1"}}, nil).Once()
 		fileStore.EXPECT().IsRoleExist(ctx, "r1").Return(true, nil).Once()
 		fileStore.EXPECT().GetRole(ctx, "r1").
 			Return(RoleWithPermissions{}, errors.New("disk failure")).Once()
@@ -304,20 +310,50 @@ func TestCompositeGetAllPermissionsForAssignees(t *testing.T) {
 func TestRoleServiceGetAllPermissions(t *testing.T) {
 	ctx := context.Background()
 
-	t.Run("ConvertsToPermissionSetKeyedByResourceServer", func(t *testing.T) {
+	// availableIn answers that every organization unit may use every resource server except the one unavailable
+	// names for it.
+	availableIn := func(t *testing.T, unavailable map[string]string) *resourcemock.ResourceServiceInterfaceMock {
+		resources := resourcemock.NewResourceServiceInterfaceMock(t)
+		resources.EXPECT().IsResourceServerAvailableInOU(mock.Anything, mock.Anything, mock.Anything).RunAndReturn(
+			func(_ context.Context, resourceServerID, ouID string) (bool, *tidcommon.ServiceError) {
+				return unavailable[ouID] != resourceServerID, nil
+			}).Maybe()
+		return resources
+	}
+	twoUnits := map[string][]ResourcePermissions{
+		"ou-1": {
+			{ResourceServerID: testRSSystem, Permissions: []string{"system:group"}},
+			{ResourceServerID: testRSPayroll, Permissions: []string{"payroll:read"}},
+		},
+		"ou-2": {{ResourceServerID: testRSSystem, Permissions: []string{"system:group", "system:user"}}},
+	}
+
+	t.Run("MergesEveryAssignmentUnitKeyedByResourceServer", func(t *testing.T) {
 		store := newRoleStoreInterfaceMock(t)
-		store.EXPECT().GetAllPermissionsForAssignees(ctx, "user1", []string{"grp1"}).
-			Return([]ResourcePermissions{
-				{ResourceServerID: testRSSystem, Permissions: []string{"system:group"}},
-				{ResourceServerID: testRSPayroll, Permissions: []string{"payroll:read"}},
-			}, nil).Once()
+		store.EXPECT().GetAllPermissionsForAssignees(ctx, "user1", []string{"grp1"}).Return(twoUnits, nil).Once()
 		svc := &roleService{roleStore: store}
 
 		result, svcErr := svc.GetAllPermissions(ctx, "user1", []string{"grp1"})
 
 		require.Nil(t, svcErr)
-		assert.Equal(t, []string{"system:group"}, result[testRSSystem])
+		assert.Equal(t, []string{"system:group", "system:user"}, result[testRSSystem])
 		assert.Equal(t, []string{"payroll:read"}, result[testRSPayroll])
+	})
+
+	// What may be used counts, in each organization unit a role is assigned in, only the permissions of the
+	// resource servers that unit may use, and each unit and resource server is asked about once.
+	t.Run("UsableCountsOnlyResourceServersEachAssignmentUnitMayUse", func(t *testing.T) {
+		store := newRoleStoreInterfaceMock(t)
+		store.EXPECT().GetAllPermissionsForAssignees(ctx, "user1", []string{}).Return(twoUnits, nil).Once()
+		resources := availableIn(t, map[string]string{"ou-1": testRSPayroll})
+		svc := &roleService{roleStore: store, resourceService: resources}
+
+		result, svcErr := svc.GetUsablePermissions(ctx, "user1", nil)
+
+		require.Nil(t, svcErr)
+		assert.Equal(t, []string{"system:group", "system:user"}, result[testRSSystem])
+		assert.NotContains(t, result, testRSPayroll, "ou-1 may not use the payroll resource server")
+		resources.AssertNumberOfCalls(t, "IsResourceServerAvailableInOU", 3)
 	})
 
 	// Unlike GetAuthorizedPermissionsByResourceServer, holding nothing is a valid answer rather
@@ -334,7 +370,7 @@ func TestRoleServiceGetAllPermissions(t *testing.T) {
 	t.Run("NilGroupsIsNormalized", func(t *testing.T) {
 		store := newRoleStoreInterfaceMock(t)
 		store.EXPECT().GetAllPermissionsForAssignees(ctx, "user1", []string{}).
-			Return([]ResourcePermissions{}, nil).Once()
+			Return(map[string][]ResourcePermissions{}, nil).Once()
 		svc := &roleService{roleStore: store}
 
 		result, svcErr := svc.GetAllPermissions(ctx, "user1", nil)
@@ -353,6 +389,21 @@ func TestRoleServiceGetAllPermissions(t *testing.T) {
 
 		require.NotNil(t, svcErr)
 		assert.Nil(t, result, "a failed lookup must not be reported as an empty permission set")
+	})
+
+	t.Run("UsableAvailabilityLookupErrorBecomesInternalServerError", func(t *testing.T) {
+		store := newRoleStoreInterfaceMock(t)
+		store.EXPECT().GetAllPermissionsForAssignees(ctx, "user1", []string{}).Return(twoUnits, nil).Once()
+		resources := resourcemock.NewResourceServiceInterfaceMock(t)
+		resources.EXPECT().IsResourceServerAvailableInOU(mock.Anything, mock.Anything, mock.Anything).
+			Return(false, &tidcommon.InternalServerError).Once()
+		svc := &roleService{roleStore: store, resourceService: resources}
+
+		result, svcErr := svc.GetUsablePermissions(ctx, "user1", []string{})
+
+		require.NotNil(t, svcErr)
+		assert.Equal(t, tidcommon.InternalServerError.Code, svcErr.Code)
+		assert.Nil(t, result)
 	})
 }
 
@@ -465,10 +516,11 @@ func TestCrossStoreAllPermissions_CorruptRoleFailsClosed(t *testing.T) {
 	store := newCompositeRoleStore(fileStore, dbStore)
 
 	dbStore.EXPECT().GetAllPermissionsForAssignees(ctx, "user1", []string{}).
-		Return([]ResourcePermissions{}, nil).Once()
+		Return(map[string][]ResourcePermissions{}, nil).Once()
 	fileStore.EXPECT().GetAllPermissionsForAssignees(ctx, "user1", []string{}).
-		Return([]ResourcePermissions{}, nil).Once()
-	dbStore.EXPECT().GetEntityRoleIDs(ctx, "user1", []string{}, "").Return([]string{"corrupt"}, nil).Once()
+		Return(map[string][]ResourcePermissions{}, nil).Once()
+	dbStore.EXPECT().GetEntityRoleAssignmentOUIDs(ctx, "user1", []string{}).
+		Return(map[string][]string{"corrupt": {"ou-1"}}, nil).Once()
 	fileStore.EXPECT().IsRoleExist(ctx, "corrupt").Return(true, nil).Once()
 	fileStore.EXPECT().GetRole(ctx, "corrupt").
 		Return(RoleWithPermissions{}, ErrRoleDataCorrupted).Once()
@@ -488,10 +540,11 @@ func TestCrossStoreAllPermissions_RemovedRoleIsStillSkipped(t *testing.T) {
 	store := newCompositeRoleStore(fileStore, dbStore)
 
 	dbStore.EXPECT().GetAllPermissionsForAssignees(ctx, "user1", []string{}).
-		Return([]ResourcePermissions{}, nil).Once()
+		Return(map[string][]ResourcePermissions{}, nil).Once()
 	fileStore.EXPECT().GetAllPermissionsForAssignees(ctx, "user1", []string{}).
-		Return([]ResourcePermissions{}, nil).Once()
-	dbStore.EXPECT().GetEntityRoleIDs(ctx, "user1", []string{}, "").Return([]string{"gone"}, nil).Once()
+		Return(map[string][]ResourcePermissions{}, nil).Once()
+	dbStore.EXPECT().GetEntityRoleAssignmentOUIDs(ctx, "user1", []string{}).
+		Return(map[string][]string{"gone": {"ou-1"}}, nil).Once()
 	fileStore.EXPECT().IsRoleExist(ctx, "gone").Return(true, nil).Once()
 	fileStore.EXPECT().GetRole(ctx, "gone").Return(RoleWithPermissions{}, ErrRoleNotFound).Once()
 

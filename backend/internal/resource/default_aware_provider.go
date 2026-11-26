@@ -16,17 +16,18 @@ import (
 // is a server-side policy: the authentication engine and OAuth layers depend only on
 // providers.ResourceServerProvider and never see the server-config store.
 type defaultAwareResourceServerProvider struct {
-	providers.ResourceServerProvider
+	// The resource service, which also tells whether an organization unit may use a resource server.
+	ResourceServiceInterface
 	serverConfigService serverconfig.ServerConfigService
 }
 
 var _ providers.ResourceServerProvider = (*defaultAwareResourceServerProvider)(nil)
 
 // NewDefaultAwareResourceServerProvider wraps base so that GetResourceServerByIdentifier resolves the
-// configured default resource server when the identifier is empty. base and serverConfigService must
-// both be non-nil.
+// configured default resource server when the identifier is empty, and passes on whether an organization unit may use
+// a resource server. base and serverConfigService must both be non-nil.
 func NewDefaultAwareResourceServerProvider(
-	base providers.ResourceServerProvider,
+	base ResourceServiceInterface,
 	serverConfigService serverconfig.ServerConfigService,
 ) providers.ResourceServerProvider {
 	if base == nil {
@@ -36,8 +37,8 @@ func NewDefaultAwareResourceServerProvider(
 		panic("default-aware resource server provider requires a non-nil server config service")
 	}
 	return &defaultAwareResourceServerProvider{
-		ResourceServerProvider: base,
-		serverConfigService:    serverConfigService,
+		ResourceServiceInterface: base,
+		serverConfigService:      serverConfigService,
 	}
 }
 
@@ -49,7 +50,7 @@ func (p *defaultAwareResourceServerProvider) GetResourceServerByIdentifier(
 	ctx context.Context, identifier string,
 ) (*providers.ResourceServer, *tidcommon.ServiceError) {
 	if identifier != "" {
-		return p.ResourceServerProvider.GetResourceServerByIdentifier(ctx, identifier)
+		return p.ResourceServiceInterface.GetResourceServerByIdentifier(ctx, identifier)
 	}
 	merged, svcErr := p.serverConfigService.GetMergedConfig(
 		ctx, string(serverconfig.ConfigNameDefaultResourceServer))
@@ -60,5 +61,5 @@ func (p *defaultAwareResourceServerProvider) GetResourceServerByIdentifier(
 	if cfg.ResourceServerID == "" {
 		return nil, &ErrorResourceServerNotFound
 	}
-	return p.ResourceServerProvider.GetResourceServer(ctx, cfg.ResourceServerID)
+	return p.ResourceServiceInterface.GetResourceServer(ctx, cfg.ResourceServerID)
 }

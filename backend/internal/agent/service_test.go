@@ -253,6 +253,10 @@ func (noopDepRegistry) ValidateReferenceUpdate(
 	return nil
 }
 
+func (noopDepRegistry) HasDependenciesInOU(context.Context, string, string, string) (bool, error) {
+	return false, nil
+}
+
 // localOwner returns a local owner identified by the given ID.
 func localOwner(id string) *providers.AgentOwner {
 	return &providers.AgentOwner{ID: id, IDType: providers.AgentOwnerIDTypeUUID, IsLocal: providers.AgentOwnerLocal}

@@ -50,6 +50,10 @@ func (s *stubDependencyRegistry) ValidateReferenceUpdate(
 	return nil
 }
 
+func (s *stubDependencyRegistry) HasDependenciesInOU(_ context.Context, _, _, _ string) (bool, error) {
+	return false, nil
+}
+
 type OrganizationUnitServiceTestSuite struct {
 	suite.Suite
 }

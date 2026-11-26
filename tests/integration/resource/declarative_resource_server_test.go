@@ -422,14 +422,10 @@ func (suite *DeclarativeResourceServerTestSuite) TestDeclarativeResourceServerAc
 }
 
 // TestDeclarativeResourceServerActionsAreRolePermissions verifies that a role can carry the
-// permission of an action a file declares on the resource server itself.
+// permission of an action a file declares on the resource server itself. The role lives in the
+// organization unit that owns the resource server.
 func (suite *DeclarativeResourceServerTestSuite) TestDeclarativeResourceServerActionsAreRolePermissions() {
-	ouID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
-		Handle: "decl_server_actions_role_ou",
-		Name:   "Declarative Server Actions Role OU",
-	})
-	suite.Require().NoError(err)
-	defer func() { suite.NoError(testutils.DeleteOrganizationUnit(ouID)) }()
+	const ouID = "decl-ou-1"
 
 	roleID, err := testutils.CreateRole(testutils.Role{
 		Name: "Declarative Server Actions Role",

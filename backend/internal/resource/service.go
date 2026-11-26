@@ -23,6 +23,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
@@ -119,6 +120,16 @@ type ResourceServiceInterface interface {
 		id string) (*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
 	ValidatePermissions(
 		ctx context.Context, resourceServerID string, permissions []string,
+	) ([]string, *tidcommon.ServiceError)
+	// IsResourceServerAvailableInOU reports whether the organization unit owns the resource server or a sharing
+	// policy of it reaches the unit.
+	IsResourceServerAvailableInOU(
+		ctx context.Context, resourceServerID, ouID string,
+	) (bool, *tidcommon.ServiceError)
+	// ValidatePermissionsInOU validates permissions the organization unit uses: it refuses a resource server the
+	// unit may not use, and otherwise returns the permissions the resource server does not define.
+	ValidatePermissionsInOU(
+		ctx context.Context, resourceServerID, ouID string, permissions []string,
 	) ([]string, *tidcommon.ServiceError)
 
 	// ResolveResourceServerOUHandle resolves ou_handle to an OU ID on the given resource server
@@ -310,7 +321,7 @@ func newResourceService(
 	authzService sysauthz.SystemAuthorizationServiceInterface,
 	sharingService sharing.SharingServiceInterface,
 	options ...Option,
-) (ResourceServiceInterface, error) {
+) (*resourceService, error) {
 	// Load default delimiter from config
 	defaultDelimiter := getDefaultDelimiter()
 	if err := validateDelimiter(defaultDelimiter); err != nil {
@@ -532,11 +543,49 @@ func (rs *resourceService) GetResourceServer(
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	if svcErr := rs.checkResourceServerAccess(ctx, security.ActionReadResourceServer,
-		resourceServer.OUID); svcErr != nil {
+	ouID, svcErr := rs.readableInOU(ctx, resourceServer)
+	if svcErr != nil {
 		return nil, svcErr
 	}
+	if ouID != "" {
+		markSharedInOU(resourceServer, ouID)
+		return resourceServer, nil
+	}
+	// Read in its owning organization unit, as a shared resource server is read in the one it is shared with.
+	resourceServer.IsOwnedByOU = new(true)
 	return resourceServer, nil
+}
+
+// readableInOU checks the caller may read the resource server. A caller confined to an organization unit the
+// resource server is shared with reads it there: the unit is returned, and is empty for a read in the owner's unit.
+func (rs *resourceService) readableInOU(
+	ctx context.Context, resourceServer *providers.ResourceServer,
+) (string, *tidcommon.ServiceError) {
+	refusal := rs.checkResourceServerAccess(ctx, security.ActionReadResourceServer, resourceServer.OUID)
+	if refusal == nil {
+		return "", nil
+	}
+	ouID, svcErr := sharing.SharedIntoCallerOU(ctx, rs.authzService, rs.sharingService, &rs.logger,
+		ResourceServerSharingType, resourceServer.ID, resourceServer.OUID, refusal)
+	if svcErr != nil {
+		return "", svcErr
+	}
+	if ouID == "" {
+		return "", refusal
+	}
+	// A shared resource server is read in the caller's unit only by a caller who may read resource servers there.
+	if svcErr := rs.checkResourceServerAccess(ctx, security.ActionReadResourceServer, ouID); svcErr != nil {
+		return "", svcErr
+	}
+	return ouID, nil
+}
+
+// markSharedInOU shows a resource server as an organization unit it is shared with sees it: under that unit, and
+// read only there.
+func markSharedInOU(resourceServer *providers.ResourceServer, ouID string) {
+	resourceServer.OUID = ouID
+	resourceServer.IsReadOnly = true
+	resourceServer.IsOwnedByOU = new(false)
 }
 
 // getResourceServer retrieves a resource server by its id without checking the caller.
@@ -589,13 +638,18 @@ func (rs *resourceService) GetResourceServerList(
 	if err := validatePaginationParams(limit, offset); err != nil {
 		return nil, err
 	}
-	ouIDs, all, svcErr := sysauthz.ResolveListOUs(ctx, rs.authzService, &rs.logger,
+	ouID, visible, svcErr := sysauthz.ResolveListOU(ctx, rs.authzService, &rs.logger,
 		security.ActionListResourceServers, "")
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	if !all {
-		return rs.listResourceServersByOUIDs(ctx, ouIDs, limit, offset)
+	if !visible {
+		return emptyResourceServerList(limit, offset, ""), nil
+	}
+	// A caller confined to an organization unit lists what that unit sees: the resource servers it owns, then the
+	// ones shared with it.
+	if ouID != "" {
+		return rs.listResourceServersInOU(ctx, ouID, limit, offset, "")
 	}
 
 	totalCount, err := rs.resourceStore.GetResourceServerListCount(ctx)
@@ -628,49 +682,6 @@ func (rs *resourceService) GetResourceServerList(
 	return response, nil
 }
 
-// listResourceServersByOUIDs lists the resource servers of the organization units, one unit after the
-// other in the given order, for a caller already allowed to list them.
-func (rs *resourceService) listResourceServersByOUIDs(
-	ctx context.Context, ouIDs []string, limit, offset int,
-) (*ResourceServerList, *tidcommon.ServiceError) {
-	counts := make([]int, len(ouIDs))
-	totalCount := 0
-	for i, ouID := range ouIDs {
-		count, err := rs.resourceStore.GetResourceServerListCountByOUID(ctx, ouID)
-		if err != nil {
-			return nil, rs.ouResourceServerListError(ctx, ouID, err)
-		}
-		counts[i] = count
-		totalCount += count
-	}
-
-	resourceServers := make([]providers.ResourceServer, 0)
-	skip := offset
-	for i, ouID := range ouIDs {
-		if len(resourceServers) == limit {
-			break
-		}
-		if skip >= counts[i] {
-			skip -= counts[i]
-			continue
-		}
-		page, err := rs.resourceStore.GetResourceServerListByOUID(ctx, ouID, limit-len(resourceServers), skip)
-		if err != nil {
-			return nil, rs.ouResourceServerListError(ctx, ouID, err)
-		}
-		resourceServers = append(resourceServers, page...)
-		skip = 0
-	}
-
-	return &ResourceServerList{
-		TotalResults:    totalCount,
-		ResourceServers: resourceServers,
-		StartIndex:      offset + 1,
-		Count:           len(resourceServers),
-		Links:           utils.BuildPaginationLinks("/resource-servers", limit, offset, totalCount, ""),
-	}, nil
-}
-
 // ouResourceServerListError answers a failure to list the resource servers of an organization unit.
 func (rs *resourceService) ouResourceServerListError(ctx context.Context, ouID string,
 	err error) *tidcommon.ServiceError {
@@ -682,7 +693,8 @@ func (rs *resourceService) ouResourceServerListError(ctx context.Context, ouID s
 	return &tidcommon.InternalServerError
 }
 
-// GetResourceServerListByOUID retrieves a paginated list of the resource servers an organization unit owns.
+// GetResourceServerListByOUID retrieves a paginated list of the resource servers an organization unit owns, followed
+// by the ones shared with it.
 func (rs *resourceService) GetResourceServerListByOUID(
 	ctx context.Context, ouID string, limit, offset int,
 ) (*ResourceServerList, *tidcommon.ServiceError) {
@@ -701,43 +713,81 @@ func (rs *resourceService) GetResourceServerListByOUID(
 		return emptyResourceServerList(limit, offset,
 			utils.FilterQueryParam(map[string]any{filter.AttributeOUID: ouID})), nil
 	}
-	return rs.listResourceServersByOUID(ctx, ouID, limit, offset)
+	return rs.listResourceServersInOU(ctx, ouID, limit, offset,
+		utils.FilterQueryParam(map[string]any{filter.AttributeOUID: ouID}))
 }
 
-// listResourceServersByOUID lists the resource servers of an organization unit for a caller already
-// allowed to list them.
-func (rs *resourceService) listResourceServersByOUID(
-	ctx context.Context, ouID string, limit, offset int,
+// listResourceServersInOU lists the resource servers an organization unit owns, followed by the ones shared with it,
+// for a caller already allowed to list them. A shared resource server is listed under the unit it is shared with,
+// and is read only there.
+func (rs *resourceService) listResourceServersInOU(
+	ctx context.Context, ouID string, limit, offset int, linkFilter string,
 ) (*ResourceServerList, *tidcommon.ServiceError) {
-	totalCount, err := rs.resourceStore.GetResourceServerListCountByOUID(ctx, ouID)
+	ownedCount, err := rs.resourceStore.GetResourceServerListCountByOUID(ctx, ouID)
 	if err != nil {
-		if errors.Is(err, errResultLimitExceededInCompositeMode) {
-			return nil, &ErrResultLimitExceededInCompositeMode
+		return nil, rs.ouResourceServerListError(ctx, ouID, err)
+	}
+	sharedIDs, svcErr := rs.sharingService.ListVisibleResourceIDs(ctx, ResourceServerSharingType, ouID)
+	if svcErr != nil {
+		// An organization unit that does not exist has nothing shared with it.
+		if svcErr.Code != oupkg.ErrorOrganizationUnitNotFound.Code {
+			return nil, translateSharingError(svcErr)
 		}
-		rs.logger.Error(ctx, "Failed to get resource server count in organization unit",
-			log.String("ouID", ouID), log.Error(err))
-		return nil, &tidcommon.InternalServerError
+		sharedIDs = nil
 	}
 
-	resourceServers, err := rs.resourceStore.GetResourceServerListByOUID(ctx, ouID, limit, offset)
+	owned, shared, err := utils.PaginateOwnedThenShared(
+		ownedCount,
+		func(limit, offset int) ([]providers.ResourceServer, error) {
+			return rs.resourceStore.GetResourceServerListByOUID(ctx, ouID, limit, offset)
+		},
+		sharedIDs,
+		func(ids []string) ([]providers.ResourceServer, error) { return rs.loadResourceServers(ctx, ids) },
+		func(server providers.ResourceServer) string { return server.ID },
+		limit, offset,
+	)
 	if err != nil {
-		if errors.Is(err, errResultLimitExceededInCompositeMode) {
-			return nil, &ErrResultLimitExceededInCompositeMode
-		}
-		rs.logger.Error(ctx, "Failed to list resource servers in organization unit",
-			log.String("ouID", ouID), log.Error(err))
-		return nil, &tidcommon.InternalServerError
+		return nil, rs.ouResourceServerListError(ctx, ouID, err)
 	}
 
-	rs.markManaged(ctx, resourceServers)
+	rs.markManaged(ctx, owned)
+	for i := range owned {
+		owned[i].IsOwnedByOU = new(true)
+	}
+	for i := range shared {
+		markSharedInOU(&shared[i], ouID)
+	}
+	resourceServers := slices.Concat(owned, shared)
+	totalCount := ownedCount + len(sharedIDs)
 	return &ResourceServerList{
 		TotalResults:    totalCount,
 		ResourceServers: resourceServers,
 		StartIndex:      offset + 1,
 		Count:           len(resourceServers),
-		Links: utils.BuildPaginationLinks("/resource-servers", limit, offset, totalCount,
-			utils.FilterQueryParam(map[string]any{filter.AttributeOUID: ouID})),
+		Links:           utils.BuildPaginationLinks("/resource-servers", limit, offset, totalCount, linkFilter),
 	}, nil
+}
+
+// loadResourceServers reads resource servers by ID in one read, in the order of the IDs, leaving out one that no
+// longer exists.
+func (rs *resourceService) loadResourceServers(
+	ctx context.Context, ids []string,
+) ([]providers.ResourceServer, error) {
+	found, err := rs.resourceStore.GetResourceServersByIDs(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	byID := make(map[string]providers.ResourceServer, len(found))
+	for _, server := range found {
+		byID[server.ID] = server
+	}
+	servers := make([]providers.ResourceServer, 0, len(ids))
+	for _, id := range ids {
+		if server, ok := byID[id]; ok {
+			servers = append(servers, server)
+		}
+	}
+	return servers, nil
 }
 
 // GetResourceServerListByProject retrieves a paginated list of the resource servers of a project, narrowed
@@ -2036,7 +2086,14 @@ func (rs *resourceService) validateAndGetResourceServer(
 		rs.logger.Error(ctx, "Failed to check resource server", log.Error(err))
 		return providers.ResourceServer{}, &tidcommon.InternalServerError
 	}
-	// Resources and actions belong to their resource server's organization unit.
+	// Resources and actions belong to their resource server's organization unit. An organization unit the resource
+	// server is shared with reads them too.
+	if action == security.ActionReadResourceServer {
+		if _, svcErr := rs.readableInOU(ctx, &resourceServer); svcErr != nil {
+			return providers.ResourceServer{}, svcErr
+		}
+		return resourceServer, nil
+	}
 	if svcErr := rs.checkResourceServerAccess(ctx, action, resourceServer.OUID); svcErr != nil {
 		return providers.ResourceServer{}, svcErr
 	}
@@ -2365,10 +2422,10 @@ func (rs *resourceService) resolveUpdateOU(ctx context.Context, existingOUID str
 	return rs.checkResourceServerAccess(ctx, security.ActionUpdateResourceServer, resourceServer.OUID)
 }
 
-// translateSharingError maps a sharing framework error into this service's own codes, except the permissions rule
-// refusal this package's sharing hook raises.
+// translateSharingError maps a sharing framework error into this service's own codes, except a refusal this
+// package's sharing hooks raise.
 func translateSharingError(svcErr *tidcommon.ServiceError) *tidcommon.ServiceError {
-	if svcErr != nil && svcErr.Code == ErrorPermissionsRuleNotSupported.Code {
+	if svcErr != nil && slices.Contains(sharingHookRefusals, svcErr.Code) {
 		return svcErr
 	}
 	return sharingErrors.Translate(svcErr)
@@ -2562,6 +2619,120 @@ func (rs *resourceService) ResolveSharingOverlay(
 	return overlay, nil
 }
 
+// IsResourceServerAvailableInOU reports whether the organization unit owns the resource server or a sharing policy
+// of it reaches the unit. It reads the resource server without the caller's authorization: it answers what the unit
+// may use, which a token request and a role write both ask whoever the caller is. A request acting for an
+// organization unit works the answer out once.
+func (rs *resourceService) IsResourceServerAvailableInOU(
+	ctx context.Context, resourceServerID, ouID string,
+) (bool, *tidcommon.ServiceError) {
+	memo := syscontext.GetAccessingOUMemo(ctx)
+	memoKey := "resource-server-available:" + resourceServerID + ":" + ouID
+	if memo != nil {
+		if available, ok := memo.Load(memoKey); ok {
+			return available.(bool), nil
+		}
+	}
+	available, svcErr := rs.isResourceServerAvailableInOU(ctx, resourceServerID, ouID)
+	if svcErr == nil && memo != nil {
+		memo.Store(memoKey, available)
+	}
+	return available, svcErr
+}
+
+// isResourceServerAvailableInOU answers IsResourceServerAvailableInOU.
+func (rs *resourceService) isResourceServerAvailableInOU(
+	ctx context.Context, resourceServerID, ouID string,
+) (bool, *tidcommon.ServiceError) {
+	resourceServer, svcErr := rs.getResourceServer(ctx, resourceServerID)
+	if svcErr != nil {
+		return false, svcErr
+	}
+	if resourceServer.OUID == ouID {
+		return true, nil
+	}
+	visible, svcErr := rs.sharingService.IsSharedWith(ctx, ResourceServerSharingType, resourceServerID, ouID)
+	if svcErr != nil {
+		// A unit that does not exist can use nothing.
+		if svcErr.Code == oupkg.ErrorOrganizationUnitNotFound.Code {
+			return false, nil
+		}
+		rs.logger.Error(ctx, "Failed to check whether a resource server is shared with an organization unit",
+			log.String("resourceServerID", resourceServerID), log.String("ouID", ouID),
+			log.String("code", svcErr.Code))
+		return false, &tidcommon.InternalServerError
+	}
+	return visible, nil
+}
+
+// ValidatePermissionsInOU validates permissions the organization unit uses: a resource server the unit may not use
+// is refused, and otherwise the permissions the resource server does not define are returned.
+func (rs *resourceService) ValidatePermissionsInOU(
+	ctx context.Context, resourceServerID, ouID string, permissions []string,
+) ([]string, *tidcommon.ServiceError) {
+	available, svcErr := rs.IsResourceServerAvailableInOU(ctx, resourceServerID, ouID)
+	if svcErr != nil {
+		// A resource server that does not exist defines none of the permissions, as ValidatePermissions answers.
+		if svcErr.Code == ErrorResourceServerNotFound.Code {
+			return permissions, nil
+		}
+		return nil, svcErr
+	}
+	if !available {
+		return nil, &ErrorResourceServerNotSharedToOU
+	}
+	return rs.ValidatePermissions(ctx, resourceServerID, permissions)
+}
+
+// refuseMoveWithDependencies refuses moving a resource server out of an organization unit whose roles still hold its
+// permissions: the unit would no longer own it, so those roles would confer none of them.
+func (rs *resourceService) refuseMoveWithDependencies(ctx context.Context, resourceServerID, ouID string,
+) *tidcommon.ServiceError {
+	used, err := rs.isUsedInOU(ctx, resourceServerID, ouID)
+	if err != nil {
+		rs.logger.Error(ctx, "Failed to check the use of a resource server in its organization unit",
+			log.String("resourceServerID", resourceServerID), log.String("ouID", ouID), log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if used {
+		return &errorResourceServerUsedInOU
+	}
+	return nil
+}
+
+// requireResourceServerUnusedInOU refuses taking the resource server from an organization unit whose roles still
+// hold its permissions. A resource server being deleted is let through: its delete removes those permissions too.
+func (rs *resourceService) requireResourceServerUnusedInOU(ctx context.Context, resourceServerID, ouID string) error {
+	if _, err := rs.resourceStore.GetResourceServer(ctx, resourceServerID); err != nil {
+		if errors.Is(err, errResourceServerNotFound) {
+			return nil
+		}
+		return fmt.Errorf("failed to read resource server %s: %w", resourceServerID, err)
+	}
+	used, err := rs.isUsedInOU(ctx, resourceServerID, ouID)
+	if err != nil {
+		return err
+	}
+	if used {
+		return sharing.NewResourceTypeError(&errorResourceServerUsedInOU)
+	}
+	return nil
+}
+
+// isUsedInOU reports whether roles of the organization unit hold permissions of the resource server.
+func (rs *resourceService) isUsedInOU(ctx context.Context, resourceServerID, ouID string) (bool, error) {
+	if rs.dependencyRegistry == nil {
+		return false, nil
+	}
+	used, err := rs.dependencyRegistry.HasDependenciesInOU(ctx, resourcedependency.ResourceTypeResourceServer,
+		resourceServerID, ouID)
+	if err != nil {
+		return false, fmt.Errorf("failed to check the use of resource server %s in %s: %w", resourceServerID, ouID,
+			err)
+	}
+	return used, nil
+}
+
 // listResourceServerPermissions lists every permission a resource server defines: its own actions, its resources,
 // and the actions of each resource.
 func (rs *resourceService) listResourceServerPermissions(
@@ -2682,6 +2853,9 @@ func (rs *resourceService) requireResourceServerMovable(
 	}
 	if len(policies) > 0 {
 		return &ErrorSharedResourceServerCannotMove
+	}
+	if from.OUID != to.OUID {
+		return rs.refuseMoveWithDependencies(ctx, resourceServerID, from.OUID)
 	}
 	return nil
 }
