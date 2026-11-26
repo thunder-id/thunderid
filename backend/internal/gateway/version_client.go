@@ -12,7 +12,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"maps"
 	"net"
 	"net/http"
 	"strings"
@@ -100,14 +99,17 @@ func (h *HeldValues) missing(variables, secrets []string) *MissingValues {
 	return &MissingValues{Variables: unheld(variables, h.Variables), Secrets: unheld(secrets, h.Secrets)}
 }
 
-// heldTimes is when each held value was last set, by collection and name, as recorded at an apply.
+// heldTimes is when each held value was last set, by collection and name, as recorded at an apply, with
+// the references the apply left unsent while their value had been set again.
 type heldTimes struct {
 	Variables map[string]time.Time `json:"variables,omitempty"`
 	Secrets   map[string]time.Time `json:"secrets,omitempty"`
+	Owed      []ValueReference     `json:"owed,omitempty"`
 }
 
-// snapshot records when each of the named values the store holds was last set, as the store said.
-func (h *HeldValues) snapshot(variables, secrets []string) string {
+// snapshot records when each of the named values the store holds was last set, as the store said, and
+// the references still owed the value they refer to.
+func (h *HeldValues) snapshot(variables, secrets []string, owed []ValueReference) string {
 	pick := func(names []string, held map[string]time.Time) map[string]time.Time {
 		out := map[string]time.Time{}
 		for _, name := range names {
@@ -117,36 +119,21 @@ func (h *HeldValues) snapshot(variables, secrets []string) string {
 		}
 		return out
 	}
-	recorded, err := json.Marshal(heldTimes{Variables: pick(variables, h.Variables), Secrets: pick(secrets, h.Secrets)})
+	recorded, err := json.Marshal(heldTimes{Variables: pick(variables, h.Variables), Secrets: pick(secrets, h.Secrets),
+		Owed: owed})
 	if err != nil {
 		return ""
 	}
 	return string(recorded)
 }
 
-// snapshotKeeping records as snapshot does, except that each value named in keep is recorded at the
-// time the previous snapshot recorded for it, or left out when it recorded none.
-func (h *HeldValues) snapshotKeeping(variables, secrets []string, keep *MissingValues, previous string) string {
-	if len(keep.Variables) == 0 && len(keep.Secrets) == 0 {
-		return h.snapshot(variables, secrets)
-	}
+// owedIn returns the references a snapshot records as still owed the value they refer to.
+func owedIn(snapshot string) []ValueReference {
 	var recorded heldTimes
-	if previous != "" {
-		_ = json.Unmarshal([]byte(previous), &recorded)
+	if snapshot == "" || json.Unmarshal([]byte(snapshot), &recorded) != nil {
+		return nil
 	}
-	held := &HeldValues{Variables: map[string]time.Time{}, Secrets: map[string]time.Time{}}
-	carry := func(into, from, then map[string]time.Time, kept []string) {
-		maps.Copy(into, from)
-		for _, name := range kept {
-			delete(into, name)
-			if was, ok := then[name]; ok {
-				into[name] = was
-			}
-		}
-	}
-	carry(held.Variables, h.Variables, recorded.Variables, keep.Variables)
-	carry(held.Secrets, h.Secrets, recorded.Secrets, keep.Secrets)
-	return held.snapshot(variables, secrets)
+	return recorded.Owed
 }
 
 // changedFrom returns the names among those asked for whose value the store says was set at another

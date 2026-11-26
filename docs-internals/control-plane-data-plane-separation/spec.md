@@ -164,7 +164,7 @@ References resolve at the gateway, so the gateway must hold their values. Becaus
 - The value goes in the background and never blocks the write. Failures retry with growing delay, up to ten times, and a newer value for the same name replaces one in flight. A value is sent only over `https://`.
 - A value that is itself a reference is never captured.
 - **Fill on start.** A CP that starts writes, to the first gateway, each variable its applications, agents and resource servers refer to that the gateway lacks. It never replaces a held value and never fills secrets.
-- A value changed on a gateway directly (for example a regenerated client secret) takes effect on the DP at once but is reported to the CP as a changed value, and **Redeploy** resends the resources that use it.
+- A value changed on a gateway (for example a regenerated client secret or Flow Secret) takes effect on the DP only when the resources that use it are sent again: it is reported to the CP as a changed value, a project's status counts those resources as pending, and a deploy or **Redeploy** resends them.
 
 ### Data plane side
 

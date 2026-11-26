@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -804,9 +805,11 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	held, changed, svcErr := s.heldValues(ctx, gw, key, target, applied)
-	if svcErr != nil {
-		return nil, svcErr
+	held, changed, err := s.heldValues(ctx, gw, key, target, applied)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to read which values a gateway holds", log.String("gatewayID", gw.ID),
+			log.Error(err))
+		return nil, unreachable(err)
 	}
 	// A resource whose value was set again since the last apply is sent again, as it differs on the
 	// gateway even though no document does.
@@ -834,7 +837,7 @@ func (s *versionService) write(ctx context.Context, gw *Gateway, target *Version
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	values := valuesToRecord(held, target, changed, diff, applied)
+	values := valuesToRecord(held, target, changed, diff)
 	missing, svcErr := s.missingValues(ctx, gw, held, checkedContent(diff, target, sent.content, dryRun), dryRun)
 	if svcErr != nil {
 		return nil, svcErr
@@ -1229,13 +1232,11 @@ func (s *versionService) settle(ctx context.Context, target *Version) *tidcommon
 // this plane's clock. A value set since the last apply takes effect with this one, outside any
 // version, so it is reported by name and the resources that refer to it are sent again.
 func (s *versionService) heldValues(ctx context.Context, gw *Gateway, key string, target *Version,
-	applied *AppliedVersion) (*HeldValues, *ChangedValues, *tidcommon.ServiceError) {
+	applied *AppliedVersion) (*HeldValues, *ChangedValues, error) {
 	variables, secrets := referencesIn(target.Resources)
 	held, err := s.client.HeldValues(ctx, gw, key, variables, secrets)
 	if err != nil {
-		s.logger.Error(ctx, "Failed to read which values a gateway holds", log.String("gatewayID", gw.ID),
-			log.Error(err))
-		return nil, nil, unreachable(err)
+		return nil, nil, err
 	}
 	changed := &ChangedValues{}
 	if applied != nil {
@@ -1244,16 +1245,62 @@ func (s *versionService) heldValues(ctx context.Context, gw *Gateway, key string
 			changed.References = referencesTo(target.Resources, &MissingValues{Variables: changed.Variables,
 				Secrets: changed.Secrets})
 		}
+		addOwed(changed, stillOwed(target.Resources, owedIn(applied.heldValues)))
 	}
 	return held, changed, nil
 }
 
+// referencePlace names one reference by the resource and field it is in and the value it names.
+func referencePlace(reference ValueReference) string {
+	return reference.key() + "\x00" + reference.Field + "\x00" + reference.Kind + "\x00" + reference.Name
+}
+
+// stillOwed returns the owed references the version still holds.
+func stillOwed(content string, owed []ValueReference) []ValueReference {
+	if len(owed) == 0 {
+		return nil
+	}
+	held := map[string]bool{}
+	for _, reference := range referencesOf(content) {
+		held[referencePlace(reference)] = true
+	}
+	var still []ValueReference
+	for _, reference := range owed {
+		if held[referencePlace(reference)] {
+			still = append(still, reference)
+		}
+	}
+	return still
+}
+
+// addOwed reports each owed reference as changed, with the value it names, so the resource it is in is
+// offered again until an apply sends it.
+func addOwed(changed *ChangedValues, owed []ValueReference) {
+	listed := map[string]bool{}
+	for _, reference := range changed.References {
+		listed[referencePlace(reference)] = true
+	}
+	for _, reference := range owed {
+		if listed[referencePlace(reference)] {
+			continue
+		}
+		listed[referencePlace(reference)] = true
+		changed.References = append(changed.References, reference)
+		if reference.Kind == ReferenceSecret {
+			if !slices.Contains(changed.Secrets, reference.Name) {
+				changed.Secrets = append(changed.Secrets, reference.Name)
+			}
+		} else if !slices.Contains(changed.Variables, reference.Name) {
+			changed.Variables = append(changed.Variables, reference.Name)
+		}
+	}
+}
+
 // valuesToRecord is when each value the version refers to was last set, as the apply records it for
-// the next one to compare with. A value set again is recorded at its new time only when every
-// resource that refers to it was sent; while one is left out, its earlier time is kept, so the next
-// diff offers that resource again rather than taking the gateway to run it with the new value.
-func valuesToRecord(held *HeldValues, target *Version, changed *ChangedValues, diff *Diff,
-	applied *AppliedVersion) string {
+// the next one to compare with, and the references to a value set again that the apply left unsent.
+// Those are owed the new value: the next diff offers the resource each is in again, and only that
+// resource, so one already sent is not offered for a value it already runs with.
+func valuesToRecord(held *HeldValues, target *Version, changed *ChangedValues, diff *Diff) string {
 	variables, secrets := referencesIn(target.Resources)
 	sent := map[string]bool{}
 	for _, change := range diff.Changes {
@@ -1261,23 +1308,13 @@ func valuesToRecord(held *HeldValues, target *Version, changed *ChangedValues, d
 			sent[change.Key] = true
 		}
 	}
-	unsent := &MissingValues{}
+	var unsent []ValueReference
 	for _, reference := range changed.References {
-		if sent[reference.key()] {
-			continue
-		}
-		switch reference.Kind {
-		case ReferenceSecret:
-			unsent.Secrets = append(unsent.Secrets, reference.Name)
-		default:
-			unsent.Variables = append(unsent.Variables, reference.Name)
+		if !sent[reference.key()] {
+			unsent = append(unsent, reference)
 		}
 	}
-	previous := ""
-	if applied != nil {
-		previous = applied.heldValues
-	}
-	return held.snapshotKeeping(variables, secrets, unsent, previous)
+	return held.snapshot(variables, secrets, unsent)
 }
 
 // missingValues reads, from what the gateway's store holds, the values the content to send refers to

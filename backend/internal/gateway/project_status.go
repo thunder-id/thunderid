@@ -110,17 +110,19 @@ type NeededState struct {
 // gateway would send, or against a version when no source is given.
 func (s *versionService) ProjectStatus(ctx context.Context, gatewayID, projectID, sourceGatewayID,
 	ref string) (*ProjectStatus, *tidcommon.ServiceError) {
-	if _, svcErr := s.gateway(ctx, gatewayID); svcErr != nil {
+	gw, svcErr := s.gateway(ctx, gatewayID)
+	if svcErr != nil {
 		return nil, svcErr
 	}
 	target, sourceMaster, svcErr := s.statusTarget(ctx, gatewayID, sourceGatewayID, ref)
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	_, diff, master, svcErr := s.plan(ctx, gatewayID, target)
+	applied, diff, master, svcErr := s.plan(ctx, gatewayID, target)
 	if svcErr != nil {
 		return nil, svcErr
 	}
+	s.markChangedValues(ctx, gw, target, applied, diff)
 	held, svcErr := s.heldBack(ctx, gatewayID, nil)
 	if svcErr != nil {
 		return nil, svcErr
@@ -158,6 +160,33 @@ func (s *versionService) ProjectStatus(ctx context.Context, gatewayID, projectID
 			s.projectVersions(ctx, projectID, rollback.before), status.Project.Versions)
 	}
 	return status, nil
+}
+
+// statusValuesTimeout bounds asking a gateway which values changed for a status read, well inside the
+// server's write timeout, so a gateway that does not answer leaves the status to the documents.
+const statusValuesTimeout = 5 * time.Second
+
+// markChangedValues offers as updated each resource that refers to a value set on the gateway again
+// since its last apply, as an apply sends it. A gateway that cannot be asked leaves the diff as the
+// documents have it.
+func (s *versionService) markChangedValues(ctx context.Context, gw *Gateway, target *Version,
+	applied *AppliedVersion, diff *Diff) {
+	if applied == nil || applied.heldValues == "" {
+		return
+	}
+	key, svcErr := s.reveal(ctx, gw.Key)
+	if svcErr != nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, statusValuesTimeout)
+	defer cancel()
+	_, changed, err := s.heldValues(ctx, gw, key, target, applied)
+	if err != nil {
+		s.logger.Warn(ctx, "Failed to read which values a gateway holds; the status leaves them out",
+			log.String("gatewayID", gw.ID), log.Error(err))
+		return
+	}
+	diff.Changes = markValueChanged(diff.Changes, changed)
 }
 
 // rollbackStateOf is what a project's rollback would undo: available only while it changes any of the

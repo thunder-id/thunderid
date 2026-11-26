@@ -5,6 +5,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -107,6 +108,96 @@ func (s *ProjectScopeTestSuite) TestWhatOnlyOneProjectNeedsIsItsPendingChange() 
 	s.Require().Nil(svcErr)
 	s.Equal(0, shop.Project.Pending)
 	s.Equal(0, shop.Shared.Pending, "billing's flow was offered to the shop as shared")
+}
+
+// referringDocs is the suite's configuration with the given applications referring to one secret.
+func referringDocs(apps ...string) []string {
+	referring := docs(flow("flow-1"))
+	docsOf := map[string]string{
+		"app-shop": projectApp("app-shop", "shop", "ou-team", "flow-1"),
+		"app-bill": projectApp("app-bill", "billing", "ou-bill", "flow-2"),
+	}
+	for _, app := range apps {
+		for i, doc := range referring {
+			if doc == docsOf[app] {
+				referring[i] += "client_secret: \"sec:SHOP_SECRET\"\n"
+			}
+		}
+	}
+	return referring
+}
+
+// A value set on the gateway again since the project was deployed is pending for the project whose
+// resource refers to it, until a deploy sends that resource.
+func (s *ProjectScopeTestSuite) TestAValueSetAgainIsPendingForTheProjectReferringToIt() {
+	ctx := context.Background()
+	s.captureDocs(referringDocs("app-shop")...)
+	set := time.Date(2026, 11, 26, 9, 0, 0, 0, time.UTC)
+	s.f.client.held = map[string]bool{"SHOP_SECRET": true}
+	s.f.client.heldSince = map[string]time.Time{"SHOP_SECRET": set}
+	_, svcErr := s.f.svc.Apply(ctx, "gw-1", ApplyRequest{})
+	s.Require().Nil(svcErr)
+	s.f.client.heldSince["SHOP_SECRET"] = set.Add(time.Minute)
+
+	shop, svcErr := s.f.svc.ProjectStatus(ctx, "gw-1", "shop", "", "")
+	s.Require().Nil(svcErr)
+	s.Equal(1, shop.Project.Pending, "the value set again was not pending")
+	s.True(s.f.client.heldBounded, "the status waited on the gateway with no deadline")
+	billing, svcErr := s.f.svc.ProjectStatus(ctx, "gw-1", "billing", "", "")
+	s.Require().Nil(svcErr)
+	s.Equal(0, billing.Project.Pending)
+
+	_, svcErr = s.f.svc.Apply(ctx, "gw-1", ApplyRequest{Project: "shop"})
+	s.Require().Nil(svcErr)
+	shop, svcErr = s.f.svc.ProjectStatus(ctx, "gw-1", "shop", "", "")
+	s.Require().Nil(svcErr)
+	s.Equal(0, shop.Project.Pending, "the value was still pending once deployed")
+}
+
+// A value two projects refer to stays pending only for the project not yet deployed: deploying one
+// project sends its own resource, and the other project's resource alone is owed the new value.
+func (s *ProjectScopeTestSuite) TestASharedValueStaysPendingOnlyWhereItIsNotDeployed() {
+	ctx := context.Background()
+	s.captureDocs(referringDocs("app-shop", "app-bill")...)
+	set := time.Date(2026, 11, 26, 9, 0, 0, 0, time.UTC)
+	s.f.client.held = map[string]bool{"SHOP_SECRET": true}
+	s.f.client.heldSince = map[string]time.Time{"SHOP_SECRET": set}
+	_, svcErr := s.f.svc.Apply(ctx, "gw-1", ApplyRequest{})
+	s.Require().Nil(svcErr)
+	s.f.client.heldSince["SHOP_SECRET"] = set.Add(time.Minute)
+	pending := func(project string) int {
+		status, svcErr := s.f.svc.ProjectStatus(ctx, "gw-1", project, "", "")
+		s.Require().Nil(svcErr)
+		return status.Project.Pending
+	}
+	s.Equal(1, pending("shop"))
+	s.Equal(1, pending("billing"))
+
+	_, svcErr = s.f.svc.Apply(ctx, "gw-1", ApplyRequest{Project: "shop"})
+	s.Require().Nil(svcErr)
+	s.Equal(0, pending("shop"), "the deployed project stayed pending for the other project's resource")
+	s.Equal(1, pending("billing"), "the project not yet deployed lost the value it is owed")
+
+	_, svcErr = s.f.svc.Apply(ctx, "gw-1", ApplyRequest{Project: "billing"})
+	s.Require().Nil(svcErr)
+	s.Equal(0, pending("shop"))
+	s.Equal(0, pending("billing"), "the value was still pending once both projects were deployed")
+}
+
+// A gateway that cannot be asked which values changed still has its status read, from the documents.
+func (s *ProjectScopeTestSuite) TestAStatusIsReadWhenTheGatewayCannotBeAsked() {
+	ctx := context.Background()
+	s.captureDocs(referringDocs("app-shop")...)
+	s.f.client.held = map[string]bool{"SHOP_SECRET": true}
+	s.f.client.heldSince = map[string]time.Time{"SHOP_SECRET": time.Date(2026, 11, 26, 9, 0, 0, 0, time.UTC)}
+	_, svcErr := s.f.svc.Apply(ctx, "gw-1", ApplyRequest{})
+	s.Require().Nil(svcErr)
+	s.f.client.heldErr = errors.New("the gateway is down")
+
+	shop, svcErr := s.f.svc.ProjectStatus(ctx, "gw-1", "shop", "", "")
+
+	s.Require().Nil(svcErr)
+	s.Equal(0, shop.Project.Pending)
 }
 
 // A source that runs nothing yet has nothing to promote, so the status says nothing waits rather than

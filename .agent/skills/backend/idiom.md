@@ -46,4 +46,5 @@ A struct tag is fixed at compile time, so reword it to leave the name out. Licen
 - Fix lint findings instead of adding `//nolint` or complexity ignores. Accepted exceptions, each with a reason on the directive:
   - `//nolint:lll` on a struct field whose tag forces the length.
   - `//nolint:gosec` on a false positive credential warning (G101) for a constant that only looks like a secret, such as a token field key or an executor name.
+  - `//nolint:gosec` on a false positive SSRF taint warning (G704) for a call to a gateway's registered base URL, which `normalizeBaseURL` vetted when it was stored: the request only picks the gateway.
 - Lint does not catch these, so check them: a shadowed `err`, errors assigned to `_`, single-value type assertions on store rows or `any`, `context.Background()` created inside a request path, and a `switch` missing a new constant.

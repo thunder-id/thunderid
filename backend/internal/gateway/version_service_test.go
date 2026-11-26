@@ -482,10 +482,11 @@ type fakeGatewayClient struct {
 	gatewayIDs []string
 	err        error
 	// held are the values the gateway's store holds, by name; heldSince is when each was set, for
-	// those that say; heldErr fails reading them.
-	held      map[string]bool
-	heldSince map[string]time.Time
-	heldErr   error
+	// those that say; heldErr fails reading them; heldBounded is whether the last read had a deadline.
+	held        map[string]bool
+	heldSince   map[string]time.Time
+	heldErr     error
+	heldBounded bool
 	// imported is the gateway's account of an import; unset, it refused nothing.
 	imported json.RawMessage
 	// plain makes the fake answer as a gateway with no managed import, which took the plain import.
@@ -494,8 +495,9 @@ type fakeGatewayClient struct {
 	onImport func()
 }
 
-func (f *fakeGatewayClient) HeldValues(_ context.Context, _ *Gateway, _ string,
+func (f *fakeGatewayClient) HeldValues(ctx context.Context, _ *Gateway, _ string,
 	variables, secrets []string) (*HeldValues, error) {
+	_, f.heldBounded = ctx.Deadline()
 	if f.heldErr != nil {
 		return nil, f.heldErr
 	}

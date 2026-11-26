@@ -299,7 +299,9 @@ func (c *gatewayClient) callStore(ctx context.Context, gw *Gateway, key, method,
 		}
 		body = bytes.NewReader(encoded)
 	}
-	httpReq, err := http.NewRequestWithContext(ctx, method, target, body)
+	// The gateway's base URL was vetted when it was stored (normalizeBaseURL: https, no credentials,
+	// no private address unless allowed), so a request only picks which gateway, never the address.
+	httpReq, err := http.NewRequestWithContext(ctx, method, target, body) //nolint:gosec // G704: vetted gateway URL
 	if err != nil {
 		return 0, fmt.Errorf("failed to build the store request: %w", err)
 	}

@@ -34,6 +34,13 @@ type gatewayMaster struct {
 // registerDataPlane registers the suite's Data Plane as a gateway of this Control Plane for one test.
 func (ts *ControlPlaneTestSuite) registerDataPlane() string {
 	ts.T().Helper()
+	return ts.registerDataPlaneAs(false)
+}
+
+// registerDataPlaneAs registers the suite's Data Plane for one test, as the default gateway when isDefault
+// is set, so the values a write captures reach it.
+func (ts *ControlPlaneTestSuite) registerDataPlaneAs(isDefault bool) string {
+	ts.T().Helper()
 	// The data plane is bootstrapped in a home of its own, beside the control plane's, with a
 	// certificate of its own.
 	outDir := filepath.Dir(filepath.Dir(testutils.GetExtractedProductHome()))
@@ -51,6 +58,7 @@ func (ts *ControlPlaneTestSuite) registerDataPlane() string {
 		"baseUrl":       testutils.DataPlaneURL,
 		"key":           testutils.ManagementAPIKey,
 		"caCertificate": string(certificate),
+		"isDefault":     isDefault,
 	}, &registered)
 	ts.Require().Equal(http.StatusCreated, status, string(raw))
 	ts.T().Cleanup(func() { ts.call(http.MethodDelete, "/gateways/"+registered.ID, nil, nil) })

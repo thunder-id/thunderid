@@ -160,8 +160,9 @@ gateway is upgraded. These removals do not count toward `gateway.removal_confirm
   applied, with where the version refers to each, as `missing` does. Values are never shown. The
   resources that refer to such a value are sent again, so the gateway reads the new value although no
   document changed, and the `diff` in the apply's answer marks them `updated` with
-  `"valueChanged": true`. Only an apply reads the gateway's store, so `GET /gateways/{id}/diff` cannot
-  report them: run the apply as a dry run to see them before you build a `selection`. While a
+  `"valueChanged": true`. Only an apply and a project's status read the gateway's store, so
+  `GET /gateways/{id}/diff` cannot report them: run the apply as a dry run to see them before you build
+  a `selection`. While a
   `selection` leaves such a resource out, the value stays reported as changed, and the next apply
   offers the resource again. The time the gateway's
   store gives for each value is compared with the time it gave at the last apply, so the control

@@ -189,7 +189,7 @@ func TestHeldValuesReportsWhatTheGatewayHoldsAndSince(t *testing.T) {
 	missing := held.missing([]string{"A", "B"}, secrets)
 	assert.Equal(t, []string{"B"}, missing.Variables)
 	assert.Equal(t, secrets[1:], missing.Secrets)
-	snapshot := held.snapshot([]string{"A", "B"}, secrets)
+	snapshot := held.snapshot([]string{"A", "B"}, secrets, nil)
 	assert.JSONEq(t, `{"variables":{"A":"2026-10-14T10:00:00Z"}}`, snapshot,
 		"only values the store gave a time for were recorded")
 	assert.True(t, held.changedFrom([]string{"A"}, secrets, snapshot).empty(), "nothing was set again")
