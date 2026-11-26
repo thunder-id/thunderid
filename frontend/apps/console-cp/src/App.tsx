@@ -497,7 +497,7 @@ function projectFullScreenRoutes(): JSX.Element {
           }
         />
       </Route>
-      <Route path={`${ROUTE_SEGMENTS.flows}/:flowId`} element={<DashboardLayout collapseSidebar />}>
+      <Route path={`${ROUTE_SEGMENTS.flows}/:flowId`} element={<DashboardLayout collapseSidebar fitPage />}>
         <Route index element={<FlowBuilderPage />} />
       </Route>
       <Route path={ROUTE_SEGMENTS.design} element={<DashboardLayout />}>
@@ -517,7 +517,7 @@ function projectFullScreenRoutes(): JSX.Element {
         path={`${ROUTE_SEGMENTS.design}/themes/:themeId`}
         element={
           <ThemeBuilderProvider>
-            <DashboardLayout />
+            <DashboardLayout fitPage />
           </ThemeBuilderProvider>
         }
       >
@@ -527,7 +527,7 @@ function projectFullScreenRoutes(): JSX.Element {
         path={`${ROUTE_SEGMENTS.design}/layouts/:layoutId`}
         element={
           <LayoutBuilderProvider>
-            <DashboardLayout />
+            <DashboardLayout fitPage />
           </LayoutBuilderProvider>
         }
       >

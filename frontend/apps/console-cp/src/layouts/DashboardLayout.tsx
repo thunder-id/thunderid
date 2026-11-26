@@ -179,6 +179,11 @@ export interface DashboardLayoutProps {
    * pages need the full screen width (e.g. the flow builder canvas).
    */
   collapseSidebar?: boolean;
+  /**
+   * Fits the page to the space below the banner instead of growing with its content.
+   * Set by builder routes whose panels scroll on their own (e.g. the flow builder).
+   */
+  fitPage?: boolean;
 }
 
 /**
@@ -211,16 +216,16 @@ function SidebarPreference({collapsed}: {collapsed: boolean}): null {
  * header and the navigation show the project's gateways and what is not deployed yet, and its pages
  * deploy and promote within it.
  */
-export default function DashboardLayout({collapseSidebar = false}: DashboardLayoutProps): ReactNode {
+export default function DashboardLayout({collapseSidebar = false, fitPage = false}: DashboardLayoutProps): ReactNode {
   const {selectedProject} = useProjectSelection();
   return (
     <ProjectScopeProvider project={selectedProject}>
-      <ScopedDashboardLayout collapseSidebar={collapseSidebar} />
+      <ScopedDashboardLayout collapseSidebar={collapseSidebar} fitPage={fitPage} />
     </ProjectScopeProvider>
   );
 }
 
-function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps): ReactNode {
+function ScopedDashboardLayout({collapseSidebar = false, fitPage = false}: DashboardLayoutProps): ReactNode {
   const {clearSession, discovery} = useThunderID();
   const {projects, selectedProject: project} = useProjectSelection();
   // How many of the project's own applications and agents the first gateway does not run yet.
@@ -924,7 +929,9 @@ function ScopedDashboardLayout({collapseSidebar = false}: DashboardLayoutProps):
               minWidth: 0,
               minHeight: 0,
               overflowY: 'auto',
-              '& > :last-child': {flex: '1 0 auto', height: 'auto', overflow: 'visible'},
+              '& > :last-child': fitPage
+                ? {flex: 1, minHeight: 0}
+                : {flex: '1 0 auto', height: 'auto', overflow: 'visible'},
             }}
           >
             {/* An environment's own pages tell what it lacks themselves. */}
