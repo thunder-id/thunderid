@@ -1,9 +1,11 @@
 # SDK Development Specification
 
 - **Status:** Draft
-- **Version:** 0.11
+- **Version:** 0.12
 - **Related documents:**
   [threat-model.md](threat-model.md),
+  [capability.yaml](../../api/capability.yaml),
+  [#5830](https://github.com/thunder-id/thunderid/issues/5830),
   [#5305](https://github.com/thunder-id/thunderid/issues/5305),
   [#3292](https://github.com/thunder-id/thunderid/discussions/3292),
   [#4065](https://github.com/thunder-id/thunderid/discussions/4065),
@@ -455,6 +457,49 @@ Requirements:
    NOT reuse a type name the SDK already uses for the authenticated user.
 7. HTTP 403 and 404 MUST surface as distinct API error codes, so a caller can tell a missing
    permission from a missing resource.
+
+##### Management capabilities
+
+Management capabilities tell an application which management actions the signed-in user's
+access token allows, so it offers only those. The server reports them from `GET /capabilities`
+([capability.yaml](../../api/capability.yaml)). They are optional: an SDK that ships management
+operations MAY ship them, and one that does MUST follow this section.
+
+| Operation | Contract |
+|---|---|
+| `getCapabilities` | Returns what the server reported: the scope the actions apply to (the deployment, or one organization unit), and each resource mapped to each of its actions and whether the user may perform it. |
+| `can` | Takes a resource and an action, `view` when none is given, and returns whether the user may perform it. |
+
+Requirements:
+
+1. Capabilities decide what is offered, never what is allowed. The server authorizes every
+   management request, including the organization unit of the record it acts on. The SDK MUST
+   NOT skip or block a request because of them, and MUST document that they are not an
+   authorization decision.
+2. The request is authorized and addressed like the other management operations, with
+   `capabilities` as the collection.
+3. `can` MUST answer false while the capabilities load, when they cannot be read, and for a
+   resource or action the server did not report. A failed read MUST be reported to the caller
+   separately from a denial, with a way to read again, so the application can say the
+   capabilities are unavailable rather than that the user lacks them.
+4. The answer depends only on the access token. The SDK MAY keep it until the signed-in user,
+   their organization unit, or their granted permissions change, and MUST read it again when
+   any of them does. Signing out discards it.
+5. A Core Lib or Framework Specific SDK reads the capabilities at most once at a time and
+   shares the answer across every component, through the root provider, so using them needs
+   no configuration beyond it.
+6. A management record can be locked by the server (`isReadOnly`) or shared into the user's
+   organization unit by another one (`isOwnedByOU: false`). A record is read-only when it is
+   locked, shared in, or the user may not `update` its resource. It can be deleted only when it
+   is neither locked nor shared in and the user may `delete`. Its runtime state, such as active
+   or suspended, can change when it is not shared in and the user may `update`, whatever
+   `isReadOnly` says, since a declared record does not declare its state.
+7. A UI SDK that ships capabilities ships a guard component. It renders its content when the
+   user may perform an action, or any one of several, and otherwise a fallback the application
+   supplies, nothing by default. It renders separate loading and error fallbacks.
+8. The management components of a UI SDK that ships capabilities offer an action only when
+   the user may perform it, and open a read-only record per requirement 6 without its editing
+   or delete actions.
 
 #### Self user attribute verification
 
@@ -1244,6 +1289,28 @@ server recorded and nothing else.
 - **AC10.6:** Given a changed email address or mobile number, when the profile saves it, then
   it shows the stored value and its reported status and waits for Verify before starting a flow.
 
+### R11. Management capabilities that offer only what the server allows
+
+**Requirement:** As a developer building an administration UI, I want the SDK to tell me which
+management actions the signed-in user may perform, so my UI does not offer what the server
+will refuse.
+
+**Acceptance criteria:**
+
+- **AC11.1:** Given the capabilities are loading, cannot be read, or omit a resource or
+  action, when `can` is asked about it, then it answers false.
+- **AC11.2:** Given the capabilities cannot be read, when the caller inspects the result, then
+  it reports the failure separately from a denial and offers a way to read again.
+- **AC11.3:** Given several components that use capabilities under one root provider, when
+  they render, then one request is sent.
+- **AC11.4:** Given the user signs in again, or their organization unit or granted permissions
+  change, when capabilities are next used, then they are read again.
+- **AC11.5:** Given a record with `isReadOnly` or `isOwnedByOU: false`, or a user without
+  `update` on its resource, when a management component shows it, then it is read-only and
+  offers no editing or delete action.
+- **AC11.6:** Given a user without the capability for an action, when a management request for
+  it is made directly, then the SDK sends it and reports the server's answer.
+
 ## Change log
 
 | Version | Date | Change |
@@ -1259,3 +1326,4 @@ server recorded and nothing else.
 | 0.9 | 2026-11-03 | Self user attribute verification added as an optional capability (R10). |
 | 0.10 | 2026-11-10 | The built-in profile waits for Verify after a contact save instead of starting verification by itself (AC10.6). |
 | 0.11 | 2026-11-22 | Consent rendering keeps the limits an authorization details row carries (minimum, maximum, exclusive limits, step, fewest and most list items) and shows the row's description. |
+| 0.12 | 2026-11-26 | Management capabilities added to management operations as an optional capability (R11): what the signed-in user's token allows, read from `/capabilities` to decide what to offer, false until read, and never an authorization decision. |
