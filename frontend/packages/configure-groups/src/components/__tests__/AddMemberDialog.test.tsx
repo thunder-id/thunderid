@@ -203,6 +203,25 @@ describe('AddMemberDialog', () => {
     expect(screen.getByTestId('user-g2')).toBeInTheDocument();
   });
 
+  it('should not list personal agents, which cannot be added to groups', async () => {
+    const user = userEvent.setup();
+    mockUseGetAgents.mockReturnValue({
+      data: {
+        agents: [
+          {id: 'agent-1', display: 'Automation Agent'},
+          {id: 'agent-3', display: 'My Assistant', kind: 'personal-assistant'},
+        ],
+      },
+      isLoading: false,
+    });
+
+    renderWithProviders(<AddMemberDialog {...defaultProps} />);
+
+    await user.click(screen.getByText('Agents'));
+    expect(screen.getByTestId('user-agent-1')).toBeInTheDocument();
+    expect(screen.queryByTestId('user-agent-3')).not.toBeInTheDocument();
+  });
+
   it('should block additions and show retry when current members cannot be loaded', async () => {
     const user = userEvent.setup();
     const refetchMembers = vi.fn();
