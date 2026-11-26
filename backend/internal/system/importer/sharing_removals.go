@@ -11,6 +11,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/application"
 	"github.com/thunder-id/thunderid/internal/connection"
 	flowmgt "github.com/thunder-id/thunderid/internal/flow/mgt"
+	"github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -41,6 +42,8 @@ func sharingTypeOf(resourceType string) (sharing.ResourceType, bool) {
 		return user.UserSharingType, true
 	case resourceTypeConnection:
 		return connection.ConnectionSharingType, true
+	case resourceTypeResourceServer:
+		return resource.ResourceServerSharingType, true
 	default:
 		return "", false
 	}
@@ -115,8 +118,9 @@ func (p *removalPlan) stillNamed(resourceType string, ids ...string) []string {
 // removeDroppedSharing removes the sharing policies the request names, from the resources it wrote. The removal
 // belongs to the outcome of the resource: a refusal fails that outcome, so the caller keeps the resource as not
 // accepted and offers it again, and what was removed is listed on it. A resource the request did not write
-// successfully is left as it is, and so is everything on a dry run, which removes nothing. A flow is left out here,
-// as its policies were removed before it was written. It returns how many outcomes turned from imported to failed.
+// successfully is left as it is, and so is everything on a dry run, which removes nothing. A flow and a resource server
+// are left out here, as their policies were removed before they were written. It returns how many outcomes turned
+// from imported to failed.
 func (s *importService) removeDroppedSharing(
 	ctx context.Context, plan *removalPlan, results []ImportItemOutcome, dryRun bool,
 ) int {
@@ -128,7 +132,7 @@ func (s *importService) removeDroppedSharing(
 	order := []target{}
 	initiators := map[target][]string{}
 	for _, removal := range plan.removals {
-		if removal.ResourceType == resourceTypeFlow {
+		if removal.ResourceType == resourceTypeFlow || removal.ResourceType == resourceTypeResourceServer {
 			continue
 		}
 		key := target{removal.ResourceType, removal.ID}

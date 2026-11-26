@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import * as componentsModule from '@thunderid/components';
+import {OrganizationAccessSettings} from '@thunderid/configure-resource-sharing';
 import {CapabilitiesProvider, HiddenResourcesProvider} from '@thunderid/contexts';
 import {renderWithProviders, screen, fireEvent, waitFor} from '@thunderid/test-utils';
 import type {ReactNode} from 'react';
@@ -11,13 +12,14 @@ import ResourceServerEditPage from '../ResourceServerEditPage';
 
 const mockNavigate = vi.fn();
 const mockRefetch = vi.fn();
+const mockUseParams = vi.hoisted(() => vi.fn(() => ({resourceServerId: 'rs-1'})));
 
 vi.mock('react-router', async () => {
   const actual = await vi.importActual<typeof import('react-router')>('react-router');
   return {
     ...actual,
     useNavigate: () => mockNavigate,
-    useParams: () => ({resourceServerId: 'rs-1'}),
+    useParams: mockUseParams,
     useSearchParams: () => [new URLSearchParams(), vi.fn()],
     Link: ({to, children = undefined, ...props}: {to: string; children?: ReactNode; [key: string]: unknown}) => (
       <a
@@ -54,6 +56,22 @@ vi.mock('@thunderid/contexts', async (importOriginal) => {
   };
 });
 
+const mockOrganizationAccess = vi.hoisted(() => ({
+  hasChanges: false,
+  save: vi.fn(),
+  reset: vi.fn(),
+  isSaving: false,
+  saveError: null as Error | null,
+}));
+
+const mockUseOrganizationAccess = vi.hoisted(() => vi.fn());
+
+vi.mock('@thunderid/configure-resource-sharing', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/configure-resource-sharing')>()),
+  useOrganizationAccess: mockUseOrganizationAccess,
+  OrganizationAccessSettings: vi.fn(() => <div data-testid="organization-access-settings" />),
+}));
+
 vi.mock('@thunderid/logger/react', () => ({
   useLogger: () => ({error: vi.fn(), info: vi.fn(), debug: vi.fn()}),
 }));
@@ -75,6 +93,8 @@ vi.mocked(componentsModule.UnsavedChangesBar).mockImplementation(
     resetLabel,
     saveLabel,
     saveDisabled = false,
+    isSaving = false,
+    resetDisabled = false,
     error = undefined,
     onReset,
     onSave,
@@ -83,6 +103,8 @@ vi.mocked(componentsModule.UnsavedChangesBar).mockImplementation(
     resetLabel: string;
     saveLabel: string;
     saveDisabled?: boolean;
+    isSaving?: boolean;
+    resetDisabled?: boolean;
     error?: string;
     onReset: () => void;
     onSave: () => void;
@@ -90,10 +112,10 @@ vi.mocked(componentsModule.UnsavedChangesBar).mockImplementation(
     <div data-testid="unsaved-changes-bar">
       {error && <span>{error}</span>}
       <span>{message}</span>
-      <button type="button" onClick={onReset}>
+      <button type="button" onClick={onReset} disabled={resetDisabled}>
         {resetLabel}
       </button>
-      <button type="button" onClick={onSave} disabled={saveDisabled}>
+      <button type="button" onClick={onSave} disabled={saveDisabled || isSaving}>
         {saveLabel}
       </button>
     </div>
@@ -209,6 +231,7 @@ const viewOnly = {
 describe('ResourceServerEditPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseParams.mockReturnValue({resourceServerId: 'rs-1'});
     mockUseGetResourceServer.mockReturnValue({
       data: mockResourceServer,
       isLoading: false,
@@ -225,6 +248,12 @@ describe('ResourceServerEditPage', () => {
       error: null,
       reset: mockUpdateReset,
     });
+    mockOrganizationAccess.hasChanges = false;
+    mockOrganizationAccess.isSaving = false;
+    mockOrganizationAccess.saveError = null;
+    mockOrganizationAccess.save.mockReset().mockResolvedValue(undefined);
+    mockOrganizationAccess.reset.mockReset();
+    mockUseOrganizationAccess.mockReset().mockReturnValue(mockOrganizationAccess);
   });
 
   describe('a hidden resource server', () => {
@@ -907,6 +936,231 @@ describe('ResourceServerEditPage', () => {
         expect.objectContaining({data: expect.objectContaining({identifier: 'my-api'}) as unknown}),
         expect.any(Object),
       );
+    });
+  });
+
+  describe('Organization Access tab', () => {
+    const openAccessTab = (): void => {
+      fireEvent.click(screen.getByRole('tab', {name: 'Organization Access'}));
+    };
+
+    const renameServer = async (name: string): Promise<void> => {
+      const nameEditButton = screen
+        .getAllByRole('button')
+        .find((btn) => btn.querySelector('svg') && btn.closest('div')?.textContent?.includes('Dark Dodos Smash'));
+      fireEvent.click(nameEditButton!);
+      const nameInput = await screen.findByDisplayValue('Dark Dodos Smash');
+      fireEvent.change(nameInput, {target: {value: name}});
+      fireEvent.keyDown(nameInput, {key: 'Enter'});
+    };
+
+    it('places the tab between Resources and Advanced', () => {
+      renderWithProviders(<ResourceServerEditPage />);
+
+      expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+        'Resources',
+        'Organization Access',
+        'Advanced',
+      ]);
+    });
+
+    it('links each tab to its panel', () => {
+      renderWithProviders(<ResourceServerEditPage />);
+      openAccessTab();
+
+      const tab = screen.getByRole('tab', {name: 'Organization Access'});
+      const panel = screen.getByRole('tabpanel', {name: 'Organization Access'});
+      expect(tab).toHaveAttribute('aria-controls', panel.id);
+      expect(panel).toHaveAttribute('aria-labelledby', tab.id);
+    });
+
+    it('loads the sharing policies only once the tab is opened', async () => {
+      renderWithProviders(<ResourceServerEditPage />);
+
+      expect(mockUseOrganizationAccess).toHaveBeenLastCalledWith({
+        resourcePath: 'resource-servers/rs-1',
+        enabled: false,
+        wordingNamespace: 'resourceServers',
+      });
+
+      openAccessTab();
+
+      await waitFor(() => {
+        expect(mockUseOrganizationAccess).toHaveBeenLastCalledWith(expect.objectContaining({enabled: true}));
+      });
+    });
+
+    it('starts afresh when the page moves to another resource server', async () => {
+      const {rerender} = renderWithProviders(<ResourceServerEditPage />);
+      openAccessTab();
+      await waitFor(() => {
+        expect(mockUseOrganizationAccess).toHaveBeenLastCalledWith(expect.objectContaining({enabled: true}));
+      });
+
+      mockUseParams.mockReturnValue({resourceServerId: 'rs-2'});
+      rerender(<ResourceServerEditPage />);
+
+      expect(mockUseOrganizationAccess).toHaveBeenLastCalledWith({
+        resourcePath: 'resource-servers/rs-2',
+        enabled: false,
+        wordingNamespace: 'resourceServers',
+      });
+      expect(screen.getByRole('tab', {name: 'Resources'})).toHaveAttribute('aria-selected', 'true');
+    });
+
+    it('renders the settings for the resource server', async () => {
+      renderWithProviders(<ResourceServerEditPage />);
+
+      openAccessTab();
+
+      expect(await screen.findByTestId('organization-access-settings')).toBeInTheDocument();
+      expect(vi.mocked(OrganizationAccessSettings).mock.calls.at(-1)?.[0]).toEqual({
+        access: mockOrganizationAccess,
+        ownerOuId: 'ou-1',
+        resourceName: 'Dark Dodos Smash',
+        readOnly: false,
+        errorNamespace: 'resourceServers',
+      });
+    });
+
+    it('makes the settings read-only for a read-only resource server', async () => {
+      mockUseGetResourceServer.mockReturnValue({
+        data: readOnlyResourceServer,
+        isLoading: false,
+        error: null,
+        refetch: mockRefetch,
+      });
+      renderWithProviders(<ResourceServerEditPage />);
+
+      openAccessTab();
+
+      await screen.findByTestId('organization-access-settings');
+      expect(vi.mocked(OrganizationAccessSettings).mock.calls.at(-1)?.[0]).toEqual(
+        expect.objectContaining({readOnly: true}),
+      );
+    });
+
+    it('saves only the organization access when nothing else changed', async () => {
+      mockOrganizationAccess.hasChanges = true;
+      renderWithProviders(<ResourceServerEditPage />);
+
+      fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+
+      await waitFor(() => expect(mockOrganizationAccess.save).toHaveBeenCalled());
+      expect(mockUpdateMutate).not.toHaveBeenCalled();
+    });
+
+    it('saves the organization access after the resource server update succeeds', async () => {
+      mockOrganizationAccess.hasChanges = true;
+      mockUpdateMutate.mockImplementation((_vars: unknown, options: {onSuccess: () => void}) => {
+        expect(mockOrganizationAccess.save).not.toHaveBeenCalled();
+        options.onSuccess();
+      });
+      renderWithProviders(<ResourceServerEditPage />);
+
+      await renameServer('Renamed server');
+      fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+
+      expect(mockUpdateMutate).toHaveBeenCalled();
+      await waitFor(() => expect(mockOrganizationAccess.save).toHaveBeenCalled());
+    });
+
+    it('does not save the organization access when the resource server update fails', async () => {
+      mockOrganizationAccess.hasChanges = true;
+      mockUpdateMutate.mockImplementation((_vars: unknown, options: {onError: (err: Error) => void}) => {
+        options.onError(new Error('Request failed'));
+      });
+      renderWithProviders(<ResourceServerEditPage />);
+
+      await renameServer('Renamed server');
+      fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+
+      expect(mockUpdateMutate).toHaveBeenCalled();
+      expect(mockOrganizationAccess.save).not.toHaveBeenCalled();
+    });
+
+    it('locks the settings until the whole save finishes', async () => {
+      mockOrganizationAccess.hasChanges = true;
+      let finishAccessSave: () => void = () => undefined;
+      mockOrganizationAccess.save.mockImplementation(
+        () =>
+          new Promise<void>((resolve) => {
+            finishAccessSave = resolve;
+          }),
+      );
+      let finishUpdate: () => void = () => undefined;
+      mockUpdateMutate.mockImplementation((_vars: unknown, options: {onSuccess: () => void}) => {
+        finishUpdate = options.onSuccess;
+      });
+      const lastReadOnly = (): unknown => vi.mocked(OrganizationAccessSettings).mock.calls.at(-1)?.[0].readOnly;
+      renderWithProviders(<ResourceServerEditPage />);
+      openAccessTab();
+      await screen.findByTestId('organization-access-settings');
+      await renameServer('Renamed server');
+
+      fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+      await waitFor(() => expect(lastReadOnly()).toBe(true));
+
+      finishUpdate();
+      await waitFor(() => expect(mockOrganizationAccess.save).toHaveBeenCalled());
+      expect(lastReadOnly()).toBe(true);
+      // The access save resolves only after its refetch and draft clear, so Save and Reset wait for all of it.
+      expect(screen.getByRole('button', {name: 'Save'})).toBeDisabled();
+      expect(screen.getByRole('button', {name: 'Reset'})).toBeDisabled();
+
+      finishAccessSave();
+      await waitFor(() => expect(lastReadOnly()).toBe(false));
+      expect(mockOrganizationAccess.save).toHaveBeenCalledTimes(1);
+      expect(mockOrganizationAccess.reset).not.toHaveBeenCalled();
+    });
+
+    it('unlocks the settings when the resource server update fails', async () => {
+      mockOrganizationAccess.hasChanges = true;
+      mockUpdateMutate.mockImplementation((_vars: unknown, options: {onError: (err: Error) => void}) => {
+        options.onError(new Error('Request failed'));
+      });
+      renderWithProviders(<ResourceServerEditPage />);
+      openAccessTab();
+      await screen.findByTestId('organization-access-settings');
+      await renameServer('Renamed server');
+
+      fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+
+      await waitFor(() => expect(vi.mocked(OrganizationAccessSettings).mock.calls.at(-1)?.[0].readOnly).toBe(false));
+      expect(mockOrganizationAccess.save).not.toHaveBeenCalled();
+    });
+
+    it('unlocks the settings and keeps the draft when the access save fails after the server saved', async () => {
+      mockOrganizationAccess.hasChanges = true;
+      mockOrganizationAccess.save.mockRejectedValue(new Error('Request failed'));
+      mockUpdateMutate.mockImplementation((_vars: unknown, options: {onSuccess: () => void}) => {
+        options.onSuccess();
+      });
+      const lastReadOnly = (): unknown => vi.mocked(OrganizationAccessSettings).mock.calls.at(-1)?.[0].readOnly;
+      renderWithProviders(<ResourceServerEditPage />);
+      openAccessTab();
+      await screen.findByTestId('organization-access-settings');
+      await renameServer('Renamed server');
+
+      fireEvent.click(screen.getByRole('button', {name: 'Save'}));
+
+      await waitFor(() => expect(mockOrganizationAccess.save).toHaveBeenCalled());
+      await waitFor(() => expect(lastReadOnly()).toBe(false));
+      expect(screen.getByRole('button', {name: 'Save'})).toBeEnabled();
+      expect(screen.getByRole('button', {name: 'Reset'})).toBeEnabled();
+      expect(mockOrganizationAccess.reset).not.toHaveBeenCalled();
+    });
+
+    it('shows the organization access save error and resets the draft', () => {
+      mockOrganizationAccess.hasChanges = true;
+      mockOrganizationAccess.saveError = new Error('Request failed');
+      renderWithProviders(<ResourceServerEditPage />);
+
+      expect(screen.getByText('Failed to update organization access. Please try again.')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', {name: 'Reset'}));
+
+      expect(mockOrganizationAccess.reset).toHaveBeenCalled();
     });
   });
 });

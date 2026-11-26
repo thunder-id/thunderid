@@ -141,6 +141,12 @@ const (
 	// EventResourceServerActionDelete names an attempt to delete an action of a resource server or of one of
 	// its resources.
 	EventResourceServerActionDelete = "resource_server.action.delete"
+	// EventResourceServerSharingPolicyCreate names an attempt to create a sharing policy of a resource server.
+	EventResourceServerSharingPolicyCreate = "resource_server.sharing_policy.create"
+	// EventResourceServerSharingPolicyUpdate names an attempt to change a sharing policy of a resource server.
+	EventResourceServerSharingPolicyUpdate = "resource_server.sharing_policy.update"
+	// EventResourceServerSharingPolicyDelete names an attempt to delete a sharing policy of a resource server.
+	EventResourceServerSharingPolicyDelete = "resource_server.sharing_policy.delete"
 	// EventConfigurationImport names an attempt to import configuration, as one event for the whole
 	// request; each resource it writes is recorded by its own service.
 	EventConfigurationImport = "configuration.import"
@@ -277,6 +283,9 @@ const (
 	TargetTypeConnectionSharingPolicy = "connection_sharing_policy"
 	// TargetTypeResourceServer is the target type of an event about a resource server.
 	TargetTypeResourceServer = "resource_server"
+	// TargetTypeResourceServerSharingPolicy is the target type of an event about a sharing policy of a
+	// resource server.
+	TargetTypeResourceServerSharingPolicy = "resource_server_sharing_policy"
 	// TargetTypeResource is the target type of an event about a resource of a resource server.
 	TargetTypeResource = "resource"
 	// TargetTypeAction is the target type of an event about an action of a resource server or of one of its
@@ -423,6 +432,10 @@ var auditedEvents = map[string][]string{
 	EventResourceServerActionCreate:   nil,
 	EventResourceServerActionUpdate:   nil,
 	EventResourceServerActionDelete:   nil,
+
+	EventResourceServerSharingPolicyCreate: nil,
+	EventResourceServerSharingPolicyUpdate: nil,
+	EventResourceServerSharingPolicyDelete: nil,
 
 	EventConfigurationImport: {DetailDryRun},
 	EventConfigurationDelete: nil,

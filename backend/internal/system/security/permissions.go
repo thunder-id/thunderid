@@ -738,10 +738,12 @@ func activatePermissions(p *SystemPermissions) {
 		{"PUT /roles/**", p.RoleUpdate},
 		{"DELETE /roles/**", p.RoleDelete},
 
-		// Resource server APIs. Resources and actions are part of the resource server they belong to, so
-		// changing one updates the resource server. These rules are listed before the "**" rules.
+		// Resource server APIs. Resources, actions and sharing policies are part of the resource server they
+		// belong to, so changing one updates the resource server. These rules are listed before the "**" rules.
 		{"GET /resource-servers", p.ResourceServerView},
 		{"POST /resource-servers", p.ResourceServerCreate},
+		{"POST /resource-servers/*/sharing-policies", p.ResourceServerUpdate},
+		{"DELETE /resource-servers/*/sharing-policies/**", p.ResourceServerUpdate},
 		{"POST /resource-servers/*/actions", p.ResourceServerUpdate},
 		{"POST /resource-servers/*/resources", p.ResourceServerUpdate},
 		{"POST /resource-servers/*/resources/*/actions", p.ResourceServerUpdate},

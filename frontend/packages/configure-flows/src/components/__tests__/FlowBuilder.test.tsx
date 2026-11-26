@@ -590,7 +590,8 @@ const mockSharingAccess = vi.hoisted(() => ({
   savedPolicy: undefined as unknown,
 }));
 
-vi.mock('@thunderid/configure-resource-sharing', () => ({
+vi.mock('@thunderid/configure-resource-sharing', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/configure-resource-sharing')>()),
   useOrganizationAccess: () => mockSharingAccess,
 }));
 

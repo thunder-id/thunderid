@@ -623,6 +623,24 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 			name:   "DELETE action updates the resource server",
 			method: http.MethodDelete, path: "/resource-servers/rs-1/actions/a-1", wantPerm: p.ResourceServerUpdate,
 		},
+		{
+			name:   "POST resource server sharing policy updates the resource server",
+			method: http.MethodPost, path: "/resource-servers/rs-1/sharing-policies", wantPerm: p.ResourceServerUpdate,
+		},
+		{
+			name:   "PUT resource server sharing policy updates the resource server",
+			method: http.MethodPut, path: "/resource-servers/rs-1/sharing-policies/p-1",
+			wantPerm: p.ResourceServerUpdate,
+		},
+		{
+			name:   "DELETE resource server sharing policy updates the resource server",
+			method: http.MethodDelete, path: "/resource-servers/rs-1/sharing-policies/p-1",
+			wantPerm: p.ResourceServerUpdate,
+		},
+		{
+			name:   "GET resource server overlay rules reads the resource server",
+			method: http.MethodGet, path: "/resource-servers/rs-1/overlay-rules", wantPerm: p.ResourceServerView,
+		},
 
 		// ---- Connection APIs ----
 		{name: "GET /connections", method: http.MethodGet, path: "/connections", wantPerm: p.ConnectionView},

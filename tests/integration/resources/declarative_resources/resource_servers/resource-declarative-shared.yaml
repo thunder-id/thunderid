@@ -1,0 +1,22 @@
+resource_type: resource_server
+id: decl-rs-shared
+name: Declarative Shared Resource Server
+description: A declarative resource server shared with a named child organization unit
+identifier: https://localhost:8090/decl-rs-shared
+ouHandle: decl-m2m-root
+delimiter: ":"
+# Child A is named and reached as a unit, so nothing beneath it is reached. Child B is not named.
+sharingPolicies:
+  - id: decl-rs-shared-policy-owner
+    childUnits:
+      mode: selected
+      units:
+        - ouId: decl-m2m-child-a
+          reach: unit
+resources:
+  - name: Orders
+    handle: orders
+    description: Orders of the shared resource server
+    actions:
+      - name: Read
+        handle: read
