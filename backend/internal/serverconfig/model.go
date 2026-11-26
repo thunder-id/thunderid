@@ -20,10 +20,12 @@ type storeLayers struct {
 }
 
 // ServerConfigLayers is the per-section read result with decoded values: the read-only (declarative)
-// layer, the writable (configdb) layer, and their merged effective value. It is the response body for
-// GET /server-config/{name}; each field marshals to JSON via the section's value type.
+// layer, the writable (configdb) layer, the section's default, and the effective value that lays the
+// first two over the default. It is the response body for GET /server-config/{name}; each field
+// marshals to JSON via the section's value type.
 type ServerConfigLayers struct {
 	ReadOnly any `json:"readOnly"`
 	Writable any `json:"writable"`
+	Default  any `json:"default"`
 	Merged   any `json:"merged"`
 }

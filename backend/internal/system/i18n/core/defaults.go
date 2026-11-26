@@ -1866,6 +1866,8 @@ var defaultMessages = map[string]string{
 	"error.scim.user_not_found_description": "The user with the specified ID does not exist",
 	"error.serverconfigservice.config_write_conflict": "The server configuration changed while it was updated",
 	"error.serverconfigservice.config_write_conflict_description": "Other writes kept changing the section. Try again.",
+	"error.serverconfigservice.declarative_config": "Cannot modify a configuration section set by declarative resources",
+	"error.serverconfigservice.declarative_config_description": "The section is set by declarative resources and can only be changed there",
 	"error.serverconfigservice.invalid_config_value": "Invalid server configuration value",
 	"error.serverconfigservice.invalid_config_value_description": "The provided server configuration value is invalid",
 	"error.serverconfigservice.invalid_request_format": "Invalid request format",

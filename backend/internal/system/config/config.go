@@ -984,8 +984,17 @@ type Config struct {
 	Session                    SessionConfig                     `yaml:"session"               json:"session"`
 }
 
-// SessionConfig holds the deployment's session settings.
+// SessionConfig holds the SSO session limits the operator sets. The session timeouts themselves are in
+// the session server-config section.
 type SessionConfig struct {
+	// ActivityRefreshIntervalSeconds is the shortest time between two writes of a session's activity. An
+	// idle timeout must be longer.
+	ActivityRefreshIntervalSeconds int64 `yaml:"activity_refresh_interval_seconds" json:"activity_refresh_interval_seconds"` //nolint:lll
+	// MaxIdleTimeoutSeconds is the longest idle timeout the session section may set.
+	MaxIdleTimeoutSeconds int64 `yaml:"max_idle_timeout_seconds" json:"max_idle_timeout_seconds"`
+	// MaxAbsoluteTimeoutSeconds is the longest absolute timeout the session section may set.
+	MaxAbsoluteTimeoutSeconds int64 `yaml:"max_absolute_timeout_seconds" json:"max_absolute_timeout_seconds"`
+	// Tracking controls whether a login through a flow without a Session node records a session.
 	Tracking SessionTrackingConfig `yaml:"tracking" json:"tracking"`
 }
 

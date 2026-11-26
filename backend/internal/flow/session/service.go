@@ -41,8 +41,8 @@ type Service interface {
 	// session, a session from a different flow, or one established at an incompatible flow version.
 	Resolve(ctx context.Context, handle, flowID string, flowVersion int, now time.Time) (*Session, error)
 
-	// AbsoluteTimeout returns the longest a session lasts from its start.
-	AbsoluteTimeout() time.Duration
+	// AbsoluteTimeout returns the longest a session started now lasts, read from the "session" section.
+	AbsoluteTimeout(ctx context.Context) time.Duration
 
 	// FindCheckpoint returns the resolved session's snapshot for the checkpoint, or (nil, nil) when
 	// the session holds none or the sign-in on the context cannot reuse it. Callers deciding only whether a
@@ -185,7 +185,7 @@ type service struct {
 	criteriaRevoker  CriteriaRevoker
 	ouEligibility    OUEligibility
 	terminationTopic *eventlistener.Topic[TerminatedSession]
-	timeouts         Timeouts
+	timeouts         timeoutsSource
 	entities         entity.EntityServiceInterface
 	entityTypes      entitytype.EntityTypeServiceInterface
 	apps             applicationProvider
@@ -201,8 +201,8 @@ type OUEligibility interface {
 var _ Service = (*service)(nil)
 
 // AbsoluteTimeout implements Service.
-func (s *service) AbsoluteTimeout() time.Duration {
-	return s.timeouts.Absolute
+func (s *service) AbsoluteTimeout(ctx context.Context) time.Duration {
+	return s.timeouts.current(ctx).Absolute
 }
 
 // Resolve implements Service.
@@ -267,7 +267,7 @@ func (s *service) SaveCheckpoint(ctx context.Context, in SaveCheckpointInput) (S
 		properties := target.Properties
 		properties.LastActiveIP = s.activeIP(in.ClientInfo, target)
 		if err := s.store.TouchAuthenticatedAt(ctx, target.SessionID, now,
-			now.Add(s.timeouts.Idle), properties); err != nil {
+			now.Add(s.timeouts.current(ctx).Idle), properties); err != nil {
 			// The checkpoint itself is still worth saving, so degrade rather than fail the login.
 			s.logger.Error(ctx, "Failed to refresh session authentication time", log.Error(err))
 		} else {
@@ -318,7 +318,8 @@ func (s *service) CreateDirect(ctx context.Context, in CreateDirectInput) error 
 	}
 
 	now := time.Now().UTC()
-	sess := s.newSession(TypeDirect, in.SessionID, in.SubjectID, in.FlowID, in.FlowVersion, in.ClientInfo, now)
+	sess := s.newSession(ctx, TypeDirect, in.SessionID, in.SubjectID, in.FlowID, in.FlowVersion, in.ClientInfo,
+		now)
 	if err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		if err := s.store.Create(txCtx, sess); err != nil {
 			return err
@@ -383,13 +384,14 @@ func (s *service) LoadCheckpoint(ctx context.Context, in LoadCheckpointInput) (
 	// Throttle the write: within ActivityRefresh of the last persisted activity refresh, skip it. This
 	// hot path fires on every session reuse, and an unthrottled UPDATE per reuse is the dominant write
 	// load (and, on Postgres, the main source of dead tuples) on the session table. The persisted idle
-	// deadline then lags real activity by at most ActivityRefresh; config validation keeps that below
-	// the idle window so an active session is never skipped past its idle deadline.
+	// deadline then lags real activity by at most ActivityRefresh, which stays below the idle window
+	// so an active session is never skipped past its idle deadline.
 	now := time.Now().UTC()
-	if now.Sub(sess.LastActiveAt) >= s.timeouts.ActivityRefresh {
+	timeouts := s.timeouts.current(ctx)
+	if now.Sub(sess.LastActiveAt) >= timeouts.ActivityRefresh {
 		sess.LastActiveAt = now
 		sess.Properties.LastActiveIP = s.activeIP(in.ClientInfo, sess)
-		sess.IdleExpiresAt = now.Add(s.timeouts.Idle)
+		sess.IdleExpiresAt = now.Add(timeouts.Idle)
 		if updErr := s.store.Update(ctx, sess); updErr != nil {
 			s.logger.Warn(ctx, "Failed to refresh session last-active timestamp", log.Error(updErr))
 		}
@@ -544,8 +546,14 @@ func (s *service) RecordActivity(ctx context.Context, sessionID string) error {
 		return nil
 	}
 	now := time.Now().UTC()
-	if err := s.store.SlideIdleDeadline(ctx, sessionID, now, now.Add(s.timeouts.Idle),
-		now.Add(-s.timeouts.ActivityRefresh)); err != nil {
+	timeouts := s.timeouts.current(ctx)
+	if err := s.store.SlideIdleDeadline(ctx, sessionID, idleSlide{
+		now:             now,
+		idleExpiresAt:   now.Add(timeouts.Idle),
+		refreshedBefore: now.Add(-timeouts.ActivityRefresh),
+		activeAfter:     now.Add(-timeouts.Idle),
+		createdAfter:    now.Add(-timeouts.Absolute),
+	}); err != nil {
 		return fmt.Errorf("failed to record SSO session activity: %w", err)
 	}
 	return nil
@@ -678,13 +686,16 @@ func (s *service) TerminateBySubject(ctx context.Context, subjectID string) erro
 	s.logger.Debug(ctx, "Terminated all sessions for subject", log.Int("sessionCount", len(sessions)))
 	if participantsBySession != nil {
 		now := time.Now()
+		timeouts := s.timeouts.current(ctx)
 		for _, sess := range sessions {
 			if !removed[sess.SessionID] {
 				// A concurrent termination already removed this session and notifies for it.
 				continue
 			}
-			if expired(sess.IdleExpiresAt, now) || expired(sess.AbsoluteExpiresAt, now) {
-				// Expiry already ended it, and expiry sends no notification.
+			if expired(sess.IdleExpiresAt, now) || expired(sess.AbsoluteExpiresAt, now) ||
+				expiredAfter(sess.LastActiveAt, timeouts.Idle, now) ||
+				expiredAfter(sess.CreatedAt, timeouts.Absolute, now) {
+				// Expiry, by its stored deadlines or the timeouts in effect, already ended it and sends no notice.
 				continue
 			}
 			s.terminationTopic.Notify(ctx, TerminatedSession{
@@ -1067,7 +1078,7 @@ func (s *service) establishSession(ctx context.Context, in SaveCheckpointInput) 
 		return nil, false, fmt.Errorf("failed to generate session handle: %w", err)
 	}
 
-	newSession := s.newSession(TypeSSO, sessionID, in.SubjectID, in.FlowID, in.FlowVersion, in.ClientInfo,
+	newSession := s.newSession(ctx, TypeSSO, sessionID, in.SubjectID, in.FlowID, in.FlowVersion, in.ClientInfo,
 		time.Now().UTC())
 	newSession.FlowExecutionID = in.ExecutionID
 	newSession.HandleID = handle
@@ -1091,9 +1102,10 @@ func (s *service) establishSession(ctx context.Context, in SaveCheckpointInput) 
 	return established, created, nil
 }
 
-// newSession builds an active session of the given type, created at now.
-func (s *service) newSession(sessionType Type, sessionID, subjectID, flowID string, flowVersion int,
-	client ClientInfo, now time.Time) Session {
+// newSession builds an active session of the given type, created at now under the timeouts in effect.
+func (s *service) newSession(ctx context.Context, sessionType Type, sessionID, subjectID, flowID string,
+	flowVersion int, client ClientInfo, now time.Time) Session {
+	timeouts := s.timeouts.current(ctx)
 	return Session{
 		SessionID:       sessionID,
 		Type:            sessionType,
@@ -1105,8 +1117,8 @@ func (s *service) newSession(sessionType Type, sessionID, subjectID, flowID stri
 		LastActiveAt:    now,
 		// The idle deadline slides on each activity refresh; the absolute deadline is fixed here and
 		// caps the session's total lifetime. The resolver rejects a session past either deadline.
-		IdleExpiresAt:     now.Add(s.timeouts.Idle),
-		AbsoluteExpiresAt: now.Add(s.timeouts.Absolute),
+		IdleExpiresAt:     now.Add(timeouts.Idle),
+		AbsoluteExpiresAt: now.Add(timeouts.Absolute),
 		Properties: SessionProperties{
 			UserAgent:    client.UserAgent,
 			CreationIP:   client.IP,

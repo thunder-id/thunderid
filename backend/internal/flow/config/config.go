@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"time"
 
-	flowsession "github.com/thunder-id/thunderid/internal/flow/session"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -23,10 +22,15 @@ type Config struct {
 	// SecureCookies marks SSO cookies Secure; it is derived from the deployment's HTTP-only setting and
 	// public URL scheme.
 	SecureCookies bool
-	// Session holds the SSO session lifetime configuration used for both server-side timeouts and the
-	// cookie lifetime. It is sourced from the server-config "session" section at the composition root,
-	// not the static server runtime, so FromServerRuntime leaves it zero for the caller to populate.
-	Session flowsession.Config
+	// SessionActivityRefresh is the shortest time between two writes of an SSO session's activity, from
+	// session.activity_refresh_interval_seconds.
+	SessionActivityRefresh time.Duration
+	// SessionMaxIdleTimeout is the longest idle timeout the "session" section may set, from
+	// session.max_idle_timeout_seconds.
+	SessionMaxIdleTimeout time.Duration
+	// SessionMaxAbsoluteTimeout is the longest absolute timeout the "session" section may set, from
+	// session.max_absolute_timeout_seconds.
+	SessionMaxAbsoluteTimeout time.Duration
 	// SessionTracking records a direct session for a login through a flow without a Session node, from
 	// session.tracking.enabled.
 	SessionTracking bool
@@ -78,11 +82,15 @@ type FlowSectionConfig struct {
 func FromServerRuntime() Config {
 	runtime := config.GetServerRuntime()
 	return Config{
-		Flow:            runtime.Config.Flow,
-		SecureCookies:   secureCookies(runtime.Config.Server),
-		SessionTracking: runtime.Config.Session.Tracking.IsEnabled(),
-		TokenLeeway:     time.Duration(runtime.Config.JWT.Leeway) * time.Second,
-		GateHostname:    runtime.Config.GateClient.Hostname,
+		Flow:          runtime.Config.Flow,
+		SecureCookies: secureCookies(runtime.Config.Server),
+		SessionActivityRefresh: time.Duration(runtime.Config.Session.ActivityRefreshIntervalSeconds) *
+			time.Second,
+		SessionMaxIdleTimeout:     time.Duration(runtime.Config.Session.MaxIdleTimeoutSeconds) * time.Second,
+		SessionMaxAbsoluteTimeout: time.Duration(runtime.Config.Session.MaxAbsoluteTimeoutSeconds) * time.Second,
+		SessionTracking:           runtime.Config.Session.Tracking.IsEnabled(),
+		TokenLeeway:               time.Duration(runtime.Config.JWT.Leeway) * time.Second,
+		GateHostname:              runtime.Config.GateClient.Hostname,
 	}
 }
 

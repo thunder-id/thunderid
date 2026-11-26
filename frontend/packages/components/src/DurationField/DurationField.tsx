@@ -1,8 +1,8 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {MenuItem, Stack, TextField} from '@wso2/oxygen-ui';
-import {useState, type JSX} from 'react';
+import {Box, FormHelperText, MenuItem, Stack, TextField} from '@wso2/oxygen-ui';
+import {useId, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import {toDurationParts, toSeconds, type DurationParts, type DurationUnit} from './duration';
 
@@ -11,9 +11,9 @@ interface DurationDraft {
   text: string;
 }
 
-function toDraft(seconds: number): DurationDraft {
+function toDraft(seconds: number, emptyUnit: DurationUnit): DurationDraft {
   const parts: DurationParts = toDurationParts(seconds);
-  return {unit: parts.unit, text: parts.value === 0 ? '' : String(parts.value)};
+  return parts.value === 0 ? {unit: emptyUnit, text: ''} : {unit: parts.unit, text: String(parts.value)};
 }
 
 /** The typed number when it is a positive whole number, otherwise undefined. */
@@ -61,6 +61,13 @@ export interface DurationFieldProps {
    * their names as `aria-label`, so neither is unnamed.
    */
   inline?: boolean;
+  /** Ids of elements that describe the field, such as its hint. Both controls are described by them. */
+  describedBy?: string;
+  /**
+   * Whether seconds are offered as a unit. Without them, a stored value that is not whole minutes
+   * still shows in seconds, so it is never rewritten.
+   */
+  allowSeconds?: boolean;
 }
 
 /**
@@ -85,15 +92,22 @@ export default function DurationField({
   zeroLabel = undefined,
   testId = undefined,
   inline = false,
+  describedBy = undefined,
+  allowSeconds = true,
 }: DurationFieldProps): JSX.Element {
   const {t} = useTranslation();
-  const [draft, setDraft] = useState<DurationDraft>(() => toDraft(seconds));
+  const emptyUnit: DurationUnit = allowSeconds ? 'seconds' : 'minutes';
+  const [draft, setDraft] = useState<DurationDraft>(() => toDraft(seconds, emptyUnit));
   const [lastSeconds, setLastSeconds] = useState<number>(seconds);
+  const errorId: string = useId();
   const isZero: boolean = zeroLabel !== undefined && seconds === 0;
+
+  // A value of zero has no unit of its own, so the unit shown is kept beside the emptied box.
+  const resync = (next: number): DurationDraft => (next > 0 ? toDraft(next, emptyUnit) : {unit: draft.unit, text: ''});
 
   if (seconds !== lastSeconds) {
     setLastSeconds(seconds);
-    setDraft(toDraft(seconds));
+    setDraft(resync(seconds));
   }
 
   const emit = (next: number): void => {
@@ -116,11 +130,13 @@ export default function DurationField({
       value: 'days',
       label: one ? t('common:units.day', 'Day') : t('common:units.days', 'Days'),
     },
-    {
+  ];
+  if (allowSeconds || draft.unit === 'seconds') {
+    unitOptions.push({
       value: 'seconds',
       label: one ? t('common:units.second', 'Second') : t('common:units.seconds', 'Seconds'),
-    },
-  ];
+    });
+  }
   if (zeroLabel !== undefined) {
     unitOptions.push({value: 'zero', label: zeroLabel});
   }
@@ -140,7 +156,7 @@ export default function DurationField({
   // An empty or invalid box shows the stored value again once focus leaves.
   const handleBlur = (): void => {
     if (parseWhole(draft.text) === undefined) {
-      setDraft(toDraft(seconds));
+      setDraft(resync(seconds));
     }
   };
 
@@ -153,57 +169,81 @@ export default function DurationField({
     }
   };
 
-  const invalid: boolean = !isZero && parseWhole(draft.text) === undefined;
+  // A box emptied by a value of zero from outside, such as a reset, is not the user's input.
+  const emptiedFromOutside: boolean = seconds === 0 && draft.text === '';
+  const invalid: boolean = !isZero && !emptiedFromOutside && parseWhole(draft.text) === undefined;
   const shownError: string | undefined =
     error ?? (invalid ? t('common:duration.invalid', 'Enter a whole number of 1 or more.') : undefined);
   const unitLabel: string = t('common:units.label', 'Unit');
   // With the number box hidden, the select carries the field's label and error.
   const selectLabel: string = isZero ? label : unitLabel;
   let selectHelperText: string | undefined;
-  if (isZero) {
-    selectHelperText = inline ? shownError : (shownError ?? helperText);
+  if (isZero && !inline) {
+    selectHelperText = shownError ?? helperText;
   } else if (!inline) {
     selectHelperText = ' ';
   }
 
+  // Inline, the message runs beneath both controls rather than squeezed under the narrow number box.
+  const inlineError: string | undefined = inline ? shownError : undefined;
+  const descriptions: string | undefined =
+    [describedBy, inlineError ? errorId : undefined].filter(Boolean).join(' ') || undefined;
+
   return (
-    <Stack direction="row" spacing={1} useFlexGap alignItems="flex-start" sx={{flexWrap: 'wrap', flexShrink: 0}}>
-      {!isZero && (
+    <Box sx={{flexShrink: 0}}>
+      <Stack direction="row" spacing={1} useFlexGap alignItems="flex-start" sx={{flexWrap: 'wrap'}}>
+        {!isZero && (
+          <TextField
+            id={id}
+            label={inline ? undefined : label}
+            type="number"
+            size="small"
+            value={draft.text}
+            disabled={disabled}
+            error={Boolean(shownError)}
+            helperText={inline ? undefined : (shownError ?? helperText)}
+            slotProps={{
+              // Set only when there is one, or it would take the place of the helper text's id.
+              htmlInput: {
+                min: 1,
+                'aria-label': label,
+                ...(descriptions ? {'aria-describedby': descriptions} : {}),
+                'data-testid': testId,
+              },
+            }}
+            onChange={(event) => handleNumberChange(event.target.value)}
+            onBlur={handleBlur}
+            sx={{width: inline ? 96 : 140, '& .MuiInputBase-root': {height: 40}}}
+          />
+        )}
         <TextField
-          id={id}
-          label={inline ? undefined : label}
-          type="number"
+          select
+          id={isZero ? id : undefined}
+          label={inline ? undefined : selectLabel}
+          data-testid={testId === undefined ? undefined : `${testId}-unit`}
           size="small"
-          value={draft.text}
+          value={isZero ? 'zero' : draft.unit}
           disabled={disabled}
-          error={Boolean(shownError)}
-          helperText={inline ? shownError : (shownError ?? helperText)}
-          slotProps={{htmlInput: {min: 1, 'aria-label': label, 'data-testid': testId}}}
-          onChange={(event) => handleNumberChange(event.target.value)}
-          onBlur={handleBlur}
-          sx={{width: inline ? 96 : 140, '& .MuiInputBase-root': {height: 40}}}
-        />
+          helperText={selectHelperText}
+          error={isZero && Boolean(shownError)}
+          onChange={(event) => handleUnitChange(event.target.value)}
+          slotProps={{
+            htmlInput: {'aria-label': selectLabel, ...(descriptions ? {'aria-describedby': descriptions} : {})},
+          }}
+          sx={{minWidth: isZero ? 220 : 140, '& .MuiInputBase-root': {height: 40}}}
+        >
+          {unitOptions.map((option) => (
+            <MenuItem key={option.value} value={option.value}>
+              {option.label}
+            </MenuItem>
+          ))}
+        </TextField>
+      </Stack>
+      {inlineError && (
+        <FormHelperText id={errorId} error>
+          {inlineError}
+        </FormHelperText>
       )}
-      <TextField
-        select
-        id={isZero ? id : undefined}
-        label={inline ? undefined : selectLabel}
-        data-testid={testId === undefined ? undefined : `${testId}-unit`}
-        size="small"
-        value={isZero ? 'zero' : draft.unit}
-        disabled={disabled}
-        helperText={selectHelperText}
-        error={isZero && Boolean(shownError)}
-        onChange={(event) => handleUnitChange(event.target.value)}
-        slotProps={{htmlInput: {'aria-label': selectLabel}}}
-        sx={{minWidth: isZero ? 220 : 140, '& .MuiInputBase-root': {height: 40}}}
-      >
-        {unitOptions.map((option) => (
-          <MenuItem key={option.value} value={option.value}>
-            {option.label}
-          </MenuItem>
-        ))}
-      </TextField>
-    </Stack>
+    </Box>
   );
 }

@@ -5,10 +5,10 @@ info:
   version: "1.0"
   description: |
     API to manage server-wide configuration that is mutable at runtime without a restart. Each
-    configuration section is stored under a well-known name. A section is read as three layers:
-    `readOnly` (declarative, fixed at boot), `writable` (runtime-mutable, set via `PUT`), and
-    `merged` (the effective value in use, derived from the other two). The concrete shape of a
-    section's value is section-specific.
+    configuration section is stored under a well-known name. A section is read as its layers:
+    `readOnly` (declarative, fixed at boot), `writable` (runtime-mutable, set via `PUT`), `default`
+    (the value a field takes when nothing sets it), and `merged` (the effective value, the other two
+    laid over the default). The concrete shape of a section's value is section-specific.
   license:
     name: Apache 2.0
     url: https://www.apache.org/licenses/LICENSE-2.0.html
@@ -54,9 +54,9 @@ paths:
         - management
       summary: Get a server configuration section
       description: |
-        Returns a single server-wide configuration section by name as its three layers. All three
-        layers (`readOnly`, `writable`, `merged`) are always present in the response; the shape of
-        each layer's value is section-specific.
+        Returns a single server-wide configuration section by name as its layers. `readOnly`,
+        `writable`, `default` and `merged` are always present in the response, with `default` null for
+        a section that has none; the shape of each layer's value is section-specific.
       operationId: getServerConfigByName
       parameters:
         - $ref: '#/components/parameters/ConfigName'
@@ -80,8 +80,15 @@ paths:
       summary: Update a server configuration section
       description: |
         Replaces the writable layer of the named section with the request body. The value is validated
-        before any write; an invalid value is rejected and nothing is changed. The section is cleared
-        by setting it to an empty value. Returns the recomputed layers.
+        before any write; an invalid value is rejected and nothing is changed. A field the body leaves
+        out takes the value a declarative resource gives it, if any, or else its default, and the
+        section is cleared by setting it to an empty value. Returns the recomputed layers.
+
+        A declarative resource that sets a value makes the
+        `session`, `accountAccess`, `notification`, `defaultResourceServer` or `gateway` section
+        read-only (`SCF-1007`), while `flow`, `csp` and `cors` take a write over it. With
+        `server_config.store: declarative`, no section can be written (`SCF-1007`), and on a data
+        plane neither can one the control plane deployed (`SCF-1006`).
       operationId: updateServerConfigByName
       parameters:
         - $ref: '#/components/parameters/ConfigName'
@@ -139,20 +146,45 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         "403":
           description: |
-            The caller may not write server configuration. On a data plane, no token writes it, whatever its
-            permissions: only an import with the management API key does.
+            The caller may not write server configuration (`SSE-4030`). On a data plane, no token writes it,
+            whatever its permissions: only an import with the management API key does. Declarative resources
+            set the section, so it can only be changed there (`SCF-1007`). On a data plane, the control plane
+            deployed the section, so it can only be changed there (`SCF-1006`).
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
-              example:
-                code: "SSE-4030"
-                message:
-                  key: "error.unauthorized"
-                  defaultValue: "Unauthorized"
-                description:
-                  key: "error.unauthorized_description"
-                  defaultValue: "The caller is not authorized to perform this operation"
+              examples:
+                unauthorized:
+                  summary: The caller may not write server configuration
+                  value:
+                    code: "SSE-4030"
+                    message:
+                      key: "error.unauthorized"
+                      defaultValue: "Unauthorized"
+                    description:
+                      key: "error.unauthorized_description"
+                      defaultValue: "The caller is not authorized to perform this operation"
+                managed-config:
+                  summary: The control plane deployed the section
+                  value:
+                    code: "SCF-1006"
+                    message:
+                      key: "error.serverconfigservice.managed_config"
+                      defaultValue: "Cannot modify a configuration section deployed by the control plane"
+                    description:
+                      key: "error.serverconfigservice.managed_config_description"
+                      defaultValue: "The section was deployed by the control plane and can only be changed there"
+                declarative-config:
+                  summary: Declarative resources set the section
+                  value:
+                    code: "SCF-1007"
+                    message:
+                      key: "error.serverconfigservice.declarative_config"
+                      defaultValue: "Cannot modify a configuration section set by declarative resources"
+                    description:
+                      key: "error.serverconfigservice.declarative_config_description"
+                      defaultValue: "The section is set by declarative resources and can only be changed there"
         "500":
           $ref: '#/components/responses/InternalServerError'
 
@@ -239,8 +271,56 @@ components:
       description: >
         The value of a configuration section. Its concrete shape is section-specific and may be any
         valid JSON value (object, array, or scalar). See `AccountAccessConfig` for the shape of the
-        `accountAccess` section, `NotificationConfig` for the `notification` section and
-        `GatewaySettingsConfig` for the `gateway` section.
+        `accountAccess` section, `NotificationConfig` for the `notification` section,
+        `SessionConfig` for the `session` section and `GatewaySettingsConfig` for the `gateway`
+        section.
+
+    SessionConfig:
+      type: object
+      description: |
+        The value of the `session` section: how long an SSO session lasts. A change applies without a
+        restart: at once on the node that takes the write, and on other nodes once their cached copy of
+        the section expires (30 seconds by default). A shorter timeout also ends an existing session that
+        has gone past it, while a longer absolute timeout applies to sessions started after the change.
+        A field that is left out takes its default: 2 hours idle and 24 hours absolute.
+
+        An idle timeout must not be longer than the absolute timeout in effect: the one set with it, or
+        the 24-hour default. The idle timeout in effect never outlasts the absolute one, so an absolute
+        timeout set on its own also shortens the idle timeout to match. That idle timeout must be longer
+        than the deployment's activity refresh interval (`session.activity_refresh_interval_seconds`, 60
+        seconds by default). Neither timeout may be longer than the deployment's maximum for it
+        (`session.max_idle_timeout_seconds`, 30 days by default, and `session.max_absolute_timeout_seconds`,
+        365 days by default). A value that breaks one of these rules, a negative one, or one with a field
+        the section does not have, is rejected with `SCF-1003`, and a declarative resource that breaks one
+        stops the server from starting. `activityRefreshIntervalSeconds`, which earlier versions had in the
+        section and always exported, is accepted and ignored. A stored value is not checked again, so one
+        stored before the interval was raised to or past it still applies, with the interval in effect
+        cut to half the idle timeout until the section is changed. `default` holds the built-in timeouts,
+        each cut to the deployment's maximum for it, and `merged` lays the configured value over them.
+        Sessions cut the idle timeout to the absolute one, so with only a 1-hour absolute timeout set,
+        `merged` shows the 2-hour default idle timeout while sessions end after 1 hour idle.
+
+        A declarative `session` resource that sets a timeout makes the section read-only, so a `PUT`
+        is rejected with `SCF-1007`.
+      properties:
+        idleTimeoutSeconds:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9223372036
+          description: |
+            How long a session lasts without activity. A use of the session moves its deadline
+            forward, at most once per activity refresh interval. `0` is the same as leaving it out.
+          example: 7200
+        absoluteTimeoutSeconds:
+          type: integer
+          format: int64
+          minimum: 0
+          maximum: 9223372036
+          description: |
+            How long a session lasts from sign-in, however active it is. `0` is the same as leaving
+            it out.
+          example: 86400
 
     GatewaySettingsConfig:
       type: object
@@ -251,7 +331,7 @@ components:
         `autoApply` makes each change captured on the control plane deploy to the first gateway
         of the pipeline (`GET /gateways/pipeline`). Unset, `gateway.auto_apply` in the deployment
         configuration decides. A declarative `gateway` resource, when present, makes the section
-        read-only, so a `PUT` is rejected with `SCF-1003`.
+        read-only, so a `PUT` is rejected with `SCF-1007`.
 
         `projects` sets, by project id, how each project is synced after a capture. While it holds
         any entry, each project is synced on its own: a project whose `autoSync` is on (or, unset,
@@ -300,7 +380,7 @@ components:
         must be valid on its own: an enabled policy there needs its threshold, failure window and lock
         durations, or the server does not start. A declarative `accountAccess` resource, when present,
         overrides the defaults and makes the section read-only, so a `PUT` is rejected with
-        `SCF-1003`. Otherwise the stored value overrides the defaults.
+        `SCF-1007`. Otherwise the stored value overrides the defaults.
 
         Only `user` and `agent` can be configured. Applications are never locked, so an
         `application` key is rejected as an unknown field. An enabled policy that cannot form a lock
@@ -494,7 +574,7 @@ components:
       type: object
       description: |
         The value of the `notification` section. A declarative `notification` resource that names a
-        sender locks the section: a `PUT` is then rejected with `SCF-1003`. An unknown field is
+        sender locks the section: a `PUT` is then rejected with `SCF-1007`. An unknown field is
         rejected with `SCF-1003`.
       properties:
         defaultEmailSenderId:
@@ -509,13 +589,20 @@ components:
     ServerConfigLayers:
       type: object
       description: |
-        A configuration section as its three layers. `readOnly` is the declarative value fixed at boot,
-        `writable` is the runtime-mutable value set via `PUT`, and `merged` is the effective value in
-        use — the merge of the other two. Every layer is always present; each value's shape is
-        section-specific.
+        A configuration section as its layers. `readOnly` is the declarative value fixed at boot,
+        `writable` is the runtime-mutable value set via `PUT`, `default` is the value a field takes when
+        nothing sets it, and `merged` is the effective value in use. All four are always present, with
+        `default` null for a section that has none; each value's shape is section-specific.
+
+        For a section with a default, `merged` lays the configured value over the default field by
+        field: a field it sets wins, and one it leaves out keeps the default. The configured value of a
+        section that a declarative resource locks (`session`, `accountAccess`, `notification`,
+        `defaultResourceServer`, `gateway`) is that resource when one sets a value, and otherwise the
+        writable layer. `flow`, `csp` and `cors` lay the writable layer over the declarative one.
       required:
         - readOnly
         - writable
+        - default
         - merged
       properties:
         readOnly:
@@ -526,8 +613,13 @@ components:
           description: Runtime-mutable layer set via `PUT`.
           allOf:
             - $ref: '#/components/schemas/ServerConfigValue'
+        default:
+          description: The value a field takes when nothing sets it, or null when the section has none.
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/ServerConfigValue'
         merged:
-          description: Effective value in use — the merge of the readOnly and writable layers.
+          description: Effective value in use.
           allOf:
             - $ref: '#/components/schemas/ServerConfigValue'
 

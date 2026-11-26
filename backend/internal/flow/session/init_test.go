@@ -4,14 +4,19 @@
 package session
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
 
+	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
+	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
+	"github.com/thunder-id/thunderid/tests/mocks/serverconfigmock"
 	"github.com/thunder-id/thunderid/tests/mocks/transactionmock"
 )
 
@@ -23,18 +28,20 @@ func TestInitTestSuite(t *testing.T) {
 	suite.Run(t, new(InitTestSuite))
 }
 
-// Initialize builds the service with the default timeouts filled in and registers the management routes.
+// Initialize builds the service over the session section and registers the management routes.
 func (s *InitTestSuite) TestInitializeRegistersTheManagementRoutes() {
 	dbProvider := providermock.NewDBProviderInterfaceMock(s.T())
 	dbProvider.EXPECT().GetRuntimePersistentDBTransactioner().
 		Return(transactionmock.NewTransactionerMock(s.T()), nil)
+	reader := serverconfigmock.NewServerConfigServiceMock(s.T())
+	reader.EXPECT().GetMergedConfig(mock.Anything, string(serverconfig.ConfigNameSession)).Return(Config{}, nil)
 	mux := http.NewServeMux()
 
-	svc, hook, err := Initialize(mux, dbProvider, testDeploymentID, Timeouts{}, nil, nil, nil, nil)
+	svc, hook, err := Initialize(mux, dbProvider, testDeploymentID, reader, flowconfig.Config{}, nil, nil, nil, nil)
 
 	s.Require().NoError(err)
 	s.NotNil(hook)
-	s.Equal(DefaultTimeouts().Absolute, svc.AbsoluteTimeout())
+	s.Equal(newTimeouts(Config{}, deploymentLimits{}).Absolute, svc.AbsoluteTimeout(context.Background()))
 	for _, path := range []string{"/sessions", "/users/me/sessions"} {
 		w := httptest.NewRecorder()
 		mux.ServeHTTP(w, httptest.NewRequest(http.MethodOptions, path, nil))
@@ -61,7 +68,8 @@ func (s *InitTestSuite) TestInitializeTransactionerError() {
 	dbProvider := providermock.NewDBProviderInterfaceMock(s.T())
 	dbProvider.EXPECT().GetRuntimePersistentDBTransactioner().Return(nil, errors.New("db down"))
 
-	_, _, err := Initialize(http.NewServeMux(), dbProvider, testDeploymentID, Timeouts{}, nil, nil, nil, nil)
+	_, _, err := Initialize(http.NewServeMux(), dbProvider, testDeploymentID, nil, flowconfig.Config{}, nil, nil,
+		nil, nil)
 
 	s.ErrorContains(err, "failed to get runtime persistent DB transactioner")
 }

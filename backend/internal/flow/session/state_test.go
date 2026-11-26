@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/suite"
+
+	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 )
 
 type StateTestSuite struct {
@@ -22,45 +24,87 @@ func TestStateTestSuite(t *testing.T) {
 }
 
 func (s *StateTestSuite) TestNewTimeouts_Defaults() {
-	// Non-positive values fall back to the built-in defaults.
-	got := NewTimeouts(-5, 0, 0)
-	s.Equal(DefaultTimeouts(), got)
+	// Unset and non-positive values fall back to the built-in defaults.
+	s.Equal(newTimeouts(Config{}, deploymentLimits{}), newTimeouts(Config{IdleTimeoutSeconds: -5}, deploymentLimits{}))
+}
+
+// Each timeout is cut to the deployment's maximum, so a value stored before the operator lowered it applies
+// within it, and so does a default longer than the maximum.
+func (s *StateTestSuite) TestNewTimeouts_CutToTheDeploymentMaximums() {
+	limits := deploymentLimits{maxIdle: time.Hour, maxAbsolute: 12 * time.Hour}
+	got := newTimeouts(Config{IdleTimeoutSeconds: 7200, AbsoluteTimeoutSeconds: 86400}, limits)
+	s.Equal(time.Hour, got.Idle)
+	s.Equal(12*time.Hour, got.Absolute)
+
+	got = newTimeouts(Config{}, deploymentLimits{maxAbsolute: time.Hour})
+	s.Equal(time.Hour, got.Absolute)
+	s.Equal(time.Hour, got.Idle, "the default idle timeout is cut to the absolute one")
+}
+
+// A limit the deployment leaves unset takes the built-in default: 60 seconds between activity refreshes,
+// at most 30 days idle and at most 365 days absolute.
+func (s *StateTestSuite) TestNewDeploymentLimits_Defaults() {
+	s.Equal(deploymentLimits{
+		activityRefresh: time.Minute,
+		maxIdle:         30 * 24 * time.Hour,
+		maxAbsolute:     365 * 24 * time.Hour,
+	}, newDeploymentLimits(flowconfig.Config{}))
+	s.Equal(deploymentLimits{activityRefresh: 30 * time.Second, maxIdle: time.Hour, maxAbsolute: 8 * time.Hour},
+		newDeploymentLimits(flowconfig.Config{
+			SessionActivityRefresh:    30 * time.Second,
+			SessionMaxIdleTimeout:     time.Hour,
+			SessionMaxAbsoluteTimeout: 8 * time.Hour,
+		}))
 }
 
 func (s *StateTestSuite) TestNewTimeouts_Overrides() {
-	got := NewTimeouts(60, 600, 0)
-	s.Equal(60*time.Second, got.Idle)
+	got := newTimeouts(Config{IdleTimeoutSeconds: 120, AbsoluteTimeoutSeconds: 600}, deploymentLimits{})
+	s.Equal(120*time.Second, got.Idle)
 	s.Equal(600*time.Second, got.Absolute)
 }
 
 func (s *StateTestSuite) TestNewTimeouts_PartialOverride() {
-	got := NewTimeouts(60, 0, 0)
-	s.Equal(60*time.Second, got.Idle)
-	s.Equal(DefaultAbsoluteTimeout, got.Absolute, "unset absolute falls back to default")
+	got := newTimeouts(Config{IdleTimeoutSeconds: 120}, deploymentLimits{})
+	s.Equal(120*time.Second, got.Idle)
+	s.Equal(defaultAbsoluteTimeout, got.Absolute, "unset absolute falls back to default")
 }
 
 func (s *StateTestSuite) TestNewTimeouts_IdleClampedToAbsolute() {
 	// A small configured absolute with a defaulted (larger) idle must not yield idle > absolute.
-	got := NewTimeouts(0, 60, 0)
-	s.Equal(60*time.Second, got.Absolute)
-	s.Equal(60*time.Second, got.Idle, "idle is clamped to the absolute lifetime")
+	got := newTimeouts(Config{AbsoluteTimeoutSeconds: 600}, deploymentLimits{})
+	s.Equal(600*time.Second, got.Absolute)
+	s.Equal(600*time.Second, got.Idle, "idle is clamped to the absolute lifetime")
 
 	// An explicit idle larger than absolute is likewise clamped.
-	got = NewTimeouts(600, 300, 0)
-	s.Equal(300*time.Second, got.Idle)
-	s.Equal(300*time.Second, got.Absolute)
+	got = newTimeouts(Config{IdleTimeoutSeconds: 900, AbsoluteTimeoutSeconds: 600}, deploymentLimits{})
+	s.Equal(600*time.Second, got.Idle)
+	s.Equal(600*time.Second, got.Absolute)
 }
 
 func (s *StateTestSuite) TestNewTimeouts_ActivityRefreshInterval() {
 	// An unset interval yields the built-in default.
-	s.Equal(defaultActivityRefreshInterval, NewTimeouts(0, 0, 0).ActivityRefresh)
+	s.Equal(defaultActivityRefreshInterval, newTimeouts(Config{}, deploymentLimits{}).ActivityRefresh)
 
-	// A configured interval is honored exactly.
-	s.Equal(20*time.Second, NewTimeouts(1800, 28800, 20).ActivityRefresh)
+	// A configured interval below the idle window is honored exactly.
+	timeouts := Config{IdleTimeoutSeconds: 1800, AbsoluteTimeoutSeconds: 28800}
+	refreshEvery := func(d time.Duration) time.Duration {
+		return newTimeouts(timeouts, deploymentLimits{activityRefresh: d}).ActivityRefresh
+	}
+	s.Equal(20*time.Second, refreshEvery(20*time.Second))
+	s.Equal(1200*time.Second, refreshEvery(1200*time.Second),
+		"an interval above half the idle window is honored, not clamped")
+}
 
-	// A configured interval above half the idle window is honored as-is, not clamped down.
-	s.Equal(1200*time.Second, NewTimeouts(1800, 28800, 1200).ActivityRefresh,
-		"a configured interval is honored, not clamped")
+// An interval that reaches the idle window, as when the deployment raised it after the section was set,
+// is kept below it so an active session is never skipped past its idle deadline.
+func (s *StateTestSuite) TestNewTimeouts_ActivityRefreshKeptBelowIdle() {
+	refreshEvery := func(cfg Config, d time.Duration) time.Duration {
+		return newTimeouts(cfg, deploymentLimits{activityRefresh: d}).ActivityRefresh
+	}
+	s.Equal(60*time.Second, refreshEvery(Config{IdleTimeoutSeconds: 120}, 5*time.Minute))
+	s.Equal(30*time.Second, refreshEvery(Config{IdleTimeoutSeconds: 60}, 0))
+	s.Equal(50*time.Second, refreshEvery(Config{AbsoluteTimeoutSeconds: 100}, 2*time.Minute),
+		"the idle window is clamped to the absolute lifetime first")
 }
 
 func (s *StateTestSuite) TestSessionContext_PayloadRoundTrip() {

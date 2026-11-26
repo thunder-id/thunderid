@@ -17,8 +17,8 @@ export function errorReasonOf(error: unknown): string | undefined {
   return error instanceof Error && error.message ? error.message : undefined;
 }
 
-/** The gateway section is set in the deployment configuration, so it cannot be changed at runtime. */
-export const SETTINGS_DECLARATIVE = 'SCF-1003';
+/** A declarative resource sets the gateway section, so it cannot be changed at runtime. */
+export const SETTINGS_DECLARATIVE = 'SCF-1007';
 
 /** The apply would remove more resources than the deployment's threshold and was not confirmed. */
 export const REMOVALS_NEED_CONFIRMATION = 'GTW-1030';

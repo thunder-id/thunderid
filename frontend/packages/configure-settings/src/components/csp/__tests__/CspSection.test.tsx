@@ -330,6 +330,22 @@ describe('CspSection', () => {
     ).toBeInTheDocument();
   });
 
+  it('shows the shared message for a section declarative resources set', async () => {
+    const user = userEvent.setup();
+    updateState = {
+      isError: true,
+      error: Object.assign(new Error('bad'), {response: {data: {code: 'SCF-1007'}}}),
+    };
+    loaded();
+    renderWithProviders(<CspSection />);
+
+    await user.click(screen.getByRole('switch', {name: 'Toggle Report only'}));
+
+    expect(
+      await screen.findByText("Declarative resources set these settings, so they can't be changed here."),
+    ).toBeInTheDocument();
+  });
+
   it('resets the draft', async () => {
     const user = userEvent.setup();
     loaded();

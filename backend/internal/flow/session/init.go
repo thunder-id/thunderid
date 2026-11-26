@@ -9,6 +9,8 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
+	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
 	"github.com/thunder-id/thunderid/internal/system/eventlistener"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -17,12 +19,13 @@ import (
 
 // Initialize builds the SSO session Service and the hook that installs its termination listener, and
 // registers the session management routes on mux. Store construction stays inside this package: callers
-// receive only the Service and never hold a store. Timeouts fall back per field to the built-in
-// defaults so an unset (zero) value never makes sessions expire immediately. The entity and entity type
+// receive only the Service and never hold a store. The session timeouts are read from the "session"
+// server-config section on every use, so a change applies without a restart. The entity and entity type
 // services resolve the display names of the users and agents shown with each session; the application
 // service, which is built later, is injected with SetApplicationProvider.
 func Initialize(mux *http.ServeMux, dbProvider provider.DBProviderInterface, deploymentID string,
-	timeouts Timeouts, criteriaRevoker CriteriaRevoker, ouEligibility OUEligibility,
+	serverConfig serverconfig.ServerConfigService, cfg flowconfig.Config,
+	criteriaRevoker CriteriaRevoker, ouEligibility OUEligibility,
 	entities entity.EntityServiceInterface, entityTypes entitytype.EntityTypeServiceInterface) (
 	Service, TerminationHook, error) {
 	transactioner, err := dbProvider.GetRuntimePersistentDBTransactioner()
@@ -31,21 +34,11 @@ func Initialize(mux *http.ServeMux, dbProvider provider.DBProviderInterface, dep
 			"failed to get runtime persistent DB transactioner for the SSO session service: %w", err)
 	}
 
-	def := DefaultTimeouts()
-	if timeouts.Idle <= 0 {
-		timeouts.Idle = def.Idle
-	}
-	if timeouts.Absolute <= 0 {
-		timeouts.Absolute = def.Absolute
-	}
-	if timeouts.ActivityRefresh <= 0 {
-		timeouts.ActivityRefresh = def.ActivityRefresh
-	}
-
 	store := newStore(dbProvider, deploymentID)
+	timeouts := newConfigProvider(serverConfig, newDeploymentLimits(cfg))
 	svc := &service{
 		store:            store,
-		resolver:         newResolver(store),
+		resolver:         newResolver(store, timeouts),
 		transactioner:    transactioner,
 		criteriaRevoker:  criteriaRevoker,
 		ouEligibility:    ouEligibility,
@@ -57,6 +50,13 @@ func Initialize(mux *http.ServeMux, dbProvider provider.DBProviderInterface, dep
 	}
 	registerRoutes(mux, newSessionMgtHandler(svc))
 	return svc, svc.terminationTopic.Hook(), nil
+}
+
+// InitializeConfigHandler returns the "session" server-config handler, for the server-config service to
+// be built with. It is apart from Initialize because the handler is registered before that service is
+// built, and on a control plane, which runs no sessions and never calls Initialize.
+func InitializeConfigHandler(cfg flowconfig.Config) serverconfig.ServerConfigHandlerInterface {
+	return newConfigHandler(cfg)
 }
 
 // SetApplicationProvider gives the session service the application service, through which the session
