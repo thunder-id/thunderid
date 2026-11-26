@@ -85,13 +85,13 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) SetupTest() {
 
 	// Explicit resource resolves to an RS whose ID and Identifier are the identifier; an empty
 	// identifier resolves to the configured default resource server, as the default-aware provider does.
-	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, mock.Anything).
-		Return(func(_ context.Context, identifier string) *providers.ResourceServer {
+	suite.mockResourceService.On("GetResourceServerByPermissions", mock.Anything, mock.Anything, mock.Anything).
+		Return(func(_ context.Context, identifier string, _ []string) *providers.ResourceServer {
 			if identifier == "" {
 				return &providers.ResourceServer{ID: defaultRSID, Identifier: defaultRSIdentifier}
 			}
 			return &providers.ResourceServer{ID: identifier, Identifier: identifier}
-		}, func(_ context.Context, _ string) *tidcommon.ServiceError {
+		}, func(_ context.Context, _ string, _ []string) *tidcommon.ServiceError {
 			return nil
 		}).Maybe()
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
@@ -1008,7 +1008,7 @@ func (suite *ClientCredentialsGrantHandlerTestSuite) TestHandleGrant_NoResourceN
 
 	// No default resource server configured: the provider resolves the empty identifier to a client
 	// error, which HandleGrant maps to invalid_target.
-	mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, "").
+	mockResourceService.On("GetResourceServerByPermissions", mock.Anything, "", []string{"read"}).
 		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RES-1003"})
 
 	tokenRequest := &model.TokenRequest{

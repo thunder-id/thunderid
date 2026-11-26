@@ -168,7 +168,11 @@ No `issued_token_type` or `refresh_token` is returned.
 7. Confirms the `sub` claim is present.
 8. Records the assertion's `jti` so it cannot be redeemed twice. A replayed assertion returns `invalid_grant` - `Invalid assertion`.
 
+<<<<<<< HEAD
 Requests missing the `assertion` parameter fail with `invalid_request` - `Missing required parameter: assertion`. A public client attempting the grant fails with `invalid_client` - `The jwt-bearer grant requires a confidential client`. An application or agent without the `jwt-bearer` grant type fails with `unauthorized_client` - `The client is not authorized to use this grant type`. When the deployment does not serve the grant, because `oauth.id_jag.acceptance.enabled` is `false` or `jwt-bearer` is not in `oauth.allowed_grant_types`, every request fails with `unsupported_grant_type` - `Unsupported grant type`. A `resource` parameter that is not a subset of the assertion's `resource` claim fails with `invalid_target` - `The resource parameter must be a subset of the assertion's resource claim`; omitting `resource` when no default resource server is configured fails with `invalid_target` - `No resource parameter supplied and no default resource server is configured`.
+=======
+Requests missing the `assertion` parameter fail with `invalid_request` - `Missing required parameter: assertion`. A public client attempting the grant fails with `invalid_client` - `The jwt-bearer grant requires a confidential client`. An application without the `jwt-bearer` grant type fails with `unauthorized_client` - `The client is not authorized to use this grant type`. A `resource` parameter that is not a subset of the assertion's `resource` claim fails with `invalid_target` - `The resource parameter must be a subset of the assertion's resource claim`; omitting `resource` when no resource server can be resolved from the requested scopes fails with `invalid_target` - `No resource parameter supplied and no resource server could be resolved`.
+>>>>>>> 6135a44f3 (Fixes #5546)
 
 ## The Tokens <ProductName /> Issues
 

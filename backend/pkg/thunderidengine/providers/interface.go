@@ -211,6 +211,21 @@ type ResourceServerProvider interface {
 	GetResourceServer(
 		ctx context.Context, id string,
 	) (*ResourceServer, *common.ServiceError)
+	// GetResourceServerByPermissions resolves the resource server a token binds to. resourceIdentifier is
+	// the requested resource indicator and may be empty; permissions are the requested non-OIDC scopes.
+	// A non-empty resourceIdentifier must be resolved by identifier only: the client's explicit resource
+	// always wins over the permissions. When resourceIdentifier is empty, implementations may derive the
+	// resource server from the permissions and, when none matches, fall back to a default of their own.
+	// The engine applies no default of its own: any fallback must be returned by this method. The
+	// returned resource server's Identifier must be resolvable through GetResourceServerByIdentifier,
+	// which later stages (the authorization flow, token issuance, refresh) use to look up the bound
+	// resource server. Implementations return a client error when no resource server can be determined,
+	// and an error with common.ErrorAmbiguousPermissions when the permissions map to more than one
+	// resource server. A nil resource server without an error is treated as unresolved and the request
+	// is rejected; it never falls back to a default.
+	GetResourceServerByPermissions(
+		ctx context.Context, resourceIdentifier string, permissions []string,
+	) (*ResourceServer, *common.ServiceError)
 	ValidatePermissions(
 		ctx context.Context, resourceServerID string, permissions []string,
 	) ([]string, *common.ServiceError)

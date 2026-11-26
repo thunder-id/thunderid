@@ -90,8 +90,8 @@ func (suite *TokenExchangeGrantHandlerTestSuite) SetupTest() {
 	// Explicit resource parameter resolves to an RS whose identifier equals the resource URI; an
 	// empty identifier resolves to the configured default resource server, as the default-aware
 	// provider does.
-	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, mock.Anything).
-		Return(func(_ context.Context, identifier string) *providers.ResourceServer {
+	suite.mockResourceService.On("GetResourceServerByPermissions", mock.Anything, mock.Anything, mock.Anything).
+		Return(func(_ context.Context, identifier string, _ []string) *providers.ResourceServer {
 			if identifier == "" {
 				return &providers.ResourceServer{
 					ID:         testTokenExchangeDefaultRSID,
@@ -99,7 +99,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) SetupTest() {
 				}
 			}
 			return &providers.ResourceServer{ID: identifier, Identifier: identifier}
-		}, func(_ context.Context, _ string) *tidcommon.ServiceError {
+		}, func(_ context.Context, _ string, _ []string) *tidcommon.ServiceError {
 			return nil
 		}).Maybe()
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
@@ -654,7 +654,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_PreservesOIDCSc
 	// The target RS defines only "read" (no OIDC scopes, no "write"). DownscopeToResourceServer must
 	// drop "write" and must never be asked to validate openid/profile.
 	suite.mockResourceService.ExpectedCalls = nil
-	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, resourceURI).
+	suite.mockResourceService.On("GetResourceServerByPermissions", mock.Anything, resourceURI, mock.Anything).
 		Return(&providers.ResourceServer{ID: resourceURI, Identifier: resourceURI}, (*tidcommon.ServiceError)(nil))
 	rsPermissions := map[string]struct{}{"read": {}}
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, resourceURI, mock.Anything).
@@ -2721,7 +2721,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_NoResource_NoDe
 	// Fresh resource mock so the default-resolution stub from SetupTest is not used; resolving the
 	// empty identifier yields a client error (no default RS configured), mapped to invalid_target.
 	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
-	rsvc.On("GetResourceServerByIdentifier", mock.Anything, "").
+	rsvc.On("GetResourceServerByPermissions", mock.Anything, "", mock.Anything).
 		Return(nil, &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "RES-1003"})
 	h := &tokenExchangeGrantHandler{
 		tokenBuilder:    suite.mockTokenBuilder,
@@ -2827,7 +2827,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_RFC8707_Resourc
 	// Use a fresh resource service mock so the catch-all from SetupTest does not shadow
 	// the specific ValidatePermissions expectation.
 	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
-	rsvc.On("GetResourceServerByIdentifier", mock.Anything, testRS01URI).
+	rsvc.On("GetResourceServerByPermissions", mock.Anything, testRS01URI, mock.Anything).
 		Return(&providers.ResourceServer{ID: testRS01URI, Identifier: testRS01URI}, nil)
 	// RS only defines [read, write]; ValidatePermissions returns the invalid one (admin).
 	rsvc.On("ValidatePermissions", mock.Anything, testRS01URI, []string{"read", "write", "admin"}).
@@ -2882,7 +2882,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_RFC8707_ScopeNo
 	// Use a fresh resource service mock so the catch-all from SetupTest does not shadow
 	// the specific ValidatePermissions expectation.
 	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
-	rsvc.On("GetResourceServerByIdentifier", mock.Anything, testRS01URI).
+	rsvc.On("GetResourceServerByPermissions", mock.Anything, testRS01URI, mock.Anything).
 		Return(&providers.ResourceServer{ID: testRS01URI, Identifier: testRS01URI}, nil)
 	// RS defines [read] only; ValidatePermissions returns [write] as invalid.
 	rsvc.On("ValidatePermissions", mock.Anything, testRS01URI, []string{"read", "write"}).
@@ -3133,7 +3133,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_DownscopeValida
 	tokenRequest.Resources = []string{"https://rs.example.com"}
 
 	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
-	rsvc.On("GetResourceServerByIdentifier", mock.Anything, "https://rs.example.com").
+	rsvc.On("GetResourceServerByPermissions", mock.Anything, "https://rs.example.com", mock.Anything).
 		Return(&providers.ResourceServer{ID: "rs-x", Identifier: "https://rs.example.com"}, nil)
 	rsvc.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
 		Return([]string(nil), &tidcommon.ServiceError{Type: tidcommon.ServerErrorType, Code: "RES-5001"})
@@ -3881,7 +3881,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_MappedRoleGrant
 	tokenRequest.Scope = testScopeWrite
 
 	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
-	rsvc.On("GetResourceServerByIdentifier", mock.Anything, testRS01URI).
+	rsvc.On("GetResourceServerByPermissions", mock.Anything, testRS01URI, mock.Anything).
 		Return(&providers.ResourceServer{ID: testRS01URI, Identifier: testRS01URI}, nil)
 	rsvc.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
 		Return([]string{}, nil)
@@ -3945,7 +3945,7 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_MappedPermissio
 	tokenRequest.Scope = "read"
 
 	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
-	rsvc.On("GetResourceServerByIdentifier", mock.Anything, testRS01URI).
+	rsvc.On("GetResourceServerByPermissions", mock.Anything, testRS01URI, mock.Anything).
 		Return(&providers.ResourceServer{ID: testRS01URI, Identifier: testRS01URI}, nil)
 	rsvc.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
 		Return([]string{}, nil)
@@ -3984,6 +3984,139 @@ func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_MappedPermissio
 	assert.Equal(suite.T(), []string{"read"}, result.AccessToken.Scopes)
 }
 
+<<<<<<< HEAD
+=======
+// An external subject token whose connection has no authorization mapping gets no permission scopes,
+// whatever its own scope claim or the request says. OIDC scopes are kept and the engine is not called.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_ExternalSubjectNoMapping_GrantsNoPermissionScopes() {
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub": testUserID, "iss": testCustomIssuer,
+		"exp": float64(now + 3600), "nbf": float64(now - 60),
+	})
+	tokenRequest := suite.createBasicTokenRequest(subjectToken)
+	tokenRequest.Resources = []string{testRS01URI}
+	tokenRequest.Scope = "openid read write"
+
+	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	rsvc.On("GetResourceServerByPermissions", mock.Anything, testRS01URI, mock.Anything).
+		Return(&providers.ResourceServer{ID: testRS01URI, Identifier: testRS01URI}, nil)
+	rsvc.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
+		Return([]string{}, nil)
+	// No .On("EvaluateAccessBatch", ...) expectation: a call would fail the mock.
+	mockAuthzService := authzmock.NewAuthorizationProviderMock(suite.T())
+	h := &tokenExchangeGrantHandler{
+		cfg:             suite.handler.cfg,
+		tokenBuilder:    suite.mockTokenBuilder,
+		tokenValidator:  suite.mockTokenValidator,
+		resourceService: rsvc,
+		authzService:    mockAuthzService,
+	}
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub:            testUserID,
+			Iss:            testCustomIssuer,
+			Scopes:         []string{"openid", "read", "write"},
+			UserAttributes: map[string]interface{}{},
+		}, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return tokenservice.JoinScopes(ctx.Scopes) == "openid"
+		})).Return(&model.TokenDTO{
+		Token: testTokenExchangeJWT, IssuedAt: now, ExpiresIn: 7200, Scopes: []string{"openid"},
+	}, nil)
+
+	result, errResp := h.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), []string{"openid"}, result.AccessToken.Scopes)
+}
+
+// A self-issued subject token (issuer is this server) keeps its own scope claim as the authority: a
+// request may narrow it but not widen it, and no authorization mapping is involved.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_SelfIssuedSubject_ScopesBoundedBySubjectScopes() {
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub": testUserID, "iss": testLocalIssuer,
+		"exp": float64(now + 3600), "nbf": float64(now - 60),
+	})
+	claims := &tokenservice.SubjectTokenClaims{
+		Sub: testUserID, Iss: testLocalIssuer, Scopes: []string{"read"}, UserAttributes: map[string]interface{}{},
+	}
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(claims, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return tokenservice.JoinScopes(ctx.Scopes) == testScopeRead
+		})).Return(&model.TokenDTO{
+		Token: testTokenExchangeJWT, IssuedAt: now, ExpiresIn: 7200, Scopes: []string{testScopeRead},
+	}, nil)
+
+	widen := suite.createBasicTokenRequest(subjectToken)
+	widen.Scope = testScopeReadWrite
+	result, errResp := suite.handler.HandleGrant(context.Background(), widen, suite.oauthApp)
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), []string{testScopeRead}, result.AccessToken.Scopes,
+		"a scope the subject token lacks is not granted")
+
+	narrow := suite.createBasicTokenRequest(subjectToken)
+	narrow.Scope = testScopeRead
+	result, errResp = suite.handler.HandleGrant(context.Background(), narrow, suite.oauthApp)
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	assert.Equal(suite.T(), []string{testScopeRead}, result.AccessToken.Scopes)
+}
+
+// Several mapped permission targets are granted directly whatever order the request lists them in, and
+// a requested permission with no mapped target is not granted. No engine call is made.
+func (suite *TokenExchangeGrantHandlerTestSuite) TestHandleGrant_DirectPermissionMapping_GrantsOnlyMappedTargets() {
+	now := time.Now().Unix()
+	subjectToken := suite.createTestJWT(map[string]interface{}{
+		"sub": testUserID, "iss": testCustomIssuer,
+		"exp": float64(now + 3600), "nbf": float64(now - 60),
+	})
+	tokenRequest := suite.createBasicTokenRequest(subjectToken)
+	tokenRequest.Resources = []string{testRS01URI}
+	tokenRequest.Scope = "read unmapped delete"
+
+	rsvc := resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	rsvc.On("GetResourceServerByPermissions", mock.Anything, testRS01URI, mock.Anything).
+		Return(&providers.ResourceServer{ID: testRS01URI, Identifier: testRS01URI}, nil)
+	rsvc.On("ValidatePermissions", mock.Anything, mock.Anything, mock.Anything).
+		Return([]string{}, nil)
+	mockAuthzService := authzmock.NewAuthorizationProviderMock(suite.T())
+	h := &tokenExchangeGrantHandler{
+		cfg:             suite.handler.cfg,
+		tokenBuilder:    suite.mockTokenBuilder,
+		tokenValidator:  suite.mockTokenValidator,
+		resourceService: rsvc,
+		authzService:    mockAuthzService,
+	}
+	suite.mockTokenValidator.On("ValidateSubjectToken", mock.Anything, subjectToken, suite.oauthApp).
+		Return(&tokenservice.SubjectTokenClaims{
+			Sub:            testUserID,
+			Iss:            testCustomIssuer,
+			UserAttributes: map[string]interface{}{},
+			Authorization: tokenservice.MappedAuthorization{
+				Targets: permissionTargets(testRS01URI, "delete", "read"),
+			},
+		}, nil)
+	var granted []string
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			granted = args.Get(1).(*tokenservice.AccessTokenBuildContext).Scopes
+		}).Return(&model.TokenDTO{Token: testTokenExchangeJWT, IssuedAt: now, ExpiresIn: 7200}, nil)
+
+	result, errResp := h.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	assert.Nil(suite.T(), errResp)
+	assert.NotNil(suite.T(), result)
+	assert.ElementsMatch(suite.T(), []string{"delete", "read"}, granted)
+}
+
+>>>>>>> 6135a44f3 (Fixes #5546)
 // TestGetScopes_MappedAuthorizationIsSingleAuthority is a direct unit test of the getScopes gate:
 // when the issuing connection has AuthorizationRuleMapping configured, the subject token's own scope
 // claim is not consulted at all. A requested scope passes through unfiltered, without the subset
