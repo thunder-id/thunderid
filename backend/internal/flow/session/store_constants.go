@@ -138,12 +138,17 @@ var (
 			`FROM "SESSION" WHERE SUBJECT_ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
 
-	// queryListParticipantsByAppID returns every session the application participates in, oldest first.
-	// Backed by idx_session_participant_app, since the table's primary key leads with SESSION_ID.
+	// queryListParticipantsByAppID returns every session the application participates in, oldest first, with
+	// the subject of each session. The join is a LEFT JOIN so a participation whose session row is gone is
+	// still returned, with no subject. Backed by idx_session_participant_app, since the table's primary key
+	// leads with SESSION_ID.
 	queryListParticipantsByAppID = model.DBQuery{
 		ID: "SEQ-SESS-14",
-		Query: `SELECT SESSION_ID, APP_ID, OU_ID, FIRST_JOINED_AT, LAST_ACTIVE_AT, TFID ` +
-			`FROM "SESSION_PARTICIPANT" WHERE APP_ID = $1 AND DEPLOYMENT_ID = $2 ORDER BY FIRST_JOINED_AT`,
+		Query: `SELECT p.SESSION_ID, p.APP_ID, p.OU_ID, p.FIRST_JOINED_AT, p.LAST_ACTIVE_AT, p.TFID, ` +
+			`s.SUBJECT_ID ` +
+			`FROM "SESSION_PARTICIPANT" p LEFT JOIN "SESSION" s ` +
+			`ON s.SESSION_ID = p.SESSION_ID AND s.DEPLOYMENT_ID = p.DEPLOYMENT_ID ` +
+			`WHERE p.APP_ID = $1 AND p.DEPLOYMENT_ID = $2 ORDER BY p.FIRST_JOINED_AT`,
 	}
 
 	// queryDeleteParticipant removes one application's participation in one session under one

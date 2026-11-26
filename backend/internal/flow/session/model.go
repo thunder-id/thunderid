@@ -7,6 +7,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/eventlistener"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
@@ -138,6 +139,9 @@ type Participant struct {
 	// TokenFamilyID is the token family id (tfid) the application's grants in the session share under this
 	// organization unit, until it is revoked. Empty for participants recorded before tfid was introduced.
 	TokenFamilyID string
+	// SubjectID is the subject of the session the participation belongs to. Only ListByAppID fills it, and it
+	// is empty when the session row is gone.
+	SubjectID string
 	// FirstJoinedAt is when the application first joined the session (write-once).
 	FirstJoinedAt time.Time
 	// LastActiveAt is refreshed each time the application reuses the session.
@@ -248,4 +252,28 @@ type sessionListResponse struct {
 type appDisplay struct {
 	name    string
 	logoURL string
+}
+
+// sessionEvent is an audited session event: its name and the action it records, chosen together.
+type sessionEvent struct {
+	name   string
+	action audit.Action
+}
+
+var (
+	eventSessionCreate = sessionEvent{name: audit.EventSessionCreate, action: audit.ActionCreate}
+	eventSessionReuse  = sessionEvent{name: audit.EventSessionReuse, action: audit.ActionReuse}
+	eventSessionEnd    = sessionEvent{name: audit.EventSessionEnd, action: audit.ActionEnd}
+)
+
+// sessionAudit is what one audit event of the session service records. The target is always the user. A zero
+// actor leaves the actor to the security context of the call.
+type sessionAudit struct {
+	event       sessionEvent
+	userID      string
+	outcome     audit.Outcome
+	actor       audit.Actor
+	sessionID   string
+	application string
+	endReason   TerminationReason
 }

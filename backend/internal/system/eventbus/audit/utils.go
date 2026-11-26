@@ -21,7 +21,7 @@ func reasonFromCode(code string) string {
 		return '_'
 	}, strings.ToLower(code))
 	if !reasonPattern.MatchString(reason) {
-		return reasonServerError
+		return ReasonServerError
 	}
 	return reason
 }
@@ -37,6 +37,16 @@ func PrincipalRef(ctx context.Context, principalType, id string) Ref {
 		targetType = principalType
 	}
 	return Ref{Type: targetType, ID: id}
+}
+
+// PrincipalActor names the principal of type user, app or agent and its ID as an actor. A type with no actor
+// type is kept as it is, as PrincipalRef keeps one.
+func PrincipalActor(principalType, id string) Actor {
+	actorType, ok := principalActorTypes[principalType]
+	if !ok {
+		actorType = ActorType(principalType)
+	}
+	return Actor{Type: actorType, ID: id}
 }
 
 // capID cuts an ID to its first maxIDLength characters.

@@ -109,6 +109,8 @@ type EngineContext struct {
 	// from the caller's token or the administrator's subject input. Persisted with the context and shared by
 	// every call frame; executors read it, never write it.
 	boundSubject string
+	// flowRef is the flow's public reference, shared by every call frame and distinct from the execution ID.
+	flowRef string
 	// authority is what a flow that acts for its caller runs with. Persisted with the context; executors never
 	// see it.
 	authority *flowAuthority
@@ -476,6 +478,7 @@ type flowContextContent struct {
 	BoundSubject          string  `json:"boundSubject,omitempty"`
 	// RequestedInputs is the identifiers a request continuing the flow may carry. Absent when it is not limited.
 	RequestedInputs *[]string `json:"requestedInputs,omitempty"`
+	FlowRef         string    `json:"flowRef,omitempty"`
 
 	Authority *flowAuthority `json:"authority,omitempty"`
 }
@@ -690,6 +693,7 @@ func (f *FlowContextDB) ToEngineContext(ctx context.Context,
 		CurrentPromptInputs:   promptInputs,
 		CurrentPromptNodeID:   promptNodeID,
 		boundSubject:          content.BoundSubject,
+		flowRef:               content.FlowRef,
 		authority:             content.Authority,
 		expiresAt:             f.ExpiryTime,
 	}
@@ -886,6 +890,7 @@ func (f *FlowContextDB) FromEngineContext(ctx EngineContext) error {
 		PromptInputs:          promptInputsStr,
 		PromptNodeID:          promptNodeIDStr,
 		BoundSubject:          ctx.boundSubject,
+		FlowRef:               ctx.flowRef,
 		Authority:             ctx.authority,
 		RequestedInputs:       requestedInputs,
 	}

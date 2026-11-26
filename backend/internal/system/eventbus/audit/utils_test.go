@@ -25,11 +25,11 @@ func (s *UtilsTestSuite) TestReasonFromCode() {
 		"SSE-5000":                    "sse_5000",
 		"already_lowercase":           "already_lowercase",
 		"FET 10.2/x":                  "fet_10_2_x",
-		"Ünknown":                     reasonServerError,
+		"Ünknown":                     ReasonServerError,
 		"Nötig":                       "n_tig",
-		"":                            reasonServerError,
-		"1001":                        reasonServerError,
-		strings.Repeat("A", 65):       reasonServerError,
+		"":                            ReasonServerError,
+		"1001":                        ReasonServerError,
+		strings.Repeat("A", 65):       ReasonServerError,
 		"A" + strings.Repeat("b", 63): "a" + strings.Repeat("b", 63),
 	} {
 		s.Run(code, func() {

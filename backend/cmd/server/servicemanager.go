@@ -471,7 +471,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// The termination hook is kept for the back-channel logout dispatcher, which OAuth builds and which
 	// is added to the hook once OAuth is initialized.
 	sessionService, terminationHook := initSessionService(ctx, mux, serverConfigService, flowConfig,
-		runtime.Config.Server.Identifier, sessionRevoker, ouProvider, entityService, entityTypeService, logger)
+		runtime.Config.Server.Identifier, sessionRevoker, ouProvider, entityService, entityTypeService, auditBus,
+		logger)
 	flowFactory, execRegistry, interceptorRegistry, graphBuilder := initializeFlowCoreAndExecutor(ctx, logger,
 		cacheManager, executor.ExecutorDependencies{
 			OUService:              ouProvider,
@@ -796,10 +797,10 @@ func unregisterServices() {
 func initSessionService(ctx context.Context, mux *http.ServeMux, svc serverconfig.ServerConfigService,
 	flowConfig flowconfig.Config, deploymentID string, criteriaRevoker flowsession.CriteriaRevoker,
 	ouEligibility flowsession.OUEligibility, entities entity.EntityServiceInterface,
-	entityTypes entitytype.EntityTypeServiceInterface, logger *log.Logger,
+	entityTypes entitytype.EntityTypeServiceInterface, auditBus eventbus.EventBusInterface, logger *log.Logger,
 ) (flowsession.Service, flowsession.TerminationHook) {
 	sessionService, terminationHook, err := flowsession.Initialize(mux, dbprovider.GetDBProvider(), deploymentID,
-		svc, flowConfig, criteriaRevoker, ouEligibility, entities, entityTypes)
+		svc, flowConfig, criteriaRevoker, ouEligibility, entities, entityTypes, auditBus)
 	fatalOnError(ctx, logger, err, "Failed to initialize SSO session service")
 	return sessionService, terminationHook
 }

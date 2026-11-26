@@ -20,6 +20,7 @@ import (
 
 	"github.com/stretchr/testify/suite"
 
+	syscontext "github.com/thunder-id/thunderid/internal/system/context"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
@@ -52,6 +53,10 @@ type knownLine struct {
 	Action        string            `json:"action"`
 	Outcome       map[string]string `json:"outcome"`
 	Client        map[string]string `json:"client"`
+	Application   map[string]string `json:"application"`
+	SessionRef    string            `json:"session_ref"`
+	FlowRef       string            `json:"flow_ref"`
+	OU            map[string]string `json:"ou"`
 	Details       map[string]string `json:"details"`
 }
 
@@ -132,13 +137,13 @@ func (s *SinkTestSuite) keys(written []byte) []string {
 }
 
 func (s *SinkTestSuite) TestALineCarriesTheMarkerFirstAndTheWholeEvent() {
-	written := s.write(envelope(), payload().WithSubject(testTarget).
-		WithDetails(map[string]string{"reason": "requested"}))
+	written := s.write(envelope(), payload().WithSubject(testTarget).WithApplication("a17").
+		WithSessionRef("s5d1").WithDetails(map[string]string{"reason": "requested"}))
 
 	s.True(bytes.HasPrefix(written, []byte(`{"log_type":"AUDIT","schema_version":1,`)))
 	s.Equal([]string{
 		"log_type", "schema_version", "id", "time", "event", "trace_id", "actor", "subject", "target",
-		"action", "outcome", "client", "details",
+		"action", "outcome", "client", "application", "session_ref", "details",
 	}, s.keys(written))
 
 	decoded := s.decode(written)
@@ -153,7 +158,54 @@ func (s *SinkTestSuite) TestALineCarriesTheMarkerFirstAndTheWholeEvent() {
 	s.Equal("update", decoded.Action)
 	s.Equal(map[string]string{"result": "succeeded"}, decoded.Outcome)
 	s.Equal(map[string]string{"address": "8.8.8.8", "user_agent": testUserAgent}, decoded.Client)
+	s.Equal(map[string]string{"id": "a17"}, decoded.Application)
+	s.Equal("s5d1", decoded.SessionRef)
 	s.Equal(map[string]string{"reason": "requested"}, decoded.Details)
+}
+
+// A flow supplies the reference and the application from the context.
+func (s *SinkTestSuite) TestALineInAFlowCarriesTheFlowRefAfterTheSessionRef() {
+	ctx := syscontext.WithApplicationID(syscontext.WithFlowRef(context.Background(), "ref-7"), "a17")
+	p := audit.NewPayload(ctx, testTarget, audit.ActionUpdate, audit.OutcomeSucceeded).
+		WithSessionRef("s5d1").WithDetails(map[string]string{"reason": "requested"})
+
+	written := s.write(envelope(), p)
+
+	s.Equal([]string{
+		"log_type", "schema_version", "id", "time", "event", "trace_id", "actor", "target", "action", "outcome",
+		"application", "session_ref", "flow_ref", "details",
+	}, s.keys(written))
+	decoded := s.decode(written)
+	s.Equal("ref-7", decoded.FlowRef)
+	s.Equal(map[string]string{"id": "a17"}, decoded.Application)
+	s.Equal(1, decoded.SchemaVersion)
+}
+
+func (s *SinkTestSuite) TestALineCarriesTheOUAfterTheApplicationAndOmitsItWhenEmpty() {
+	ctx := syscontext.WithApplicationID(syscontext.WithFlowRef(context.Background(), "ref-7"), "a17")
+	p := audit.NewPayload(ctx, testTarget, audit.ActionUpdate, audit.OutcomeSucceeded).
+		WithSessionRef("s5d1").WithDetails(map[string]string{"reason": "requested"})
+
+	withOU := s.write(envelope(), p.WithOU("o3"))
+	withoutOU := s.write(envelope(), p)
+
+	s.Equal([]string{
+		"log_type", "schema_version", "id", "time", "event", "trace_id", "actor", "target", "action", "outcome",
+		"application", "ou", "session_ref", "flow_ref", "details",
+	}, s.keys(withOU))
+	s.Equal(map[string]string{"id": "o3"}, s.decode(withOU).OU)
+	s.NotContains(s.keys(withoutOU), "ou")
+}
+
+// The flow reference is left out when the context carries none.
+func (s *SinkTestSuite) TestTheFlowRefIsLeftOutWhenEmpty() {
+	withFlowRef := s.write(envelope(), audit.NewPayload(syscontext.WithFlowRef(context.Background(), "ref-7"),
+		testTarget, audit.ActionUpdate, audit.OutcomeSucceeded))
+	withEmpty := s.write(envelope(), audit.NewPayload(syscontext.WithFlowRef(context.Background(), ""),
+		testTarget, audit.ActionUpdate, audit.OutcomeSucceeded))
+
+	s.Contains(s.keys(withFlowRef), "flow_ref")
+	s.NotContains(s.keys(withEmpty), "flow_ref")
 }
 
 // A request from a private or loopback peer has no client, so the line has no client key at all rather
@@ -203,6 +255,19 @@ func (s *SinkTestSuite) TestOptionalFieldsAreLeftOut() {
 	decoded := s.decode(written)
 	s.Equal(map[string]string{"type": audit.TargetTypeUser}, decoded.Target)
 	s.Equal(map[string]string{"result": "failed", "reason": "usr_1003"}, decoded.Outcome)
+}
+
+// The application and the session reference are written on their own, so a line with one has not the other.
+func (s *SinkTestSuite) TestTheApplicationAndTheSessionRefAreWrittenIndependently() {
+	withApplication := s.write(envelope(), payload().WithApplication("a17"))
+	withSessionRef := s.write(envelope(), payload().WithSessionRef("s5d1"))
+
+	s.Contains(s.keys(withApplication), "application")
+	s.NotContains(s.keys(withApplication), "session_ref")
+	s.Equal(map[string]string{"id": "a17"}, s.decode(withApplication).Application)
+	s.Contains(s.keys(withSessionRef), "session_ref")
+	s.NotContains(s.keys(withSessionRef), "application")
+	s.Equal("s5d1", s.decode(withSessionRef).SessionRef)
 }
 
 // details is a nested object, so a key in it cannot take the place of the top-level marker.
@@ -278,6 +343,36 @@ func (s *SinkTestSuite) TestThenTheCallerControlledFields() {
 	decoded := s.decode(written)
 	s.Equal(strings.Repeat("t", maxFieldBytes), decoded.TraceID)
 	s.Equal(env.ID, decoded.ID)
+}
+
+// The application and organization unit IDs and the session reference are free-form fields too, so the last
+// cap bounds them.
+func (s *SinkTestSuite) TestTheCapAlsoBoundsTheApplicationTheOUAndTheSessionRef() {
+	l := newLine(envelope(), payload().WithApplication("a17").WithOU("o3").WithSessionRef("s5d1"))
+	l.Application.ID = strings.Repeat("a", 3*maxLineBytes)
+	l.OU.ID = strings.Repeat("o", 3*maxLineBytes)
+	l.SessionRef = strings.Repeat("s", 3*maxLineBytes)
+
+	buf, err := render(l)
+
+	s.Require().NoError(err)
+	s.LessOrEqual(len(buf), maxLineBytes)
+	decoded := s.decode(buf)
+	s.Equal(map[string]string{"id": strings.Repeat("a", maxFieldBytes)}, decoded.Application)
+	s.Equal(map[string]string{"id": strings.Repeat("o", maxFieldBytes)}, decoded.OU)
+	s.Equal(strings.Repeat("s", maxFieldBytes), decoded.SessionRef)
+}
+
+// The flow reference is a free-form field too, so the last cap bounds it.
+func (s *SinkTestSuite) TestTheCapAlsoBoundsTheFlowRef() {
+	l := newLine(envelope(), payload())
+	l.FlowRef = strings.Repeat("f", 3*maxLineBytes)
+
+	buf, err := render(l)
+
+	s.Require().NoError(err)
+	s.LessOrEqual(len(buf), maxLineBytes)
+	s.Equal(strings.Repeat("f", maxFieldBytes), s.decode(buf).FlowRef)
 }
 
 // A field that escapes to six bytes per character can keep a line over the limit after every cap.
