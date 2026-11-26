@@ -3410,6 +3410,65 @@ func (suite *RefreshTokenGrantHandlerTestSuite) TestIssueRefreshToken_NilRespons
 	suite.mockTokenBuilder.AssertExpectations(suite.T())
 }
 
+// A refreshed access token and the rotated refresh token keep the original auth_time.
+func (suite *RefreshTokenGrantHandlerTestSuite) TestHandleGrant_CarriesAuthTimeForward() {
+	const authTime = int64(1700000000)
+	suite.testCfg.OAuth.RefreshToken.RenewOnGrant = true
+	suite.rebuildHandlerWithConfig()
+	suite.mockTokenValidator.
+		On("ValidateRefreshToken", mock.Anything, suite.validRefreshToken).
+		Return(&tokenservice.RefreshTokenClaims{
+			ClientID:  testRefreshTokenClientID,
+			Sub:       testRefreshTokenUserID,
+			Audiences: []string{testRefreshTokenAudience},
+			Scopes:    []string{"read", "write"},
+			GrantType: "authorization_code",
+			Iat:       int64(suite.validClaims["iat"].(float64)),
+			AuthTime:  authTime,
+		}, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.AccessTokenBuildContext) bool { return ctx.AuthTime == authTime })).
+		Return(&model.TokenDTO{
+			Token: "new.access.token", IssuedAt: time.Now().Unix(), ExpiresIn: 3600, AuthTime: authTime,
+		}, nil)
+	suite.mockTokenBuilder.On("BuildRefreshToken", mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.RefreshTokenBuildContext) bool { return ctx.AuthTime == authTime })).
+		Return(&model.TokenDTO{Token: "new.refresh.token", IssuedAt: time.Now().Unix(), ExpiresIn: 86400}, nil)
+
+	response, err := suite.handler.HandleGrant(context.Background(), suite.testTokenReq, suite.oauthApp)
+
+	assert.Nil(suite.T(), err)
+	suite.Require().NotNil(response)
+	assert.Equal(suite.T(), "new.refresh.token", response.RefreshToken.Token)
+	suite.mockTokenBuilder.AssertExpectations(suite.T())
+}
+
+func (suite *RefreshTokenGrantHandlerTestSuite) TestIssueRefreshToken_StampsTheAccessTokenAuthTime() {
+	tests := []struct {
+		name     string
+		authTime int64
+	}{
+		{"access token carries auth time", 1700000000},
+		{"access token carries none", 0},
+	}
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			suite.SetupTest()
+			suite.mockTokenBuilder.On("BuildRefreshToken", mock.Anything, mock.MatchedBy(
+				func(ctx *tokenservice.RefreshTokenBuildContext) bool { return ctx.AuthTime == tt.authTime })).
+				Return(&model.TokenDTO{Token: "new.refresh.token"}, nil)
+			tokenResponse := &model.TokenResponseDTO{AccessToken: model.TokenDTO{AuthTime: tt.authTime}}
+
+			err := suite.handler.IssueRefreshToken(context.Background(), tokenResponse, suite.oauthApp,
+				testRefreshTokenUserID, []string{testRefreshTokenAudience},
+				"authorization_code", []string{"openid"}, nil, "", "", "tfid-1", 0)
+
+			assert.Nil(suite.T(), err)
+			suite.mockTokenBuilder.AssertExpectations(suite.T())
+		})
+	}
+}
+
 // testPaymentDetails is a granted payment detail as the token path carries it.
 var testPaymentDetails = []providers.AuthorizationDetail{{Type: "payment_initiation", TypeID: "type-2",
 	TypeVersion: 2, Value: json.RawMessage(`{"type":"payment_initiation","id":"d1"}`), Admitted: true}}

@@ -831,6 +831,44 @@ func (s *ServiceTestSuite) TestUpdateAttributes_DropsUndeclaredBeforeValidateAnd
 	s.NoError(err)
 }
 
+// ValidateAttributes checks what UpdateAttributes would write, after dropping undeclared attributes, and writes
+// nothing.
+func (s *ServiceTestSuite) TestValidateAttributes_ChecksTheStrippedAttributesWithoutWriting() {
+	for name, valid := range map[string]bool{"valid": true, "invalid": false} {
+		s.Run(name, func() {
+			s.SetupTest()
+			svc, ets := s.newSvcWithEntityType()
+			e := testEntity("va1")
+			s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil).Once()
+			ets.On("GetAttributes", mock.Anything, mock.Anything, e.Type,
+				entitytype.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).
+				Return([]entitytype.AttributeInfo{{Attribute: "username"}}, nil)
+			cleaned := json.RawMessage(`{"username":"new"}`)
+			ets.On("ValidateEntity", mock.Anything, mock.Anything, e.Type, cleaned, true).Return(valid, nil).Once()
+			if valid {
+				ets.On("ValidateEntityUniqueness", mock.Anything, mock.Anything, e.Type, cleaned, mock.Anything).
+					Return(true, nil).Once()
+			}
+
+			err := svc.ValidateAttributes(s.ctx, e.ID, json.RawMessage(`{"username":"new","stale":"x"}`))
+
+			if valid {
+				s.NoError(err)
+			} else {
+				s.ErrorIs(err, ErrSchemaValidationFailed)
+			}
+			s.store.AssertNotCalled(s.T(), "LockEntity", mock.Anything, mock.Anything)
+			s.store.AssertNotCalled(s.T(), "UpdateAttributes", mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func (s *ServiceTestSuite) TestValidateAttributes_GetEntityFails() {
+	s.store.On("GetEntity", mock.Anything, "bad").Return(providers.Entity{}, s.testErr).Once()
+
+	s.ErrorIs(s.svc.ValidateAttributes(s.ctx, "bad", json.RawMessage(`{"username":"new"}`)), s.testErr)
+}
+
 func (s *ServiceTestSuite) TestUpdateEntity_DropsUndeclaredBeforeValidateAndStore() {
 	svc, ets := s.newSvcWithEntityType()
 	e := testEntity("ue-strip")

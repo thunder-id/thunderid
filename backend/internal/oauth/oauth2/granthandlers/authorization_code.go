@@ -239,6 +239,7 @@ func (h *authorizationCodeGrantHandler) issueTokens(ctx context.Context, tokenRe
 		SubjectEntityID:      authCode.SubjectID,
 		SubjectCategory:      authCode.SubjectCategory,
 		AuthorizationDetails: authorizationDetails,
+		AuthTime:             resolveAuthTime(authCode),
 	}
 	if oauthApp.ShouldAppendActorClaim() {
 		accessTokenCtx.ActorClaims = &tokenservice.SubjectTokenClaims{Sub: oauthApp.ID}

@@ -220,6 +220,7 @@ func registerRoutes(mux *http.ServeMux, h *agentHandler) {
 	ownedItemOpts := middleware.CORSOptions{
 		AllowedMethods:   []string{"GET", "PUT", "DELETE", "POST"},
 		AllowedHeaders:   middleware.DefaultAllowedHeaders,
+		ExposedHeaders:   []string{serverconst.WWWAuthenticateHeaderName},
 		AllowCredentials: true,
 		MaxAge:           600,
 	}

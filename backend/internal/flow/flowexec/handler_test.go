@@ -589,6 +589,78 @@ func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_RejectsOUIDOutsideASig
 	}
 }
 
+// A sign-in start carries the maximum authentication age it names on the service context; none named carries none.
+func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_PutsMaxAgeOnTheContext() {
+	cases := []struct {
+		name      string
+		maxAge    string
+		wantAge   int64
+		wantGiven bool
+	}{
+		{"named", `"maxAge":180,`, 180, true},
+		{"zero", `"maxAge":0,`, 0, true},
+		{"absent", "", 0, false},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			mockSvc := NewFlowExecServiceInterfaceMock(s.T())
+			var gotAge int64
+			var gotGiven bool
+			mockSvc.EXPECT().Execute(mock.Anything, "app-1", "", string(providers.FlowTypeAuthentication),
+				mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+				mock.Anything, mock.Anything).
+				Run(func(ctx context.Context, _ string, _ string, _ string, _ string, _ bool, _ string,
+					_ map[string]string, _ string, _ string, _ string, _ []SessionData) {
+					gotAge, gotGiven = requestedMaxAge(ctx)
+				}).
+				Return(&FlowStep{ExecutionID: "exec-1", Status: providers.FlowStatusIncomplete},
+					(*tidcommon.ServiceError)(nil)).Once()
+
+			h := newFlowExecutionHandler(mockSvc, nil, nil)
+			body := `{` + tc.maxAge + `"applicationId":"app-1","flowType":"AUTHENTICATION"}`
+			req := httptest.NewRequest(http.MethodPost, "/flow/execute", bytes.NewBufferString(body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			h.HandleFlowExecutionRequest(w, req)
+
+			s.Equal(http.StatusOK, w.Code)
+			s.Equal(tc.wantGiven, gotGiven)
+			s.Equal(tc.wantAge, gotAge)
+		})
+	}
+}
+
+// A maximum authentication age is accepted only as zero or more seconds on a request that starts a sign-in;
+// anything else is refused before the service is called.
+func (s *HandlerTestSuite) TestHandleFlowExecutionRequest_RejectsMaxAgeOutsideASignInStart() {
+	cases := []struct {
+		name string
+		body string
+	}{
+		{"a negative age", `{"applicationId":"app-1","flowType":"AUTHENTICATION","maxAge":-1}`},
+		{"a continued sign-in", `{"executionId":"exec-1","flowType":"AUTHENTICATION","maxAge":180}`},
+		{"a registration start", `{"applicationId":"app-1","flowType":"REGISTRATION","maxAge":180}`},
+		{"no flow type", `{"applicationId":"app-1","maxAge":180}`},
+		{"a flow selected by ID as a sign-in", `{"flowId":"admin-1","flowType":"AUTHENTICATION","maxAge":180}`},
+	}
+
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			h := newFlowExecutionHandler(NewFlowExecServiceInterfaceMock(s.T()), nil, nil)
+			req := httptest.NewRequest(http.MethodPost, "/flow/execute", bytes.NewBufferString(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			h.HandleFlowExecutionRequest(w, req)
+
+			s.Equal(http.StatusBadRequest, w.Code)
+			s.Contains(w.Body.String(), APIErrorMaxAgeNotAllowed.Code)
+		})
+	}
+}
+
 func (s *HandlerTestSuite) TestHandleFlowError_InvalidOrganizationUnit_Returns400() {
 	w := httptest.NewRecorder()
 	handleFlowError(context.Background(), w, &ErrorInvalidOrganizationUnit, nil)

@@ -97,6 +97,7 @@ func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_ValidToken_Acti
 		"sub":       "user123",
 		"aud":       "api.example.com",
 		"iss":       "https://example.com",
+		"auth_time": float64(1700000000),
 	}
 	s.stubAccessToken(accessTokenFor("valid-token"), claims)
 
@@ -113,6 +114,7 @@ func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_ValidToken_Acti
 	assert.Equal(s.T(), "api.example.com", response.Aud)
 	assert.Equal(s.T(), "https://example.com", response.Iss)
 	assert.Equal(s.T(), "token-id-123", response.Jti)
+	assert.Equal(s.T(), int64(1700000000), response.AuthTime)
 }
 
 // An array audience claim is surfaced as a string slice.
@@ -138,6 +140,7 @@ func (s *TokenIntrospectionServiceTestSuite) TestIntrospectToken_MissingOptional
 	assert.NoError(s.T(), err)
 	assert.True(s.T(), response.Active)
 	assert.Equal(s.T(), constants.TokenTypeBearer, response.TokenType)
+	assert.Zero(s.T(), response.AuthTime)
 	assert.Empty(s.T(), response.Scope)
 	assert.Empty(s.T(), response.ClientID)
 	assert.Empty(s.T(), response.Sub)

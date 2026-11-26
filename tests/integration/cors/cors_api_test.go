@@ -122,6 +122,23 @@ func (suite *CORSIntegrationTestSuite) TestRuntimeRegexOriginAllowed() {
 	suite.Empty(suite.allowedOrigin("https://acme.other.example.com"))
 }
 
+// The self-service routes let a browser application read the RFC 9470 challenge: a request from an allowed origin
+// gets Access-Control-Expose-Headers naming WWW-Authenticate, whatever the route answers.
+func (suite *CORSIntegrationTestSuite) TestSelfServiceRoutesExposeWWWAuthenticate() {
+	for _, path := range []string{"/users/me", "/users/me/agents/01900000-0000-7000-8000-0000000000ff"} {
+		req, err := http.NewRequest(http.MethodGet, testServerURL+path, nil)
+		suite.Require().NoError(err)
+		req.Header.Set("Origin", declarativeOrigin)
+
+		resp, err := suite.adminClient.Do(req)
+		suite.Require().NoError(err)
+		closeBodyQuietly(suite.T(), resp.Body)
+
+		suite.Equal(declarativeOrigin, resp.Header.Get("Access-Control-Allow-Origin"), path)
+		suite.Contains(resp.Header.Get("Access-Control-Expose-Headers"), "WWW-Authenticate", path)
+	}
+}
+
 // --- helpers ---
 
 // allowedOrigin sends a CORS preflight (OPTIONS + Access-Control-Request-Method) for the given Origin to a

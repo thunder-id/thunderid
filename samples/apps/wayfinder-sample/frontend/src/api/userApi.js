@@ -15,8 +15,10 @@ async function thunderRequest(path, accessToken, options = {}) {
   const text = await response.text();
   const body = text ? safeJson(text) : null;
   if (!response.ok) {
+    // ThunderID error messages are objects with a defaultValue.
+    const readable = (m) => (m && typeof m === "object" ? m.defaultValue : m);
     const message =
-      (body && (body.description || body.message || body.error)) ||
+      (body && (readable(body.description) || readable(body.message) || body.error)) ||
       `Request failed (${response.status})`;
     const error = new Error(message);
     error.status = response.status;
@@ -45,10 +47,12 @@ export async function updateMyUser(accessToken, attributes) {
   });
 }
 
-export async function updateMyCredentials(accessToken, attributes) {
+// Changes one of the user's own credentials. A credential the user holds needs its current value; one the user
+// does not hold yet is set without it.
+export async function updateMyCredential(accessToken, name, currentValue, newValue) {
   return thunderRequest(`/users/me/update-credentials`, accessToken, {
     method: "POST",
-    body: JSON.stringify({ attributes })
+    body: JSON.stringify({ name, currentValue: currentValue || undefined, newValue })
   });
 }
 

@@ -257,6 +257,7 @@ func (h *cibaGrantHandler) issueTokens(ctx context.Context, tokenRequest *model.
 		ValidityPeriod:       userSubConfig.ValidityPeriodOrZero(),
 		DPoPJkt:              dpop.GetJkt(ctx),
 		AuthorizationDetails: authorizationDetails,
+		AuthTime:             record.AuthTime.Unix(),
 	}
 	if oauthApp.ShouldAppendActorClaim() {
 		accessTokenCtx.ActorClaims = &tokenservice.SubjectTokenClaims{Sub: oauthApp.ID}

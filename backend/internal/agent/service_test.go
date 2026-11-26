@@ -29,6 +29,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/project"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
+	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
@@ -5493,6 +5494,24 @@ func ownerContext(ouID string) context.Context {
 		security.NewSecurityContextForTest("alice", ouID, "", nil, nil))
 }
 
+// withSelfServiceMaxAge sets a self-service maximum authentication age of 300 seconds for one test.
+func withSelfServiceMaxAge(t *testing.T) {
+	maxAge := 300
+	config.ResetServerRuntime()
+	cfg := &config.Config{}
+	cfg.User.SelfService.MaxAuthenticationAgeSeconds = &maxAge
+	if err := config.InitializeServerRuntime("", cfg); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(config.ResetServerRuntime)
+}
+
+// recentOwnerContext is the owner's request in testOUID, signed in authAgo before now.
+func recentOwnerContext(authAgo time.Duration) context.Context {
+	return security.WithSecurityContextTest(context.Background(), security.NewSecurityContextForTest("alice",
+		testOUID, "", nil, map[string]interface{}{"auth_time": float64(time.Now().Add(-authAgo).Unix())}))
+}
+
 // The owner's list comes from the indexed owner and kind lookup in the token's organization unit, paginated like
 // /agents.
 func (suite *AgentServiceTestSuite) TestGetOwnedAgents() {
@@ -5941,24 +5960,79 @@ func (suite *AgentServiceTestSuite) TestUpdateOwnedAgent_LoadFailures() {
 }
 
 func (suite *AgentServiceTestSuite) TestUpdateOwnedAgentCredentials_SetsTheCredentials() {
+	withSelfServiceMaxAge(suite.T())
 	svc, mockEntity, _ := suite.setupOwnedAgentUpdate(nil)
+	mockEntity.On("ValidateCredentials", mock.Anything, testAgentID, json.RawMessage(ownedPasswordBody)).
+		Return(nil).Once()
 	mockEntity.On("UpdateCredentials", mock.Anything, testAgentID, json.RawMessage(ownedPasswordBody)).
 		Return(nil).Once()
 
-	svcErr := svc.UpdateOwnedAgentCredentials(ownerContext(testOUID), "alice", testAgentID,
+	svcErr := svc.UpdateOwnedAgentCredentials(recentOwnerContext(0), "alice", testAgentID,
 		providers.AgentKindPersonalAssistant, json.RawMessage(ownedPasswordBody))
 
 	suite.Nil(svcErr)
 }
 
+// A credential the agent type refuses is reported before the sign-in age, so an old sign-in is not asked to sign
+// in again for a request that would fail anyway.
+func (suite *AgentServiceTestSuite) TestUpdateOwnedAgentCredentials_RefusedCredentialBeforeTheSignInAge() {
+	withSelfServiceMaxAge(suite.T())
+	svc, mockEntity, _ := suite.setupOwnedAgentUpdate(nil)
+	body := json.RawMessage(`{"nickname":"x"}`)
+	mockEntity.On("ValidateCredentials", mock.Anything, testAgentID, body).Return(entity.ErrInvalidCredential).Once()
+
+	svcErr := svc.UpdateOwnedAgentCredentials(recentOwnerContext(time.Hour), "alice", testAgentID,
+		providers.AgentKindPersonalAssistant, body)
+
+	suite.Require().NotNil(svcErr)
+	suite.NotEqual(apierror.ErrRecentAuthenticationRequired.Code, svcErr.Code)
+	suite.Equal(tidcommon.ClientErrorType, svcErr.Type)
+	mockEntity.AssertNotCalled(suite.T(), "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A validation error the agent service cannot map is a server error, and nothing is written.
+func (suite *AgentServiceTestSuite) TestUpdateOwnedAgentCredentials_UnmappedValidationErrorIsAServerError() {
+	withSelfServiceMaxAge(suite.T())
+	svc, mockEntity, _ := suite.setupOwnedAgentUpdate(nil)
+	mockEntity.On("ValidateCredentials", mock.Anything, testAgentID, json.RawMessage(ownedPasswordBody)).
+		Return(errors.New("db down")).Once()
+
+	svcErr := svc.UpdateOwnedAgentCredentials(recentOwnerContext(0), "alice", testAgentID,
+		providers.AgentKindPersonalAssistant, json.RawMessage(ownedPasswordBody))
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+	mockEntity.AssertNotCalled(suite.T(), "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// The owner sets the credentials without their current values, so an old sign-in is refused after the
+// ownership checks, and nothing is written.
+func (suite *AgentServiceTestSuite) TestUpdateOwnedAgentCredentials_OldSignInIsRefused() {
+	withSelfServiceMaxAge(suite.T())
+	svc, mockEntity, _ := suite.setupOwnedAgentUpdate(nil)
+	mockEntity.On("ValidateCredentials", mock.Anything, testAgentID, json.RawMessage(ownedPasswordBody)).
+		Return(nil).Once()
+
+	svcErr := svc.UpdateOwnedAgentCredentials(recentOwnerContext(time.Hour), "alice", testAgentID,
+		providers.AgentKindPersonalAssistant, json.RawMessage(ownedPasswordBody))
+
+	suite.Require().NotNil(svcErr)
+	suite.Equal(apierror.ErrRecentAuthenticationRequired.Code, svcErr.Code)
+	suite.Equal("300", svcErr.ErrorDescription.Params[apierror.ErrorParamMaxAge])
+	mockEntity.AssertNotCalled(suite.T(), "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+}
+
 // The entity service revokes what the agent was issued when a credential is replaced. When that revocation fails
 // after the write, the credentials are stored, so the owner still gets the failure.
 func (suite *AgentServiceTestSuite) TestUpdateOwnedAgentCredentials_ReportsAFailedRevocationAfterTheWrite() {
+	withSelfServiceMaxAge(suite.T())
 	svc, mockEntity, _ := suite.setupOwnedAgentUpdate(nil)
+	mockEntity.On("ValidateCredentials", mock.Anything, testAgentID, json.RawMessage(ownedPasswordBody)).
+		Return(nil).Once()
 	mockEntity.On("UpdateCredentials", mock.Anything, testAgentID, json.RawMessage(ownedPasswordBody)).
 		Return(fmt.Errorf("%w: SSE-5000", entity.ErrRevocationIncomplete)).Once()
 
-	svcErr := svc.UpdateOwnedAgentCredentials(ownerContext(testOUID), "alice", testAgentID,
+	svcErr := svc.UpdateOwnedAgentCredentials(recentOwnerContext(0), "alice", testAgentID,
 		providers.AgentKindPersonalAssistant, json.RawMessage(ownedPasswordBody))
 
 	suite.Equal(&tidcommon.InternalServerError, svcErr)

@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package user
@@ -57,6 +57,10 @@ func (s *SelfUserEndpointsSuite) SetupSuite() {
 			"username": map[string]interface{}{"type": "string", "required": true, "unique": true},
 			"email":    map[string]interface{}{"type": "string", "required": true, "unique": true},
 			"password": map[string]interface{}{"type": "string", "credential": true},
+			// Credentials the user does not hold, set by the tests that need a recent sign-in.
+			"pin":        map[string]interface{}{"type": "string", "credential": true},
+			"backupcode": map[string]interface{}{"type": "string", "credential": true},
+			"mobile":     map[string]interface{}{"type": "mobile"},
 		},
 	}
 	schemaID, err := testutils.CreateUserType(schema)
@@ -186,9 +190,9 @@ func (s *SelfUserEndpointsSuite) TestSelfUserUpdateReportsTheDerivedStatus() {
 func (s *SelfUserEndpointsSuite) TestSelfUserUpdateCredentials() {
 	newPassword := s.password + "!"
 	payload := map[string]interface{}{
-		"attributes": map[string]interface{}{
-			"password": newPassword,
-		},
+		"name":         "password",
+		"currentValue": s.password,
+		"newValue":     newPassword,
 	}
 
 	resp, err := s.doUserRequest(http.MethodPost, "/users/me/update-credentials", payload)
@@ -325,19 +329,192 @@ func (s *SelfUserEndpointsSuite) TestSelfUserUpdateProfileSchemaInvalidAttribute
 		"a rejected update must leave the whole profile unchanged")
 }
 
-// TestSelfUserUpdateCredentialsMissingAttributesRejected verifies that a credential update with an
-// empty attribute set is refused as missing credentials, and that the existing password still
-// authenticates afterwards. The endpoint reports this distinctly from a malformed body: an empty
-// object is a well-formed request that names no credential to change.
-func (s *SelfUserEndpointsSuite) TestSelfUserUpdateCredentialsMissingAttributesRejected() {
-	resp, err := s.doUserRequest(http.MethodPost, "/users/me/update-credentials",
-		map[string]interface{}{"attributes": map[string]interface{}{}})
+// TestSelfUserUpdateProfileTooManyIndexedValuesRejected verifies that a self-update giving an indexed
+// attribute more than 100 values is refused before anything is stored.
+func (s *SelfUserEndpointsSuite) TestSelfUserUpdateProfileTooManyIndexedValuesRejected() {
+	before := s.selfProfileAttributes()
+	emails := make([]string, 101)
+	for i := range emails {
+		emails[i] = fmt.Sprintf("self%d@example.com", i)
+	}
+
+	resp, err := s.doUserRequest(http.MethodPut, "/users/me", map[string]interface{}{
+		"attributes": map[string]interface{}{
+			"username": s.username,
+			"email":    emails,
+		},
+	})
 	s.Require().NoError(err)
 	defer resp.Body.Close()
 
-	s.requireSelfError(resp, http.StatusBadRequest, "USR-1017")
+	s.requireSelfError(resp, http.StatusBadRequest, "USR-1019")
 
-	// The rejected call must not have rotated or cleared the password.
+	s.Equal(before, s.selfProfileAttributes(),
+		"a rejected update must leave the whole profile unchanged")
+}
+
+// TestSelfUserUpdateCredentialsMissingNameRejected verifies that a credential update that names no
+// credential is refused as missing credentials, and that the existing password still authenticates
+// afterwards. The endpoint reports this distinctly from a malformed body: an empty object is a well-formed
+// request that names no credential to change.
+func (s *SelfUserEndpointsSuite) TestSelfUserUpdateCredentialsMissingNameRejected() {
+	resp, err := s.doUserRequest(http.MethodPost, "/users/me/update-credentials", map[string]interface{}{})
+	s.Require().NoError(err)
+	defer resp.Body.Close()
+
+	s.requireSelfError(resp, http.StatusBadRequest, "USR-1049")
+	s.requirePasswordUnchanged()
+}
+
+// A credential the user holds changes only with its current value, and the request names one credential the
+// user type declares.
+func (s *SelfUserEndpointsSuite) TestSelfUserUpdateCredentialsRejections() {
+	cases := []struct {
+		name    string
+		payload map[string]interface{}
+		status  int
+		code    string
+	}{
+		{name: "missing current value", status: http.StatusBadRequest, code: "USR-1047",
+			payload: map[string]interface{}{"name": "password", "newValue": s.password + "?"}},
+		{name: "wrong current value", status: http.StatusForbidden, code: "USR-1048",
+			payload: map[string]interface{}{"name": "password", "currentValue": s.password + "x",
+				"newValue": s.password + "?"}},
+		{name: "earlier body shape", status: http.StatusBadRequest, code: "USR-1049",
+			payload: map[string]interface{}{"attributes": map[string]interface{}{"password": s.password + "?"}}},
+		{name: "passkey", status: http.StatusBadRequest, code: "USR-1024",
+			payload: map[string]interface{}{"name": "passkey", "newValue": "passkey-value"}},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			resp, err := s.doUserRequest(http.MethodPost, "/users/me/update-credentials", tc.payload)
+			s.Require().NoError(err)
+			defer resp.Body.Close()
+
+			s.requireSelfError(resp, tc.status, tc.code)
+		})
+	}
+	s.requirePasswordUnchanged()
+}
+
+// A credential the user does not hold yet is set without a current value, within the maximum authentication
+// age of a fresh sign-in. Once set, it needs its current value like any other.
+func (s *SelfUserEndpointsSuite) TestSelfUserSetsACredentialNotHeldYet() {
+	token, err := s.signIn.ObtainAccessToken(s.ouID, "openid", s.username, s.password, "")
+	s.Require().NoError(err)
+	client := testutils.GetHTTPClientWithToken(token.AccessToken)
+	pin := map[string]interface{}{"name": "pin", "newValue": "PinValue-2468"}
+
+	resp, err := client.Do(s.jsonRequest(http.MethodPost, "/users/me/update-credentials", pin))
+	s.Require().NoError(err)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusNoContent, resp.StatusCode, string(body))
+
+	again, err := client.Do(s.jsonRequest(http.MethodPost, "/users/me/update-credentials", pin))
+	s.Require().NoError(err)
+	defer again.Body.Close()
+	s.requireSelfError(again, http.StatusBadRequest, "USR-1047")
+}
+
+// With a sign-in older than the maximum authentication age, setting a credential the user does not hold and
+// changing a contact attribute get 401 with an RFC 9470 challenge, while other changes and a change that
+// gives the current value do not. The server restarts with a one-second age.
+func (s *SelfUserEndpointsSuite) TestSelfServiceChangesNeedARecentSignIn() {
+	t := s.T()
+	restore, err := testutils.RestartWithConfigSection("user", func(section map[string]interface{}) {
+		section["self_service"] = map[string]interface{}{"max_authentication_age_seconds": 1}
+	})
+	t.Cleanup(func() {
+		if err := restore(); err != nil {
+			t.Errorf("failed to restore the user config: %v", err)
+		}
+	})
+	s.Require().NoError(err)
+
+	token, err := s.signIn.ObtainAccessToken(s.ouID, "openid", s.username, s.password, "")
+	s.Require().NoError(err)
+	client := testutils.GetHTTPClientWithToken(token.AccessToken)
+	time.Sleep(2 * time.Second)
+	profile := s.selfProfileAttributes()
+
+	challenged := []struct {
+		name    string
+		method  string
+		path    string
+		payload map[string]interface{}
+	}{
+		{name: "credential not held", method: http.MethodPost, path: "/users/me/update-credentials",
+			payload: map[string]interface{}{"name": "backupcode", "newValue": "BackupCode-1357"}},
+		{name: "mobile change", method: http.MethodPut, path: "/users/me",
+			payload: map[string]interface{}{"attributes": withAttribute(profile, "mobile", "+14155550123")}},
+	}
+	for _, tc := range challenged {
+		s.Run(tc.name, func() {
+			resp, err := client.Do(s.jsonRequest(tc.method, tc.path, tc.payload))
+			s.Require().NoError(err)
+			defer resp.Body.Close()
+
+			challenge := resp.Header.Get("WWW-Authenticate")
+			s.requireSelfError(resp, http.StatusUnauthorized, "AUTH-4011")
+			s.Contains(challenge, `error="insufficient_user_authentication"`)
+			s.Contains(challenge, `max_age="1"`)
+		})
+	}
+
+	s.Run("unchanged contacts", func() {
+		resp, err := client.Do(s.jsonRequest(http.MethodPut, "/users/me",
+			map[string]interface{}{"attributes": profile}))
+		s.Require().NoError(err)
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		s.Require().NoError(err)
+		s.Equal(http.StatusOK, resp.StatusCode, string(body))
+	})
+
+	// A credential the user holds needs its current value instead, so an old sign-in does not matter.
+	s.Run("held credential with its current value", func() {
+		newPassword := s.password + "#"
+		resp, err := client.Do(s.jsonRequest(http.MethodPost, "/users/me/update-credentials",
+			map[string]interface{}{"name": "password", "currentValue": s.password, "newValue": newPassword}))
+		s.Require().NoError(err)
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		s.Require().NoError(err)
+		s.Require().Equal(http.StatusNoContent, resp.StatusCode, string(body))
+		s.password = newPassword
+
+		// The change revokes the user's tokens up to a sub-second cutoff, so sign in again after it.
+		time.Sleep(1100 * time.Millisecond)
+		userClient, err := s.signIn.HTTPClientForUser(s.ouID, s.username, s.password)
+		s.Require().NoError(err)
+		s.userClient = userClient
+	})
+}
+
+// withAttribute returns a copy of attributes with key set to value.
+func withAttribute(attributes map[string]interface{}, key string, value interface{}) map[string]interface{} {
+	copied := make(map[string]interface{}, len(attributes)+1)
+	for k, v := range attributes {
+		copied[k] = v
+	}
+	copied[key] = value
+	return copied
+}
+
+// jsonRequest builds a request with the given JSON body.
+func (s *SelfUserEndpointsSuite) jsonRequest(method, path string, payload map[string]interface{}) *http.Request {
+	body, err := json.Marshal(payload)
+	s.Require().NoError(err)
+	req, err := http.NewRequest(method, testutils.TestServerURL+path, bytes.NewReader(body))
+	s.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	return req
+}
+
+// requirePasswordUnchanged checks that the user's current password still signs them in and grants access.
+func (s *SelfUserEndpointsSuite) requirePasswordUnchanged() {
 	client, err := s.signIn.HTTPClientForUser(s.ouID, s.username, s.password)
 	s.Require().NoError(err, "the existing password must still authenticate")
 

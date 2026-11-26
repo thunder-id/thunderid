@@ -264,6 +264,23 @@ func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_Authenticated_IssuesToke
 	suite.Equal("id-token", resp.IDToken.Token)
 }
 
+func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_AccessTokenCarriesAuthTime() {
+	record := suite.pendingRecord()
+	record.State = ciba.CIBAStateAuthenticated
+	record.AuthTime = time.Now().Add(-time.Minute)
+	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(record, nil)
+	suite.mockTokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.AccessTokenBuildContext) bool { return ctx.AuthTime == record.AuthTime.Unix() })).
+		Return(&model.TokenDTO{Token: "access-token"}, nil)
+	suite.mockTokenBuilder.EXPECT().BuildIDToken(mock.Anything, mock.Anything).
+		Return(&model.TokenDTO{Token: "id-token"}, nil).Maybe()
+	suite.mockCIBAService.EXPECT().MarkConsumed(mock.Anything, "auth-req-1").Return(true, nil)
+
+	resp, errResp := suite.handler.HandleGrant(context.Background(), suite.tokenReq, suite.oauthApp)
+	suite.Require().Nil(errResp)
+	suite.Equal("access-token", resp.AccessToken.Token)
+}
+
 func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_DeniedCarriesTheReason() {
 	record := suite.pendingRecord()
 	record.State = ciba.CIBAStateDenied

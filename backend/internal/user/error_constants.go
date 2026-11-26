@@ -547,6 +547,48 @@ var (
 			DefaultValue: "Credentials cannot be changed with a delegated token",
 		},
 	}
+	// ErrorCurrentCredentialRequired is the error returned when a change to a credential the user holds does not
+	// give its current value.
+	ErrorCurrentCredentialRequired = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1047",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.current_credential_required",
+			DefaultValue: "Current credential required",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.userservice.current_credential_required_description",
+			DefaultValue: "Give the credential's current value to change it",
+		},
+	}
+	// ErrorInvalidCurrentCredential is the error returned when the current value given for a credential the user
+	// holds does not match it.
+	ErrorInvalidCurrentCredential = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1048",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.invalid_current_credential",
+			DefaultValue: "Invalid current credential",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.userservice.invalid_current_credential_description",
+			DefaultValue: "The current value does not match the credential",
+		},
+	}
+	// ErrorMissingCredentialChange is the error returned when a change to the user's own credential has no name or
+	// no new value.
+	ErrorMissingCredentialChange = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "USR-1049",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.userservice.missing_credential_change",
+			DefaultValue: "Missing credential change",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.userservice.missing_credential_change_description",
+			DefaultValue: "A credential change needs the name and newValue fields",
+		},
+	}
 )
 
 // Error variables

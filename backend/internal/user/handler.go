@@ -436,7 +436,7 @@ func (uh *userHandler) HandleSelfUserPutRequest(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	updatedUser, svcErr := uh.userService.UpdateUserAttributes(ctx, userID, updateRequest.Attributes)
+	updatedUser, svcErr := uh.userService.UpdateSelfUserAttributes(ctx, updateRequest.Attributes)
 	if svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return
@@ -529,7 +529,7 @@ func (uh *userHandler) HandleSelfUserCredentialUpdateRequest(w http.ResponseWrit
 		return
 	}
 
-	updateRequest, err := sysutils.DecodeJSONBody[UpdateSelfUserRequest](r)
+	updateRequest, err := sysutils.DecodeJSONBody[UpdateSelfUserCredentialRequest](r)
 	if err != nil {
 		var valErr *sysutils.ValidationError
 		if errors.As(err, &valErr) {
@@ -543,13 +543,8 @@ func (uh *userHandler) HandleSelfUserCredentialUpdateRequest(w http.ResponseWrit
 		handleError(ctx, w, &ErrorInvalidRequestFormat)
 		return
 	}
-	attrStr := strings.TrimSpace(string(updateRequest.Attributes))
-	if len(updateRequest.Attributes) == 0 || attrStr == "{}" {
-		handleError(ctx, w, &ErrorMissingCredentials)
-		return
-	}
 
-	if svcErr := uh.userService.UpdateUserCredentials(ctx, userID, updateRequest.Attributes); svcErr != nil {
+	if svcErr := uh.userService.UpdateSelfUserCredential(ctx, *updateRequest); svcErr != nil {
 		handleError(ctx, w, svcErr)
 		return
 	}
@@ -653,8 +648,11 @@ func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.S
 			statusCode = http.StatusBadRequest
 		case ErrorAuthenticationFailed.Code:
 			statusCode = http.StatusUnauthorized
+		case apierror.ErrRecentAuthenticationRequired.Code:
+			security.SetAuthenticationAgeChallenge(w, svcErr.ErrorDescription.Params[apierror.ErrorParamMaxAge])
+			statusCode = http.StatusUnauthorized
 		case tidcommon.ErrorUnauthorized.Code, sysauthz.ErrorGrantNotPermitted.Code, ErrorSharedUserReadOnly.Code,
-			ErrorDelegatedTokenNotAllowed.Code:
+			ErrorDelegatedTokenNotAllowed.Code, ErrorInvalidCurrentCredential.Code:
 			statusCode = http.StatusForbidden
 		default:
 			statusCode = http.StatusBadRequest

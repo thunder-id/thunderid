@@ -23,6 +23,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/agent/model"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -754,6 +755,24 @@ func TestHandleOwnedAgentCredentialUpdateRequest_InvalidBody(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), ErrorInvalidRequestFormat.Code)
+}
+
+// A refusal for an old sign-in is answered 401 with the RFC 9470 challenge.
+func TestHandleOwnedAgentCredentialUpdateRequest_RecentAuthenticationRequired(t *testing.T) {
+	service := agentmock.NewAgentServiceInterfaceMock(t)
+	service.EXPECT().UpdateOwnedAgentCredentials(mock.Anything, "user-1", "agent-123",
+		providers.AgentKindPersonalAssistant, mock.Anything).Return(apierror.ErrRecentAuthenticationRequired.
+		WithParams(map[string]string{apierror.ErrorParamMaxAge: "300"})).Once()
+	req := ownerRequestWithBody(http.MethodPost, "/users/me/agents/agent-123/update-credentials",
+		`{"attributes":{"password":"s3cret"}}`, "user-1", false)
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+
+	newAgentHandler(service).HandleOwnedAgentCredentialUpdateRequest(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	assert.Contains(t, w.Header().Get("WWW-Authenticate"), `max_age="300"`)
+	assert.Contains(t, w.Body.String(), apierror.ErrRecentAuthenticationRequired.Code)
 }
 
 // No token is 401 and a delegated token is 403, and neither reaches the service.

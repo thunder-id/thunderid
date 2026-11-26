@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strconv"
 	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -600,6 +601,10 @@ func (s *flowExecService) loadNewContext(ctx context.Context, flowID, appID, flo
 	engineCtx.boundSubject = boundSubject
 
 	prepareContext(engineCtx, action, inputs)
+	if maxAge, ok := requestedMaxAge(ctx); ok && flowType == providers.FlowTypeAuthentication {
+		// The same key the authorize endpoint sets for max_age, so a session older than this is not reused.
+		engineCtx.mergeRuntimeData(map[string]string{common.RuntimeKeyMaxAge: strconv.FormatInt(maxAge, 10)})
+	}
 	if flowType == providers.FlowTypeInvitation {
 		// The flow acts for the caller's own unit and remembers who started it; an input cannot change either.
 		engineCtx.RuntimeData[common.RuntimeKeyOUID] = security.GetOUID(ctx)

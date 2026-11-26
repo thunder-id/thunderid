@@ -63,9 +63,15 @@ type UserServiceInterface interface {
 	UpdateUser(ctx context.Context, userID string, user *providers.User) (*providers.User, *tidcommon.ServiceError)
 	UpdateUserAttributes(ctx context.Context, userID string,
 		attributes json.RawMessage) (*providers.User, *tidcommon.ServiceError)
+	// UpdateSelfUserAttributes updates the signed-in user's own attributes. A change to a contact attribute needs
+	// a recent sign-in.
+	UpdateSelfUserAttributes(ctx context.Context, attributes json.RawMessage) (*providers.User, *tidcommon.ServiceError)
 	GetUserMetadata(ctx context.Context, userID string) (*entitytype.EntityType, *tidcommon.ServiceError)
 	UpdateUserCredentials(ctx context.Context, userID string,
 		credentials json.RawMessage) *tidcommon.ServiceError
+	// UpdateSelfUserCredential changes one of the signed-in user's own credentials. A credential the user holds
+	// needs its current value; one the user does not hold yet needs a recent sign-in.
+	UpdateSelfUserCredential(ctx context.Context, request UpdateSelfUserCredentialRequest) *tidcommon.ServiceError
 	// ValidateRemoveUserCredential runs the checks of RemoveUserCredential, changing nothing.
 	ValidateRemoveUserCredential(ctx context.Context, userID, credentialType string) *tidcommon.ServiceError
 	// RemoveUserCredential removes one credential the user's type declares, so its value no longer
@@ -952,18 +958,107 @@ func (us *userService) updateUser(
 	return user, nil
 }
 
+// checkSelfContactAttributeChange asks for a recent sign-in when the user's own contact attributes (email and
+// mobile types) are added, changed or removed.
+func (us *userService) checkSelfContactAttributeChange(
+	ctx context.Context, user providers.User, attributes json.RawMessage,
+) *tidcommon.ServiceError {
+	changed, svcErr := us.changesContactAttribute(ctx, user, attributes)
+	if svcErr != nil || !changed {
+		return svcErr
+	}
+
+	return security.RequireRecentAuthentication(ctx, getSelfServiceMaxAge())
+}
+
+// validateUserAttributes checks the new attributes the way the write does, without writing them.
+func (us *userService) validateUserAttributes(ctx context.Context, logger *log.Logger, userID string,
+	attributes json.RawMessage) *tidcommon.ServiceError {
+	err := us.entityService.ValidateAttributes(ctx, userID, attributes)
+	if err == nil {
+		return nil
+	}
+	if svcErr := mapEntityError(err); svcErr != nil {
+		return svcErr
+	}
+
+	return logErrorAndReturnServerError(ctx, logger, "Failed to validate user attributes", err,
+		log.MaskedString(log.LoggerKeyUserID, userID))
+}
+
+// changesContactAttribute reports whether the new attributes add, change or remove a contact attribute.
+func (us *userService) changesContactAttribute(
+	ctx context.Context, user providers.User, attributes json.RawMessage,
+) (bool, *tidcommon.ServiceError) {
+	schemaAttributes, svcErr := us.entityTypeService.GetAttributes(ctx, entitytype.TypeCategoryUser, user.Type,
+		entitytype.AttributeFilter{AllowNonCredential: true})
+	if svcErr != nil {
+		return false, logErrorAndReturnServerError(ctx, us.logger, "Failed to get attributes from schema",
+			fmt.Errorf("schema service error: %s", svcErr.ErrorDescription.DefaultValue),
+			log.MaskedString(log.LoggerKeyUserID, user.ID))
+	}
+
+	current := map[string]any{}
+	if len(user.Attributes) > 0 {
+		if err := json.Unmarshal(user.Attributes, &current); err != nil {
+			return false, logErrorAndReturnServerError(ctx, us.logger, "Failed to read the stored user attributes", err,
+				log.MaskedString(log.LoggerKeyUserID, user.ID))
+		}
+	}
+
+	requested := map[string]any{}
+	if err := json.Unmarshal(attributes, &requested); err != nil {
+		return false, &ErrorInvalidRequestFormat
+	}
+
+	for _, attribute := range schemaAttributes {
+		if !entitytypemodel.IsContactType(attribute.Type) {
+			continue
+		}
+
+		// Compared as the entity service compares a contact to keep its verification.
+		if contactValue(attribute.Type, current[attribute.Attribute]) !=
+			contactValue(attribute.Type, requested[attribute.Attribute]) {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+// contactValue returns the comparable form of a contact attribute's value: a string in its canonical form, or
+// the JSON of any other value, so a value of another type still counts as a change.
+func contactValue(attributeType string, value any) string {
+	if text, ok := value.(string); ok {
+		return entitytypemodel.CanonicalContactValue(attributeType, text)
+	}
+	encoded, _ := json.Marshal(value)
+	return string(encoded)
+}
+
 // UpdateUserAttributes updates only the attributes of a user while preserving immutable fields.
 func (us *userService) UpdateUserAttributes(
 	ctx context.Context, userID string, attributes json.RawMessage,
 ) (*providers.User, *tidcommon.ServiceError) {
-	updated, svcErr := us.updateUserAttributes(ctx, userID, attributes)
+	updated, svcErr := us.updateUserAttributes(ctx, userID, attributes, false)
 	us.publishUserEvent(ctx, audit.EventUserUpdate, audit.ActionUpdate, userID, svcErr)
 	return updated, svcErr
 }
 
-// updateUserAttributes updates only the attributes of a user without publishing its audit event.
+// UpdateSelfUserAttributes updates the signed-in user's own attributes.
+func (us *userService) UpdateSelfUserAttributes(
+	ctx context.Context, attributes json.RawMessage,
+) (*providers.User, *tidcommon.ServiceError) {
+	userID := security.GetSubject(ctx)
+	updated, svcErr := us.updateUserAttributes(ctx, userID, attributes, true)
+	us.publishUserEvent(ctx, audit.EventUserUpdate, audit.ActionUpdate, userID, svcErr)
+	return updated, svcErr
+}
+
+// updateUserAttributes updates only the attributes of a user without publishing its audit event. self says
+// the signed-in user is changing their own attributes, which asks for a recent sign-in to change a contact.
 func (us *userService) updateUserAttributes(
-	ctx context.Context, userID string, attributes json.RawMessage,
+	ctx context.Context, userID string, attributes json.RawMessage, self bool,
 ) (*providers.User, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	logger.Debug(ctx, "Updating user attributes", log.MaskedString(log.LoggerKeyUserID, userID))
@@ -1031,6 +1126,16 @@ func (us *userService) updateUserAttributes(
 	// Check if user is declarative (immutable)
 	if svcErr := us.checkUserMutable(ctx, userID, logger); svcErr != nil {
 		return nil, svcErr
+	}
+
+	if self {
+		// An invalid value is reported before the sign-in age.
+		if svcErr := us.validateUserAttributes(ctx, logger, userID, attributes); svcErr != nil {
+			return nil, svcErr
+		}
+		if svcErr := us.checkSelfContactAttributeChange(ctx, existingUser, attributes); svcErr != nil {
+			return nil, svcErr
+		}
 	}
 
 	existingUser.Attributes = attributes
@@ -1138,7 +1243,6 @@ func (us *userService) updateUserCredentials(
 	if svcErr != nil {
 		return svcErr
 	}
-	existingUser := entityToUser(existingEntity)
 
 	// Normalize credential values to plaintext strings. Entity service enforces the
 	// schema-credential allowlist and non-empty checks.
@@ -1154,6 +1258,105 @@ func (us *userService) updateUserCredentials(
 		plaintextCreds[credTypeStr] = stringValue
 	}
 
+	return us.writeUserCredentials(ctx, logger, userID, existingEntity, plaintextCreds, written)
+}
+
+// UpdateSelfUserCredential changes one of the signed-in user's own credentials.
+func (us *userService) UpdateSelfUserCredential(
+	ctx context.Context, request UpdateSelfUserCredentialRequest,
+) *tidcommon.ServiceError {
+	userID := security.GetSubject(ctx)
+	var written bool
+	svcErr := us.updateSelfUserCredential(ctx, userID, request, &written)
+	auditErr := svcErr
+	if written {
+		auditErr = nil
+	}
+	us.publishCredentialUpdate(ctx, userID, auditErr)
+	return svcErr
+}
+
+// updateSelfUserCredential changes one of the user's own credentials without publishing its audit event, and
+// sets written once the credential is stored.
+func (us *userService) updateSelfUserCredential(
+	ctx context.Context, userID string, request UpdateSelfUserCredentialRequest, written *bool,
+) *tidcommon.ServiceError {
+	logger := us.logger
+	logger.Debug(ctx, "Updating the user's own credential", log.MaskedString(log.LoggerKeyUserID, userID))
+
+	if strings.TrimSpace(userID) == "" {
+		return &ErrorAuthenticationFailed
+	}
+	if request.Name == "" || request.NewValue == "" {
+		return &ErrorMissingCredentialChange
+	}
+	// Only schema-defined credentials are changed here; passkeys have their own registration.
+	if CredentialType(request.Name).IsSystemManaged() {
+		return &ErrorInvalidCredential
+	}
+
+	existingEntity, svcErr := us.checkCredentialWrite(ctx, logger, userID)
+	if svcErr != nil {
+		return svcErr
+	}
+	if svcErr := us.checkDeclaredCredential(ctx, logger, existingEntity.Type, userID, request.Name); svcErr != nil {
+		return svcErr
+	}
+	plaintextCreds := map[string]string{request.Name: request.NewValue}
+	plaintextJSON, err := json.Marshal(plaintextCreds)
+	if err != nil {
+		return logErrorAndReturnServerError(ctx, logger, "Failed to marshal credentials", err,
+			log.MaskedString(log.LoggerKeyUserID, userID))
+	}
+	// A new value the type refuses is reported before the current value or the sign-in age.
+	if err := us.entityService.ValidateCredentials(ctx, userID, plaintextJSON); err != nil {
+		return us.credentialUpdateError(ctx, logger, userID, err)
+	}
+	if svcErr := us.checkCredentialProof(ctx, logger, userID, request); svcErr != nil {
+		return svcErr
+	}
+
+	return us.writeUserCredentials(ctx, logger, userID, existingEntity, plaintextCreds, written)
+}
+
+// checkCredentialProof asks for the current value of a credential the user holds, and for a recent sign-in to set
+// one they do not hold yet.
+func (us *userService) checkCredentialProof(ctx context.Context, logger *log.Logger, userID string,
+	request UpdateSelfUserCredentialRequest) *tidcommon.ServiceError {
+	held, err := us.entityService.GetHeldCredentialTypes(ctx, userID)
+	if err != nil {
+		return logErrorAndReturnServerError(ctx, logger, "Failed to read the user's credentials", err,
+			log.MaskedString(log.LoggerKeyUserID, userID))
+	}
+	if !slices.Contains(held, request.Name) {
+		return security.RequireRecentAuthentication(ctx, getSelfServiceMaxAge())
+	}
+	if request.CurrentValue == "" {
+		return &ErrorCurrentCredentialRequired
+	}
+	return us.verifyCurrentCredential(ctx, logger, userID, request.Name, request.CurrentValue)
+}
+
+// verifyCurrentCredential checks the current value of a credential the user holds. Account lockout does not
+// apply: the caller is already signed in, and request volume is left to rate limiting.
+func (us *userService) verifyCurrentCredential(ctx context.Context, logger *log.Logger, userID, name,
+	value string) *tidcommon.ServiceError {
+	_, _, err := us.entityService.AuthenticateEntityByID(ctx, userID, map[string]any{name: value})
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, entity.ErrAuthenticationFailed) {
+		return &ErrorInvalidCurrentCredential
+	}
+	return logErrorAndReturnServerError(ctx, logger, "Failed to verify the user's current credential", err,
+		log.MaskedString(log.LoggerKeyUserID, userID))
+}
+
+// writeUserCredentials stores the user's new credentials and sets written once they are stored, since a failure
+// after that leaves them changed.
+func (us *userService) writeUserCredentials(ctx context.Context, logger *log.Logger, userID string,
+	existingEntity *providers.Entity, plaintextCreds map[string]string, written *bool) *tidcommon.ServiceError {
+	existingUser := entityToUser(existingEntity)
 	plaintextJSON, err := json.Marshal(plaintextCreds)
 	if err != nil {
 		return logErrorAndReturnServerError(ctx, logger, "Failed to marshal credentials", err,
@@ -1171,7 +1374,7 @@ func (us *userService) updateUserCredentials(
 
 	logger.Debug(ctx, "Successfully updated user credentials",
 		log.MaskedString(log.LoggerKeyUserID, userID),
-		log.Int("credentialTypesCount", len(credentialsMap)))
+		log.Int("credentialTypesCount", len(plaintextCreds)))
 	us.captureCredentials(ctx, &existingUser, existingUser.Attributes, plaintextCreds)
 	return nil
 }

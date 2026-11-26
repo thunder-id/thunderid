@@ -13,21 +13,23 @@ type IntrospectRequest struct {
 
 // IntrospectResponse represents the response from the token introspection endpoint
 type IntrospectResponse struct {
-	Active    bool      `json:"active"`
-	Scope     string    `json:"scope,omitempty"`
-	ClientID  string    `json:"client_id,omitempty"`
-	Username  string    `json:"username,omitempty"`
-	TokenType string    `json:"token_type,omitempty"`
-	Exp       int64     `json:"exp,omitempty"`
-	Iat       int64     `json:"iat,omitempty"`
-	Nbf       int64     `json:"nbf,omitempty"`
-	Sub       string    `json:"sub,omitempty"`
-	SubType   string    `json:"sub_type,omitempty"`
-	Idp       string    `json:"idp,omitempty"`
-	Aud       any       `json:"aud,omitempty"`
-	Iss       string    `json:"iss,omitempty"`
-	Jti       string    `json:"jti,omitempty"`
-	Cnf       *CnfClaim `json:"cnf,omitempty"`
+	Active    bool   `json:"active"`
+	Scope     string `json:"scope,omitempty"`
+	ClientID  string `json:"client_id,omitempty"`
+	Username  string `json:"username,omitempty"`
+	TokenType string `json:"token_type,omitempty"`
+	Exp       int64  `json:"exp,omitempty"`
+	Iat       int64  `json:"iat,omitempty"`
+	Nbf       int64  `json:"nbf,omitempty"`
+	// AuthTime is the Unix time the subject signed in, from the token's auth_time (RFC 9470 section 6.2).
+	AuthTime int64     `json:"auth_time,omitempty"`
+	Sub      string    `json:"sub,omitempty"`
+	SubType  string    `json:"sub_type,omitempty"`
+	Idp      string    `json:"idp,omitempty"`
+	Aud      any       `json:"aud,omitempty"`
+	Iss      string    `json:"iss,omitempty"`
+	Jti      string    `json:"jti,omitempty"`
+	Cnf      *CnfClaim `json:"cnf,omitempty"`
 	// Act carries the token's RFC 8693 actor claim, including any nested delegation chain.
 	Act map[string]interface{} `json:"act,omitempty"`
 	// AuthorizationDetails carries the RFC 9396 authorization details of the token.

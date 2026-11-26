@@ -68,6 +68,8 @@ type TokenDTO struct {
 	// TokenFamilyID is the token family id (tfid) stamped on the token, carried here so the refresh
 	// token issued alongside an access token can be stamped with the same family id.
 	TokenFamilyID string
+	// AuthTime is the token's auth_time, carried so the refresh token issued alongside records it. Zero if none.
+	AuthTime int64
 	// Delegated reports whether the token was issued on behalf of Subject by another principal, that
 	// is, whether it carries an act claim. It is tracked separately from ActorSub because an actor
 	// that cannot be resolved to an entity still delegated: the identifier is withheld, not the fact.

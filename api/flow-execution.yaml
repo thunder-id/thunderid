@@ -312,6 +312,8 @@ paths:
             Bad Request: The request body is malformed or contains invalid data. An `ouId` sent on a
             request that does not start an `AUTHENTICATION` flow is refused with `FES-1026`, and an
             `ouId` the application is not accessible from, or that does not exist, with `FES-1028`.
+            A negative `maxAge`, or one sent on a request that does not start an `AUTHENTICATION` flow,
+            is refused with `FES-1033`.
             A flow that runs with the system's authority and calls an `ADMINISTRATION`,
             `USER_ONBOARDING` or `INVITATION` flow is refused with `FES-1031`. A `USER_ONBOARDING` flow
             started before the server recorded who started it cannot be continued and is refused with
@@ -426,6 +428,19 @@ components:
             starts one by `flowId`. An organization unit the application is not accessible from, or
             that does not exist, is refused with `FES-1028`.
           example: "8a1f6c2e-3b4d-4e5f-9a6b-7c8d9e0f1a2b"
+        maxAge:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >-
+            Maximum age, in seconds, of a sign-in the flow may reuse, as the OpenID Connect `max_age`
+            parameter. A single sign-on session that signed the user in longer ago than this is not
+            reused, so the flow asks for credentials again and the assertion carries the new
+            `auth_time`; `0` always asks. Use it to answer an RFC 9470 `insufficient_user_authentication`
+            challenge with the `max_age` it names. Accepted only with `flowType` `AUTHENTICATION` on a
+            request that starts a flow; a negative value, or one on any other request, is refused with
+            `FES-1033`.
+          example: 180
 
     SelfFlowRequest:
       type: object

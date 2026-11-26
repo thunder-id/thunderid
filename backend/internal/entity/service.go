@@ -54,6 +54,8 @@ type EntityServiceInterface interface {
 
 	// Partial updates
 	UpdateAttributes(ctx context.Context, entityID string, attributes json.RawMessage) error
+	// ValidateAttributes checks attribute updates as UpdateAttributes does, writing nothing.
+	ValidateAttributes(ctx context.Context, entityID string, attributes json.RawMessage) error
 	UpdateSystemAttributes(ctx context.Context, entityID string, attrs json.RawMessage) error
 	// UpdateOwnership moves an entity to another organization unit and project. An empty projectID
 	// leaves the entity in no project.
@@ -617,18 +619,8 @@ func (s *entityService) UpdateAttributes(ctx context.Context, entityID string, a
 		return err
 	}
 
-	// Drop stale attributes no longer in the schema so they don't block the update.
-	attributes, err = s.stripUndeclaredAttributes(ctx, existing.Category, existing.Type, attributes)
+	attributes, err = s.checkAttributeUpdate(ctx, entityID, existing, attributes)
 	if err != nil {
-		return err
-	}
-
-	if err := s.validateIndexedValueLimit(attributes); err != nil {
-		return err
-	}
-
-	// Validate attribute uniqueness via schema (excludes self, credentials not required for updates).
-	if err := s.validateEntityType(ctx, existing.Category, existing.Type, attributes, entityID, true); err != nil {
 		return err
 	}
 
@@ -1602,6 +1594,34 @@ func (s *entityService) stampCredentialMarker(txCtx context.Context, entityID st
 		return "", err
 	}
 	return marker, nil
+}
+
+// ValidateAttributes checks attribute updates the way UpdateAttributes does, without writing them.
+func (s *entityService) ValidateAttributes(ctx context.Context, entityID string, attributes json.RawMessage) error {
+	existing, err := s.store.GetEntity(ctx, entityID)
+	if err != nil {
+		return err
+	}
+	_, err = s.checkAttributeUpdate(ctx, entityID, existing, attributes)
+	return err
+}
+
+// checkAttributeUpdate drops the attributes the entity's schema no longer declares, so they don't block the
+// update, and checks the rest: indexed value limits, the schema and uniqueness, excluding the entity itself and
+// requiring no credentials. It returns the attributes to write.
+func (s *entityService) checkAttributeUpdate(ctx context.Context, entityID string, existing providers.Entity,
+	attributes json.RawMessage) (json.RawMessage, error) {
+	attributes, err := s.stripUndeclaredAttributes(ctx, existing.Category, existing.Type, attributes)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.validateIndexedValueLimit(attributes); err != nil {
+		return nil, err
+	}
+	if err := s.validateEntityType(ctx, existing.Category, existing.Type, attributes, entityID, true); err != nil {
+		return nil, err
+	}
+	return attributes, nil
 }
 
 // ValidateCredentials checks schema-defined credential updates the way UpdateCredentials does, without

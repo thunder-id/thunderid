@@ -4927,6 +4927,43 @@ func (s *ServiceTestSuite) TestBoundSignIn_ExecuteRunsTheFlowBounded() {
 	s.Equal(boundaryNamedOUID, ran.RuntimeData[common.RuntimeKeyOUID])
 }
 
+// A sign-in start that asks for a maximum authentication age runs the flow with it under the key the authorize
+// endpoint sets for max_age, so the SSO check does not reuse an older sign-in.
+func (s *ServiceTestSuite) TestExecute_SignInStartCarriesTheRequestedMaxAge() {
+	f := s.newBoundaryFixture(providers.FlowTypeAuthentication)
+	f.ou.EXPECT().IsApplicationShared(inStartingSignInBoundary()).Return(true, nil).Once()
+	f.actor.EXPECT().GetOAuthProfileByID(mock.Anything, boundaryAppID).Return(nil, nil)
+	f.actor.EXPECT().AuthenticateActor(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	var ran *EngineContext
+	f.engine.EXPECT().Execute(mock.Anything).Run(func(ctx *EngineContext) { ran = ctx }).
+		Return(FlowStep{Status: providers.FlowStatusComplete}, nil).Once()
+
+	_, svcErr := f.service.Execute(withRequestedMaxAge(context.Background(), 180),
+		boundaryAppID, "", string(providers.FlowTypeAuthentication), "", false, "", nil, "", "flow-secret", "", nil)
+
+	s.Require().Nil(svcErr)
+	s.Require().NotNil(ran)
+	s.Equal("180", ran.RuntimeData[common.RuntimeKeyMaxAge])
+}
+
+// Without a requested maximum authentication age, a sign-in start sets none.
+func (s *ServiceTestSuite) TestExecute_SignInStartWithoutMaxAgeSetsNone() {
+	f := s.newBoundaryFixture(providers.FlowTypeAuthentication)
+	f.ou.EXPECT().IsApplicationShared(inStartingSignInBoundary()).Return(true, nil).Once()
+	f.actor.EXPECT().GetOAuthProfileByID(mock.Anything, boundaryAppID).Return(nil, nil)
+	f.actor.EXPECT().AuthenticateActor(mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	var ran *EngineContext
+	f.engine.EXPECT().Execute(mock.Anything).Run(func(ctx *EngineContext) { ran = ctx }).
+		Return(FlowStep{Status: providers.FlowStatusComplete}, nil).Once()
+
+	_, svcErr := f.service.Execute(context.Background(),
+		boundaryAppID, "", string(providers.FlowTypeAuthentication), "", false, "", nil, "", "flow-secret", "", nil)
+
+	s.Require().Nil(svcErr)
+	s.Require().NotNil(ran)
+	s.NotContains(ran.RuntimeData, common.RuntimeKeyMaxAge)
+}
+
 // boundaryAuthUser is boundaryUserID as the default provider signed it in.
 func boundaryAuthUser() providers.AuthUser {
 	var authUser providers.AuthUser

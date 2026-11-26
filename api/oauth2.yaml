@@ -640,6 +640,7 @@ paths:
                     token_type: "Bearer"
                     exp: 1735689600
                     iat: 1735686000
+                    auth_time: 1735685940
                     sub: "user-123"
                     iss: "https://server.example.com"
                 inactive:
@@ -1598,6 +1599,12 @@ components:
         nbf:
           type: integer
           format: int64
+        auth_time:
+          type: integer
+          format: int64
+          description: |
+            Time the user signed in, in seconds since the epoch (RFC 9470). Present when the
+            token carries `auth_time`.
         sub:
           type: string
         sub_type:

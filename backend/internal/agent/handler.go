@@ -538,6 +538,9 @@ func writeServiceError(ctx context.Context, w http.ResponseWriter, svcErr *tidco
 			statusCode = http.StatusNotFound
 		case ErrorAuthenticationRequired.Code:
 			statusCode = http.StatusUnauthorized
+		case apierror.ErrRecentAuthenticationRequired.Code:
+			security.SetAuthenticationAgeChallenge(w, svcErr.ErrorDescription.Params[apierror.ErrorParamMaxAge])
+			statusCode = http.StatusUnauthorized
 		case ErrorAttributeConflict.Code,
 			ErrorAgentAlreadyExistsWithClientID.Code:
 			statusCode = http.StatusConflict

@@ -392,6 +392,7 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 		SubjectEntityID:   subjectEntityID,
 		SubjectCategory:   subjectCategory,
 		SourceIDP:         subjectClaims.SourceIDP,
+		AuthTime:          subjectClaims.AuthTime,
 	})
 	if err != nil {
 		return nil, tokenBuildErrorResponse(ctx, logger, err, "Failed to generate token")

@@ -51,6 +51,20 @@ var APIErrorOUIDNotAllowed = apierror.ErrorResponse{
 	},
 }
 
+// APIErrorMaxAgeNotAllowed defines the error response for a maxAge that is negative or named on a request that
+// does not start a sign-in flow.
+var APIErrorMaxAgeNotAllowed = apierror.ErrorResponse{
+	Code: "FES-1033",
+	Message: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.max_age_not_allowed",
+		DefaultValue: "Invalid request",
+	},
+	Description: tidcommon.I18nMessage{
+		Key:          "error.flowexecservice.max_age_not_allowed_description",
+		DefaultValue: "A maximum authentication age must be zero or more and can be given only to start a sign-in flow",
+	},
+}
+
 // ErrorNodeResponse defines the error response for errors received from nodes.
 var ErrorNodeResponse = tidcommon.ServiceError{
 	Code: "FES-1002",

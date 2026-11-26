@@ -84,6 +84,15 @@ func (h *flowExecutionHandler) HandleFlowExecutionRequest(w http.ResponseWriter,
 		}
 		ctx = sysContext.WithAccessingOUID(ctx, ouID)
 	}
+	// A maximum authentication age is given only to start a sign-in.
+	if flowR.MaxAge != nil {
+		if *flowR.MaxAge < 0 || executionID != "" || flowID != "" ||
+			flowTypeStr != string(providers.FlowTypeAuthentication) {
+			sysutils.WriteErrorResponse(ctx, w, http.StatusBadRequest, APIErrorMaxAgeNotAllowed)
+			return
+		}
+		ctx = withRequestedMaxAge(ctx, *flowR.MaxAge)
+	}
 
 	// Read the inbound SSO transport inputs and make them available to the flow service, which
 	// selects the handle once the flow is known.
