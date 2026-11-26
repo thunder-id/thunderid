@@ -1,0 +1,60 @@
+---
+title: Sessions
+docType: guide
+sidebar_position: 6
+persona: iam
+description: View the active Single Sign-On (SSO) sessions of a user or an application from the Console or the API. Users can also list their own sessions.
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Manage Sessions
+
+An SSO session records that a user signed in through a flow with Single Sign-On (SSO) enabled, so other applications on that flow can reuse the sign-in. You can view the active sessions of a user or an application.
+
+For how sessions and SSO work, see [Sessions and Single Sign-On](../../../key-concepts/authentication/sessions).
+
+## Prerequisites
+
+- <ProductName /> running locally. See [Get <ProductName />](../../../getting-started/get-thunderid).
+- A flow with SSO enabled. Sign-ins without SSO also record a session, but only SSO sessions are listed. See [Single Sign-On for Flows](../../flows/single-sign-on).
+- The `org:session:view` permission, which reaches the organization unit you hold it in, or the `system` permission, which reaches every organization unit. See [System Permissions](../manage-roles#system-permissions).
+
+## View Sessions
+
+<Tabs groupId="session-config">
+<TabItem value="console" label="Console" default>
+
+Sessions are kept where users sign in. So the **Sessions** tabs are in the Console of a standalone <ProductName /> server, and in the Admin Console of a server that a Control Plane manages. The Control Plane console has no **Sessions** tabs.
+
+1. Navigate to **Users** in the Console and open the user.
+2. Open the **Sessions** tab.
+
+Each session shows the browser and operating system it was created from and when it was last active. Click a session to see its IP address, the applications using it, when the user signed in, and when it expires.
+
+To see the sessions that signed in to an application, open the application from **Applications** and open its **Sessions** tab. Each session there also names its user. The Admin Console has no **Applications** page, so use the API there.
+
+Without the `org:session:view` or `system` permission, the **Sessions** tab says you don't have permission to view the sessions.
+
+</TabItem>
+<TabItem value="api" label="API">
+
+Call `GET /sessions?userId=<user-id>` for a user's sessions, or `GET /sessions?appId=<application-id>` for the sessions that signed in to an application. Exactly one of the two is required. See the [Sessions API Reference](../../../apis#tag/sessions) for paging and the response fields.
+
+</TabItem>
+</Tabs>
+
+## Organization Units
+
+One session can hold applications from more than one organization unit. For example, a user who switches organization in an application shared between two units stays in the same session, and the application appears once for each unit, with its `ouId`.
+
+With `org:session:view`, you see only the sessions with an application signed in under your organization unit, and only those applications. See [System Permissions](../manage-roles#system-permissions).
+
+## Let Users View Their Own Sessions
+
+Signed-in users can list their own sessions with `GET /users/me/sessions`, using only their own access token. Each session has `isCurrent`, which is `true` for the session that issued the access token, and the listing leaves out `userDisplayName`. It shows only the sessions and applications of the organization unit the user signed in under. An access token from a sign-in without SSO belongs to no SSO session, so the list is empty. See the [Sessions API Reference](../../../apis#tag/sessions).
+
+## Next Steps
+
+- [Sessions and Single Sign-On](../../../key-concepts/authentication/sessions)

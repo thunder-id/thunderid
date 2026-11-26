@@ -111,7 +111,21 @@ vi.mock('@thunderid/configure-applications/pages/ApplicationCreatePage', () => (
 }));
 
 vi.mock('@thunderid/configure-applications/pages/ApplicationEditPage', () => ({
-  default: () => <div data-testid="application-edit-page">Application Edit Page</div>,
+  default: ({renderSessions = undefined}: {renderSessions?: (appId: string) => React.ReactNode}) => (
+    <div data-testid="application-edit-page">Application Edit Page{renderSessions?.('app-123')}</div>
+  ),
+}));
+
+vi.mock('@thunderid/configure-users/pages/UserEditPage', () => ({
+  default: ({renderSessions = undefined}: {renderSessions?: (userId: string) => React.ReactNode}) => (
+    <div data-testid="user-edit-page">User Edit Page{renderSessions?.('user-123')}</div>
+  ),
+}));
+
+vi.mock('@thunderid/configure-sessions/components/SessionsPanel', () => ({
+  default: ({filter}: {filter: Record<string, string>}) => (
+    <div data-testid="sessions-panel">{JSON.stringify(filter)}</div>
+  ),
 }));
 
 vi.mock('@thunderid/configure-applications/pages/ApplicationTemplateSelectPage', () => ({
@@ -306,6 +320,18 @@ describe('App', () => {
     await waitFor(() => {
       expect(screen.getByTestId('application-edit-page')).toBeInTheDocument();
     });
+  });
+
+  it('gives UserEditPage the sessions of the user it shows', async () => {
+    window.history.pushState({}, '', '/users/user-123');
+    render(<App />);
+    expect(await screen.findByTestId('sessions-panel')).toHaveTextContent('{"userId":"user-123"}');
+  });
+
+  it('gives ApplicationEditPage the sessions of the application it shows', async () => {
+    window.history.pushState({}, '', '/applications/app-123');
+    render(<App />);
+    expect(await screen.findByTestId('sessions-panel')).toHaveTextContent('{"appId":"app-123"}');
   });
 
   it('loads AgentEditPage lazily via the monaco-setup chain', async () => {

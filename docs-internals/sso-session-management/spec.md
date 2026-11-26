@@ -1,7 +1,7 @@
 # SSO Session Management Specification
 
 - **Status:** Draft
-- **Version:** 0.3
+- **Version:** 0.4
 - **Related documents:** [Feature issue #3400: Self-service and admin session management](https://github.com/thunder-id/thunderid/issues/3400), [Design discussion #4130: Session visibility](https://github.com/thunder-id/thunderid/discussions/4130), [Revised design: session visibility and revocation](https://github.com/thunder-id/thunderid/discussions/4130#discussioncomment-18580774), [Client IP design](https://github.com/thunder-id/thunderid/discussions/4130#discussioncomment-18771408), [Design discussion #6322: Session tracking, token lifecycle and session management](https://github.com/thunder-id/thunderid/discussions/6322), [OIDC back-channel logout specification](../back-channel-logout/spec.md)
 
 ## Summary
@@ -209,9 +209,10 @@ The `configure-sessions` package provides a Sessions panel, shown as a tab on th
 ![Sessions tab on the user edit page in the Admin Console](assets/sessions-user-tab.png)
 
 - The edit pages show the tab only when the host app passes the panel, so it appears only where sessions exist. The Console of a standalone server shows it on both pages, and the Admin Console on the user page, since it has no application pages. The Control Plane console shows no Sessions tab.
-- The tab is hidden on an application with no grant type that lets users sign in.
+- The application page shows the tab whatever its grant types. An application users don't sign in to has no sessions, so its tab says there are none, and editing the grant types doesn't hide it before they are saved.
 - Each session shows the browser, operating system and device described from its User-Agent, its last-active IP, when it was last active, and its applications. The User-Agent the mobile SDKs send is recognized as a native app.
 - The creation IP is shown as well when it differs from the last-active IP. On an application's panel, a user whose name can't be resolved is shown by their user id.
+- The list is re-read every 30 seconds, because use moves a session's last activity. It stops after a `403`, which a retry won't change.
 - A revocation asks for confirmation first, and the list refreshes after it.
 - An administrator without `org:session:view` sees a message that they don't have permission to view the sessions, with no retry. A revocation refused for want of `org:session:delete` shows the same kind of message in the confirmation dialog.
 
@@ -351,7 +352,7 @@ The key is also exposed through the Helm chart as `configuration.server.trustedP
 - **AC11.1:** Given a user with live sessions, when an administrator opens the user's Sessions tab, then each session shows its device, last-active IP, last-active time and applications, with actions to revoke it and to revoke all.
 - **AC11.4:** Given the Control Plane console, when an administrator opens a user or an application, then there is no Sessions tab.
 - **AC11.2:** Given an application users sign in to, when an administrator opens its Sessions tab, then each session names its user and can be revoked.
-- **AC11.3:** Given an application with no grant type that lets users sign in, when an administrator opens it, then there is no Sessions tab.
+- **AC11.3:** Given an application with no grant type that lets users sign in, when an administrator opens its Sessions tab, then it shows no sessions.
 
 ## Known limitations
 
@@ -371,3 +372,4 @@ The key is also exposed through the Helm chart as `configuration.server.trustedP
 | 0.1 | 2026-11-04 | Initial specification, from design discussion #4130 and the session table in #6322, as built in #5575, #6150, #6152 and #6159. |
 | 0.2 | 2026-11-16 | Participants carry the application's logo URL, and both listings resolve names and logos regardless of the caller's user and application permissions. |
 | 0.3 | 2026-11-24 | Session listing by organization unit: `org:session:view` and `org:session:delete`, with only `system` reaching every unit, the self-service listing confined to the unit its own participant was recorded under, the participant's `ouId`, `userDisplayName` in place of `userName`, display names resolved for users and agents, only SSO sessions listed, the management API made part of the session service, with its routes registered in `Initialize`, the `?appId=` listing under an organization unit and the `session` capability made explicit. |
+| 0.4 | 2026-11-26 | The application page shows the Sessions tab whatever its grant types, and the Console re-reads the list every 30 seconds until a `403`. |

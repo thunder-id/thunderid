@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useCapabilitiesContext, useHiddenResources} from '@thunderid/contexts';
+import {isForbidden} from '@thunderid/utils';
 import {
   Alert,
   Box,
@@ -24,7 +25,7 @@ import useProjectScope from '../contexts/ProjectScope';
 import useGatewayErrorTranslator from '../hooks/useGatewayErrorTranslator';
 import type {ApplyResult, Change} from '../models/deploy';
 import type {Gateway} from '../models/gateway';
-import {errorCodeOf, failureText, isForbidden, REMOVALS_NEED_CONFIRMATION} from '../utils/apiError';
+import {errorCodeOf, failureText, REMOVALS_NEED_CONFIRMATION} from '../utils/apiError';
 
 export interface RevertPanelProps {
   gateway: Gateway;

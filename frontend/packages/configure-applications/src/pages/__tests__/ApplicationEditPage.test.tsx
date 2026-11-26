@@ -24,7 +24,7 @@ import type {Application} from '../../models/application';
 import {OAuth2GrantTypes} from '../../models/oauth';
 import {getIntegrationGuideForTemplate} from '../../utils/getIntegrationGuidesForTemplate';
 import getTemplateMetadata from '../../utils/getTemplateMetadata';
-import ApplicationEditPage from '../ApplicationEditPage';
+import ApplicationEditPage, {type ApplicationEditPageProps} from '../ApplicationEditPage';
 
 // Mock dependencies
 vi.mock('react-router', async () => {
@@ -50,6 +50,7 @@ const APPLICATIONS_TRANSLATIONS: Record<string, string> = {
   'applications:edit.page.tabs.flows': 'Flows',
   'applications:edit.page.tabs.customization': 'Customization',
   'applications:edit.page.tabs.token': 'Token',
+  'applications:edit.page.tabs.sessions': 'Sessions',
   'applications:edit.page.tabs.advanced': 'Advanced',
   'applications:edit.page.unsavedChanges': 'You have unsaved changes',
   'applications:edit.page.reset': 'Reset',
@@ -432,7 +433,8 @@ describe('ApplicationEditPage', () => {
     } as unknown as UseMutationResult<Application, Error, Partial<Application>>);
   });
 
-  const renderComponent = () => render(<ApplicationEditPage />);
+  const renderComponent = (props: ApplicationEditPageProps = {}) => render(<ApplicationEditPage {...props} />);
+  const renderSessions = (appId: string) => <div data-testid="sessions-panel">{`app-sessions:${appId}`}</div>;
 
   describe('Project scope', () => {
     it("goes to the selected project's applications when the application belongs to another project", async () => {
@@ -784,6 +786,34 @@ describe('ApplicationEditPage', () => {
   });
 
   describe('Tab Navigation', () => {
+    it('shows the sessions that joined the application on the Sessions tab', async () => {
+      mockUseGetApplication.mockReturnValue({
+        data: mockApplication,
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as UseQueryResult<Application>);
+
+      const user = userEvent.setup();
+      renderComponent({renderSessions});
+
+      await user.click(screen.getByRole('tab', {name: 'Sessions'}));
+      expect(screen.getByTestId('sessions-panel')).toHaveTextContent('app-sessions:test-app-id');
+    });
+
+    it('omits the Sessions tab when the host app renders no sessions', () => {
+      mockUseGetApplication.mockReturnValue({
+        data: mockApplication,
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as UseQueryResult<Application>);
+
+      renderComponent();
+
+      expect(screen.queryByRole('tab', {name: 'Sessions'})).not.toBeInTheDocument();
+    });
+
     it('should show the metadata document instead of credentials for a Client ID Metadata Document client', async () => {
       mockUseGetApplication.mockReturnValue({
         data: {
@@ -2398,12 +2428,13 @@ describe('ApplicationEditPage', () => {
         error: null,
       } as UseQueryResult<Application>);
 
-      renderComponent();
+      renderComponent({renderSessions});
 
       expect(screen.getByRole('tab', {name: 'General'})).toBeInTheDocument();
       expect(screen.getByRole('tab', {name: 'Flows'})).toBeInTheDocument();
       expect(screen.getByRole('tab', {name: 'Customization'})).toBeInTheDocument();
       expect(screen.getByRole('tab', {name: 'Token'})).toBeInTheDocument();
+      expect(screen.getByRole('tab', {name: 'Sessions'})).toBeInTheDocument();
       expect(screen.getByRole('tab', {name: 'Advanced'})).toBeInTheDocument();
       expect(screen.getByRole('tab', {name: 'Organization Access'})).toBeInTheDocument();
     });
