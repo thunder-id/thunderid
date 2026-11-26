@@ -1679,26 +1679,17 @@ func (s *ValidatorTestSuite) TestValidateModeFlowTypes_CredentialSetter() {
 	}
 }
 
-// The access change validator plans a role permission change only in a system flow.
+// The access change validator plans a role permission change, a role unshare or a mandate removal only in a system
+// flow.
 func (s *ValidatorTestSuite) TestValidateModeFlowTypes_AccessChangeValidator() {
-	cases := []struct {
-		flowType providers.FlowType
-		allowed  bool
-	}{
-		{providers.FlowTypeSystem, true},
-		{providers.FlowTypeAdministration, false},
-	}
-	for _, tc := range cases {
-		s.Run(string(tc.flowType), func() {
+	for _, mode := range []string{executor.ExecutorModeRolePermissionRemoval, executor.ExecutorModeRoleUnshare,
+		executor.ExecutorModeMandateRemoval} {
+		s.Run(mode, func() {
 			nodes := companionNodes(executor.ExecutorNameAccessChangeValidator)
-			nodes[1].Executor.Mode = executor.ExecutorModeRolePermissionRemoval
+			nodes[1].Executor.Mode = mode
 
-			err := s.v.validateModeFlowTypes(tc.flowType, nodes)
-
-			if tc.allowed {
-				s.Nil(err)
-				return
-			}
+			s.Nil(s.v.validateModeFlowTypes(providers.FlowTypeSystem, nodes))
+			err := s.v.validateModeFlowTypes(providers.FlowTypeAdministration, nodes)
 			s.Require().NotNil(err)
 			s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
 			s.Equal("error.flowmgtservice.unsupported_executor_mode_flow_type_description", err.ErrorDescription.Key)

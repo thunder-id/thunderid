@@ -29,7 +29,7 @@ type regenerationFixture struct {
 const testSecretEntityID = "agent-1"
 
 // secretRotationInputs is what the flows around the agent's secret rotation are given.
-var secretRotationInputs = map[string]string{systemFlowInputEntity: testSecretEntityID}
+var secretRotationInputs = map[string]string{SystemFlowInputEntity: testSecretEntityID}
 
 func (s *ServiceTestSuite) newRegenerationFixture() *regenerationFixture {
 	f := &regenerationFixture{svc: s.svc.(*entityService)}

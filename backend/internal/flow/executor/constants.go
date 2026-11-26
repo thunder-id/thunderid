@@ -97,6 +97,9 @@ const (
 	ExecutorModeClientRemoval        = executormeta.ExecutorModeClientRemoval
 	ExecutorModeClientSecretRotation = executormeta.ExecutorModeClientSecretRotation
 	ExecutorModeCredentialUpdate     = executormeta.ExecutorModeCredentialUpdate
+	ExecutorModeEntityUnshare        = executormeta.ExecutorModeEntityUnshare
+	ExecutorModeRoleUnshare          = executormeta.ExecutorModeRoleUnshare
+	ExecutorModeMandateRemoval       = executormeta.ExecutorModeMandateRemoval
 
 	ExecutorModeUnlock    = executormeta.ExecutorModeUnlock
 	ExecutorModeSuspend   = executormeta.ExecutorModeSuspend
@@ -157,6 +160,10 @@ const (
 	revocationInputResourceServer = "targetResourceServerId"
 	revocationInputResource       = "targetResourceId"
 	revocationInputAction         = "targetActionId"
+	// revocationInputOU names the organization unit a resource was unshared from.
+	revocationInputOU = "targetOuId"
+	// revocationInputOUs lists, as a JSON array, the organization units an entity was unshared from.
+	revocationInputOUs = "targetOuIds"
 	// revocationInputRemovedHolders lists, as a JSON array, the entities whose access the committed change
 	// removed. Only a system post flow reads it.
 	revocationInputRemovedHolders = "removedHolderIds"

@@ -1,7 +1,7 @@
 # Machine-to-Machine Access Across Organization Units Specification
 
 - **Status:** Draft
-- **Version:** 0.7
+- **Version:** 0.8
 - **Related documents:** [Discussion #5461: Machine-to-Machine (M2M) service working across OUs](https://github.com/thunder-id/thunderid/discussions/5461), [Issue #4037: Allow trusted machine clients to obtain an access token scoped to a chosen Organization Unit (without a per-OU application)](https://github.com/thunder-id/thunderid/issues/4037)
 
 ## Summary
@@ -162,6 +162,7 @@ Importing the document replays the policies against the stored ones:
 - An organization unit that issued a sharing policy cannot be deleted until the policy is withdrawn.
 - An application that has sharing policies cannot be moved to another organization unit, because its policies were issued against the unit that owns it. The update is refused until the policies are deleted.
 - A policy naming an organization unit that was deleted stays editable and deletable.
+- Taking the application away from an organization unit, by narrowing or deleting a policy or through an import, revokes the tokens issued to it, or through its OAuth client, in that unit. A token states its unit only when the application lists `ouId` in its client token attributes. See the token revocation guide's Unsharing section.
 
 ### Claims naming the accessing organization unit
 
@@ -268,7 +269,7 @@ Each section is one of the shapes below, chosen by its `mode` and expressed as a
 | 404 | No such application |
 | 404 | No such policy |
 | 409 | The organization unit already holds a policy for this application |
-| 409 | The policy changed since it was read |
+| 409 | The policy changed since it was read, or, for a delete, the application's sharing changed while its tokens were being revoked |
 
 A declared policy is visible through `GET` and refused by `PUT` and `DELETE`, because its existence belongs to the file that declares it. Deleting a policy the application does not hold answers `204`; deleting under an application that does not exist answers `404`.
 
@@ -284,7 +285,7 @@ The application page has an **Organization Access** tab, just before Advanced. I
 
 ![Imported application reaching every organization unit](assets/organization-access-every-unit-imported.png)
 
-**Change scope.** Change scope deletes the `allUnits` policy, and access then starts as all child units of the owner. The confirmation warns that once saved, every organization unit can't be chosen again.
+**Change scope.** Change scope deletes the `allUnits` policy, and access then starts as all child units of the owner. The confirmation warns that once saved, every organization unit can't be chosen again. Deleting the policy revokes the application's tokens in every organization unit it reached, including the ones the new policy reaches again.
 
 ![Change scope confirmation](assets/organization-access-change-scope.png)
 
@@ -407,3 +408,4 @@ inboundAuthConfig:
 | 0.5 | 2026-11-07 | The Organization Access tab shows for every application, not only those with the `client_credentials` grant, since a policy also decides which organization units' users can sign in. |
 | 0.6 | 2026-11-09 | A delegated administrator in a sharee organization unit lists and reads a shared application, marked as not owned, and an edit or delete is refused with `APP-1070` (AC2.1, AC2.2). |
 | 0.7 | 2026-11-09 | The R2 requirement states that a sharee organization unit lists and reads a shared M2M application and cannot change it, as AC2.1 and AC2.2 do. |
+| 0.8 | 2026-11-26 | Taking an application away from an organization unit revokes its tokens there, a policy delete can be refused with `409` when the sharing changes during the revocation, and Change scope revokes in every unit the deleted policy reached. |

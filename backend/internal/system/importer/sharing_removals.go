@@ -194,9 +194,12 @@ func (s *importService) removeSharingOf(
 			log.String("declaredPolicyID", skipped.DeclaredPolicyID))
 	}
 	if replayErr != nil {
+		what := fmt.Sprintf("removing the sharing policy of organization unit %q", replayErr.InitiatingOUID)
+		if replayErr.Whole {
+			what = "removing the sharing policies"
+		}
 		return nil, &sharingRemovalFailure{replayErr.Err.Code,
-			fmt.Sprintf("removing the sharing policy of organization unit %q: %s",
-				replayErr.InitiatingOUID, replayErr.Err.ErrorDescription.DefaultValue)}
+			fmt.Sprintf("%s: %s", what, replayErr.Err.ErrorDescription.DefaultValue)}
 	}
 	removed := make([]RemovedSharingPolicy, 0, len(replay.Removed))
 	for _, policy := range replay.Removed {

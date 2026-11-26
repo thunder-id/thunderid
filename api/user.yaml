@@ -1267,6 +1267,11 @@ paths:
         not state. A policy that was imported with one keeps it: restate the section here and
         rewrite its `excludedOuIds` to withhold units from it or hand them back. Editing a narrower
         policy into one of those is refused, so the edit cannot reach where the create could not.
+
+        An edit that takes the user away from an organization unit revokes the tokens issued to the
+        user there, and one that stops mandating a role in a unit the user keeps revokes the role's
+        permissions from the user's tokens issued there. If revoking before the change fails, the policy is left as it was. If revoking after it fails, the change is
+        saved but the request returns an error.
       requestBody:
         required: true
         content:
@@ -1332,7 +1337,9 @@ paths:
       summary: Delete a sharing policy
       description: |
         Removes the policy and everything that depended on it: the policies its sharees issued, and
-        the per-organization-unit state of every unit that loses sight of the user.
+        the per-organization-unit state of every unit that loses sight of the user. The tokens issued
+        to the user in each of those units are revoked. If revoking before the change fails, the policy is left as it was. If revoking after it fails, the change is
+        saved but the request returns an error.
 
         A declared policy cannot be deleted here. Its existence belongs to the resource file that
         declares it, so it goes away by being removed from that file.
@@ -1344,6 +1351,8 @@ paths:
           $ref: '#/components/responses/UserSharingPolicyDeleteBadRequest'
         "404":
           $ref: '#/components/responses/SharingUserNotFound'
+        "409":
+          $ref: '#/components/responses/UserSharingPolicyDeleteConflict'
         "403":
           $ref: '#/components/responses/SharingForbidden'
         "500":
@@ -3822,6 +3831,21 @@ components:
                 description:
                   key: "error.userservice.sharing_policy_version_mismatch_description"
                   defaultValue: "The sharing policy changed since it was read; read it again and retry the edit"
+
+    UserSharingPolicyDeleteConflict:
+      description: The user's sharing changed while its tokens were being revoked. Retry the delete.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "USR-1032"
+            message:
+              key: "error.userservice.sharing_policy_version_mismatch"
+              defaultValue: "Sharing policy version mismatch"
+            description:
+              key: "error.sharingservice.sharing_changed_during_revocation_description"
+              defaultValue: "The resource's sharing changed while access was being revoked; retry the change"
 
     UserSharingServerError:
       description: Internal server error

@@ -21,12 +21,13 @@ const accessSwitch = (overrides: Partial<AccessSwitch>): AccessSwitch => ({
   losesEveryUnit: false,
   losesEveryTree: false,
   losesAssignmentsOff: false,
+  replacesPolicy: false,
   ...overrides,
 });
 
 const renderDialog = (
   value: AccessSwitch | null,
-  extra: {hasUnitSettings?: boolean; wordingNamespace?: string} = {},
+  extra: {hasUnitSettings?: boolean; wordingNamespace?: string; revokesOnUnshare?: boolean} = {},
 ) => {
   const onCancel = vi.fn();
   const onConfirm = vi.fn();
@@ -51,6 +52,36 @@ describe('SwitchAccessConfirmDialog', () => {
     renderDialog(null);
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('warns that a save replacing the policy revokes in every unit it reached, for a resource that revokes', () => {
+    renderDialog(accessSwitch({replacesPolicy: true}), {revokesOnUnshare: true});
+
+    expect(
+      screen.getByText(
+        'Saving this replaces the sharing policy, so the tokens issued for Storefront in every organization unit it reached are revoked, including the ones this choice reaches again.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('warns that stopping sharing revokes in every unit the policy reached', () => {
+    renderDialog(accessSwitch({field: 'scope', to: 'owner', replacesPolicy: true}), {revokesOnUnshare: true});
+
+    expect(
+      screen.getByText(
+        'When you save, the tokens issued for Storefront in every organization unit it reached are revoked.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('says nothing about tokens for a resource that does not revoke', () => {
+    renderDialog(accessSwitch({replacesPolicy: true}));
+    expect(screen.queryByText(/tokens issued for Storefront/)).not.toBeInTheDocument();
+  });
+
+  it('says nothing about tokens when the switch is saved in place', () => {
+    renderDialog(accessSwitch({replacesPolicy: false}), {revokesOnUnshare: true});
+    expect(screen.queryByText(/tokens issued for Storefront/)).not.toBeInTheDocument();
   });
 
   it('lists what the switch clears, with unit names', () => {

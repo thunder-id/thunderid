@@ -71,18 +71,22 @@ type CriterionType = sharedrevocation.CriterionType
 // Criterion dimensions, re-exported from the revocation package so OAuth callers need not import it
 // directly. See that package for what each dimension matches.
 const (
-	CriterionTypeTokenFamily        = sharedrevocation.CriterionTypeTokenFamily
-	CriterionTypeSubject            = sharedrevocation.CriterionTypeSubject
-	CriterionTypeApplicationID      = sharedrevocation.CriterionTypeApplicationID
-	CriterionTypeApplicationKey     = sharedrevocation.CriterionTypeApplicationKey
-	CriterionTypeOrganizationUnit   = sharedrevocation.CriterionTypeOrganizationUnit
-	CriterionTypeRole               = sharedrevocation.CriterionTypeRole
-	CriterionTypeGroup              = sharedrevocation.CriterionTypeGroup
-	CriterionTypeConsent            = sharedrevocation.CriterionTypeConsent
-	CriterionTypeCredentialVersion  = sharedrevocation.CriterionTypeCredentialVersion
-	CriterionTypeEntityScope        = sharedrevocation.CriterionTypeEntityScope
-	CriterionTypeEntityScopeSubtree = sharedrevocation.CriterionTypeEntityScopeSubtree
-	CriterionTypeScope              = sharedrevocation.CriterionTypeScope
+	CriterionTypeTokenFamily          = sharedrevocation.CriterionTypeTokenFamily
+	CriterionTypeSubject              = sharedrevocation.CriterionTypeSubject
+	CriterionTypeApplicationID        = sharedrevocation.CriterionTypeApplicationID
+	CriterionTypeApplicationKey       = sharedrevocation.CriterionTypeApplicationKey
+	CriterionTypeOrganizationUnit     = sharedrevocation.CriterionTypeOrganizationUnit
+	CriterionTypeRole                 = sharedrevocation.CriterionTypeRole
+	CriterionTypeGroup                = sharedrevocation.CriterionTypeGroup
+	CriterionTypeConsent              = sharedrevocation.CriterionTypeConsent
+	CriterionTypeCredentialVersion    = sharedrevocation.CriterionTypeCredentialVersion
+	CriterionTypeEntityScope          = sharedrevocation.CriterionTypeEntityScope
+	CriterionTypeEntityScopeSubtree   = sharedrevocation.CriterionTypeEntityScopeSubtree
+	CriterionTypeScope                = sharedrevocation.CriterionTypeScope
+	CriterionTypeSubjectOU            = sharedrevocation.CriterionTypeSubjectOU
+	CriterionTypeApplicationKeyOU     = sharedrevocation.CriterionTypeApplicationKeyOU
+	CriterionTypeEntityScopeOU        = sharedrevocation.CriterionTypeEntityScopeOU
+	CriterionTypeEntityScopeSubtreeOU = sharedrevocation.CriterionTypeEntityScopeSubtreeOU
 )
 
 // RevocationMode controls whether a criterion applies permanently or only to artifacts established
@@ -112,6 +116,21 @@ func ScopeCriteria(subject string, audiences, scopes []string) []Criterion {
 // TokenAudiences reads the audiences of a token carrying scopes, failing closed when the claim is malformed.
 func TokenAudiences(claims map[string]interface{}, scopes []string) ([]string, error) {
 	return sharedrevocation.TokenAudiences(claims, scopes)
+}
+
+// OUCriteria returns the criteria a token issued in ouID is checked against within that unit.
+func OUCriteria(subject, clientKey, ouID string, audiences, scopes []string) []Criterion {
+	return sharedrevocation.OUCriteria(subject, clientKey, ouID, audiences, scopes)
+}
+
+// OUScopeCriteria returns the criteria revoking each scope for one principal within ouID.
+func OUScopeCriteria(subject, ouID string, audiences, scopes []string) []Criterion {
+	return sharedrevocation.OUScopeCriteria(subject, ouID, audiences, scopes)
+}
+
+// TokenOUID returns the organization unit a token was issued in, empty when it states none.
+func TokenOUID(claims map[string]interface{}) string {
+	return sharedrevocation.TokenOUID(claims)
 }
 
 // RevokedToken represents a single revoked token entry in the deny list.

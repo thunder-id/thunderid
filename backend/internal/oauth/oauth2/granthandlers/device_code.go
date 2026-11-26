@@ -182,18 +182,6 @@ func (h *deviceCodeGrantHandler) issueTokens(
 	if bindErr != nil {
 		return nil, bindErr
 	}
-	scopes, revocationErr := excludeRevokedScopes(ctx, h.enforcementService, revocation.RevocationIdentity{
-		EstablishedAt: record.AuthTime,
-		Criteria: []revocation.Criterion{
-			{Type: revocation.CriterionTypeSubject, Value: record.UserID},
-			{Type: revocation.CriterionTypeApplicationKey, Value: record.ClientID},
-		},
-	}, record.UserID, audiences, oidcScopes, permissionScopes)
-	if revocationErr != nil {
-		return nil, revocationErr
-	}
-	scopes = compactPermissionScopes(scopes, oidcScopes, targetRS)
-
 	attrs := make(map[string]interface{})
 	if record.AttributeCacheID != "" {
 		cacheEntry, cacheErr := h.attributeCache.GetAttributeCache(ctx, record.AttributeCacheID)
@@ -204,6 +192,17 @@ func (h *deviceCodeGrantHandler) issueTokens(
 		}
 		attrs = cacheEntry.Attributes
 	}
+	scopes, revocationErr := excludeRevokedScopes(ctx, h.enforcementService, revocation.RevocationIdentity{
+		EstablishedAt: record.AuthTime,
+		Criteria: []revocation.Criterion{
+			{Type: revocation.CriterionTypeSubject, Value: record.UserID},
+			{Type: revocation.CriterionTypeApplicationKey, Value: record.ClientID},
+		},
+	}, record.UserID, record.ClientID, issuedOUID(attrs), audiences, oidcScopes, permissionScopes)
+	if revocationErr != nil {
+		return nil, revocationErr
+	}
+	scopes = compactPermissionScopes(scopes, oidcScopes, targetRS)
 
 	userSubConfig := oauthApp.UserAccessTokenConfig()
 	accessTokenCtx := &tokenservice.AccessTokenBuildContext{

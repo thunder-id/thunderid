@@ -573,6 +573,8 @@ type roleAdminProvider interface {
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
 	ValidateGroupMembershipRemoval(ctx context.Context, groupID, memberID string) (
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
+	GetUnshareRevocationTarget(ctx context.Context, id, ouID string) (
+		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
 }
 
 // entityPermissionResolver resolves the permissions an entity holds now, directly and through its groups.
@@ -583,6 +585,8 @@ type entityPermissionResolver interface {
 // roleAssignmentAdminProvider is the assignment seam the access change validator and role executor consume.
 type roleAssignmentAdminProvider interface {
 	ValidateRemoveAssignment(ctx context.Context, id, ouID, assigneeID string) (
+		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
+	GetMandateRemovalRevocationTarget(ctx context.Context, id, ouID, assigneeID string) (
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
 	ListAssignableRoles(ctx context.Context, ouID string) ([]role.Role, *tidcommon.ServiceError)
 	AddAssigneesToRoles(ctx context.Context, assignments []role.RoleAssignment,

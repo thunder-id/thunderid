@@ -253,8 +253,9 @@ var (
 
 	// queryDeleteRoleAssignmentsInOU deletes every assignment made in one organization unit for a role.
 	queryDeleteRoleAssignmentsInOU = dbmodel.DBQuery{
-		ID:    "RLQ-ROLE_MGT-34",
-		Query: `DELETE FROM "ROLE_ASSIGNMENT" WHERE ROLE_ID = $1 AND ASSIGNMENT_OU_ID = $2 AND DEPLOYMENT_ID = $3`,
+		ID: "RLQ-ROLE_MGT-34",
+		Query: `DELETE FROM "ROLE_ASSIGNMENT" WHERE ROLE_ID = $1 AND ASSIGNMENT_OU_ID = $2 AND DEPLOYMENT_ID = $3 ` +
+			`RETURNING ASSIGNEE_ID, ASSIGNEE_TYPE, ASSIGNMENT_OU_ID, SHARING_POLICY_ID`,
 	}
 
 	// queryGetMandatedAssignmentsByPolicy lists the assignments a sharing policy mandates.
@@ -291,6 +292,15 @@ var (
 		ID: "RLQ-ROLE_MGT-40",
 		Query: `SELECT ASSIGNEE_ID, ASSIGNEE_TYPE, ASSIGNMENT_OU_ID, SHARING_POLICY_ID FROM "ROLE_ASSIGNMENT"
 			WHERE ROLE_ID = $1 AND ASSIGNMENT_OU_ID = $2 AND SHARING_POLICY_ID <> '' AND DEPLOYMENT_ID = $3`,
+	}
+
+	// queryGetMandatedAssignmentsOfAssignee lists the assignments sharing policies mandate for a role to one
+	// assignee in one organization unit.
+	queryGetMandatedAssignmentsOfAssignee = dbmodel.DBQuery{
+		ID: "RLQ-ROLE_MGT-50",
+		Query: `SELECT ASSIGNEE_ID, ASSIGNEE_TYPE, ASSIGNMENT_OU_ID, SHARING_POLICY_ID FROM "ROLE_ASSIGNMENT"
+			WHERE ROLE_ID = $1 AND ASSIGNMENT_OU_ID = $2 AND ASSIGNEE_ID = $3 AND SHARING_POLICY_ID <> ''
+			AND DEPLOYMENT_ID = $4`,
 	}
 
 	// queryGetMandatedRoleUnits lists each role a sharing policy mandates in an organization unit, once.

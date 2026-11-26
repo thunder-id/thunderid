@@ -482,8 +482,8 @@ func (f *fileBasedStore) DeleteAssignmentsByRoleID(ctx context.Context, id strin
 
 // DeleteAssignmentsInOU is a no-op for the file-based store: a declared assignment outside the role's
 // owner is made only where declared policies reach, and those cannot be withdrawn at runtime.
-func (f *fileBasedStore) DeleteAssignmentsInOU(_ context.Context, _, _ string) error {
-	return nil
+func (f *fileBasedStore) DeleteAssignmentsInOU(_ context.Context, _, _ string) ([]RoleAssignment, error) {
+	return nil, nil
 }
 
 // DeleteAssignmentsByAssignee is a no-op for the file-based store: declarative roles hold no
@@ -595,6 +595,12 @@ func (f *fileBasedStore) ListMandatedRoleUnits(_ context.Context) ([]MandatedRol
 
 // ListMandatedAssignmentsForRole returns no assignments, since the file-based store holds no mandated ones.
 func (f *fileBasedStore) ListMandatedAssignmentsForRole(_ context.Context, _, _ string) ([]RoleAssignment, error) {
+	return []RoleAssignment{}, nil
+}
+
+// ListMandatedAssignmentsOfAssignee returns no assignments, since the file-based store holds no mandated ones.
+func (f *fileBasedStore) ListMandatedAssignmentsOfAssignee(
+	_ context.Context, _, _, _ string) ([]RoleAssignment, error) {
 	return []RoleAssignment{}, nil
 }
 

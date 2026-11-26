@@ -299,6 +299,31 @@ func (s *CriteriaRevocationExecutorTestSuite) TestAdvanceCutoff_RevokesTheSubtre
 	s.Equal([]revocation.Criterion{subtree(testAssigneeID), subtree(testMemberID)}, *recorded)
 }
 
+// A role unshare's plan is confined to the unit the role left, so a holder the unshare removed there that the plan
+// did not see loses the role's scopes in that unit only.
+func (s *CriteriaRevocationExecutorTestSuite) TestAdvanceCutoff_ALateHolderOfAnUnshareLosesTheScopesInTheUnitOnly() {
+	revoker := revocationmock.NewCriteriaRevokerInterfaceMock(s.T())
+	recorded := recordBatch(revoker)
+	scope := revocation.AudienceScope{Audience: testCaliforniaAud, Scope: testLicenceScope}
+	inUnit := func(entityID string) revocation.Criterion {
+		return revocation.Criterion{Type: revocation.CriterionTypeEntityScopeOU,
+			Value: revocation.EntityScopeOUCriterionValue(entityID, testCaliforniaAud, testLicenceScope,
+				testUnsharedOUID)}
+	}
+	plan := roleDeletionPlan()
+	plan.Reason = revocation.ReasonResourceUnshared
+	plan.Criteria = []revocation.Criterion{inUnit(testAssigneeID)}
+	plan.HolderScopes = []revocation.AudienceScope{scope}
+	plan.OUID = testUnsharedOUID
+
+	resp, err := newCriteriaRevocationExecutor(s.factory, revoker).Execute(roleDeletionPostContext(s.T(),
+		plan, `["`+testAssigneeID+`","`+testMemberID+`"]`))
+
+	s.Require().NoError(err)
+	s.Equal(providers.ExecComplete, resp.Status)
+	s.Equal([]revocation.Criterion{inUnit(testAssigneeID), inUnit(testMemberID)}, *recorded)
+}
+
 // A plan that records no holder scopes, such as one made before they were recorded, takes no removed
 // holders from the input: it writes its own criteria and nothing more.
 func (s *CriteriaRevocationExecutorTestSuite) TestAdvanceCutoff_APlanWithoutHolderScopesIgnoresRemovedHolders() {

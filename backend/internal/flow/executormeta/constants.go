@@ -83,6 +83,9 @@ const (
 	ExecutorModeClientRemoval        = "client_removal"
 	ExecutorModeClientSecretRotation = "client_secret_rotation"
 	ExecutorModeCredentialUpdate     = "credential_update" //nolint:gosec // executor mode
+	ExecutorModeEntityUnshare        = "entity_unshare"
+	ExecutorModeRoleUnshare          = "role_unshare"
+	ExecutorModeMandateRemoval       = "mandated_role_removal"
 
 	ExecutorModeUnlock    = "unlock"
 	ExecutorModeSuspend   = "suspend"

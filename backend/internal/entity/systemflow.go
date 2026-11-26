@@ -26,8 +26,11 @@ const (
 	systemFlowSecretRotatePre = "system-entity-secret-rotate-pre"
 	// systemFlowRevocationPost follows every pre flow, moving its cutoff past the write.
 	systemFlowRevocationPost = "system-revocation-post"
-	// systemFlowInputEntity names the entity the flows act on.
-	systemFlowInputEntity = "targetEntityId"
+	// SystemFlowEntityUnsharePre revokes, in the units a sharing change takes the entity from, what was issued to
+	// it or through its OAuth client.
+	SystemFlowEntityUnsharePre = "system-entity-unshare-pre"
+	// SystemFlowInputEntity names the entity the flows act on.
+	SystemFlowInputEntity = "targetEntityId"
 )
 
 // systemFlowProvider runs a system flow to completion. The flow engine implements it.
@@ -56,7 +59,7 @@ func (s *entityService) runSystemFlow(ctx context.Context, handle string,
 // and is reported as ErrRevocationIncomplete. Where system flows are off only the change runs.
 func (s *entityService) revokeAround(ctx context.Context, entityID, preFlow, postFlow string,
 	change func() error) error {
-	inputs := map[string]string{systemFlowInputEntity: entityID}
+	inputs := map[string]string{SystemFlowInputEntity: entityID}
 	shared, svcErr := s.runSystemFlow(ctx, preFlow, inputs, nil)
 	if svcErr != nil {
 		return fmt.Errorf("%w: %s", errRevocationFailed, svcErr.Code)

@@ -1,7 +1,7 @@
 # Hierarchical Permissions Specification
 
 - **Status:** Final
-- **Version:** 1.0
+- **Version:** 1.1
 - **Related documents:** [Design Discussion #5990: Hierarchical permissions for resource servers](https://github.com/thunder-id/thunderid/discussions/5990), [PR #6318: Add hierarchical permissions for resource servers](https://github.com/thunder-id/thunderid/pull/6318).
 
 ## Summary
@@ -217,11 +217,11 @@ The Console's role permission catalog follows the setting. On a hierarchical ser
 
 ### Revoking a branch
 
-Revocation flows already revoke the scopes a principal loses when a role's permissions change, a role is deleted, a role assignment is removed, a group is deleted, or a group membership is removed. This feature changes what they plan, not when they run.
+Revocation flows already revoke the scopes a principal loses when a role's permissions change, a role is deleted, a role assignment is removed, a group is deleted, a group membership is removed, a role is unshared from an organization unit, or a user share stops mandating a role in one. This feature changes what they plan, not when they run.
 
 1. For each resource server the role names, read the server. A read failure refuses the whole change, so a revocation can never be planned narrower than the loss. A server with no identifier is skipped, since no token can name it as an audience.
 2. A permission is lost when the role's new permissions no longer cover it under the server's setting. Dropping a child that a kept parent still covers loses nothing.
-3. On a hierarchical server, the lost permissions are reduced to roots, the ones no other lost permission covers. Each root becomes a subtree rule of type `entity.scope.subtree`, whose value is a digest of the principal, the audience, the root, and the delimiter. On an exact server, each lost permission becomes an exact `entity.scope` rule, as before.
+3. On a hierarchical server, the lost permissions are reduced to roots, the ones no other lost permission covers. Each root becomes a subtree rule of type `entity.scope.subtree`, whose value is a digest of the principal, the audience, the root, and the delimiter. On an exact server, each lost permission becomes an exact `entity.scope` rule, as before. A loss confined to one organization unit, from an unshare or a dropped mandate, writes `entity.scope.subtree.ou` and `entity.scope.ou` instead, with the unit in the digest, so only tokens issued in that unit match.
 4. Every rule is bounded: it revokes tokens established at or before the change.
 
 At enforcement, every token scope yields lookup keys for every permitted delimiter (`.`, `_`, `:`, `-`, `/`): one for the scope itself and one for each prefix of it that ends before that delimiter, per audience. Matching needs no catalog read and no resource server read, and both enforcement paths, the deny-list check and the resource server revocation cache, derive the keys the same way. Because the delimiter is in the digest, a rule recorded for `:` cannot match a scope that only splits on `_`.
@@ -244,7 +244,7 @@ No table and no column is added.
 
 - The resource server's properties JSON gains `hierarchicalPermissions`. Absent reads as `false`.
 - Consent records keep their shape. A permission purpose is still `permissions:<application ID>`, and its elements are permission strings.
-- The revocation criteria store gains the criterion type `entity.scope.subtree`, held in the existing columns.
+- The revocation criteria store gains the criterion type `entity.scope.subtree`, and `entity.scope.subtree.ou` for a loss confined to one organization unit, held in the existing columns.
 
 ### API
 
@@ -372,3 +372,4 @@ The AuthZEN evaluation API is unchanged: its decisions follow the setting, and i
 | Version | Date | Change |
 |---|---|---|
 | 0.1 | 2026-11-15 | Initial Specification. |
+| 1.1 | 2026-11-26 | Unsharing a role from an organization unit, and a user share that stops mandating one, write subtree rules confined to that unit (`entity.scope.subtree.ou`). |

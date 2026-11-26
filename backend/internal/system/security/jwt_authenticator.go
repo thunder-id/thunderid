@@ -167,6 +167,7 @@ func (h *jwtAuthenticator) authenticateToken(ctx context.Context, token string,
 			return nil, errInvalidToken
 		}
 		securityCtx.revocationAudiences = audiences
+		securityCtx.revocationOUID = revocation.TokenOUID(attributes)
 		if issuedAt, ok := attributes[claimIssuedAt].(float64); ok {
 			securityCtx.establishedAt = time.Unix(int64(issuedAt), 0).UTC()
 		}

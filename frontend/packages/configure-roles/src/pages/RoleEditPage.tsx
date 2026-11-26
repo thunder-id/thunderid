@@ -88,6 +88,8 @@ export default function RoleEditPage(): JSX.Element {
     enabled: Boolean(roleId) && accessTabOpened,
     // The tab's sentences say what access means for a role: `roles:organizationAccess.*`.
     wordingNamespace: 'roles',
+    // Unsharing a role revokes its permissions from its holders' tokens in the units that lose it.
+    revokesOnUnshare: true,
   });
 
   const [editedRole, setEditedRole] = useState<Partial<Role>>({});

@@ -69,6 +69,9 @@ type RoleServiceInterface interface {
 	// ValidateGroupMembershipRemoval reports whether the member may be removed and returns what that revokes.
 	ValidateGroupMembershipRemoval(ctx context.Context, groupID, memberID string) (
 		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
+	// GetUnshareRevocationTarget returns what unsharing the role from the organization unit revokes.
+	GetUnshareRevocationTarget(ctx context.Context, id, ouID string) (
+		*revocation.AccessRevocationTarget, *tidcommon.ServiceError)
 	IsRoleDeclarative(ctx context.Context, id string) (bool, *tidcommon.ServiceError)
 	// GetAuthorizedPermissionsByResourceServer counts only the assignments made in assignmentOUID
 	// when one is given, and assignments made anywhere otherwise.
@@ -1017,7 +1020,7 @@ func (rs *roleService) withRemovedHolders(ctx context.Context, inputs map[string
 	if rs.systemFlows == nil || len(removed) == 0 {
 		return inputs, nil
 	}
-	entityIDs, svcErr := rs.appendHolders(ctx, removed, []string{}, map[string]struct{}{})
+	entityIDs, svcErr := appendHolders(ctx, rs.groupService, removed, []string{}, map[string]struct{}{})
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -1061,7 +1064,24 @@ func (rs *roleService) ValidateDeleteRole(ctx context.Context, id string) (
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	return rs.roleAccessChangeTarget(ctx, id, revoked)
+	return rs.roleAccessChangeTarget(ctx, id, "", revoked)
+}
+
+// GetUnshareRevocationTarget returns the role's scopes and the entities holding it through an assignment made in
+// the organization unit, which lose them there once the role is unshared from it.
+func (rs *roleService) GetUnshareRevocationTarget(ctx context.Context, id, ouID string) (
+	*revocation.AccessRevocationTarget, *tidcommon.ServiceError) {
+	// The sharing service has authorized the unshare; this only reads what it revokes.
+	ctx = security.WithRuntimeContext(ctx)
+	role, svcErr := rs.getRoleWithPermissions(ctx, id)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	scopes, svcErr := revokedPermissions(ctx, rs.resourceService, role.Permissions, nil)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return rs.roleAccessChangeTarget(ctx, id, ouID, scopes)
 }
 
 // requireRoleNotMandated refuses to delete a role a user sharing policy still mandates.
@@ -1101,7 +1121,7 @@ func (rs *roleService) ValidateUpdateRolePermissions(ctx context.Context, id str
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	return rs.roleAccessChangeTarget(ctx, id, revoked)
+	return rs.roleAccessChangeTarget(ctx, id, "", revoked)
 }
 
 // ValidateGroupDeletion runs the group service's checks for the deletion and returns what it revokes.
@@ -1530,25 +1550,27 @@ func (rs *roleService) validatePermissions(
 	return nil
 }
 
-// roleAccessChangeTarget pairs the revoked permissions with every holder of the role; with none revoked
-// it skips the holders, so a change that revokes nothing is never refused over them.
-func (rs *roleService) roleAccessChangeTarget(ctx context.Context, id string,
+// roleAccessChangeTarget pairs the revoked permissions with every holder of the role, through assignments made in
+// ouID or in any unit when it is empty; with none revoked it skips the holders, so a change that revokes nothing is
+// never refused over them.
+func (rs *roleService) roleAccessChangeTarget(ctx context.Context, id, ouID string,
 	scopes []revocation.AudienceScope) (*revocation.AccessRevocationTarget, *tidcommon.ServiceError) {
 	if len(scopes) == 0 {
 		return &revocation.AccessRevocationTarget{}, nil
 	}
-	entityIDs, svcErr := rs.roleAssigneeIDs(ctx, id)
+	entityIDs, svcErr := rs.roleAssigneeIDs(ctx, id, ouID)
 	if svcErr != nil {
 		return nil, svcErr
 	}
 	return &revocation.AccessRevocationTarget{EntityIDs: entityIDs, Scopes: scopes}, nil
 }
 
-// roleAssigneeIDs returns the distinct entities holding the role, directly or through a group.
-func (rs *roleService) roleAssigneeIDs(ctx context.Context, id string) ([]string, *tidcommon.ServiceError) {
+// roleAssigneeIDs returns the distinct entities holding the role, directly or through a group, through the
+// assignments made in ouID, or in any organization unit when it is empty.
+func (rs *roleService) roleAssigneeIDs(ctx context.Context, id, ouID string) ([]string, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
-	total, err := rs.roleStore.GetRoleAssignmentsCount(ctx, id, "")
+	total, err := rs.roleStore.GetRoleAssignmentsCount(ctx, id, ouID)
 	if err != nil {
 		if errors.Is(err, errResultLimitExceededInCompositeMode) {
 			return nil, &ResultLimitExceededInCompositeMode
@@ -1560,7 +1582,7 @@ func (rs *roleService) roleAssigneeIDs(ctx context.Context, id string) ([]string
 	entityIDs := []string{}
 	seen := map[string]struct{}{}
 	for offset := 0; offset < total; offset += serverconst.MaxPageSize {
-		assignments, err := rs.roleStore.GetRoleAssignments(ctx, id, "", serverconst.MaxPageSize, offset)
+		assignments, err := rs.roleStore.GetRoleAssignments(ctx, id, ouID, serverconst.MaxPageSize, offset)
 		if err != nil {
 			if errors.Is(err, errResultLimitExceededInCompositeMode) {
 				return nil, &ResultLimitExceededInCompositeMode
@@ -1569,7 +1591,7 @@ func (rs *roleService) roleAssigneeIDs(ctx context.Context, id string) ([]string
 			return nil, &tidcommon.InternalServerError
 		}
 		var svcErr *tidcommon.ServiceError
-		if entityIDs, svcErr = rs.appendHolders(ctx, assignments, entityIDs, seen); svcErr != nil {
+		if entityIDs, svcErr = appendHolders(ctx, rs.groupService, assignments, entityIDs, seen); svcErr != nil {
 			return nil, svcErr
 		}
 	}
@@ -1579,10 +1601,10 @@ func (rs *roleService) roleAssigneeIDs(ctx context.Context, id string) ([]string
 // appendHolders appends to entityIDs the entities holding the assignments, a group expanded to its
 // transitive members, skipping each one seen already. The pre plan and the post flow's removed holders
 // both expand assignments this way, so they name the same entities.
-func (rs *roleService) appendHolders(ctx context.Context, assignments []RoleAssignment, entityIDs []string,
-	seen map[string]struct{}) ([]string, *tidcommon.ServiceError) {
+func appendHolders(ctx context.Context, groupService group.GroupServiceInterface, assignments []RoleAssignment,
+	entityIDs []string, seen map[string]struct{}) ([]string, *tidcommon.ServiceError) {
 	for _, assignment := range assignments {
-		members, svcErr := expandPrincipal(ctx, rs.groupService, assignment.ID, assignment.Type == AssigneeTypeGroup)
+		members, svcErr := expandPrincipal(ctx, groupService, assignment.ID, assignment.Type == AssigneeTypeGroup)
 		if svcErr != nil {
 			return nil, svcErr
 		}
@@ -2099,10 +2121,15 @@ func (rs *roleService) resolveUpdateTarget(
 }
 
 // translateSharingError maps a sharing framework error into this service's own codes. A refusal this
-// package raised through the framework is already one of them.
+// package raised through the framework is already one of them, and a refusal of the revocation an unshare
+// runs is returned as role deletion returns it.
 func translateSharingError(svcErr *tidcommon.ServiceError) *tidcommon.ServiceError {
-	if svcErr != nil && svcErr.Code == ErrorRoleMandatedInOU.Code {
-		return svcErr
+	if svcErr != nil {
+		switch svcErr.Code {
+		case ErrorRoleMandatedInOU.Code, ResultLimitExceededInCompositeMode.Code,
+			group.ErrorGroupNestingTooDeep.Code, revocation.ErrorEntryLimitExceeded.Code:
+			return svcErr
+		}
 	}
 	return sharingErrors.Translate(svcErr)
 }

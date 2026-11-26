@@ -1197,6 +1197,39 @@ func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_RevocationAudiencesRead
 	}
 }
 
+func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_RevocationOUIsTheUnitTheTokenWasIssuedIn() {
+	config.ResetServerRuntime()
+	suite.Require().NoError(config.InitializeServerRuntime("",
+		&config.Config{JWT: engineconfig.JWTConfig{Issuer: testLocalIssuer}}))
+
+	testCases := []struct {
+		name     string
+		claims   map[string]interface{}
+		expected string
+	}{
+		{"AccessToken", map[string]interface{}{"iss": testLocalIssuer, "ouId": "ou-a"}, "ou-a"},
+		{"RefreshToken", map[string]interface{}{"iss": testLocalIssuer, "access_token_sub": "user-1",
+			"access_token_ou_id": "ou-a"}, "ou-a"},
+		{"NoUnit", map[string]interface{}{"iss": testLocalIssuer}, ""},
+	}
+	for _, tc := range testCases {
+		suite.Run(tc.name, func() {
+			claims := map[string]interface{}{"sub": "user-1"}
+			for key, value := range tc.claims {
+				claims[key] = value
+			}
+			token := buildFakeJWT(accessTokenHeader(), claims)
+			mockJWT := jwtmock.NewJWTServiceInterfaceMock(suite.T())
+			mockJWT.On("VerifyJWT", mock.Anything, token, "", "").Return(nil)
+
+			authCtx, err := newJWTAuthenticator(mockJWT, "").authenticateToken(context.Background(), token, audiences{})
+
+			suite.Require().NoError(err)
+			suite.Equal(tc.expected, authCtx.revocationIdentity().OUID)
+		})
+	}
+}
+
 func (suite *JWTAuthenticatorTestSuite) TestAuthenticate_MalformedAudienceOnScopedTokenIsRejected() {
 	config.ResetServerRuntime()
 	suite.Require().NoError(config.InitializeServerRuntime("",

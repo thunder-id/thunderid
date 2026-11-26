@@ -505,7 +505,9 @@ func (suite *RoleFileBasedStoreTestSuite) TestDeclaredAssignmentsAreMadeInTheOwn
 	suite.Require().NoError(err)
 	suite.Zero(count)
 
-	suite.NoError(suite.store.DeleteAssignmentsInOU(ctx, "role1", "ou-child"))
+	removed, err := suite.store.DeleteAssignmentsInOU(ctx, "role1", "ou-child")
+	suite.NoError(err)
+	suite.Empty(removed)
 	_, err = suite.store.DeleteAssignmentsByRoleID(ctx, "role1")
 	suite.Error(err)
 }

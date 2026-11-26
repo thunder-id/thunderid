@@ -206,7 +206,8 @@ func (h *authorizationCodeGrantHandler) issueTokens(ctx context.Context, tokenRe
 			{Type: revocation.CriterionTypeSubject, Value: authCode.AuthorizedUserID},
 			{Type: revocation.CriterionTypeApplicationKey, Value: authCode.ClientID},
 		},
-	}, authCode.AuthorizedUserID, accessTokenAudiences, oidcScopes, permissionScopes)
+	}, authCode.AuthorizedUserID, authCode.ClientID, issuedOUID(attrs), accessTokenAudiences, oidcScopes,
+		permissionScopes)
 	if errResp != nil {
 		return nil, errResp
 	}

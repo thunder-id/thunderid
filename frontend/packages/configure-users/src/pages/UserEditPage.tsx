@@ -193,6 +193,8 @@ export default function UserEditPage() {
     enabled: Boolean(userId),
     // The tab's sentences say what access means for a user (affiliation): `users:organizationAccess.*`.
     wordingNamespace: 'users',
+    // Unsharing a user revokes the user's tokens in the units that lose it.
+    revokesOnUnshare: true,
   });
 
   // useMutation returns a fresh object every render, so depending on the mutation itself gave

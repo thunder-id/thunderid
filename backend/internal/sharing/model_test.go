@@ -520,6 +520,11 @@ func (s *ModelTestSuite) TestErrorTranslationAnswersInTheTypesOwnCodes() {
 		s.Equal(from.ErrorDescription, translated.ErrorDescription)
 	}
 
+	changed := translation.Translate(&ErrorSharingChangedDuringRevocation)
+	s.Require().NotNil(changed)
+	s.Equal("T-3", changed.Code, "a sharing change during its revocation is answered as a version conflict")
+	s.Equal(ErrorSharingChangedDuringRevocation.ErrorDescription, changed.ErrorDescription)
+
 	s.Equal(&tidcommon.InternalServerError, translation.Translate(&tidcommon.InternalServerError))
 	s.Nil(translation.Translate(nil))
 }

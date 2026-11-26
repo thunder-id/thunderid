@@ -184,7 +184,7 @@ var catalog = map[string]providers.ExecutorMeta{
 	},
 	ExecutorNamePreRevocation: {
 		SupportedModes: []string{ExecutorModeClientRemoval, ExecutorModeClientSecretRotation,
-			ExecutorModeCredentialUpdate, ExecutorModeIdentityDeletion},
+			ExecutorModeCredentialUpdate, ExecutorModeEntityUnshare, ExecutorModeIdentityDeletion},
 		SupportedFlowTypes: []providers.FlowType{"SYSTEM"},
 	},
 	ExecutorNamePreSuspend: {
@@ -245,9 +245,11 @@ var catalog = map[string]providers.ExecutorMeta{
 			ExecutorModeActionDeletion,
 			ExecutorModeGroupDeletion,
 			ExecutorModeGroupMembershipRemoval,
+			ExecutorModeMandateRemoval,
 			ExecutorModeRoleAssignmentRemoval,
 			ExecutorModeRoleDeletion,
 			ExecutorModeRolePermissionRemoval,
+			ExecutorModeRoleUnshare,
 		},
 		SupportedFlowTypes: []providers.FlowType{"ADMINISTRATION", "SYSTEM"},
 	},

@@ -45,6 +45,18 @@ func (d *roleSharingDeclaration) ResourceType() sharing.ResourceType {
 	return RoleSharingType
 }
 
+// Unsharing a role revokes, so the declaration must keep implementing it.
+var _ sharing.UnshareRevoker = (*roleSharingDeclaration)(nil)
+
+// The unit cleanup returns the holders it removed, so the declaration must keep implementing it.
+var _ sharing.OverlayCleaner = (*roleSharingDeclaration)(nil)
+
+// UnshareRevocationFlow revokes, in a unit that loses the role, the role's scopes from those holding it there. It
+// runs once per unit, so the entry limit holds for each unit and each unit's post flow takes the holders removed there.
+func (d *roleSharingDeclaration) UnshareRevocationFlow() sharing.UnshareFlow {
+	return sharing.UnshareFlow{Handle: systemFlowRoleUnsharePre, ResourceInput: systemFlowInputRole}
+}
+
 // Fields declares the role's assignments, which every organization unit the role reaches may make
 // unless a policy turns them off. A policy only switches them on or off, naming no members. A
 // role's name and permissions stay with its owner.
@@ -69,20 +81,21 @@ func (d *roleSharingDeclaration) OwningOUID(
 }
 
 // DeleteOverlayValues removes the assignments an organization unit made for a role once the role is
-// no longer shared with it. Assignments live in the role's own table rather than the framework's.
+// no longer shared with it, and returns the entities that held the role through them, whose tokens the
+// unshare revokes too. Assignments live in the role's own table rather than the framework's.
 // It refuses while a user share mandates the role in a unit that still exists.
-func (d *roleSharingDeclaration) DeleteOverlayValues(ctx context.Context, resourceID, ouID string) error {
+func (d *roleSharingDeclaration) DeleteOverlayValues(ctx context.Context, resourceID, ouID string) ([]string, error) {
 	mandated, err := d.roleStore.ListMandatedAssignmentsForRole(ctx, resourceID, ouID)
 	if err != nil {
-		return fmt.Errorf("failed to list the mandated assignments of role %s: %w", resourceID, err)
+		return nil, fmt.Errorf("failed to list the mandated assignments of role %s: %w", resourceID, err)
 	}
 	if len(mandated) > 0 {
 		exists, svcErr := d.ouService.IsOrganizationUnitExists(ctx, ouID)
 		if svcErr != nil {
-			return fmt.Errorf("failed to check organization unit %s exists: code=%s", ouID, svcErr.Code)
+			return nil, fmt.Errorf("failed to check organization unit %s exists: code=%s", ouID, svcErr.Code)
 		}
 		if exists {
-			return sharing.NewResourceTypeError(&ErrorRoleMandatedInOU)
+			return nil, sharing.NewResourceTypeError(&ErrorRoleMandatedInOU)
 		}
 	}
 	return d.assignmentService.DeleteAssignmentsInOU(ctx, resourceID, ouID)

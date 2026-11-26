@@ -28,6 +28,7 @@ type SecurityContext struct {
 	revocationSubject   string
 	revocationAppKey    string
 	revocationAudiences []string
+	revocationOUID      string
 	selfIssued          bool
 	recorded            bool
 	establishedAt       time.Time
@@ -56,6 +57,7 @@ func (c *SecurityContext) revocationIdentity() RevocationIdentity {
 		AppKey:        c.revocationAppKey,
 		Audiences:     c.revocationAudiences,
 		Scopes:        c.permissions,
+		OUID:          c.revocationOUID,
 		EstablishedAt: c.establishedAt,
 	}
 }

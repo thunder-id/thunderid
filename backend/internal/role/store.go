@@ -42,7 +42,7 @@ type roleStoreInterface interface {
 	UpdateRole(ctx context.Context, id string, role RoleUpdateDetail) error
 	DeleteRole(ctx context.Context, id string) error
 	DeleteAssignmentsByRoleID(ctx context.Context, id string) ([]RoleAssignment, error)
-	DeleteAssignmentsInOU(ctx context.Context, id, ouID string) error
+	DeleteAssignmentsInOU(ctx context.Context, id, ouID string) ([]RoleAssignment, error)
 	DeleteAssignmentsByAssignee(ctx context.Context, assigneeType, assigneeID string) (int64, error)
 	HasAssigneeAssignments(ctx context.Context, assigneeType, assigneeID string) (bool, error)
 	AddAssignments(ctx context.Context, id string, assignments []RoleAssignment) error
@@ -57,6 +57,8 @@ type roleStoreInterface interface {
 	ListMandatedRoleUnits(ctx context.Context) ([]MandatedRoleUnit, error)
 	// ListMandatedAssignmentsForRole lists a role's mandated assignments in ouID, or in every unit when it is empty.
 	ListMandatedAssignmentsForRole(ctx context.Context, roleID, ouID string) ([]RoleAssignment, error)
+	// ListMandatedAssignmentsOfAssignee lists the role's mandated assignments to the assignee in ouID.
+	ListMandatedAssignmentsOfAssignee(ctx context.Context, roleID, ouID, assigneeID string) ([]RoleAssignment, error)
 	// GetDirectAssignments returns the direct assignments of the role in ouID to any of assigneeIDs.
 	GetDirectAssignments(ctx context.Context, roleID, ouID string, assigneeIDs []string) ([]RoleAssignment, error)
 	CheckRoleNameExists(ctx context.Context, ouID, name string) (bool, error)
@@ -603,18 +605,18 @@ func (s *roleStore) DeleteAssignmentsByRoleID(ctx context.Context, id string) ([
 	return parseAssignmentResults(results)
 }
 
-// DeleteAssignmentsInOU deletes the assignments made in one organization unit for a role.
-func (s *roleStore) DeleteAssignmentsInOU(ctx context.Context, id, ouID string) error {
+// DeleteAssignmentsInOU deletes the assignments made in one organization unit for a role, and returns them.
+func (s *roleStore) DeleteAssignmentsInOU(ctx context.Context, id, ouID string) ([]RoleAssignment, error) {
 	dbClient, err := s.getConfigDBClient()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	_, err = dbClient.ExecuteContext(ctx, queryDeleteRoleAssignmentsInOU, id, ouID, s.scope(ctx))
+	results, err := dbClient.QueryContext(ctx, queryDeleteRoleAssignmentsInOU, id, ouID, s.scope(ctx))
 	if err != nil {
-		return fmt.Errorf("failed to delete assignments for role in organization unit: %w", err)
+		return nil, fmt.Errorf("failed to delete assignments for role in organization unit: %w", err)
 	}
-	return nil
+	return parseAssignmentResults(results)
 }
 
 // DeleteAssignmentsByAssignee deletes all role assignments for a given assignee principal across
@@ -865,6 +867,21 @@ func (s *roleStore) ListMandatedAssignmentsForRole(
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get mandated assignments of role: %w", err)
+	}
+	return parseAssignmentResults(results)
+}
+
+// ListMandatedAssignmentsOfAssignee lists the role's mandated assignments to the assignee in ouID.
+func (s *roleStore) ListMandatedAssignmentsOfAssignee(
+	ctx context.Context, roleID, ouID, assigneeID string) ([]RoleAssignment, error) {
+	dbClient, err := s.getConfigDBClient()
+	if err != nil {
+		return nil, err
+	}
+	results, err := dbClient.QueryContext(
+		ctx, queryGetMandatedAssignmentsOfAssignee, roleID, ouID, assigneeID, s.scope(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get mandated assignments of assignee: %w", err)
 	}
 	return parseAssignmentResults(results)
 }

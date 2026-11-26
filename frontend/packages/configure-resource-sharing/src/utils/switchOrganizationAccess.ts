@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import draftToSharingSections from './draftToSharingSections';
+import draftToSharingSections, {hasNoSharingSections} from './draftToSharingSections';
 import getAssignmentsOffRules from './getAssignmentsOffRules';
 import {canEditSharingSectionsInPlace} from './planSharingPolicySave';
 import type {AccessSwitch, ClearedAccessItem, OrganizationAccessDraft} from '../models/organization-access';
@@ -114,7 +114,13 @@ export default function switchOrganizationAccess(
     (rulesBefore.everyTree && !rulesAfter.everyTree) ||
     dropped(rulesBefore.ouIds, rulesAfter.ouIds).length > 0;
 
-  return {field, to, next, cleared, losesEveryUnit, losesEveryTree, losesAssignmentsOff};
+  // Saving deletes the saved policy when nothing is left granted, and replaces it when a section reaching a whole
+  // group comes, goes or changes kind.
+  const nextSections = draftToSharingSections(next, saved, editsRule);
+  const replacesPolicy =
+    saved !== undefined && (hasNoSharingSections(nextSections) || !canEditSharingSectionsInPlace(saved, nextSections));
+
+  return {field, to, next, cleared, losesEveryUnit, losesEveryTree, losesAssignmentsOff, replacesPolicy};
 }
 
 /**

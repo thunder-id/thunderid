@@ -973,9 +973,12 @@ func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestGetRolesByIDs_Errors() {
 
 // Only the database holds assignments an organization unit made through sharing.
 func (suite *CompositeRoleStoreEdgeCaseTestSuite) TestDeleteAssignmentsInOU_DeletesFromTheDatabase() {
-	suite.mockDBStore.On("DeleteAssignmentsInOU", suite.ctx, "role1", "ou-child").Return(nil)
+	removed := []RoleAssignment{{ID: "user-1", Type: AssigneeTypeUser}}
+	suite.mockDBStore.On("DeleteAssignmentsInOU", suite.ctx, "role1", "ou-child").Return(removed, nil)
 
-	assert.NoError(suite.T(), suite.store.DeleteAssignmentsInOU(suite.ctx, "role1", "ou-child"))
+	got, err := suite.store.DeleteAssignmentsInOU(suite.ctx, "role1", "ou-child")
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), removed, got)
 	suite.mockFileStore.AssertNotCalled(suite.T(), "DeleteAssignmentsInOU", mock.Anything, mock.Anything, mock.Anything)
 }
 
