@@ -21,6 +21,9 @@ const (
 	IDPTypeGoogle IDPType = "GOOGLE"
 	// IDPTypeGitHub represents a GitHub identity provider.
 	IDPTypeGitHub IDPType = "GITHUB"
+	// IDPTypeExtensionAuthentication represents an authentication endpoint connection, where an organization's
+	// own service authenticates the user.
+	IDPTypeExtensionAuthentication IDPType = "EXTENSION_AUTHENTICATION"
 )
 
 // SupportedIDPTypes lists all the supported identity provider types.
@@ -29,6 +32,7 @@ var SupportedIDPTypes = []IDPType{
 	IDPTypeOIDC,
 	IDPTypeGoogle,
 	IDPTypeGitHub,
+	IDPTypeExtensionAuthentication,
 }
 
 // FlowType defines the type of flow execution.

@@ -75,6 +75,17 @@ var catalog = map[string]providers.ExecutorMeta{
 			{Property: "maxAttempts"},
 		},
 	},
+	ExecutorNameExtensionAuthentication: {
+		SupportedProperties: []providers.ExecutorSupportedProperties{
+			{Property: "connectionId", IsRequired: true},
+			{Property: "inputKeys"},
+			{Property: "runtimeDataKeys"},
+			{Property: "responseKeys"},
+			{Property: "maxAttempts"},
+			{Property: "allowAuthenticationWithoutLocalUser"},
+			{Property: "allowRegistrationWithExistingUser"},
+		},
+	},
 	ExecutorNameGitHubAuth: {
 		SupportedProperties: []providers.ExecutorSupportedProperties{
 			{Property: "idpId", IsRequired: true},

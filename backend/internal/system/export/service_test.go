@@ -1284,6 +1284,14 @@ func (m *MockParameterizer) PlaceholderValues(_ context.Context, _ interface{}, 
 	return map[string]string{}, map[string]string{}, nil
 }
 
+func (m *MockParameterizer) ReferencedSecretNames(_ context.Context, _ interface{}, _, _ string,
+	_ *declarativeresource.ResourceRules) (map[string]bool, error) {
+	if m.shouldFail {
+		return nil, fmt.Errorf("%s", m.errorMsg)
+	}
+	return map[string]bool{}, nil
+}
+
 // TestExportResources_TemplateGenerationError tests the error path in generateTemplateFromStruct.
 func (suite *ExportServiceTestSuite) TestExportResources_TemplateGenerationError() {
 	request := &ExportRequest{

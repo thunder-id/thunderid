@@ -1,13 +1,24 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {ConnectionInstanceCategories, useConnections} from '@thunderid/configure-connections';
+import {ConnectionInstanceCategories, ConnectionTypes, useConnections} from '@thunderid/configure-connections';
 import type {ConnectionInstance} from '@thunderid/react';
 
 /**
  * The most connections one request returns, which is the most the server allows a page to hold.
  */
 const CONNECTIONS_LIMIT = 100;
+
+/**
+ * The vendors a connection variable can name. An authentication endpoint connection is an identity provider too, but the
+ * server does not accept it as a variable.
+ */
+const VARIABLE_VENDORS: readonly string[] = [
+  ConnectionTypes.GOOGLE,
+  ConnectionTypes.GITHUB,
+  ConnectionTypes.OIDC,
+  ConnectionTypes.OAUTH,
+];
 
 /**
  * The connections a connection variable can take, with the state of loading them.
@@ -42,5 +53,11 @@ export default function useFlowVariableConnections(ownerOuId: string | undefined
     limit: CONNECTIONS_LIMIT,
   });
 
-  return {connections: data?.connections ?? [], error, refetch: () => void refetch()};
+  const connections = (data?.connections ?? []).filter((connection) => VARIABLE_VENDORS.includes(connection.type));
+
+  return {
+    connections: connections as FlowVariableConnections['connections'],
+    error,
+    refetch: () => void refetch(),
+  };
 }

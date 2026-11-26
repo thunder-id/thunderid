@@ -14,6 +14,7 @@ import (
 	appmodel "github.com/thunder-id/thunderid/internal/application/model"
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	"github.com/thunder-id/thunderid/internal/authn/assert"
+	"github.com/thunder-id/thunderid/internal/authn/extensionauth"
 	"github.com/thunder-id/thunderid/internal/authn/github"
 	"github.com/thunder-id/thunderid/internal/authn/google"
 	"github.com/thunder-id/thunderid/internal/authn/magiclink"
@@ -249,6 +250,7 @@ type ExecutorDependencies struct {
 	CriteriaRevoker        revocation.CriteriaRevoker
 	ResourceMgtService     resource.ResourceServiceInterface
 	HTTPConnectionProvider httpconnection.HTTPConnectionProvider
+	ExtensionAuthnService  extensionauth.ExtensionAuthnServiceInterface
 	ObservabilitySvc       providers.ObservabilityProvider
 	IdentityGovernance     providers.IdentityGovernanceProvider
 	AttributeVerification  providers.AttributeVerificationProvider
@@ -471,6 +473,14 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNameSharing: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameSharing, newSharingExecutor(deps.FlowFactory, deps.SharingService))
+		},
+		ExecutorNameExtensionAuthentication: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
+			if deps.OutboundClients == nil {
+				return
+			}
+			reg.RegisterExecutor(ExecutorNameExtensionAuthentication,
+				newExtensionAuthenticationExecutor(deps.FlowFactory, deps.ExtensionAuthnService, deps.IDPService,
+					deps.AuthnProvider, deps.OutboundClients.NewHTTPClientWithoutRedirects(0), deps.ObservabilitySvc))
 		},
 		ExecutorNameAccountLinking: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameAccountLinking,

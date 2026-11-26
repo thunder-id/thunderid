@@ -9,6 +9,7 @@ const mockUseConnections = vi.hoisted(() => vi.fn());
 
 vi.mock('@thunderid/configure-connections', () => ({
   ConnectionInstanceCategories: {IDENTITY_PROVIDER: 'identity-provider'},
+  ConnectionTypes: {GOOGLE: 'google', GITHUB: 'github', OIDC: 'oidc', OAUTH: 'oauth'},
   useConnections: mockUseConnections,
 }));
 
@@ -25,6 +26,20 @@ describe('useFlowVariableConnections', () => {
     expect(result.current.connections).toEqual([google]);
     expect(result.current.error).toBeNull();
     expect(mockUseConnections).toHaveBeenCalledWith({category: 'identity-provider', filter: undefined, limit: 100});
+  });
+
+  it('leaves out an authentication endpoint connection, which a variable cannot name', () => {
+    const endpoint = {
+      id: 'idp-9',
+      name: 'Org login',
+      type: 'authentication-endpoint',
+      categories: ['identity-provider'],
+    };
+    mockUseConnections.mockReturnValue({data: {connections: [google, endpoint]}, error: null, refetch: vi.fn()});
+
+    const {result} = renderHook(() => useFlowVariableConnections());
+
+    expect(result.current.connections).toEqual([google]);
   });
 
   it('limits the list to what the owning organization unit owns or was shared', () => {

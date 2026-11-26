@@ -448,6 +448,34 @@ function keyValueNameError(field: ConnectionFieldDef, raw: string): string | und
   return undefined;
 }
 
+/** Error key for a username or password given without the other. */
+export const CREDENTIAL_PAIR_ERROR = 'connections:validation.authEndpointCredentialPair';
+
+/**
+ * Errors for fields that must be given together, such as a username and its password. A stored
+ * secret counts as given, so an edit that leaves the password alone does not need it typed again.
+ * Secrets are not required by the form validation on edit, so this is checked on its own there.
+ */
+export function credentialPairErrors(
+  values: ConnectionFormValues,
+  fields: ConnectionFieldDef[],
+  hasStoredSecret: boolean,
+): Record<string, string> {
+  const errors: Record<string, string> = {};
+  for (const field of fields) {
+    if (!field.pairedWith) {
+      continue;
+    }
+    const partner: ConnectionFieldDef | undefined = fields.find((other) => other.name === field.pairedWith);
+    const given = (def: ConnectionFieldDef): boolean =>
+      (values[def.name] ?? '').trim() !== '' || (def.kind === 'secret' && hasStoredSecret);
+    if (partner && given(partner) && !given(field)) {
+      errors[field.name] = CREDENTIAL_PAIR_ERROR;
+    }
+  }
+  return errors;
+}
+
 /**
  * Validate form values against the field config. Returns a map of field name → i18n error key
  * (empty when valid). The secret is only required on create (omit-to-keep on edit).
@@ -516,22 +544,29 @@ export function validateConnectionForm(
 
     const authenticationConfigured =
       (values['authenticationScheme'] !== undefined && values['authenticationScheme'] !== AuthenticationMethods.NONE) ||
-      ((values[AUTH_TYPE_FIELD] ?? '') !== '' && values[AUTH_TYPE_FIELD] !== AUTH_TYPE_NONE);
+      ((values[AUTH_TYPE_FIELD] ?? '') !== '' && values[AUTH_TYPE_FIELD] !== AUTH_TYPE_NONE) ||
+      fields.some((other) => other.configuresAuthentication && (values[other.name] ?? '').trim() !== '');
     if (
       authenticationConfigured &&
       field.requiresHttpsWhenAuthenticated &&
       raw !== '' &&
       !isSecureAuthenticatedEndpoint(raw, !field.rejectsLoopbackHttp)
     ) {
-      errors[field.name] = field.rejectsLoopbackHttp
-        ? HTTPS_REQUIRED_WITH_AUTHENTICATION_ERROR
-        : 'connections:validation.authenticatedEndpointHttps';
+      errors[field.name] =
+        field.httpsRequiredErrorKey ??
+        (field.rejectsLoopbackHttp
+          ? HTTPS_REQUIRED_WITH_AUTHENTICATION_ERROR
+          : 'connections:validation.authenticatedEndpointHttps');
       continue;
     }
 
     if (field.pattern && raw !== '' && !field.pattern.test(raw)) {
       errors[field.name] = field.patternErrorKey ?? 'connections:validation.required';
     }
+  }
+
+  if (mode === 'create') {
+    Object.assign(errors, credentialPairErrors(values, fields, false));
   }
 
   // Transport policy mirrored from the backend: credentials must not travel in the clear. The

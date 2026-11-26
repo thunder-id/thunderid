@@ -2362,6 +2362,8 @@ const translations = {
     'vendor.authzen-pdp.description': 'Delegate authorization decisions to an AuthZEN-compatible PDP.',
     'vendor.smtp.description': 'Deliver email through your own SMTP server.',
     'vendor.http.description': 'Call an HTTP service from a flow, such as a risk engine or a custom check.',
+    'vendor.authentication-endpoint.description':
+      'Let your own service authenticate users in a flow, with attribute mapping and account linking.',
     'vendor.trustedIdp.description': 'Trusted token issuer for token exchange and ID-JAG.',
 
     // Add custom connection wizard
@@ -2399,6 +2401,10 @@ const translations = {
     'wizard.type.http.label': 'Service endpoint',
     'wizard.type.http.description': 'Call an HTTP service from a flow, such as a risk engine or a custom check.',
     'wizard.type.http.tag': 'Extension · HTTP',
+    'wizard.type.authenticationEndpoint.label': 'Authentication endpoint',
+    'wizard.type.authenticationEndpoint.description':
+      'Let your own service authenticate users in a flow, with mapping and account linking.',
+    'wizard.type.authenticationEndpoint.tag': 'Login provider · Extension',
     'wizard.type.trustedIdp.label': 'Trusted token issuer',
     'wizard.type.trustedIdp.description':
       "Trust an external IdP's identity assertions and exchange them for access tokens.",
@@ -2452,6 +2458,7 @@ const translations = {
       'Configure how {{productName}} authenticates requests sent to this policy decision point.',
     'detail.authentication.gatewayDescription':
       'Configure how {{productName}} authenticates requests sent to this SMS gateway.',
+    'detail.authentication.endpointOriginChanged': 'The URL origin changed. Enter the password again before saving.',
     'detail.authentication.originChanged':
       'The URL origin changed. Enter the credentials again under Authentication before saving.',
     'detail.authentication.smtpServerChanged':
@@ -2481,6 +2488,8 @@ const translations = {
       'Permanently delete this policy decision point and all associated data. It cannot be deleted while a resource server uses it for authorization. This action cannot be undone.',
     'detail.dangerZone.delete.httpDescription':
       'Permanently delete this service endpoint and all associated data. It cannot be deleted while a flow calls it. This action cannot be undone.',
+    'detail.dangerZone.delete.authenticationEndpointDescription':
+      'Permanently delete this authentication endpoint and all associated data. It cannot be deleted while a flow uses it. This action cannot be undone.',
     'detail.saveBar.unsaved': 'You have unsaved changes',
     'detail.saveBar.save': 'Save changes',
     'detail.saveBar.saving': 'Saving...',
@@ -2571,6 +2580,14 @@ const translations = {
     'form.fields.httpEndpointHeaders.hint':
       'Headers sent with every request. Set credentials under Authentication instead.',
     'form.fields.httpEndpointHeaders.add': 'Add header',
+    'form.fields.authEndpointDescription.hint':
+      'Optional note about what this endpoint authenticates, up to 500 characters.',
+    'form.fields.authEndpointUrl.hint':
+      'The http or https URL {{productName}} sends requests to. Setting a username and password requires https.',
+    'form.fields.authEndpointUsername.hint':
+      'Optional basic authentication user name sent with every request. Set it together with the password.',
+    'form.fields.authEndpointPassword.hint':
+      'Optional basic authentication password. It is stored write-only and set together with the user name.',
     'form.fields.retryCount.label': 'Retry count',
     'form.fields.retryCount.hint': 'Number of retries for transient PDP or network failures.',
     'subjectMapping.attributes.title': 'Subject attribute mapping',
@@ -2821,6 +2838,8 @@ const translations = {
     'validation.httpEndpointHeaderDuplicate': 'Use each header name only once. Names are not case-sensitive.',
     'validation.httpsRequiredWithAuthentication':
       'Use an https URL when an authentication method is set, or set the method to None.',
+    'validation.authEndpointHttpsRequired': 'Use an https URL when a username and password are set.',
+    'validation.authEndpointCredentialPair': 'Enter both the username and the password, or neither.',
     'validation.accountSid': 'Enter a valid Account SID: “AC” followed by 32 hexadecimal characters.',
     'validation.emailAddress': 'Enter a valid email address.',
     'validation.tlsRequiredForAuthentication':
@@ -5049,6 +5068,19 @@ const translations = {
       'How many FAILED or INCOMPLETE answers this step accepts in one flow execution. After that, the step fails without calling the service, and the flow continues at onFailure, or ends if none is set.',
     'core.executions.extension.contract.hint':
       'The service must answer with actionStatus SUCCESS, FAILED, INCOMPLETE or ERROR.',
+
+    // Extension authentication executor
+    'core.executions.extensionAuthentication.description':
+      'Calls your service through an authentication endpoint connection. When the service verifies a user, the user is signed in the way a federated sign-in is.',
+    'core.executions.extensionAuthentication.connection.placeholder': 'Select an authentication endpoint connection',
+    'core.executions.extensionAuthentication.connection.hint':
+      'The URL, timeout and credential come from the connection, which also holds the attribute mapping and account linking.',
+    'core.executions.extensionAuthentication.connection.loadError':
+      'Failed to load authentication endpoint connections.',
+    'core.executions.extensionAuthentication.connection.noConnections':
+      'No authentication endpoint connections exist. Create one under Connections, then select it here.',
+    'core.executions.extensionAuthentication.contract.hint':
+      'To sign a user in, the service answers SUCCESS with authenticatedUser holding a subject and optional attributes. It can also answer FAILED, INCOMPLETE or ERROR.',
 
     // Executor input configuration
     'core.executions.inputs.title': 'Executor inputs',

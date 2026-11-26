@@ -17,9 +17,12 @@ import {
 } from '@wso2/oxygen-ui';
 import {useMemo, type ReactNode, type SyntheticEvent} from 'react';
 import {useTranslation} from 'react-i18next';
+import CheckboxWithHint from './CheckboxWithHint';
 import DraftTextField from './DraftTextField';
 import type {CommonResourcePropertiesPropsInterface} from './types';
-import {clampToInteger} from './utils';
+import {clampToInteger, omitProperty} from './utils';
+import VariableBinding from './VariableBinding';
+import {BOOLEAN_VARIABLES} from './variableBindingTypes';
 import useResourceFieldError from '../../../../hooks/useResourceFieldError';
 import type {StepData} from '../../../../models/steps';
 
@@ -33,6 +36,16 @@ const toKeyList = (value: unknown): string[] =>
 const toResponseKeyList = (value: unknown): string[] => toKeyList(typeof value === 'string' ? value.split(',') : value);
 
 const DEFAULT_MAX_ATTEMPTS = 5;
+
+/** Backend connection type of an authentication endpoint connection, listed by the extension authentication step. */
+
+interface ExtensionPropertiesProps extends CommonResourcePropertiesPropsInterface {
+  /**
+   * Renders the extension authentication step: it lists authentication endpoint connections and also exposes the
+   * federated sign-in toggles. Without it the panel is the extension step's.
+   */
+  authentication?: boolean;
+}
 
 const RUNTIME_DATA_USER_ID = 'userID';
 const RUNTIME_DATA_EXTENSION_PREFIX = 'extension.';
@@ -96,9 +109,11 @@ function KeyListField({
   );
 }
 
-function ExtensionProperties({resource, onChange}: CommonResourcePropertiesPropsInterface): ReactNode {
+function ExtensionProperties({resource, onChange, authentication = false}: ExtensionPropertiesProps): ReactNode {
   const {t} = useTranslation();
-  const connectionsQuery = useConnectionInstances(ConnectionTypes.HTTP);
+  const connectionsQuery = useConnectionInstances(
+    authentication ? ConnectionTypes.AUTHENTICATION_ENDPOINT : ConnectionTypes.HTTP,
+  );
   const connections = connectionsQuery.data ?? [];
 
   const properties = useMemo(() => {
@@ -130,20 +145,21 @@ function ExtensionProperties({resource, onChange}: CommonResourcePropertiesProps
       onChange(`data.properties.${property}`, keys, resource);
       return;
     }
-    onChange(
-      'data.properties',
-      Object.fromEntries(Object.entries(properties).filter(([key]) => key !== property)),
-      resource,
-    );
+    onChange('data.properties', omitProperty(properties, property), resource);
   };
 
   return (
     <Stack gap={2}>
       <Typography variant="body2" color="text.secondary">
-        {t(
-          'flows:core.executions.extension.description',
-          'Calls your service through a service endpoint connection and routes the flow on its answer.',
-        )}
+        {authentication
+          ? t(
+              'flows:core.executions.extensionAuthentication.description',
+              'Calls your service through an authentication endpoint connection. When the service verifies a user, the user is signed in the way a federated sign-in is.',
+            )
+          : t(
+              'flows:core.executions.extension.description',
+              'Calls your service through a service endpoint connection and routes the flow on its answer.',
+            )}
       </Typography>
 
       <div>
@@ -164,7 +180,12 @@ function ExtensionProperties({resource, onChange}: CommonResourcePropertiesProps
           <MenuItem value="" disabled>
             {connectionsQuery.isLoading
               ? t('common:status.loading', 'Loading...')
-              : t('flows:core.executions.extension.connection.placeholder', 'Select a service endpoint connection')}
+              : authentication
+                ? t(
+                    'flows:core.executions.extensionAuthentication.connection.placeholder',
+                    'Select an authentication endpoint connection',
+                  )
+                : t('flows:core.executions.extension.connection.placeholder', 'Select a service endpoint connection')}
           </MenuItem>
           {connections.map((connection) => (
             <MenuItem key={connection.id} value={connection.id}>
@@ -176,10 +197,15 @@ function ExtensionProperties({resource, onChange}: CommonResourcePropertiesProps
         </Select>
         <FormHelperText error={!!connectionError}>
           {connectionError ||
-            t(
-              'flows:core.executions.extension.connection.hint',
-              'The URL, headers, timeout and authentication come from the connection.',
-            )}
+            (authentication
+              ? t(
+                  'flows:core.executions.extensionAuthentication.connection.hint',
+                  'The URL, timeout and credential come from the connection, which also holds the attribute mapping and account linking.',
+                )
+              : t(
+                  'flows:core.executions.extension.connection.hint',
+                  'The URL, headers, timeout and authentication come from the connection.',
+                ))}
         </FormHelperText>
       </div>
 
@@ -188,18 +214,31 @@ function ExtensionProperties({resource, onChange}: CommonResourcePropertiesProps
           error={connectionsQuery.error}
           t={t}
           variant="inline"
-          fallbackKey="flows:core.executions.extension.connection.loadError"
-          fallbackDefaultValue="Failed to load service endpoint connections."
+          fallbackKey={
+            authentication
+              ? 'flows:core.executions.extensionAuthentication.connection.loadError'
+              : 'flows:core.executions.extension.connection.loadError'
+          }
+          fallbackDefaultValue={
+            authentication
+              ? 'Failed to load authentication endpoint connections.'
+              : 'Failed to load service endpoint connections.'
+          }
           onRetry={() => void connectionsQuery.refetch()}
         />
       )}
 
       {noConnections && (
         <Alert severity="warning">
-          {t(
-            'flows:core.executions.extension.connection.noConnections',
-            'No service endpoint connections exist. Create one under Connections, then select it here.',
-          )}
+          {authentication
+            ? t(
+                'flows:core.executions.extensionAuthentication.connection.noConnections',
+                'No authentication endpoint connections exist. Create one under Connections, then select it here.',
+              )
+            : t(
+                'flows:core.executions.extension.connection.noConnections',
+                'No service endpoint connections exist. Create one under Connections, then select it here.',
+              )}
         </Alert>
       )}
 
@@ -265,11 +304,67 @@ function ExtensionProperties({resource, onChange}: CommonResourcePropertiesProps
         inputProps={{min: 1, max: 20, step: 1}}
       />
 
+      {authentication && (
+        <Stack gap={1}>
+          <VariableBinding
+            inline
+            resource={resource}
+            onChange={onChange}
+            propertyKey="allowAuthenticationWithoutLocalUser"
+            accepts={BOOLEAN_VARIABLES}
+            label={t(
+              'flows:core.executions.federation.allowAuthenticationWithoutLocalUser.label',
+              'Allow authentication without local user',
+            )}
+          >
+            {({commit, label, value: stored}) => (
+              <CheckboxWithHint
+                checked={!!stored}
+                onChange={commit}
+                label={label}
+                hint={t(
+                  'flows:core.executions.federation.allowAuthenticationWithoutLocalUser.hint',
+                  'Allow users to authenticate even when no matching local user exists.',
+                )}
+              />
+            )}
+          </VariableBinding>
+          <VariableBinding
+            inline
+            resource={resource}
+            onChange={onChange}
+            propertyKey="allowRegistrationWithExistingUser"
+            accepts={BOOLEAN_VARIABLES}
+            label={t(
+              'flows:core.executions.federation.allowRegistrationWithExistingUser.label',
+              'Allow registration with existing user',
+            )}
+          >
+            {({commit, label, value: stored}) => (
+              <CheckboxWithHint
+                checked={!!stored}
+                onChange={commit}
+                label={label}
+                hint={t(
+                  'flows:core.executions.federation.allowRegistrationWithExistingUser.hint',
+                  'Allow existing users to proceed through registration flows.',
+                )}
+              />
+            )}
+          </VariableBinding>
+        </Stack>
+      )}
+
       <Typography variant="body2" color="text.secondary">
-        {t(
-          'flows:core.executions.extension.contract.hint',
-          'The service must answer with actionStatus SUCCESS, FAILED, INCOMPLETE or ERROR.',
-        )}
+        {authentication
+          ? t(
+              'flows:core.executions.extensionAuthentication.contract.hint',
+              'To sign a user in, the service answers SUCCESS with authenticatedUser holding a subject and optional attributes. It can also answer FAILED, INCOMPLETE or ERROR.',
+            )
+          : t(
+              'flows:core.executions.extension.contract.hint',
+              'The service must answer with actionStatus SUCCESS, FAILED, INCOMPLETE or ERROR.',
+            )}
       </Typography>
     </Stack>
   );

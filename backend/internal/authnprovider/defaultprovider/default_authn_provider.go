@@ -33,6 +33,7 @@ type defaultAuthnProvider struct {
 	magicLinkService magiclink.MagicLinkAuthnServiceInterface
 	openid4vpService openid4vp.OpenID4VPServiceInterface
 	federatedAuths   map[providers.IDPType]authncommon.FederatedAuthenticator
+	extensionAuth    authncommon.ExtensionVerifiedAuthenticator
 	governance       identitygovernance.IdentityGovernanceServiceInterface
 	verification     attributeverification.AttributeVerificationServiceInterface
 	logger           *log.Logger
@@ -44,6 +45,7 @@ func newDefaultAuthnProvider(entitySvc entity.EntityServiceInterface,
 	magicLinkService magiclink.MagicLinkAuthnServiceInterface,
 	openid4vpService openid4vp.OpenID4VPServiceInterface,
 	federatedAuths map[providers.IDPType]authncommon.FederatedAuthenticator,
+	extensionAuth authncommon.ExtensionVerifiedAuthenticator,
 	governance identitygovernance.IdentityGovernanceServiceInterface,
 	verification attributeverification.AttributeVerificationServiceInterface) providers.AuthnProviderInterface {
 	return &defaultAuthnProvider{
@@ -53,6 +55,7 @@ func newDefaultAuthnProvider(entitySvc entity.EntityServiceInterface,
 		magicLinkService: magicLinkService,
 		openid4vpService: openid4vpService,
 		federatedAuths:   federatedAuths,
+		extensionAuth:    extensionAuth,
 		governance:       governance,
 		verification:     verification,
 		logger:           log.GetLogger().With(log.String(log.LoggerKeyComponentName, "DefaultAuthnProvider")),
@@ -520,8 +523,14 @@ func (p *defaultAuthnProvider) authenticateWithCredential(
 	ctx context.Context,
 	identifiers, credentials map[string]interface{},
 ) (*authncommon.AuthnResult, providers.AuthenticationMethod, *attributedFailure, *tidcommon.ServiceError) {
-	if provisioned, ok := credentials[authnprovidercm.CredentialTypeProvisionedEntityID]; ok {
-		res, svcErr := p.authenticateForProvisioning(provisioned)
+	if raw, ok := credentials[authnprovidercm.CredentialTypeExtensionVerifiedEntityID]; ok {
+		if verified, isVerified := raw.(*authncommon.ExtensionVerifiedCredential); isVerified {
+			res, svcErr := p.authenticateWithExtensionVerified(ctx, verified)
+			return res, providers.AuthenticationMethodFederated, nil, svcErr
+		}
+	}
+	if bound, ok := credentials[authnprovidercm.CredentialTypeProvisionedEntityID]; ok {
+		res, svcErr := p.authenticateBoundEntity(bound)
 		// An entity the flow bound by ID checks no secret, so it is admitted as a federated sign-in.
 		return res, providers.AuthenticationMethodFederated, nil, svcErr
 	}
@@ -554,20 +563,142 @@ func (p *defaultAuthnProvider) authenticateWithCredential(
 	return res, method, failure, svcErr
 }
 
-// authenticateForProvisioning simulates a successful authentication for a provisioned entity.
-// The raw credential is expected to be a non-empty userID string.
-func (p *defaultAuthnProvider) authenticateForProvisioning(
+// authenticateWithExtensionVerified builds the authentication result of an identity an organization's service
+// verified. The local user is resolved through the connection's account-linking rules, as for a federated sign-in.
+func (p *defaultAuthnProvider) authenticateWithExtensionVerified(
+	ctx context.Context, cred *authncommon.ExtensionVerifiedCredential,
+) (*authncommon.AuthnResult, *tidcommon.ServiceError) {
+	if p.extensionAuth == nil {
+		return nil, p.logAndReturnServerError(ctx, "Extension authentication is not available")
+	}
+	result, authErr := p.extensionAuth.Authenticate(ctx, cred)
+	if authErr != nil {
+		if authErr.Type == tidcommon.ClientErrorType {
+			return nil, newClientError(authnprovidercm.ErrorCodeAuthenticationFailed,
+				authErr.Error.DefaultValue, authErr.ErrorDescription.DefaultValue)
+		}
+		return nil, p.logAndReturnServerError(ctx, "Extension authentication failed with server error",
+			log.String("error", authErr.Error.DefaultValue))
+	}
+	return p.resolveTrustedExtensionUser(ctx, cred, result)
+}
+
+// resolveTrustedExtensionUser binds the identity an organization's service verified to the one local user it
+// names, with no recorded link. The organization's service is trusted, so a local user it names by a userID
+// attribute of its answer, which is read as sent and not through the connection's mapping, or by the
+// connection's account-linking attributes (username when none are set), is the user who signs in. When no
+// local user matches, the identity is returned unresolved, so a provisioning step can create the user if the flow
+// has one. Several matches refuse the sign-in.
+func (p *defaultAuthnProvider) resolveTrustedExtensionUser(ctx context.Context,
+	cred *authncommon.ExtensionVerifiedCredential,
+	result *authncommon.AuthnResult) (*authncommon.AuthnResult, *tidcommon.ServiceError) {
+	entityID, _ := cred.Claims[authnprovidercm.UserAttributeUserID].(string)
+	matchedBy := "userID"
+	if entityID == "" {
+		matchedBy = "attributes"
+		matchedID, svcErr := p.matchTrustedExtensionUser(ctx, result)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		entityID = matchedID
+	}
+	if entityID == "" {
+		p.logger.Debug(ctx, "No local user matches the identity the extension service verified")
+		return result, nil
+	}
+
+	profile, getErr := p.entitySvc.GetEntityProfile(ctx, entityID)
+	if getErr != nil {
+		if errors.Is(getErr, entity.ErrEntityNotFound) {
+			p.logger.Debug(ctx, "The user the extension service named does not exist",
+				log.MaskedString("userID", entityID))
+			return result, nil
+		}
+		return nil, p.logAndReturnServerError(ctx, "Failed to read the user the extension service named",
+			log.String("error", getErr.Error()))
+	}
+	// The authentication manager admits an agent of a type the application allows, so only a user is taken here.
+	if profile == nil || profile.Category != providers.EntityCategoryUser {
+		p.logger.Warn(ctx, "The entity the extension service named is not a user",
+			log.MaskedString("entityID", entityID))
+		return nil, newClientError(authnprovidercm.ErrorCodeUserNotFound,
+			"User not found", "No user found matching the verified identity")
+	}
+	p.logger.Debug(ctx, "Resolved the local user the extension service verified",
+		log.MaskedString("userID", entityID), log.String("matchedBy", matchedBy))
+	return &authncommon.AuthnResult{
+		Token:               map[string]interface{}{authnprovidercm.UserAttributeUserID: entityID},
+		AuthenticatedClaims: result.AuthenticatedClaims,
+	}, nil
+}
+
+// matchTrustedExtensionUser returns the ID of the one local user the identity's account-linking filters, or its
+// username, match. It is empty when none match.
+func (p *defaultAuthnProvider) matchTrustedExtensionUser(ctx context.Context,
+	result *authncommon.AuthnResult) (string, *tidcommon.ServiceError) {
+	filters := linkingFiltersOf(result.Token)
+	if len(filters) == 0 {
+		if username, _ := result.AuthenticatedClaims["username"].(string); username != "" {
+			filters = []map[string]interface{}{{"username": username}}
+		}
+	}
+
+	matched := ""
+	for _, filter := range filters {
+		id, err := p.entitySvc.IdentifyEntity(ctx, filter)
+		switch {
+		case err == nil && id != nil && *id != "":
+			if matched != "" && matched != *id {
+				p.logger.Warn(ctx, "The identity the extension service verified matches several users")
+				return "", newClientError(authnprovidercm.ErrorCodeAmbiguousUser,
+					"Ambiguous user", "Multiple users found matching the verified identity")
+			}
+			matched = *id
+		case err == nil || errors.Is(err, entity.ErrEntityNotFound):
+		case errors.Is(err, entity.ErrAmbiguousEntity):
+			p.logger.Warn(ctx, "The identity the extension service verified matches several users")
+			return "", newClientError(authnprovidercm.ErrorCodeAmbiguousUser,
+				"Ambiguous user", "Multiple users found matching the verified identity")
+		default:
+			return "", p.logAndReturnServerError(ctx, "Failed to identify the user the extension service named",
+				log.String("error", err.Error()))
+		}
+	}
+	return matched, nil
+}
+
+// linkingFiltersOf returns the account-linking filters a federated token carries.
+func linkingFiltersOf(token map[string]interface{}) []map[string]interface{} {
+	switch raw := token[authnprovidercm.AccountLinkingFiltersKey].(type) {
+	case []map[string]interface{}:
+		return raw
+	case []interface{}:
+		filters := make([]map[string]interface{}, 0, len(raw))
+		for _, entry := range raw {
+			if filter, ok := entry.(map[string]interface{}); ok && len(filter) > 0 {
+				filters = append(filters, filter)
+			}
+		}
+		return filters
+	default:
+		return nil
+	}
+}
+
+// authenticateBoundEntity simulates a successful authentication for an entity the flow bound by ID.
+// The raw credential is expected to be a non-empty entity ID string.
+func (p *defaultAuthnProvider) authenticateBoundEntity(
 	raw interface{},
 ) (*authncommon.AuthnResult, *tidcommon.ServiceError) {
-	userID, ok := raw.(string)
-	if !ok || userID == "" {
+	entityID, ok := raw.(string)
+	if !ok || entityID == "" {
 		return nil, newClientError(authnprovidercm.ErrorCodeInvalidRequest,
-			"Invalid provisioning credential payload",
-			"The provided provisioning credential must be a non-empty userID string")
+			"Invalid entity credential payload",
+			"The provided entity credential must be a non-empty entity ID string")
 	}
 	return &authncommon.AuthnResult{
-		Token:               map[string]interface{}{authnprovidercm.UserAttributeUserID: userID},
-		AuthenticatedClaims: map[string]interface{}{authnprovidercm.UserAttributeUserID: userID},
+		Token:               map[string]interface{}{authnprovidercm.UserAttributeUserID: entityID},
+		AuthenticatedClaims: map[string]interface{}{authnprovidercm.UserAttributeUserID: entityID},
 	}, nil
 }
 

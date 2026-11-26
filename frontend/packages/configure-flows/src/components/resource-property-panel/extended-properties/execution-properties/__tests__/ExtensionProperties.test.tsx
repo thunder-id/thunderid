@@ -36,7 +36,7 @@ vi.mock('../../../../../hooks/useResourceFieldError', () => ({
 
 const mockConnections = vi.fn<() => ConnectionsState>();
 const mockUseConnectionInstances = vi.fn((type: string) => {
-  expect(type).toBe('http');
+  expect(type === 'http' || type === 'authentication-endpoint').toBe(true);
   return mockConnections();
 });
 vi.mock('@thunderid/configure-connections', async (importOriginal) => ({
@@ -393,5 +393,74 @@ describe('ExtensionProperties', () => {
     Object.values(template?.data?.properties ?? {}).forEach((value) => {
       expect(Array.isArray(value) && value.length === 0).toBe(false);
     });
+  });
+});
+
+describe('ExtensionProperties as the extension authentication step', () => {
+  const mockOnChange = vi.fn();
+  const authResource = (properties: Record<string, unknown> = {}): Resource =>
+    ({
+      id: 'ext-auth-1',
+      data: {action: {executor: {name: 'ExtensionAuthenticationExecutor'}}, properties},
+    }) as unknown as Resource;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockFieldError.mockReturnValue('');
+    mockConnections.mockReturnValue(loaded([{id: 'auth-1', name: 'Org Login'}]));
+  });
+
+  it('lists only authentication endpoint connections', () => {
+    render(
+      <ExtensionProperties authentication resource={authResource({connectionId: 'auth-1'})} onChange={mockOnChange} />,
+    );
+
+    expect(mockUseConnectionInstances).toHaveBeenCalledWith('authentication-endpoint');
+    expect(mockUseConnectionInstances).not.toHaveBeenCalledWith('http');
+    expect(screen.getByText('Org Login')).toBeInTheDocument();
+  });
+
+  it('offers the two federated sign-in toggles that the extension step does not', () => {
+    const {unmount} = render(<ExtensionProperties authentication resource={authResource()} onChange={mockOnChange} />);
+
+    expect(screen.getByText('Allow authentication without local user')).toBeInTheDocument();
+    expect(screen.getByText('Allow registration with existing user')).toBeInTheDocument();
+    unmount();
+
+    render(<ExtensionProperties resource={createResource()} onChange={mockOnChange} />);
+    expect(screen.queryByText('Allow authentication without local user')).not.toBeInTheDocument();
+  });
+
+  it('stores a toggle as a boolean property', async () => {
+    const user = userEvent.setup();
+    render(<ExtensionProperties authentication resource={authResource()} onChange={mockOnChange} />);
+
+    await user.click(screen.getByRole('checkbox', {name: /allow authentication without local user/i}));
+
+    expect(mockOnChange).toHaveBeenCalledWith(
+      'data.properties.allowAuthenticationWithoutLocalUser',
+      true,
+      expect.anything(),
+    );
+  });
+
+  it('tells the administrator to create an authentication endpoint connection when none exist', () => {
+    mockConnections.mockReturnValue(loaded([]));
+
+    render(<ExtensionProperties authentication resource={authResource()} onChange={mockOnChange} />);
+
+    expect(screen.getByText(/No authentication endpoint connections exist/)).toBeInTheDocument();
+  });
+
+  it('adds the extension authentication step from the resource panel with only a connection id', () => {
+    const template = (
+      executors as {
+        display?: {showOnResourcePanel?: boolean};
+        data?: {action?: {executor?: {name?: string}}; properties?: object};
+      }[]
+    ).find((entry) => entry.data?.action?.executor?.name === 'ExtensionAuthenticationExecutor');
+
+    expect(template?.display?.showOnResourcePanel).toBe(true);
+    expect(template?.data?.properties).toEqual({connectionId: ''});
   });
 });

@@ -141,6 +141,9 @@ function ExecutionExtendedProperties({resource, onChange}: ExecutionExtendedProp
     case ExecutionTypes.ExtensionExecutor:
       executorSpecificProperties = <ExtensionProperties resource={resource} onChange={onChange} />;
       break;
+    case ExecutionTypes.ExtensionAuthenticationExecutor:
+      executorSpecificProperties = <ExtensionProperties authentication resource={resource} onChange={onChange} />;
+      break;
     case ExecutionTypes.MagicLinkExecutor:
       executorSpecificProperties = <MagicLinkProperties resource={resource} onChange={onChange} />;
       break;

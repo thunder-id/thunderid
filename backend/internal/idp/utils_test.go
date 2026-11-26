@@ -2215,6 +2215,47 @@ func (s *IDPUtilsTestSuite) TestValidateSyncConfiguration() {
 	}
 }
 
+func (suite *IDPUtilsTestSuite) TestValidateExtensionAuthenticationProperties() {
+	property := func(name, value string) cmodels.Property {
+		prop, err := cmodels.NewProperty(name, value, false)
+		suite.Require().NoError(err)
+		return *prop
+	}
+	cases := []struct {
+		name    string
+		props   []cmodels.Property
+		wantErr bool
+	}{
+		{"Valid", []cmodels.Property{property(PropEndpointURL, "https://auth.example.com/verify"),
+			property(PropTimeoutMS, "5000")}, false},
+		{"ValidWithCredential", []cmodels.Property{property(PropEndpointURL, "https://auth.example.com/verify"),
+			property(PropAuthUsername, "svc"), property(PropAuthPassword, "pw")}, false},
+		{"MissingURL", []cmodels.Property{property(PropTimeoutMS, "5000")}, true},
+		{"NotHTTP", []cmodels.Property{property(PropEndpointURL, "ftp://auth.example.com")}, true},
+		{"EmbeddedCredential", []cmodels.Property{property(PropEndpointURL, "https://u:p@auth.example.com")}, true},
+		{"TimeoutTooLarge", []cmodels.Property{property(PropEndpointURL, "https://auth.example.com"),
+			property(PropTimeoutMS, "20001")}, true},
+		{"TimeoutNotANumber", []cmodels.Property{property(PropEndpointURL, "https://auth.example.com"),
+			property(PropTimeoutMS, "soon")}, true},
+		{"UsernameWithoutPassword", []cmodels.Property{property(PropEndpointURL, "https://auth.example.com"),
+			property(PropAuthUsername, "svc")}, true},
+		{"CredentialOverPlainHTTP", []cmodels.Property{property(PropEndpointURL, "http://auth.example.com"),
+			property(PropAuthUsername, "svc"), property(PropAuthPassword, "pw")}, true},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			_, svcErr := validateIDPProperties(context.Background(), providers.IDPTypeExtensionAuthentication,
+				tc.props, log.GetLogger())
+
+			if tc.wantErr {
+				suite.NotNil(svcErr)
+			} else {
+				suite.Nil(svcErr)
+			}
+		})
+	}
+}
+
 func (s *IDPUtilsTestSuite) TestValidateIDP_SyncMode() {
 	prop1, _ := cmodels.NewProperty(PropClientID, "test-client", false)
 	prop2, _ := cmodels.NewProperty(PropClientSecret, "test-secret", false)

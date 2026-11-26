@@ -69,6 +69,12 @@ export interface ConnectionFieldDef {
   rejectsLoopbackHttp?: boolean;
   /** Rejects a 'url' field carrying a user name or password. */
   rejectsUserInfo?: boolean;
+  /** i18n key replacing the https error when this field's URL must be https because credentials are set. */
+  httpsRequiredErrorKey?: string;
+  /** A non-empty value of this field counts as authentication being configured. */
+  configuresAuthentication?: boolean;
+  /** Name of the field this one must be given together with, or left empty together with. */
+  pairedWith?: string;
   /** Shows validation errors before the user interacts with the field. */
   showErrorImmediately?: boolean;
   /** Which form mode renders this field (default 'both'). Optional fields are edit-only to keep create simple. */
@@ -562,6 +568,63 @@ export const CONNECTION_FORM_FIELDS: Record<ConnectionType, ConnectionFieldDef[]
       placeholder: 'X-Tenant',
       addLabelKey: 'connections:form.fields.httpEndpointHeaders.add',
       showErrorImmediately: true,
+    },
+  ],
+  [ConnectionTypes.AUTHENTICATION_ENDPOINT]: [
+    {
+      ...NAME_FIELD('Partner sign-in service'),
+      pattern: /^[\s\S]{1,255}$/u,
+      patternErrorKey: 'connections:validation.httpEndpointNameLength',
+    },
+    {
+      name: 'description',
+      labelKey: 'connections:form.fields.httpEndpointDescription.label',
+      hintKey: 'connections:form.fields.authEndpointDescription.hint',
+      kind: 'text',
+      visibility: 'edit',
+      pattern: /^[\s\S]{0,500}$/u,
+      patternErrorKey: 'connections:validation.httpEndpointDescriptionLength',
+    },
+    {
+      name: 'url',
+      labelKey: 'connections:form.fields.httpEndpointUrl.label',
+      hintKey: 'connections:form.fields.authEndpointUrl.hint',
+      kind: 'url',
+      required: true,
+      placeholder: 'https://login.example.com/verify',
+      requiresHttpsWhenAuthenticated: true,
+      rejectsLoopbackHttp: true,
+      rejectsUserInfo: true,
+      httpsRequiredErrorKey: 'connections:validation.authEndpointHttpsRequired',
+      showErrorImmediately: true,
+    },
+    {
+      name: 'timeoutMs',
+      labelKey: 'connections:form.fields.httpEndpointTimeoutMs.label',
+      hintKey: 'connections:form.fields.httpEndpointTimeoutMs.hint',
+      kind: 'number',
+      visibility: 'edit',
+      defaultValue: '10000',
+      placeholder: '10000',
+      pattern: /^([1-9]\d{0,3}|1\d{4}|20000)$/,
+      patternErrorKey: 'connections:validation.httpEndpointTimeoutRange',
+    },
+    {
+      name: 'username',
+      labelKey: 'connections:form.fields.basicUsername.label',
+      hintKey: 'connections:form.fields.authEndpointUsername.hint',
+      kind: 'text',
+      visibility: 'edit',
+      configuresAuthentication: true,
+      pairedWith: 'password',
+    },
+    {
+      name: 'password',
+      labelKey: 'connections:form.fields.basicPassword.label',
+      hintKey: 'connections:form.fields.authEndpointPassword.hint',
+      kind: 'secret',
+      visibility: 'edit',
+      pairedWith: 'username',
     },
   ],
   [ConnectionTypes.SMTP]: [

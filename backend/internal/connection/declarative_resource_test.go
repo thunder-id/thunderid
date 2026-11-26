@@ -342,6 +342,65 @@ tokenExchangeEnabled: true
 	s.Equal("true", values[idp.PropTokenExchangeEnabled])
 }
 
+func (s *DeclarativeResourceTestSuite) TestAuthenticationEndpointRoundTripsThroughExport() {
+	dto := providers.IDPDTO{
+		ID: "auth-endpoint-1", Name: "Authentication connection", Type: providers.IDPTypeExtensionAuthentication,
+		OUID: "ou-1",
+		Properties: []cmodels.Property{
+			mustProperty(s.T(), idp.PropEndpointURL, "https://auth.example.com/verify", false),
+			mustProperty(s.T(), idp.PropTimeoutMS, "5000", false),
+			mustProperty(s.T(), idp.PropAuthUsername, "svc", false),
+			mustProperty(s.T(), idp.PropAuthPassword, "s3cret", true),
+		},
+		AttributeConfiguration: &providers.AttributeConfiguration{
+			AccountLinking: &providers.AccountLinking{Attributes: []string{"username"}},
+		},
+	}
+	model, err := connectionModelFromIDPDTO(dto)
+	s.Require().NoError(err)
+	s.Equal(authenticationEndpointVendorName, model.Type)
+	s.Equal("https://auth.example.com/verify", model.URL)
+	s.Equal(5000, model.TimeoutMS)
+	s.Equal("svc", model.Username)
+	s.Equal("s3cret", model.Password, "export model must carry the plaintext secret, not the mask")
+
+	doc, err := yaml.Marshal(model)
+	s.Require().NoError(err)
+	var node yaml.Node
+	s.Require().NoError(yaml.Unmarshal(doc, &node))
+	resource, err := ParseConnectionFromNode(node.Content[0])
+	s.Require().NoError(err)
+	imported, ok := resource.(*providers.IDPDTO)
+	s.Require().True(ok)
+	s.Require().NoError(idp.ValidateIDP(imported), "the data plane must accept what the control plane exports")
+	s.Equal(providers.IDPTypeExtensionAuthentication, imported.Type)
+	values, err := propertyValues(imported.Properties)
+	s.Require().NoError(err)
+	s.Equal("https://auth.example.com/verify", values[idp.PropEndpointURL])
+	s.Equal("5000", values[idp.PropTimeoutMS])
+	s.Equal("svc", values[idp.PropAuthUsername])
+	s.Equal([]string{"username"}, imported.AttributeConfiguration.AccountLinking.Attributes)
+}
+
+func (s *DeclarativeResourceTestSuite) TestAuthenticationEndpointWithoutAURLIsRefusedOnImport() {
+	dto := providers.IDPDTO{ID: "auth-endpoint-2", Name: "No URL", Type: providers.IDPTypeExtensionAuthentication}
+	model, err := connectionModelFromIDPDTO(dto)
+	s.Require().NoError(err)
+
+	doc, err := yaml.Marshal(model)
+	s.Require().NoError(err)
+	var node yaml.Node
+	s.Require().NoError(yaml.Unmarshal(doc, &node))
+	resource, err := ParseConnectionFromNode(node.Content[0])
+	if err == nil {
+		imported, ok := resource.(*providers.IDPDTO)
+		s.Require().True(ok)
+		err = idp.ValidateIDP(imported)
+	}
+
+	s.Error(err)
+}
+
 func (s *DeclarativeResourceTestSuite) TestTrustedIssuerIDJagEnabledRoundTripsThroughExport() {
 	dto := providers.IDPDTO{
 		ID: "trusted-1", Name: "IDJAG", Type: providers.IDPTypeOIDC, OUID: "ou-1",
@@ -517,6 +576,8 @@ func (s *DeclarativeResourceTestSuite) TestGetResourceRulesForResourceSecretSele
 	}{
 		{connectionExportModel{Type: "google", ClientSecret: "s"}, []string{"ClientSecret"}},
 		{connectionExportModel{Type: "google"}, nil}, // no secret set -> nothing to externalize
+		{connectionExportModel{Type: authenticationEndpointVendorName}, nil},
+		{connectionExportModel{Type: authenticationEndpointVendorName, Password: "s"}, []string{"Password"}},
 		{connectionExportModel{Type: "twilio"}, []string{"AuthToken"}},
 		{connectionExportModel{Type: "vonage"}, []string{"APISecret"}},
 		{connectionExportModel{Type: "authzen-pdp"}, nil},
@@ -1114,6 +1175,57 @@ func (s *DeclarativeResourceTestSuite) TestGetAllResourceIDsListsMutableHTTPConn
 
 	s.Require().Nil(svcErr)
 	s.ElementsMatch([]string{"idp-1", "mutable"}, ids, "a declared HTTP connection is not exported")
+}
+
+func (s *DeclarativeResourceTestSuite) TestGetReferringResourceIDsListsDeclaredConnections() {
+	s.mockIDP.On("GetIdentityProviderList", mock.Anything).
+		Return([]idp.BasicIDPDTO{{ID: "idp-1", Type: providers.IDPTypeGoogle}}, (*tidcommon.ServiceError)(nil))
+	s.mockNotif.On("ListSenders", mock.Anything).
+		Return([]ncommon.NotificationSenderDTO{}, (*tidcommon.ServiceError)(nil))
+	pdpService := authzenpdpmock.NewAuthZENPDPServiceInterfaceMock(s.T())
+	pdpService.On("ListAuthZENPDPs", mock.Anything).Return([]authzenpdp.AuthZENPDPConnection{
+		{ID: "mutable-pdp", Name: "Mutable PDP"},
+		{ID: "declarative-pdp", Name: "Declarative PDP", IsReadOnly: true},
+	}, (*tidcommon.ServiceError)(nil))
+	httpService := httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
+	httpService.On("ListHTTPConnections", mock.Anything).Return([]httpconnection.HTTPConnection{
+		{ID: "mutable", Name: "Mutable", OUID: "ou-1"},
+		{ID: "declarative", Name: "Declarative", OUID: "ou-1", IsReadOnly: true},
+	}, (*tidcommon.ServiceError)(nil))
+	var exporter declarativeresource.ResourceExporter = newConnectionExporter(s.mockIDP, s.mockNotif, pdpService,
+		httpService)
+	lister, ok := exporter.(declarativeresource.ReferringResourceLister)
+	s.Require().True(ok)
+
+	ids, svcErr := lister.GetReferringResourceIDs(context.Background())
+
+	s.Require().Nil(svcErr)
+	s.ElementsMatch([]string{"idp-1", "mutable-pdp", "declarative-pdp", "mutable", "declarative"}, ids)
+}
+
+func (s *DeclarativeResourceTestSuite) TestADeclaredHTTPConnectionsSecretIsStillReferred() {
+	s.mockIDP.On("GetIdentityProviderList", mock.Anything).
+		Return([]idp.BasicIDPDTO{}, (*tidcommon.ServiceError)(nil))
+	s.mockIDP.On("GetIdentityProvider", mock.Anything, mock.Anything).Return(nil, &idp.ErrorIDPNotFound)
+	s.mockNotif.On("ListSenders", mock.Anything).
+		Return([]ncommon.NotificationSenderDTO{}, (*tidcommon.ServiceError)(nil))
+	s.mockNotif.On("GetSender", mock.Anything, mock.Anything).Return(nil, &notification.ErrorSenderNotFound)
+	declared := s.httpConnectionWithBasicAuth()
+	declared.IsReadOnly = true
+	httpService := httpconnectionmock.NewHTTPConnectionServiceInterfaceMock(s.T())
+	httpService.On("ListHTTPConnections", mock.Anything).
+		Return([]httpconnection.HTTPConnection{declared}, (*tidcommon.ServiceError)(nil))
+	httpService.On("GetHTTPConnection", mock.Anything, declared.ID).Return(&declared, (*tidcommon.ServiceError)(nil))
+	values, initErr := export.Initialize(http.NewServeMux(), []declarativeresource.ResourceExporter{
+		newConnectionExporter(s.mockIDP, s.mockNotif, nil, httpService)}, export.ValueReferences,
+		eventbusmock.NewEventBusInterfaceMock(s.T()))
+	s.Require().NoError(initErr)
+
+	referenced, err := values.ReferencedSecretNames(context.Background(), resourceTypeConnection)
+
+	s.Require().NoError(err)
+	s.Equal(map[string]bool{varname.DeriveVariableName("connection", declared.ID,
+		outboundauth.FieldBasicPassword): true}, referenced)
 }
 
 func (s *DeclarativeResourceTestSuite) TestGetResourceByIDFallsBackToHTTP() {

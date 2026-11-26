@@ -1665,6 +1665,24 @@ describe('ExecutionExtendedProperties', () => {
     });
   });
 
+  describe('Extension Authentication Executor', () => {
+    const extensionAuthResource = {
+      id: 'extension-authentication-1',
+      data: {
+        action: {executor: {name: ExecutionTypes.ExtensionAuthenticationExecutor}},
+        properties: {connectionId: 'conn-1'},
+      },
+    } as unknown as Resource;
+
+    it('should render the extension authentication panel and hide the inputs editor', () => {
+      render(<ExecutionExtendedProperties resource={extensionAuthResource} onChange={mockOnChange} />);
+
+      expect(screen.getByText('flows:core.executions.extensionAuthentication.description')).toBeInTheDocument();
+      expect(screen.getByText('flows:core.executions.extension.inputKeys.label')).toBeInTheDocument();
+      expect(screen.queryByText('flows:core.executions.inputs.title')).not.toBeInTheDocument();
+    });
+  });
+
   describe('HTTP Request Executor', () => {
     const httpResource = {
       id: 'http-executor-1',

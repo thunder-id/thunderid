@@ -25,6 +25,7 @@ import (
 	authncm "github.com/thunder-id/thunderid/internal/authn/common"
 	authnconfig "github.com/thunder-id/thunderid/internal/authn/config"
 	authnConsent "github.com/thunder-id/thunderid/internal/authn/consent"
+	"github.com/thunder-id/thunderid/internal/authn/extensionauth"
 	"github.com/thunder-id/thunderid/internal/authn/github"
 	"github.com/thunder-id/thunderid/internal/authn/google"
 	"github.com/thunder-id/thunderid/internal/authn/magiclink"
@@ -395,6 +396,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	oidcAuthnService := authnOIDC.Initialize(oauthAuthnService, jwtService)
 	googleAuthnService := google.Initialize(oidcAuthnService, jwtService)
 	githubAuthnService := github.Initialize(oauthAuthnService, outboundClients)
+	extensionAuthnService := extensionauth.Initialize(idpService, oauthAuthnService)
 
 	federatedAuths := map[providers.IDPType]authncm.FederatedAuthenticator{
 		providers.IDPTypeOAuth:  oauthAuthnService,
@@ -424,7 +426,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			ouService, ouAuthzService, runtimeStoreProvider, exporters)
 
 	defaultProvider := defaultprovider.Initialize(entityService, passkeyService,
-		otpCoreService, magicLinkService, openid4vpSvc, federatedAuths, governanceService,
+		otpCoreService, magicLinkService, openid4vpSvc, federatedAuths, extensionAuthnService, governanceService,
 		attributeVerificationService)
 
 	customProviders := map[string]providers.CustomAuthnProvider{}
@@ -503,6 +505,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			CriteriaRevoker:        revocationSvc,
 			ResourceMgtService:     resourceService,
 			HTTPConnectionProvider: httpConnectionService,
+			ExtensionAuthnService:  extensionAuthnService,
 			ObservabilitySvc:       observabilitySvc,
 			IdentityGovernance:     governanceProvider,
 			AttributeVerification:  attributeVerificationService,

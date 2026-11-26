@@ -703,11 +703,12 @@ describe('ConnectionCreateWizardPage', () => {
     expect(screen.getByRole('progressbar', {name: 'Loading...'})).toBeInTheDocument();
   });
 
-  it('shows seven type cards including trusted-idp, policy decision point, email-smtp and http', () => {
+  it('shows eight type cards including trusted-idp, policy decision point, email-smtp, http and authentication-endpoint', () => {
     render(<ConnectionCreateWizardPage />);
 
-    expect(screen.getAllByTestId(/^connection-type-option-/)).toHaveLength(7);
+    expect(screen.getAllByTestId(/^connection-type-option-/)).toHaveLength(8);
     expect(screen.getByTestId('connection-type-option-http')).toBeInTheDocument();
+    expect(screen.getByTestId('connection-type-option-authentication-endpoint')).toBeInTheDocument();
     expect(screen.getByTestId('connection-type-option-trusted-idp')).toBeInTheDocument();
     expect(screen.getByTestId('connection-type-option-policy-decision-point')).toBeInTheDocument();
     expect(screen.getByTestId('connection-type-option-email-smtp')).toBeInTheDocument();

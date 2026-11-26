@@ -21,6 +21,10 @@ const (
 	PropTokenExchangeEnabled  = "token_exchange_enabled"
 	PropTrustedTokenAudience  = "trusted_token_audience"
 	PropIDJagEnabled          = "id_jag_enabled"
+	PropEndpointURL           = "endpoint_url"
+	PropTimeoutMS             = "timeout_ms"
+	PropAuthUsername          = "auth_username"
+	PropAuthPassword          = "auth_password"
 )
 
 // Claims and scopes shared by the OIDC-style providers. A claim is what the provider emits; a scope
@@ -59,6 +63,10 @@ const (
 	gitHubUserEmailScope = "user:email"
 	defaultGitHubScopes  = gitHubUserEmailScope
 )
+
+// maxExtensionAuthenticationTimeoutMS bounds the timeout of an authentication endpoint connection, matching
+// the bound of an HTTP endpoint connection.
+const maxExtensionAuthenticationTimeoutMS = 20000
 
 // idpPropertyConfig defines the required and optional properties for an IDP type,
 // along with any default values.
@@ -148,6 +156,17 @@ var idpPropertyConfigs = map[providers.IDPType]idpPropertyConfig{
 			PropUserInfoEndpoint:      gitHubUserInfoEndpoint,
 			PropUserEmailEndpoint:     gitHubUserEmailEndpoint,
 		},
+	},
+	providers.IDPTypeExtensionAuthentication: {
+		Required: []string{
+			PropEndpointURL,
+		},
+		Optional: []string{
+			PropTimeoutMS,
+			PropAuthUsername,
+			PropAuthPassword,
+		},
+		Defaults: map[string]string{},
 	},
 }
 

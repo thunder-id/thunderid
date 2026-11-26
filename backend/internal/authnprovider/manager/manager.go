@@ -133,7 +133,9 @@ func (m *authnProviderManager) AuthenticateUser(ctx context.Context, identifiers
 				log.String("errorDescription", svcErr.ErrorDescription.DefaultValue))
 			return authUser, nil, &ErrorInvalidRequest
 		case authnprovidercm.ErrorCodeAmbiguousUser:
-			if _, federated := credentials[authnprovidercm.CredentialTypeFederated]; federated {
+			_, federated := credentials[authnprovidercm.CredentialTypeFederated]
+			_, extensionVerified := credentials[authnprovidercm.CredentialTypeExtensionVerifiedEntityID]
+			if federated || extensionVerified {
 				// Two entities hold the recorded link. Reported as such so the caller does not read it as
 				// a failed exchange with the connection.
 				m.logger.Debug(ctx, "federated authentication resolved an ambiguous link",

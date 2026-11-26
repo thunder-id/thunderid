@@ -10,6 +10,7 @@ import VariablesPreviewDialog from '../VariablesPreviewDialog';
 
 vi.mock('@thunderid/configure-connections', () => ({
   ConnectionInstanceCategories: {IDENTITY_PROVIDER: 'identity-provider'},
+  ConnectionTypes: {GOOGLE: 'google', GITHUB: 'github', OIDC: 'oidc', OAUTH: 'oauth'},
   useConnections: () => ({
     data: {
       connections: [

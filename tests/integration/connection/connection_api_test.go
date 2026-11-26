@@ -2411,8 +2411,8 @@ func (s *ConnectionAPITestSuite) TestConnectionMetaWithoutVendorDescribesEveryVe
 			s.Len(vendor.Authentication.Methods, 2)
 		}
 	}
-	s.Equal([]string{"google", "github", "oidc", "oauth", "twilio", "vonage", "sms-gateway",
-		"email-smtp", "authzen-pdp", "http"}, names)
+	s.Equal([]string{"google", "github", "oidc", "oauth", "authentication-endpoint", "twilio", "vonage",
+		"sms-gateway", "email-smtp", "authzen-pdp", "http"}, names)
 }
 
 func (s *ConnectionAPITestSuite) TestConnectionMetaRejectsUnknownVendor() {

@@ -115,7 +115,8 @@ func (s *MetaTestSuite) TestNoVendorDescribesEveryVendor() {
 		names = append(names, vendor.Vendor)
 		s.Equal(s.describe(vendor.Vendor), vendor, vendor.Vendor)
 	}
-	s.Equal([]string{"google", "github", "oidc", "oauth", "twilio", "vonage", smsGatewayVendorName,
+	s.Equal([]string{"google", "github", "oidc", "oauth", authenticationEndpointVendorName, "twilio", "vonage",
+		smsGatewayVendorName,
 		emailSMTPVendorName, authZENPDPVendorName, httpVendorName}, names)
 }
 

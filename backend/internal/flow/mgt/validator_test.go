@@ -1362,6 +1362,30 @@ func (s *ValidatorTestSuite) TestValidateFlowDefinition_ExtensionStepWithAnUnusa
 	}
 }
 
+func (s *ValidatorTestSuite) TestValidateFlowDefinition_CredentialsStepAskingForAnInternalCredentialIsRefused() {
+	for _, identifier := range []string{"extensionVerifiedEntityID", "provisionedEntityID", "clientSecret"} {
+		s.Run(identifier, func() {
+			s.SetupTest()
+			s.mockExecutorRegistry.EXPECT().IsRegistered(mock.Anything).Return(true).Maybe()
+			s.mockExecutorRegistry.EXPECT().GetExecutorMeta(mock.Anything).Return(nil, nil).Maybe()
+			fd := minimalValidFlow()
+			fd.Nodes[1].Executor = &providers.ExecutorDefinition{
+				Name: executormeta.ExecutorNameCredentialsAuth,
+				Inputs: []providers.InputDefinition{
+					{Identifier: "username", Type: providers.InputTypeText, Required: true},
+					{Identifier: identifier, Type: providers.InputTypePassword, Required: true},
+				},
+			}
+
+			err := s.v.ValidateFlowDefinition(context.Background(), fd)
+
+			s.Require().NotNil(err)
+			s.Equal(ErrorInvalidExecutorConfig.Code, err.Code)
+			s.Equal(identifier, err.ErrorDescription.Params["inputIdentifier"])
+		})
+	}
+}
+
 // A linking node that sits between the federated executor and provisioning with no onIncomplete has
 // nowhere to send a matched candidate for verification, so the flow fails to save.
 func (s *ValidatorTestSuite) TestValidateFlowDefinition_LinkingWithoutOnIncomplete() {
