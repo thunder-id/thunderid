@@ -313,6 +313,31 @@ func (ts *SSOLogoutTestSuite) TestBackchannelLogout_UserDeletionNotifiesParticip
 	ts.assertLogoutToken(got[0], "sso_bcl_deletion_client", partner.IDToken)
 }
 
+// Revoking the user's other sessions through the session management API notifies the participants of each
+// revoked session, and none of the session that is kept.
+func (ts *SSOLogoutTestSuite) TestBackchannelLogout_SessionRevocationNotifiesOnlyRevokedSessions() {
+	username := "sso_bcl_revoke_user"
+	ts.createUser(username)
+
+	receiver := ts.newLogoutReceiver(http.StatusOK)
+	ts.createBackchannelApplication("SSOBackchannelRevokeApp", "sso_bcl_revoke_client", "sso_bcl_revoke_secret",
+		receiver.srv.URL+"/bcl")
+
+	kept := ts.loginTokensAsClient(ts.newSessionClient(), "sso_bcl_revoke_client", "sso_bcl_revoke_secret",
+		username, "bcl_revoke_1")
+	revoked := ts.loginTokensAsClient(ts.newSessionClient(), "sso_bcl_revoke_client", "sso_bcl_revoke_secret",
+		username, "bcl_revoke_2")
+
+	status, raw, err := testutils.DeleteSessions(testutils.GetHTTPClientWithToken(kept.AccessToken),
+		"/users/me/sessions?exceptCurrent=true")
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusNoContent, status, raw)
+
+	got := receiver.await(ts, 1)
+	ts.assertLogoutToken(got[0], "sso_bcl_revoke_client", revoked.IDToken)
+	receiver.quiet(ts, time.Second)
+}
+
 // A transient failure is retried with a freshly built token, and a redirect is never followed.
 func (ts *SSOLogoutTestSuite) TestBackchannelLogout_RetriesTransientFailureAndRefusesRedirect() {
 	username := "sso_bcl_retry_user"

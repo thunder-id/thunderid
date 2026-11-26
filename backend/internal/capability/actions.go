@@ -185,6 +185,7 @@ var requiredRoutes = map[security.ResourceType]map[string][]string{
 		"delete": {"DELETE /gateways/*/secrets/**"},
 	},
 	resourceSession: {
-		"view": {"GET /sessions"},
+		"view":   {"GET /sessions"},
+		"delete": {"DELETE /sessions", "DELETE /sessions/**"},
 	},
 }

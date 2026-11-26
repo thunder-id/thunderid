@@ -299,6 +299,27 @@ var (
 		Query: `UPDATE "SESSION_PARTICIPANT" SET TFID = CASE WHEN TFID = $1 THEN $2 ELSE TFID END ` +
 			`WHERE SESSION_ID = $3 AND APP_ID = $4 AND OU_ID = $5 AND DEPLOYMENT_ID = $6 RETURNING TFID`,
 	}
+
+	// queryGetSessionBySessionID fetches a session by its ID, SSO or direct.
+	queryGetSessionBySessionID = model.DBQuery{
+		ID: "SEQ-SESS-29",
+		Query: `SELECT SESSION_ID, TYPE, SUBJECT_ID, FLOW_ID, FLOW_VERSION, FLOW_EXECUTION_ID, HANDLE_ID, ` +
+			`AUTHENTICATED_AT, CREATED_AT, LAST_ACTIVE_AT, IDLE_EXPIRES_AT, ABSOLUTE_EXPIRES_AT, ` +
+			`PROPERTIES, STATE, VERSION ` +
+			`FROM "SESSION" WHERE SESSION_ID = $1 AND DEPLOYMENT_ID = $2`,
+	}
+
+	// queryListAllLiveSessionsBySubject returns every live session of a subject, SSO and direct: within both its
+	// stored deadlines and the timeouts in effect now. Backed by idx_session_subject.
+	queryListAllLiveSessionsBySubject = model.DBQuery{
+		ID: "SEQ-SESS-30",
+		Query: `SELECT SESSION_ID, TYPE, SUBJECT_ID, FLOW_ID, FLOW_VERSION, FLOW_EXECUTION_ID, HANDLE_ID, ` +
+			`AUTHENTICATED_AT, CREATED_AT, LAST_ACTIVE_AT, IDLE_EXPIRES_AT, ABSOLUTE_EXPIRES_AT, ` +
+			`PROPERTIES, STATE, VERSION ` +
+			`FROM "SESSION" WHERE SUBJECT_ID = $1 AND STATE = 'ACTIVE' ` +
+			`AND IDLE_EXPIRES_AT > $2 AND ABSOLUTE_EXPIRES_AT > $2 ` +
+			`AND LAST_ACTIVE_AT > $3 AND CREATED_AT > $4 AND DEPLOYMENT_ID = $5`,
+	}
 )
 
 // participantsBySessionIDsChunkSize caps the session ids per query, keeping it under the

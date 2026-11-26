@@ -105,7 +105,7 @@ The `flow`, `role`, `rs`, `authzdetail`, and `app` permissions are high impact. 
 
 `system:serverconfig:update` changes deployment-wide security settings such as CORS, the content security policy, and sessions.
 
-`org:session:view` lists the sessions that have an application signed in under the organization unit the caller holds it in, and shows only those applications. A session's own details, such as its last active time and IP address, come from activity in every organization unit. Only the `system` permission lists the sessions of every user and application in the deployment. Only a data plane serves sessions. Users list their own sessions without any system permission, and see only the sessions and applications of the organization unit they signed in under.
+`org:session:view` lists the sessions that have an application signed in under the organization unit the caller holds it in, and shows only those applications. `org:session:delete` revokes those sessions. Revoking ends the whole session, so the user is also signed out of its applications in other organization units. A session's own details, such as its last active time and IP address, come from activity in every organization unit. Only the `system` permission lists and revokes the sessions of every user and application in the deployment. Only a data plane serves sessions. Users list and revoke their own sessions without any system permission, and see and revoke only the sessions and applications of the organization unit they signed in under.
 
 The MCP tools require the same permissions as the matching APIs. The MCP server itself requires a token that carries at least one system permission.
 

@@ -776,6 +776,74 @@ func (_c *sessionStoreMock_GetByHandle_Call) RunAndReturn(run func(ctx context.C
 	return _c
 }
 
+// GetBySessionID provides a mock function for the type sessionStoreMock
+func (_mock *sessionStoreMock) GetBySessionID(ctx context.Context, sessionID string) (*Session, error) {
+	ret := _mock.Called(ctx, sessionID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetBySessionID")
+	}
+
+	var r0 *Session
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*Session, error)); ok {
+		return returnFunc(ctx, sessionID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *Session); ok {
+		r0 = returnFunc(ctx, sessionID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*Session)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, sessionID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// sessionStoreMock_GetBySessionID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetBySessionID'
+type sessionStoreMock_GetBySessionID_Call struct {
+	*mock.Call
+}
+
+// GetBySessionID is a helper method to define mock.On call
+//   - ctx context.Context
+//   - sessionID string
+func (_e *sessionStoreMock_Expecter) GetBySessionID(ctx any, sessionID any) *sessionStoreMock_GetBySessionID_Call {
+	return &sessionStoreMock_GetBySessionID_Call{Call: _e.mock.On("GetBySessionID", ctx, sessionID)}
+}
+
+func (_c *sessionStoreMock_GetBySessionID_Call) Run(run func(ctx context.Context, sessionID string)) *sessionStoreMock_GetBySessionID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *sessionStoreMock_GetBySessionID_Call) Return(session *Session, err error) *sessionStoreMock_GetBySessionID_Call {
+	_c.Call.Return(session, err)
+	return _c
+}
+
+func (_c *sessionStoreMock_GetBySessionID_Call) RunAndReturn(run func(ctx context.Context, sessionID string) (*Session, error)) *sessionStoreMock_GetBySessionID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetSubjectParticipantByTokenFamily provides a mock function for the type sessionStoreMock
 func (_mock *sessionStoreMock) GetSubjectParticipantByTokenFamily(ctx context.Context, subjectID string, tokenFamilyID string) (*Participant, error) {
 	ret := _mock.Called(ctx, subjectID, tokenFamilyID)
@@ -846,6 +914,80 @@ func (_c *sessionStoreMock_GetSubjectParticipantByTokenFamily_Call) Return(parti
 }
 
 func (_c *sessionStoreMock_GetSubjectParticipantByTokenFamily_Call) RunAndReturn(run func(ctx context.Context, subjectID string, tokenFamilyID string) (*Participant, error)) *sessionStoreMock_GetSubjectParticipantByTokenFamily_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListAllLiveBySubject provides a mock function for the type sessionStoreMock
+func (_mock *sessionStoreMock) ListAllLiveBySubject(ctx context.Context, subjectID string, bounds liveBounds) ([]Session, error) {
+	ret := _mock.Called(ctx, subjectID, bounds)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListAllLiveBySubject")
+	}
+
+	var r0 []Session
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, liveBounds) ([]Session, error)); ok {
+		return returnFunc(ctx, subjectID, bounds)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, liveBounds) []Session); ok {
+		r0 = returnFunc(ctx, subjectID, bounds)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]Session)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, liveBounds) error); ok {
+		r1 = returnFunc(ctx, subjectID, bounds)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// sessionStoreMock_ListAllLiveBySubject_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListAllLiveBySubject'
+type sessionStoreMock_ListAllLiveBySubject_Call struct {
+	*mock.Call
+}
+
+// ListAllLiveBySubject is a helper method to define mock.On call
+//   - ctx context.Context
+//   - subjectID string
+//   - bounds liveBounds
+func (_e *sessionStoreMock_Expecter) ListAllLiveBySubject(ctx any, subjectID any, bounds any) *sessionStoreMock_ListAllLiveBySubject_Call {
+	return &sessionStoreMock_ListAllLiveBySubject_Call{Call: _e.mock.On("ListAllLiveBySubject", ctx, subjectID, bounds)}
+}
+
+func (_c *sessionStoreMock_ListAllLiveBySubject_Call) Run(run func(ctx context.Context, subjectID string, bounds liveBounds)) *sessionStoreMock_ListAllLiveBySubject_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 liveBounds
+		if args[2] != nil {
+			arg2 = args[2].(liveBounds)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *sessionStoreMock_ListAllLiveBySubject_Call) Return(sessions []Session, err error) *sessionStoreMock_ListAllLiveBySubject_Call {
+	_c.Call.Return(sessions, err)
+	return _c
+}
+
+func (_c *sessionStoreMock_ListAllLiveBySubject_Call) RunAndReturn(run func(ctx context.Context, subjectID string, bounds liveBounds) ([]Session, error)) *sessionStoreMock_ListAllLiveBySubject_Call {
 	_c.Call.Return(run)
 	return _c
 }

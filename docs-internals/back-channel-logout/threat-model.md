@@ -16,7 +16,7 @@ This model covers:
 
 - Publication of the SSO session id as the `sid` claim on ID tokens and refresh tokens.
 - Registration and validation of `backchannel_logout_uri` through the Console, the application management API, and Dynamic Client Registration.
-- Observation of session termination through `session.TerminationListener`, on both the sign-out path (`Terminate`) and the administrative subject-revocation path (`TerminateBySubject`).
+- Observation of session termination through `session.TerminationListener`, on the sign-out path (`Terminate`), the administrative subject-revocation path (`TerminateBySubject`), and the session management API (`RevokeSession`, `RevokeUserSessions`, `RevokeOwnSession`, and `RevokeOwnSessions`).
 - Queueing, dispatch, retry, and graceful-shutdown drain in the back-channel dispatcher.
 - Minting of the logout token, including its signing and optional encryption.
 - The outbound HTTP POST to the relying party's registered endpoint and the handling of its response.
@@ -41,13 +41,15 @@ flowchart LR
   subgraph Untrusted ["Untrusted"]
     ADMIN[Administrator or DCR registrant]
     RPA[Initiating RP]
+    USER[Signed-in user<br/>own sessions]
     RPB[Participating RP<br/>backchannel_logout_uri]
     HOST[Any host the registrant names<br/>internal hosts only when allow_private_addresses is true]
   end
   subgraph Trusted ["Trust boundary: ThunderID deployment"]
     ES[end_session_endpoint<br/>flow sign-out]
     ADMFLOW[Administration flow<br/>subject revocation]
-    SESSVC[session.Service<br/>Terminate / TerminateBySubject]
+    SMAPI[Session management API<br/>session revocation]
+    SESSVC[session.Service<br/>Terminate / TerminateBySubject / revocations]
     TL[TerminationListener]
     Q[bounded queue<br/>worker pool]
     MINT[logout token builder<br/>token service]
@@ -60,6 +62,9 @@ flowchart LR
   RPA -->|HTTPS: end_session| ES
   ES --> SESSVC
   ADMFLOW --> SESSVC
+  ADMIN -->|HTTPS: DELETE /sessions| SMAPI
+  USER -->|HTTPS: DELETE /users/me/sessions| SMAPI
+  SMAPI --> SESSVC
   SESSVC --> SESS
   SESSVC -->|after commit| TL
   TL --> Q --> MINT
@@ -93,9 +98,9 @@ The trust boundary sits at the deployment edge. Everything inside it is ThunderI
 
 | Actor | Description | Roles or permissions |
 | --- | --- | --- |
-| End user | Signs out of one application, or has their sessions revoked by an administrator | None over this feature; the trigger only |
+| End user | Signs out of one application, revokes their own sessions through the session management API, or has their sessions revoked by an administrator | None over this feature; the trigger only |
 | Participating relying party | An application that joined the SSO session and may have registered a back-channel logout URI | Receives a logout token scoped to itself |
-| Administrator | Configures `backchannelLogoutUri` through the Console or the application management API | Application configuration permission |
+| Administrator | Configures `backchannelLogoutUri` through the Console or the application management API, and revokes sessions through the session management API | Application configuration permission; `org:session:delete` or `system` to revoke sessions |
 | DCR registrant | Registers a client through `POST /oauth2/dcr/register`, supplying `backchannel_logout_uri` | System permission, unless the deployment set `oauth.dcr.insecure` |
 | Operator | Deploys ThunderID and owns `oauth.logout.backchannel` configuration, network egress policy, and log retention | Deployment configuration |
 | Network observer | Positioned between ThunderID and a relying party's endpoint | Observation, and modification absent TLS |
@@ -105,9 +110,9 @@ The trust boundary sits at the deployment edge. Everything inside it is ThunderI
 
 | Actor | Register a back-channel logout URI | Receive a logout token | Trigger a notification | Read delivery outcomes |
 | --- | --- | --- | --- | --- |
-| End user | [No] | [No] | [Yes], by signing out | [No] |
+| End user | [No] | [No] | [Yes], by signing out or revoking their own sessions | [No] |
 | Participating relying party | [Yes], for itself through DCR | [Yes], only tokens with its own `aud` | [Yes], by calling the end session endpoint | [No] |
-| Administrator | [Yes] | [No] | [Yes], by revoking a subject's sessions | [Yes], through observability events and logs |
+| Administrator | [Yes] | [No] | [Yes], by revoking a subject's sessions, or a session or a user's sessions through the session management API | [Yes], through observability events and logs |
 | DCR registrant | [Yes], for the client it registers | [Yes], for that client | [No] | [No] |
 | Operator | [Yes] | [No] | [No] | [Yes] |
 | Network observer | [No] | [Yes], only where the endpoint is plain HTTP | [No] | [No] |
@@ -238,7 +243,7 @@ sequenceDiagram
 
 **Description**
 
-`Terminate` and `TerminateBySubject` notify the listeners registered through the session service's termination hook after their transaction commits, passing the session id, subject id, participant list, and termination reason. The listener performs no I/O. `Terminate` reuses the participant list it already read inside the transaction. `TerminateBySubject` performs one additional bulk participant read inside its transaction, before the deletes, keyed by the set of session ids it is about to delete.
+`Terminate`, `TerminateBySubject`, and the session management API's revocations notify the listeners registered through the session service's termination hook after their transaction commits, passing the session id, subject id, participant list, and termination reason. The listener performs no I/O. `Terminate` reuses the participant list it already read inside the transaction. `TerminateBySubject` performs one additional bulk participant read inside its transaction, before the deletes, keyed by the set of session ids it is about to delete. The session management API's revocations share the path `Terminate` uses, reading the participants of every session they end in one query inside the transaction, before the deletes, and notify with the reason `session_revocation`.
 
 **Assets involved**
 
@@ -251,12 +256,12 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
   autonumber
-  participant F as Sign-out or administration flow
+  participant F as Sign-out flow, administration flow, or session management API
   participant S as session.Service
   participant D as Runtime persistent store
   participant L as TerminationListener
   participant Q as Dispatch queue
-  F->>S: Terminate / TerminateBySubject
+  F->>S: Terminate / TerminateBySubject / session revocation
   S->>D: read participants, revoke families, delete session rows
   D->>S: commit
   S->>L: OnEvent(TerminatedSession{sid, sub, participants, reason})
@@ -535,3 +540,4 @@ The feature processes one personal identifier, the subject id, and one identifie
 | 0.2 | 2026-10-26 | Delivery classifies a 2xx other than 200 and 204 as rejected, as reviewed in #5777. |
 | 0.3 | 2026-10-31 | One logout token per participating application, now that participants are recorded per organization unit. |
 | 0.4 | 2026-11-25 | The private address guard follows the server-wide `server.allow_private_addresses`, which also opens back-channel logout URIs when turned on for another destination; recorded as a residual. |
+| 0.5 | 2026-11-26 | The session management API's revocations added as a termination path, in the diagrams, the actors and the entitlement matrix, as reviewed in #6152. |

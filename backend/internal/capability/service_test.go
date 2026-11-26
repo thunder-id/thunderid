@@ -128,6 +128,22 @@ func (s *ServiceTestSuite) TestOrgSessionViewOnTheDataPlane() {
 
 	s.Require().Nil(svcErr)
 	s.True(resp.Resources[security.ResourceTypeSession]["view"])
+	s.False(resp.Resources[security.ResourceTypeSession]["delete"])
+}
+
+// On the Data Plane, org:session:delete with org:session:view lets an administrator revoke sessions, as the
+// API permission map decides for the DELETE /sessions routes.
+func (s *ServiceTestSuite) TestOrgSessionDeleteOnTheDataPlane() {
+	security.InitDataPlanePermissions("")
+	s.allow()
+	s.authz.On("GetBoundary", mock.Anything).Return(sysauthz.Boundary{Type: sysauthz.BoundaryTypeOU, OUID: "ou-1"})
+	ctx := security.WithSecurityContextTest(context.Background(), security.NewSecurityContextForTest("admin",
+		"ou-1", "token", []string{"org:session:view", "org:session:delete"}, nil))
+
+	resp, svcErr := newCapabilityService(s.authz).GetCapabilities(ctx)
+
+	s.Require().Nil(svcErr)
+	s.True(resp.Resources[security.ResourceTypeSession]["delete"])
 }
 
 // The Control Plane serves no sessions, so not even the root permission may view them there.
@@ -141,6 +157,7 @@ func (s *ServiceTestSuite) TestSessionsAreNotServedOnTheControlPlane() {
 
 	s.Require().Nil(svcErr)
 	s.False(resp.Resources[security.ResourceTypeSession]["view"])
+	s.False(resp.Resources[security.ResourceTypeSession]["delete"])
 	s.True(resp.Resources[resourceVariable]["view"], "a route the Control Plane serves is still allowed")
 }
 

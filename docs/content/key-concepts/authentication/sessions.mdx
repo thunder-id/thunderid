@@ -59,7 +59,7 @@ There are two ways to run the sign-out flow, matching the two [integration model
 
 A session also ends on its own when it passes the idle or absolute timeout, as described above. Expiry does not revoke tokens already issued.
 
-A direct session has no handle for the sign-out flow to send, so the sign-out flow does not end it. An administrative action such as deleting the user ends it.
+A direct session has no handle for the sign-out flow to send, so the sign-out flow does not end it. Revoking it through the session management API ends it, as does an administrative action such as deleting the user.
 
 When a session ends, through either path or through an administrative action such as deleting the user, <ProductName /> posts a logout token to every application that took part in the session and registered a back-channel logout URI. Expiry sends no notification. See [Back-Channel Logout](../../../guides/protocols/oauth-oidc/backchannel-logout).
 

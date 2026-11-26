@@ -61,4 +61,62 @@ var (
 			DefaultValue: "The offset parameter must be a non-negative integer",
 		},
 	}
+
+	// ErrorMissingUserID is returned when revoking a user's sessions without the userId query parameter.
+	ErrorMissingUserID = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SSM-1004",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.sessionmgt.missing_user_id",
+			DefaultValue: "Missing user ID",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.sessionmgt.missing_user_id_description",
+			DefaultValue: "The userId query parameter is required",
+		},
+	}
+
+	// ErrorInvalidExceptCurrent is returned when exceptCurrent is not true or false.
+	ErrorInvalidExceptCurrent = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SSM-1005",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.sessionmgt.invalid_except_current",
+			DefaultValue: "Invalid exceptCurrent parameter",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.sessionmgt.invalid_except_current_description",
+			DefaultValue: "The exceptCurrent parameter must be true or false",
+		},
+	}
+
+	// ErrorCurrentSessionUnknown is returned when exceptCurrent is true but the caller's access token
+	// does not identify the session it was issued in.
+	ErrorCurrentSessionUnknown = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SSM-1006",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.sessionmgt.current_session_unknown",
+			DefaultValue: "Current session unknown",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.sessionmgt.current_session_unknown_description",
+			DefaultValue: "The access token does not identify the current session, so it cannot be kept",
+		},
+	}
+
+	// ErrorDelegatedTokenNotAllowed is returned when a delegated token, issued to a client acting for the user,
+	// tries to revoke the user's sessions.
+	ErrorDelegatedTokenNotAllowed = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "SSM-1007",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.sessionmgt.delegated_token_not_allowed",
+			DefaultValue: "Delegated token not allowed",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.sessionmgt.delegated_token_not_allowed_description",
+			DefaultValue: "A token issued to a client acting for the user cannot revoke the user's sessions",
+		},
+	}
 )
