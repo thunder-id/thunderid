@@ -229,16 +229,52 @@ func (s *ParticipantStoreTestSuite) TestListBySessionID_Empty() {
 	s.Empty(got)
 }
 
-func (s *ParticipantStoreTestSuite) TestDeleteBySessionID() {
+func (s *ParticipantStoreTestSuite) TestDeleteBySessionID_ReturnsTheRemovedParticipants() {
+	joined := time.Unix(1700000000, 0).UTC()
+	rows := []map[string]interface{}{
+		{"session_id": "sess-1", "app_id": "app-1", "ou_id": "ou-1", "tfid": "tfid-1",
+			"first_joined_at": joined, "last_active_at": joined},
+		{"session_id": "sess-1", "app_id": "app-2", "ou_id": "", "tfid": "tfid-2",
+			"first_joined_at": joined, "last_active_at": joined},
+	}
 	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
-	s.mockDBClient.On("ExecuteContext", context.Background(), queryDeleteParticipantsBySessionID,
+	s.mockDBClient.On("QueryContext", context.Background(), queryDeleteParticipantsBySessionID,
 		"sess-1", testDeploymentID).
-		Return(int64(2), nil)
+		Return(rows, nil)
 
-	err := s.store.DeleteBySessionID(context.Background(), "sess-1")
+	got, err := s.store.DeleteBySessionID(context.Background(), "sess-1")
 
 	s.NoError(err)
+	s.Require().Len(got, 2)
+	s.Equal(Participant{SessionID: "sess-1", AppID: "app-1", OUID: "ou-1", TokenFamilyID: "tfid-1",
+		FirstJoinedAt: joined, LastActiveAt: joined}, got[0])
+	s.Equal("app-2", got[1].AppID)
+	s.Equal("tfid-2", got[1].TokenFamilyID)
 	s.mockDBClient.AssertExpectations(s.T())
+}
+
+func (s *ParticipantStoreTestSuite) TestDeleteBySessionID_NoneRemoved() {
+	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("QueryContext", context.Background(), queryDeleteParticipantsBySessionID,
+		"sess-1", testDeploymentID).
+		Return([]map[string]interface{}{}, nil)
+
+	got, err := s.store.DeleteBySessionID(context.Background(), "sess-1")
+
+	s.NoError(err)
+	s.Empty(got)
+}
+
+func (s *ParticipantStoreTestSuite) TestDeleteBySessionID_BuildError() {
+	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
+	s.mockDBClient.On("QueryContext", context.Background(), queryDeleteParticipantsBySessionID,
+		"sess-1", testDeploymentID).
+		Return([]map[string]interface{}{{"session_id": 42}}, nil)
+
+	got, err := s.store.DeleteBySessionID(context.Background(), "sess-1")
+
+	s.Error(err)
+	s.Nil(got)
 }
 
 func (s *ParticipantStoreTestSuite) TestListBySessionID_ClientError() {
@@ -276,14 +312,15 @@ func (s *ParticipantStoreTestSuite) TestListBySessionID_BuildError() {
 
 func (s *ParticipantStoreTestSuite) TestDeleteBySessionID_DBError() {
 	s.mockDBProvider.On("GetRuntimePersistentDBClient").Return(s.mockDBClient, nil)
-	s.mockDBClient.On("ExecuteContext", context.Background(), queryDeleteParticipantsBySessionID,
+	s.mockDBClient.On("QueryContext", context.Background(), queryDeleteParticipantsBySessionID,
 		"sess-1", testDeploymentID).
-		Return(int64(0), errors.New("db down"))
+		Return(nil, errors.New("db down"))
 
-	err := s.store.DeleteBySessionID(context.Background(), "sess-1")
+	got, err := s.store.DeleteBySessionID(context.Background(), "sess-1")
 
 	s.Error(err)
 	s.Contains(err.Error(), "failed to delete session participants")
+	s.Nil(got)
 }
 
 func (s *ParticipantStoreTestSuite) TestBuildParticipantFromRow_BadFields() {

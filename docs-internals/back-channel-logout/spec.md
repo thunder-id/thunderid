@@ -1,7 +1,7 @@
 # OIDC Back-Channel Logout Specification
 
 - **Status:** Final
-- **Version:** 0.6
+- **Version:** 0.7
 - **Related documents:** [threat-model.md](threat-model.md), [#5233](https://github.com/thunder-id/thunderid/issues/5233), [#5258](https://github.com/thunder-id/thunderid/discussions/5258), [OpenID Connect Back-Channel Logout 1.0](https://openid.net/specs/openid-connect-backchannel-1_0.html), [OpenID Connect RP-Initiated Logout 1.0](https://openid.net/specs/openid-connect-rpinitiated-1_0.html), [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html), [OpenID Connect Discovery 1.0](https://openid.net/specs/openid-connect-discovery-1_0.html)
 
 ## Summary
@@ -128,8 +128,9 @@ More than one listener is allowed because the moment a session ends is of intere
 
 Behaviour on the two termination paths:
 
-- **Single session sign-out** already reads the participant list inside its transaction in order to revoke token families. The read happens whenever a criteria revoker or at least one listener is present, and the list is retained and handed to the listeners after commit, so this path performs no additional read. When neither is present the read is skipped. If the read fails and only listeners need it, the session is still terminated and the listeners are not called for it; if the revoker needs it, the failure ends the termination as it does today.
-- **Subject-wide revocation** already reads the subject's session list before its transaction. It gains one further read inside the transaction, before the deletes, as the single-session path does: a single participant query across all of those sessions, grouped by session in memory. Under read committed, a participant that commits between that read and the delete is still deleted without notification; the window is narrow and closing it would need a locking read. The cost is one round trip however many sessions the subject holds, which matters because no per-subject session cap exists. The listener is then called once per terminated session. This path revokes no token families, because a subject criterion already covers the tokens, but no token revocation touches a relying party's local session, so it MUST still notify.
+- **Single session sign-out** deletes the session's participants last in its transaction, and the delete returns the rows it removed. It revokes the token family of each of those rows in the same transaction and hands the same list to the listeners after commit, so a participant that joins after the session was read is revoked and notified too, and the path performs no separate read.
+- **Subject-wide revocation** already reads the subject's session list before its transaction. Each session's participant delete returns the rows it removed, and the listener is then called once per terminated session with that session's rows, so this path performs no separate participant read either. This path revokes no token families, because a subject criterion already covers the tokens, but no token revocation touches a relying party's local session, so it MUST still notify.
+- On both paths, a sign-in that resolved the session before the termination and records its participant after the delete writes a row for a session that no longer exists, and is not notified.
 
 The sign-out and revocation steps of the flow engine are unchanged. Application-native sign-out through the Flow API reaches the same step and is covered without further work.
 
@@ -542,3 +543,4 @@ With the defaults, a delivery is settled within two waits, 2 and 4 seconds, plus
 | 0.4 | 2026-10-26 | A 2xx other than 200 and 204 is classified as rejected, matching the dispatcher, as reviewed in #5777. |
 | 0.5 | 2026-10-31 | Participants are recorded per application and organization unit; the dispatcher notifies each application once. |
 | 0.6 | 2026-11-25 | `oauth.logout.backchannel.reject_private_addresses` is replaced by the server-wide `server.allow_private_addresses`, and the guard also refuses shared, multicast, reserved and NAT64 or 6to4 addresses. |
+| 0.7 | 2026-11-26 | Both termination paths take the participants they notify from the rows their participant delete returns, and sign-out revokes the families of the same rows. |

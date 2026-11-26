@@ -619,47 +619,32 @@ func (s *service) Terminate(ctx context.Context, handle, flowID string) (*Sessio
 	// row is removed rather than tombstoned. DeleteSession removes the session row (SESSION), Delete
 	// its checkpoint contexts (SSO_SESSION_CONTEXT), and DeleteBySessionID its participants
 	// (SESSION_PARTICIPANT). Repeated calls are idempotent: once the row is gone, GetByHandle
-	// returns nil above. Token families are revoked first, in the same transaction, so a crash can
-	// never orphan live tokens for a deleted session.
+	// returns nil above. Token families are revoked in the same transaction, so a crash can never
+	// orphan live tokens for a deleted session.
 	//
-	// Participants are read once, inside the transaction, for both the revoker and the listener; the
-	// rows are gone after commit. The read is skipped when neither is wired. A failed read is fatal
-	// only when the revoker needs it; for the listener alone it just drops the notification.
+	// The revoker and the listener get the participants the delete returns, so a participant that joined
+	// after the session was read is revoked and notified too.
 	var participants []Participant
-	notify := s.terminationTopic.HasListeners()
+	var removed bool
 	if txErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
-		if s.criteriaRevoker != nil || notify {
-			list, listErr := s.store.ListBySessionID(txCtx, sess.SessionID)
-			switch {
-			case listErr == nil:
-				participants = list
-			case s.criteriaRevoker != nil:
-				return listErr
-			default:
-				s.logger.Error(txCtx, "Failed to read session participants before termination; "+
-					"participants will not be notified", log.Error(listErr))
-				notify = false
-			}
-		}
-		if revErr := s.revokeFamilies(txCtx, participants); revErr != nil {
-			return revErr
-		}
-		removed, delErr := s.store.DeleteSession(txCtx, sess.SessionID)
-		if delErr != nil {
+		var delErr error
+		if removed, delErr = s.store.DeleteSession(txCtx, sess.SessionID); delErr != nil {
 			return delErr
 		}
-		// A concurrent termination already removed the row; only the node that removed it notifies.
-		notify = notify && removed
 		if delErr := s.store.Delete(txCtx, sess.SessionID); delErr != nil {
 			return delErr
 		}
-		return s.store.DeleteBySessionID(txCtx, sess.SessionID)
+		if participants, delErr = s.store.DeleteBySessionID(txCtx, sess.SessionID); delErr != nil {
+			return delErr
+		}
+		return s.revokeFamilies(txCtx, participants)
 	}); txErr != nil {
 		return nil, fmt.Errorf("failed to terminate session: %w", txErr)
 	}
 
 	s.logger.Debug(ctx, "Terminated SSO session", log.String("flowID", sess.FlowID))
-	if notify {
+	// A concurrent termination already removed the row; only the node that removed it notifies.
+	if removed {
 		s.terminationTopic.Notify(ctx, TerminatedSession{
 			SessionID:    sess.SessionID,
 			SubjectID:    sess.SubjectID,
@@ -696,13 +681,10 @@ func (s *service) TerminateBySubject(ctx context.Context, subjectID string) erro
 		return nil
 	}
 
-	// Capture every session's participants in one read inside the transaction, before the deletes
-	// remove them, as Terminate does. A failed read only drops the notification; it never blocks the
-	// revocation.
-	var participantsBySession map[string][]Participant
+	// The notification lists the participants each session's delete returns, as Terminate does.
+	participantsBySession := make(map[string][]Participant, len(sessions))
 	removed := make(map[string]bool, len(sessions))
 	if txErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
-		participantsBySession = s.participantsForTermination(txCtx, sessions)
 		for _, sess := range sessions {
 			wasRemoved, delErr := s.store.DeleteSession(txCtx, sess.SessionID)
 			if delErr != nil {
@@ -712,9 +694,11 @@ func (s *service) TerminateBySubject(ctx context.Context, subjectID string) erro
 			if delErr := s.store.Delete(txCtx, sess.SessionID); delErr != nil {
 				return delErr
 			}
-			if delErr := s.store.DeleteBySessionID(txCtx, sess.SessionID); delErr != nil {
+			participants, delErr := s.store.DeleteBySessionID(txCtx, sess.SessionID)
+			if delErr != nil {
 				return delErr
 			}
+			participantsBySession[sess.SessionID] = participants
 		}
 		return nil
 	}); txErr != nil {
@@ -722,7 +706,7 @@ func (s *service) TerminateBySubject(ctx context.Context, subjectID string) erro
 	}
 
 	s.logger.Debug(ctx, "Terminated all sessions for subject", log.Int("sessionCount", len(sessions)))
-	if participantsBySession != nil {
+	if s.terminationTopic.HasListeners() {
 		now := time.Now()
 		timeouts := s.timeouts.current(ctx)
 		for _, sess := range sessions {
@@ -1022,29 +1006,6 @@ func (s *service) revokeFamilies(ctx context.Context, participants []Participant
 		}
 	}
 	return nil
-}
-
-// participantsForTermination returns the participants of the given sessions grouped by session id.
-// It returns nil, meaning nothing to notify, when no listener is wired or the read fails.
-func (s *service) participantsForTermination(ctx context.Context, sessions []Session) map[string][]Participant {
-	if !s.terminationTopic.HasListeners() {
-		return nil
-	}
-	sessionIDs := make([]string, 0, len(sessions))
-	for _, sess := range sessions {
-		sessionIDs = append(sessionIDs, sess.SessionID)
-	}
-	participants, err := s.store.ListBySessionIDs(ctx, sessionIDs)
-	if err != nil {
-		s.logger.Error(ctx, "Failed to read session participants before subject termination; "+
-			"participants will not be notified", log.Error(err))
-		return nil
-	}
-	grouped := make(map[string][]Participant, len(sessions))
-	for _, p := range participants {
-		grouped[p.SessionID] = append(grouped[p.SessionID], p)
-	}
-	return grouped
 }
 
 // page attaches the participants to a page of sessions, reading them for the whole page in one query. A

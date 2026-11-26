@@ -155,6 +155,32 @@ func (s *ParticipantSchemaTestSuite) TestASignInWithNoOUIsItsOwnParticipant() {
 	s.Equal("ou-x", got[1].OUID)
 }
 
+func (s *ParticipantSchemaTestSuite) TestDeleteBySessionIDReturnsTheRowsItRemoves() {
+	joined := time.Unix(1700000000, 0).UTC()
+	s.record("ou-x", "tfid-x", joined)
+	s.record("ou-y", "tfid-y", joined.Add(time.Minute))
+	_, err := s.db.Exec(queryUpsertParticipant.Query, "sess-2", testDeploymentID, "app-1", "ou-x", joined, joined,
+		"tfid-other-session")
+	s.Require().NoError(err)
+	_, err = s.db.Exec(queryUpsertParticipant.Query, "sess-1", "other-deployment", "app-1", "ou-x", joined, joined,
+		"tfid-other-deployment")
+	s.Require().NoError(err)
+
+	removed := s.list(queryDeleteParticipantsBySessionID, "sess-1", testDeploymentID)
+
+	s.Require().Len(removed, 2)
+	s.ElementsMatch([]Participant{
+		{SessionID: "sess-1", AppID: "app-1", OUID: "ou-x", TokenFamilyID: "tfid-x", FirstJoinedAt: joined,
+			LastActiveAt: joined},
+		{SessionID: "sess-1", AppID: "app-1", OUID: "ou-y", TokenFamilyID: "tfid-y",
+			FirstJoinedAt: joined.Add(time.Minute), LastActiveAt: joined.Add(time.Minute)},
+	}, removed)
+	s.Empty(s.list(queryListParticipantsBySessionID, "sess-1", testDeploymentID))
+	s.Len(s.list(queryListParticipantsBySessionID, "sess-2", testDeploymentID), 1)
+	s.Len(s.list(queryListParticipantsBySessionID, "sess-1", "other-deployment"), 1)
+	s.Empty(s.list(queryDeleteParticipantsBySessionID, "sess-1", testDeploymentID), "a repeated delete removes nothing")
+}
+
 func (s *ParticipantSchemaTestSuite) TestDeleteParticipantRemovesOneOU() {
 	joined := time.Unix(1700000000, 0).UTC()
 	s.record("ou-x", "tfid-x", joined)

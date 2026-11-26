@@ -43,8 +43,8 @@ const (
 	TerminationReasonSubjectRevocation TerminationReason = "subject_revocation"
 )
 
-// TerminatedSession describes a session the service has ended. Participants is captured before the
-// rows are deleted, so it is the only remaining record of which applications shared the session.
+// TerminatedSession describes a session the service has ended. Participants are the rows the termination
+// deleted, so it is the only remaining record of which applications shared the session.
 type TerminatedSession struct {
 	SessionID    string
 	SubjectID    string

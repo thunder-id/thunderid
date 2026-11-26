@@ -375,15 +375,28 @@ func (st *store) ListBySessionIDs(ctx context.Context, sessionIDs []string) ([]P
 	return result, nil
 }
 
-// DeleteBySessionID removes all participants of a session.
-func (st *store) DeleteBySessionID(ctx context.Context, sessionID string) error {
-	return withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
-		_, err := dbClient.ExecuteContext(ctx, queryDeleteParticipantsBySessionID, sessionID, st.deploymentID)
+// DeleteBySessionID removes all participants of a session and returns the ones it removed.
+func (st *store) DeleteBySessionID(ctx context.Context, sessionID string) ([]Participant, error) {
+	var result []Participant
+
+	err := withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
+		results, err := dbClient.QueryContext(ctx, queryDeleteParticipantsBySessionID, sessionID, st.deploymentID)
 		if err != nil {
 			return fmt.Errorf("failed to delete session participants: %w", err)
 		}
+		for _, row := range results {
+			p, buildErr := buildParticipantFromRow(row)
+			if buildErr != nil {
+				return buildErr
+			}
+			result = append(result, p)
+		}
 		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 // ListByAppID returns every participation of the application, across sessions, oldest first.
