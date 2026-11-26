@@ -64,6 +64,75 @@ func (h *sessionMgtHandler) HandleSelfSessionListRequest(w http.ResponseWriter, 
 	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, resp)
 }
 
+// HandleSessionRevokeRequest handles DELETE /sessions/{id}. It responds 204 even when the session is already
+// gone or out of the caller's reach.
+func (h *sessionMgtHandler) HandleSessionRevokeRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	if svcErr := h.svc.RevokeSession(ctx, r.PathValue("id")); svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
+}
+
+// HandleUserSessionsRevokeRequest handles DELETE /sessions?userId=.
+func (h *sessionMgtHandler) HandleUserSessionsRevokeRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	if svcErr := h.svc.RevokeUserSessions(ctx, r.URL.Query().Get("userId")); svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
+}
+
+// HandleSelfSessionRevokeRequest handles DELETE /users/me/sessions/{id}. It responds 204 even when the caller has
+// no such session.
+func (h *sessionMgtHandler) HandleSelfSessionRevokeRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	if !selfServiceCaller(ctx, w) {
+		return
+	}
+	if svcErr := h.svc.RevokeOwnSession(ctx, r.PathValue("id")); svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
+}
+
+// HandleSelfSessionsRevokeRequest handles DELETE /users/me/sessions, optionally with exceptCurrent=true to keep
+// the session the caller's access token was issued in.
+func (h *sessionMgtHandler) HandleSelfSessionsRevokeRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	if !selfServiceCaller(ctx, w) {
+		return
+	}
+	v := r.URL.Query().Get("exceptCurrent")
+	if v != "" && v != "true" && v != "false" {
+		handleError(ctx, w, &ErrorInvalidExceptCurrent)
+		return
+	}
+	if svcErr := h.svc.RevokeOwnSessions(ctx, v == "true"); svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusNoContent, nil)
+}
+
+// selfServiceCaller reports whether the caller may revoke its own sessions, writing the error response when it
+// may not: the token must name a subject, and a delegated token, issued to a client acting for the user, is
+// refused.
+func selfServiceCaller(ctx context.Context, w http.ResponseWriter) bool {
+	if strings.TrimSpace(security.GetSubject(ctx)) == "" {
+		sysutils.WriteErrorResponse(ctx, w, http.StatusUnauthorized, apierror.ErrUnauthorized)
+		return false
+	}
+	if security.IsDelegated(ctx) {
+		handleError(ctx, w, &ErrorDelegatedTokenNotAllowed)
+		return false
+	}
+	return true
+}
+
 // parsePaginationParams parses limit and offset. An omitted limit is the default page size; a limit outside 1 to
 // the maximum page size, or a negative offset, is rejected.
 func parsePaginationParams(r *http.Request) (int, int, *tidcommon.ServiceError) {
@@ -91,7 +160,7 @@ func parsePaginationParams(r *http.Request) (int, int, *tidcommon.ServiceError) 
 func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.ServiceError) {
 	statusCode := http.StatusInternalServerError
 	switch {
-	case svcErr.Code == tidcommon.ErrorUnauthorized.Code:
+	case svcErr.Code == tidcommon.ErrorUnauthorized.Code, svcErr.Code == ErrorDelegatedTokenNotAllowed.Code:
 		statusCode = http.StatusForbidden
 	case svcErr.Type == tidcommon.ClientErrorType:
 		statusCode = http.StatusBadRequest

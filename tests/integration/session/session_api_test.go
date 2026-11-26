@@ -415,7 +415,7 @@ func (ts *SessionAPITestSuite) TestRegularUserCannotListOthers() {
 // session with only the child's participant, and the system permission sees every participant, with the
 // application listed once by application. The user's token in each unit sees only the participants of the unit
 // its own sign-in was recorded under, which the server reads from the participant holding the token's family,
-// not from the token's claims.
+// not from the token's claims. Revoking the session from the child ends it in both units.
 func (ts *SessionAPITestSuite) TestOrgAdminSeesOnlyItsOU() {
 	const (
 		listedUser = "session_api_ou_user"
@@ -527,6 +527,14 @@ func (ts *SessionAPITestSuite) TestOrgAdminSeesOnlyItsOU() {
 		ts.Require().NotNil(own.Sessions[0].IsCurrent)
 		ts.True(*own.Sessions[0].IsCurrent, "the %s token's session is the current one", tc.name)
 	}
+	// Revoking from one unit ends the whole session, signing the user out of the other unit too.
+	status, raw = ts.deleteSessions(testutils.GetHTTPClientWithToken(childToken),
+		"/users/me/sessions/"+url.PathEscape(all.Sessions[0].ID))
+	ts.Require().Equal(http.StatusNoContent, status, raw)
+	var after testutils.SessionListView
+	status, raw = ts.getSessions(testutils.GetHTTPClient(), "/sessions?userId="+url.QueryEscape(userID), &after)
+	ts.Require().Equal(http.StatusOK, status, raw)
+	ts.Zero(after.TotalResults, raw)
 }
 
 // Both listings need an access token.

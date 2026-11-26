@@ -40,14 +40,16 @@ func (r *resolver) Resolve(ctx context.Context, handleID string, now time.Time) 
 		return nil, nil
 	}
 
-	if s.State != StateActive {
-		return nil, nil
-	}
-	if expired(s.IdleExpiresAt, now) || expired(s.AbsoluteExpiresAt, now) {
+	if !live(s, now) {
 		return nil, nil
 	}
 
 	return s, nil
+}
+
+// live reports whether the session is active and neither of its deadlines has been reached at now.
+func live(s *Session, now time.Time) bool {
+	return s.State == StateActive && !expired(s.IdleExpiresAt, now) && !expired(s.AbsoluteExpiresAt, now)
 }
 
 // expired reports whether a deadline is set and has been reached at now. A zero deadline

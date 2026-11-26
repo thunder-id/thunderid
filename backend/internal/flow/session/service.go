@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"maps"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -568,59 +569,11 @@ func (s *service) Terminate(ctx context.Context, handle, flowID string) (*Sessio
 	if flowID != "" && sess.FlowID != flowID {
 		return nil, fmt.Errorf("session handle belongs to flow %q, expected %q", sess.FlowID, flowID)
 	}
-	// Hard-delete the session and its derived state (checkpoint contexts and participants) in one
-	// transaction. Sign-out ends SSO reuse outright and nothing references the session afterwards, so the
-	// row is removed rather than tombstoned. DeleteSession removes the session row (SESSION), Delete
-	// its checkpoint contexts (SSO_SESSION_CONTEXT), and DeleteBySessionID its participants
-	// (SESSION_PARTICIPANT). Repeated calls are idempotent: once the row is gone, GetByHandle
-	// returns nil above. Token families are revoked first, in the same transaction, so a crash can
-	// never orphan live tokens for a deleted session.
-	//
-	// Participants are read once, inside the transaction, for both the revoker and the listener; the
-	// rows are gone after commit. The read is skipped when neither is wired. A failed read is fatal
-	// only when the revoker needs it; for the listener alone it just drops the notification.
-	var participants []Participant
-	notify := s.terminationTopic.HasListeners()
-	if txErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
-		if s.criteriaRevoker != nil || notify {
-			list, listErr := s.store.ListBySessionID(txCtx, sess.SessionID)
-			switch {
-			case listErr == nil:
-				participants = list
-			case s.criteriaRevoker != nil:
-				return listErr
-			default:
-				s.logger.Error(txCtx, "Failed to read session participants before termination; "+
-					"participants will not be notified", log.Error(listErr))
-				notify = false
-			}
-		}
-		if revErr := s.revokeFamilies(txCtx, participants); revErr != nil {
-			return revErr
-		}
-		removed, delErr := s.store.DeleteSession(txCtx, sess.SessionID)
-		if delErr != nil {
-			return delErr
-		}
-		// A concurrent termination already removed the row; only the node that removed it notifies.
-		notify = notify && removed
-		if delErr := s.store.Delete(txCtx, sess.SessionID); delErr != nil {
-			return delErr
-		}
-		return s.store.DeleteBySessionID(txCtx, sess.SessionID)
-	}); txErr != nil {
-		return nil, fmt.Errorf("failed to terminate session: %w", txErr)
+	if err := s.terminateSessions(ctx, []Session{*sess}, nil, TerminationReasonSignOut); err != nil {
+		return nil, fmt.Errorf("failed to terminate session: %w", err)
 	}
 
 	s.logger.Debug(ctx, "Terminated SSO session", log.String("flowID", sess.FlowID))
-	if notify {
-		s.terminationTopic.Notify(ctx, TerminatedSession{
-			SessionID:    sess.SessionID,
-			SubjectID:    sess.SubjectID,
-			Participants: participants,
-			Reason:       TerminationReasonSignOut,
-		})
-	}
 	return sess, nil
 }
 
@@ -658,17 +611,11 @@ func (s *service) TerminateBySubject(ctx context.Context, subjectID string) erro
 	if txErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		participantsBySession = s.participantsForTermination(txCtx, sessions)
 		for _, sess := range sessions {
-			wasRemoved, delErr := s.store.DeleteSession(txCtx, sess.SessionID)
+			wasRemoved, delErr := s.deleteSession(txCtx, sess.SessionID)
 			if delErr != nil {
 				return delErr
 			}
 			removed[sess.SessionID] = wasRemoved
-			if delErr := s.store.Delete(txCtx, sess.SessionID); delErr != nil {
-				return delErr
-			}
-			if delErr := s.store.DeleteBySessionID(txCtx, sess.SessionID); delErr != nil {
-				return delErr
-			}
 		}
 		return nil
 	}); txErr != nil {
@@ -694,6 +641,69 @@ func (s *service) TerminateBySubject(ctx context.Context, subjectID string) erro
 				Reason:       TerminationReasonSubjectRevocation,
 			})
 		}
+	}
+	return nil
+}
+
+// terminateSessions ends the sessions in one transaction. Each session's token families are revoked before it is
+// deleted, in the same transaction, so a crash never leaves live tokens for a deleted session. A non-nil ouID
+// ends only the sessions with an application signed in under that organization unit. Listeners are notified
+// after commit, for the sessions this call removed.
+func (s *service) terminateSessions(ctx context.Context, sessions []Session, ouID *string,
+	reason TerminationReason) error {
+	notify := s.terminationTopic.HasListeners()
+	var (
+		participants map[string][]Participant
+		ended        []Session
+	)
+	if txErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		ended = nil
+		if s.criteriaRevoker != nil || notify || ouID != nil {
+			var readErr error
+			participants, readErr = s.participantsBySession(txCtx, sessions)
+			switch {
+			case readErr == nil:
+			case s.criteriaRevoker != nil || ouID != nil:
+				return readErr
+			default:
+				s.logger.Error(txCtx, "Failed to read session participants before termination; "+
+					"participants will not be notified", log.Error(readErr))
+				notify = false
+			}
+		}
+
+		for _, sess := range sessions {
+			if ouID != nil && !slices.ContainsFunc(participants[sess.SessionID],
+				func(p Participant) bool { return p.OUID == *ouID }) {
+				continue
+			}
+			if revErr := s.revokeFamilies(txCtx, participants[sess.SessionID]); revErr != nil {
+				return revErr
+			}
+			removed, delErr := s.deleteSession(txCtx, sess.SessionID)
+			if delErr != nil {
+				return delErr
+			}
+			// A concurrent termination already removed the row; only the call that removed it notifies.
+			if removed {
+				ended = append(ended, sess)
+			}
+		}
+		return nil
+	}); txErr != nil {
+		return txErr
+	}
+
+	if !notify {
+		return nil
+	}
+	for _, sess := range ended {
+		s.terminationTopic.Notify(ctx, TerminatedSession{
+			SessionID:    sess.SessionID,
+			SubjectID:    sess.SubjectID,
+			Participants: participants[sess.SessionID],
+			Reason:       reason,
+		})
 	}
 	return nil
 }
@@ -731,10 +741,7 @@ func (s *service) DetachApplication(ctx context.Context, appID string) error {
 			if len(remaining) > 0 {
 				continue
 			}
-			if _, delErr := s.store.DeleteSession(txCtx, participation.SessionID); delErr != nil {
-				return delErr
-			}
-			if delErr := s.store.Delete(txCtx, participation.SessionID); delErr != nil {
+			if _, delErr := s.deleteSession(txCtx, participation.SessionID); delErr != nil {
 				return delErr
 			}
 		}
@@ -812,16 +819,9 @@ func (s *service) ListSessions(ctx context.Context, userID, appID string, limit,
 	if (userID == "") == (appID == "") {
 		return nil, &ErrorInvalidListFilter
 	}
-	// The system permission reaches every organization unit, so its holder sees every session. Any other
-	// caller sees only the sessions with an application signed in under the unit its token names, and only
-	// those applications. The security middleware refuses such a caller when its token names no unit.
-	var ouID *string
-	if !security.HasSystemPermission(security.GetPermissions(ctx)) {
-		tokenOUID := security.GetOUID(ctx)
-		if tokenOUID == "" {
-			return nil, &tidcommon.ErrorUnauthorized
-		}
-		ouID = &tokenOUID
+	ouID, svcErr := confinedOU(ctx)
+	if svcErr != nil {
+		return nil, svcErr
 	}
 
 	var (
@@ -858,17 +858,7 @@ func (s *service) ListSessions(ctx context.Context, userID, appID string, limit,
 func (s *service) ListOwnSessions(ctx context.Context, limit, offset int) (
 	*sessionListResponse, *tidcommon.ServiceError) {
 	subject := security.GetSubject(ctx)
-
-	// The caller sees only the sessions with an application signed in under the organization unit its own
-	// sign-in was recorded under, and only those applications, so an application in one unit can't see the
-	// user's sign-ins in another. The unit is read from the participant that holds the token's family, not
-	// from the token's claims, which the application's token configuration decides. A token that no
-	// participant of an SSO session holds, such as one from a direct session's sign-in, sees no session.
-	tokenFamilyID, _ := security.GetAttribute(ctx, oauth2const.ClaimTokenFamilyID).(string)
-	if tokenFamilyID == "" {
-		return s.buildListResponse([]sessionResponse{}, 0, "/users/me/sessions", limit, offset, ""), nil
-	}
-	participant, err := s.getSubjectParticipantByTokenFamily(ctx, subject, tokenFamilyID)
+	participant, tokenFamilyID, err := s.ownParticipant(ctx, subject)
 	if err != nil {
 		s.logger.Error(ctx, "Failed to read the caller's session participant", log.Error(err))
 		return nil, &tidcommon.InternalServerError
@@ -895,6 +885,162 @@ func (s *service) ListOwnSessions(ctx context.Context, limit, offset int) (
 	}
 
 	return s.buildListResponse(sessions, page.TotalResults, "/users/me/sessions", limit, offset, ""), nil
+}
+
+// RevokeSession ends the session with the given ID. A caller without the system permission ends it only when an
+// application signed in to it under the organization unit its token names. A session that is gone or out of
+// reach is not an error.
+func (s *service) RevokeSession(ctx context.Context, sessionID string) *tidcommon.ServiceError {
+	ouID, svcErr := confinedOU(ctx)
+	if svcErr != nil {
+		return svcErr
+	}
+
+	if err := s.revokeSession(ctx, sessionID, "", ouID); err != nil {
+		s.logger.Error(ctx, "Failed to revoke session", log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	return nil
+}
+
+// RevokeUserSessions ends the user's live SSO sessions, confined as RevokeSession is.
+func (s *service) RevokeUserSessions(ctx context.Context, userID string) *tidcommon.ServiceError {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return &ErrorMissingUserID
+	}
+	ouID, svcErr := confinedOU(ctx)
+	if svcErr != nil {
+		return svcErr
+	}
+
+	if err := s.revokeBySubject(ctx, userID, ouID, ""); err != nil {
+		s.logger.Error(ctx, "Failed to revoke user sessions", log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	return nil
+}
+
+// RevokeOwnSession ends one of the sessions the caller's own list shows. Any other session is left as it is,
+// without an error.
+func (s *service) RevokeOwnSession(ctx context.Context, sessionID string) *tidcommon.ServiceError {
+	subject := security.GetSubject(ctx)
+	participant, _, err := s.ownParticipant(ctx, subject)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to read the caller's session participant", log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if participant == nil {
+		return nil
+	}
+
+	if err := s.revokeSession(ctx, sessionID, subject, &participant.OUID); err != nil {
+		s.logger.Error(ctx, "Failed to revoke own session", log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	return nil
+}
+
+// RevokeOwnSessions ends every session the caller's own list shows, or with exceptCurrent every one but the
+// session the caller's access token was issued in.
+func (s *service) RevokeOwnSessions(ctx context.Context, exceptCurrent bool) *tidcommon.ServiceError {
+	subject := security.GetSubject(ctx)
+	participant, _, err := s.ownParticipant(ctx, subject)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to read the caller's session participant", log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	if participant == nil {
+		if exceptCurrent {
+			return &ErrorCurrentSessionUnknown
+		}
+		return nil
+	}
+
+	keepSessionID := ""
+	if exceptCurrent {
+		keepSessionID = participant.SessionID
+	}
+	if err := s.revokeBySubject(ctx, subject, &participant.OUID, keepSessionID); err != nil {
+		s.logger.Error(ctx, "Failed to revoke own sessions", log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	return nil
+}
+
+// confinedOU returns the organization unit an administrator's session request is confined to: nil when it
+// holds the system permission, which reaches every unit, or else the unit its token names. The security
+// middleware refuses a caller whose token names no unit, so that is reported as unauthorized.
+func confinedOU(ctx context.Context) (*string, *tidcommon.ServiceError) {
+	if security.HasSystemPermission(security.GetPermissions(ctx)) {
+		return nil, nil
+	}
+	ouID := security.GetOUID(ctx)
+	if ouID == "" {
+		return nil, &tidcommon.ErrorUnauthorized
+	}
+	return &ouID, nil
+}
+
+// ownParticipant returns the participant whose token family the caller's access token carries, and that token
+// family. The caller sees only the sessions with an application signed in under the organization unit this
+// participant signed in under, and only those applications, so an application in one unit can't see or end
+// the user's sign-ins in another. The unit is read from the participant, not from the token's claims, which
+// the application's token configuration decides. A token that no participant of an SSO session holds, such as
+// one from a direct session's sign-in, gets a nil participant and sees no session.
+func (s *service) ownParticipant(ctx context.Context, subject string) (*Participant, string, error) {
+	tokenFamilyID, _ := security.GetAttribute(ctx, oauth2const.ClaimTokenFamilyID).(string)
+	if tokenFamilyID == "" {
+		return nil, "", nil
+	}
+	participant, err := s.getSubjectParticipantByTokenFamily(ctx, subject, tokenFamilyID)
+	if err != nil {
+		return nil, "", err
+	}
+	return participant, tokenFamilyID, nil
+}
+
+// revokeSession ends the live SSO session with the given ID as Terminate does. A non-empty ownerSubjectID must
+// own it, and a non-nil ouID must have an application signed in to it, though the whole session ends. Any other
+// session is left as it is.
+func (s *service) revokeSession(ctx context.Context, sessionID, ownerSubjectID string, ouID *string) error {
+	sess, err := s.store.GetBySessionID(ctx, sessionID)
+	if err != nil {
+		return fmt.Errorf("failed to load session for revocation: %w", err)
+	}
+	if sess == nil || !live(sess, time.Now().UTC()) || (ownerSubjectID != "" && sess.SubjectID != ownerSubjectID) {
+		return nil
+	}
+
+	if err := s.terminateSessions(ctx, []Session{*sess}, ouID, TerminationReasonSessionRevocation); err != nil {
+		return fmt.Errorf("failed to revoke session: %w", err)
+	}
+	s.logger.Debug(ctx, "Revoked SSO session")
+	return nil
+}
+
+// revokeBySubject ends the subject's live SSO sessions as Terminate does, except keepSessionID when it is not
+// empty. A non-nil ouID ends only those with an application signed in under it. Unlike TerminateBySubject it
+// revokes only the sessions' grants, not every token the subject holds.
+func (s *service) revokeBySubject(ctx context.Context, subjectID string, ouID *string, keepSessionID string) error {
+	sessions, err := s.store.ListBySubject(ctx, subjectID)
+	if err != nil {
+		return fmt.Errorf("failed to list sessions by subject: %w", err)
+	}
+
+	now := time.Now().UTC()
+	sessions = slices.DeleteFunc(sessions, func(sess Session) bool {
+		return sess.Type != TypeSSO || sess.SessionID == keepSessionID || !live(&sess, now)
+	})
+	if len(sessions) == 0 {
+		return nil
+	}
+
+	if err := s.terminateSessions(ctx, sessions, ouID, TerminationReasonSessionRevocation); err != nil {
+		return fmt.Errorf("failed to revoke subject sessions: %w", err)
+	}
+	s.logger.Debug(ctx, "Revoked SSO sessions for subject", log.Int("sessionCount", len(sessions)))
+	return nil
 }
 
 // subjectDisplays resolves the display name of each distinct user or agent across the sessions in one read.
@@ -981,21 +1127,48 @@ func (s *service) participantsForTermination(ctx context.Context, sessions []Ses
 	if !s.terminationTopic.HasListeners() {
 		return nil
 	}
+	grouped, err := s.participantsBySession(ctx, sessions)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to read session participants before subject termination; "+
+			"participants will not be notified", log.Error(err))
+		return nil
+	}
+	return grouped
+}
+
+// participantsBySession reads the participants of the sessions in one query, grouped by session id.
+func (s *service) participantsBySession(ctx context.Context, sessions []Session) (
+	map[string][]Participant, error) {
 	sessionIDs := make([]string, 0, len(sessions))
 	for _, sess := range sessions {
 		sessionIDs = append(sessionIDs, sess.SessionID)
 	}
 	participants, err := s.store.ListBySessionIDs(ctx, sessionIDs)
 	if err != nil {
-		s.logger.Error(ctx, "Failed to read session participants before subject termination; "+
-			"participants will not be notified", log.Error(err))
-		return nil
+		return nil, err
 	}
+
 	grouped := make(map[string][]Participant, len(sessions))
 	for _, p := range participants {
 		grouped[p.SessionID] = append(grouped[p.SessionID], p)
 	}
-	return grouped
+	return grouped, nil
+}
+
+// deleteSession deletes the session row with its checkpoint contexts and participants, and reports whether
+// this call removed the row.
+func (s *service) deleteSession(ctx context.Context, sessionID string) (bool, error) {
+	removed, err := s.store.DeleteSession(ctx, sessionID)
+	if err != nil {
+		return false, err
+	}
+	if err := s.store.Delete(ctx, sessionID); err != nil {
+		return false, err
+	}
+	if err := s.store.DeleteBySessionID(ctx, sessionID); err != nil {
+		return false, err
+	}
+	return removed, nil
 }
 
 // page attaches the participants to a page of sessions, reading them for the whole page in one query. A
