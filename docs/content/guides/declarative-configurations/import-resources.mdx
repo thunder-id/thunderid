@@ -620,7 +620,7 @@ resources:
 
 ### Upserting and Removing Resource Servers
 
-A `resource_server` document describes the whole resource server, so an upsert makes the stored resources and actions match it. Resources and actions that the document no longer lists are deleted, matched by their permission. A document that lists no resources or actions removes all of the server's resources and actions. Resources and actions that the document lists are created if absent and left as they are otherwise.
+A `resource_server` document describes the whole resource server, so an upsert makes the stored resources and actions match it. Resources and actions that the document no longer lists are deleted, matched by their permission. A document that lists no resources or actions removes all of the server's resources and actions. Resources and actions that the document lists are created if absent. A resource that exists is left as it is, and an action that exists takes the document's `name` and `description`, so leaving out `description` clears it. An action's `kind` cannot change, so a document that gives an existing action a different `kind` fails.
 
 A `deletions` entry of type `resource_server` removes the resource server's actions, then its resources, deepest first, then the resource server. This differs from `DELETE /resource-servers/{id}`, which still refuses with `RES-1006` while the resource server has resources or actions.
 

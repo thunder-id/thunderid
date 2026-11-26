@@ -1209,8 +1209,8 @@ func (s *importService) importTranslation(ctx context.Context, doc parsedDocumen
 
 // importResourceServerChildren creates the actions of a resource server and the resources and actions
 // nested under it. It first computes permission strings via ProcessResourceServer, then calls the
-// resource service for each resource and action.  Existing resources/actions (on upsert paths) are
-// silently skipped. When prune is set, the resources and actions the document no longer holds are
+// resource service for each resource and action. On upsert paths an existing resource is skipped and an
+// existing action is updated. When prune is set, the resources and actions the document no longer holds are
 // deleted afterwards.
 func (s *importService) importResourceServerChildren(
 	ctx context.Context, serverID string, rs providers.ResourceServer, prune bool,
@@ -1230,8 +1230,12 @@ func (s *importService) importResourceServerChildren(
 		}
 	}
 
+	// existingActions maps a resource ID, empty for the server itself, to the actions already there by handle.
+	// A resource's actions are listed on the first handle conflict under it.
+	existingActions := make(map[string]map[string]providers.Action)
 	for j := range rs.Actions {
-		if svcErr := s.importResourceServerAction(ctx, serverID, nil, rs.Actions[j]); svcErr != nil {
+		if svcErr := s.importResourceServerAction(
+			ctx, serverID, nil, rs.Actions[j], existingActions); svcErr != nil {
 			return svcErr
 		}
 	}
@@ -1301,7 +1305,8 @@ func (s *importService) importResourceServerChildren(
 		pathToID[res.Permission] = created.ID
 
 		for j := range res.Actions {
-			if svcErr := s.importResourceServerAction(ctx, serverID, &created.ID, res.Actions[j]); svcErr != nil {
+			if svcErr := s.importResourceServerAction(
+				ctx, serverID, &created.ID, res.Actions[j], existingActions); svcErr != nil {
 				return svcErr
 			}
 		}
@@ -1314,15 +1319,38 @@ func (s *importService) importResourceServerChildren(
 }
 
 // importResourceServerAction creates an action of a resource, or of the resource server itself when
-// resourceID is nil. An action whose handle already exists there is skipped.
+// resourceID is nil. An action whose handle already exists there takes the document's name and description.
 func (s *importService) importResourceServerAction(
 	ctx context.Context, serverID string, resourceID *string, action providers.Action,
+	existingActions map[string]map[string]providers.Action,
 ) *tidcommon.ServiceError {
 	_, svcErr := s.resourceService.CreateAction(ctx, serverID, resourceID, action)
-	if svcErr != nil && svcErr.Code != resource.ErrorHandleConflict.Code {
+	if svcErr == nil || svcErr.Code != resource.ErrorHandleConflict.Code {
 		return svcErr
 	}
-	return nil
+	key := ""
+	if resourceID != nil {
+		key = *resourceID
+	}
+	byHandle, listed := existingActions[key]
+	if !listed {
+		actions, listErr := s.listActions(ctx, serverID, resourceID)
+		if listErr != nil {
+			return listErr
+		}
+		byHandle = make(map[string]providers.Action, len(actions))
+		for _, existing := range actions {
+			byHandle[existing.Handle] = existing
+		}
+		existingActions[key] = byHandle
+	}
+	existing, ok := byHandle[action.Handle]
+	if !ok || (existing.Name == action.Name && existing.Description == action.Description &&
+		(action.Kind == "" || action.Kind == existing.Kind)) {
+		return nil
+	}
+	_, svcErr = s.resourceService.UpdateAction(ctx, serverID, resourceID, existing.ID, action)
+	return svcErr
 }
 
 // deleteResourceServer removes a resource server together with its resources and actions. A promotion
@@ -1396,20 +1424,14 @@ func (s *importService) pruneResourceServerChildren(
 func (s *importService) pruneActions(
 	ctx context.Context, serverID string, resourceID *string, kept map[string]bool,
 ) *tidcommon.ServiceError {
+	actions, svcErr := s.listActions(ctx, serverID, resourceID)
+	if svcErr != nil {
+		return svcErr
+	}
 	var stale []string
-	for offset := 0; ; offset += serverconst.MaxPageSize {
-		list, svcErr := s.resourceService.GetActionList(
-			ctx, serverID, resourceID, "", serverconst.MaxPageSize, offset)
-		if svcErr != nil {
-			return svcErr
-		}
-		for _, action := range list.Actions {
-			if !kept[action.Permission] {
-				stale = append(stale, action.ID)
-			}
-		}
-		if len(list.Actions) < serverconst.MaxPageSize {
-			break
+	for _, action := range actions {
+		if !kept[action.Permission] {
+			stale = append(stale, action.ID)
 		}
 	}
 
@@ -1419,6 +1441,24 @@ func (s *importService) pruneActions(
 		}
 	}
 	return nil
+}
+
+// listActions returns every action of a resource, or of the resource server itself when resourceID is nil.
+func (s *importService) listActions(
+	ctx context.Context, serverID string, resourceID *string,
+) ([]providers.Action, *tidcommon.ServiceError) {
+	var actions []providers.Action
+	for offset := 0; ; offset += serverconst.MaxPageSize {
+		list, svcErr := s.resourceService.GetActionList(
+			ctx, serverID, resourceID, "", serverconst.MaxPageSize, offset)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		actions = append(actions, list.Actions...)
+		if len(list.Actions) < serverconst.MaxPageSize {
+			return actions, nil
+		}
+	}
 }
 
 // parentsFirst orders resources so each comes after the resource its parent path names. A parent
