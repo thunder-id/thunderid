@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -223,34 +224,44 @@ func (s *SinkTestSuite) TestAnAddedFieldLeavesTheKnownFieldsUnchanged() {
 	s.Equal(s.decode(written), s.decode(extended))
 }
 
+// fillerDetails returns n details of size characters each, which with their keys take a line past its limit
+// once enough are given, since a detail value is capped at 512 characters.
+func fillerDetails(n, size int) map[string]string {
+	details := make(map[string]string, n)
+	for i := 0; i < n; i++ {
+		details[fmt.Sprintf("filler_%d", i)] = strings.Repeat("f", size)
+	}
+	return details
+}
+
 func (s *SinkTestSuite) TestAnOversizedLineDropsTheLargestDetailsFirst() {
-	p := payload().WithDetails(map[string]string{
-		"largest": strings.Repeat("l", maxLineBytes),
-		"larger":  strings.Repeat("m", maxLineBytes-maxFieldBytes),
-		"fits":    strings.Repeat("f", maxLineBytes/4),
-		"small":   "kept",
-	})
+	details := fillerDetails(7, 450)
+	details["largest"] = strings.Repeat("l", 512)
+	details["larger"] = strings.Repeat("m", 511)
+	details["small"] = "kept"
+	p := payload().WithDetails(details)
 
 	written := s.write(envelope(), p)
 
 	s.LessOrEqual(len(written), maxLineBytes)
 	decoded := s.decode(written)
-	s.Equal(map[string]string{"fits": strings.Repeat("f", maxLineBytes/4), "small": "kept"}, decoded.Details,
-		"only as many details as needed are dropped, largest first")
+	want := fillerDetails(7, 450)
+	want["small"] = "kept"
+	s.Equal(want, decoded.Details, "only as many details as needed are dropped, largest first")
 	s.Equal(testUserAgent, decoded.Client["user_agent"], "the user agent is kept while details suffice")
 }
 
 func (s *SinkTestSuite) TestThenTheUserAgent() {
 	long := strings.Repeat("ü", 256)
 	p := audit.NewPayload(clientContext(long), testTarget, audit.ActionUpdate, audit.OutcomeSucceeded).
-		WithDetails(map[string]string{"large": strings.Repeat("d", maxLineBytes-300)})
+		WithDetails(fillerDetails(12, 512))
 	env := envelope()
 
 	written := s.write(env, p)
 
 	s.LessOrEqual(len(written), maxLineBytes)
 	decoded := s.decode(written)
-	s.Empty(decoded.Details)
+	s.Less(len(decoded.Details), 12, "details are dropped until the line fits")
 	s.Equal(long, decoded.Client["user_agent"], "the user agent is kept once dropping the details suffices")
 
 	l := newLine(env, p)

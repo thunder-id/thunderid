@@ -485,6 +485,22 @@ func (s *PayloadTestSuite) TestAnExplicitActorReplacesTheVerifiedToken() {
 		resolved.WithActor(Actor{Type: ActorTypeApplication, ID: strings.Repeat("ü", maxIDLength+1)}).Actor().ID)
 }
 
+// A detail value is cut to its first 512 characters, counted as characters and not bytes.
+func (s *PayloadTestSuite) TestADetailValueIsCutTo512Characters() {
+	payload := NewPayload(context.Background(), testTarget, ActionCreate, OutcomeSucceeded).
+		WithDetails(map[string]string{
+			"exact": strings.Repeat("ü", maxDetailLength),
+			"over":  strings.Repeat("ü", maxDetailLength+1),
+			"short": "x",
+		})
+
+	details := payload.Details()
+
+	s.Equal(strings.Repeat("ü", maxDetailLength), details["exact"])
+	s.Equal(strings.Repeat("ü", maxDetailLength), details["over"])
+	s.Equal("x", details["short"])
+}
+
 func (s *PayloadTestSuite) TestBuildersReturnIndependentCopies() {
 	details := map[string]string{"reason": "requested"}
 	base := NewPayload(context.Background(), testTarget, ActionCreate, OutcomeSucceeded)
