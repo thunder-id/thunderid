@@ -1,7 +1,7 @@
 # Agent Lifespan Specification
 
 - **Status:** Draft
-- **Version:** 0.9
+- **Version:** 0.10
 - **Related documents:** [Feature issue #4609](https://github.com/thunder-id/thunderid/issues/4609), [Finalized requirements](https://github.com/thunder-id/thunderid/issues/4609#issuecomment-6054905581), [Account locks and suspensions feature issue #5073](https://github.com/thunder-id/thunderid/issues/5073), [Account locks and suspensions specification (#5442)](https://github.com/thunder-id/thunderid/pull/5442)
 
 ## Summary
@@ -14,7 +14,7 @@ The governing design decisions are:
 
 - **`validUntil` is a reserved agent system attribute.** It is stored on the agent record beside `name`, `owner`, and `clientId`, and is reserved in the same way as the credential-change marker: generic entity writes preserve it, and only the agent service sets it, after validating it. It is configuration an operator sets on the agent, not runtime state, so it is not stored in the runtime row; the governance authority reads it from the entity it already receives.
 - **The governance authority is the only component that interprets `validUntil`.** It derives the `EXPIRED` status and its precedence, refuses an expired agent, and tells the token builder the latest expiry a token issued now may carry. The agent service and the Console show what governance returns, and the token builder applies the expiry it is given.
-- **Changing the lifespan is an agent update.** A caller with permission to update the agent sets a new `validUntil` through `PUT /agents/{id}`. No separate flow or lifecycle command is involved. The agent service validates the value and publishes an event for every change.
+- **Changing the lifespan is an agent update.** A caller with permission to update the agent sets a new `validUntil` through `PUT /agents/{id}`, and the owner of a personal agent sets it through `PUT /users/me/agents/{id}`. No separate flow or lifecycle command is involved. The agent service validates the value and publishes an event for every change.
 - **`EXPIRED` is derived from `validUntil`, not stored.** Every access decision and status read compares `validUntil` with the current time, exactly as the account locks and suspensions specification derives `LOCKED` from a lock's `unlockAt`. No state is written at expiry and no job runs. The runtime `STATE` column keeps the values that specification defines, so changing `validUntil` is an attribute update that never writes lifecycle state. Effective status follows **`SUSPENDED` > `EXPIRED` > `LOCKED` > `ACTIVE`**.
 - **The audit record is the observability event stream.** Every lifespan decision is published as an administration event. No history table is added, and ThunderID offers no history API; a deployment keeps and queries the events in its own observability backend.
 - **There is no deployment lifespan policy.** The registering caller decides `validUntil`, or leaves the agent without one. The only validation is that a supplied value is a well-formed instant in the future, checked before it is persisted. A declarative resource file may also carry a past value, which loads the agent as expired.
@@ -143,7 +143,7 @@ The feature is delivered in one change, on top of the identity governance author
 | Enforcement, status, and token capping | In the governance authority and the grants, as specified. |
 | Audit events | Every event under Lifecycle audit. |
 | Console | The **Expires** column, the status chip, and the **Expires on** field, in a separate frontend change from the backend. |
-| Owner access | Not delivered; see Open decisions. Custom onboarding flows can collect `validUntil` with the shared **Date Time Input** component. The default flow remains unchanged. |
+| Owner access | The owner of a personal agent changes its lifespan through `PUT /users/me/agents/{id}`. The owner read rule on `GET /agents/{id}` is not delivered; see Open decisions. Custom onboarding flows can collect `validUntil` with the shared **Date Time Input** component. The default flow remains unchanged. |
 
 Every acceptance criterion is met except AC2.1, which depends on owner access, and the Console parts of AC2.2, AC3.1, AC3.2, and AC3.3, which the frontend change delivers.
 
@@ -223,7 +223,7 @@ Export writes every agent's `validUntil`, using the unbounded sentinel for an ag
 - **Present and equal to the stored value:** no change and no event. `null` on an agent that is already unbounded is equal.
 - **Stored value cannot be read:** any value present is treated as a change, and a committed change is published as `AGENT_LIFESPAN_SET`, since it is neither an extension nor a reduction.
 
-Authorization is the agent update check the service already applies (`checkAgentAccess` with the update action and the agent's organization unit). A caller who may update the agent may change its lifespan; there is no separate permission and no separate flow. This includes the agent itself: an agent that holds the update permission for its own organization unit can change its own lifespan, as it can any other field of its record. Declarative agents are read-only, as for every other field.
+Authorization is the agent update check the service already applies (`checkAgentAccess` with the update action and the agent's organization unit). An administrator cannot update a personal agent through `PUT /agents/{id}`, so a personal agent's lifespan is changed by its owner, as described under Owner lifespan changes. A caller who may update the agent may change its lifespan; there is no separate permission and no separate flow. This includes the agent itself: an agent that holds the update permission for its own organization unit can change its own lifespan, as it can any other field of its record. Declarative agents are read-only, as for every other field.
 
 The agent service performs the change in one entity-database transaction:
 
@@ -234,6 +234,14 @@ The agent service performs the change in one entity-database transaction:
 The events described under Lifecycle audit are published after the transaction commits.
 
 A lifespan change can move `validUntil` later or earlier. Moving it later is an **extension**. Moving it earlier is a **reduction**; a reduction to a time just ahead of now is the way to end an agent's lifespan early without suspending it. Both are published with their actor.
+
+#### Owner lifespan changes
+
+The owner of a personal agent sends `validUntil` in `PUT /users/me/agents/{id}`, beside the other fields the owner may change. It is read as in `PUT /agents/{id}`: absent keeps the stored value, `null` removes the expiry, a value equal to the stored one is no change, and any other value must be a valid instant in the future. The agent service checks the value before it writes any field, so an invalid value applies nothing, and publishes the same events, with the owner as the actor. An owner can extend an expired personal agent's lifespan to reactivate it.
+
+Authorization is the owner check that request already makes: the caller's subject is the agent's local owner, and the agent is in the organization unit the caller's token names. The owner needs no agent update permission.
+
+The owner's update writes the attributes, the description, and `validUntil` in one entity-database transaction, so they commit together or not at all. The OAuth settings live in the configuration database: they are written inside that transaction but commit on their own, so a failure after them leaves the OAuth change written and the lifespan unchanged. A failed update is published as `AGENT_LIFESPAN_UPDATE_FAILED`.
 
 #### Reactivation
 
@@ -475,6 +483,8 @@ This specification does not define:
 
 An update that changes `validUntil` and other fields applies them together or not at all.
 
+`PUT /users/me/agents/{id}` accepts the same optional `validUntil` for the owner of a personal agent, with the same validation and responses. A caller who is not the agent's owner gets `404`, as for any owner update. See Owner lifespan changes.
+
 #### Reads
 
 Agent reads, single and list, carry `validUntil` and a read-only `lifespan` object beside the `status` object the account locks and suspensions specification defines:
@@ -610,6 +620,7 @@ A3.1 asks for a configured warning period. This specification has none: every bo
 - **AC4.9:** Given a suspended or locked agent, when its lifespan is changed, then the suspension or lock remains.
 - **AC4.10:** Given a permitted caller, when they move `validUntil` earlier but still in the future, then the change is applied and published as `AGENT_LIFESPAN_REDUCED`.
 - **AC4.11:** Given a bounded agent, when a permitted caller updates it with `validUntil: null`, then its phase is `UNBOUNDED` and `AGENT_LIFESPAN_EXTENDED` is published with the previous `validUntil`.
+- **AC4.12:** Given the owner of a personal agent, when they send a later valid `validUntil`, or `null`, in `PUT /users/me/agents/{id}`, then the change is applied and published without the agent update permission; given an invalid or past value, then it is refused and no field is written.
 
 ### R5. Expired agent retention
 
@@ -682,7 +693,8 @@ Refusal of an expired agent at every plane, and token lifetime capping, are deci
 | Concurrent lifespan changes | The writes are serialized by the entity's row lock, and the later commit wins. Whether a request is a change, and its previous value, are decided from the copy read before the transaction, so a racing change can be published with a stale previous value, or not published when it matched that copy. The reserved-attribute merge takes the row lock and re-reads the row under it, so an unrelated update never overwrites a concurrent lifespan change. |
 | Declarative agents | Their lifespan changes only through the resource file. No lifespan events are published for them; the file's version history is that record. |
 | No lifespan filtering | The agent list filter supports equality only, so agents cannot be listed by "expiring before" or "expired" through the API. Listing all agents and reading their phase works but does not scale to large inventories. |
-| Owners need the update permission | An owner who does not hold the agent update permission for the agent's organization unit can see, but not change, their agent's lifespan. |
+| Owners need the update permission | The owner of an agent other than a personal agent, who does not hold the agent update permission for the agent's organization unit, can see, but not change, their agent's lifespan. |
+| Owner update is not atomic across databases | `PUT /users/me/agents/{id}` commits the OAuth settings, in the configuration database, separately from the attributes, description and lifespan, so a failure after the OAuth write leaves it written. |
 | No deployment limit | Any caller permitted to create or update an agent can set any future `validUntil`, or none. A deployment cannot require agents to expire or cap how far ahead their lifespan ends. |
 | Pre-existing agents | Agents registered before this feature have no `validUntil` and are unbounded. |
 | Issuance stops one second early | Because of the hold-back, an agent obtains no token in the final second before its `validUntil`, and a token's `exp` can be up to one second before it. |
@@ -694,7 +706,7 @@ Refusal of an expired agent at every plane, and token lifetime capping, are deci
 
 | Area | Decision required |
 |---|---|
-| Owner lifespan changes | Whether owners should be able to change their agent's lifespan without the general agent update permission, through a narrower permission or an owner rule limited to `validUntil`. |
+| Owner lifespan changes | Whether owners of agents other than personal agents should be able to change their agent's lifespan without the general agent update permission, through a narrower permission or an owner rule limited to `validUntil`. |
 | Owner-facing UI | Whether owners without Console access get a surface beyond `GET /users/me/agents` and `GET /agents/{id}` to see their agents' lifespan. |
 | Deployment lifespan policy | Whether a later version adds a deployment default, a maximum, or a warning window, if deployments need to require agents to expire. |
 | Lifespan filtering | Whether to add a range filter on `validUntil` to the agent list API, so that expiring and expired agents can be queried directly. |
@@ -718,3 +730,4 @@ Refusal of an expired agent at every plane, and token lifetime capping, are deci
 | 0.7 | 2026-11-02 | Aligned with the implementation: the token builder, not each grant, makes the issuance-plane check for every party of every token it builds, memoized per token request, and replaces the refresh grant's own subject check; nested actors from another issuer are skipped. Token exchange falls back to the `aci` entry only when the actor is not found or lookups are not supported, and fails with `server_error` on any other lookup failure. Added `AccessHold` for AuthZEN and passkey enrolment, the `sub_valid_until` claim, the transaction end hook that drops cached entries, update of an unreadable stored value, and import of a document without `validUntil`. Governance in the token builder is a new open decision. |
 | 0.8 | 2026-11-10 | Custom agent onboarding flows can collect `validUntil` with the shared Date Time Input component; the shipped default flow remains unchanged. |
 | 0.9 | 2026-11-21 | A token ThunderID issued for an external identity provider's subject, which carries `idp`, is never resolved to a local entity on token exchange, as a subject or as an actor, the same as a token from another issuer. |
+| 0.10 | 2026-11-26 | The owner of a personal agent changes its lifespan through `PUT /users/me/agents/{id}`, without the agent update permission, since an administrator cannot update a personal agent. Added AC4.12, and the OAuth write that commits apart from the owner update's entity transaction as a known limitation. |

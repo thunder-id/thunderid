@@ -240,32 +240,37 @@ func (ts *PersonalAgentTestSuite) TestAdminReadsKindOwnerAndDetails() {
 	ts.Equal(paSuiteAgentName, attributes["name"])
 }
 
-// An administrator cannot change a personal agent's owner. An update that names another owner is refused and
-// changes nothing, and one that sends the current owner back is accepted.
-func (ts *PersonalAgentTestSuite) TestAdminCannotChangeTheOwner() {
+// An administrator cannot update a personal agent, whatever the update changes, and the agent is left as it was.
+func (ts *PersonalAgentTestSuite) TestAdminCannotUpdateAPersonalAgent() {
 	agent := ts.createOwnedAgent("authorization_code")
 	defer func() { _ = deleteAgent(agent.id) }()
-	update := func(owner string) (int, string) {
+	before, err := testutils.GetAgent(agent.id)
+	ts.Require().NoError(err)
+	update := func(owner, description string) (int, string) {
 		request := ts.personalAgentRequest(owner, "authorization_code")
 		request["attributes"] = map[string]interface{}{"name": agent.name}
+		request["description"] = description
 		resp, err := putAgentRaw(agent.id, request)
 		ts.Require().NoError(err)
 		defer resp.Body.Close()
 		return resp.StatusCode, readBody(resp)
 	}
 
-	status, body := update(ts.otherID)
-	ts.Equal(http.StatusBadRequest, status, body)
-	ts.Contains(body, "AGT-1064")
-	read, err := testutils.GetAgent(agent.id)
+	for name, tc := range map[string]struct{ owner, description string }{
+		"unchanged":         {ts.ownerID, before.Description},
+		"a new description": {ts.ownerID, "Changed by an administrator"},
+		"another owner":     {ts.otherID, before.Description},
+	} {
+		ts.Run(name, func() {
+			status, body := update(tc.owner, tc.description)
+			ts.Equal(http.StatusBadRequest, status, body)
+			ts.Contains(body, "AGT-1070")
+		})
+	}
+	after, err := testutils.GetAgent(agent.id)
 	ts.Require().NoError(err)
-	ts.Equal(testutils.LocalAgentOwner(ts.ownerID), read.Owner)
-
-	status, body = update(ts.ownerID)
-	ts.Equal(http.StatusOK, status, body)
-	read, err = testutils.GetAgent(agent.id)
-	ts.Require().NoError(err)
-	ts.Equal(testutils.LocalAgentOwner(ts.ownerID), read.Owner)
+	ts.Equal(before.Description, after.Description)
+	ts.Equal(testutils.LocalAgentOwner(ts.ownerID), after.Owner)
 }
 
 // An owner lists and reads their personal agents with their own token, reading the same agent object an
@@ -473,6 +478,43 @@ func (ts *PersonalAgentTestSuite) TestOwnerUpdatesTheirAgent() {
 	ts.Require().NoError(err)
 	resp.Body.Close()
 	ts.Contains(resp.Header.Get("Location"), paUnauthorizedClient, "without grants the agent cannot authorize")
+}
+
+// The owner sets, extends and removes their agent's lifespan through their update. A validUntil left out keeps
+// the lifespan, and a past one is refused.
+func (ts *PersonalAgentTestSuite) TestOwnerChangesTheirAgentsLifespan() {
+	ownerToken := ts.userToken(ts.ownerUsername)
+	agent := ts.createOwnedAgent("authorization_code")
+	defer func() { _ = deleteAgent(agent.id) }()
+	path := "/users/me/agents/" + agent.id
+	base := ownedAgentBody(agent.name, "x", `["authorization_code"]`, `["`+paRedirectURI+`"]`)
+	withValidUntil := func(value string) string {
+		return strings.TrimSuffix(base, "}") + `,"validUntil":` + value + `}`
+	}
+	readValidUntil := func(body string) string {
+		var read struct {
+			ValidUntil string `json:"validUntil"`
+		}
+		ts.Require().NoError(json.Unmarshal([]byte(body), &read))
+		return read.ValidUntil
+	}
+
+	for _, set := range []string{"2098-01-01T00:00:00Z", "2099-01-01T00:00:00Z"} {
+		status, body := ts.selfServiceCall(http.MethodPut, path, ownerToken, withValidUntil(`"`+set+`"`))
+		ts.Require().Equal(http.StatusOK, status, body)
+		ts.Equal(set, readValidUntil(body))
+	}
+
+	status, body := ts.selfServiceCall(http.MethodPut, path, ownerToken, base)
+	ts.Require().Equal(http.StatusOK, status, body)
+	ts.Equal("2099-01-01T00:00:00Z", readValidUntil(body), "a validUntil left out keeps the lifespan")
+
+	status, body = ts.selfServiceCall(http.MethodPut, path, ownerToken, withValidUntil(`"2001-01-01T00:00:00Z"`))
+	ts.Equal(http.StatusBadRequest, status, "a past lifespan end is refused: %s", body)
+
+	status, body = ts.selfServiceCall(http.MethodPut, path, ownerToken, withValidUntil(`null`))
+	ts.Require().Equal(http.StatusOK, status, body)
+	ts.Empty(readValidUntil(body), "null removes the expiry")
 }
 
 // The owner resets their agent's password. Other callers are refused, and so is an update that names it.

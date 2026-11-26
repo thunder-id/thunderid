@@ -1614,15 +1614,15 @@ func (s *importService) importAgent(
 	return successOutcome(resourceTypeAgent, created.ID, "", operationCreate)
 }
 
-// dryRunAgent predicts the outcome of importing an agent, refusing what the import refuses about a personal agent's
-// credentials so that a dry run does not report success for a document the real import would reject.
+// dryRunAgent predicts the outcome of importing an agent, refusing what the import refuses about a personal agent
+// so that a dry run does not report success for a document the real import would reject.
 func (s *importService) dryRunAgent(
 	ctx context.Context, req *agentmodel.AgentRequestWithID, options *ImportOptions, credentials json.RawMessage,
 ) ImportItemOutcome {
 	if options.IsUpsertEnabled() && req.ID != "" {
 		existing, svcErr := s.agentService.GetAgent(ctx, req.ID, false)
 		if svcErr == nil {
-			if refused := refusePersonalAgentCredentialUpdate(existing, credentials); refused != nil {
+			if refused := refusePersonalAgentUpdate(ctx, existing, credentials); refused != nil {
 				return serviceErrorOutcome(resourceTypeAgent, req.ID, "", operationUpdate, refused)
 			}
 			return successOutcome(resourceTypeAgent, req.ID, "", operationUpdate)
@@ -1733,13 +1733,20 @@ func decodeErrorOutcome(resourceType, id, name string, err error) ImportItemOutc
 	}
 }
 
-// refusePersonalAgentCredentialUpdate refuses a document that carries credentials for an existing personal agent,
-// since only its owner sets them.
-func refusePersonalAgentCredentialUpdate(
-	existing *agentmodel.AgentGetResponse, credentials json.RawMessage,
+// refusePersonalAgentUpdate refuses an import that updates an existing personal agent, since only its owner changes
+// it: one that carries credentials always, and any other unless it is the managed import, which keeps what a
+// control plane deployed in step with it. The agent service refuses the same update.
+func refusePersonalAgentUpdate(
+	ctx context.Context, existing *agentmodel.AgentGetResponse, credentials json.RawMessage,
 ) *tidcommon.ServiceError {
-	if credentials != nil && existing.Kind == providers.AgentKindPersonalAssistant {
+	if existing.Kind != providers.AgentKindPersonalAssistant {
+		return nil
+	}
+	if credentials != nil {
 		return &agent.ErrorPersonalAgentCredentialsNotUpdatable
+	}
+	if !managedresource.IsManagedImport(ctx) {
+		return &agent.ErrorPersonalAgentNotUpdatable
 	}
 	return nil
 }
@@ -1769,11 +1776,11 @@ func (s *importService) refusePersonalAgentCredentials(
 	return nil
 }
 
-// updateExistingAgent updates an agent the import found, then its credentials. Only the owner sets a personal
-// agent's credentials, so a document that carries one is refused before the profile is written.
+// updateExistingAgent updates an agent the import found, then its credentials. Only the owner changes a personal
+// agent, so its update is refused before the profile is written (refusePersonalAgentUpdate).
 func (s *importService) updateExistingAgent(ctx context.Context, existing *agentmodel.AgentGetResponse, id string,
 	updateReq *agentmodel.UpdateAgentRequest, credentials json.RawMessage) ImportItemOutcome {
-	if refused := refusePersonalAgentCredentialUpdate(existing, credentials); refused != nil {
+	if refused := refusePersonalAgentUpdate(ctx, existing, credentials); refused != nil {
 		return serviceErrorOutcome(resourceTypeAgent, id, "", operationUpdate, refused)
 	}
 	updated, updateErr := s.agentService.UpdateAgent(ctx, id, updateReq)

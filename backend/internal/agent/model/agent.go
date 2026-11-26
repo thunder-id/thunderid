@@ -227,6 +227,9 @@ type UpdateOwnedAgentRequest struct {
 	Attributes   json.RawMessage       `json:"attributes,omitempty"`
 	GrantTypes   []providers.GrantType `json:"grantTypes,omitempty"`
 	RedirectURIs []string              `json:"redirectUris,omitempty"`
+	// ValidUntil is kept raw so an absent value, which leaves the lifespan unchanged, is told apart
+	// from null, which removes the expiry.
+	ValidUntil json.RawMessage `json:"validUntil,omitempty"`
 }
 
 // AgentListResponse is the paginated list response.

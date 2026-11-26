@@ -881,6 +881,20 @@ var (
 			DefaultValue: "A personal agent's credentials can only be set by its owner",
 		},
 	}
+
+	// ErrorPersonalAgentNotUpdatable is returned when an administrator updates a personal agent.
+	ErrorPersonalAgentNotUpdatable = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1070",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.personal_agent_not_updatable",
+			DefaultValue: "Agent cannot be updated",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.personal_agent_not_updatable_description",
+			DefaultValue: "A personal agent can only be updated by its owner",
+		},
+	}
 )
 
 // errInvalidDeclarativeLifespan is returned when a declarative agent's validUntil is not an RFC 3339

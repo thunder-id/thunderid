@@ -98,7 +98,10 @@ export default function AgentEditPage(): JSX.Element {
   const {agentId} = useParams<{agentId: string}>();
 
   const {data: agent, isLoading, error, refetch} = useGetAgent(agentId ?? '');
-  const {readOnly: isReadOnly, canDelete, canChangeState} = useRecordAccess('agent', agent);
+  const {readOnly: isRecordReadOnly, canDelete, canChangeState} = useRecordAccess('agent', agent);
+  // Only its owner changes a personal agent. The server refuses an administrator's update (AGT-1070).
+  const isPersonalAgent = agent?.kind === PERSONAL_AGENT_KIND;
+  const isReadOnly = isRecordReadOnly || isPersonalAgent;
   const {projectId} = useProjectScope();
   // Another project's agent is not shown in the selected one: a deep link, a stale tab or a switch of
   // project goes to the selected project's agents instead.
@@ -231,7 +234,8 @@ export default function AgentEditPage(): JSX.Element {
       editedAgent.deviceGrantFlowId ||
       agent?.deviceGrantFlowId ||
       !defaultDeviceGrantFlow ||
-      agent?.isReadOnly
+      agent?.isReadOnly ||
+      isPersonalAgent
     ) {
       return;
     }
@@ -240,6 +244,7 @@ export default function AgentEditPage(): JSX.Element {
   }, [
     agent?.deviceGrantFlowId,
     agent?.isReadOnly,
+    isPersonalAgent,
     deviceGrantEnabled,
     deviceGrantFlowList,
     editedAgent.deviceGrantFlowId,
@@ -570,6 +575,14 @@ export default function AgentEditPage(): JSX.Element {
       {agent.isReadOnly && (
         <Alert severity="info" sx={{mb: 2}}>
           {t('common:messages.readOnlyResource', 'This resource is read-only and cannot be modified.')}
+        </Alert>
+      )}
+      {isPersonalAgent && !agent.isReadOnly && (
+        <Alert severity="info" sx={{mb: 2}}>
+          {t(
+            'agents:edit.page.personalAgentReadOnly',
+            'Only the owner can change a personal agent. You can still suspend or delete it.',
+          )}
         </Alert>
       )}
       {typeSchemaError && (

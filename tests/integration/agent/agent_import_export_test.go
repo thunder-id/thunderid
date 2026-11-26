@@ -1102,6 +1102,42 @@ func (s *AgentImportExportSuite) TestImportAgent_UpsertRefusesAPersonalAgentsPas
 	s.NotContains(string(restored.Attributes), "Renamed")
 }
 
+// Re-importing an existing personal agent is refused even without a credential, since only its owner changes it,
+// and the dry run refuses it too.
+func (s *AgentImportExportSuite) TestImportAgent_UpsertRefusesAPersonalAgent() {
+	agentName := "Agent Personal Reimport " + s.handleSuffix
+	ownerID := s.createOwnerUser()
+	defer func() { _ = testutils.DeleteUser(ownerID) }()
+	localOwnerYAML := "kind: personal-assistant\nowner:\n  id: " + ownerID + "\n  isLocal: true\n" +
+		"inboundAuthConfig:\n  - type: oauth2\n    config:\n      grantTypes: [authorization_code]\n" +
+		"      responseTypes: [code]\n      redirectUris: [\"https://agent.example.com/callback\"]\n" +
+		"      pkceRequired: true\n"
+	created, err := s.importAgents(agentImportRequest{
+		Content: s.agentDocument("", agentName, "", localOwnerYAML),
+		Options: agentImportOptions{Upsert: true, ContinueOnError: false, Target: "runtime"},
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(1, created.Summary.Imported, "import results: %+v", created.Results)
+	agentID := created.Results[0].ResourceID
+	defer func() { _ = s.deleteAgent(agentID) }()
+
+	for _, dryRun := range []bool{true, false} {
+		importResp, err := s.importAgents(agentImportRequest{
+			Content: s.agentDocument(agentID, agentName+" Renamed", "", localOwnerYAML),
+			DryRun:  dryRun,
+			Options: agentImportOptions{Upsert: true, ContinueOnError: true, Target: "runtime"},
+		})
+
+		s.Require().NoError(err)
+		s.Require().Len(importResp.Results, 1)
+		s.Equal("failed", importResp.Results[0].Status, "dryRun=%t import results: %+v", dryRun, importResp.Results)
+		s.Equal("AGT-1070", importResp.Results[0].Code, importResp.Results[0].Message)
+	}
+	restored, err := s.agentGet(agentID)
+	s.Require().NoError(err)
+	s.NotContains(string(restored.Attributes), "Renamed")
+}
+
 // An import that updates an agent and names a credential as an attribute is refused by the agent service, and
 // the import reports its error.
 func (s *AgentImportExportSuite) TestImportAgent_UpsertReportsARefusedUpdate() {

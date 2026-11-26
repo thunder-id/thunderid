@@ -161,6 +161,8 @@ var defaultMessages = map[string]string{
 	"error.agentservice.owner_suspended_description": "A personal agent cannot be created for a user whose account is suspended",
 	"error.agentservice.personal_agent_credentials_not_updatable": "Credentials cannot be updated",
 	"error.agentservice.personal_agent_credentials_not_updatable_description": "A personal agent's credentials can only be set by its owner",
+	"error.agentservice.personal_agent_not_updatable": "Agent cannot be updated",
+	"error.agentservice.personal_agent_not_updatable_description": "A personal agent can only be updated by its owner",
 	"error.agentservice.personal_agent_owner_immutable": "Owner cannot be changed",
 	"error.agentservice.personal_agent_owner_immutable_description": "A personal agent keeps the owner it was registered for",
 	"error.agentservice.personal_agent_secret_not_regenerable": "Secret cannot be regenerated",

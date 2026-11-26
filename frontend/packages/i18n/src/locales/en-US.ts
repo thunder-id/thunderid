@@ -1352,6 +1352,8 @@ const translations = {
     // Edit page (header)
     'edit.page.errorTitle': 'Failed to load agent',
     'edit.page.typeSchemaError': "The agent's type could not be loaded, so changes can't be saved.",
+    'edit.page.personalAgentReadOnly':
+      'Only the owner can change a personal agent. You can still suspend or delete it.',
     'edit.page.notFound': 'Agent not found',
     'edit.page.back': 'Back to agents',
     'edit.page.logoUpdate.label': 'Update logo',
