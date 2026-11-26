@@ -1,3 +1,12 @@
+# Project shared by all ThunderID samples. A Control Plane requires flows, applications and agents to
+# belong to a project; a Data Plane skips this document. Keep the id and handle identical in every sample.
+resource_type: project
+id: 019e5a00-0000-7000-8000-000000000001
+handle: samples
+displayName: Samples
+description: Project for the ThunderID sample applications
+
+---
 resource_type: user_type
 id: 019e3a5c-04ea-7d18-8ae6-f828b1f3d60f
 category: user
@@ -51,6 +60,7 @@ schema: {
 
 ---
 resource_type: flow
+projectId: 019e5a00-0000-7000-8000-000000000001
 id: 019e3a5c-0533-7b06-aa66-ec42ad05784f
 ouHandle: default
 name: React SDK Sample Sign Out Flow
@@ -94,6 +104,7 @@ nodes:
 
 ---
 resource_type: application
+projectId: 019e5a00-0000-7000-8000-000000000001
 id: 019e3a5c-0532-7b06-aa66-ec42ad05784e
 ouHandle: default
 name: React SDK Sample

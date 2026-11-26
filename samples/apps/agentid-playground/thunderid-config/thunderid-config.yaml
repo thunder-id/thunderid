@@ -21,7 +21,15 @@
 # Two protected APIs. `agent:access` decides who may use the Concierge at all, and the booking
 # scopes decide what may be done with it. Registering them is what makes scopes real: a token can
 # only carry a scope that some resource server defines and that the principal has been granted.
+# Project shared by all ThunderID samples. A Control Plane requires flows, applications and agents to
+# belong to a project; a Data Plane skips this document. Keep the id and handle identical in every sample.
+resource_type: project
+id: 019e5a00-0000-7000-8000-000000000001
+handle: samples
+displayName: Samples
+description: Project for the ThunderID sample applications
 
+---
 resource_type: resource_server
 id: agent-identity-agent-rs
 name: Agent Access
@@ -72,6 +80,7 @@ resources:
 # rejected before the consent screen, which is the "Protect the Agent" behaviour from the docs.
 
 resource_type: flow
+projectId: 019e5a00-0000-7000-8000-000000000001
 id: 0193b0a1-2001-7000-8000-000000000001
 ouHandle: default
 name: Agent Identity Playground Authentication Flow
@@ -240,6 +249,7 @@ credentials:
 # the user holds agent:access, and then asks John to allow or deny.
 
 resource_type: agent
+projectId: 019e5a00-0000-7000-8000-000000000001
 id: agent-identity-concierge
 description: The in-app travel assistant that books trips for customers
 ouHandle: default
@@ -302,6 +312,7 @@ inboundAuthConfig:
 # a token delegated to it can never carry booking:create no matter what the Concierge asks for.
 
 resource_type: agent
+projectId: 019e5a00-0000-7000-8000-000000000001
 id: agent-identity-flight-search
 description: Worker agent that runs the delegated flight-search sub-task
 ouHandle: default

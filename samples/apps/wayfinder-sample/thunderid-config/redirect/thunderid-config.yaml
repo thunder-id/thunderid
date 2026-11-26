@@ -1,3 +1,12 @@
+# Project for the Wayfinder sample. A Control Plane requires flows, applications and agents to belong to a
+# project; a Data Plane skips this document. Keep the id and handle identical in both Wayfinder variants.
+resource_type: project
+id: 019e5a00-0000-7000-8000-000000000002
+handle: wayfinder
+displayName: Wayfinder
+description: Project for the Wayfinder sample application
+
+---
 resource_type: user_type
 id: wayfinder-customer-type
 category: user
@@ -155,6 +164,7 @@ authentication:
 
 ---
 resource_type: flow
+projectId: 019e5a00-0000-7000-8000-000000000002
 id: 0193b0a1-1001-7000-8000-000000000001
 ouHandle: default
 name: Wayfinder Registration Flow
@@ -313,6 +323,7 @@ nodes:
 
 ---
 resource_type: flow
+projectId: 019e5a00-0000-7000-8000-000000000002
 id: 0193b0a1-1001-7000-8000-000000000002
 ouHandle: default
 name: Wayfinder Password Recovery Flow
@@ -503,6 +514,7 @@ nodes:
 
 ---
 resource_type: flow
+projectId: 019e5a00-0000-7000-8000-000000000002
 id: 0193b0a1-1001-7000-8000-000000000003
 ouHandle: default
 name: Wayfinder Sign Out Flow
@@ -552,6 +564,7 @@ nodes:
 
 ---
 resource_type: flow
+projectId: 019e5a00-0000-7000-8000-000000000002
 id: 0193b0a1-1001-7000-8000-000000000005
 ouHandle: default
 name: Wayfinder Staff Onboarding Flow
@@ -905,6 +918,7 @@ nodes:
 
 ---
 resource_type: flow
+projectId: 019e5a00-0000-7000-8000-000000000002
 id: 0193b0a1-1001-7000-8000-000000000010
 ouHandle: default
 name: Wayfinder App Authentication Flow
@@ -1020,6 +1034,7 @@ nodes:
 
 ---
 resource_type: application
+projectId: 019e5a00-0000-7000-8000-000000000002
 id: wayfinder-app
 name: Wayfinder
 description: Wayfinder Travel sample application
@@ -1087,6 +1102,7 @@ inboundAuthConfig:
 
 ---
 resource_type: flow
+projectId: 019e5a00-0000-7000-8000-000000000002
 id: 0193b0a1-1001-7000-8000-000000000006
 ouHandle: default
 name: Default Wayfinder CIBA Email Notification Flow
@@ -1290,6 +1306,7 @@ nodes:
 
 ---
 resource_type: flow
+projectId: 019e5a00-0000-7000-8000-000000000002
 id: 0193b0a1-1001-7000-8000-000000000007
 ouHandle: default
 name: Default Wayfinder CIBA SMS Notification Flow
@@ -1493,6 +1510,7 @@ nodes:
 
 ---
 resource_type: flow
+projectId: 019e5a00-0000-7000-8000-000000000002
 id: 0193b0a1-1001-7000-8000-000000000004
 ouHandle: default
 name: Wayfinder Agent Authentication Flow
@@ -1630,6 +1648,7 @@ nodes:
 
 ---
 resource_type: agent
+projectId: 019e5a00-0000-7000-8000-000000000002
 id: wayfinder-concierge
 owner:
   id: "{{.AGENT_OWNER_ID}}"
@@ -1670,6 +1689,7 @@ inboundAuthConfig:
 # auth_flow_handle is shared between authorization_code and CIBA — they need
 # different flows (interactive vs backchannel notification).
 resource_type: agent
+projectId: 019e5a00-0000-7000-8000-000000000002
 id: wayfinder-upgrade-agent
 owner:
   id: "{{.AGENT_OWNER_ID}}"
@@ -1704,6 +1724,7 @@ inboundAuthConfig:
 
 ---
 resource_type: application
+projectId: 019e5a00-0000-7000-8000-000000000002
 # Public OAuth client used by external MCP clients (e.g. MCP Inspector)
 # to call the Wayfinder MCP server on /mcp.
 # Used by the MCP Authorization tryout to demonstrate ThunderID-secured MCP
@@ -1899,8 +1920,8 @@ resource_type: credential_configuration
 # disclosable (SD-JWT); the lounge requests only a subset at verification time.
 id: wayfinder-skypass
 handle: wayfinder-skypass
-# A Control Plane requires a project; this is its Default project.
-projectId: 01900000-0000-7000-8000-000000000002
+# A Control Plane requires a project; this is the Wayfinder project.
+projectId: 019e5a00-0000-7000-8000-000000000002
 ouHandle: default
 vct: urn:wayfinder:skypass:1
 name: Wayfinder Sky Pass
@@ -1927,8 +1948,8 @@ resource_type: presentation_definition
 # the wallet discloses nothing else from the pass.
 id: wayfinder-skypass
 handle: wayfinder-skypass
-# A Control Plane requires a project; this is its Default project.
-projectId: 01900000-0000-7000-8000-000000000002
+# A Control Plane requires a project; this is the Wayfinder project.
+projectId: 019e5a00-0000-7000-8000-000000000002
 ouHandle: default
 name: Skyline Lounge Access
 vct: urn:wayfinder:skypass:1
@@ -1939,6 +1960,7 @@ optionalClaims:
 
 ---
 resource_type: application
+projectId: 019e5a00-0000-7000-8000-000000000002
 # The Heidi / Funke wallet's OAuth client for the OID4VCI issuance flow (its fixed
 # vendor client_id + redirect). Lets the Heidi wallet receive the Sky Pass.
 id: heidi-wallet-app
@@ -1970,6 +1992,7 @@ inboundAuthConfig:
 
 ---
 resource_type: application
+projectId: 019e5a00-0000-7000-8000-000000000002
 # The Lissi wallet's OAuth client for the OID4VCI issuance flow (its fixed vendor
 # client_id + redirect). Lets the Lissi wallet receive the Sky Pass.
 id: lissi-wallet-app
