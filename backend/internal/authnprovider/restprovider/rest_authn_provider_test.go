@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -39,19 +40,19 @@ func (suite *RestAuthnProviderTestSuite) setupMockClient() *httpmock.HTTPClientI
 	return client
 }
 
-// initRuntime installs a minimal server runtime so the REST registrar can build
-// an HTTP client (its TLS config reads GetServerRuntime).
-func (suite *RestAuthnProviderTestSuite) initRuntime() {
-	config.ResetServerRuntime()
-	suite.Require().NoError(config.InitializeServerRuntime("/tmp/test", &config.Config{}))
-	suite.T().Cleanup(config.ResetServerRuntime)
+// unguardedClients returns a factory that expects to build one unguarded client with timeout: the
+// provider's base URL is set by the deployment configuration.
+func (suite *RestAuthnProviderTestSuite) unguardedClients(
+	timeout time.Duration) *httpmock.OutboundClientFactoryInterfaceMock {
+	clients := httpmock.NewOutboundClientFactoryInterfaceMock(suite.T())
+	clients.EXPECT().NewUnguardedHTTPClient(timeout).Return(httpmock.NewHTTPClientInterfaceMock(suite.T()))
+	return clients
 }
 
 func (suite *RestAuthnProviderTestSuite) TestNewRestAuthnProvider_DefaultCorrelationHeader() {
-	suite.initRuntime()
 	p, err := Initialize(config.RestConfig{
 		BaseURL: "https://authn.example.com",
-	})
+	}, suite.unguardedClients(10*time.Second))
 	suite.Require().NoError(err)
 
 	provider := p.(*restAuthnProvider)
@@ -59,11 +60,11 @@ func (suite *RestAuthnProviderTestSuite) TestNewRestAuthnProvider_DefaultCorrela
 }
 
 func (suite *RestAuthnProviderTestSuite) TestNewRestAuthnProvider_ConfiguredCorrelationHeader() {
-	suite.initRuntime()
 	p, err := Initialize(config.RestConfig{
 		BaseURL:             "https://authn.example.com",
 		CorrelationIDHeader: "X-Trace-Token",
-	})
+		Timeout:             3,
+	}, suite.unguardedClients(3*time.Second))
 	suite.Require().NoError(err)
 
 	provider := p.(*restAuthnProvider)
@@ -71,8 +72,7 @@ func (suite *RestAuthnProviderTestSuite) TestNewRestAuthnProvider_ConfiguredCorr
 }
 
 func (suite *RestAuthnProviderTestSuite) TestNewRestAuthnProvider_MissingBaseURL() {
-	suite.initRuntime()
-	p, err := Initialize(config.RestConfig{})
+	p, err := Initialize(config.RestConfig{}, httpmock.NewOutboundClientFactoryInterfaceMock(suite.T()))
 	suite.Require().Error(err)
 	suite.Nil(p)
 }

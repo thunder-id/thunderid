@@ -19,6 +19,9 @@ import (
 const (
 	// DefaultOUID is the organization unit the pack bootstraps on every plane.
 	DefaultOUID = "01900000-0000-7000-8000-000000000001"
+	// DefaultProjectID is the project the pack bootstraps on the Control Plane, which every application
+	// authored there has to belong to.
+	DefaultProjectID = "01900000-0000-7000-8000-000000000002"
 	// DefaultAuthFlowID is the login flow every default application of the pack signs in with.
 	DefaultAuthFlowID = "01900000-0000-7000-8000-000000000068"
 )
@@ -77,6 +80,7 @@ func (s *Suite) CreateClientCredentialsApp(clientID, clientSecret string) string
 		"name":                      clientID,
 		"description":               "Created on the control plane by the pack suite",
 		"ouId":                      DefaultOUID,
+		"projectId":                 DefaultProjectID,
 		"type":                      "m2m",
 		"isRegistrationFlowEnabled": false,
 		"inboundAuthConfig": []map[string]any{{

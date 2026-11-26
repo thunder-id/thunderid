@@ -106,6 +106,8 @@ const (
 	ResourceTypeServerConfig ResourceType = "serverconfig"
 	// ResourceTypeConfigurationVersion identifies a configuration version resource.
 	ResourceTypeConfigurationVersion ResourceType = "configversion"
+	// ResourceTypeSession identifies an SSO session resource.
+	ResourceTypeSession ResourceType = "session"
 )
 
 // ---- Permission catalog ----
@@ -477,6 +479,7 @@ type SystemPermissions struct {
 	AppCreate                  string
 	AppUpdate                  string
 	AppDelete                  string
+	SessionView                string
 	// Catalog holds every permission the plane declares besides Root, in declaration order: each
 	// resource followed by its actions.
 	Catalog []string
@@ -1002,6 +1005,8 @@ func activatePermissions(p *SystemPermissions) {
 		apiPermissionEntries = append(apiPermissionEntries,
 			apiPermissionEntry{"GET /projects", p.ProjectView},
 			apiPermissionEntry{"POST /projects", p.ProjectCreate},
+			// The deletion check answers as the delete would, so it needs what the delete needs.
+			apiPermissionEntry{"GET /projects/*/deletion-check", p.ProjectDelete},
 			apiPermissionEntry{"GET /projects/**", p.ProjectView},
 			apiPermissionEntry{"PUT /projects/**", p.ProjectUpdate},
 			apiPermissionEntry{"DELETE /projects/**", p.ProjectDelete},
@@ -1012,6 +1017,14 @@ func activatePermissions(p *SystemPermissions) {
 			"create_project":    p.ProjectCreate,
 			"update_project":    p.ProjectUpdate,
 		})
+	}
+
+	// Only the Data Plane serves sessions. A plane that declares no session permission leaves the session
+	// APIs out, so they require the root permission.
+	if p.SessionView != "" {
+		apiPermissionEntries = append(apiPermissionEntries,
+			apiPermissionEntry{"GET /sessions", p.SessionView},
+		)
 	}
 
 	compiled, err := compileAPIPermissions(apiPermissionEntries)

@@ -106,6 +106,9 @@ const (
 	ExecutorModeShare    = executormeta.ExecutorModeShare
 	ExecutorModePrepare  = executormeta.ExecutorModePrepare
 	ExecutorModeRecord   = executormeta.ExecutorModeRecord
+
+	ExecutorModeSet        = executormeta.ExecutorModeSet
+	ExecutorModeInvalidate = executormeta.ExecutorModeInvalidate
 )
 
 // defaultProvisioningCategory is the entity default category a provisioning node works on when no
@@ -130,6 +133,7 @@ const (
 	userInputState = "state"
 
 	userInputVerificationAttribute = "attribute"
+	userInputCredential            = "credential"
 
 	userInputOuName            = "ouName"
 	userInputOuHandle          = "ouHandle"
@@ -223,8 +227,6 @@ const (
 
 // Executor property keys
 const (
-	propertyKeySeedGroupsFromMapping = "seedGroupsFromMapping"
-	propertyKeySeedRolesFromMapping  = "seedRolesFromMapping"
 	// propertyKeyDelegated sets whether a provisioned agent acts on behalf of a signed-in user when the
 	// flow does not collect the choice itself. A value the flow collects takes precedence. It applies
 	// to the agent category only.
@@ -261,6 +263,9 @@ const (
 	// the Deny button or by letting the prompt time out. This applies even when every prompted
 	// element is optional.
 	propertyKeyConsentFailOnDeny = "failOnDeny"
+	// propertyKeyConsentPromptValidityPeriod, when set to boolean true on a consent node, lets the user choose
+	// how long their consent lasts, up to the validity period set on the application or agent.
+	propertyKeyConsentPromptValidityPeriod = "promptValidityPeriod"
 	// propertyKeyGenerateOUHandle, when set to boolean true on an OU creation node, makes the executor
 	// generate the organization unit handle from the name when the handle is not provided.
 	propertyKeyGenerateOUHandle = "generateOuHandle"

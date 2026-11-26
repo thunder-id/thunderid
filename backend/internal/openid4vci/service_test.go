@@ -606,6 +606,20 @@ func (s *CredentialTestSuite) TestIssueCredentialErrors() {
 		s.ErrorIs(err, ErrInvalidToken)
 	})
 
+	// A token issued for an external identity provider's subject names no user of this deployment, so
+	// no credential is issued for it and no user is looked up.
+	s.Run("ExternalSubject", func() {
+		tokenVal := tokenservicemock.NewTokenValidatorInterfaceMock(s.T())
+		tokenVal.EXPECT().ValidateAccessToken(ctx, "tok").Return(&tokenservice.AccessTokenClaims{
+			Sub: testSubject, ClientID: testWalletClientID, Scopes: []string{"eudi-pid"},
+			Claims: map[string]interface{}{"idp": "https://partner.example.com"},
+		}, nil)
+		apps := actorprovidermock.NewActorProviderMock(s.T())
+		svc := &openid4vciService{cfg: serviceConfig{BatchSize: 5}, tokenValidator: tokenVal, actors: apps}
+		_, err := svc.IssueCredential(ctx, "tok", []byte("{}"))
+		s.ErrorIs(err, ErrInvalidToken)
+	})
+
 	// Fail closed when the token carries no client to resolve a wallet application from.
 	s.Run("EmptyClientID", func() {
 		token, tokenVal := stubAccessToken(s.T(), ctx, "")

@@ -6,7 +6,11 @@ export {default as CopyableField} from './CopyableField/CopyableField';
 export type {CopyableFieldProps} from './CopyableField/CopyableField';
 export {default as CredentialFieldInput} from './CredentialFieldInput/CredentialFieldInput';
 export {default as CredentialResetDialog} from './CredentialReset/CredentialResetDialog';
-export type {CredentialResetDialogProps, CredentialResetField} from './CredentialReset/CredentialResetDialog';
+export type {
+  CredentialResetDialogProps,
+  CredentialResetField,
+  CredentialResetLinkOption,
+} from './CredentialReset/CredentialResetDialog';
 export {default as CredentialResetSection} from './CredentialReset/CredentialResetSection';
 export type {CredentialResetSectionProps} from './CredentialReset/CredentialResetSection';
 export {default as CspOriginHint} from './CspOriginHint/CspOriginHint';
@@ -17,6 +21,10 @@ export {default as DiscardChangesDialog} from './DiscardChangesDialog/DiscardCha
 export type {DiscardChangesDialogProps} from './DiscardChangesDialog/DiscardChangesDialog';
 export {default as DocumentTitle} from './DocumentTitle/DocumentTitle';
 export type {DocumentTitleProps} from './DocumentTitle/DocumentTitle';
+export {default as DurationField} from './DurationField/DurationField';
+export type {DurationFieldProps} from './DurationField/DurationField';
+export {DurationUnitSeconds, toDurationParts, toSeconds} from './DurationField/duration';
+export type {DurationParts, DurationUnit} from './DurationField/duration';
 export {default as ExternalLinkConfirmDialog} from './ExternalLinkConfirm/ExternalLinkConfirmDialog';
 export type {ExternalLinkConfirmDialogProps} from './ExternalLinkConfirm/ExternalLinkConfirmDialog';
 export {default as useExternalLinkConfirmation} from './ExternalLinkConfirm/useExternalLinkConfirmation';
@@ -53,6 +61,10 @@ export {default as CapabilityGuard} from './CapabilityGuard/CapabilityGuard';
 export type {CapabilityGuardProps} from './CapabilityGuard/CapabilityGuard';
 export {default as ForbiddenNotice} from './CapabilityGuard/ForbiddenNotice';
 export {default as CapabilitiesErrorNotice} from './CapabilityGuard/CapabilitiesErrorNotice';
+export {default as EditOrViewAction} from './EditOrViewAction/EditOrViewAction';
+export type {EditOrViewActionProps} from './EditOrViewAction/EditOrViewAction';
+export {default as ReadOnlyFieldset} from './ReadOnlyFieldset/ReadOnlyFieldset';
+export type {ReadOnlyFieldsetProps} from './ReadOnlyFieldset/ReadOnlyFieldset';
 export {default as ServerCapabilitiesProvider} from './CapabilityGuard/ServerCapabilitiesProvider';
 export {default as PageLoader} from './PageLoader/PageLoader';
 export {default as ResourceDeployStatus} from './ResourceDeployStatus/ResourceDeployStatus';

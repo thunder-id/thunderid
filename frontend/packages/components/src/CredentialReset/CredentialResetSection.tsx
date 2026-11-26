@@ -7,6 +7,7 @@ import {useTranslation} from 'react-i18next';
 import CredentialResetDialog, {
   type CredentialResetField,
   type CredentialResetDialogProps,
+  type CredentialResetLinkOption,
 } from './CredentialResetDialog';
 import SettingsCard from '../lab/components/SettingsCard';
 
@@ -14,6 +15,8 @@ export interface CredentialResetSectionProps extends Pick<CredentialResetDialogP
   /** The credentials the schema declares. None shows nothing. */
   fields: CredentialResetField[];
   disabled?: boolean;
+  /** The reset link the dialog offers for a credential, or undefined to only set the value there. */
+  getResetLink?: (field: CredentialResetField) => CredentialResetLinkOption | undefined;
 }
 
 /**
@@ -25,6 +28,7 @@ export default function CredentialResetSection({
   onReset,
   getErrorMessage,
   disabled = false,
+  getResetLink = undefined,
 }: CredentialResetSectionProps): JSX.Element | null {
   const {t} = useTranslation('common');
   const [activeField, setActiveField] = useState<CredentialResetField | null>(null);
@@ -61,6 +65,7 @@ export default function CredentialResetSection({
         field={activeField}
         onReset={onReset}
         getErrorMessage={getErrorMessage}
+        resetLink={activeField ? getResetLink?.(activeField) : undefined}
         onClose={() => setActiveField(null)}
       />
     </>

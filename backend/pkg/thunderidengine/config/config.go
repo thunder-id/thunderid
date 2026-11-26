@@ -229,6 +229,9 @@ type ServerConfig struct {
 	EnableOUQualifiedEndpoints bool                 `yaml:"enable_ou_qualified_endpoints" json:"enable_ou_qualified_endpoints"` //nolint:lll // one tag pair
 	TrustedProxies             []TrustedProxyConfig `yaml:"trusted_proxies" json:"trusted_proxies"`
 	Timeouts                   ServerTimeouts       `yaml:"timeouts"   json:"timeouts"`
+	// AllowPrivateAddresses lets calls to administrator-configured destinations reach loopback,
+	// link-local, private and other non-public addresses. Off by default.
+	AllowPrivateAddresses bool `yaml:"allow_private_addresses" json:"allow_private_addresses"`
 }
 
 // TrustedProxyConfig is a reverse proxy, or a range of them, and the header it reports the client IP in.
@@ -450,7 +453,6 @@ type OAuthConfig struct {
 	DeviceGrant          DeviceGrantConfig          `yaml:"device_grant"                json:"device_grant"`
 	ClientAssertion      ClientAssertionConfig      `yaml:"client_assertion"            json:"client_assertion"`
 	Revocation           RevocationConfig           `yaml:"revocation"                  json:"revocation"`
-	TokenExchange        TokenExchangeConfig        `yaml:"token_exchange"              json:"token_exchange"`
 	// AllowWildcardRedirectURI enables wildcard pattern matching for redirect URIs.
 	// When false (default), only exact redirect URI matching is performed.
 	AllowWildcardRedirectURI bool `yaml:"allow_wildcard_redirect_uri" json:"allow_wildcard_redirect_uri"`
@@ -551,22 +553,12 @@ type BackchannelLogoutConfig struct {
 	MaxInFlight int `yaml:"max_in_flight" json:"max_in_flight"`
 	// QueueSize caps pending termination events; beyond it events are dropped and recorded.
 	QueueSize int `yaml:"queue_size" json:"queue_size"`
-	// RejectPrivateAddresses rejects back-channel logout URIs whose host is localhost or an IP literal
-	// in a loopback, link-local, private or unspecified range. Hostnames are checked as written. It
-	// uses a pointer so an explicit false in deployment.yaml overrides the default of true.
-	RejectPrivateAddresses *bool `yaml:"reject_private_addresses" json:"reject_private_addresses"`
 }
 
 // IsEnabled reports whether back-channel logout delivery is active, defaulting to false when
 // unset (an explicit default lives in default.json).
 func (c BackchannelLogoutConfig) IsEnabled() bool {
 	return c.Enabled != nil && *c.Enabled
-}
-
-// RejectsPrivateAddresses reports whether private back-channel logout URIs are rejected. It defaults
-// to true when unset, so a configuration that never loaded default.json still fails safe.
-func (c BackchannelLogoutConfig) RejectsPrivateAddresses() bool {
-	return c.RejectPrivateAddresses == nil || *c.RejectPrivateAddresses
 }
 
 // IsEnabled reports whether the OAuth logout endpoint is active,
@@ -619,14 +611,6 @@ func (c TokenFamilyRevocationConfig) OnExplicitRevokeEnabled() bool {
 // defaulting to false when unset (an explicit default lives in default.json).
 func (c TokenFamilyRevocationConfig) OnCodeReplayEnabled() bool {
 	return c.OnCodeReplay != nil && *c.OnCodeReplay
-}
-
-// TokenExchangeConfig holds RFC 8693 token-exchange settings.
-type TokenExchangeConfig struct {
-	// TokenFamily selects how an exchanged token relates to the subject token's token family:
-	// "none" (default) issues an independent token with no tfid; "inherit" copies the subject
-	// token's tfid so the exchanged token is revoked with that token family.
-	TokenFamily string `yaml:"token_family" json:"token_family"`
 }
 
 // FlowConfig holds the configuration details for the flow service.

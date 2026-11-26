@@ -1,7 +1,7 @@
 # Authorization support for federated entities
 
 - **Status:** Final
-- **Version:** 1.2
+- **Version:** 2.0
 - **Related documents:** [Discussion #5197: Authorization support for federated entities](https://github.com/thunder-id/thunderid/discussions/5197), Issue #5192
 
 ## Summary
@@ -76,13 +76,19 @@ A list-valued claim is detected structurally from the JSON the identity provider
 
 ### Combining rule-based and direct mapping
 
-A connection may configure rule-based mapping, direct mapping, both, or neither, independently. Every matching rule's targets and every direct mapping's resolved targets union into one set, then split by kind: role and group references fold into the subject the authorization engine evaluates, while permission references combine directly with the engine's decision rather than going through it, since a permission target is already the answer. The connection's mapping counts as configured, and is therefore the sole authority for scopes in preference to the token's own asserted scope claim, once either mode has at least one entry.
+A connection may configure rule-based mapping, direct mapping, both, or neither, independently. Every matching rule's targets and every direct mapping's resolved targets union into one set, then split by kind: role and group references fold into the subject the authorization engine evaluates, while permission references combine directly with the engine's decision rather than going through it, since a permission target is already the answer. For token exchange of an external token and for the jwt-bearer grant, the connection's mapping is the only authority for permission scopes: the presented token's own `scope` claim never grants one, and a connection with neither mode configured grants none, so the token carries only OIDC scopes.
 
 Rule-based and direct resolution are combined independently at token issuance (token exchange and ID-JAG) and at federated login, rather than through one shared step, because the two entry points' failure handling genuinely differs: token issuance must produce a definitive answer, so a resolution failure there is fatal to the request; federated login is best-effort, so the same kind of failure there is not.
 
-### Provisioning-time assignment
+### Provisioning-time assignment and sync
 
-A provisioning step may opt in, per target kind, to seeding role/group assignment from whatever the mapping already resolved for the entity's claims, merged with any fixed role/group lists already configured on the step. This is a one-time assignment made when the entity is created; it becomes an ordinary assignment the administrator then owns, with no provenance tracking and no reconciliation. An entity that has already been provisioned is not re-evaluated on a later federated login, so a subsequent administrative change to its assignments stands.
+The authentication provider manager owns mapping and sync. Each connection sets a groups and roles sync mode: `no_sync` (the default), `override_all`, or `session_only`.
+
+- **Creation.** When a federated sign-in creates the entity, the provider syncs the sign-in to the new account and adds the groups and roles the mapping resolved, alongside the fixed lists the provisioning step assigns itself. The sync at creation only adds, so it never removes what the provisioning step assigned in the same flow. Groups and roles that no longer exist, or lie outside the entity's organization units, are skipped.
+- **Later sign-ins.** Under `no_sync` the assignments are not re-evaluated, so a later administrative change stands. Under `override_all` the entity's direct groups and roles are set to what the mapping resolves, removals included, for each target kind the mapping has. Memberships the sync can't remove (a control plane's, a declarative group's, a mandated role assignment) are kept, as are groups and roles a direct mapping name matched more than once. An `override_all` mapping with a group or role target that can't be fully resolved fails the sign-in before anything is written.
+- **Session only.** Under `session_only`, or when the group or role store is declarative-only and so holds no writable memberships, the mapped groups and roles are granted for the session and tokens only, and nothing is stored.
+
+Mapped permissions are always granted for the session only. The provider resolves the one account holding the federated link at sign-in. In an authentication flow it syncs that account right away. In a registration or onboarding flow it defers the sync to the provisioning step's existing-user rules, so a registration that rejects existing users never syncs one. When a later step picks the account (the account picker, account linking once the link is written, and provisioning), the sync is deferred to that step, through the pending identity the provider returned with the sign-in.
 
 ### Federated login flow
 
@@ -91,7 +97,7 @@ flowchart LR
     START([START]) --> Fed["Federated<br/>authentication"] --> Prov["Provisioning"] --> Authz["Authorization"] --> Consent["Consent"] --> Assert["Auth assertion"] --> END([END])
 ```
 
-Mapping is resolved during federated authentication, which already holds the connection service and the claims, and carried forward as runtime data. Provisioning must precede authorization so that any assignments it creates are visible to the RBAC engine. Consent follows authorization because it narrows the authorized set, and the assertion intersects the consented set against it. Interactive login still requires a local record for the assertion, consent, and released-attribute steps, though no longer for authorization itself.
+Mapping is resolved by the authentication provider when it syncs the account holding the federated link, and what the sign-in keeps to the session is carried forward as runtime data. Provisioning must precede authorization so that any assignments it creates are visible to the RBAC engine. Consent follows authorization because it narrows the authorized set, and the assertion intersects the consented set against it. Interactive login still requires a local record for the assertion, consent, and released-attribute steps, though no longer for authorization itself.
 
 Claims come from the connection's ID token where it has one, supplemented by a UserInfo endpoint call (authenticated with the access token) when the connection has one configured, merged in only for claims the ID token doesn't already carry. A connection with neither an ID token nor a UserInfo endpoint contributes no attributes beyond the subject, so a claim an admin maps against must actually be reachable through one of these two sources.
 
@@ -115,7 +121,9 @@ sequenceDiagram
 
 Resolving the issuer to a connection and applying its mapping already happens as part of validating the incoming token, so this adds no additional lookup beyond the shared evaluate-and-combine step. This path needs no local record; it is where authorization for externally managed entities without a ThunderID record works end to end. For ID-JAG, the assertion is minted at issuance with the client's requested scopes, unfiltered by mapping at that point; mapping is what determines the granted access at consumption, when the assertion is presented on the jwt-bearer grant and its own claims are resolved fresh against the connection's mapping.
 
-Neither token exchange nor the jwt-bearer grant issues a refresh token, so mapping is never re-consulted this way. A refresh token issued from the federated login path carries only its granted scopes forward, not the mapping decision that produced them: on renewal, those scopes are re-checked against the subject's own current group memberships, not against the connection's mapping. A scope granted only through mapping (with no matching direct role or group assignment) is therefore dropped on the next refresh, the same as a scope backed by a real assignment that has since been revoked.
+A token issued for an external subject, through token exchange of an external token or through the jwt-bearer grant, carries an `idp` claim naming the connection's issuer, and token introspection returns it. Its `sub` is the provider's identifier and is never resolved to a local entity, even when it equals one's ID. ThunderID's own APIs, the management APIs, the MCP server, the UserInfo endpoint, and credential issuance, do not accept such a token; a trusted issuer is how an external identity calls them. Exchanging the token again keeps `idp`. Presented as the `actor_token` of an exchange, the token makes the provider the actor's issuer: the new token's `act.iss` names the provider rather than ThunderID, and when the subject token's delegation chain is carried over, its head is dropped as a repeat of the current actor only when both its `sub` and its issuer match, so the provider's subject and a local entity with the same identifier stay distinct actors.
+
+Neither token exchange nor the jwt-bearer grant issues a refresh token, so mapping is never re-consulted this way. A refresh token issued from the federated login path carries its granted scopes forward, and the federated login caches what the mapping granted for the session without storing it on the account: the mapped groups and roles when the connection's groups and roles sync is session only (or the store is declarative-only), and the mapped permissions. On renewal, the scopes are re-checked against the subject's current group memberships plus those cached groups, with their ancestors resolved again at renewal, and roles, and the cached mapped permissions are combined in. The connection's mapping itself isn't re-consulted, so a change at the provider takes effect at the next federated login, or when the refresh token expires. When the grant was issued for an organization unit, the session-only roles are limited at login to those assignable in that unit, the same roles a stored mapping would assign.
 
 Exchanging an external identity token for a ThunderID access token, against a connection configured with `tokenExchangeEnabled: true` and a matching `trustedTokenAudience`:
 
@@ -129,7 +137,7 @@ curl -X POST https://<thunderid-host>/oauth2/token \
   --data-urlencode "resource=https://api.example.com"
 ```
 
-The response's `scope` reflects only what the connection's mapping and the subject's own claims permit, narrowed further by whatever subset was requested:
+The response's `scope` reflects only what the connection's mapping permits, narrowed further by whatever subset was requested:
 
 ```json
 {
@@ -278,6 +286,7 @@ An Advanced Rules toggle switches the row to explicit value-to-target rules inst
 - **AC3.1:** Given the presented token carries its own scopes, when those scopes are not covered by the connection's mapping, then they are not granted.
 - **AC3.2:** Given a client presents its own identity alongside the entity's, when a token is issued, then the granted scopes do not exceed the client's own authorization.
 - **AC3.3:** Given an identity assertion is exchanged for a token, then the granted scopes reflect the mapping evaluated from the assertion's own claims at that point, not from whatever was resolved when the assertion was issued.
+- **AC3.4:** Given a connection has no mapping, when its external token or identity assertion is exchanged for a token, then no permission scope is granted, whatever the presented token's own scopes.
 
 ### R4. Assigning roles and groups at provisioning
 
@@ -285,8 +294,11 @@ An Advanced Rules toggle switches the row to explicit value-to-target rules inst
 
 **Acceptance criteria:**
 
-- **AC4.1:** Given a provisioning step opts in to seeding from the resolved mapping, when an entity is provisioned, then the roles and groups the mapping resolved are assigned to it, alongside any fixed lists configured on the step.
-- **AC4.2:** Given an entity has already been provisioned, when it federates in again, then the assignments are not re-evaluated, so any later administrative change stands.
+- **AC4.1:** Given a connection whose groups and roles sync is not session only, when a federated sign-in provisions an entity, then the mapped groups are assigned to it unless the group store is declarative-only, and the mapped roles unless the role store is, alongside any fixed lists configured on the step, and none of those fixed assignments is removed.
+- **AC4.2:** Given a connection whose groups and roles sync is `no_sync`, when an entity that has already been provisioned federates in again, then the assignments are not re-evaluated, so any later administrative change stands.
+- **AC4.3:** Given a connection whose groups and roles sync is `override_all`, when an entity federates in again, then its direct groups and roles match what the mapping resolves for each target kind the mapping has, except memberships the sync can't remove and existing memberships a direct mapping matched ambiguously.
+- **AC4.4:** Given a connection whose groups and roles sync is `session_only`, when an entity federates in, then the mapped groups and roles appear in its tokens and authorization decisions without being stored. Given a declarative-only group store, the same holds for the mapped groups in every mode, and given a declarative-only role store, for the mapped roles.
+- **AC4.5:** Given a registration flow that rejects existing users, when the federated identity is already linked to a user, then that user is not synced.
 
 ### R5. Federated entities without a local record
 
@@ -295,6 +307,7 @@ An Advanced Rules toggle switches the row to explicit value-to-target rules inst
 **Acceptance criteria:**
 
 - **AC5.1:** Given no local record exists for the federated identity, when a client presents it through token exchange, then ThunderID authorizes the request from the connection's mapping.
+- **AC5.2:** Given a federated identity's `sub` equals a local entity's ID, when a token is issued for it, then the token names its provider in `idp`, introspection returns `idp`, and ThunderID never treats the token as that local entity, including after the token is exchanged again, at the UserInfo endpoint, and as the actor of a further exchange, where `act.iss` names the provider.
 
 ### R6. Authorization from an external policy decision point (out of scope)
 
@@ -309,3 +322,5 @@ Not covered by this specification. Tracked separately in [Discussion #5126](http
 | 1.0 | 2026-09-07 | Initial specification, covering rule-based mapping, direct name-based mapping, and their combination across federated login, token exchange, and ID-JAG. |
 | 1.1 | 2026-09-24 | Corrected the refresh token renewal behavior: mapping is never re-consulted on refresh, and neither token exchange nor the jwt-bearer grant issues a refresh token. |
 | 1.2 | 2026-11-07 | Bounded mapped roles, groups, and permissions to the organization unit that owns the connection: rule targets are validated against it at save time only, direct name lookups match only within it, and the console pickers list only it (AC1.6, AC1.7). |
+| 1.3 | 2026-11-21 | Made the mapping the only authority for permission scopes on token exchange of an external token and on the jwt-bearer grant, with no fallback to the presented token's own scopes (AC3.4). Tokens issued for an external subject carry `idp`, returned by introspection and kept on a further exchange, and are never treated as a local entity, at the UserInfo endpoint or as the actor of a further exchange, where `act.iss` names the provider (AC5.2). |
+| 2.0 | 2026-11-25 | The authentication provider manager owns mapping and sync: per-connection groups and roles sync modes replace the provisioning step's seeding properties, the sync at creation only adds, registration defers the sync to the existing-user rules, and session-only grants count at refresh renewal (R4). |

@@ -39,6 +39,10 @@ interface EditCustomizationSettingsProps {
    * @param hasErrors - Boolean indicating if the customization settings have validation errors
    */
   onValidationChange?: (hasErrors: boolean) => void;
+  /**
+   * Whether the application can't be edited here
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -59,11 +63,13 @@ export default function EditCustomizationSettings({
   sectionResetKey = 0,
   entityLabel = 'application',
   onValidationChange = undefined,
+  readOnly = false,
 }: EditCustomizationSettingsProps) {
   return (
     <Stack spacing={3}>
       <AppearanceSection
         application={application}
+        readOnly={readOnly}
         editedApp={editedApp}
         onFieldChange={onFieldChange}
         entityLabel={entityLabel}
@@ -71,6 +77,7 @@ export default function EditCustomizationSettings({
       <UrlsSection
         key={sectionResetKey}
         application={application}
+        readOnly={readOnly}
         editedApp={editedApp}
         onFieldChange={onFieldChange}
         entityLabel={entityLabel}
@@ -78,6 +85,7 @@ export default function EditCustomizationSettings({
       />
       <ContactsSection
         application={application}
+        readOnly={readOnly}
         editedApp={editedApp}
         onFieldChange={onFieldChange}
         entityLabel={entityLabel}

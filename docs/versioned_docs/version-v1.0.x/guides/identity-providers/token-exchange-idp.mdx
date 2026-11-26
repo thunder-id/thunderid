@@ -123,6 +123,7 @@ Attribute configuration for token exchange uses the same `attributeConfiguration
 
 - Only JWT tokens are supported. Opaque tokens (for example, GitHub access tokens) cannot be exchanged.
 - The external user's `sub` is passed through as-is. No local user lookup or just-in-time provisioning occurs.
+- The issued token carries an `idp` claim naming the external issuer. <ProductName />'s own APIs, the management APIs and the MCP server, do not accept it. To call those APIs with an identity from an external provider, use the [trusted issuer](../../trusted-issuer). A token exchanged again keeps the `idp` claim.
 - No scope mapping is applied; external token scopes use the existing intersection logic. External claims can be renamed to local attributes via the IdP's `attributeConfiguration` (see [Attribute Configuration](#attribute-configuration)); the resulting attributes are still filtered by the application's `userAttributes` configuration.
 - Token exchange is available to all applications that have the token exchange grant type. No per-application IdP restriction applies.
 

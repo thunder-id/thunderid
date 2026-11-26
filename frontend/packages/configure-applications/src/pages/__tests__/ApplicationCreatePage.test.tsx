@@ -100,6 +100,7 @@ vi.mock('react-router', async () => {
   return {
     ...actual,
     useNavigate: () => mockNavigate,
+    Navigate: ({to}: {to: string}) => <div data-testid="navigate" data-to={to} />,
   };
 });
 
@@ -823,6 +824,31 @@ describe('ApplicationCreatePage', () => {
   });
 
   describe('Initial Rendering', () => {
+    it('returns to the list outside a project when applications are created in projects only', () => {
+      render(
+        <ApplicationCreateProvider>
+          <ApplicationCreatePage createInProjectsOnly />
+        </ApplicationCreateProvider>,
+      );
+
+      expect(screen.getByTestId('navigate')).toHaveAttribute('data-to', '/applications');
+      expect(screen.queryByTestId('application-configure-name')).not.toBeInTheDocument();
+      expect(mockNavigate).not.toHaveBeenCalledWith('/applications/types');
+    });
+
+    it('opens the wizard inside a project when applications are created in projects only', () => {
+      render(
+        <ProjectScopeProvider project={{id: 'project-1'}}>
+          <ApplicationCreateProvider>
+            <ApplicationCreatePage createInProjectsOnly />
+            <TemplateSeeder />
+          </ApplicationCreateProvider>
+        </ProjectScopeProvider>,
+      );
+
+      expect(screen.queryByTestId('navigate')).not.toBeInTheDocument();
+    });
+
     it('should render the name step by default', () => {
       renderWithProviders();
 
@@ -2414,6 +2440,9 @@ describe('ApplicationCreatePage', () => {
         expect(mockCreateFlow).toHaveBeenCalled();
         expect(mockCreateApplication).toHaveBeenCalled();
       });
+
+      // With no relying party ID entered, none is sent, so the server uses its sign-in page host
+      expect((mockGenerateFlowGraph.mock.calls[0][0] as {relyingPartyId?: string}).relyingPartyId).toBeUndefined();
 
       // The generated flow is owned by the organization unit of the application
       expect(mockCreateFlow).toHaveBeenCalledWith(expect.objectContaining({ouId: 'ou-1'}), expect.anything());

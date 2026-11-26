@@ -15,15 +15,17 @@ export interface CorsValue {
 }
 
 /**
- * A server-config section returned as three layers: `readOnly` (declarative), `writable`
- * (runtime-mutable), and `merged` (effective).
+ * A server-config section returned as its layers: `readOnly` (declarative), `writable`
+ * (runtime-mutable), `default`, and `merged` (effective).
  */
 export interface ServerConfigLayers<T> {
   /** Declarative baseline, not editable at runtime */
   readOnly: T;
   /** Runtime-mutable layer edited through the console */
   writable: T;
-  /** Effective union of the read-only and writable layers */
+  /** The value a field takes when the section leaves it unset, or null when the section has none */
+  default?: T | null;
+  /** Effective union of the read-only and writable layers, laid over the default */
   merged: T;
 }
 

@@ -42,10 +42,10 @@ describe('EditOrganizationAccessSettings', () => {
     );
   });
 
-  it('passes a declared user on as read-only', () => {
-    const user = {id: 'u-1', display: 'Alice', ouId: 'acme', type: 'person', isReadOnly: true} as User;
+  it('passes read-only on', () => {
+    const user = {id: 'u-1', display: 'Alice', ouId: 'acme', type: 'person'} as User;
 
-    render(<EditOrganizationAccessSettings user={user} access={access} />);
+    render(<EditOrganizationAccessSettings user={user} readOnly access={access} />);
 
     expect(vi.mocked(OrganizationAccessSettings).mock.calls.at(-1)?.[0]).toEqual(
       expect.objectContaining({readOnly: true}),

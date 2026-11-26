@@ -59,7 +59,7 @@ When the timeout expires, the prompt is submitted automatically as a denial. No 
 To set a timeout for user input in the consent flow:
 
 1. In the flow builder, select the **User Consent** node.
-2. In the node configuration panel, locate the **Consent Timeout** setting.
+2. In the node configuration panel, locate the **Consent prompt timeout (seconds)** setting.
 3. Enter the desired timeout duration in seconds (e.g., `60` for a 1-minute timeout).
 4. Expand the **Components** section, and drag and drop the **Timer** component into the **Consent View** step.
 5. Save the flow configuration.
@@ -80,9 +80,23 @@ To enable this setting:
 
 ### Configure validity period for granted consent
 
-By default, once a user grants consent, it remains valid indefinitely until the user revokes it. However, you can configure a validity period for granted consent to require users to re-consent after a certain duration.
+By default, consent that a user grants does not expire. Set a validity period on an application or agent to ask users for consent again after that period.
 
-Currently, this configuration is supported via the Application Management API. When creating or updating an application, you can define the validity period under the `loginConsent` section in the JSON payload.
+To set the validity period in the Console:
+
+1. Go to **Applications** and open the application, or go to **Agents** and open the agent.
+2. Open the **Advanced** tab.
+3. In the **OAuth 2 configuration** card, below **Client authentication method**, choose a unit in **Consent validity period**: **Seconds**, **Minutes**, **Hours**, or **Days**.
+4. Enter the number of that unit.
+5. Click **Save**.
+
+Choose **No expiry** in the unit list so consent does not expire. The Console saves the period as a number of seconds. The field appears only when the application or agent has a grant type that signs a user in, such as authorization code.
+
+The period has no effect where <ProductName /> asks for consent every time: on CIBA requests, on requests that send `prompt=consent`, and for a client with `loginConsent.alwaysPrompt` set to `true`. The Console does not show `alwaysPrompt`, so set it through the API. A personal agent created without a value has `alwaysPrompt` on.
+
+A new validity period applies to consent that users give after you save. Consent given earlier keeps the expiry it was saved with, until the user gives consent again.
+
+You can also set the validity period through the Application Management API or the Agent Management API. Define it under the `loginConsent` section of the request payload when you create or update the application or agent.
 
 **Example request:**
 
@@ -103,7 +117,63 @@ curl --location -X POST 'https://localhost:8090/applications' \
 }'
 ```
 
-`validityPeriod` is specified in seconds (e.g., `120` for a 2-minute validity period). After this period expires, the user will be prompted to grant consent again during the next login attempt.
+`validityPeriod` is in seconds, so `120` is two minutes. A value of `0` means consent does not expire. After the period ends, <ProductName /> asks the user for consent again at their next sign-in.
+
+### Let users choose the validity period
+
+By default, the validity period set on the application or agent decides how long consent lasts. To let each user choose, enable the option on the **User Consent** node. The validity period of the application or agent is the limit: no choice is longer than it.
+
+1. In the flow builder, select the **User Consent** node.
+2. Enable **Let the user choose the consent validity period**.
+3. Save the flow configuration.
+
+The consent screen then shows a **Remember my decision** checkbox, ticked at first:
+
+- **Ticked:** the user chooses how long in an **Ask me again** list. A sentence below says when the consent expires, such as **Your consent expires in 1 hour.** The sentence names a length of time and does not give a date. The first choice in the list is selected.
+- **Unticked:** the consent lasts 1 second, so the user is asked again at the next sign-in. The list disappears, and a sentence says so.
+
+The list draws from these periods, and the limit decides which of them appear:
+
+| Choice | Seconds |
+|---|---|
+| **1 minute** | `60` |
+| **5 minutes** | `300` |
+| **30 minutes** | `1800` |
+| **1 hour** | `3600` |
+| **6 hours** | `21600` |
+| **12 hours** | `43200` |
+| **1 day** | `86400` |
+| **2 days** | `172800` |
+| **30 days** | `2592000` |
+| **60 days** | `5184000` |
+| **No expiry** | Consent does not expire |
+
+The list shows the periods that are not longer than the limit, and **No expiry** when the limit is `0` or not set.
+
+- The shortest choice is selected when the screen opens, so a user who leaves the screen unchanged gets the shortest period, not the limit.
+- When the limit is 1 second or less, neither the checkbox nor the list appears.
+
+A user who wants another period enters a whole number and chooses its unit. The field accepts digits only, and <ProductName /> sends the period in seconds:
+
+- In the SDK consent components, the list ends with **Custom**. Choosing it shows a number field and a unit list below the list.
+- In the Gate, the list is also a text field. The user types the number in place of the period shown, and a unit list appears beside it.
+- The unit list offers **seconds**, **minutes**, **hours**, and **days**, without the units that are longer than the limit. A limit of 10000 seconds offers **seconds**, **minutes**, and **hours**.
+- A number that is above the limit becomes the most whole units that fit it. With a limit of 10000 seconds, **minutes** accepts up to `166`.
+- While the field is empty or holds no number from `1`, the shortest period stays in effect.
+
+The checkbox and the list do not appear for an application or agent with `loginConsent.alwaysPrompt` set to `true`, because consent is asked on every authorization and the choice would change nothing.
+
+The checkbox appears only when the user is asked for consent. A user whose earlier consent is still valid is not asked, so they do not see it. A user who is asked again before that consent expires, for example because the application now requests another attribute, sets the expiry of all their consent to that application with the period they choose then.
+
+A client that builds its own consent screen reads `promptConsentValidity` and `maxConsentValidity` from the additional data of the consent step. `promptConsentValidity` is `true` when the user can choose. `maxConsentValidity` is the limit in seconds, or `0` when the application or agent sets no period, a period of zero or less, or the largest possible period, so consent does not expire. The client sends the choice as `validityPeriod`, a number of seconds, in the `consent_decisions` input. When the user chooses not to remember the decision, the client sends `oneTime` set to `true` and no `validityPeriod`. <ProductName /> applies these rules to whatever it receives:
+
+- It rounds a fraction down.
+- It uses the validity period of the application or agent when the value is missing, zero, negative, or not a number.
+- It caps a value above the limit to the limit, and the sign-in does not fail.
+- It records a value of `2147483647` seconds, within the limit, as consent that does not expire.
+- It records a decision with `oneTime` set to `true` for 1 second and marks the consent record as one-time. It ignores any `validityPeriod` sent with it.
+- It treats a `validityPeriod` of `1` without `oneTime` as a period like any other, so a user who types 1 second is not marked as having chosen not to remember.
+- It ignores `validityPeriod` and `oneTime` when the option is off, and when the user denies the consent.
 
 ## Authorization Details Consent
 
@@ -126,13 +196,15 @@ Without **Check Intents**, **User Consent** fails the flow with `FET-1130` when 
 The consent screen shows one card for each detail that needs approval:
 
 - The card heading is the intent's [consent summary](./intents.mdx#consent-summary), filled in with the requested values.
-- Below it, the card lists the detail's fields with their display names. A value the processor supplied, such as an account number, appears as a value the user cannot edit.
+- Below it, the card lists the detail's fields with their display names, and the intent's description of a field below its name. A value the processor supplied, such as an account number, appears as a value the user cannot edit.
 - A field the intent lets the user change appears as an input: a number box, a date picker, or a list whose items the user can remove or add.
 - Each card has its own **Approve** switch. A detail whose switch is off is left out of the grant.
 
 ### Narrow a Detail
 
 The user can change a field only in the direction its [field policy](./intents.mdx#field-policies) allows, such as lowering an amount or removing an account from a list. The consent screen does not accept a wider value. For an amount of 45 that can only go down, entering 50 shows `Enter 45 or less.` and disables the approve action. The token carries the narrowed value.
+
+The changed value must also keep the limits the intent's schema sets for the field. For a quantity with a minimum of 5 and a step of 5, the number box moves 20, 15, 10, 5, and entering 19 shows `Enter a multiple of 5.` A number also keeps its exclusive limits, a date the minimum and maximum of its field policy, and a list the fewest items it must keep (`minItems`) or the most it may hold (`maxItems`).
 
 <ProductName /> checks every change again when it records the decision. A change the intent does not allow fails the flow with `FET-1129`, and the client receives `access_denied` with `The change made to the authorization details is not allowed`.
 

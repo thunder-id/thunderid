@@ -20,6 +20,7 @@ import generateIdsForResources from '../utils/generateIdsForResources';
 import resolveComponentMetadata from '../utils/resolveComponentMetadata';
 import resolveStepMetadata from '../utils/resolveStepMetadata';
 import updateTemplatePlaceholderReferences from '../utils/updateTemplatePlaceholderReferences';
+import {placeWidgetCluster} from '../utils/widgetUtils';
 
 /**
  * Props for the useTemplateAndWidgetLoading hook.
@@ -321,7 +322,12 @@ const useTemplateAndWidgetLoading = (props: UseTemplateAndWidgetLoadingProps): U
         }
       }
 
-      return [wired.nodes, wired.edges, defaultPropertySelector, defaultPropertySelectorStepId];
+      return [
+        placeWidgetCluster(currentNodes, wired.nodes, widgetFlow.steps, replacedPlaceholders),
+        wired.edges,
+        defaultPropertySelector,
+        defaultPropertySelectorStepId,
+      ];
     },
     [resources, edgeStyle],
   );

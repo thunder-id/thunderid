@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 package testutils
@@ -94,6 +94,22 @@ func GetRawHTTPClient() *http.Client {
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		},
 	}
+}
+
+// StatusWithBearer calls GET path on the test server with token as the bearer credential and returns
+// the response status code.
+func StatusWithBearer(path, token string) (int, error) {
+	req, err := http.NewRequest(http.MethodGet, TestServerURL+path, nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := GetRawHTTPClient().Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode, nil
 }
 
 // isPublicEndpoint determines if an endpoint requires authentication

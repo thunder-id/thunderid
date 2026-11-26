@@ -23,6 +23,7 @@ type IntrospectResponse struct {
 	Nbf       int64     `json:"nbf,omitempty"`
 	Sub       string    `json:"sub,omitempty"`
 	SubType   string    `json:"sub_type,omitempty"`
+	Idp       string    `json:"idp,omitempty"`
 	Aud       any       `json:"aud,omitempty"`
 	Iss       string    `json:"iss,omitempty"`
 	Jti       string    `json:"jti,omitempty"`

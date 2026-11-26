@@ -5,6 +5,10 @@ package flowmeta
 
 import "encoding/json"
 
+// declarativeDefaultReturnURL is the defaultReturnUrl the declarative flow section fixture seeds
+// (resources/declarative_resources/server_configs/flow.yaml); it must match that file.
+const declarativeDefaultReturnURL = "https://declarative-return.example.com"
+
 type I18nMessage struct {
 	Key          string `json:"key,omitempty"`
 	DefaultValue string `json:"defaultValue,omitempty"`
@@ -17,6 +21,7 @@ type FlowMetadataResponse struct {
 	OU                        *OUMetadata          `json:"ou,omitempty"`
 	Design                    DesignMetadata       `json:"design"`
 	I18n                      I18nMetadata         `json:"i18n"`
+	DefaultReturnURL          string               `json:"defaultReturnUrl,omitempty"`
 }
 
 // ApplicationMetadata represents application-specific metadata.

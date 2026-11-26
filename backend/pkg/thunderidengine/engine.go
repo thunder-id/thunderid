@@ -36,6 +36,7 @@ import (
 	systemconfig "github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/cors"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
+	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/jose"
 	joseconfig "github.com/thunder-id/thunderid/internal/system/jose/config"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwe"
@@ -116,9 +117,17 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		}
 	}
 
+	// Calls to destinations an administrator configures, such as identity providers' JWKS, HTTP request
+	// steps and authorization details processors, go through clients from this factory, which refuse
+	// private addresses unless the server config passed with WithServerConfig allows them. Calls to
+	// destinations a client names, such as its JWKS URI, go through strictOutboundClients, which always
+	// refuse them.
+	outboundClients := httpservice.Initialize(engineCtx.serverConfig.AllowPrivateAddresses)
+	strictOutboundClients := httpservice.Initialize(false)
+
 	// Initialize JOSE services for JWT and JWE handling.
 	engineCtx.jwtService, engineCtx.jweService, err = jose.Initialize(
-		engineCtx.runtimeCryptoSvc, engineCtx.joseConfig())
+		engineCtx.runtimeCryptoSvc, engineCtx.joseConfig(), outboundClients, strictOutboundClients)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize JOSE services", log.Error(err))
 	}
@@ -140,19 +149,21 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	auditBus, _, _ := eventbus.Initialize()
 
 	authnProviderManager, err := authnprovidermgr.Initialize(
-		engineCtx.defaultAuthnProvider, engineCtx.customAuthnProviders, auditBus)
+		engineCtx.defaultAuthnProvider, engineCtx.customAuthnProviders, auditBus,
+		authnprovidermgr.FederatedSyncDependencies{})
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize authn provider manager", log.Error(err))
 	}
 
 	// Initialize flow metadata service
 	_ = flowmeta.Initialize(mux, engineCtx.actorProvider, engineCtx.ouProvider,
-		engineCtx.designResolveProvider, engineCtx.i18nProvider)
+		engineCtx.designResolveProvider, engineCtx.i18nProvider, nil)
 
 	// Initialize flow core services.
 	flowConfig := flowconfig.Config{
-		Flow:        engineCtx.flowConfig,
-		TokenLeeway: time.Duration(engineCtx.jwtConfig.Leeway) * time.Second,
+		Flow:         engineCtx.flowConfig,
+		TokenLeeway:  time.Duration(engineCtx.jwtConfig.Leeway) * time.Second,
+		GateHostname: engineCtx.gateClientConfig.Hostname,
 	}
 	flowFactory, graphCache := core.Initialize(engineCtx.cacheManager)
 	engineCtx.flowFactory = flowFactory
@@ -186,7 +197,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	}
 	if engineCtx.authzDetailProvider == nil {
 		engineCtx.authzDetailProvider = authzdetailexec.Initialize(engineCtx.authorizationDetailTypes,
-			engineCtx.oauthConfig.AuthorizationDetails.ProcessorTimeoutOrDefault())
+			engineCtx.oauthConfig.AuthorizationDetails.ProcessorTimeoutOrDefault(), outboundClients)
 	}
 	execDeps := executor.ExecutorDependencies{
 		FlowFactory:           engineCtx.flowFactory,
@@ -209,6 +220,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 			return tokenservice.ArtifactLifetime(oauthConfig, client)
 		},
 		AuthzDetailProvider: engineCtx.authzDetailProvider,
+		OutboundClients:     outboundClients,
 	}
 	interceptorDeps := interceptor.InterceptorDependencies{
 		FlowFactory:    engineCtx.flowFactory,
@@ -239,7 +251,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	engineCtx.flowExecService, err = flowexec.Initialize(mux, nil, engineCtx.flowProvider, engineCtx.actorProvider,
 		engineCtx.ouProvider, engineCtx.execRegistry, engineCtx.interceptorRegistry, engineCtx.observabilitySvc,
 		engineCtx.runtimeCryptoSvc, engineCtx.attestationProvider, engineCtx.graphBuilder,
-		engineCtx.jwtService, engineCtx.runtimeStoreProvider, engineCtx.transactioner, nil, nil,
+		engineCtx.jwtService, engineCtx.runtimeStoreProvider, engineCtx.transactioner, nil, nil, nil,
 		engineCtx.identityGovernance, nil, nil, engineCtx.permissionProvider, flowConfig)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize flow execution service", log.Error(err))
@@ -276,7 +288,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 		// The embedded engine has no SSO session store or SSO handle transport, so prompt=none keeps
 		// answering login_required rather than consulting a session.
 		nil, nil, engineCtx.flowProvider, engineCtx.identityGovernance, engineCtx.authzDetailProvider,
-		engineCtx.authorizationDetailTypes, oauthConfig, auditBus)
+		engineCtx.authorizationDetailTypes, oauthConfig, auditBus, outboundClients, strictOutboundClients)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize OAuth services", log.Error(err))
 	}

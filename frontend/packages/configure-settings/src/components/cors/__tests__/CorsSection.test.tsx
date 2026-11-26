@@ -187,8 +187,7 @@ describe('CorsSection', () => {
     expect(screen.getByPlaceholderText('https://app.example.com')).toBeInTheDocument();
   });
 
-  it('disables Save when the admin may not update server configuration', async () => {
-    const user = userEvent.setup();
+  it('offers no Add origin when the admin may not update server configuration', () => {
     mockUseGetCorsConfig.mockReturnValue({
       data: makeData({readOnly: {allowedOrigins: []}, writable: {allowedOrigins: []}}),
       isLoading: false,
@@ -200,10 +199,7 @@ describe('CorsSection', () => {
       </CapabilitiesProvider>,
     );
 
-    await user.click(screen.getByRole('button', {name: 'Add origin'}));
-    await user.type(screen.getByPlaceholderText('https://app.example.com'), 'https://new.example.com');
-
-    expect(await screen.findByRole('button', {name: 'Save changes'})).toBeDisabled();
+    expect(screen.queryByRole('button', {name: 'Add origin'})).not.toBeInTheDocument();
   });
 
   it('saves the edited origins via the update mutation and clears the unsaved bar on success', async () => {
@@ -295,6 +291,24 @@ describe('CorsSection', () => {
     // Editing again invalidates the stale failure, so the mutation state is reset.
     await user.type(screen.getByDisplayValue('https://new.example.com'), 'x');
     expect(mockReset).toHaveBeenCalled();
+  });
+
+  it('shows the shared message for a section declarative resources set', async () => {
+    const user = userEvent.setup();
+    updateState = {isError: true, error: Object.assign(new Error('bad'), {response: {data: {code: 'SCF-1007'}}})};
+    mockUseGetCorsConfig.mockReturnValue({
+      data: makeData({readOnly: {allowedOrigins: []}, writable: {allowedOrigins: []}}),
+      isLoading: false,
+      error: null,
+    });
+    renderWithProviders(<CorsSection />);
+
+    await user.click(screen.getByRole('button', {name: 'Add origin'}));
+    await user.type(screen.getByPlaceholderText('https://app.example.com'), 'https://new.example.com');
+
+    expect(
+      await screen.findByText("Declarative resources set these settings, so they can't be changed here."),
+    ).toBeInTheDocument();
   });
 
   it('blocks Save when a row is a duplicate', async () => {

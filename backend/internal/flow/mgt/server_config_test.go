@@ -97,6 +97,24 @@ func (s *FlowConfigHandlerTestSuite) TestValidate_ValidConfig() {
 	s.NoError(err)
 }
 
+func (s *FlowConfigHandlerTestSuite) TestValidate_DefaultReturnURL() {
+	for _, value := range []string{"https://app.example.com", "https://app.example.com:8443/home"} {
+		cfg := flowconfig.FlowSectionConfig{DefaultReturnURL: value}
+		s.NoError(s.handler.Validate(context.Background(), cfg, nil, nil), value)
+	}
+}
+
+func (s *FlowConfigHandlerTestSuite) TestValidate_DefaultReturnURLNotAbsolute() {
+	for _, value := range []string{
+		"/signin", "app.example.com", "https://", "https://:443", "javascript://example.com/%0aalert(1)",
+		"data://example.com/text", "https://user:secret@app.example.com",
+		"https://app.example.com:65536",
+	} {
+		cfg := flowconfig.FlowSectionConfig{DefaultReturnURL: value}
+		s.Error(s.handler.Validate(context.Background(), cfg, nil, nil), value)
+	}
+}
+
 func (s *FlowConfigHandlerTestSuite) TestValidate_HandleValidatorCalled() {
 	called := false
 	s.handler.SetHandleValidator(func(_ context.Context, handle string, _ providers.FlowType) bool {
@@ -124,27 +142,37 @@ func (s *FlowConfigHandlerTestSuite) TestValidate_HandleValidatorRejectsUnknown(
 	s.Error(err)
 }
 
-// The attribute verification entry names an administrator-initiated flow, so its handle is checked
-// against that type, not ADMINISTRATION.
-func (s *FlowConfigHandlerTestSuite) TestValidate_AttributeVerificationFlowIsAdminInitiated() {
-	var gotHandle string
-	var gotType providers.FlowType
-	s.handler.SetHandleValidator(func(_ context.Context, handle string, flowType providers.FlowType) bool {
-		gotHandle, gotType = handle, flowType
-		return flowType == providers.FlowTypeAdminInitiated
-	})
-	cfg := flowconfig.FlowSectionConfig{
-		AdminAttributeVerificationFlow: flowconfig.FlowTypeConfig{
-			DefaultHandle: "default-admin-attribute-verification-flow"},
+// The attribute verification and credential reset entries name administrator-initiated flows, so their
+// handles are checked against that type, not ADMINISTRATION.
+func (s *FlowConfigHandlerTestSuite) TestValidate_AdminInitiatedEntriesAreAdminInitiated() {
+	for _, test := range []struct {
+		key    string
+		handle string
+		cfg    flowconfig.FlowSectionConfig
+	}{
+		{"adminAttributeVerificationFlow", "default-admin-attribute-verification-flow",
+			flowconfig.FlowSectionConfig{AdminAttributeVerificationFlow: flowconfig.FlowTypeConfig{
+				DefaultHandle: "default-admin-attribute-verification-flow"}}},
+		{"adminUserCredentialResetFlow", "default-admin-user-credential-reset-flow",
+			flowconfig.FlowSectionConfig{AdminUserCredentialResetFlow: flowconfig.FlowTypeConfig{
+				DefaultHandle: "default-admin-user-credential-reset-flow"}}},
+	} {
+		s.Run(test.key, func() {
+			var gotHandle string
+			var gotType providers.FlowType
+			s.handler.SetHandleValidator(func(_ context.Context, handle string, flowType providers.FlowType) bool {
+				gotHandle, gotType = handle, flowType
+				return flowType == providers.FlowTypeAdminInitiated
+			})
+
+			s.Require().NoError(s.handler.Validate(context.Background(), test.cfg, nil, nil))
+			s.Equal(test.handle, gotHandle)
+			s.Equal(providers.FlowTypeAdminInitiated, gotType)
+
+			s.handler.SetHandleValidator(func(_ context.Context, _ string, _ providers.FlowType) bool { return false })
+			s.ErrorContains(s.handler.Validate(context.Background(), test.cfg, nil, nil), test.key+".defaultHandle")
+		})
 	}
-
-	s.Require().NoError(s.handler.Validate(context.Background(), cfg, nil, nil))
-	s.Equal("default-admin-attribute-verification-flow", gotHandle)
-	s.Equal(providers.FlowTypeAdminInitiated, gotType)
-
-	s.handler.SetHandleValidator(func(_ context.Context, _ string, _ providers.FlowType) bool { return false })
-	s.ErrorContains(s.handler.Validate(context.Background(), cfg, nil, nil),
-		"adminAttributeVerificationFlow.defaultHandle")
 }
 
 func (s *FlowConfigHandlerTestSuite) TestValidate_NoValidatorSkipsHandleCheck() {
@@ -179,6 +207,17 @@ func (s *FlowConfigHandlerTestSuite) TestMerge_ReadOnlyFallsBackWhenWritableZero
 	result := s.handler.Merge(ro, wr).(flowconfig.FlowSectionConfig)
 	s.Equal("ro-handle", result.AuthFlow.DefaultHandle)
 	s.Equal(int64(1800), result.AuthFlow.ExpirySeconds)
+}
+
+func (s *FlowConfigHandlerTestSuite) TestMerge_DefaultReturnURL() {
+	ro := flowconfig.FlowSectionConfig{DefaultReturnURL: "https://ro.example.com"}
+
+	result := s.handler.Merge(ro, flowconfig.FlowSectionConfig{}).(flowconfig.FlowSectionConfig)
+	s.Equal("https://ro.example.com", result.DefaultReturnURL)
+
+	wr := flowconfig.FlowSectionConfig{DefaultReturnURL: "https://wr.example.com"}
+	result = s.handler.Merge(ro, wr).(flowconfig.FlowSectionConfig)
+	s.Equal("https://wr.example.com", result.DefaultReturnURL)
 }
 
 func (s *FlowConfigHandlerTestSuite) TestMerge_NilInputsReturnZero() {
@@ -292,6 +331,7 @@ func everyAdministrationFlow(prefix string) flowconfig.FlowSectionConfig {
 	}
 	return flowconfig.FlowSectionConfig{
 		AdminAttributeVerificationFlow: handle("admin-attribute-verification"),
+		AdminUserCredentialResetFlow:   handle("admin-user-credential-reset"),
 		UserUnlockFlow:                 handle("user-unlock"),
 		UserSuspendFlow:                handle("user-suspend"),
 		UserUnsuspendFlow:              handle("user-unsuspend"),

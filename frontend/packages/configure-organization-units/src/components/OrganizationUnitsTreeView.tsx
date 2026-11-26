@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {useQueryClient} from '@tanstack/react-query';
-import {PageLoadingAnimation, QueryErrorNotice, ResourceAvatar} from '@thunderid/components';
+import {EditOrViewAction, PageLoadingAnimation, QueryErrorNotice, ResourceAvatar} from '@thunderid/components';
 import {useCapabilitiesContext, useConfig, useProjectScope} from '@thunderid/contexts';
 import {useLogger} from '@thunderid/logger/react';
 import {useThunderID} from '@thunderid/react';
 import {Box, IconButton, Typography, CircularProgress, TreeView, useTheme, Avatar, Tooltip} from '@wso2/oxygen-ui';
-import {Eye, Pencil, Plus, Trash2} from '@wso2/oxygen-ui-icons-react';
+import {Eye, Plus, Trash2} from '@wso2/oxygen-ui-icons-react';
 import {useState, useCallback, useEffect, useRef, useMemo} from 'react';
 import type {ReactNode, MouseEvent, KeyboardEvent, SyntheticEvent, JSX} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -319,20 +319,13 @@ function CustomTreeItem(allProps: CustomTreeItemProps): JSX.Element {
                   </IconButton>
                 </Tooltip>
               )}
-              {can('ou', 'update') && (
-                <Tooltip title={editTooltip}>
-                  <IconButton
-                    size="small"
-                    aria-label={editTooltip}
-                    onClick={(e: MouseEvent<HTMLButtonElement>) => {
-                      e.stopPropagation();
-                      onEdit?.(e as unknown as MouseEvent<HTMLElement>, {id: itemId, name: labelStr});
-                    }}
-                  >
-                    <Pencil size={16} />
-                  </IconButton>
-                </Tooltip>
-              )}
+              <EditOrViewAction
+                canEdit={can('ou', 'update')}
+                editLabel={editTooltip}
+                onClick={(e: MouseEvent<HTMLButtonElement>) =>
+                  onEdit?.(e as unknown as MouseEvent<HTMLElement>, {id: itemId, name: labelStr})
+                }
+              />
               {can('ou', 'delete') && (
                 <Tooltip title={deleteTooltip}>
                   <IconButton

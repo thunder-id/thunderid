@@ -67,6 +67,7 @@ type httpRequestExecutor struct {
 	providers.Executor
 	ouService     providers.OrganizationUnitProvider
 	authnProvider providers.AuthnProviderManager
+	clients       httpservice.OutboundClientFactoryInterface
 	logger        *log.Logger
 }
 
@@ -77,6 +78,7 @@ func newHTTPRequestExecutor(
 	flowFactory core.FlowFactoryInterface,
 	ouService providers.OrganizationUnitProvider,
 	authnProvider providers.AuthnProviderManager,
+	clients httpservice.OutboundClientFactoryInterface,
 ) *httpRequestExecutor {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, httpRequestLoggerComponentName),
 		log.String(log.LoggerKeyExecutorName, ExecutorNameHTTPRequest))
@@ -98,6 +100,7 @@ func newHTTPRequestExecutor(
 		Executor:      base,
 		ouService:     ouService,
 		authnProvider: authnProvider,
+		clients:       clients,
 		logger:        logger,
 	}
 }
@@ -394,8 +397,9 @@ func (h *httpRequestExecutor) executeRequestWithRetry(ctx *providers.NodeContext
 		retryDelay = config.ErrorHandling.RetryDelay
 	}
 
-	httpClient := httpservice.NewHTTPClientWithTimeout(
-		time.Duration(config.Timeout) * time.Second)
+	// A step's headers can carry a credential, such as an API key, that a redirect to another host would
+	// resend, so a 3xx response is returned rather than followed.
+	httpClient := h.clients.NewHTTPClientWithoutRedirects(time.Duration(config.Timeout) * time.Second)
 
 	var lastErr error
 	attempts := retryCount + 1
@@ -482,8 +486,9 @@ func (h *httpRequestExecutor) processResponse(ctx *providers.NodeContext, config
 	logger.Debug(ctx.Context, "Received HTTP response", log.Int("statusCode", response.StatusCode),
 		log.String("status", response.Status))
 
-	// Check for error status codes
-	if response.StatusCode >= 400 {
+	// Check for error status codes. A redirect counts as one: it is not followed, since the step's headers
+	// can carry a credential, so the endpoint did not answer the request.
+	if response.StatusCode >= 300 {
 		return fmt.Errorf("HTTP request failed with status %d: %s", response.StatusCode, string(bodyBytes))
 	}
 

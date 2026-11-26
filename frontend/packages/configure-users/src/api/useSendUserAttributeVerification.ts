@@ -9,10 +9,10 @@ import {
   AdministrationFlowInput,
   FlowExecutionFailure,
   FlowStatus,
-  type FlowExecutionResponse,
+  startAdminInitiatedFlow,
+  type HttpLike,
 } from '@thunderid/utils';
 import {useTranslation} from 'react-i18next';
-import UserConstants from '../constants/user-constants';
 
 /**
  * Variables for the send verification link mutation.
@@ -54,21 +54,10 @@ export default function useSendUserAttributeVerification(): UseMutationResult<
   return useMutation<SendUserAttributeVerificationResult, Error, SendUserAttributeVerificationVariables>({
     // Not executeAdministrationFlow: it treats INCOMPLETE as a failure, but this flow pauses once the link is sent.
     mutationFn: async ({userId, attribute, handle}): Promise<SendUserAttributeVerificationResult> => {
-      const response: {data?: unknown} = await http.request({
-        url: `${getServerUrl()}/flow/execute`,
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        data: {
-          flowType: UserConstants.ADMIN_VERIFICATION_FLOW_TYPE,
-          handle,
-          inputs: {
-            [AdministrationFlowInput.SUBJECT]: userId,
-            [AdministrationFlowInput.ATTRIBUTE]: attribute,
-          },
-          verbose: true,
-        },
-      } as unknown as Parameters<typeof http.request>[0]);
-      const result = (response?.data ?? {}) as FlowExecutionResponse;
+      const result = await startAdminInitiatedFlow(http as unknown as HttpLike, getServerUrl(), handle, {
+        [AdministrationFlowInput.SUBJECT]: userId,
+        [AdministrationFlowInput.ATTRIBUTE]: attribute,
+      });
       const data = result.data?.additionalData ?? {};
       const channel = data[AdministrationFlowData.CHANNEL];
 

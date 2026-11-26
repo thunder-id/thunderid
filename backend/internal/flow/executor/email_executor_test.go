@@ -21,6 +21,7 @@ import (
 	notifcm "github.com/thunder-id/thunderid/internal/notification/common"
 	"github.com/thunder-id/thunderid/internal/notificationtemplate"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/flow/coremock"
 	"github.com/thunder-id/thunderid/tests/mocks/notification/notificationmock"
@@ -40,6 +41,7 @@ type EmailExecutorTestSuite struct {
 	mockNotifSenderSvc   *notificationmock.NotificationSenderServiceInterfaceMock
 	mockTemplateRenderer *notificationTemplateRendererMock
 	mockEntityProvider   *entityprovidermock.EntityProviderInterfaceMock
+	mockAuthnProvider    *managermock.AuthnProviderManagerMock
 	executor             *emailExecutor
 }
 
@@ -49,6 +51,7 @@ func (suite *EmailExecutorTestSuite) SetupTest() {
 	suite.mockNotifSenderSvc = notificationmock.NewNotificationSenderServiceInterfaceMock(suite.T())
 	suite.mockTemplateRenderer = newNotificationTemplateRendererMock(suite.T())
 	suite.mockEntityProvider = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
+	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
 
 	suite.mockFlowFactory.On("CreateExecutor",
 		ExecutorNameEmailExecutor,
@@ -65,6 +68,7 @@ func (suite *EmailExecutorTestSuite) SetupTest() {
 		suite.mockNotifSenderSvc,
 		suite.mockTemplateRenderer,
 		suite.mockEntityProvider,
+		suite.mockAuthnProvider,
 	)
 }
 
@@ -495,7 +499,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_NilTemplateRenderer() 
 		mock.Anything,
 	).Return(mockBaseExecutor)
 
-	noServiceExecutor := newEmailExecutor(mockFactory, suite.mockNotifSenderSvc, nil, suite.mockEntityProvider)
+	noServiceExecutor := newEmailExecutor(mockFactory, suite.mockNotifSenderSvc, nil, suite.mockEntityProvider, nil)
 
 	ctx := &providers.NodeContext{
 		ExecutionID:  "test-execution-id",
@@ -524,6 +528,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_NilTemplateRenderer() 
 func (suite *EmailExecutorTestSuite) TestExecute_SendMode_ClientError() {
 	ctx := &providers.NodeContext{
 		ExecutionID:  "test-execution-id",
+		FlowType:     providers.FlowTypeUserOnboarding,
 		ExecutorMode: ExecutorModeSend,
 		NodeInputs: []providers.Input{
 			{Identifier: "email", Type: providers.InputTypeEmail, Required: true},
@@ -848,15 +853,35 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_NoProviderConfigured_R
 	suite.Equal(ErrEmailProviderNotConfigured.Error.DefaultValue, resp.Error.Error.DefaultValue)
 }
 
-// An undelivered link reaches the onboarding administrator's screen, never an administrator-initiated flow's
-// administrator, who could finish the flow in the user's place.
+// undeliveredLinkByFlowType maps each flow type to the invite link a failed send returns: only the user onboarding
+// and invitation administrators get one, for the screen that shows it instead.
+func undeliveredLinkByFlowType(link string) map[providers.FlowType]string {
+	return map[providers.FlowType]string{
+		providers.FlowTypeUserOnboarding: link,
+		providers.FlowTypeInvitation:     link,
+		providers.FlowTypeAdminInitiated: "",
+		providers.FlowTypeRecovery:       "",
+		providers.FlowTypeRegistration:   "",
+		providers.FlowTypeSelf:           "",
+		providers.FlowTypeAuthentication: "",
+		"":                               "",
+	}
+}
+
+// flowTypeTestName names a subtest after its flow type, or "no flow type" when it has none.
+func flowTypeTestName(flowType providers.FlowType) string {
+	if flowType == "" {
+		return "no flow type"
+	}
+	return string(flowType)
+}
+
+// An undelivered link reaches only the screen of the administrator who sends a user onboarding or invitation
+// invite; every other flow delivers its link by email alone.
 func (suite *EmailExecutorTestSuite) TestExecute_SendMode_NoProviderConfigured_UndeliveredLink() {
 	link := "https://localhost:5190/gate/invite?executionId=test&inviteToken=abc"
-	for flowType, want := range map[providers.FlowType]string{
-		providers.FlowTypeUserOnboarding: link,
-		providers.FlowTypeAdminInitiated: "",
-	} {
-		suite.Run(string(flowType), func() {
+	for flowType, want := range undeliveredLinkByFlowType(link) {
+		suite.Run(flowTypeTestName(flowType), func() {
 			suite.SetupTest()
 			ctx := &providers.NodeContext{
 				ExecutionID:  "test-execution-id",
@@ -879,7 +904,38 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_NoProviderConfigured_U
 
 			suite.Require().NoError(err)
 			suite.Equal(providers.ExecFailure, resp.Status)
+			suite.Equal(ErrEmailProviderNotConfigured.Error.DefaultValue, resp.Error.Error.DefaultValue)
 			suite.Equal(want, resp.AdditionalData[common.DataInviteLink])
+		})
+	}
+}
+
+// With no recipient to send to, the invite link likewise reaches only the user onboarding and invitation
+// administrators.
+func (suite *EmailExecutorTestSuite) TestExecute_SendMode_MissingRecipient_UndeliveredLink() {
+	link := "https://localhost:5190/gate/invite?executionId=test&inviteToken=abc"
+	for flowType, want := range undeliveredLinkByFlowType(link) {
+		suite.Run(flowTypeTestName(flowType), func() {
+			suite.SetupTest()
+			ctx := &providers.NodeContext{
+				ExecutionID:  "test-execution-id",
+				FlowType:     flowType,
+				ExecutorMode: ExecutorModeSend,
+				NodeInputs:   []providers.Input{{Identifier: "email", Type: providers.InputTypeEmail, Required: true}},
+				UserInputs:   map[string]string{},
+				RuntimeData:  map[string]string{common.RuntimeKeyInviteLink: link},
+				NodeProperties: map[string]interface{}{
+					"emailTemplate": emailUserInviteProperty,
+				},
+			}
+
+			resp, err := suite.executor.Execute(ctx)
+
+			suite.Require().NoError(err)
+			suite.Equal(providers.ExecFailure, resp.Status)
+			suite.Equal(ErrEmailRecipientMissing.Error.DefaultValue, resp.Error.Error.DefaultValue)
+			suite.Equal(want, resp.AdditionalData[common.DataInviteLink])
+			suite.mockNotifSenderSvc.AssertNumberOfCalls(suite.T(), "SendEmail", 0)
 		})
 	}
 }
@@ -954,7 +1010,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_NilSenderService_Retur
 		mock.Anything,
 	).Return(mockBaseExecutor)
 
-	noSenderExecutor := newEmailExecutor(mockFactory, nil, suite.mockTemplateRenderer, suite.mockEntityProvider)
+	noSenderExecutor := newEmailExecutor(mockFactory, nil, suite.mockTemplateRenderer, suite.mockEntityProvider, nil)
 
 	ctx := &providers.NodeContext{
 		ExecutionID:  "test-execution-id",
@@ -1058,13 +1114,13 @@ func (suite *EmailExecutorTestSuite) TestResolveRecipientEmail_UserInputWinsOver
 		},
 	}
 
-	recipient, err := suite.executor.resolveRecipientEmail(ctx, log.GetLogger())
+	recipient, err := suite.executor.resolveRecipientEmail(ctx, &providers.ExecutorResponse{}, log.GetLogger())
 
 	suite.NoError(err)
 	suite.Equal("entered@example.com", recipient)
 
 	delete(ctx.UserInputs, "email")
-	recipient, err = suite.executor.resolveRecipientEmail(ctx, log.GetLogger())
+	recipient, err = suite.executor.resolveRecipientEmail(ctx, &providers.ExecutorResponse{}, log.GetLogger())
 
 	suite.NoError(err)
 	suite.Equal("claimed@example.com", recipient)
@@ -1078,13 +1134,13 @@ func (suite *EmailExecutorTestSuite) TestResolveRecipientEmail_ConstantWinsOverE
 		ForwardedData: map[string]interface{}{"email": "forwarded@example.com"},
 	}
 
-	recipient, err := suite.executor.resolveRecipientEmail(ctx, log.GetLogger())
+	recipient, err := suite.executor.resolveRecipientEmail(ctx, &providers.ExecutorResponse{}, log.GetLogger())
 
 	suite.NoError(err)
 	suite.Equal("constant@example.com", recipient)
 
 	ctx.NodeInputs[0].Constant = false
-	recipient, err = suite.executor.resolveRecipientEmail(ctx, log.GetLogger())
+	recipient, err = suite.executor.resolveRecipientEmail(ctx, &providers.ExecutorResponse{}, log.GetLogger())
 
 	suite.NoError(err)
 	suite.Equal("forwarded@example.com", recipient)
@@ -1452,7 +1508,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_NilEntityProvider_Retu
 		mock.Anything,
 	).Return(mockBaseExecutor)
 
-	noProviderExecutor := newEmailExecutor(mockFactory, suite.mockNotifSenderSvc, suite.mockTemplateRenderer, nil)
+	noProviderExecutor := newEmailExecutor(mockFactory, suite.mockNotifSenderSvc, suite.mockTemplateRenderer, nil, nil)
 
 	ctx := &providers.NodeContext{
 		ExecutionID:  "test-execution-id",
@@ -1469,7 +1525,7 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_NilEntityProvider_Retu
 
 	suite.Error(err)
 	suite.Nil(resp)
-	suite.Contains(err.Error(), "entity provider is not configured for email resolution")
+	suite.Contains(err.Error(), "entity provider is not configured for recipient resolution")
 	suite.mockNotifSenderSvc.AssertNumberOfCalls(suite.T(), "SendEmail", 0)
 }
 
@@ -1645,6 +1701,179 @@ func (suite *EmailExecutorTestSuite) TestExecute_SendMode_RecipientSetByAnEarlie
 	}
 }
 
+func (suite *EmailExecutorTestSuite) TestExecute_SendMode_IdentifiedUserGetsTheStoredEmail() {
+	const stored = "stored@example.com"
+	for name, arrange := range map[string]func(ctx *providers.NodeContext){
+		"over a user input": func(ctx *providers.NodeContext) {
+			ctx.UserInputs[userAttributeEmail] = testOtherEmail
+		},
+		"over runtime data": func(ctx *providers.NodeContext) {
+			ctx.RuntimeData[userAttributeEmail] = testOtherEmail
+		},
+		"over forwarded data": func(ctx *providers.NodeContext) {
+			ctx.ForwardedData = map[string]interface{}{userAttributeEmail: testOtherEmail}
+		},
+		"over an external claim": func(ctx *providers.NodeContext) {
+			ctx.RuntimeData[common.RuntimeKeyExternalIdentity] = externalIdentityEntry("idp-1", "sub-1",
+				map[string]interface{}{userAttributeEmail: testOtherEmail})
+		},
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			ctx := &providers.NodeContext{
+				ExecutionID:    "test-execution-id",
+				FlowType:       providers.FlowTypeRecovery,
+				ExecutorMode:   ExecutorModeSend,
+				UserInputs:     map[string]string{},
+				RuntimeData:    map[string]string{userAttributeUserID: "test-user-id"},
+				NodeProperties: map[string]interface{}{propertyKeyEmailTemplate: "password-recovery"},
+			}
+			arrange(ctx)
+			suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, "test-user-id").Return(
+				&providers.Entity{ID: "test-user-id", Attributes: []byte(`{"email":"` + stored + `"}`)}, nil)
+			suite.expectEmail(stored)
+
+			resp, err := suite.executor.Execute(ctx)
+
+			suite.Require().NoError(err)
+			suite.Equal(providers.ExecComplete, resp.Status)
+		})
+	}
+}
+
+func (suite *EmailExecutorTestSuite) TestExecute_SendMode_IdentifiedUserWithoutAnEmailGetsNothing() {
+	ctx := &providers.NodeContext{
+		ExecutionID:    "test-execution-id",
+		FlowType:       providers.FlowTypeRecovery,
+		ExecutorMode:   ExecutorModeSend,
+		UserInputs:     map[string]string{userAttributeEmail: testOtherEmail},
+		RuntimeData:    map[string]string{userAttributeUserID: "test-user-id"},
+		NodeProperties: map[string]interface{}{propertyKeyEmailTemplate: "password-recovery"},
+	}
+	suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, "test-user-id").Return(
+		&providers.Entity{ID: "test-user-id", Attributes: []byte(`{"username":"testuser"}`)}, nil)
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, resp.Status)
+	suite.Equal(ErrEmailRecipientMissing.Error.DefaultValue, resp.Error.Error.DefaultValue)
+	suite.mockNotifSenderSvc.AssertNumberOfCalls(suite.T(), "SendEmail", 0)
+}
+
+func (suite *EmailExecutorTestSuite) TestExecute_SendMode_SignedInUserWithoutAnEmail() {
+	for name, test := range map[string]struct {
+		signedInAs string
+		sent       bool
+	}{
+		"signed in user gets the submitted email":     {signedInAs: "test-user-id", sent: true},
+		"user signed in as someone else gets nothing": {signedInAs: "other-user-id"},
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			authUser := newAuthenticatedAuthUser()
+			ctx := &providers.NodeContext{
+				ExecutionID:    "test-execution-id",
+				ExecutorMode:   ExecutorModeSend,
+				AuthUser:       authUser,
+				UserInputs:     map[string]string{userAttributeEmail: testOtherEmail},
+				RuntimeData:    map[string]string{userAttributeUserID: "test-user-id"},
+				NodeProperties: map[string]interface{}{propertyKeyEmailTemplate: "magic-link"},
+			}
+			suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, "test-user-id").Return(
+				&providers.Entity{ID: "test-user-id", Attributes: []byte(`{"username":"testuser"}`)}, nil)
+			suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, authUser).Return(authUser,
+				&providers.EntityReference{EntityID: test.signedInAs}, (*tidcommon.ServiceError)(nil))
+			if test.sent {
+				suite.expectEmail(testOtherEmail)
+			}
+
+			resp, err := suite.executor.Execute(ctx)
+
+			suite.Require().NoError(err)
+			if test.sent {
+				suite.Equal(providers.ExecComplete, resp.Status)
+				return
+			}
+			suite.Equal(providers.ExecFailure, resp.Status)
+			suite.mockNotifSenderSvc.AssertNumberOfCalls(suite.T(), "SendEmail", 0)
+		})
+	}
+}
+
+func (suite *EmailExecutorTestSuite) TestExecute_SendMode_AuthenticatedUserGetsTheStoredEmail() {
+	for name, test := range map[string]struct {
+		entityRef *providers.EntityReference
+		svcErr    *tidcommon.ServiceError
+		want      string
+	}{
+		"with a user account": {
+			entityRef: &providers.EntityReference{EntityID: "test-user-id"},
+			want:      "stored@example.com",
+		},
+		"without a user account": {want: testOtherEmail},
+		"when the user isn't found": {
+			svcErr: &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "AUP-1001"},
+			want:   testOtherEmail,
+		},
+		"when the lookup fails": {svcErr: &tidcommon.InternalServerError},
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			authUser := newAuthenticatedAuthUser()
+			suite.mockAuthnProvider.On("GetEntityReference", mock.Anything, authUser).
+				Return(authUser, test.entityRef, test.svcErr)
+			if test.entityRef != nil {
+				suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, "test-user-id").Return(
+					&providers.Entity{ID: "test-user-id", Attributes: []byte(`{"email":"stored@example.com"}`)}, nil)
+			}
+			ctx := &providers.NodeContext{
+				ExecutionID:    "test-execution-id",
+				ExecutorMode:   ExecutorModeSend,
+				AuthUser:       authUser,
+				UserInputs:     map[string]string{userAttributeEmail: testOtherEmail},
+				RuntimeData:    map[string]string{},
+				NodeProperties: map[string]interface{}{propertyKeyEmailTemplate: "otp"},
+			}
+			if test.want == "" {
+				_, err := suite.executor.Execute(ctx)
+
+				suite.Error(err)
+				suite.mockNotifSenderSvc.AssertNumberOfCalls(suite.T(), "SendEmail", 0)
+				return
+			}
+			suite.expectEmail(test.want)
+
+			resp, err := suite.executor.Execute(ctx)
+
+			suite.Require().NoError(err)
+			suite.Equal(providers.ExecComplete, resp.Status)
+		})
+	}
+}
+
+func (suite *EmailExecutorTestSuite) TestExecute_SendMode_IdentifiedUserWithoutAnEmailGetsTheClaimedEmail() {
+	ctx := &providers.NodeContext{
+		ExecutionID:  "test-execution-id",
+		ExecutorMode: ExecutorModeSend,
+		UserInputs:   map[string]string{userAttributeEmail: testOtherEmail},
+		RuntimeData: map[string]string{
+			userAttributeUserID: "test-user-id",
+			common.RuntimeKeyExternalIdentity: externalIdentityEntry("idp-1", "sub-1",
+				map[string]interface{}{userAttributeEmail: "claimed@example.com"}),
+		},
+		NodeProperties: map[string]interface{}{propertyKeyEmailTemplate: "otp"},
+	}
+	suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, "test-user-id").Return(
+		&providers.Entity{ID: "test-user-id", Attributes: []byte(`{"username":"testuser"}`)}, nil)
+	suite.expectEmail("claimed@example.com")
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+}
+
 // expectEmail expects one email to the given address.
 func (suite *EmailExecutorTestSuite) expectEmail(recipient string) {
 	suite.mockTemplateRenderer.On("Resolve", mock.Anything, notificationtemplate.ChannelTypeEmail,
@@ -1657,6 +1886,9 @@ func (suite *EmailExecutorTestSuite) expectEmail(recipient string) {
 
 // testDeliveryEmail is the address the delivered-recipients tests send to.
 const testDeliveryEmail = "user@example.com"
+
+// testOtherEmail is an address that is not the user's stored email.
+const testOtherEmail = "other@example.com"
 
 // A send adds its recipient to the recipients sent to before it, once, and a list that does not decode
 // fails the node before anything is sent.

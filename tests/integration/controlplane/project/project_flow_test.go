@@ -35,7 +35,7 @@ func (ts *ProjectAPITestSuite) TestCreateFlowInProject() {
 	ts.Equal(defaultOUID, inShop.OUID)
 	ts.Equal(shop.ID, inShop.ProjectID)
 	inOther := ts.createFlow(ts.flowBody("other", `"projectId":%q`, other.ID))
-	ts.createFlow(ts.flowBody("unscoped", `"ouId":%q`, defaultOUID))
+	ts.createFlow(ts.flowBody("default", `"projectId":%q`, defaultProjectID))
 
 	shopList := ts.listFlows("?limit=100&projectId=" + url.QueryEscape(shop.ID))
 	ts.Equal([]string{inShop.ID}, ts.flowIDs(shopList))
@@ -100,21 +100,39 @@ func (ts *ProjectAPITestSuite) TestFlowWithUnknownProject() {
 	ts.Zero(list.TotalResults)
 	ts.Empty(list.Flows)
 
-	flow := ts.createFlow(ts.flowBody("unknown-upd", `"ouId":%q`, defaultOUID))
+	flow := ts.createFlow(ts.flowBody("unknown-upd", `"projectId":%q`, defaultProjectID))
 	status, body = ts.do(http.MethodPut, "/flows/"+flow.ID,
 		ts.flowBody("unknown-upd", `"projectId":%q`, unknownProjectID))
 	ts.Equal(http.StatusBadRequest, status, body)
 	ts.Equal("FLM-1045", codeOf(ts.T(), body))
 }
 
-// A flow needs an organization unit or a project.
-func (ts *ProjectAPITestSuite) TestFlowWithoutPlacement() {
+// The Control Plane serves projects, so a flow must name one, even with an organization unit, whether it is
+// created through the API, the create_flow tool or an import.
+func (ts *ProjectAPITestSuite) TestCreateFlowRequiresProject() {
 	nodes, err := json.Marshal(flowNodes())
 	ts.Require().NoError(err)
 	status, body := ts.do(http.MethodPost, "/flows", fmt.Sprintf(
 		`{"handle":%q,"name":"Unplaced","flowType":"AUTHENTICATION","nodes":%s}`, ts.handle("flow-unplaced"), nodes))
 	ts.Equal(http.StatusBadRequest, status, body)
-	ts.Equal("FLM-1029", codeOf(ts.T(), body))
+	ts.Equal("FLM-1047", codeOf(ts.T(), body))
+
+	status, body = ts.do(http.MethodPost, "/flows", ts.flowBody("ou-only", `"ouId":%q`, defaultOUID))
+	ts.Equal(http.StatusBadRequest, status, body)
+	ts.Equal("FLM-1047", codeOf(ts.T(), body))
+
+	created, raw := ts.callMCPTool("create_flow", map[string]any{
+		"handle": ts.handle("flow-mcp-unscoped"), "name": "MCP Unplaced", "flowType": "AUTHENTICATION",
+		"ouId": defaultOUID, "nodes": flowNodes(),
+	})
+	ts.Truef(created.Result.IsError, "a flow without a project was created: %s", raw)
+	ts.Contains(raw, "Set projectId")
+
+	ts.Equal("FLM-1047", ts.importFailure(fmt.Sprintf("resource_type: flow\nhandle: %s\nname: Import Unplaced\n"+
+		"flowType: AUTHENTICATION\nouId: %s\nnodes:\n"+
+		"- id: start\n  type: START\n  onSuccess: auth_assert\n"+
+		"- id: auth_assert\n  type: TASK_EXECUTION\n  executor:\n    name: AuthAssertExecutor\n  onSuccess: end\n"+
+		"- id: end\n  type: END\n", ts.handle("flow-import-unscoped"), defaultOUID), false))
 }
 
 // A project that still has a flow is not deleted until the flow is gone.

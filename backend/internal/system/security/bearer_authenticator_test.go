@@ -142,3 +142,21 @@ func selfIssuedBearerToken(issuedAt time.Time, audience interface{}) string {
 		"exp":       float64(issuedAt.Add(time.Hour).Unix()),
 	})
 }
+
+func (suite *BearerAuthenticatorTestSuite) TestAuthenticate_RejectsTokenWithExternalSubject() {
+	token := buildFakeJWT(accessTokenHeader(), map[string]interface{}{
+		"sub":   "user-123",
+		"iss":   testLocalIssuer,
+		"idp":   testFederatedIssuer,
+		"aud":   testResourceIdentifier,
+		"scope": "read:docs",
+	})
+	suite.mockJWT.On("VerifyJWT", mock.Anything, token, testResourceIdentifier, "").Return(nil).Maybe()
+
+	securityCtx, err := NewBearerAuthenticator(suite.mockJWT, suite.mockEnforcer, testResourceIdentifier).
+		Authenticate(context.Background(), token)
+
+	suite.ErrorIs(err, errInvalidToken)
+	suite.Nil(securityCtx)
+	suite.mockEnforcer.AssertNotCalled(suite.T(), "EnsureNotRevoked", mock.Anything, mock.Anything)
+}

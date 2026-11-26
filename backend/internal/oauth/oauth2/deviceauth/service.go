@@ -22,6 +22,7 @@ import (
 	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	oauth2model "github.com/thunder-id/thunderid/internal/oauth/oauth2/model"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/resourceindicators"
+	"github.com/thunder-id/thunderid/internal/oauth/oauth2/tokenservice"
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -142,6 +143,7 @@ func (s *deviceAuthService) InitiateDeviceAuthorization(
 	if expiresIn <= 0 {
 		expiresIn = oauth2const.DeviceAuthorizationDefaultExpiresInSeconds
 	}
+	cacheTTL := tokenservice.ResolveUserAttributesCacheTTL(s.cfg, oauthApp, expiresIn)
 	interval := s.cfg.OAuth.DeviceGrant.Interval
 	if interval <= 0 {
 		interval = oauth2const.DeviceAuthorizationDefaultIntervalSeconds
@@ -161,18 +163,19 @@ func (s *deviceAuthService) InitiateDeviceAuthorization(
 			return nil, err
 		}
 		record = &DeviceAuthRequest{
-			RequestID:                  requestID,
-			ApplicationID:              oauthApp.ID,
-			DeviceCodeHash:             hashDeviceCode(deviceCode),
-			UserCode:                   userCode,
-			ClientID:                   oauthApp.ClientID,
-			StandardScopes:             utils.StringifyStringArray(oidcScopes, " "),
-			RequestedPermissions:       utils.StringifyStringArray(permissionScopes, " "),
-			RequiredOptionalAttributes: requestedAttributes,
-			Resources:                  effectiveResources,
-			State:                      DeviceStatePending,
-			PollInterval:               interval,
-			ExpiryTime:                 time.Now().Add(time.Duration(expiresIn) * time.Second),
+			RequestID:                     requestID,
+			ApplicationID:                 oauthApp.ID,
+			DeviceCodeHash:                hashDeviceCode(deviceCode),
+			UserCode:                      userCode,
+			ClientID:                      oauthApp.ClientID,
+			StandardScopes:                utils.StringifyStringArray(oidcScopes, " "),
+			RequestedPermissions:          utils.StringifyStringArray(permissionScopes, " "),
+			RequiredOptionalAttributes:    requestedAttributes,
+			UserAttributesCacheTTLSeconds: cacheTTL,
+			Resources:                     effectiveResources,
+			State:                         DeviceStatePending,
+			PollInterval:                  interval,
+			ExpiryTime:                    time.Now().Add(time.Duration(expiresIn) * time.Second),
 		}
 		if err = s.store.Add(ctx, record); err == nil {
 			break
@@ -228,11 +231,12 @@ func verifyUserCode(ctx context.Context, store DeviceAuthRequestStoreInterface,
 		resourceServerIdentifier = record.Resources[0]
 	}
 	return &providers.DeviceVerificationResult{
-		ApplicationID:              record.ApplicationID,
-		AuthID:                     record.RequestID,
-		RequestedPermissions:       record.RequestedPermissions,
-		ResourceServerIdentifier:   resourceServerIdentifier,
-		RequiredOptionalAttributes: record.RequiredOptionalAttributes,
+		ApplicationID:                 record.ApplicationID,
+		AuthID:                        record.RequestID,
+		RequestedPermissions:          record.RequestedPermissions,
+		ResourceServerIdentifier:      resourceServerIdentifier,
+		RequiredOptionalAttributes:    record.RequiredOptionalAttributes,
+		UserAttributesCacheTTLSeconds: record.UserAttributesCacheTTLSeconds,
 	}, nil
 }
 
@@ -265,7 +269,7 @@ func requiredOptionalAttributes(scopes []string, app *providers.OAuthClient) str
 			}
 		}
 		for _, scope := range scopes {
-			for _, attribute := range app.ScopeClaims[scope] {
+			for _, attribute := range oauth2utils.ResolveScopeClaims(scope, app.ScopeClaims) {
 				if allowed[attribute] {
 					attributes[attribute] = true
 				}

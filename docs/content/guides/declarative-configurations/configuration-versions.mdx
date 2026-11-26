@@ -525,6 +525,54 @@ curl -X PUT https://localhost:8090/gateways/<gateway_id>/secrets/APPLICATION__01
   -d '{"value": "<client_secret>"}'
 ```
 
+### Unused Values Are Removed
+
+Deleting a resource leaves its variables and secrets on every gateway it was deployed to. After each
+apply or revert that the control plane records, it removes from that gateway's store, in the background,
+the values it no longer needs.
+
+The values of a resource that still exists are always kept, whether or not it was ever deployed and
+however long you wait before deploying it. Deleting the resource is what lets its values go, and even
+then they stay for as long as a version you can still roll back to, or what a gateway runs, needs them.
+
+A value is removed only when all of these hold:
+
+- Its name has the form the export gives a resource's value, `<TYPE>__<ID>__<FIELD>`, such as
+  `APPLICATION__0198F3A17C2E7B109A445D3E8F21C6B7__CLIENT_SECRET`. A value you named yourself, such as
+  `DATA_PLANE_URL`, is never removed.
+- No resource in the configuration as it stands refers to it.
+- No version this deployment keeps refers to it, so any version you can still apply, promote or revert
+  to finds its values. Once a version is pruned, it cannot be applied again.
+- No master the gateway keeps refers to it: what it runs now, and what a revert or a project's rollback
+  returns it to.
+- It was last set longer ago than `gateway.unused_value_grace_seconds` (one hour by default), and
+  nothing refers to it. The time is counted from when the value was last set, not from when it stopped
+  being used, so an old value goes at the first removal after its resource is deleted. The grace keeps a
+  value set for a resource that is being created while the removal runs. The gateway measures the age
+  itself, on its own clock, in the same step that removes the value, and the age the control plane
+  asks for is the grace plus the time since it started reading the gateway's values (rounded up to the
+  second, plus one second). A value set again after that read is therefore still too young to remove,
+  whatever the control plane's clock says, unless the removal request itself is delayed on its way to
+  the gateway by more than about the grace (the value also ages while the removal runs, so the delay
+  that matters is the grace plus up to two seconds of rounding, not the whole age asked for). A grace below one second, such as `0`, is raised to one second with a
+  warning at startup.
+
+A dry run never removes anything, and neither does an apply that failed or was refused. If the control
+plane cannot read its configuration, it removes nothing that time. A resource it could not read, such
+as one deleted while it was being read, keeps its values until a later removal. A removal that fails is
+logged and does not affect the apply, and what it left is removed after a later apply.
+
+Removal needs a gateway that can remove values by age. A gateway running an older version cannot, so
+nothing is removed from it: the control plane logs a warning that the gateway needs upgrading and leaves
+its store as it is.
+
+Each removal reads the whole configuration, so each control plane node cleans a gateway at most once
+every `gateway.unused_value_sweep_interval_seconds` (five minutes by default). An apply that node
+handles within that time starts no removal, and the next apply after it removes what the skipped ones
+would have. The time is kept in each node's memory: with several nodes, each one removes on its own
+schedule, and a node that restarts starts afresh. Set
+`gateway.unused_value_grace_seconds` to a negative number to turn the removal off.
+
 ## Deploy From the Console
 
 The console does all of the above from one full-screen page. The **Deploy** button in the console's

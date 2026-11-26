@@ -9,6 +9,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -439,5 +440,65 @@ func (s *ServiceTestSuite) TestResolveReportsFailuresWithoutDetail() {
 		newDiscardingBus(s.T())).(ReferenceResolverInterface)
 	s.store.On("GetSecretValue", ctx, "DB_PASSWORD").Return("terces", true, nil).Once()
 	_, _, svcErr = undecryptable.ResolveSecret(ctx, "DB_PASSWORD")
+	s.Equal(ErrorInternalServerError.Code, svcErr.Code)
+}
+
+// A delete of many names validates them before the store is asked, and answers with what the store
+// removed.
+func (s *ServiceTestSuite) TestDeleteVariablesRemovesWhatIsHeld() {
+	ctx := context.Background()
+	s.store.On("DeleteVariables", ctx, []string{"A", "B"}, time.Duration(0)).Return([]string{"A"}, nil).Once()
+
+	deleted, svcErr := s.service.DeleteVariables(ctx, []string{"A", "B"}, time.Duration(0))
+
+	s.Nil(svcErr)
+	s.Equal([]string{"A"}, deleted)
+}
+
+// The age reaches the store as given, so the statement that removes a value checks it.
+func (s *ServiceTestSuite) TestDeleteSecretsRemovesWhatIsHeld() {
+	ctx := context.Background()
+	bound := 90 * time.Second
+	s.store.On("DeleteSecrets", ctx, []string{"S"}, bound).Return([]string{"S"}, nil).Once()
+
+	deleted, svcErr := s.service.DeleteSecrets(ctx, []string{"S"}, bound)
+
+	s.Nil(svcErr)
+	s.Equal([]string{"S"}, deleted)
+}
+
+// No names, too many, or an invalid one is refused before the store is asked.
+func (s *ServiceTestSuite) TestDeleteManyRefusesInvalidNames() {
+	tooMany := make([]string, maxNamesPerQuery+1)
+	for i := range tooMany {
+		tooMany[i] = "N"
+	}
+	cases := []struct {
+		names []string
+		code  string
+	}{
+		{nil, ErrorNamesRequired.Code},
+		{tooMany, ErrorTooManyNames.Code},
+		{[]string{"A", "1-bad"}, ErrorInvalidName.Code},
+		{[]string{""}, ErrorInvalidName.Code},
+	}
+	for _, tc := range cases {
+		_, svcErr := s.service.DeleteVariables(context.Background(), tc.names, time.Duration(0))
+		s.Require().NotNil(svcErr)
+		s.Equal(tc.code, svcErr.Code)
+		_, svcErr = s.service.DeleteSecrets(context.Background(), tc.names, time.Duration(0))
+		s.Require().NotNil(svcErr)
+		s.Equal(tc.code, svcErr.Code)
+	}
+}
+
+// A store failure on a delete of many names reaches the caller as the one opaque error.
+func (s *ServiceTestSuite) TestDeleteManyStoreFailureIsNotDisclosed() {
+	ctx := context.Background()
+	s.store.On("DeleteSecrets", ctx, []string{"S"}, time.Duration(0)).Return(nil, errors.New("connection reset")).Once()
+
+	_, svcErr := s.service.DeleteSecrets(ctx, []string{"S"}, time.Duration(0))
+
+	s.Require().NotNil(svcErr)
 	s.Equal(ErrorInternalServerError.Code, svcErr.Code)
 }

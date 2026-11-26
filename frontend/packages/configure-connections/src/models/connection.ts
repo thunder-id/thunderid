@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 import type {OutboundAuthentication} from '@thunderid/components';
@@ -64,6 +64,8 @@ export interface ConnectionInstance {
   type: ConnectionType;
   /** The organization unit the connection belongs to. */
   ouId?: string;
+  /** False for a connection shared into the organization unit it is listed in, which that unit cannot change. */
+  isOwnedByOU?: boolean;
   categories: ConnectionInstanceCategory[];
   /**
    * Present only for trust-only OIDC instances (trusted issuers); absent for plain federation
@@ -258,6 +260,20 @@ export interface AttributeConfiguration {
   userTypeAttributeMappings?: UserTypeAttributeMapping[];
   accountLinking?: AccountLinking;
   authorizationMapping?: AuthorizationMapping;
+  sync?: SyncConfiguration;
+}
+
+/**
+ * How a federated sign-in keeps the local account in line with the provider.
+ */
+export type SyncMode = 'no_sync' | 'session_only' | 'override_received' | 'override_all';
+
+/**
+ * A connection's sync modes. An unset mode takes its server default.
+ */
+export interface SyncConfiguration {
+  attributes?: Exclude<SyncMode, 'override_all'>;
+  groupsAndRoles?: Exclude<SyncMode, 'override_received'>;
 }
 
 /**
@@ -444,6 +460,8 @@ export interface ConnectionResponse extends Partial<OIDCConnectionRequest> {
   name: string;
   /** The organization unit the connection belongs to. */
   ouId: string;
+  /** False for a connection shared into the organization unit it is read in, which that unit cannot change. */
+  isOwnedByOU?: boolean;
   /** SMS (Twilio) fields. */
   accountSid?: string;
   authToken?: string;

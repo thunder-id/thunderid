@@ -3,7 +3,6 @@
 
 import userEvent from '@testing-library/user-event';
 import type {OAuth2Config, OAuth2Token} from '@thunderid/configure-applications';
-import {CapabilitiesProvider} from '@thunderid/contexts';
 import {render, screen} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {Agent, AgentInboundAuthConfig, OAuthAgentConfig} from '../../../../models/agent';
@@ -14,14 +13,22 @@ vi.mock('../OperationModesSection', () => ({
   default: ({
     oauth2Config,
     onOAuth2ConfigChange,
+    loginConsent,
+    onLoginConsentChange,
   }: {
     oauth2Config?: OAuthAgentConfig;
     onOAuth2ConfigChange?: (updates: Partial<OAuthAgentConfig>) => void;
+    loginConsent?: {validityPeriod?: number};
+    onLoginConsentChange?: (loginConsent: {validityPeriod?: number}) => void;
   }) => (
     <div data-testid="operation-modes-section">
       <span data-testid="oauth2-grants">{(oauth2Config?.grantTypes ?? []).join(',')}</span>
+      <span data-testid="login-consent-validity">{loginConsent?.validityPeriod ?? ''}</span>
       <button type="button" onClick={() => onOAuth2ConfigChange?.({grantTypes: ['client_credentials']})}>
         Trigger OAuth Change
+      </button>
+      <button type="button" onClick={() => onLoginConsentChange?.({validityPeriod: 90})}>
+        Change consent validity
       </button>
     </div>
   ),
@@ -92,11 +99,6 @@ vi.mock('../../../AgentDeleteDialog', () => ({
     ) : null,
 }));
 
-const viewOnly = {
-  can: (_resource: string, action = 'view') => action === 'view',
-  isLoading: false,
-};
-
 describe('EditAdvancedSettings', () => {
   const mockAgent: Agent = {
     id: 'agent-1',
@@ -121,6 +123,7 @@ describe('EditAdvancedSettings', () => {
     render(
       <EditAdvancedSettings
         agent={mockAgent}
+        canDelete
         editedAgent={{}}
         oauth2Config={{grantTypes: ['authorization_code'], responseTypes: ['code']}}
         onFieldChange={mockOnFieldChange}
@@ -437,7 +440,8 @@ describe('EditAdvancedSettings', () => {
     it('disables the toggle for read-only agents', () => {
       render(
         <EditAdvancedSettings
-          agent={{...mockAgent, isReadOnly: true}}
+          agent={mockAgent}
+          readOnly
           editedAgent={{}}
           oauth2Config={{grantTypes: ['authorization_code'], responseTypes: ['code']}}
           onFieldChange={mockOnFieldChange}
@@ -495,7 +499,8 @@ describe('EditAdvancedSettings', () => {
     it('should disable the card for a read-only agent', () => {
       render(
         <EditAdvancedSettings
-          agent={{...mockAgent, isReadOnly: true}}
+          agent={mockAgent}
+          readOnly
           editedAgent={{}}
           oauth2Config={{grantTypes: ['authorization_code'], responseTypes: ['code']}}
           onFieldChange={mockOnFieldChange}
@@ -606,10 +611,11 @@ describe('EditAdvancedSettings', () => {
   });
 
   describe('Danger Zone', () => {
-    it('renders the Danger Zone for an editable agent', () => {
+    it('renders the Danger Zone when the agent may be deleted', () => {
       render(
         <EditAdvancedSettings
           agent={mockAgent}
+          canDelete
           editedAgent={{}}
           oauth2Config={{grantTypes: ['authorization_code'], responseTypes: ['code']}}
           onFieldChange={mockOnFieldChange}
@@ -619,10 +625,10 @@ describe('EditAdvancedSettings', () => {
       expect(screen.getByTestId('danger-zone-section')).toBeInTheDocument();
     });
 
-    it('does not render the Danger Zone for a read-only agent', () => {
+    it('does not render the Danger Zone when the agent may not be deleted', () => {
       render(
         <EditAdvancedSettings
-          agent={{...mockAgent, isReadOnly: true}}
+          agent={mockAgent}
           editedAgent={{}}
           oauth2Config={{grantTypes: ['authorization_code'], responseTypes: ['code']}}
           onFieldChange={mockOnFieldChange}
@@ -632,19 +638,19 @@ describe('EditAdvancedSettings', () => {
       expect(screen.queryByTestId('danger-zone-section')).not.toBeInTheDocument();
     });
 
-    it('does not render the Danger Zone when the admin may not delete agents', () => {
+    it('keeps the Danger Zone for a read-only agent the admin may still delete', () => {
       render(
-        <CapabilitiesProvider capabilities={viewOnly}>
-          <EditAdvancedSettings
-            agent={mockAgent}
-            editedAgent={{}}
-            oauth2Config={{grantTypes: ['authorization_code'], responseTypes: ['code']}}
-            onFieldChange={mockOnFieldChange}
-          />
-        </CapabilitiesProvider>,
+        <EditAdvancedSettings
+          agent={mockAgent}
+          readOnly
+          canDelete
+          editedAgent={{}}
+          oauth2Config={{grantTypes: ['authorization_code'], responseTypes: ['code']}}
+          onFieldChange={mockOnFieldChange}
+        />,
       );
 
-      expect(screen.queryByTestId('danger-zone-section')).not.toBeInTheDocument();
+      expect(screen.getByTestId('danger-zone-section')).toBeInTheDocument();
     });
 
     it('opens the delete dialog when Delete Agent is clicked and reports success', async () => {
@@ -657,6 +663,7 @@ describe('EditAdvancedSettings', () => {
           oauth2Config={{grantTypes: ['authorization_code'], responseTypes: ['code']}}
           onFieldChange={mockOnFieldChange}
           onDeleteSuccess={mockOnDeleteSuccess}
+          canDelete
         />,
       );
 
@@ -678,11 +685,60 @@ describe('EditAdvancedSettings', () => {
           editedAgent={{}}
           oauth2Config={undefined}
           onFieldChange={mockOnFieldChange}
+          canDelete
         />,
       );
 
       expect(screen.getByTestId('owner-section')).toBeInTheDocument();
       expect(screen.getByTestId('danger-zone-section')).toBeInTheDocument();
+    });
+  });
+
+  describe('Consent validity', () => {
+    it('should pass the edited validity period to the section in place of the saved one', () => {
+      render(
+        <EditAdvancedSettings
+          agent={{...mockAgent, loginConsent: {validityPeriod: 3600}}}
+          editedAgent={{loginConsent: {validityPeriod: 120}}}
+          oauth2Config={{grantTypes: ['authorization_code'], responseTypes: ['code']}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(screen.getByTestId('login-consent-validity')).toHaveTextContent('120');
+    });
+
+    it('should commit a changed validity period through onFieldChange', async () => {
+      const user = userEvent.setup();
+      render(
+        <EditAdvancedSettings
+          agent={mockAgent}
+          editedAgent={{}}
+          oauth2Config={{grantTypes: ['authorization_code'], responseTypes: ['code']}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', {name: 'Change consent validity'}));
+
+      expect(mockOnFieldChange).toHaveBeenCalledWith('loginConsent', {validityPeriod: 90});
+    });
+
+    it('should not let a read-only agent change the validity period', async () => {
+      const user = userEvent.setup();
+      render(
+        <EditAdvancedSettings
+          agent={mockAgent}
+          editedAgent={{}}
+          oauth2Config={{grantTypes: ['authorization_code'], responseTypes: ['code']}}
+          onFieldChange={mockOnFieldChange}
+          readOnly
+        />,
+      );
+
+      await user.click(screen.getByRole('button', {name: 'Change consent validity'}));
+
+      expect(mockOnFieldChange).not.toHaveBeenCalledWith('loginConsent', expect.anything());
     });
   });
 });

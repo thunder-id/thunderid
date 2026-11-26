@@ -15,13 +15,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"net/url"
+	"strings"
 	"time"
 
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	"github.com/thunder-id/thunderid/internal/entity"
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/common"
+	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/system/cryptolib"
 	"github.com/thunder-id/thunderid/internal/system/eventlistener"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -35,8 +41,8 @@ type Service interface {
 	// session, a session from a different flow, or one established at an incompatible flow version.
 	Resolve(ctx context.Context, handle, flowID string, flowVersion int, now time.Time) (*Session, error)
 
-	// AbsoluteTimeout returns the longest a session lasts from its start.
-	AbsoluteTimeout() time.Duration
+	// AbsoluteTimeout returns the longest a session started now lasts, read from the "session" section.
+	AbsoluteTimeout(ctx context.Context) time.Duration
 
 	// FindCheckpoint returns the resolved session's snapshot for the checkpoint, or (nil, nil) when
 	// the session holds none or the sign-in on the context cannot reuse it. Callers deciding only whether a
@@ -50,6 +56,11 @@ type Service interface {
 	// true when the authenticated subject conflicts with the existing session's subject.
 	SaveCheckpoint(ctx context.Context, in SaveCheckpointInput) (SaveCheckpointResult, error)
 
+	// CreateDirect records a direct session for a login that established no SSO session: the session and the
+	// signing-in application as its participant, written in one transaction. A direct session has no handle,
+	// so no later login can reuse it.
+	CreateDirect(ctx context.Context, in CreateDirectInput) error
+
 	// LoadCheckpoint returns the session referenced by in.Handle and the checkpoint's context, refreshes
 	// the session's last-active timestamp and idle deadline (throttled: skipped when the last refresh is
 	// within the activity-refresh window), and records the joining application as a participant. It uses
@@ -57,7 +68,7 @@ type Service interface {
 	// was not given. The activity refresh is best-effort, but recording the participant is not when
 	// in.TokenFamilyID is set: a token family with no persisted mapping would be unrevocable, so that
 	// failure aborts the load. It errors when a row it has to read no longer exists.
-	LoadCheckpoint(ctx context.Context, in LoadCheckpointInput) (*Session, *SessionContext, error)
+	LoadCheckpoint(ctx context.Context, in LoadCheckpointInput) (LoadCheckpointResult, error)
 
 	// RecordActivity counts a use of the session outside the flow engine as activity: it refreshes the
 	// last-active timestamp and slides the idle deadline under the same activity-refresh throttle as a
@@ -72,12 +83,12 @@ type Service interface {
 	// against ending a session grouped under a different flow. It is idempotent, returning (nil, nil)
 	// when no session matches the handle, and returns the deleted session on success.
 	Terminate(ctx context.Context, handle, flowID string) (*Session, error)
-	// TerminateBySubject ends every SSO session belonging to the subject, revoking the subject's
-	// grants first so no session is deleted while its tokens remain live. It is idempotent, returning
-	// nil when the subject holds no sessions.
+	// TerminateBySubject ends every session belonging to the subject, SSO and direct, revoking the
+	// subject's grants first so no session is deleted while its tokens remain live. It notifies only for
+	// sessions that had not expired. It is idempotent, returning nil when the subject holds no sessions.
 	TerminateBySubject(ctx context.Context, subjectID string) error
 
-	// DetachApplication detaches an application from every SSO session it participates in: for each
+	// DetachApplication detaches an application from every session it participates in: for each
 	// organization unit it signed in under, it revokes that participation's token family and drops its
 	// row, deleting the session itself only when the application was its last participant. It is
 	// idempotent, returning nil when the application participates in none.
@@ -95,8 +106,8 @@ type LoadCheckpointInput struct {
 	Checkpoint string
 	// AppID is the joining application, recorded as a session participant.
 	AppID string
-	// TokenFamilyID is the token family id (tfid) minted for this grant. Recording it is required
-	// when non-empty: a tfid with no persisted mapping would be unrevocable.
+	// TokenFamilyID is the token family id (tfid) offered for this grant. Recording it is required when
+	// non-empty: a tfid with no persisted mapping would be unrevocable.
 	TokenFamilyID string
 	// Session is the session the SSO-Check node resolved, or nil to read it by Handle.
 	Session *Session
@@ -105,6 +116,15 @@ type LoadCheckpointInput struct {
 	// ClientInfo is the requesting client's metadata; its IP is recorded as the session's last-active
 	// IP when the login flow reuses the session.
 	ClientInfo ClientInfo
+}
+
+// LoadCheckpointResult is the outcome of a load.
+type LoadCheckpointResult struct {
+	Session *Session
+	// Context is the checkpoint's context, to replay into the joining flow.
+	Context *SessionContext
+	// TokenFamilyID is the token family id the participant holds, which the grant carries.
+	TokenFamilyID string
 }
 
 // SaveCheckpointInput carries the data a Session join needs to persist. The caller resolves the
@@ -120,12 +140,26 @@ type SaveCheckpointInput struct {
 	RuntimeData    map[string]string
 	CompletedSteps map[string]StepFact
 	AppID          string
-	// TokenFamilyID is the token family id (tfid) minted by the caller for this grant. It is stored on
-	// the joining participant so logout can resolve the session to its families. Empty leaves the
-	// participant's tfid unset.
+	// TokenFamilyID is the token family id (tfid) offered for this grant, stored on a participant that holds
+	// none or a revoked one. Empty leaves the participant's tfid unset.
 	TokenFamilyID string
 	// ClientInfo is the requesting client's metadata, recorded on a session this save establishes and
 	// used to update the last-active IP of an existing one.
+	ClientInfo ClientInfo
+}
+
+// CreateDirectInput carries what recording a direct session needs.
+type CreateDirectInput struct {
+	// SessionID is the id the login's assertion carries as sid.
+	SessionID   string
+	SubjectID   string
+	FlowID      string
+	FlowVersion int
+	AppID       string
+	// TokenFamilyID is the token family id (tfid) of the login's grant. It is stored on the participant so
+	// ending the session revokes the grant.
+	TokenFamilyID string
+	// ClientInfo is the requesting client's metadata, recorded on the session.
 	ClientInfo ClientInfo
 }
 
@@ -142,13 +176,15 @@ type SaveCheckpointResult struct {
 	// AbsoluteExpiresAt is when the session ends, as the session records it. A joined session keeps the
 	// end it was created with.
 	AbsoluteExpiresAt time.Time
+	// TokenFamilyID is the token family id the participant holds, which the grant carries.
+	TokenFamilyID string
 }
 
-// CriteriaRevoker revokes a token family (one authorization grant) by its id. It is injected so session
-// sign-out can drop the session's grants without the session package depending on the OAuth
-// revocation implementation. A nil revoker disables sign-out revocation.
+// CriteriaRevoker revokes token families and reports whether one is revoked. It is injected so the session
+// package does not depend on the OAuth revocation implementation. A nil revoker disables sign-out revocation.
 type CriteriaRevoker interface {
 	RevokeTokenFamily(ctx context.Context, tokenFamilyID string) error
+	IsTokenFamilyRevoked(ctx context.Context, tokenFamilyID string) (bool, error)
 }
 
 // service is the store-backed implementation of Service.
@@ -159,7 +195,10 @@ type service struct {
 	criteriaRevoker  CriteriaRevoker
 	ouEligibility    OUEligibility
 	terminationTopic *eventlistener.Topic[TerminatedSession]
-	timeouts         Timeouts
+	timeouts         timeoutsSource
+	entities         entity.EntityServiceInterface
+	entityTypes      entitytype.EntityTypeServiceInterface
+	apps             applicationProvider
 	logger           *log.Logger
 }
 
@@ -172,8 +211,8 @@ type OUEligibility interface {
 var _ Service = (*service)(nil)
 
 // AbsoluteTimeout implements Service.
-func (s *service) AbsoluteTimeout() time.Duration {
-	return s.timeouts.Absolute
+func (s *service) AbsoluteTimeout(ctx context.Context) time.Duration {
+	return s.timeouts.current(ctx).Absolute
 }
 
 // Resolve implements Service.
@@ -238,7 +277,7 @@ func (s *service) SaveCheckpoint(ctx context.Context, in SaveCheckpointInput) (S
 		properties := target.Properties
 		properties.LastActiveIP = s.activeIP(in.ClientInfo, target)
 		if err := s.store.TouchAuthenticatedAt(ctx, target.SessionID, now,
-			now.Add(s.timeouts.Idle), properties); err != nil {
+			now.Add(s.timeouts.current(ctx).Idle), properties); err != nil {
 			// The checkpoint itself is still worth saving, so degrade rather than fail the login.
 			s.logger.Error(ctx, "Failed to refresh session authentication time", log.Error(err))
 		} else {
@@ -263,11 +302,22 @@ func (s *service) SaveCheckpoint(ctx context.Context, in SaveCheckpointInput) (S
 
 	// Write this checkpoint's context (upsert) and the joining participant in one transaction.
 	now := time.Now().UTC()
+	participant := Participant{
+		SessionID:     target.SessionID,
+		AppID:         in.AppID,
+		OUID:          participantOU,
+		TokenFamilyID: in.TokenFamilyID,
+		FirstJoinedAt: now,
+		LastActiveAt:  now,
+	}
+	var held string
 	if err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		if err := s.store.CreateContext(txCtx, snapshot); err != nil {
 			return err
 		}
-		return s.recordParticipant(txCtx, target.SessionID, in.AppID, participantOU, in.TokenFamilyID, now)
+		var recordErr error
+		held, recordErr = s.recordParticipant(txCtx, participant)
+		return recordErr
 	}); err != nil {
 		return SaveCheckpointResult{}, err
 	}
@@ -278,14 +328,45 @@ func (s *service) SaveCheckpoint(ctx context.Context, in SaveCheckpointInput) (S
 		SessionID:         target.SessionID,
 		AuthenticatedAt:   target.AuthenticatedAt,
 		AbsoluteExpiresAt: target.AbsoluteExpiresAt,
+		TokenFamilyID:     s.settleTokenFamily(ctx, participant, held),
 	}, nil
 }
 
+// CreateDirect implements Service.
+func (s *service) CreateDirect(ctx context.Context, in CreateDirectInput) error {
+	participantOU, err := s.participantOU(ctx, in.SubjectID, participantOUID(ctx))
+	if err != nil {
+		return err
+	}
+
+	now := time.Now().UTC()
+	sess := s.newSession(ctx, TypeDirect, in.SessionID, in.SubjectID, in.FlowID, in.FlowVersion, in.ClientInfo,
+		now)
+	if err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		if err := s.store.Create(txCtx, sess); err != nil {
+			return err
+		}
+		_, err := s.recordParticipant(txCtx, Participant{
+			SessionID:     in.SessionID,
+			AppID:         in.AppID,
+			OUID:          participantOU,
+			TokenFamilyID: in.TokenFamilyID,
+			FirstJoinedAt: now,
+			LastActiveAt:  now,
+		})
+		return err
+	}); err != nil {
+		return fmt.Errorf("failed to record direct session: %w", err)
+	}
+
+	s.logger.Debug(ctx, "Recorded direct session", log.String("flowID", in.FlowID))
+	return nil
+}
+
 // LoadCheckpoint implements Service.
-func (s *service) LoadCheckpoint(ctx context.Context, in LoadCheckpointInput) (
-	*Session, *SessionContext, error) {
+func (s *service) LoadCheckpoint(ctx context.Context, in LoadCheckpointInput) (LoadCheckpointResult, error) {
 	if in.Handle == "" {
-		return nil, nil, fmt.Errorf("no resolved session handle to load")
+		return LoadCheckpointResult{}, fmt.Errorf("no resolved session handle to load")
 	}
 	// The SSO-Check node resolved the session and read this checkpoint's context to decide routing, and
 	// forwards both here, so this path re-reads neither. The resolver has already applied every liveness,
@@ -301,10 +382,10 @@ func (s *service) LoadCheckpoint(ctx context.Context, in LoadCheckpointInput) (
 	if sess == nil {
 		loaded, err := s.store.GetByHandle(ctx, in.Handle)
 		if err != nil {
-			return nil, nil, err
+			return LoadCheckpointResult{}, err
 		}
 		if loaded == nil {
-			return nil, nil, fmt.Errorf("resolved session no longer exists")
+			return LoadCheckpointResult{}, fmt.Errorf("resolved session no longer exists")
 		}
 		sess = loaded
 	}
@@ -317,10 +398,11 @@ func (s *service) LoadCheckpoint(ctx context.Context, in LoadCheckpointInput) (
 	if snapshot == nil {
 		loaded, err := s.store.GetByCheckpoint(ctx, sess.SessionID, in.Checkpoint)
 		if err != nil {
-			return nil, nil, err
+			return LoadCheckpointResult{}, err
 		}
 		if loaded == nil {
-			return nil, nil, fmt.Errorf("session context for checkpoint %q no longer exists", in.Checkpoint)
+			return LoadCheckpointResult{}, fmt.Errorf("session context for checkpoint %q no longer exists",
+				in.Checkpoint)
 		}
 		snapshot = loaded
 	}
@@ -332,13 +414,14 @@ func (s *service) LoadCheckpoint(ctx context.Context, in LoadCheckpointInput) (
 	// Throttle the write: within ActivityRefresh of the last persisted activity refresh, skip it. This
 	// hot path fires on every session reuse, and an unthrottled UPDATE per reuse is the dominant write
 	// load (and, on Postgres, the main source of dead tuples) on the session table. The persisted idle
-	// deadline then lags real activity by at most ActivityRefresh; config validation keeps that below
-	// the idle window so an active session is never skipped past its idle deadline.
+	// deadline then lags real activity by at most ActivityRefresh, which stays below the idle window
+	// so an active session is never skipped past its idle deadline.
 	now := time.Now().UTC()
-	if now.Sub(sess.LastActiveAt) >= s.timeouts.ActivityRefresh {
+	timeouts := s.timeouts.current(ctx)
+	if now.Sub(sess.LastActiveAt) >= timeouts.ActivityRefresh {
 		sess.LastActiveAt = now
 		sess.Properties.LastActiveIP = s.activeIP(in.ClientInfo, sess)
-		sess.IdleExpiresAt = now.Add(s.timeouts.Idle)
+		sess.IdleExpiresAt = now.Add(timeouts.Idle)
 		if updErr := s.store.Update(ctx, sess); updErr != nil {
 			s.logger.Warn(ctx, "Failed to refresh session last-active timestamp", log.Error(updErr))
 		}
@@ -348,10 +431,10 @@ func (s *service) LoadCheckpoint(ctx context.Context, in LoadCheckpointInput) (
 	// the replayed runtime data.
 	followedOUID, reusable, err := s.reuseOU(ctx, sess)
 	if err != nil {
-		return nil, nil, err
+		return LoadCheckpointResult{}, err
 	}
 	if !reusable {
-		return nil, nil, fmt.Errorf("the sign-in can no longer reuse the session")
+		return LoadCheckpointResult{}, fmt.Errorf("the sign-in can no longer reuse the session")
 	}
 	if followedOUID != "" {
 		followed := *snapshot
@@ -363,28 +446,36 @@ func (s *service) LoadCheckpoint(ctx context.Context, in LoadCheckpointInput) (
 		snapshot = &followed
 	}
 
-	// Record the joining application as a participant. When this reused session issues a token family,
-	// its SESSION_ID -> tfid mapping is security-critical: logout resolves the families to revoke from
-	// these rows, so a token stamped with a tfid that has no persisted mapping would be unrevocable.
-	// Fail closed in that case so the reuse does not issue an unrevocable family (the caller aborts the
-	// load before publishing the tfid, forcing full re-authentication). Without a tfid there is nothing
-	// to revoke, so the write stays best-effort. Either way it is not throttled with the activity
-	// refresh above: the upsert also registers an application joining the session for the first time.
+	// Record the joining application as a participant, unthrottled since this may be its first join. With a
+	// token family, a failure fails the load, since logout revokes the families these rows record.
 	participantOU := followedOUID
 	if fixed := participantOUID(ctx); fixed != "" {
 		if participantOU, err = s.participantOU(ctx, sess.SubjectID, fixed); err != nil {
-			return nil, nil, err
+			return LoadCheckpointResult{}, err
 		}
 	}
-	if partErr := s.recordParticipant(ctx, sess.SessionID, in.AppID, participantOU, in.TokenFamilyID,
-		now); partErr != nil {
+	participant := Participant{
+		SessionID:     sess.SessionID,
+		AppID:         in.AppID,
+		OUID:          participantOU,
+		TokenFamilyID: in.TokenFamilyID,
+		FirstJoinedAt: now,
+		LastActiveAt:  now,
+	}
+	held, partErr := s.recordParticipant(ctx, participant)
+	if partErr != nil {
 		if in.TokenFamilyID != "" {
-			return nil, nil, fmt.Errorf("failed to record SSO session participant for token family: %w", partErr)
+			return LoadCheckpointResult{}, fmt.Errorf(
+				"failed to record SSO session participant for token family: %w", partErr)
 		}
 		s.logger.Warn(ctx, "Failed to record SSO session participant", log.Error(partErr))
 	}
 
-	return sess, snapshot, nil
+	return LoadCheckpointResult{
+		Session:       sess,
+		Context:       snapshot,
+		TokenFamilyID: s.settleTokenFamily(ctx, participant, held),
+	}, nil
 }
 
 // participantOUID returns the sign-in boundary's organization unit, the one the grant is signed in under,
@@ -493,8 +584,14 @@ func (s *service) RecordActivity(ctx context.Context, sessionID string) error {
 		return nil
 	}
 	now := time.Now().UTC()
-	if err := s.store.SlideIdleDeadline(ctx, sessionID, now, now.Add(s.timeouts.Idle),
-		now.Add(-s.timeouts.ActivityRefresh)); err != nil {
+	timeouts := s.timeouts.current(ctx)
+	if err := s.store.SlideIdleDeadline(ctx, sessionID, idleSlide{
+		now:             now,
+		idleExpiresAt:   now.Add(timeouts.Idle),
+		refreshedBefore: now.Add(-timeouts.ActivityRefresh),
+		activeAfter:     now.Add(-timeouts.Idle),
+		createdAfter:    now.Add(-timeouts.Absolute),
+	}); err != nil {
 		return fmt.Errorf("failed to record SSO session activity: %w", err)
 	}
 	return nil
@@ -573,7 +670,7 @@ func (s *service) Terminate(ctx context.Context, handle, flowID string) (*Sessio
 	return sess, nil
 }
 
-// TerminateBySubject ends every SSO session belonging to the subject. Repeated calls are idempotent.
+// TerminateBySubject ends every session belonging to the subject. Repeated calls are idempotent.
 //
 // Unlike Terminate, this does not revoke token families. Subject-wide termination is driven by a
 // criteria revocation on the subject dimension, which already matches every token those sessions
@@ -624,11 +721,19 @@ func (s *service) TerminateBySubject(ctx context.Context, subjectID string) erro
 		return fmt.Errorf("failed to terminate subject sessions: %w", txErr)
 	}
 
-	s.logger.Debug(ctx, "Terminated all SSO sessions for subject", log.Int("sessionCount", len(sessions)))
+	s.logger.Debug(ctx, "Terminated all sessions for subject", log.Int("sessionCount", len(sessions)))
 	if participantsBySession != nil {
+		now := time.Now()
+		timeouts := s.timeouts.current(ctx)
 		for _, sess := range sessions {
 			if !removed[sess.SessionID] {
 				// A concurrent termination already removed this session and notifies for it.
+				continue
+			}
+			if expired(sess.IdleExpiresAt, now) || expired(sess.AbsoluteExpiresAt, now) ||
+				expiredAfter(sess.LastActiveAt, timeouts.Idle, now) ||
+				expiredAfter(sess.CreatedAt, timeouts.Absolute, now) {
+				// Expiry, by its stored deadlines or the timeouts in effect, already ended it and sends no notice.
 				continue
 			}
 			s.terminationTopic.Notify(ctx, TerminatedSession{
@@ -642,7 +747,7 @@ func (s *service) TerminateBySubject(ctx context.Context, subjectID string) erro
 	return nil
 }
 
-// DetachApplication detaches an application from every SSO session it participates in. Narrower than
+// DetachApplication detaches an application from every session it participates in. Narrower than
 // Terminate: only this application's participation goes, and the session is deleted once nothing is left
 // to participate. Each token family is revoked before its row is dropped, in one transaction.
 func (s *service) DetachApplication(ctx context.Context, appID string) error {
@@ -697,6 +802,214 @@ func (s *service) DetachApplication(ctx context.Context, appID string) error {
 	return nil
 }
 
+// listLiveBySubject returns one page of the subject's live SSO sessions at now, most recently active first,
+// each with the applications that have joined it. A non-nil ouID keeps only the sessions with an application
+// signed in under that organization unit, and only those participants. The sessions carry the handle, so
+// callers must never expose it.
+func (s *service) listLiveBySubject(ctx context.Context, subjectID string, ouID *string, now time.Time,
+	limit, offset int) (*sessionPage, error) {
+	total, err := s.store.CountLiveBySubject(ctx, subjectID, ouID, now)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count sessions by subject: %w", err)
+	}
+	if offset >= total {
+		return &sessionPage{Sessions: []sessionDetail{}, TotalResults: total}, nil
+	}
+	sessions, err := s.store.ListLiveBySubject(ctx, subjectID, ouID, now, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list sessions by subject: %w", err)
+	}
+	return s.page(ctx, sessions, total, ouID)
+}
+
+// listLiveByApp returns one page of the live SSO sessions at now that the application has joined, most
+// recently active first, each with the applications that have joined it. A non-nil ouID keeps only the
+// sessions the application joined under that organization unit, and only the participants signed in under it.
+func (s *service) listLiveByApp(ctx context.Context, appID string, ouID *string, now time.Time,
+	limit, offset int) (*sessionPage, error) {
+	total, err := s.store.CountLiveByApp(ctx, appID, ouID, now)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count sessions by application: %w", err)
+	}
+	if offset >= total {
+		return &sessionPage{Sessions: []sessionDetail{}, TotalResults: total}, nil
+	}
+	sessions, err := s.store.ListLiveByApp(ctx, appID, ouID, now, limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list sessions by application: %w", err)
+	}
+	return s.page(ctx, sessions, total, ouID)
+}
+
+// getSubjectParticipantByTokenFamily returns the participant of one of the subject's SSO sessions that holds
+// the token family, or nil when none does.
+func (s *service) getSubjectParticipantByTokenFamily(ctx context.Context, subjectID, tokenFamilyID string) (
+	*Participant, error) {
+	participant, err := s.store.GetSubjectParticipantByTokenFamily(ctx, subjectID, tokenFamilyID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get participant by token family: %w", err)
+	}
+	return participant, nil
+}
+
+// ListSessions returns one page of the live sessions of a user (userID) or of an application (appID). Exactly
+// one of them must be given.
+func (s *service) ListSessions(ctx context.Context, userID, appID string, limit, offset int) (
+	*sessionListResponse, *tidcommon.ServiceError) {
+	userID = strings.TrimSpace(userID)
+	appID = strings.TrimSpace(appID)
+	if (userID == "") == (appID == "") {
+		return nil, &ErrorInvalidListFilter
+	}
+	// The system permission reaches every organization unit, so its holder sees every session. Any other
+	// caller sees only the sessions with an application signed in under the unit its token names, and only
+	// those applications. The security middleware refuses such a caller when its token names no unit.
+	var ouID *string
+	if !security.HasSystemPermission(security.GetPermissions(ctx)) {
+		tokenOUID := security.GetOUID(ctx)
+		if tokenOUID == "" {
+			return nil, &tidcommon.ErrorUnauthorized
+		}
+		ouID = &tokenOUID
+	}
+
+	var (
+		page       *sessionPage
+		err        error
+		extraQuery string
+	)
+	now := time.Now().UTC()
+	if userID != "" {
+		page, err = s.listLiveBySubject(ctx, userID, ouID, now, limit, offset)
+		extraQuery = "&userId=" + url.QueryEscape(userID)
+	} else {
+		page, err = s.listLiveByApp(ctx, appID, ouID, now, limit, offset)
+		extraQuery = "&appId=" + url.QueryEscape(appID)
+	}
+	if err != nil {
+		s.logger.Error(ctx, "Failed to list sessions", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	displays := s.subjectDisplays(ctx, page.Sessions)
+	// A session permission doesn't let the caller read applications, so they are read as the runtime.
+	apps := s.appDisplays(security.WithRuntimeContext(ctx), page.Sessions)
+	sessions := make([]sessionResponse, 0, len(page.Sessions))
+	for _, sess := range page.Sessions {
+		sessions = append(sessions, toSessionResponse(sess, displays, apps))
+	}
+
+	return s.buildListResponse(sessions, page.TotalResults, "/sessions", limit, offset, extraQuery), nil
+}
+
+// ListOwnSessions returns one page of the authenticated caller's own live sessions, with the one behind the
+// caller's access token marked as current.
+func (s *service) ListOwnSessions(ctx context.Context, limit, offset int) (
+	*sessionListResponse, *tidcommon.ServiceError) {
+	subject := security.GetSubject(ctx)
+
+	// The caller sees only the sessions with an application signed in under the organization unit its own
+	// sign-in was recorded under, and only those applications, so an application in one unit can't see the
+	// user's sign-ins in another. The unit is read from the participant that holds the token's family, not
+	// from the token's claims, which the application's token configuration decides. A token that no
+	// participant of an SSO session holds, such as one from a direct session's sign-in, sees no session.
+	tokenFamilyID, _ := security.GetAttribute(ctx, oauth2const.ClaimTokenFamilyID).(string)
+	if tokenFamilyID == "" {
+		return s.buildListResponse([]sessionResponse{}, 0, "/users/me/sessions", limit, offset, ""), nil
+	}
+	participant, err := s.getSubjectParticipantByTokenFamily(ctx, subject, tokenFamilyID)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to read the caller's session participant", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+	if participant == nil {
+		return s.buildListResponse([]sessionResponse{}, 0, "/users/me/sessions", limit, offset, ""), nil
+	}
+
+	page, err := s.listLiveBySubject(ctx, subject, &participant.OUID, time.Now().UTC(), limit, offset)
+	if err != nil {
+		s.logger.Error(ctx, "Failed to list own sessions", log.Error(err))
+		return nil, &tidcommon.InternalServerError
+	}
+
+	// The caller already knows who they are, so only the applications are resolved. The caller signed in to
+	// these applications but may not be allowed to read them, so they are read as the runtime.
+	apps := s.appDisplays(security.WithRuntimeContext(ctx), page.Sessions)
+	sessions := make([]sessionResponse, 0, len(page.Sessions))
+	for _, sess := range page.Sessions {
+		resp := toSessionResponse(sess, nil, apps)
+		isCurrent := isCurrentSession(sess, tokenFamilyID)
+		resp.IsCurrent = &isCurrent
+		sessions = append(sessions, resp)
+	}
+
+	return s.buildListResponse(sessions, page.TotalResults, "/users/me/sessions", limit, offset, ""), nil
+}
+
+// subjectDisplays resolves the display name of each distinct user or agent across the sessions in one read.
+// A subject that can't be found, or a failed read, leaves the name out.
+func (s *service) subjectDisplays(ctx context.Context, sessions []sessionDetail) map[string]string {
+	seen := make(map[string]bool, len(sessions))
+	subjectIDs := make([]string, 0, len(sessions))
+	for _, sess := range sessions {
+		if !seen[sess.SubjectID] {
+			seen[sess.SubjectID] = true
+			subjectIDs = append(subjectIDs, sess.SubjectID)
+		}
+	}
+	if len(subjectIDs) == 0 {
+		return nil
+	}
+	subjects, err := s.entities.GetEntitiesByIDs(ctx, subjectIDs)
+	if err != nil {
+		s.logger.Warn(ctx, "Failed to read the session subjects for their display names", log.Error(err))
+		return nil
+	}
+	return entitytype.ResolveEntityDisplays(ctx, subjects, s.entityTypes, s.logger)
+}
+
+// appDisplays resolves the name and logo of each distinct participating application across the sessions,
+// once per application. An application that can't be found gets neither.
+func (s *service) appDisplays(ctx context.Context, sessions []sessionDetail) map[string]appDisplay {
+	apps := make(map[string]appDisplay)
+	for _, sess := range sessions {
+		for _, p := range sess.Participants {
+			if _, seen := apps[p.AppID]; seen {
+				continue
+			}
+			apps[p.AppID] = appDisplay{}
+			if a, svcErr := s.apps.GetApplication(ctx, p.AppID); svcErr == nil && a != nil {
+				apps[p.AppID] = appDisplay{name: a.Name, logoURL: a.LogoURL}
+			}
+		}
+	}
+	return apps
+}
+
+// isCurrentSession reports whether the session issued the caller's access token: one of its participants
+// holds the token's family.
+func isCurrentSession(sess sessionDetail, tokenFamilyID string) bool {
+	for _, p := range sess.Participants {
+		if p.TokenFamilyID == tokenFamilyID {
+			return true
+		}
+	}
+	return false
+}
+
+// buildListResponse assembles the paginated list body. basePath is the route the pagination links point
+// back to, and extraQuery carries the list filter into them.
+func (s *service) buildListResponse(sessions []sessionResponse, total int, basePath string, limit, offset int,
+	extraQuery string) *sessionListResponse {
+	return &sessionListResponse{
+		TotalResults: total,
+		StartIndex:   offset + 1,
+		Count:        len(sessions),
+		Sessions:     sessions,
+		Links:        sysutils.BuildPaginationLinks(basePath, limit, offset, total, extraQuery),
+	}
+}
+
 // revokeFamilies revokes each participant's token family, so signing out drops all of the login's
 // grants. It is a no-op when no revoker is wired; the revoker skips an empty tfid.
 func (s *service) revokeFamilies(ctx context.Context, participants []Participant) error {
@@ -732,6 +1045,32 @@ func (s *service) participantsForTermination(ctx context.Context, sessions []Ses
 		grouped[p.SessionID] = append(grouped[p.SessionID], p)
 	}
 	return grouped
+}
+
+// page attaches the participants to a page of sessions, reading them for the whole page in one query. A
+// non-nil ouID keeps only the participants signed in under that organization unit.
+func (s *service) page(ctx context.Context, sessions []Session, total int, ouID *string) (*sessionPage, error) {
+	sessionIDs := make([]string, 0, len(sessions))
+	for _, sess := range sessions {
+		sessionIDs = append(sessionIDs, sess.SessionID)
+	}
+	participants, err := s.store.ListBySessionIDs(ctx, sessionIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list session participants: %w", err)
+	}
+	bySession := make(map[string][]Participant, len(sessions))
+	for _, p := range participants {
+		if ouID != nil && p.OUID != *ouID {
+			continue
+		}
+		bySession[p.SessionID] = append(bySession[p.SessionID], p)
+	}
+
+	details := make([]sessionDetail, 0, len(sessions))
+	for _, sess := range sessions {
+		details = append(details, sessionDetail{Session: sess, Participants: bySession[sess.SessionID]})
+	}
+	return &sessionPage{Sessions: details, TotalResults: total}, nil
 }
 
 // targetSession returns the session this execution's checkpoints attach to, establishing one when
@@ -777,29 +1116,10 @@ func (s *service) establishSession(ctx context.Context, in SaveCheckpointInput) 
 		return nil, false, fmt.Errorf("failed to generate session handle: %w", err)
 	}
 
-	now := time.Now().UTC()
-	newSession := Session{
-		SessionID:       sessionID,
-		SubjectID:       in.SubjectID,
-		FlowID:          in.FlowID,
-		FlowVersion:     in.FlowVersion,
-		FlowExecutionID: in.ExecutionID,
-		HandleID:        handle,
-		AuthenticatedAt: now,
-		CreatedAt:       now,
-		LastActiveAt:    now,
-		// The idle deadline slides on each activity refresh; the absolute deadline is fixed here and
-		// caps the session's total lifetime. The resolver rejects a session past either deadline.
-		IdleExpiresAt:     now.Add(s.timeouts.Idle),
-		AbsoluteExpiresAt: now.Add(s.timeouts.Absolute),
-		Properties: SessionProperties{
-			UserAgent:    in.ClientInfo.UserAgent,
-			CreationIP:   in.ClientInfo.IP,
-			LastActiveIP: in.ClientInfo.IP,
-		},
-		State:   StateActive,
-		Version: 1,
-	}
+	newSession := s.newSession(ctx, TypeSSO, sessionID, in.SubjectID, in.FlowID, in.FlowVersion, in.ClientInfo,
+		time.Now().UTC())
+	newSession.FlowExecutionID = in.ExecutionID
+	newSession.HandleID = handle
 	if err := s.store.Create(ctx, newSession); err != nil {
 		return nil, false, err
 	}
@@ -820,22 +1140,63 @@ func (s *service) establishSession(ctx context.Context, in SaveCheckpointInput) 
 	return established, created, nil
 }
 
-// recordParticipant records the application as a participant of the session under the organization
-// unit, refreshing its last-active time and current-grant tfid if it has joined under that unit before.
-// It is a no-op when the application id is unknown.
-func (s *service) recordParticipant(ctx context.Context, sessionID, appID, ouID, tokenFamilyID string,
-	now time.Time) error {
-	if appID == "" {
-		return nil
+// newSession builds an active session of the given type, created at now under the timeouts in effect.
+func (s *service) newSession(ctx context.Context, sessionType Type, sessionID, subjectID, flowID string,
+	flowVersion int, client ClientInfo, now time.Time) Session {
+	timeouts := s.timeouts.current(ctx)
+	return Session{
+		SessionID:       sessionID,
+		Type:            sessionType,
+		SubjectID:       subjectID,
+		FlowID:          flowID,
+		FlowVersion:     flowVersion,
+		AuthenticatedAt: now,
+		CreatedAt:       now,
+		LastActiveAt:    now,
+		// The idle deadline slides on each activity refresh; the absolute deadline is fixed here and
+		// caps the session's total lifetime. The resolver rejects a session past either deadline.
+		IdleExpiresAt:     now.Add(timeouts.Idle),
+		AbsoluteExpiresAt: now.Add(timeouts.Absolute),
+		Properties: SessionProperties{
+			UserAgent:    client.UserAgent,
+			CreationIP:   client.IP,
+			LastActiveIP: client.IP,
+		},
+		State:   StateActive,
+		Version: 1,
 	}
-	return s.store.Record(ctx, Participant{
-		SessionID:     sessionID,
-		AppID:         appID,
-		OUID:          ouID,
-		TokenFamilyID: tokenFamilyID,
-		FirstJoinedAt: now,
-		LastActiveAt:  now,
-	})
+}
+
+// recordParticipant records the application as a participant of the session and returns the token family id it
+// holds. With no application id it records nothing and returns p.TokenFamilyID.
+func (s *service) recordParticipant(ctx context.Context, p Participant) (string, error) {
+	if p.AppID == "" {
+		return p.TokenFamilyID, nil
+	}
+	return s.store.Record(ctx, p)
+}
+
+// settleTokenFamily returns the token family the grant carries: the held one, or p.TokenFamilyID in place of a
+// revoked one. It runs after the commit, since a failed read aborts a PostgreSQL transaction. A failed check or
+// replacement keeps the held family, which the code exchange refuses if it is revoked.
+func (s *service) settleTokenFamily(ctx context.Context, p Participant, held string) string {
+	if held == p.TokenFamilyID || p.TokenFamilyID == "" || s.criteriaRevoker == nil {
+		return held
+	}
+	revoked, err := s.criteriaRevoker.IsTokenFamilyRevoked(ctx, held)
+	if err != nil {
+		s.logger.Warn(ctx, "Failed to check the session participant's token family; keeping it", log.Error(err))
+		return held
+	}
+	if !revoked {
+		return held
+	}
+	replaced, err := s.store.ReplaceTokenFamily(ctx, p, held)
+	if err != nil {
+		s.logger.Warn(ctx, "Failed to replace the session participant's token family; keeping it", log.Error(err))
+		return held
+	}
+	return replaced
 }
 
 // activeIP returns the IP to record as the session's last-active IP: the requesting client's, or the

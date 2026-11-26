@@ -29,7 +29,7 @@ func TestManagerTestSuite(t *testing.T) {
 
 func (s *ManagerTestSuite) SetupTest() {
 	s.mockProvider = providermock.NewAuthnProviderInterfaceMock(s.T())
-	mgr, err := Initialize(s.mockProvider, nil, newDiscardingBus(s.T()))
+	mgr, err := Initialize(s.mockProvider, nil, newDiscardingBus(s.T()), FederatedSyncDependencies{})
 	s.Require().NoError(err)
 	s.mgr = mgr
 }
@@ -634,7 +634,7 @@ func (s *ManagerTestSuite) TestGetEntityReference_PendingStateAtAnotherProviderR
 	custom := providermock.NewAuthnProviderInterfaceMock(s.T())
 	mgr, err := Initialize(s.mockProvider, map[string]providers.CustomAuthnProvider{
 		"corp": {Instance: custom, Creds: []string{"password"}},
-	}, newDiscardingBus(s.T()))
+	}, newDiscardingBus(s.T()), FederatedSyncDependencies{})
 	s.Require().NoError(err)
 
 	pending := map[string]interface{}{"federatedIdpId": "idp-a", "sub": "sub-1"}
@@ -703,15 +703,20 @@ func (s *ManagerTestSuite) TestGetUserAvailableAttributes_EmptyAuthUser() {
 	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
-func (s *ManagerTestSuite) TestGetUserAvailableAttributes_NilAttributes() {
+// An attribute token is loaded first, so a federated sign-in's attributes are available.
+func (s *ManagerTestSuite) TestGetUserAvailableAttributes_LoadsTheAttributeToken() {
 	authUser := authenticatedAuthUserWithTokens("ref-tok", "attr-tok")
+	loaded := &providers.AttributesResponse{
+		Attributes: map[string]*providers.AttributeResponse{"email": {Value: "a@b.com"}},
+	}
+	s.mockProvider.On("GetAttributes", mock.Anything, "attr-tok",
+		(*providers.RequestedAttributes)(nil), (*providers.GetAttributesMetadata)(nil)).
+		Return(loaded, (*tidcommon.ServiceError)(nil)).Once()
 
 	attrs, svcErr := s.mgr.GetUserAvailableAttributes(context.Background(), authUser)
 	s.Nil(svcErr)
-	s.NotNil(attrs)
-	s.Empty(attrs.Attributes)
-	s.Empty(attrs.Verifications)
-	s.mockProvider.AssertNotCalled(s.T(), "GetAttributes")
+	s.Require().NotNil(attrs)
+	s.Equal(loaded.Attributes, attrs.Attributes)
 }
 
 // --- GetUserAttributes tests ---
@@ -832,7 +837,7 @@ func (s *ManagerTestSuite) TestGetUserAvailableAttributes_WithData() {
 // --- Constructor tests ---
 
 func TestNewAuthnProviderManager_NilDefaultProvider(t *testing.T) {
-	_, err := Initialize(nil, nil, newDiscardingBus(t))
+	_, err := Initialize(nil, nil, newDiscardingBus(t), FederatedSyncDependencies{})
 	if err == nil {
 		t.Fatalf("expected error when the default provider is nil")
 	}
@@ -842,7 +847,7 @@ func TestNewAuthnProviderManager_NilProvider(t *testing.T) {
 	defaultMock := providermock.NewAuthnProviderInterfaceMock(t)
 	_, err := Initialize(defaultMock, map[string]providers.CustomAuthnProvider{
 		"acme": {Instance: nil, Creds: []string{"password"}},
-	}, newDiscardingBus(t))
+	}, newDiscardingBus(t), FederatedSyncDependencies{})
 	if err == nil {
 		t.Fatalf("expected error when a named provider is nil")
 	}
@@ -853,7 +858,7 @@ func TestNewAuthnProviderManager_ReservedDefaultName(t *testing.T) {
 	acmeMock := providermock.NewAuthnProviderInterfaceMock(t)
 	_, err := Initialize(defaultMock, map[string]providers.CustomAuthnProvider{
 		defaultProviderName: {Instance: acmeMock, Creds: []string{"password"}},
-	}, newDiscardingBus(t))
+	}, newDiscardingBus(t), FederatedSyncDependencies{})
 	if err == nil {
 		t.Fatalf("expected error when a named provider uses the reserved default name")
 	}
@@ -867,7 +872,7 @@ func TestNewAuthnProviderManager_DuplicateCredentialClaim(t *testing.T) {
 	_, err := Initialize(defaultMock, map[string]providers.CustomAuthnProvider{
 		"acme": {Instance: acmeMock, Creds: []string{"password"}},
 		"beta": {Instance: betaMock, Creds: []string{"password"}},
-	}, newDiscardingBus(t))
+	}, newDiscardingBus(t), FederatedSyncDependencies{})
 	if err == nil {
 		t.Fatalf("expected error when two providers claim the same credential key")
 	}
@@ -890,7 +895,7 @@ func TestNewAuthnProviderManager_NamedProviderHandlesClaimedCredential(t *testin
 
 	mgr, err := Initialize(defaultMock, map[string]providers.CustomAuthnProvider{
 		"acme": {Instance: acmeMock, Creds: []string{"password"}},
-	}, newDiscardingBus(t))
+	}, newDiscardingBus(t), FederatedSyncDependencies{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -939,7 +944,7 @@ func TestAuthenticateUser_MultipleCredentialKeysDifferentProviders(t *testing.T)
 	acmeMock := providermock.NewAuthnProviderInterfaceMock(t)
 	mgr, err := Initialize(defaultMock, map[string]providers.CustomAuthnProvider{
 		"acme": {Instance: acmeMock, Creds: []string{"otp"}},
-	}, newDiscardingBus(t))
+	}, newDiscardingBus(t), FederatedSyncDependencies{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1157,7 +1162,7 @@ func TestEnroll_MultipleCredentialKeysDifferentProviders(t *testing.T) {
 	acmeMock := providermock.NewAuthnProviderInterfaceMock(t)
 	mgr, err := Initialize(defaultMock, map[string]providers.CustomAuthnProvider{
 		"acme": {Instance: acmeMock, Creds: []string{"otp"}},
-	}, newDiscardingBus(t))
+	}, newDiscardingBus(t), FederatedSyncDependencies{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1176,7 +1181,7 @@ func TestEnroll_MultipleCredentialKeysDifferentProviders(t *testing.T) {
 
 func TestGetEntityReference_StateForUnregisteredProvider(t *testing.T) {
 	mockProvider := providermock.NewAuthnProviderInterfaceMock(t)
-	mgr, err := Initialize(mockProvider, nil, newDiscardingBus(t))
+	mgr, err := Initialize(mockProvider, nil, newDiscardingBus(t), FederatedSyncDependencies{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1213,7 +1218,7 @@ func TestGetEntityReference_MultipleProvidersMismatch(t *testing.T) {
 
 	mgr, err := Initialize(defaultMock, map[string]providers.CustomAuthnProvider{
 		"acme": {Instance: acmeMock, Creds: nil},
-	}, newDiscardingBus(t))
+	}, newDiscardingBus(t), FederatedSyncDependencies{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1240,7 +1245,7 @@ func TestGetEntityReference_MultipleProvidersMismatch(t *testing.T) {
 
 func TestGetUserAttributes_StateForUnregisteredProvider(t *testing.T) {
 	mockProvider := providermock.NewAuthnProviderInterfaceMock(t)
-	mgr, err := Initialize(mockProvider, nil, newDiscardingBus(t))
+	mgr, err := Initialize(mockProvider, nil, newDiscardingBus(t), FederatedSyncDependencies{})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1433,7 +1438,7 @@ func (s *ManagerTestSuite) TestLinkAccount_PrefersTheFirstCredentialProvider() {
 	custom := providermock.NewAuthnProviderInterfaceMock(s.T())
 	mgr, err := Initialize(s.mockProvider, map[string]providers.CustomAuthnProvider{
 		"corp": {Instance: custom, Creds: []string{authnprovidercm.CredentialTypeFederated}},
-	}, newDiscardingBus(s.T()))
+	}, newDiscardingBus(s.T()), FederatedSyncDependencies{})
 	s.Require().NoError(err)
 
 	corpToken := map[string]interface{}{"userID": "corp-user"}
@@ -1826,4 +1831,67 @@ func (s *ManagerTestSuite) TestAuthenticateUser_HoldMapping() {
 			s.Equal(tc.expectedCode, svcErr.Code)
 		})
 	}
+}
+
+// A deferred federated sign-in keeps its identity pending on the provider's state, and a later
+// authentication that runs no sync leaves it there.
+func (s *ManagerTestSuite) TestAuthenticateUser_KeepsThePendingIdentity() {
+	pending := &providers.FederatedIdentity{IdpID: "idp-a", Sub: "sub-1"}
+	ref := &providers.EntityReference{EntityID: "user-1"}
+	attrs := &providers.AttributesResponse{}
+	federated := map[string]interface{}{"federated": "code"}
+	s.mockProvider.On("Authenticate", mock.Anything, mock.Anything, federated, mock.Anything).
+		Return(&providers.AuthnResult{EntityReference: ref, Attributes: attrs, FederatedIdentity: pending},
+			(*tidcommon.ServiceError)(nil)).Once()
+
+	authUser, _, svcErr := s.mgr.AuthenticateUser(context.Background(), nil, federated, nil,
+		&providers.AuthnMetadata{DeferSync: true}, providers.AuthUser{})
+	s.Require().Nil(svcErr)
+	state, _ := authUser.StateFor(defaultProviderName)
+	s.Equal(pending, state.PendingIdentity)
+
+	password := map[string]interface{}{"password": "secret"}
+	s.mockProvider.On("Authenticate", mock.Anything, mock.Anything, password, mock.Anything).
+		Return(&providers.AuthnResult{EntityReference: ref, Attributes: attrs}, (*tidcommon.ServiceError)(nil)).Once()
+
+	authUser, _, svcErr = s.mgr.AuthenticateUser(context.Background(), nil, password, nil, nil, authUser)
+	s.Require().Nil(svcErr)
+	state, _ = authUser.StateFor(defaultProviderName)
+	s.Equal(pending, state.PendingIdentity)
+}
+
+// Resolving the entity reference leaves the pending identity on the state.
+func (s *ManagerTestSuite) TestGetEntityReference_KeepsThePendingToken() {
+	pending := &providers.FederatedIdentity{IdpID: "idp-a", Sub: "sub-1"}
+	token := map[string]interface{}{"federatedIdpId": "idp-a", "sub": "sub-1"}
+	authUser := authUserWithStates(map[string]providers.AuthState{
+		defaultProviderName: {EntityReferenceToken: token, AttributeToken: token, PendingIdentity: pending},
+	})
+	s.mockProvider.On("GetEntityReference", mock.Anything, token).
+		Return(&providers.EntityReference{EntityID: "user-1"}, (*tidcommon.ServiceError)(nil))
+
+	authUser, _, svcErr := s.mgr.GetEntityReference(context.Background(), authUser)
+
+	s.Require().Nil(svcErr)
+	state, _ := authUser.StateFor(defaultProviderName)
+	s.Equal(pending, state.PendingIdentity)
+}
+
+// Enrolling a credential keeps the pending identity the provider holds.
+func (s *ManagerTestSuite) TestEnroll_KeepsThePendingToken() {
+	pending := &providers.FederatedIdentity{IdpID: "idp-a", Sub: "sub-1"}
+	ref := &providers.EntityReference{EntityID: "user-1"}
+	attrs := &providers.AttributesResponse{}
+	authUser := authUserWithStates(map[string]providers.AuthState{
+		defaultProviderName: {EntityReference: ref, Attributes: attrs, PendingIdentity: pending},
+	})
+	credentials := map[string]interface{}{"passkey": "credential"}
+	s.mockProvider.On("Enroll", mock.Anything, mock.Anything, credentials, mock.Anything).
+		Return(&providers.AuthnResult{EntityReference: ref, Attributes: attrs}, (*tidcommon.ServiceError)(nil))
+
+	authUser, _, svcErr := s.mgr.Enroll(context.Background(), nil, credentials, nil, nil, authUser)
+
+	s.Require().Nil(svcErr)
+	state, _ := authUser.StateFor(defaultProviderName)
+	s.Equal(pending, state.PendingIdentity)
 }

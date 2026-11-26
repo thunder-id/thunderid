@@ -88,7 +88,14 @@ export {
   useRevert,
   useRunningReferences,
 } from './api/useGatewayVersions';
-export {useStoredValues, useSetStoredValue, useDeleteStoredValue} from './api/useStoredValues';
+export {
+  useStoredValuesPage,
+  useStoredValueCount,
+  useStoredValuesNamed,
+  useSetStoredValue,
+  useDeleteStoredValue,
+  usePendingValueWrites,
+} from './api/useStoredValues';
 export {default as DeployQueryKeys} from './constants/query-keys';
 export {shortHash, versionLabel} from './utils/format';
 export {default as formatTimestamp} from './utils/formatTimestamp';

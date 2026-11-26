@@ -270,7 +270,7 @@ The builder provides one **Provisioning** step for users and agents. The precedi
 
 The supplied templates connect Provisioning's failure output to **Agent Details**. The own-identity template also sends incomplete results there; the OBO and Choose Mode templates use a dynamic input prompt for missing inputs. Keep these return paths when customizing the flow. Flow execution does not provide a general rollback of an agent after provisioning succeeds.
 
-To assign access during onboarding, select existing groups in **Assign group** (`assignGroup`) and existing roles in **Assign role** (`assignRole`) on Provisioning. The executor assigns them after creating the agent. See [Assign groups and roles during onboarding](../../agents/manage-agents#assign-groups-and-roles-during-onboarding).
+To assign access during onboarding, select existing groups in **Assign group** (`assignGroup`) and existing roles in **Assign role** (`assignRole`) on Provisioning. The executor assigns them after creating the agent. See [Grant birthright permissions to agents at creation](../../agents/manage-agents#grant-birthright-permissions-to-agents-at-creation).
 
 Both parts are needed for OBO: the flow collects the delegation settings, and provisioning receives `delegated: true` from its property or the administrator's selection. The **Login flow** field saves an existing authentication flow on the agent; it does not add user sign-in or consent steps to the onboarding flow. See [Configure onboarding for agents that act on behalf of users](../../agents/manage-agents#configure-onboarding-for-agents-that-act-on-behalf-of-users) for the widget setup.
 
@@ -283,7 +283,7 @@ For properties, input types, and node examples, see [Advanced Configurations](..
 
   The template starts with a **Permission Validator** step requiring `system`. The roles an admin may grant and the share are checked against the permissions the admin holds. An invitation flow is bound to one user type, which its **User Type Resolver** step names in `allowedUserTypes`. The step fails with `FET-1135` unless it names exactly one type. The template's **Provisioning** step sets `provisioningOU` to `userType`, so new users are created in the OU that owns that type.
 
-  The flow runs in two parts on one execution. The admin's part identifies the user by email, authorizes the share, selects roles, and sends the invite. Send every step of it with the admin's access token: the Validate Share and Select Roles steps refuse any other caller. The invitee's part continues the same execution through the invite link and needs no token. It runs with the server's authority. On acceptance, the flow shares the user into the admin's OU and assigns the roles as the admin, with the permissions the admin still holds then, creating the user first on the new-user branch. If the admin holds none of them by then, the user is shared in without the roles. Declining writes nothing. In the flow designer, start from the **Invite into Organization** template and name the user type on its **User Type Resolver** step. The admin can skip the email and role prompts by sending `email` and `roles` (role IDs separated by spaces) as inputs with the action `action_submit_email` on the request that starts the flow. The roles are checked as they are on the prompt, and an email that names no account still stops once at the **No Account Found** confirmation. Its invitations use the `invitation` email template, which asks the user to accept or decline joining the organization, and its **Send Email** steps need a sender (`senderId`).
+  The flow runs in two parts on one execution. The admin's part identifies the user by email, authorizes the share, selects roles, and sends the invite. Send every step of it with the admin's access token: the Validate Share and Select Roles steps refuse any other caller. The invitee's part continues the same execution through the invite link and needs no token. It runs with the server's authority. On acceptance, the flow shares the user into the admin's OU and assigns the roles as the admin, with the permissions the admin still holds then, creating the user first on the new-user branch. If the admin holds none of them by then, the user is shared in without the roles. Declining writes nothing. In the flow designer, start from the **Invite into Organization** template and name the user type on its **User Type Resolver** step. The admin can skip the email and role prompts by sending `email` and `roles` (role IDs separated by spaces) as inputs with the action `action_submit_email` on the request that starts the flow. The roles are checked as they are on the prompt. An email that names no account stops at the **No Account Found** confirmation, and the flow then asks for the roles. Its invitations use the `invitation` email template, which asks the user to accept or decline joining the organization, and its **Send Email** steps need a sender (`senderId`).
 
   The template branches on the **Identifying** executor in `identify` mode, with `boundToUserType` and `continueOnNoMatch` set. A user of the flow's type follows `onSuccess` (the existing-user branch). No match follows `onIncomplete` (the new-user branch) without an error, so the email is kept for the invite and the account. A user of another type fails with `FET-1054`, and several matches fail with the ambiguous identity error, both on `onFailure`, so the admin can enter another email.
 
@@ -385,7 +385,28 @@ For properties, input types, and node examples, see [Advanced Configurations](..
 
   When the Console opens a flow, it fills an empty **Email provider** with your first email provider. The flow sends through it only after you save it. See [Configure an Email Provider](../../notifications/email-providers). The link email uses the `admin-initiated-email-verification` template. See [Default Templates](../../declarative-configurations/import-resources#default-templates).
 
-  Every `ADMIN_INITIATED` flow expires after `adminInitiatedFlow.expirySeconds`, 24 hours by default. See [Flow Defaults](../../../deployment/configuration#flow-defaults).
+  Every `ADMIN_INITIATED` flow expires after `adminInitiatedFlow.expirySeconds`, 6 hours by default. See [Flow Defaults](../../../deployment/configuration#flow-defaults).
+
+</details>
+
+<details>
+  <summary>Build an administrator credential reset flow</summary>
+
+  An administrator credential reset flow emails a user a link to set a new password or other text credential, then removes the current one. Like the administrator attribute verification flow, it is started by an administrator for one user and finished by that user from the link. The Console starts the flow that `adminUserCredentialResetFlow` names when an administrator chooses to email a reset link in the reset dialog on the user's **Credentials** tab. See [Ask a User to Reset a Credential](../../users/manage-users#ask-a-user-to-reset-a-credential).
+
+  <ProductName /> ships `default-admin-user-credential-reset-flow`. Its **Send Email** node ships without an email provider, so the flow sends nothing until you select your email provider on that node and save the flow, as for the attribute verification flow. The link email uses the `admin-user-credential-reset` template.
+
+  Build a flow of your own:
+
+  1. In the Console, go to **Flows** → **+ Create New Flow**.
+  2. If your deployment has more than one organization unit, select the organization unit that owns the flow and click **Continue**. You cannot change it later. With exactly one organization unit, the Console skips this step.
+  3. Select **Administrator-initiated** as the flow type and click **Continue**.
+  4. Choose the **Administrator User Credential Reset with Email Link** template.
+  5. Give the flow a name and click **Create**.
+  6. The canvas opens with the template pre-wired. Select the email provider on the **Send Email** node, customize the steps as needed, then click **Save**.
+  7. Set `adminUserCredentialResetFlow.defaultHandle` to the flow's handle. See [Flow Defaults](../../../deployment/configuration#flow-defaults).
+
+  The template has three credential nodes, each set by its **Operation**. The node set to **Validate credential reset** checks the user and the credential before the link is sent. The node set to **Remove credential** removes the current value right after **Send Email**, with no View between them. The node set to **Set credentials** writes the value the user enters from the link. Keep that order in a flow of your own. See [Credential Verification and Management](../advanced-configurations#credential-verification-and-management).
 
 </details>
 

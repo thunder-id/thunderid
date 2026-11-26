@@ -81,6 +81,22 @@ var (
 			DefaultValue: "The request body is malformed or contains invalid data",
 		},
 	}
+
+	// ErrorDeclarativeConfig is the error returned when the API attempts to change a configuration section
+	// that declarative resources set: a declarative resource that locks the section, or a server that
+	// keeps server configuration in declarative resources alone.
+	ErrorDeclarativeConfig = common.ServiceError{
+		Type: common.ClientErrorType,
+		Code: "SCF-1007",
+		Error: common.I18nMessage{
+			Key:          "error.serverconfigservice.declarative_config",
+			DefaultValue: "Cannot modify a configuration section set by declarative resources",
+		},
+		ErrorDescription: common.I18nMessage{
+			Key:          "error.serverconfigservice.declarative_config_description",
+			DefaultValue: "The section is set by declarative resources and can only be changed there",
+		},
+	}
 )
 
 // errNilEventBus is returned when the service is initialized without the event bus it audits on.

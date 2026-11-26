@@ -11,8 +11,10 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"math"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -903,7 +905,7 @@ func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_MissingPurpose_Treat
 	s.Nil(result)
 	s.NotNil(svcErr)
 	// HasEssentialDenial: phone (essential in purpose2) was implicitly denied
-	s.Equal(ErrorEssentialConsentDenied.Code, svcErr.Code)
+	s.Equal(providers.ErrorEssentialConsentDenied.Code, svcErr.Code)
 }
 
 func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_SearchFails_ClientError() {
@@ -1277,6 +1279,90 @@ func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_WithValidityPeriod()
 	s.Equal("consent-timed", result.ID)
 }
 
+func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_ValidityPeriodIsCapped() {
+	sessionToken := buildTestSessionToken([]consentSessionPurpose{
+		{PurposeName: "purpose1", Optional: []string{"email"}},
+	})
+	decisions := &providers.ConsentDecisions{
+		Approved: true,
+		Purposes: []providers.PurposeDecision{
+			{PurposeName: "purpose1", Approved: true, Elements: []providers.ElementDecision{
+				{Name: "email", Approved: true},
+			}},
+		},
+	}
+	latest := time.Now().Unix() + MaxValidityPeriod + 5
+
+	s.mockJWTSvc.On("VerifyJWT", mock.Anything, sessionToken, consentSessionTokenAudience, mock.Anything).
+		Return((*tidcommon.ServiceError)(nil))
+	s.mockConsentSvc.On("SearchConsents", mock.Anything, mock.Anything).
+		Return([]*consent.Consent{}, nil)
+	s.mockConsentSvc.On("CreateConsent", mock.Anything,
+		mock.MatchedBy(func(req *consent.ConsentRequest) bool {
+			return req.ValidityTime > 0 && req.ValidityTime <= latest
+		})).Return(&consent.Consent{ID: "consent-capped"}, nil)
+
+	result, svcErr := s.service.RecordConsent(context.Background(), "ou1", "app1", "user1",
+		decisions, sessionToken, math.MaxInt64/2, nil)
+
+	s.Nil(svcErr)
+	s.NotNil(result)
+}
+
+func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_OneTimeDecision_IsStoredOnTheRecord() {
+	approved := &providers.ConsentDecisions{
+		Approved: true,
+		Purposes: []providers.PurposeDecision{
+			{PurposeName: "purpose1", Approved: true, Elements: []providers.ElementDecision{
+				{Name: "email", Approved: true},
+			}},
+		},
+	}
+	tests := []struct {
+		name     string
+		oneTime  bool
+		existing []*consent.Consent
+	}{
+		{"on a new record", true, []*consent.Consent{}},
+		{"on an existing record", true, []*consent.Consent{{ID: "consent-existing", GroupID: "app1"}}},
+		{"a remembered decision on a new record carries none", false, []*consent.Consent{}},
+		{"a remembered decision replaces the flag of an existing record", false,
+			[]*consent.Consent{{ID: "consent-existing", GroupID: "app1",
+				Properties: consent.ConsentProperties{OneTime: true}}}},
+	}
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			sessionToken := buildTestSessionToken([]consentSessionPurpose{
+				{PurposeName: "purpose1", Optional: []string{"email"}},
+			})
+			decisions := *approved
+			decisions.OneTime = tc.oneTime
+			expected := consent.ConsentProperties{OneTime: tc.oneTime}
+
+			s.mockJWTSvc.On("VerifyJWT", mock.Anything, sessionToken, consentSessionTokenAudience, mock.Anything).
+				Return((*tidcommon.ServiceError)(nil))
+			s.mockConsentSvc.On("SearchConsents", mock.Anything, mock.Anything).Return(tc.existing, nil)
+			matchesProperties := mock.MatchedBy(func(req *consent.ConsentRequest) bool {
+				return req.Properties == expected
+			})
+			recorded := &consent.Consent{ID: "consent-recorded"}
+			if len(tc.existing) > 0 {
+				s.mockConsentSvc.On("UpdateConsent", mock.Anything, "consent-existing", matchesProperties).
+					Return(recorded, nil)
+			} else {
+				s.mockConsentSvc.On("CreateConsent", mock.Anything, matchesProperties).Return(recorded, nil)
+			}
+
+			result, svcErr := s.service.RecordConsent(context.Background(), "ou1", "app1", "user1",
+				&decisions, sessionToken, 1, nil)
+
+			s.Nil(svcErr)
+			s.NotNil(result)
+		})
+	}
+}
+
 func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_ZeroValidityPeriod() {
 	sessionToken := buildTestSessionToken([]consentSessionPurpose{
 		{PurposeName: "purpose1", Optional: []string{"email"}},
@@ -1349,7 +1435,7 @@ func (s *ConsentEnforcerServiceTestSuite) TestRecordConsent_EssentialDenied_Retu
 
 	s.Nil(result)
 	s.NotNil(svcErr)
-	s.Equal(ErrorEssentialConsentDenied.Code, svcErr.Code)
+	s.Equal(providers.ErrorEssentialConsentDenied.Code, svcErr.Code)
 	// Verify consent was still persisted (CreateConsent was called)
 	s.mockConsentSvc.AssertCalled(s.T(), "CreateConsent", mock.Anything, mock.Anything)
 }

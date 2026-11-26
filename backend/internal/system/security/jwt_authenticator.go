@@ -45,6 +45,11 @@ const (
 
 	// claimClientID names the OAuth client an access token was issued to.
 	claimClientID = "client_id"
+
+	// claimSourceIDP names the external identity provider whose subject a self-issued access token was
+	// issued for. Its sub is that provider's identifier, not an account of this deployment. It mirrors
+	// the OAuth package's ClaimIDP.
+	claimSourceIDP = "idp"
 )
 
 // jwtAuthenticator handles authentication and authorization using JWT Bearer tokens.
@@ -114,6 +119,13 @@ func (h *jwtAuthenticator) authenticateToken(ctx context.Context, token string,
 	// Step 3: Decode JWT payload to extract attributes
 	attributes, err := jwt.DecodeJWTPayload(token)
 	if err != nil {
+		return nil, errInvalidToken
+	}
+
+	// A self-issued token for an external identity provider's subject names no account of this
+	// deployment, so it does not authenticate here. A configured trusted issuer is how a federated
+	// identity calls these APIs.
+	if _, external := attributes[claimSourceIDP]; selfIssued && external {
 		return nil, errInvalidToken
 	}
 
@@ -234,8 +246,10 @@ func (h *jwtAuthenticator) verifyFederatedToken(ctx context.Context, token, audi
 	if audience == "" {
 		audience = trustedIssuer.Audience
 	}
-	// VerifyJWTWithJWKS validates signature, aud (resource server identity), iss, and time claims.
-	if svcErr := h.jwtService.VerifyJWTWithJWKS(ctx,
+	// VerifyJWTWithTrustedJWKS validates signature, aud (resource server identity), iss, and time
+	// claims. The trusted issuer is deployment configuration, so its JWKS is fetched without the
+	// outbound guard.
+	if svcErr := h.jwtService.VerifyJWTWithTrustedJWKS(ctx,
 		token, trustedIssuer.JWKSURL, audience, trustedIssuer.Issuer,
 	); svcErr != nil {
 		return false
@@ -262,9 +276,7 @@ func requireAccessTokenType(token string) error {
 	if err != nil {
 		return errInvalidToken
 	}
-	typ, _ := header["typ"].(string)
-	if !strings.EqualFold(typ, jwt.TokenTypeAccessToken) &&
-		!strings.EqualFold(typ, jwt.TokenTypeAccessTokenWithPrefix) {
+	if typ, _ := header["typ"].(string); !jwt.IsAccessTokenType(typ) {
 		return errInvalidToken
 	}
 	return nil

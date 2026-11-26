@@ -10,6 +10,9 @@ import (
 // DefaultHTTPTimeout is the default timeout duration for HTTP federated IDP requests.
 const DefaultHTTPTimeout = 5 * time.Second
 
+// IDPRequestTimeout bounds a request to a federated identity provider's token or user info endpoint.
+const IDPRequestTimeout = 30 * time.Second
+
 // Authenticator name constants.
 const (
 	AuthenticatorCredentials = "CredentialsAuthenticator"

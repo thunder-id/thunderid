@@ -85,9 +85,14 @@ func (n *promptNode) Execute(ctx *providers.NodeContext) (*common.NodeResponse, 
 					log.String("errorCode", errResp.Code))
 			}
 			delete(ctx.RuntimeData, "failureReasonJSON")
-			// Clear this prompt's inputs and current action
+			// Clear this prompt's inputs, the ones forwarded to it, and current action
 			for _, input := range n.getAllInputs() {
 				delete(ctx.UserInputs, input.Identifier)
+			}
+			if forwarded, ok := ctx.ForwardedData[common.ForwardedDataKeyInputs].([]providers.Input); ok {
+				for _, input := range forwarded {
+					delete(ctx.UserInputs, input.Identifier)
+				}
 			}
 			ctx.CurrentAction = ""
 		}
@@ -138,6 +143,8 @@ func (n *promptNode) Execute(ctx *providers.NodeContext) (*common.NodeResponse, 
 				return nodeResp, nil
 			}
 		}
+
+		n.consumeActionInputs(ctx)
 
 		// Forward the action type to the next node
 		if actionType := n.getActionTypeForRef(ctx.CurrentAction); actionType != "" {
@@ -320,6 +327,7 @@ func (n *promptNode) finalizeLoginOptionsAction(ctx *providers.NodeContext, node
 		return nodeResp, nil
 	}
 	nodeResp.NextNodeID = nextNode
+	n.consumeActionInputs(ctx)
 	for authClass, ref := range authClassToAction {
 		if ref == ctx.CurrentAction {
 			nodeResp.RuntimeData[common.RuntimeKeySelectedAuthClass] = authClass
@@ -624,6 +632,14 @@ func (n *promptNode) tryAutoSelectSingleAction(ctx *providers.NodeContext) bool 
 		return true
 	}
 	return false
+}
+
+// consumeActionInputs consumes the inputs of the action taken. Inputs only another action asks for are not
+// consumed.
+func (n *promptNode) consumeActionInputs(ctx *providers.NodeContext) {
+	for _, input := range n.getInputsForCurrentAction(ctx.CurrentAction) {
+		ctx.ConsumeInput(input.Identifier)
+	}
 }
 
 // getInputsForCurrentAction returns the inputs of the prompt whose action matches

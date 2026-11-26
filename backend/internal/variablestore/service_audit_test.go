@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -109,6 +110,9 @@ type storeKind struct {
 	callCreate   func(s ServiceInterface, ctx context.Context, e entry) *common.ServiceError
 	callUpdate   func(s ServiceInterface, ctx context.Context, e entry) *common.ServiceError
 	callDelete   func(s ServiceInterface, ctx context.Context, name string) *common.ServiceError
+	// expectDeleteMany arranges a delete of names, answering with deleted and err.
+	expectDeleteMany func(m *storeInterfaceMock, names, deleted []string, err error)
+	callDeleteMany   func(s ServiceInterface, ctx context.Context, names []string) ([]string, *common.ServiceError)
 }
 
 func storeKinds() []storeKind {
@@ -148,6 +152,13 @@ func storeKinds() []storeKind {
 			callDelete: func(s ServiceInterface, ctx context.Context, name string) *common.ServiceError {
 				return s.DeleteVariable(ctx, name)
 			},
+			expectDeleteMany: func(m *storeInterfaceMock, names, deleted []string, err error) {
+				m.EXPECT().DeleteVariables(mock.Anything, names, time.Duration(0)).Return(deleted, err).Once()
+			},
+			callDeleteMany: func(s ServiceInterface, ctx context.Context,
+				names []string) ([]string, *common.ServiceError) {
+				return s.DeleteVariables(ctx, names, time.Duration(0))
+			},
 		},
 		{
 			name: "secret", targetType: audit.TargetTypeSecret,
@@ -185,6 +196,13 @@ func storeKinds() []storeKind {
 			},
 			callDelete: func(s ServiceInterface, ctx context.Context, name string) *common.ServiceError {
 				return s.DeleteSecret(ctx, name)
+			},
+			expectDeleteMany: func(m *storeInterfaceMock, names, deleted []string, err error) {
+				m.EXPECT().DeleteSecrets(mock.Anything, names, time.Duration(0)).Return(deleted, err).Once()
+			},
+			callDeleteMany: func(s ServiceInterface, ctx context.Context,
+				names []string) ([]string, *common.ServiceError) {
+				return s.DeleteSecrets(ctx, names, time.Duration(0))
 			},
 		},
 	}
@@ -495,5 +513,63 @@ func (s *ServiceAuditTestSuite) TestAFailingBusDoesNotFailTheChange() {
 			s.Nil(kind.callUpdate(service, adminContext(), validEntry(testAuditName)))
 			s.Nil(kind.callDelete(service, adminContext(), testAuditName))
 		})
+	}
+}
+
+// A delete of many names records a succeeded delete of each name it removed, exactly as a delete of
+// that name alone would, and nothing for a name that held nothing.
+func (s *ServiceAuditTestSuite) TestDeleteMany_PublishesOneEventPerDeletedName() {
+	for _, kind := range storeKinds() {
+		s.Run(kind.name, func() {
+			bus, published := newRecordingBus(s.T())
+			names := []string{testAuditName, "OTHER_TOKEN", "NOT_HELD"}
+			kind.expectDeleteMany(s.store, names, []string{testAuditName, "OTHER_TOKEN"}, nil)
+
+			deleted, svcErr := kind.callDeleteMany(newService(s.store, reversingCrypto{}, bus), adminContext(), names)
+
+			s.Nil(svcErr)
+			s.Equal([]string{testAuditName, "OTHER_TOKEN"}, deleted)
+			events := published()
+			s.Require().Len(events, 2)
+			s.requireOnlyEvent(events[:1], kind.delete, kind.targetType, audit.ActionDelete, testAuditName,
+				audit.OutcomeSucceeded)
+			s.requireOnlyEvent(events[1:], kind.delete, kind.targetType, audit.ActionDelete, "OTHER_TOKEN",
+				audit.OutcomeSucceeded)
+		})
+	}
+}
+
+// A failed delete of many names records a failed delete of each name asked for, as a failed delete of
+// one name does.
+func (s *ServiceAuditTestSuite) TestDeleteMany_RecordsAFailureForEachName() {
+	for _, kind := range storeKinds() {
+		cases := []struct {
+			name    string
+			names   []string
+			arrange func(names []string)
+			outcome audit.Outcome
+		}{
+			{"the store fails", []string{testAuditName, "OTHER_TOKEN"}, func(names []string) {
+				kind.expectDeleteMany(s.store, names, nil, errors.New("deadlock detected"))
+			}, audit.OutcomeFailed("var_5000")},
+			{"a name is invalid", []string{testAuditName, "1-not-a-name"}, func([]string) {},
+				audit.OutcomeFailed("var_1002")},
+		}
+		for _, tc := range cases {
+			s.Run(kind.name+": "+tc.name, func() {
+				bus, published := newRecordingBus(s.T())
+				tc.arrange(tc.names)
+
+				_, svcErr := kind.callDeleteMany(newService(s.store, reversingCrypto{}, bus), adminContext(), tc.names)
+
+				s.Require().NotNil(svcErr)
+				events := published()
+				s.Require().Len(events, len(tc.names))
+				for i, name := range tc.names {
+					s.requireOnlyEvent(events[i:i+1], kind.delete, kind.targetType, audit.ActionDelete, name,
+						tc.outcome)
+				}
+			})
+		}
 	}
 }

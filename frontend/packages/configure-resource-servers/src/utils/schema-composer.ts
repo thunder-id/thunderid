@@ -11,7 +11,10 @@ import {
   PARTIES,
   sampleData,
   setOwnProperty,
+  supportsAllowedValues,
+  supportsFixedValue,
   supportsLimits,
+  trimSpace,
   valueTypeFor,
 } from './authorization-detail-schema';
 import type {
@@ -76,7 +79,7 @@ export function flattenFields(fields: SchemaField[]): FlatField[] {
   const out: FlatField[] = [];
   const walk = (list: SchemaField[], parentKey: string | null, depth: number, prefix: string, inherited: boolean) => {
     list.forEach((field, index) => {
-      const name = field.name.trim();
+      const name = trimSpace(field.name);
       const path = prefix ? `${prefix}.${name}` : name;
       const processorSupplied = inherited || field.policy.suppliedBy === 'processor';
       out.push({field, parentKey, index, depth, path, processorSupplied});
@@ -303,9 +306,17 @@ export function changeKind(field: SchemaField, kind: FieldKind): SchemaField {
     ...field,
     kind,
     children: kind === 'object' ? field.children : [],
+    minLength: kind === 'string' ? field.minLength : undefined,
     maxLength: kind === 'string' ? field.maxLength : undefined,
-    allowedValues: kind === 'array' ? field.allowedValues : undefined,
+    pattern: kind === 'string' ? field.pattern : undefined,
+    allowedValues: supportsAllowedValues({kind}) ? field.allowedValues : undefined,
+    fixedValue: supportsFixedValue({kind}) ? field.fixedValue : undefined,
+    step: kind === 'number' ? field.step : undefined,
+    exclusiveMinimum: kind === 'number' ? field.exclusiveMinimum : undefined,
+    exclusiveMaximum: kind === 'number' ? field.exclusiveMaximum : undefined,
     minItems: kind === 'array' ? field.minItems : undefined,
+    maxItems: kind === 'array' ? field.maxItems : undefined,
+    uniqueItems: kind === 'array' ? field.uniqueItems : undefined,
   };
   const keepsOrder = supportsLimits({...next, policy: {}});
   next.policy = {
@@ -318,16 +329,36 @@ export function changeKind(field: SchemaField, kind: FieldKind): SchemaField {
 }
 
 /** A setting a field loses when its kind changes to one that cannot carry it. */
-export type DroppedSetting = 'fields' | 'maxLength' | 'allowedValues' | 'minItems' | 'limits' | 'change';
+export type DroppedSetting =
+  | 'fields'
+  | 'minLength'
+  | 'maxLength'
+  | 'pattern'
+  | 'allowedValues'
+  | 'fixedValue'
+  | 'step'
+  | 'minItems'
+  | 'maxItems'
+  | 'uniqueItems'
+  | 'limits'
+  | 'change';
 
 /** Returns the settings, with a value, that a field lost when its kind changed. */
 export function droppedSettings(before: SchemaField, after: SchemaField): DroppedSetting[] {
   const has = (value?: number | string): boolean => value !== undefined && String(value).trim() !== '';
+  // A pattern or fixed value is written unless only the white space the server trims, so it counts as kept then.
+  const hasText = (value?: string): boolean => value !== undefined && trimSpace(value) !== '';
   const dropped: DroppedSetting[] = [];
   if (before.children.length > 0 && after.children.length === 0) dropped.push('fields');
+  if (has(before.minLength) && !has(after.minLength)) dropped.push('minLength');
   if (has(before.maxLength) && !has(after.maxLength)) dropped.push('maxLength');
+  if (hasText(before.pattern) && !hasText(after.pattern)) dropped.push('pattern');
   if ((before.allowedValues?.length ?? 0) > 0 && !after.allowedValues?.length) dropped.push('allowedValues');
+  if (hasText(before.fixedValue) && !hasText(after.fixedValue)) dropped.push('fixedValue');
+  if (has(before.step) && !has(after.step)) dropped.push('step');
   if (has(before.minItems) && !has(after.minItems)) dropped.push('minItems');
+  if (has(before.maxItems) && !has(after.maxItems)) dropped.push('maxItems');
+  if (before.uniqueItems && !after.uniqueItems) dropped.push('uniqueItems');
   if (
     (has(before.policy.minimum) && !has(after.policy.minimum)) ||
     (has(before.policy.maximum) && !has(after.policy.maximum))
@@ -372,7 +403,7 @@ export function toggleParty(field: SchemaField, party: ModifyingParty): SchemaFi
 function sampleObject(fields: SchemaField[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const field of fields) {
-    const name = field.name.trim();
+    const name = trimSpace(field.name);
     if (!name || field.policy.suppliedBy === 'processor') continue;
     if (field.kind !== 'object') {
       setOwnProperty(out, name, sampleData(field));
@@ -439,7 +470,7 @@ export function duplicateLabels(fields: SchemaField[]): string[] {
   const counts = new Map<string, number>();
   for (const row of flattenFields(fields)) {
     // The consent screen leaves out the type member, which every detail carries.
-    if (!row.field.name.trim() || row.field.kind === 'object' || row.path === 'type') continue;
+    if (!trimSpace(row.field.name) || row.field.kind === 'object' || row.path === 'type') continue;
     const label = row.field.title.trim() || row.path;
     counts.set(label, (counts.get(label) ?? 0) + 1);
   }

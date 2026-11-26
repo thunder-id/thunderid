@@ -6,6 +6,7 @@ package variablestore
 
 import (
 	"context"
+	"time"
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -246,6 +247,82 @@ func (_c *ServiceInterfaceMock_DeleteSecret_Call) RunAndReturn(run func(ctx cont
 	return _c
 }
 
+// DeleteSecrets provides a mock function for the type ServiceInterfaceMock
+func (_mock *ServiceInterfaceMock) DeleteSecrets(ctx context.Context, names []string, unchangedFor time.Duration) ([]string, *common.ServiceError) {
+	ret := _mock.Called(ctx, names, unchangedFor)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteSecrets")
+	}
+
+	var r0 []string
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []string, time.Duration) ([]string, *common.ServiceError)); ok {
+		return returnFunc(ctx, names, unchangedFor)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []string, time.Duration) []string); ok {
+		r0 = returnFunc(ctx, names, unchangedFor)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []string, time.Duration) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, names, unchangedFor)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ServiceInterfaceMock_DeleteSecrets_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteSecrets'
+type ServiceInterfaceMock_DeleteSecrets_Call struct {
+	*mock.Call
+}
+
+// DeleteSecrets is a helper method to define mock.On call
+//   - ctx context.Context
+//   - names []string
+//   - unchangedFor time.Duration
+func (_e *ServiceInterfaceMock_Expecter) DeleteSecrets(ctx any, names any, unchangedFor any) *ServiceInterfaceMock_DeleteSecrets_Call {
+	return &ServiceInterfaceMock_DeleteSecrets_Call{Call: _e.mock.On("DeleteSecrets", ctx, names, unchangedFor)}
+}
+
+func (_c *ServiceInterfaceMock_DeleteSecrets_Call) Run(run func(ctx context.Context, names []string, unchangedFor time.Duration)) *ServiceInterfaceMock_DeleteSecrets_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 []string
+		if args[1] != nil {
+			arg1 = args[1].([]string)
+		}
+		var arg2 time.Duration
+		if args[2] != nil {
+			arg2 = args[2].(time.Duration)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *ServiceInterfaceMock_DeleteSecrets_Call) Return(strings []string, serviceError *common.ServiceError) *ServiceInterfaceMock_DeleteSecrets_Call {
+	_c.Call.Return(strings, serviceError)
+	return _c
+}
+
+func (_c *ServiceInterfaceMock_DeleteSecrets_Call) RunAndReturn(run func(ctx context.Context, names []string, unchangedFor time.Duration) ([]string, *common.ServiceError)) *ServiceInterfaceMock_DeleteSecrets_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // DeleteVariable provides a mock function for the type ServiceInterfaceMock
 func (_mock *ServiceInterfaceMock) DeleteVariable(ctx context.Context, name string) *common.ServiceError {
 	ret := _mock.Called(ctx, name)
@@ -301,6 +378,82 @@ func (_c *ServiceInterfaceMock_DeleteVariable_Call) Return(serviceError *common.
 }
 
 func (_c *ServiceInterfaceMock_DeleteVariable_Call) RunAndReturn(run func(ctx context.Context, name string) *common.ServiceError) *ServiceInterfaceMock_DeleteVariable_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// DeleteVariables provides a mock function for the type ServiceInterfaceMock
+func (_mock *ServiceInterfaceMock) DeleteVariables(ctx context.Context, names []string, unchangedFor time.Duration) ([]string, *common.ServiceError) {
+	ret := _mock.Called(ctx, names, unchangedFor)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteVariables")
+	}
+
+	var r0 []string
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []string, time.Duration) ([]string, *common.ServiceError)); ok {
+		return returnFunc(ctx, names, unchangedFor)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, []string, time.Duration) []string); ok {
+		r0 = returnFunc(ctx, names, unchangedFor)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]string)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, []string, time.Duration) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, names, unchangedFor)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ServiceInterfaceMock_DeleteVariables_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteVariables'
+type ServiceInterfaceMock_DeleteVariables_Call struct {
+	*mock.Call
+}
+
+// DeleteVariables is a helper method to define mock.On call
+//   - ctx context.Context
+//   - names []string
+//   - unchangedFor time.Duration
+func (_e *ServiceInterfaceMock_Expecter) DeleteVariables(ctx any, names any, unchangedFor any) *ServiceInterfaceMock_DeleteVariables_Call {
+	return &ServiceInterfaceMock_DeleteVariables_Call{Call: _e.mock.On("DeleteVariables", ctx, names, unchangedFor)}
+}
+
+func (_c *ServiceInterfaceMock_DeleteVariables_Call) Run(run func(ctx context.Context, names []string, unchangedFor time.Duration)) *ServiceInterfaceMock_DeleteVariables_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 []string
+		if args[1] != nil {
+			arg1 = args[1].([]string)
+		}
+		var arg2 time.Duration
+		if args[2] != nil {
+			arg2 = args[2].(time.Duration)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *ServiceInterfaceMock_DeleteVariables_Call) Return(strings []string, serviceError *common.ServiceError) *ServiceInterfaceMock_DeleteVariables_Call {
+	_c.Call.Return(strings, serviceError)
+	return _c
+}
+
+func (_c *ServiceInterfaceMock_DeleteVariables_Call) RunAndReturn(run func(ctx context.Context, names []string, unchangedFor time.Duration) ([]string, *common.ServiceError)) *ServiceInterfaceMock_DeleteVariables_Call {
 	_c.Call.Return(run)
 	return _c
 }

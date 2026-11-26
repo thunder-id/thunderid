@@ -317,6 +317,44 @@ func (suite *AttributeCollectorTestSuite) TestHasRequiredInputs_AttributesInUser
 	suite.mockEntityProvider.AssertExpectations(suite.T())
 }
 
+func (suite *AttributeCollectorTestSuite) TestHasRequiredInputs_EmptyStoredValuesArePrompted() {
+	attrsJSON, _ := json.Marshal(map[string]interface{}{"email": "", "mobile_number": nil})
+	inputs := []providers.Input{
+		{Identifier: "email", Type: "string", Required: true},
+		{Identifier: "mobile_number", Type: "string", Required: true},
+	}
+
+	authUser := newAuthenticatedAuthUser()
+	ctx := &providers.NodeContext{
+		ExecutionID: "flow-123",
+		FlowType:    providers.FlowTypeAuthentication,
+		AuthUser:    authUser,
+		RuntimeData: map[string]string{userAttributeUserID: testUserID},
+		NodeInputs:  inputs,
+	}
+	execResp := &providers.ExecutorResponse{
+		RuntimeData: make(map[string]string),
+		AuthUser:    authUser,
+	}
+
+	authnUserAttrs := &providers.AttributesResponse{
+		Attributes: map[string]*providers.AttributeResponse{
+			"email":         {Value: ""},
+			"mobile_number": {Value: nil},
+		},
+	}
+	suite.mockAuthnProvider.On("GetUserAttributes", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything).Return(authUser, authnUserAttrs, (*tidcommon.ServiceError)(nil))
+	suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, testUserID).Return(
+		&providers.Entity{ID: testUserID, Attributes: attrsJSON}, nil)
+
+	result := suite.executor.HasRequiredInputs(ctx, execResp)
+
+	assert.False(suite.T(), result)
+	assert.ElementsMatch(suite.T(), inputs, execResp.Inputs)
+	assert.Empty(suite.T(), execResp.RuntimeData["email"])
+}
+
 func (suite *AttributeCollectorTestSuite) TestGetUserAttributes_Success() {
 	attrs := map[string]interface{}{"email": "test@example.com", "phone": "1234567890"}
 	attrsJSON, _ := json.Marshal(attrs)
@@ -462,6 +500,49 @@ func (suite *AttributeCollectorTestSuite) TestGetUpdatedUserObject_MergeAttribut
 	assert.Equal(suite.T(), "new@example.com", attrs["email"])
 }
 
+func (suite *AttributeCollectorTestSuite) TestGetUpdatedUserObject_AddsOnlyMissingAttributes() {
+	inputs := []providers.Input{
+		{Identifier: "email", Type: "string", Required: true},
+		{Identifier: "mobile_number", Type: "string", Required: true},
+	}
+	submitted := map[string]string{"email": "new@example.com", "mobile_number": "+94771234567"}
+	for name, test := range map[string]struct {
+		stored map[string]interface{}
+		want   map[string]interface{}
+	}{
+		"keeps a stored value": {
+			stored: map[string]interface{}{"email": "stored@example.com"},
+			want:   map[string]interface{}{"email": "stored@example.com", "mobile_number": "+94771234567"},
+		},
+		"fills empty values": {
+			stored: map[string]interface{}{"email": "", "mobile_number": nil},
+			want:   map[string]interface{}{"email": "new@example.com", "mobile_number": "+94771234567"},
+		},
+		"changes nothing when every value is stored": {
+			stored: map[string]interface{}{"email": "stored@example.com", "mobile_number": "+94770000000"},
+		},
+	} {
+		suite.Run(name, func() {
+			storedJSON, _ := json.Marshal(test.stored)
+			ctx := &providers.NodeContext{UserInputs: submitted, NodeInputs: inputs}
+			existingUser := &providers.Entity{ID: testUserID, Attributes: storedJSON}
+
+			updateRequired, updatedUser, err := suite.executor.getUpdatedUserObject(ctx, existingUser)
+
+			suite.Require().NoError(err)
+			if test.want == nil {
+				suite.False(updateRequired)
+				suite.Equal(existingUser, updatedUser)
+				return
+			}
+			suite.True(updateRequired)
+			var attrs map[string]interface{}
+			suite.Require().NoError(json.Unmarshal(updatedUser.Attributes, &attrs))
+			suite.Equal(test.want, attrs)
+		})
+	}
+}
+
 func (suite *AttributeCollectorTestSuite) TestGetInputAttributes_FromUserInput() {
 	ctx := &providers.NodeContext{
 		UserInputs:  map[string]string{"email": "test@example.com", "phone": "1234567890"},
@@ -490,6 +571,27 @@ func (suite *AttributeCollectorTestSuite) TestGetInputAttributes_FromRuntimeData
 
 	assert.Len(suite.T(), result, 1)
 	assert.Equal(suite.T(), "runtime@example.com", result["email"])
+}
+
+// A claim stands in only for a required input. The connection's sync decides what else is stored.
+func (suite *AttributeCollectorTestSuite) TestGetInputAttributes_ClaimFallbackOnlyForRequiredInputs() {
+	execResp := &providers.ExecutorResponse{}
+	connection := &providers.IDPDTO{ID: "idp-a"}
+	suite.Require().NoError(setExternalIdentity(execResp, connection, "sub-1", map[string]interface{}{
+		"email": "claim@example.com", "nickname": "claimed",
+	}))
+	ctx := &providers.NodeContext{
+		UserInputs:  map[string]string{},
+		RuntimeData: execResp.RuntimeData,
+		NodeInputs: []providers.Input{
+			{Identifier: "email", Type: "string", Required: true},
+			{Identifier: "nickname", Type: "string"},
+		},
+	}
+
+	result := suite.executor.getInputAttributes(ctx)
+
+	suite.Equal(map[string]interface{}{"email": "claim@example.com"}, result)
 }
 
 // TestGetInputAttributes_ConvertsByInputType verifies that values collected for typed inputs are

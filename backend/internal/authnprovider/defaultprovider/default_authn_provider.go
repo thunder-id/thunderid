@@ -97,7 +97,27 @@ func (p *defaultAuthnProvider) Authenticate(
 	if svcErr := p.checkAuthenticationAccess(ctx, method, result); svcErr != nil {
 		return nil, svcErr
 	}
-	return result, nil
+	return withVerifiedSignIn(credentials, res, result), nil
+}
+
+// withVerifiedSignIn reports the federated sign-in a federated credential verified. A federated sign-in, or an
+// authentication by entity ID that may run a deferred sync, returns an attribute token rather than loaded
+// attributes, so they load after the authn provider manager syncs the account.
+func withVerifiedSignIn(credentials map[string]interface{}, res *authncommon.AuthnResult,
+	result *providers.AuthnResult) *providers.AuthnResult {
+	_, federated := credentials[authnprovidercm.CredentialTypeFederated]
+	_, provisioned := credentials[authnprovidercm.CredentialTypeProvisionedEntityID]
+	if federated && authnprovidercm.IsFederatedToken(res.Token) {
+		idpID, _ := res.Token[authnprovidercm.UserAttributeFederatedIdpID].(string)
+		sub, _ := res.Token[authnprovidercm.UserAttributeSub].(string)
+		result.FederatedIdentity = &providers.FederatedIdentity{IdpID: idpID, Sub: sub, Claims: res.ReceivedClaims}
+	}
+	if (federated || provisioned) && result.EntityReference != nil {
+		result.Attributes = nil
+		result.AttributeToken = map[string]interface{}{
+			authnprovidercm.UserAttributeUserID: result.EntityReference.EntityID}
+	}
+	return result
 }
 
 // GetEntityReference retrieves the entity reference using the internal entity service.

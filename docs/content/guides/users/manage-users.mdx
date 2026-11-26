@@ -75,6 +75,36 @@ Credential fields (such as passwords) are write-only and cannot be viewed. To se
 3. Fill in the credential fields you want to update. You do not need to update all credentials; empty fields are skipped.
 4. Click **Save**.
 
+### Ask a User to Reset a Credential
+
+To have a user choose a new password, PIN, or other credential themselves, without you setting or seeing it, start a credential reset. <ProductName /> emails the user a reset link at the email address on their profile, then removes the current credential and signs the user out everywhere. Once the reset starts successfully, the current credential no longer works. If the reset fails after the email is sent, the emailed link stops working. The current credential may already be removed, so start another reset. The user opens the link, in any browser and without signing in, and sets the new value.
+
+<ProductName /> ships the `default-admin-user-credential-reset-flow` flow for this. Its **Send Email** step ships without an email provider, so select your provider on that step and save the flow before you start a reset. The flow sends the link to the profile attribute that step's email input names, `email` by default. See [Configure an Email Provider](../../notifications/email-providers).
+
+To start a reset in the Console, open the user and go to the **Credentials** tab. Click the credential's reset button, such as **Reset Password**. In the dialog, choose **Email the user a link to set a new password**, then click **Send reset link**. The Console starts the flow that `adminUserCredentialResetFlow` names in the `flow` server configuration section, the shipped flow by default. The dialog offers the link only for text credentials, and only when:
+
+- You can update users and read the server configuration.
+- A flow is set for `adminUserCredentialResetFlow`. See [Flow Defaults](../../../deployment/configuration#flow-defaults).
+- The Console runs user administration through flows.
+- The user is not declarative (read-only).
+
+For a suspended user or an expired account, the link option is disabled, and the dialog says why. You can still set a new value there. A locked user can still be sent a link.
+
+To build a flow of your own, create an **Administrator-initiated** flow from the **Administrator User Credential Reset with Email Link** template. Select its email provider on the **Send Email** node and save the flow, then set `adminUserCredentialResetFlow.defaultHandle` to its handle. The **Operation** setting of each credential node selects what it does: **Validate credential reset**, **Remove credential**, or **Set credentials**. See [Build a Flow](../../flows/build-a-flow#go-further) and [Credential Verification and Management](../../flows/advanced-configurations#credential-verification-and-management).
+
+To start the flow through the Flow Execution API instead, use an administrator access token that carries `system:user:update` or `org:user:update`. Name the user's ID in the `subject` input and the credential to reset in the `credential` input:
+
+```bash
+curl -kL -X POST https://localhost:8090/flow/execute \
+  -H "Authorization: Bearer $ADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "flowType": "ADMIN_INITIATED", "handle": "default-admin-user-credential-reset-flow", "inputs": { "subject": "<user-id>", "credential": "password" }, "verbose": true }'
+```
+
+The credential must be a text credential that the user's type declares, such as `password` or `pin`. Keep `"verbose": true`: the start decides it for the whole flow, and the page the link opens shows the form only in verbose mode. Without the `credential` input, the response asks for it. Once the email is sent, the response has `"flowStatus": "INCOMPLETE"` and `additionalData.emailSent` set to `"true"`. The response never contains the link. The flow runs with your permissions, so you can reset only users you can update. The link goes to the address on the user's profile, even when `inputs` carries another, such as `email`. See [Build a Flow](../../flows/build-a-flow#go-further) and the [Flow Execution API](../../../apis#tag/flow-execution).
+
+A reset is refused, and the current credential keeps working, when the user has no email address in the attribute the flow sends to, when the email cannot be sent, or when the user is suspended or their account has expired. A locked user can still be reset, and the default flow releases the lock once the user sets the new value. The link expires with the flow, 6 hours by default (`adminInitiatedFlow.expirySeconds`). An expired link does not restore the old credential, so start another reset. A later reset voids an earlier link once it removes the credential, and so does a forgot password recovery or any other change to a credential the user's type declares, such as a password or PIN. A later reset that is refused before it removes the credential, or adding a passkey, leaves the earlier link working.
+
 ## Suspend or Unlock a User
 
 <ProductName /> locks a user's sign-in method automatically after repeated failed attempts, and the user's **Status** shows **Locked**. To end a user's access while you investigate, suspend the account. Suspending ends the user's sessions and revokes their tokens, and the record stays editable.

@@ -46,6 +46,7 @@ type VerifiedAttribute struct {
 type Application struct {
 	ID                        string                   `json:"id,omitempty"`
 	OUID                      string                   `json:"ouId,omitempty"`
+	ProjectID                 string                   `json:"projectId,omitempty"`
 	Name                      string                   `json:"name"`
 	Description               string                   `json:"description"`
 	Type                      string                   `json:"type,omitempty"`
@@ -206,6 +207,13 @@ type AttributeConfiguration struct {
 	UserTypeAttributeMappings []UserTypeAttributeMapping `json:"userTypeAttributeMappings,omitempty"`
 	AccountLinking            *AccountLinking            `json:"accountLinking,omitempty"`
 	AuthorizationMapping      *AuthorizationMapping      `json:"authorizationMapping,omitempty"`
+	Sync                      *SyncConfiguration         `json:"sync,omitempty"`
+}
+
+// SyncConfiguration holds a connection's attribute and groups and roles sync modes.
+type SyncConfiguration struct {
+	Attributes     string `json:"attributes,omitempty"`
+	GroupsAndRoles string `json:"groupsAndRoles,omitempty"`
 }
 
 // IDP represents an identity provider in the system
@@ -339,6 +347,7 @@ type TokenHTTPResult struct {
 type IntrospectionResult struct {
 	Active bool                   `json:"active"`
 	Sub    string                 `json:"sub"`
+	Idp    string                 `json:"idp"`
 	Act    map[string]interface{} `json:"act"`
 }
 
@@ -483,6 +492,7 @@ type Flow struct {
 	Interceptors interface{} `json:"interceptors,omitempty"`
 	Nodes        interface{} `json:"nodes"`
 	OUID         string      `json:"ouId,omitempty"`
+	ProjectID    string      `json:"projectId,omitempty"`
 }
 
 // NotificationSender represents a notification sender in the system
@@ -548,6 +558,7 @@ func ExternalAgentOwner(id, idType string) *AgentOwner {
 type Agent struct {
 	ID          string      `json:"id,omitempty"`
 	OUID        string      `json:"ouId,omitempty"`
+	ProjectID   string      `json:"projectId,omitempty"`
 	OUHandle    string      `json:"ouHandle,omitempty"`
 	Type        string      `json:"type,omitempty"`
 	Description string      `json:"description,omitempty"`

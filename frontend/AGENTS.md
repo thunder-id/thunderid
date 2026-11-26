@@ -18,7 +18,9 @@ The Admin Console's (`apps/admin-console`) pages ship as `@thunderid/manage-*` p
 `manage-groups`, `manage-roles`, `manage-agents`), built on the React SDK's admin components. The two families split by
 runtime: `configure-*` call the native management APIs only, while `manage-*` run destructive and lifecycle operations
 through the server's administration flows (`administrationMode: 'flow'` by default), so grants are revoked and sessions
-end first. Don't add flow handling to a `configure-*` package.
+end first. Don't add flow handling to a `configure-*` package. The exception is an action that has no native endpoint
+and starts an `ADMIN_INITIATED` flow that emails the user a link, such as attribute verification and credential reset;
+start it with `startAdminInitiatedFlow` from `@thunderid/utils`.
 
 Gate consumes ThunderID's published SDK packages — `@thunderid/react` and `@thunderid/react-router` — from the separate
 [javascript-sdks](https://github.com/thunder-id/javascript-sdks) repository. Clone that repository only to develop or

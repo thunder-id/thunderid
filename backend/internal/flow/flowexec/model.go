@@ -7,6 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -17,6 +19,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // frame captures the per-call execution state saved when a CALL node pushes execution
@@ -76,11 +79,21 @@ type EngineContext struct {
 	ExecutionHistory  map[string]*providers.NodeExecutionRecord
 
 	InterceptorSharedData map[string]string
-	// consumedInputs accumulates identifiers reported as consumed by executors and
-	// interceptors within the current request
-	consumedInputs []string
+	// consumedInputs holds the identifiers of the inputs read within the current request: through ConsumeInput,
+	// as the inputs of a prompt's action, or by an interceptor.
+	consumedInputs map[string]struct{}
+	// additionalInputs holds the identifiers of the inputs the current request submitted that the flow did not
+	// hold before.
+	additionalInputs map[string]struct{}
+	// requestedInputs holds the identifiers a request continuing the flow may carry, recorded when the flow
+	// paused. Nil when continuing is not limited, as before the first pause or after a redirection. Persisted
+	// with the context.
+	requestedInputs map[string]struct{}
 	// nodeVisits counts how many times each node ran within the current request
 	nodeVisits map[core.NodeInterface]int
+	// executedNodes holds the nodes that executed within the current request, leaving out the ones a
+	// condition skipped.
+	executedNodes map[core.NodeInterface]struct{}
 	// frameStack holds saved call frames. Top is the most recent caller.
 	frameStack []*frame
 	// sharedRuntimeData is a cross-frame key-value store available to executors that opt in.
@@ -191,6 +204,52 @@ func (e *EngineContext) popFrame() *frame {
 	e.SSOFlowVersion = top.ssoFlowVersion
 	e.clearPausedPromptInputs()
 	return top
+}
+
+// recordConsumedInputs notes inputs an executor, a prompt or an interceptor read within the current request.
+func (e *EngineContext) recordConsumedInputs(identifiers []string) {
+	if len(identifiers) == 0 {
+		return
+	}
+	if e.consumedInputs == nil {
+		e.consumedInputs = make(map[string]struct{}, len(identifiers))
+	}
+	for _, identifier := range identifiers {
+		e.consumedInputs[identifier] = struct{}{}
+	}
+}
+
+// onlyRequestedInputs keeps the inputs of a request continuing the flow that the step it is paused on asks
+// for. A nil requestedInputs, before the first pause or after a redirection, keeps every input. The authorization
+// params are left out, since only the request that starts a flow can set them.
+func (e *EngineContext) onlyRequestedInputs(inputs map[string]string) map[string]string {
+	if len(inputs) == 0 {
+		return inputs
+	}
+
+	accepted := maps.Clone(inputs)
+	for identifier := range accepted {
+		_, requested := e.requestedInputs[identifier]
+		if slices.Contains(authorizationParams, identifier) || (e.requestedInputs != nil && !requested) {
+			delete(accepted, identifier)
+		}
+	}
+	return accepted
+}
+
+// mergeInputs merges the inputs of a request into the flow's inputs, noting the ones the flow did not hold
+// before. A value the flow already holds was used by an earlier step, so a resent one replaces it.
+func (e *EngineContext) mergeInputs(inputs map[string]string) {
+	if len(inputs) == 0 {
+		return
+	}
+	e.additionalInputs = make(map[string]struct{}, len(inputs))
+	for identifier := range inputs {
+		if _, held := e.UserInputs[identifier]; !held {
+			e.additionalInputs[identifier] = struct{}{}
+		}
+	}
+	e.UserInputs = sysutils.MergeStringMaps(e.UserInputs, inputs)
 }
 
 // clearPausedPromptInputs drops the paused-prompt record. It is keyed by node ID, which is only
@@ -415,6 +474,8 @@ type flowContextContent struct {
 	PromptInputs          *string `json:"promptInputs,omitempty"`
 	PromptNodeID          *string `json:"promptNodeId,omitempty"`
 	BoundSubject          string  `json:"boundSubject,omitempty"`
+	// RequestedInputs is the identifiers a request continuing the flow may carry. Absent when it is not limited.
+	RequestedInputs *[]string `json:"requestedInputs,omitempty"`
 
 	Authority *flowAuthority `json:"authority,omitempty"`
 }
@@ -632,6 +693,12 @@ func (f *FlowContextDB) ToEngineContext(ctx context.Context,
 		authority:             content.Authority,
 		expiresAt:             f.ExpiryTime,
 	}
+	if content.RequestedInputs != nil {
+		engineCtx.requestedInputs = make(map[string]struct{}, len(*content.RequestedInputs))
+		for _, identifier := range *content.RequestedInputs {
+			engineCtx.requestedInputs[identifier] = struct{}{}
+		}
+	}
 	engineCtx.SetInitiatorRequest(initiatorRequest)
 
 	return engineCtx, nil
@@ -785,6 +852,14 @@ func (f *FlowContextDB) FromEngineContext(ctx EngineContext) error {
 		initiatorRequestStr = &s
 	}
 
+	// An empty list is kept, not stored as null: a step that asks for nothing still limits the next request.
+	var requestedInputs *[]string
+	if ctx.requestedInputs != nil {
+		sorted := slices.AppendSeq(make([]string, 0, len(ctx.requestedInputs)), maps.Keys(ctx.requestedInputs))
+		slices.Sort(sorted)
+		requestedInputs = &sorted
+	}
+
 	content := flowContextContent{
 		AppID:                 ctx.AppID,
 		Verbose:               ctx.Verbose,
@@ -812,6 +887,7 @@ func (f *FlowContextDB) FromEngineContext(ctx EngineContext) error {
 		PromptNodeID:          promptNodeIDStr,
 		BoundSubject:          ctx.boundSubject,
 		Authority:             ctx.authority,
+		RequestedInputs:       requestedInputs,
 	}
 
 	contextJSON, err := json.Marshal(content)

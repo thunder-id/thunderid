@@ -107,7 +107,16 @@ describe('personal assistant registration template', () => {
     expect(types).toContain('DYNAMIC_INPUT_PLACEHOLDER');
     expect(refs).toEqual(expect.arrayContaining(['redirectUris', 'jwksUri']));
     expect(refs).not.toContain('publicKey');
-    expect(details?.prompts?.[0]?.action?.nextNode).toBe('agent_provisioning');
+    expect(details?.prompts?.[0]?.action?.nextNode).toBe('agent_attribute_uniqueness');
+  });
+
+  it('should check the agent details are unique before provisioning, and ask again when they are not', () => {
+    const uniqueness = nodes.get('agent_attribute_uniqueness');
+
+    expect(uniqueness?.executor?.name).toBe('AttributeUniquenessValidator');
+    expect(uniqueness?.onSuccess).toBe('agent_provisioning');
+    expect(uniqueness?.onIncomplete).toBe('prompt_agent_details');
+    expect(uniqueness?.onFailure).toBeUndefined();
   });
 
   it('should send a failed registration back to the details prompt', () => {

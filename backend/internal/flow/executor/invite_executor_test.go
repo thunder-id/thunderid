@@ -489,7 +489,7 @@ func (suite *InviteExecutorTestSuite) TestExecute_PinnedContactRecordsOnlyAfterV
 	invite := newInviteExecutor(factory)
 	sender := notificationmock.NewNotificationSenderServiceInterfaceMock(suite.T())
 	renderer := newNotificationTemplateRendererMock(suite.T())
-	email := newEmailExecutor(factory, sender, renderer, nil)
+	email := newEmailExecutor(factory, sender, renderer, nil, nil)
 	pin := providers.AttributeVerificationPin{Subject: "user-a", Attribute: "workEmail",
 		Value: "User@example.com", Channel: providers.VerificationChannelEmail}
 	provider.On("PrepareAttributeVerification", mock.Anything, existingRequest(pin.Subject, pin.Attribute)).

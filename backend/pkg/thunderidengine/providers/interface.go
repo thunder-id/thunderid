@@ -124,6 +124,17 @@ type UserMgtProvider interface {
 	// UpdateUserCredentials sets schema-defined credentials, such as a password, for an existing user.
 	// Errors from the user service are returned unchanged.
 	UpdateUserCredentials(ctx context.Context, userID string, credentials json.RawMessage) *common.ServiceError
+	// ValidateRemoveUserCredential checks whether the caller may invalidate the user's credential of
+	// credentialType, changing nothing. Errors from the user service are returned unchanged.
+	ValidateRemoveUserCredential(ctx context.Context, userID, credentialType string) *common.ServiceError
+	// RemoveUserCredential removes the user's credential of credentialType, so its value no longer
+	// authenticates, and returns a marker of the removal for IsUserCredentialUnchangedSince. Errors from the
+	// user service are returned unchanged.
+	RemoveUserCredential(ctx context.Context, userID, credentialType string) (string, *common.ServiceError)
+	// IsUserCredentialUnchangedSince reports whether no credential change was written to the user since the
+	// removal that returned marker, so the reset it started can still be completed. Errors from the user
+	// service are returned unchanged.
+	IsUserCredentialUnchangedSince(ctx context.Context, userID, marker string) (bool, *common.ServiceError)
 }
 
 // PermissionProvider resolves the permissions an entity holds.
@@ -210,9 +221,12 @@ type IDPProvider interface {
 	GetIdentityProvidersByProperty(ctx context.Context, propertyKey,
 		propertyValue string) ([]IDPDTO, *common.ServiceError)
 	GetIdentityProvider(ctx context.Context, idpID string) (*IDPDTO, *common.ServiceError)
-	GetDirectAuthorizationTargets(
+	// ResolveDirectAuthorizationTargets resolves the connection's direct authorization mappings against
+	// claims. The first slice holds the resolved targets, which grant access. The second holds the
+	// targets a mapped name matched ambiguously, which must never grant access.
+	ResolveDirectAuthorizationTargets(
 		ctx context.Context, idp *IDPDTO, claims map[string]interface{},
-	) ([]AuthorizationTarget, *common.ServiceError)
+	) ([]AuthorizationTarget, []AuthorizationTarget, *common.ServiceError)
 }
 
 // ConsentProvider provides functionality to resolve consent requirements and

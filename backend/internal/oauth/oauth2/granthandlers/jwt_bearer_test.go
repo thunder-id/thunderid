@@ -150,6 +150,9 @@ func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_Success() {
 			Sub:    testUserID,
 			Iss:    testCustomIssuer,
 			Scopes: []string{"read", "write"},
+			Authorization: tokenservice.MappedAuthorization{
+				Targets: permissionTargets(testJWTBearerDefaultRSID, "read", "write"),
+			},
 		}, nil)
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, testJWTBearerDefaultRSID,
 		[]string{"read", "write"}).Return([]string{}, nil)
@@ -386,6 +389,9 @@ func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_ScopeIntersection()
 			Sub:    testUserID,
 			Iss:    testCustomIssuer,
 			Scopes: []string{"read", "write"},
+			Authorization: tokenservice.MappedAuthorization{
+				Targets: permissionTargets(testJWTBearerDefaultRSID, "read", "write"),
+			},
 		}, nil)
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, testJWTBearerDefaultRSID,
 		[]string{"read"}).Return([]string{}, nil)
@@ -426,6 +432,9 @@ func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_EmptyAppScopes_Asse
 			Sub:    testUserID,
 			Iss:    testCustomIssuer,
 			Scopes: []string{"read", "write"},
+			Authorization: tokenservice.MappedAuthorization{
+				Targets: permissionTargets(testJWTBearerDefaultRSID, "read", "write"),
+			},
 		}, nil)
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, testJWTBearerDefaultRSID,
 		[]string{"read", "write"}).Return([]string{}, nil)
@@ -462,10 +471,11 @@ func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_AssertionResource_A
 
 	suite.mockTokenValidator.On("ValidateIDJAGAssertion", mock.Anything, testAssertion, testClientID).
 		Return(&tokenservice.IDJAGAssertionClaims{
-			Sub:       testUserID,
-			Iss:       testCustomIssuer,
-			Scopes:    []string{"read", "write"},
-			Resources: []string{testRS01URI},
+			Sub:           testUserID,
+			Iss:           testCustomIssuer,
+			Scopes:        []string{"read", "write"},
+			Authorization: tokenservice.MappedAuthorization{Targets: permissionTargets(testRS01URI, "read", "write")},
+			Resources:     []string{testRS01URI},
 		}, nil)
 	suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, testRS01URI).
 		Return(&providers.ResourceServer{ID: testRS01URI, Identifier: testRS01URI}, nil)
@@ -651,7 +661,6 @@ func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_MappedRoleCannotGra
 				Targets: []providers.AuthorizationTarget{
 					{Type: providers.AuthorizationTargetRole, ID: "role-writer"},
 				},
-				Configured: true,
 			},
 		}, nil)
 	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
@@ -698,7 +707,6 @@ func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_MappedRoleGrantsSco
 				Targets: []providers.AuthorizationTarget{
 					{Type: providers.AuthorizationTargetRole, ID: "role-writer"},
 				},
-				Configured: true,
 			},
 		}, nil)
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, testJWTBearerDefaultRSID,
@@ -759,7 +767,6 @@ func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_MappedPermissionGra
 					{Type: providers.AuthorizationTargetPermission,
 						ResourceServerID: testJWTBearerDefaultRSID, Permission: "read"},
 				},
-				Configured: true,
 			},
 		}, nil)
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, testJWTBearerDefaultRSID,
@@ -778,11 +785,11 @@ func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_MappedPermissionGra
 	assert.Equal(suite.T(), []string{testScopeRead}, result.AccessToken.Scopes)
 }
 
-// TestHandleGrant_MappedAuthorizationConfigured_NoTargetsGrantsNothing covers the other half of the
-// single-authority rule: when the connection has AuthorizationRuleMapping configured but the assertion's
-// claims matched none of its rules (no targets), mapping has nothing to grant against, so nothing is
-// granted even though the omitted request leaves the full assertion scope as the candidate.
-func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_MappedAuthorizationConfigured_NoTargetsGrantsNothing() {
+// TestHandleGrant_NoMappedTargetsGrantsNothing covers the single-authority rule: when the connection has
+// no authorization mapping, or the assertion's claims matched none of its rules (no targets), mapping has
+// nothing to grant against, so nothing is granted even though the omitted request leaves the full
+// assertion scope as the candidate.
+func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_NoMappedTargetsGrantsNothing() {
 	tokenRequest := &model.TokenRequest{
 		GrantType: string(providers.GrantTypeJWTBearer),
 		ClientID:  testClientID,
@@ -804,9 +811,6 @@ func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_MappedAuthorization
 			Sub:    testUserID,
 			Iss:    testCustomIssuer,
 			Scopes: []string{"read", "write"},
-			Authorization: tokenservice.MappedAuthorization{
-				Configured: true,
-			},
 		}, nil)
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, testJWTBearerDefaultRSID,
 		[]string{"read", "write"}).Return([]string{}, nil)
@@ -852,7 +856,6 @@ func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_MappedRoleGrantsSco
 				Targets: []providers.AuthorizationTarget{
 					{Type: providers.AuthorizationTargetRole, ID: "role-writer"},
 				},
-				Configured: true,
 			},
 		}, nil)
 	suite.mockResourceService.On("ValidatePermissions", mock.Anything, testJWTBearerDefaultRSID,
@@ -892,6 +895,9 @@ func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_CompactsOnlyHierarc
 			suite.mockTokenValidator.On("ValidateIDJAGAssertion", mock.Anything, testAssertion, testClientID).
 				Return(&tokenservice.IDJAGAssertionClaims{
 					Sub: testUserID, Iss: testCustomIssuer, Scopes: scopes, Resources: []string{audience},
+					Authorization: tokenservice.MappedAuthorization{
+						Targets: permissionTargets("booking-api", permissions...),
+					},
 				}, nil).Once()
 			suite.mockResourceService.On("GetResourceServerByIdentifier", mock.Anything, audience).
 				Return(&providers.ResourceServer{
@@ -915,4 +921,56 @@ func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_CompactsOnlyHierarc
 			suite.Equal(expected, result.AccessToken.Scopes)
 		})
 	}
+}
+
+// An unmapped issuer's assertion asking for permission scopes gets only its OIDC scopes; the engine is
+// never consulted.
+func (suite *JWTBearerGrantHandlerTestSuite) TestHandleGrant_NoMapping_GrantsOnlyOIDCScopes() {
+	now := time.Now().Unix()
+	suite.oauthApp.ScopeClaims = map[string][]string{constants.ScopeOpenID: {"sub"}}
+	tokenRequest := &model.TokenRequest{
+		GrantType: string(providers.GrantTypeJWTBearer),
+		ClientID:  testClientID,
+		Assertion: testAssertion,
+		Scope:     constants.ScopeOpenID + " " + testScopeRead,
+	}
+
+	// No .On("EvaluateAccessBatch", ...) expectation: a call would fail the mock.
+	h := &jwtBearerGrantHandler{
+		tokenBuilder:    suite.mockTokenBuilder,
+		tokenValidator:  suite.mockTokenValidator,
+		resourceService: suite.mockResourceService,
+		authzService:    authzmock.NewAuthorizationProviderMock(suite.T()),
+	}
+
+	suite.mockTokenValidator.On("ValidateIDJAGAssertion", mock.Anything, testAssertion, testClientID).
+		Return(&tokenservice.IDJAGAssertionClaims{
+			Sub:    testUserID,
+			Iss:    testCustomIssuer,
+			Scopes: []string{constants.ScopeOpenID, testScopeRead},
+		}, nil)
+	suite.mockResourceService.On("ValidatePermissions", mock.Anything, testJWTBearerDefaultRSID,
+		[]string{testScopeRead}).Return([]string{}, nil)
+	suite.mockTokenBuilder.On("BuildAccessToken", mock.Anything,
+		mock.MatchedBy(func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return tokenservice.JoinScopes(ctx.Scopes) == constants.ScopeOpenID && ctx.SourceIDP == testCustomIssuer
+		})).Return(&model.TokenDTO{
+		Token: testTokenExchangeJWT, IssuedAt: now, ExpiresIn: 3600, Scopes: []string{constants.ScopeOpenID},
+	}, nil)
+
+	result, errResp := h.HandleGrant(context.Background(), tokenRequest, suite.oauthApp)
+
+	suite.Require().Nil(errResp)
+	suite.Equal([]string{constants.ScopeOpenID}, result.AccessToken.Scopes)
+}
+
+// permissionTargets builds direct-mapping permission targets on one resource server.
+func permissionTargets(resourceServerID string, permissions ...string) []providers.AuthorizationTarget {
+	targets := make([]providers.AuthorizationTarget, 0, len(permissions))
+	for _, permission := range permissions {
+		targets = append(targets, providers.AuthorizationTarget{
+			Type: providers.AuthorizationTargetPermission, ResourceServerID: resourceServerID, Permission: permission,
+		})
+	}
+	return targets
 }

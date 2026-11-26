@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
@@ -593,4 +594,14 @@ func ExtractMagicLinkToken(e *testutils.EmailMessage) string {
 		return ""
 	}
 	return match[1]
+}
+
+// AwaitEmail waits for the mock SMTP server to receive an email and returns it, failing the test after five seconds.
+func AwaitEmail(r *require.Assertions, smtp *testutils.MockSMTPServer) *testutils.EmailMessage {
+	var email *testutils.EmailMessage
+	r.Eventually(func() bool {
+		email = smtp.GetLastEmail()
+		return email != nil
+	}, 5*time.Second, 100*time.Millisecond, "Expected an email to be sent")
+	return email
 }

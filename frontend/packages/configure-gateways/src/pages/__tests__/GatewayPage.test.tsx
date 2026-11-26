@@ -269,6 +269,39 @@ describe('GatewayPage', () => {
     expect(await screen.findByTestId('gateway-other-variable')).toBeInTheDocument();
   });
 
+  it('offers no edit in one view while a removal of the same value started in the other is pending', async () => {
+    routes[`GET /configuration-versions/${v1}`] = {
+      ...versions[1],
+      references: [
+        {name: 'APP_ID', kind: 'variable', resourceType: 'application', resourceId: 'a-1', field: 'clientId'},
+      ],
+    };
+    const answered = fakeHttp(routes);
+    let finishRemoval: (() => void) | undefined;
+    http = {
+      calls: answered.calls,
+      request: (call: Call) => {
+        if (call.method !== 'DELETE') return answered.request(call);
+        answered.calls.push(call);
+        return new Promise((resolve) => {
+          finishRemoval = () => resolve({data: {}});
+        });
+      },
+    };
+    render(<GatewayPage section="values" />);
+
+    const edit = await screen.findByTestId('resource-value-edit-APP_ID');
+    expect(edit).toBeEnabled();
+    await userEvent.click(screen.getByTestId('gateway-show-all-values'));
+    const other = await screen.findByTestId('gateway-other-variable');
+    await userEvent.click(await within(other).findByRole('button', {name: 'Remove APP_ID'}));
+
+    await waitFor(() => expect(screen.getByTestId('resource-value-edit-APP_ID')).toBeDisabled());
+    expect(within(other).getByRole('button', {name: 'Edit APP_ID'})).toBeDisabled();
+    finishRemoval?.();
+    await waitFor(() => expect(screen.getByTestId('resource-value-edit-APP_ID')).toBeEnabled());
+  });
+
   it('lists a value the next deploy needs that the version the gateway runs does not refer to', async () => {
     const password = 'USER__019000000000700080000000000000F9__PASSWORD';
     const reference = {
@@ -300,7 +333,7 @@ describe('GatewayPage', () => {
     expect(within(user).getByTestId(`resource-value-${password}`)).toHaveTextContent('Not set');
   });
 
-  it('leaves a hidden resource out of the values, without listing its values as unused', async () => {
+  it('leaves a hidden resource out of the values, listing its values as used by a resource not shown', async () => {
     routes[`GET /configuration-versions/${v1}`] = {
       ...versions[1],
       references: [
@@ -320,7 +353,12 @@ describe('GatewayPage', () => {
     expect(screen.queryByText('Billing')).not.toBeInTheDocument();
     await userEvent.click(screen.getByTestId('gateway-show-all-values'));
     const other = await screen.findByTestId('gateway-other-variable');
+    // Listed, so the page holds every value the server counted, but shown as no more than that: neither its
+    // name nor its value, and nothing offered to change it.
+    expect(await within(other).findByText('Used by a resource not shown here')).toBeInTheDocument();
     expect(within(other).queryByText('APP_ID')).not.toBeInTheDocument();
+    expect(within(other).queryByText('Billing')).not.toBeInTheDocument();
+    expect(within(other).queryByRole('button', {name: /APP_ID/})).not.toBeInTheDocument();
   });
 
   it("speaks of the project's own resources and values within a project", async () => {

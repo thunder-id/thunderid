@@ -58,6 +58,7 @@ export {default as orderAttributes} from './schema/orderAttributes';
 // Administration Flows
 export {
   ADMINISTRATION_FLOW_TYPE,
+  ADMIN_INITIATED_FLOW_TYPE,
   AdministrationFlowConfigKey,
   AdministrationFlowData,
   AdministrationFlowInput,
@@ -67,9 +68,11 @@ export {
   executeAdministrationFlow,
   findAdministrationFlowId,
   resolveAdministrationFlowHandle,
+  resolveAdministrationFlowHandles,
   resolveAdministrationFlowId,
   resolveAdministrationFlows,
   runAdministrationFlow,
+  startAdminInitiatedFlow,
 } from './flow/administrationFlow';
 export type {
   AdministrationFlowConfig,

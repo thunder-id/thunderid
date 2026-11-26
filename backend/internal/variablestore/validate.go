@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/thunder-id/thunderid/internal/system/filter"
 	"github.com/thunder-id/thunderid/internal/system/valueref"
@@ -162,6 +163,75 @@ func parseListQuery(query url.Values) (listQuery, *common.ServiceError) {
 	}
 
 	return parsed, nil
+}
+
+// maxUnchangedForSeconds is the largest age a delete of many names takes, a hundred years, which
+// keeps the boundary inside the range of a time both databases hold.
+const maxUnchangedForSeconds = 100 * 365 * 24 * 60 * 60
+
+// deleteQuery is a resolved delete of many names: the names, and how long ago a value must have been
+// last set to be removed, zero for any time.
+type deleteQuery struct {
+	names        []string
+	unchangedFor time.Duration
+}
+
+// parseDeleteQuery reads a delete of many names from the request's raw query: names, required and
+// given once, a comma-separated list of 1 to maxNamesPerQuery names, and unchangedFor, optional and
+// given at most once, a whole number of seconds from 1 to maxUnchangedForSeconds. Anything else is
+// refused, as a listing refuses what it does not understand. The raw query is decoded here rather than
+// through URL.Query, which drops a pair it cannot decode: a delete must not go ahead on what is left of
+// a query it could not read.
+func parseDeleteQuery(rawQuery string) (deleteQuery, *common.ServiceError) {
+	query, err := url.ParseQuery(rawQuery)
+	if err != nil {
+		return deleteQuery{}, &ErrorInvalidDeleteQuery
+	}
+	for name := range query {
+		if name != "names" && name != "unchangedFor" {
+			return deleteQuery{}, &ErrorUnknownDeleteParameter
+		}
+	}
+	values := query["names"]
+	if len(values) != 1 || strings.TrimSpace(values[0]) == "" {
+		return deleteQuery{}, &ErrorNamesRequired
+	}
+	raw := strings.Split(values[0], ",")
+	parsed := deleteQuery{names: make([]string, 0, len(raw))}
+	for _, name := range raw {
+		parsed.names = append(parsed.names, strings.TrimSpace(name))
+	}
+	if svcErr := validateNames(parsed.names); svcErr != nil {
+		return deleteQuery{}, svcErr
+	}
+	if ages, given := query["unchangedFor"]; given {
+		if len(ages) != 1 {
+			return deleteQuery{}, &ErrorInvalidUnchangedFor
+		}
+		seconds, err := strconv.ParseInt(ages[0], 10, 64)
+		if err != nil || seconds < 1 || seconds > maxUnchangedForSeconds {
+			return deleteQuery{}, &ErrorInvalidUnchangedFor
+		}
+		parsed.unchangedFor = time.Duration(seconds) * time.Second
+	}
+	return parsed, nil
+}
+
+// validateNames checks the names a delete of many names removes: 1 to maxNamesPerQuery of them, each
+// a valid name.
+func validateNames(names []string) *common.ServiceError {
+	if len(names) == 0 {
+		return &ErrorNamesRequired
+	}
+	if len(names) > maxNamesPerQuery {
+		return &ErrorTooManyNames
+	}
+	for _, name := range names {
+		if svcErr := validateName(name); svcErr != nil {
+			return svcErr
+		}
+	}
+	return nil
 }
 
 // applyFilter reads the filter expression this store understands: name eq "x" or name sw "x".

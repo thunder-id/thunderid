@@ -949,7 +949,8 @@ func (s *ServiceTestSuite) TestUpdateCredentials_StampsCredentialMarkerPreservin
 	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
 	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
 		Return(&entityWithCredentials{Entity: e}, nil)
-	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil)
+	s.store.On("LockEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{Entity: e}, nil)
 	s.store.On("UpdateCredentials", mock.Anything, e.ID, mock.IsType(json.RawMessage(nil))).Return(nil)
 
 	var written json.RawMessage
@@ -1048,6 +1049,252 @@ func (s *ServiceTestSuite) TestValidateCredentials() {
 			} else {
 				s.ErrorIs(err, test.wantIs)
 			}
+			s.store.AssertNotCalled(s.T(), "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+// removalFixture makes id an entity whose type declares password and holds it, recording the removal's write
+// in the order of the system flows it runs, which fail at failing.
+func (s *ServiceTestSuite) removalFixture(id, failing string) (*entityService, *flowRecorder) {
+	svc, ets := s.newSvcWithEntityType()
+	r := s.recordFlows(svc, failing)
+	e := testEntity(id)
+	e.Type = testCredentialEntityType
+	s.store.On("GetEntity", mock.Anything, id).Return(*e, nil).Once()
+	ets.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, testCredentialEntityType,
+		entitytype.AttributeFilter{AllowCredential: true}).
+		Return([]entitytype.AttributeInfo{{Attribute: "password"}}, nil).Once()
+	s.store.On("LockEntityWithCredentials", mock.Anything, id).Return(&entityWithCredentials{Entity: e,
+		SchemaCredentials: json.RawMessage(`{"password":[{"hash":"p"}]}`)}, nil).Maybe()
+	s.store.On("UpdateCredentials", mock.Anything, id, json.RawMessage(`{}`)).
+		Run(func(mock.Arguments) { r.order = append(r.order, "removed") }).Return(nil).Maybe()
+	s.store.On("UpdateSystemAttributes", mock.Anything, id, mock.Anything).Return(nil).Maybe()
+	return svc, r
+}
+
+// Removing a credential revokes what was issued to the entity before it, as replacing one does, and moves the
+// cutoff past the removal with what the first flow shared.
+func (s *ServiceTestSuite) TestRemoveCredential_RevokesAroundTheRemoval() {
+	svc, r := s.removalFixture("e-remove-flows", "")
+
+	marker, err := svc.RemoveCredential(s.ctx, "e-remove-flows", "password")
+
+	s.Require().NoError(err)
+	s.NotEmpty(marker)
+	inputs := map[string]string{systemFlowInputEntity: "e-remove-flows"}
+	s.Equal([]*flowcommon.SystemFlowContext{
+		{Handle: systemFlowCredentialUpdatePre, Inputs: inputs},
+		{Handle: systemFlowCredentialUpdatePost, Inputs: inputs,
+			RuntimeData: map[string]string{"plan": systemFlowCredentialUpdatePre}},
+	}, r.runs)
+	s.Equal([]string{systemFlowCredentialUpdatePre, "removed", systemFlowCredentialUpdatePost}, r.order)
+}
+
+// A failed revocation before the removal removes nothing; one after it leaves the credential removed and is
+// reported as incomplete. Neither returns a marker.
+func (s *ServiceTestSuite) TestRemoveCredential_RevocationFailures() {
+	for name, test := range map[string]struct {
+		failing   string
+		wantIs    error
+		wantOrder []string
+	}{
+		"before the removal": {failing: systemFlowCredentialUpdatePre, wantIs: errRevocationFailed,
+			wantOrder: []string{systemFlowCredentialUpdatePre}},
+		"after the removal": {failing: systemFlowCredentialUpdatePost, wantIs: ErrRevocationIncomplete,
+			wantOrder: []string{systemFlowCredentialUpdatePre, "removed", systemFlowCredentialUpdatePost}},
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			svc, r := s.removalFixture("e-remove-revoke", test.failing)
+
+			marker, err := svc.RemoveCredential(s.ctx, "e-remove-revoke", "password")
+
+			s.ErrorIs(err, test.wantIs)
+			s.Empty(marker)
+			s.Equal(test.wantOrder, r.order)
+		})
+	}
+}
+
+// Removing a credential keeps the entity's other credentials and stamps the credential marker it returns, with
+// sub-second precision, keeping the other system attributes.
+func (s *ServiceTestSuite) TestRemoveCredential_RemovesOnlyThatCredentialAndStampsTheMarker() {
+	svc, ets := s.newSvcWithEntityType()
+	e := testEntity("e-remove")
+	e.Type = testCredentialEntityType
+	e.SystemAttributes = json.RawMessage(`{"name":"kept"}`)
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil).Once()
+	ets.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, testCredentialEntityType,
+		entitytype.AttributeFilter{AllowCredential: true}).
+		Return([]entitytype.AttributeInfo{{Attribute: "password"}, {Attribute: "pin"}}, nil).Once()
+	s.store.On("LockEntityWithCredentials", mock.Anything, e.ID).Return(&entityWithCredentials{Entity: e,
+		SchemaCredentials: json.RawMessage(`{"password":[{"hash":"p"}],"pin":[{"hash":"n"}]}`)}, nil).Once()
+	s.store.On("UpdateCredentials", mock.Anything, e.ID, json.RawMessage(`{"pin":[{"hash":"n"}]}`)).
+		Return(nil).Once()
+	var stamped json.RawMessage
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.IsType(json.RawMessage(nil))).
+		Run(func(args mock.Arguments) { stamped, _ = args.Get(2).(json.RawMessage) }).Return(nil).Once()
+	before := time.Now()
+
+	marker, err := svc.RemoveCredential(s.ctx, e.ID, "password")
+
+	s.Require().NoError(err)
+	written, err := time.Parse(time.RFC3339Nano, marker)
+	s.Require().NoError(err, "the marker must be an RFC 3339 time")
+	// A tolerance, not an ordering check: the parsed marker carries no monotonic reading, so a clock step between the
+	// two readings must not fail a correct removal.
+	s.WithinDuration(before, written, time.Minute, "the marker must be the time of the removal")
+	var attrs map[string]interface{}
+	s.Require().NoError(json.Unmarshal(stamped, &attrs))
+	s.Equal(marker, attrs[authnprovidercm.SystemAttrCredentialUpdatedAt], "the stored marker must be returned")
+	s.Equal("kept", attrs["name"], "unrelated system attributes must survive the stamp")
+}
+
+// A credential that is already absent is removed again, and the marker still moves.
+func (s *ServiceTestSuite) TestRemoveCredential_AnAbsentCredentialStillMovesTheMarker() {
+	svc, ets := s.newSvcWithEntityType()
+	e := testEntity("e-remove-absent")
+	e.Type = testCredentialEntityType
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil).Once()
+	ets.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, testCredentialEntityType,
+		entitytype.AttributeFilter{AllowCredential: true}).
+		Return([]entitytype.AttributeInfo{{Attribute: "password"}}, nil).Once()
+	s.store.On("LockEntityWithCredentials", mock.Anything, e.ID).Return(&entityWithCredentials{Entity: e}, nil).Once()
+	s.store.On("UpdateCredentials", mock.Anything, e.ID, json.RawMessage(`{}`)).Return(nil).Once()
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.IsType(json.RawMessage(nil))).Return(nil).Once()
+
+	marker, err := svc.RemoveCredential(s.ctx, e.ID, "password")
+
+	s.Require().NoError(err)
+	s.NotEmpty(marker)
+}
+
+// A new marker is always later than the stored one, so a write in the same instant as the removal, or after a clock
+// step back, never repeats the marker a reset recorded.
+func (s *ServiceTestSuite) TestRemoveCredential_TheMarkerIsLaterThanTheStoredOne() {
+	svc, ets := s.newSvcWithEntityType()
+	e := testEntity("e-remove-later")
+	e.Type = testCredentialEntityType
+	e.SystemAttributes = json.RawMessage(`{"credentialUpdatedAt":"2999-01-01T00:00:00Z"}`)
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil).Once()
+	ets.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, testCredentialEntityType,
+		entitytype.AttributeFilter{AllowCredential: true}).
+		Return([]entitytype.AttributeInfo{{Attribute: "password"}}, nil).Once()
+	s.store.On("LockEntityWithCredentials", mock.Anything, e.ID).Return(&entityWithCredentials{Entity: e}, nil).Once()
+	s.store.On("UpdateCredentials", mock.Anything, e.ID, json.RawMessage(`{}`)).Return(nil).Once()
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID,
+		json.RawMessage(`{"credentialUpdatedAt":"2999-01-01T00:00:00.000000001Z"}`)).Return(nil).Once()
+
+	marker, err := svc.RemoveCredential(s.ctx, e.ID, "password")
+
+	s.Require().NoError(err)
+	s.Equal("2999-01-01T00:00:00.000000001Z", marker)
+}
+
+// A failed removal returns no marker, and a check that refuses it writes nothing.
+func (s *ServiceTestSuite) TestRemoveCredential_Failures() {
+	type stage int
+	const (
+		read stage = iota
+		declared
+		loaded
+		removed
+		stamped
+	)
+	for name, test := range map[string]struct {
+		fails    stage
+		declares []entitytype.AttributeInfo
+		wantIs   error
+	}{
+		"an unknown entity": {fails: read},
+		"an undeclared credential": {fails: declared, declares: []entitytype.AttributeInfo{{Attribute: "pin"}},
+			wantIs: ErrInvalidCredential},
+		"a type declaring none":     {fails: declared, wantIs: ErrInvalidCredential},
+		"a failed credentials read": {fails: loaded},
+		"a failed credential write": {fails: removed},
+		"a failed marker write":     {fails: stamped},
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			svc, ets := s.newSvcWithEntityType()
+			e := testEntity("e-remove-fail")
+			e.Type = testCredentialEntityType
+			if test.fails == read {
+				s.store.On("GetEntity", mock.Anything, e.ID).Return(providers.Entity{}, s.testErr).Once()
+			} else {
+				s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil).Once()
+				declares := test.declares
+				if test.fails > declared {
+					declares = []entitytype.AttributeInfo{{Attribute: "password"}}
+				}
+				ets.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, testCredentialEntityType,
+					entitytype.AttributeFilter{AllowCredential: true}).Return(declares, nil).Once()
+			}
+			if test.fails >= loaded {
+				var loadErr error
+				if test.fails == loaded {
+					loadErr = s.testErr
+				}
+				s.store.On("LockEntityWithCredentials", mock.Anything, e.ID).
+					Return(&entityWithCredentials{Entity: e}, loadErr).Once()
+			}
+			if test.fails >= removed {
+				var writeErr error
+				if test.fails == removed {
+					writeErr = s.testErr
+				}
+				s.store.On("UpdateCredentials", mock.Anything, e.ID, mock.Anything).Return(writeErr).Once()
+			}
+			if test.fails == stamped {
+				s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.Anything).Return(s.testErr).Once()
+			}
+
+			marker, err := svc.RemoveCredential(s.ctx, e.ID, "password")
+
+			s.Empty(marker)
+			if test.wantIs != nil {
+				s.ErrorIs(err, test.wantIs)
+			} else {
+				s.ErrorIs(err, s.testErr)
+			}
+			if test.fails < removed {
+				s.store.AssertNotCalled(s.T(), "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+			}
+			if test.fails < stamped {
+				s.store.AssertNotCalled(s.T(), "UpdateSystemAttributes", mock.Anything, mock.Anything, mock.Anything)
+			}
+		})
+	}
+}
+
+// The removal check reads the declared credentials and writes nothing.
+func (s *ServiceTestSuite) TestValidateCredentialRemoval() {
+	for name, test := range map[string]struct {
+		credential string
+		wantIs     error
+	}{
+		"a declared credential":    {credential: "password"},
+		"an undeclared credential": {credential: "passkey", wantIs: ErrInvalidCredential},
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			svc, ets := s.newSvcWithEntityType()
+			e := testEntity("e-check-removal")
+			e.Type = testCredentialEntityType
+			s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil).Once()
+			ets.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, testCredentialEntityType,
+				entitytype.AttributeFilter{AllowCredential: true}).
+				Return([]entitytype.AttributeInfo{{Attribute: "password"}}, nil).Once()
+
+			err := svc.validateCredentialRemoval(s.ctx, e.ID, test.credential)
+
+			if test.wantIs == nil {
+				s.NoError(err)
+			} else {
+				s.ErrorIs(err, test.wantIs)
+			}
+			s.store.AssertNotCalled(s.T(), "GetEntityWithCredentials", mock.Anything, mock.Anything)
 			s.store.AssertNotCalled(s.T(), "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
 		})
 	}
@@ -1906,6 +2153,47 @@ func (s *ServiceTestSuite) TestValidateEntityType_UniquenessIgnoresTheSignInBoun
 	s.store.AssertNotCalled(s.T(), "SearchEntities", mock.Anything, mock.Anything)
 }
 
+// A server error while validating is not a rejection of the attributes, so it does not report a
+// schema failure or a conflict.
+func (s *ServiceTestSuite) TestValidateEntityType_ServerErrorIsNotARejection() {
+	attrs := json.RawMessage(`{"username":"alice"}`)
+	serverErr := &tidcommon.ServiceError{Type: tidcommon.ServerErrorType}
+	clientErr := &tidcommon.ServiceError{Type: tidcommon.ClientErrorType}
+	cases := []struct {
+		name          string
+		schemaErr     *tidcommon.ServiceError
+		uniquenessErr *tidcommon.ServiceError
+		want          error
+	}{
+		{name: "schema server error", schemaErr: serverErr},
+		{name: "schema client error", schemaErr: clientErr, want: ErrSchemaValidationFailed},
+		{name: "uniqueness server error", uniquenessErr: serverErr},
+		{name: "uniqueness client error", uniquenessErr: clientErr, want: ErrAttributeConflict},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			s.SetupTest()
+			svc, ets := s.newSvcWithEntityType()
+			ets.On("ValidateEntity", mock.Anything, entitytype.TypeCategoryUser, "employee", attrs, false).
+				Return(tc.schemaErr == nil, tc.schemaErr).Once()
+			if tc.schemaErr == nil {
+				ets.On("ValidateEntityUniqueness", mock.Anything, entitytype.TypeCategoryUser, "employee", attrs,
+					mock.Anything).Return(false, tc.uniquenessErr).Once()
+			}
+
+			err := svc.validateEntityType(s.ctx, providers.EntityCategoryUser, "employee", attrs, "", false)
+
+			s.Require().Error(err)
+			if tc.want != nil {
+				s.ErrorIs(err, tc.want)
+				return
+			}
+			s.NotErrorIs(err, ErrSchemaValidationFailed)
+			s.NotErrorIs(err, ErrAttributeConflict)
+		})
+	}
+}
+
 // entityIDs returns the IDs of entities in order.
 func entityIDs(entities []providers.Entity) []string {
 	ids := make([]string, 0, len(entities))
@@ -2316,8 +2604,9 @@ func (s *ServiceTestSuite) TestUpdateCredentials_StampsOverLockedBlob() {
 	s.store.On("GetEntity", mock.Anything, cached.ID).Return(*cached, nil)
 	s.store.On("GetEntityWithCredentials", mock.Anything, cached.ID).
 		Return(&entityWithCredentials{Entity: cached}, nil)
+	s.store.On("LockEntityWithCredentials", mock.Anything, cached.ID).
+		Return(&entityWithCredentials{Entity: &locked}, nil)
 	s.store.On("UpdateCredentials", mock.Anything, cached.ID, mock.Anything).Return(nil)
-	s.store.On("LockEntity", mock.Anything, cached.ID).Return(locked, nil)
 
 	var written json.RawMessage
 	s.store.On("UpdateSystemAttributes", mock.Anything, cached.ID, mock.Anything).
@@ -2329,6 +2618,28 @@ func (s *ServiceTestSuite) TestUpdateCredentials_StampsOverLockedBlob() {
 	s.Require().NoError(json.Unmarshal(written, &attrs))
 	s.Contains(attrs, authnprovidercm.SystemAttrLinkedIDs)
 	s.NotEmpty(attrs[authnprovidercm.SystemAttrCredentialUpdatedAt])
+}
+
+// The credentials are merged over the ones read under the entity's lock, not a copy read before it, so a
+// credential another write removed in the meantime is not restored.
+func (s *ServiceTestSuite) TestUpdateCredentials_MergesOverTheLockedCredentials() {
+	e := testEntity("e-pw-merge")
+	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
+	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).Return(&entityWithCredentials{Entity: e,
+		SchemaCredentials: json.RawMessage(`{"pin":[{"hash":"removed"}]}`)}, nil)
+	s.store.On("LockEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{Entity: e}, nil).Once()
+	var stored json.RawMessage
+	s.store.On("UpdateCredentials", mock.Anything, e.ID, mock.Anything).
+		Run(func(args mock.Arguments) { stored, _ = args.Get(2).(json.RawMessage) }).Return(nil).Once()
+	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.Anything).Return(nil)
+
+	s.NoError(s.svc.UpdateCredentials(s.ctx, e.ID, json.RawMessage(`{"password":"new-secret"}`)))
+
+	var creds map[string]interface{}
+	s.Require().NoError(json.Unmarshal(stored, &creds))
+	s.Contains(creds, "password")
+	s.NotContains(creds, "pin", "a credential removed before the lock must not be restored")
 }
 
 func (s *ServiceTestSuite) TestUpdateSystemCredentials_StampsOverLockedBlob() {
@@ -4317,7 +4628,8 @@ func (s *ServiceTestSuite) credentialUpdateFixture(id string, stored json.RawMes
 	s.store.On("GetEntity", mock.Anything, e.ID).Return(*e, nil)
 	s.store.On("GetEntityWithCredentials", mock.Anything, e.ID).
 		Return(&entityWithCredentials{Entity: e, SchemaCredentials: stored}, nil)
-	s.store.On("LockEntity", mock.Anything, e.ID).Return(*e, nil).Maybe()
+	s.store.On("LockEntityWithCredentials", mock.Anything, e.ID).
+		Return(&entityWithCredentials{Entity: e, SchemaCredentials: stored}, nil).Maybe()
 	s.store.On("UpdateSystemAttributes", mock.Anything, e.ID, mock.IsType(json.RawMessage(nil))).
 		Return(nil).Maybe()
 	s.hashService.On("Verify", []byte("long-enough"), mock.Anything).Return(matches, nil).Maybe()
@@ -4420,4 +4732,94 @@ func (s *ServiceTestSuite) TestUpdateCredentials_RevocationFailures() {
 	r.order, r.failing = nil, systemFlowCredentialUpdatePost
 	s.ErrorIs(svc.UpdateCredentials(s.ctx, "e-fail", creds), ErrRevocationIncomplete)
 	s.Equal([]string{systemFlowCredentialUpdatePre, "written", systemFlowCredentialUpdatePost}, r.order)
+}
+
+// credentialSchema is a person type declaring workEmail and a password credential, for writes through the
+// attribute and entity updates.
+func credentialSchema(t *testing.T) *entitytypemock.EntityTypeServiceInterfaceMock {
+	t.Helper()
+	schema := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	schema.On("GetAttributes", mock.Anything, mock.Anything, "person",
+		entitytype.AttributeFilter{AllowCredential: true}).
+		Return([]entitytype.AttributeInfo{{Attribute: "password", Credential: true}}, nil).Maybe()
+	return declareSchema(schema, []entitytype.AttributeInfo{{Attribute: "workEmail", Type: "email"},
+		{Attribute: "password", Type: "string", Credential: true}})
+}
+
+// staleMarkerAndKeptKey is a stored system attributes prefix: a credential marker a write must move, and a key it
+// must keep.
+const staleMarkerAndKeptKey = `"credentialUpdatedAt":"2026-01-01T00:00:00Z","kept":"x"`
+
+// withMovedCredentialMarker matches system attributes whose credential marker moved from the stale one, that
+// still hold the kept key, and that record verifications only when verified is set.
+func withMovedCredentialMarker(verified bool) interface{} {
+	return mock.MatchedBy(func(raw json.RawMessage) bool {
+		var attrs map[string]any
+		if json.Unmarshal(raw, &attrs) != nil {
+			return false
+		}
+		marker, _ := attrs[authnprovidercm.SystemAttrCredentialUpdatedAt].(string)
+		entries, err := ReadRecordedAttributeVerifications(raw)
+		return marker != "" && marker != "2026-01-01T00:00:00Z" && attrs["kept"] == "x" && err == nil &&
+			(len(entries) > 0) == verified
+	})
+}
+
+// A credential written through an attribute update moves the credential marker in the same transaction, so an
+// open credential reset is voided. The stamp is written over the system attributes the update holds: a
+// verification it cleared stays cleared, and every other key is kept.
+func (s *ServiceTestSuite) TestUpdateAttributes_ACredentialWriteMovesTheMarker() {
+	stored := `{` + staleMarkerAndKeptKey + `,` + verifiedWorkEmail[1:]
+	for name, test := range map[string]struct {
+		workEmail string
+		cleared   bool
+	}{
+		"with a cleared verification": {workEmail: "new@example.com", cleared: true},
+		"with no verification change": {workEmail: "old@example.com"},
+	} {
+		s.Run(name, func() {
+			store := newEntityStoreInterfaceMock(s.T())
+			current := verificationUser(`{"workEmail":"old@example.com"}`, stored)
+			expectAttributeUpdate(store, current)
+			store.On("UpdateAttributes", inTransaction(), "user-1", mock.Anything).Return(nil).Once()
+			if test.cleared {
+				store.On("UpdateSystemAttributes", inTransaction(), "user-1", withoutVerification()).
+					Return(nil).Once()
+			}
+			store.On("LockEntityWithCredentials", inTransaction(), "user-1").
+				Return(&entityWithCredentials{Entity: &current}, nil).Once()
+			store.On("UpdateCredentials", inTransaction(), "user-1", mock.Anything).Return(nil).Once()
+			store.On("UpdateSystemAttributes", inTransaction(), "user-1",
+				withMovedCredentialMarker(!test.cleared)).Return(nil).Once()
+			svc := s.verificationService(store, credentialSchema(s.T()))
+			svc.hashService = s.hashService
+
+			err := svc.UpdateAttributes(context.Background(), "user-1",
+				json.RawMessage(`{"workEmail":"`+test.workEmail+`","password":"New-Secret-1!"}`))
+
+			s.NoError(err)
+		})
+	}
+}
+
+// A credential written through an entity update moves the credential marker in the same transaction.
+func (s *ServiceTestSuite) TestUpdateEntity_ACredentialWriteMovesTheMarker() {
+	store := newEntityStoreInterfaceMock(s.T())
+	current := verificationUser(`{"workEmail":"a@example.com"}`, `{`+staleMarkerAndKeptKey+`}`)
+	store.On("LockEntity", inTransaction(), current.ID).Return(current, nil).Once()
+	store.On("UpdateEntity", inTransaction(), mock.Anything).Return(nil).Once()
+	store.On("LockEntityWithCredentials", inTransaction(), current.ID).
+		Return(&entityWithCredentials{Entity: &current}, nil).Once()
+	store.On("UpdateCredentials", inTransaction(), current.ID, mock.Anything).Return(nil).Once()
+	store.On("UpdateSystemAttributes", inTransaction(), current.ID, withMovedCredentialMarker(false)).
+		Return(nil).Once()
+	store.On("GetEntity", inTransaction(), current.ID).Return(current, nil).Once()
+	svc := s.verificationService(store, credentialSchema(s.T()))
+	svc.hashService = s.hashService
+	next := current
+	next.Attributes = json.RawMessage(`{"workEmail":"a@example.com","password":"New-Secret-1!"}`)
+
+	_, err := svc.UpdateEntity(context.Background(), current.ID, &next)
+
+	s.NoError(err)
 }

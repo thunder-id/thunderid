@@ -168,7 +168,7 @@ type flowMgtService struct {
 	transactioner       providers.Transactioner
 	dependencyRegistry  resourcedependency.Registry
 	templateResolver    notificationTemplateProvider
-	serverConfigSvc     serverConfigProvider
+	serverConfigSvc     flowconfig.ServerConfigReader
 	ouSvc               ouProvider
 	// systemFlows are the system flows, by handle, as validated at startup.
 	systemFlows map[string]json.RawMessage
@@ -202,7 +202,7 @@ func newFlowMgtService(
 	flowValidator FlowValidatorInterface,
 	compositeStore *compositeFlowStore,
 	transactioner providers.Transactioner,
-	serverConfigSvc serverConfigProvider,
+	serverConfigSvc flowconfig.ServerConfigReader,
 	ouSvc ouProvider,
 	templateResolver notificationTemplateProvider,
 	systemFlows map[string]json.RawMessage,
@@ -362,7 +362,7 @@ func (s *flowMgtService) createFlow(ctx context.Context, flowDef *FlowDefinition
 	if err := s.flowValidator.ValidateFlowDefinition(ctx, flowDef); err != nil {
 		return nil, err
 	}
-	if svcErr := s.checkProjectGiven(ctx, flowDef.ProjectID); svcErr != nil {
+	if svcErr := s.checkProjectGiven(flowDef.ProjectID); svcErr != nil {
 		return nil, svcErr
 	}
 	if svcErr := s.ResolveFlowOU(ctx, flowDef); svcErr != nil {
@@ -424,16 +424,11 @@ func (s *flowMgtService) createFlow(ctx context.Context, flowDef *FlowDefinition
 	return createdFlow, nil
 }
 
-// checkProjectGiven refuses a flow created without a project where projects are served and one is required,
-// and warns about it where one is not required yet.
-func (s *flowMgtService) checkProjectGiven(ctx context.Context, projectID string) *tidcommon.ServiceError {
-	if projectID != "" || s.projectValidator == nil {
-		return nil
-	}
-	if s.projectRequired {
+// checkProjectGiven refuses a flow created without a project where one is required.
+func (s *flowMgtService) checkProjectGiven(projectID string) *tidcommon.ServiceError {
+	if projectID == "" && s.projectRequired {
 		return &ErrorProjectRequired
 	}
-	s.logger.Warn(ctx, "Flow created without a project; a project will be required")
 	return nil
 }
 
@@ -1457,30 +1452,10 @@ func ouFlowIDForType(orgUnit ou.OrganizationUnit, flowType providers.FlowType) s
 	return ""
 }
 
-// getFlowSectionConfig returns the merged FlowSectionConfig from the server-config "flow" section.
-func (s *flowMgtService) getFlowSectionConfig(ctx context.Context) flowconfig.FlowSectionConfig {
-	if s.serverConfigSvc == nil {
-		return flowconfig.FlowSectionConfig{}
-	}
-
-	merged, svcErr := s.serverConfigSvc.GetMergedConfig(ctx, "flow")
-	if svcErr != nil {
-		s.logger.Warn(ctx, "Failed to read flow server config; using empty section defaults")
-		return flowconfig.FlowSectionConfig{}
-	}
-
-	cfg, ok := merged.(flowconfig.FlowSectionConfig)
-	if !ok {
-		return flowconfig.FlowSectionConfig{}
-	}
-
-	return cfg
-}
-
 // resolveDefaultFlowHandle returns the server-level default handle configured for the given flow
 // type, or "" when no default is configured.
 func (s *flowMgtService) resolveDefaultFlowHandle(ctx context.Context, flowType providers.FlowType) string {
-	cfg := s.getFlowSectionConfig(ctx)
+	cfg := flowconfig.ReadFlowSectionConfig(ctx, s.serverConfigSvc)
 
 	switch flowType {
 	case providers.FlowTypeAuthentication:

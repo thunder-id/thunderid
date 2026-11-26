@@ -270,6 +270,8 @@ func (suite *CompositeGroupStoreTestSuite) TestGetTransitiveGroupsForEntity_Merg
 	suite.mockDBStore.On("GetTransitiveGroupsForEntity", mock.Anything, "user1").Return(dbGroups, nil)
 	suite.mockFileStore.On("GetTransitiveGroupsForEntity", mock.Anything, "user1").Return(fileGroups, nil)
 
+	suite.expectNoDBMembershipsBeyondLookup()
+
 	groups, err := suite.store.GetTransitiveGroupsForEntity(context.Background(), "user1")
 
 	suite.NoError(err)
@@ -290,6 +292,8 @@ func (suite *CompositeGroupStoreTestSuite) TestGetTransitiveGroupsForEntity_Dedu
 	suite.mockDBStore.On("GetTransitiveGroupsForEntity", mock.Anything, "user1").Return(dbGroups, nil)
 	suite.mockFileStore.On("GetTransitiveGroupsForEntity", mock.Anything, "user1").Return(fileGroups, nil)
 
+	suite.expectNoDBMembershipsBeyondLookup()
+
 	groups, err := suite.store.GetTransitiveGroupsForEntity(context.Background(), "user1")
 
 	suite.NoError(err)
@@ -304,6 +308,8 @@ func (suite *CompositeGroupStoreTestSuite) TestGetTransitiveGroupsForEntity_DBOn
 	suite.mockDBStore.On("GetTransitiveGroupsForEntity", mock.Anything, "user1").Return(dbGroups, nil)
 	suite.mockFileStore.On("GetTransitiveGroupsForEntity", mock.Anything, "user1").
 		Return([]providers.EntityGroup{}, nil)
+
+	suite.expectNoDBMembershipsBeyondLookup()
 
 	groups, err := suite.store.GetTransitiveGroupsForEntity(context.Background(), "user1")
 
@@ -320,6 +326,8 @@ func (suite *CompositeGroupStoreTestSuite) TestGetTransitiveGroupsForEntity_File
 	suite.mockDBStore.On("GetTransitiveGroupsForEntity", mock.Anything, "user1").Return([]providers.EntityGroup{}, nil)
 	suite.mockFileStore.On("GetTransitiveGroupsForEntity", mock.Anything, "user1").Return(fileGroups, nil)
 
+	suite.expectNoDBMembershipsBeyondLookup()
+
 	groups, err := suite.store.GetTransitiveGroupsForEntity(context.Background(), "user1")
 
 	suite.NoError(err)
@@ -332,10 +340,88 @@ func (suite *CompositeGroupStoreTestSuite) TestGetTransitiveGroupsForEntity_Both
 	suite.mockFileStore.On("GetTransitiveGroupsForEntity", mock.Anything, "user1").
 		Return([]providers.EntityGroup{}, nil)
 
+	suite.expectNoDBMembershipsBeyondLookup()
+
 	groups, err := suite.store.GetTransitiveGroupsForEntity(context.Background(), "user1")
 
 	suite.NoError(err)
 	suite.Empty(groups)
+}
+
+// expectNoDBMembershipsBeyondLookup makes the entity's database memberships those the lookups found.
+func (suite *CompositeGroupStoreTestSuite) expectNoDBMembershipsBeyondLookup() {
+	suite.mockDBStore.On("GetMemberGroupIDs", mock.Anything, string(memberTypeEntity), "user1").
+		Return([]string{}, nil).Once()
+}
+
+// A database membership of a declarative group counts, with the group's ancestors from either store.
+func (suite *CompositeGroupStoreTestSuite) TestGetTransitiveGroupsForEntity_DeclarativeGroupHeldInDB() {
+	suite.mockDBStore.On("GetTransitiveGroupsForEntity", mock.Anything, "user1").Return([]providers.EntityGroup{}, nil)
+	suite.mockFileStore.On("GetTransitiveGroupsForEntity", mock.Anything, "user1").
+		Return([]providers.EntityGroup{}, nil)
+	suite.mockDBStore.On("GetMemberGroupIDs", mock.Anything, string(memberTypeEntity), "user1").
+		Return([]string{"yaml-grp"}, nil).Once()
+	suite.mockDBStore.On("GetDirectGroupParents", mock.Anything, []string{"yaml-grp"}).
+		Return([]string{"db-parent"}, nil).Once()
+	suite.mockFileStore.On("GetDirectGroupParents", mock.Anything, []string{"yaml-grp"}).
+		Return([]string{}, nil).Once()
+	suite.mockDBStore.On("GetDirectGroupParents", mock.Anything, []string{"db-parent"}).
+		Return([]string{}, nil).Once()
+	suite.mockFileStore.On("GetDirectGroupParents", mock.Anything, []string{"db-parent"}).
+		Return([]string{}, nil).Once()
+	suite.mockDBStore.On("GetGroupsByIDs", mock.Anything, []string{"yaml-grp", "db-parent"}).
+		Return([]GroupBasicDAO{{ID: "db-parent", Name: "Parent", OUID: "ou1"}}, nil).Once()
+	suite.mockFileStore.On("GetGroupsByIDs", mock.Anything, []string{"yaml-grp"}).
+		Return([]GroupBasicDAO{{ID: "yaml-grp", Name: "Declared", OUID: "ou1"}}, nil).Once()
+
+	groups, err := suite.store.GetTransitiveGroupsForEntity(context.Background(), "user1")
+
+	suite.NoError(err)
+	suite.ElementsMatch([]providers.EntityGroup{
+		{ID: "yaml-grp", Name: "Declared", OUID: "ou1"},
+		{ID: "db-parent", Name: "Parent", OUID: "ou1"},
+	}, groups)
+}
+
+// A declarative group that both declares the entity and holds a database membership for it still has
+// its database ancestors resolved.
+func (suite *CompositeGroupStoreTestSuite) TestGetTransitiveGroupsForEntity_DeclaredAndHeldInDB() {
+	suite.mockDBStore.On("GetTransitiveGroupsForEntity", mock.Anything, "user1").Return([]providers.EntityGroup{}, nil)
+	suite.mockFileStore.On("GetTransitiveGroupsForEntity", mock.Anything, "user1").
+		Return([]providers.EntityGroup{{ID: "yaml-grp", Name: "Declared", OUID: "ou1"}}, nil)
+	suite.mockDBStore.On("GetMemberGroupIDs", mock.Anything, string(memberTypeEntity), "user1").
+		Return([]string{"yaml-grp"}, nil).Once()
+	suite.mockDBStore.On("GetDirectGroupParents", mock.Anything, []string{"yaml-grp"}).
+		Return([]string{"db-parent"}, nil).Once()
+	suite.mockFileStore.On("GetDirectGroupParents", mock.Anything, []string{"yaml-grp"}).
+		Return([]string{}, nil).Once()
+	suite.mockDBStore.On("GetDirectGroupParents", mock.Anything, []string{"db-parent"}).
+		Return([]string{}, nil).Once()
+	suite.mockFileStore.On("GetDirectGroupParents", mock.Anything, []string{"db-parent"}).
+		Return([]string{}, nil).Once()
+	suite.mockDBStore.On("GetGroupsByIDs", mock.Anything, []string{"db-parent"}).
+		Return([]GroupBasicDAO{{ID: "db-parent", Name: "Parent", OUID: "ou1"}}, nil).Once()
+
+	groups, err := suite.store.GetTransitiveGroupsForEntity(context.Background(), "user1")
+
+	suite.NoError(err)
+	suite.ElementsMatch([]providers.EntityGroup{
+		{ID: "yaml-grp", Name: "Declared", OUID: "ou1"},
+		{ID: "db-parent", Name: "Parent", OUID: "ou1"},
+	}, groups)
+}
+
+func (suite *CompositeGroupStoreTestSuite) TestGetTransitiveGroupsForEntity_MembershipLookupError() {
+	testErr := errors.New("db error")
+	suite.mockDBStore.On("GetTransitiveGroupsForEntity", mock.Anything, "user1").Return([]providers.EntityGroup{}, nil)
+	suite.mockFileStore.On("GetTransitiveGroupsForEntity", mock.Anything, "user1").
+		Return([]providers.EntityGroup{}, nil)
+	suite.mockDBStore.On("GetMemberGroupIDs", mock.Anything, string(memberTypeEntity), "user1").
+		Return(nil, testErr).Once()
+
+	_, err := suite.store.GetTransitiveGroupsForEntity(context.Background(), "user1")
+
+	suite.ErrorIs(err, testErr)
 }
 
 func (suite *CompositeGroupStoreTestSuite) TestGetTransitiveGroupsForEntity_DBStoreError() {
@@ -438,4 +524,15 @@ func (suite *CompositeGroupStoreTestSuite) TestGetGroupsByOrganizationUnit_OneSt
 
 	suite.NoError(err)
 	suite.Len(groups, 1)
+}
+
+func (suite *CompositeGroupStoreTestSuite) TestGetMemberGroupIDs_DelegatesToDBStore() {
+	ctx := context.Background()
+	suite.mockDBStore.On("GetMemberGroupIDs", ctx, string(memberTypeEntity), "user1").
+		Return([]string{"grp1"}, nil).Once()
+
+	groupIDs, err := suite.store.GetMemberGroupIDs(ctx, string(memberTypeEntity), "user1")
+	suite.NoError(err)
+	suite.Equal([]string{"grp1"}, groupIDs)
+	suite.mockFileStore.AssertNotCalled(suite.T(), "GetMemberGroupIDs", mock.Anything, mock.Anything, mock.Anything)
 }

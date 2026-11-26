@@ -15,6 +15,7 @@ interface DeviceGrantFlowSectionProps {
   entityLabel?: string;
   deviceGrantFlowQueryError?: Error | null;
   onRetryDeviceGrantFlowQuery?: () => void;
+  readOnly?: boolean;
 }
 
 const DEFAULT_DEVICE_GRANT_FLOW_HANDLE = 'default-device-grant-flow';
@@ -26,6 +27,7 @@ export default function DeviceGrantFlowSection({
   entityLabel = 'application',
   deviceGrantFlowQueryError = undefined,
   onRetryDeviceGrantFlowQuery = undefined,
+  readOnly = false,
 }: DeviceGrantFlowSectionProps) {
   const {t} = useTranslation();
   const inboundAuthConfig = editedApp.inboundAuthConfig ?? application.inboundAuthConfig;
@@ -78,7 +80,7 @@ export default function DeviceGrantFlowSection({
             value={selectedFlow ?? null}
             onChange={(_event, newValue) => onFieldChange('deviceGrantFlowId', newValue?.id ?? '')}
             loading={isLoading}
-            disabled={application.isReadOnly}
+            disabled={readOnly}
             renderInput={(params) => (
               <TextField
                 {...params}

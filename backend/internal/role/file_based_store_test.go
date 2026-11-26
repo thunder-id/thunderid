@@ -389,6 +389,26 @@ func (suite *RoleFileBasedStoreTestSuite) TestGetEntityRoleIDs_DeclaredAssignmen
 	}
 }
 
+// Declared assignments can't be removed, so the file store reports none as direct.
+func (suite *RoleFileBasedStoreTestSuite) TestGetDirectEntityRoleIDs_IgnoresDeclaredAssignments() {
+	suite.seedRole(RoleWithPermissionsAndAssignments{
+		ID: "r1", Name: "R1", OUID: "ou1",
+		Assignments: []RoleAssignment{{ID: "user-x", Type: assigneeTypeEntity}},
+	})
+	suite.Equal([]string{"r1"}, suite.mustEntityRoleIDs("user-x", "ou1"))
+
+	roleIDs, err := suite.store.GetDirectEntityRoleIDs(context.Background(), "user-x", "ou1")
+
+	suite.NoError(err)
+	suite.Empty(roleIDs)
+}
+
+func (suite *RoleFileBasedStoreTestSuite) mustEntityRoleIDs(entityID, ouID string) []string {
+	roleIDs, err := suite.store.GetEntityRoleIDs(context.Background(), entityID, nil, ouID)
+	suite.Require().NoError(err)
+	return roleIDs
+}
+
 func (suite *RoleFileBasedStoreTestSuite) TestGetEntityRoleIDs_MalformedRole() {
 	suite.Require().NoError(suite.store.GenericFileBasedStore.Create("broken-role", "not a role"))
 	roleIDs, err := suite.store.GetEntityRoleIDs(context.Background(), "user1", nil, "")

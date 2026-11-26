@@ -30,6 +30,10 @@ interface AppearanceSectionProps {
    * Singular noun used to refer to the entity in user-visible copy (default: 'application').
    */
   entityLabel?: string;
+  /**
+   * Whether the application can't be edited here
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -46,6 +50,7 @@ export default function AppearanceSection({
   editedApp,
   onFieldChange,
   entityLabel = 'application',
+  readOnly = false,
 }: AppearanceSectionProps) {
   const {t} = useTranslation();
   // Inside a project, the application picks from the project's themes and layouts.
@@ -77,7 +82,7 @@ export default function AppearanceSection({
             value={themeOptions.find((theme) => theme.id === (editedApp.themeId! ?? application.themeId!)) ?? null}
             onChange={(_event, newValue) => onFieldChange('themeId' as keyof Application, newValue?.id ?? '')}
             loading={loadingThemes}
-            disabled={application.isReadOnly}
+            disabled={readOnly}
             renderInput={(params) => (
               <TextField
                 {...params}
@@ -107,7 +112,7 @@ export default function AppearanceSection({
             value={layoutOptions.find((layout) => layout.id === (editedApp.layoutId ?? application.layoutId)) ?? null}
             onChange={(_event, newValue) => onFieldChange('layoutId', newValue?.id ?? '')}
             loading={loadingLayouts}
-            disabled={application.isReadOnly}
+            disabled={readOnly}
             renderInput={(params) => (
               <TextField
                 {...params}

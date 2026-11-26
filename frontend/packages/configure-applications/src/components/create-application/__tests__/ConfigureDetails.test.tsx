@@ -27,6 +27,11 @@ vi.mock('@thunderid/configure-organization-units', async (importOriginal) => ({
   OrganizationUnitPickerScreen: () => null,
 }));
 
+vi.mock('@thunderid/contexts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/contexts')>()),
+  useConfig: () => ({config: {brand: {product_name: 'Acme IAM'}}}),
+}));
+
 let translationLookup = (key: string): string => key;
 
 vi.mock('react-i18next', async (importOriginal) => ({
@@ -852,7 +857,7 @@ describe('ConfigureDetails', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('initializes passkey relying party defaults from hostname and app name', () => {
+  it('leaves the passkey relying party ID empty and defaults the name to the app name', () => {
     const template = createTemplate('Browser app', ['https://example.com/callback']);
 
     renderWithContext(
@@ -872,11 +877,66 @@ describe('ConfigureDetails', () => {
       },
     );
 
-    const relyingPartyIdInput = screen.getByDisplayValue(window.location.hostname);
-    const relyingPartyNameInput = screen.getByDisplayValue('Test App');
+    expect(
+      screen.getByPlaceholderText('applications:onboarding.configure.details.relyingPartyId.placeholder'),
+    ).toHaveValue('');
+    expect(screen.getByDisplayValue('Test App')).toBeInTheDocument();
+  });
 
-    expect(relyingPartyIdInput).toHaveValue(window.location.hostname);
-    expect(relyingPartyNameInput).toHaveValue('Test App');
+  it('requires the relying party ID for the embedded sign-in approach', async () => {
+    const onReadyChange = vi.fn();
+    renderWithContext(
+      {
+        technology: TechnologyApplicationTemplate.REACT,
+        platform: PlatformApplicationTemplate.BROWSER,
+        onReadyChange,
+        selectedApproach: ApplicationCreateFlowSignInApproach.EMBEDDED,
+      },
+      {
+        selectedTemplateConfig: createTemplate('React app', ['http://localhost:5173']),
+        integrations: {[AuthenticatorTypes.PASSKEY]: true},
+        relyingPartyId: '',
+        relyingPartyName: '',
+      },
+    );
+
+    await waitFor(() => expect(onReadyChange).toHaveBeenLastCalledWith(false));
+
+    await userEvent
+      .setup()
+      .type(
+        screen.getByPlaceholderText('applications:onboarding.configure.details.relyingPartyId.placeholder'),
+        'app.example.com',
+      );
+
+    await waitFor(() => expect(onReadyChange).toHaveBeenLastCalledWith(true));
+  });
+
+  it('is ready with passkeys on and no relying party ID', async () => {
+    const onReadyChange = vi.fn();
+    renderWithContext(
+      {
+        technology: TechnologyApplicationTemplate.REACT,
+        platform: PlatformApplicationTemplate.BROWSER,
+        onReadyChange,
+      },
+      {
+        selectedTemplateConfig: createTemplate('Browser app', []),
+        integrations: {[AuthenticatorTypes.PASSKEY]: true},
+        relyingPartyId: '',
+        relyingPartyName: '',
+      },
+    );
+
+    const user = userEvent.setup();
+    await user.type(
+      screen.getByPlaceholderText('applications:onboarding.configure.details.hostingUrl.placeholder'),
+      'https://example.com',
+    );
+
+    await waitFor(() => {
+      expect(onReadyChange).toHaveBeenLastCalledWith(true);
+    });
   });
 
   it('falls back to default passkey labels and placeholders when translations are empty', () => {

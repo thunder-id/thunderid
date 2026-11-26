@@ -19,6 +19,10 @@ interface EditOrganizationAccessSettingsProps {
    * wording namespace gives the screen the user's own sentences (`users:organizationAccess.*`).
    */
   access: OrganizationAccessState;
+  /**
+   * Whether the user can't be edited here
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -31,13 +35,14 @@ interface EditOrganizationAccessSettingsProps {
 export default function EditOrganizationAccessSettings({
   user,
   access,
+  readOnly = false,
 }: EditOrganizationAccessSettingsProps): JSX.Element {
   return (
     <OrganizationAccessSettings
       access={access}
       ownerOuId={user.ouId}
       resourceName={user.display ?? user.id}
-      readOnly={user.isReadOnly === true}
+      readOnly={readOnly}
       mandateRoles
       errorNamespace="users"
       resolveErrorMessage={getUserErrorMessage}

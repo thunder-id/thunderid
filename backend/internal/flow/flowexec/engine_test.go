@@ -1049,6 +1049,430 @@ func (s *EngineTestSuite) TestClearSensitiveInputs_NoNodeInputsUsesExecutorDefau
 	s.False(exists)
 }
 
+// inputsTestGraph returns a graph with the given interceptors per mode and none for the other modes.
+func (s *EngineTestSuite) inputsTestGraph(
+	interceptors map[providers.InterceptorMode][]core.InterceptorUnitInterface) *coremock.GraphInterfaceMock {
+	graph := coremock.NewGraphInterfaceMock(s.T())
+	for _, mode := range []providers.InterceptorMode{providers.InterceptorModePreRequest,
+		providers.InterceptorModePreNode, providers.InterceptorModePostNode, providers.InterceptorModePostRequest} {
+		units := interceptors[mode]
+		if units == nil {
+			units = []core.InterceptorUnitInterface{}
+		}
+		graph.On("GetInterceptors", mode).Return(units).Maybe()
+	}
+	return graph
+}
+
+// promptNodeAsking returns a prompt node with the given ID whose single prompt asks for the given inputs.
+func (s *EngineTestSuite) promptNodeAsking(id string, inputs ...providers.Input) *coremock.PromptNodeInterfaceMock {
+	node := coremock.NewPromptNodeInterfaceMock(s.T())
+	node.On("GetID").Return(id).Maybe()
+	node.On("GetType").Return(common.NodeTypePrompt).Maybe()
+	node.On("GetProperties").Return(map[string]interface{}(nil)).Maybe()
+	node.On("GetPrompts").Return([]common.Prompt{{Inputs: inputs}}).Maybe()
+	return node
+}
+
+// interceptorUnit returns an interceptor unit of the given scope that declares the given inputs.
+func (s *EngineTestSuite) interceptorUnit(name string, scope providers.InterceptorScope, applyTo []string,
+	inputs ...providers.Input) *coremock.InterceptorUnitInterfaceMock {
+	ic := coremock.NewInterceptorInterfaceMock(s.T())
+	ic.On("GetInputs").Return(inputs).Maybe()
+	unit := coremock.NewInterceptorUnitInterfaceMock(s.T())
+	unit.On("GetName").Return(name).Maybe()
+	unit.On("GetScope").Return(scope).Maybe()
+	unit.On("GetApplyTo").Return(applyTo).Maybe()
+	unit.On("GetInterceptor").Return(ic).Maybe()
+	return unit
+}
+
+// dropUnusedInputsAtPause drops the unused inputs the way the engine does when the flow pauses on flowStep.
+func dropUnusedInputsAtPause(ctx *EngineContext, flowStep *FlowStep) {
+	fe := &flowEngine{logger: log.GetLogger()}
+	fe.dropUnusedInputs(ctx, fe.pausedStepInputs(ctx, flowStep))
+}
+
+// ran records the given nodes as executed in the current request, the way the engine records each node it runs.
+func ran(ctx *EngineContext, nodes ...core.NodeInterface) {
+	if ctx.executedNodes == nil {
+		ctx.executedNodes = make(map[core.NodeInterface]struct{})
+	}
+	for _, node := range nodes {
+		ctx.executedNodes[node] = struct{}{}
+	}
+}
+
+// submitted returns the given identifiers as a set of submitted inputs.
+func submitted(identifiers ...string) map[string]struct{} {
+	set := make(map[string]struct{}, len(identifiers))
+	for _, identifier := range identifiers {
+		set[identifier] = struct{}{}
+	}
+	return set
+}
+
+func (s *EngineTestSuite) TestDropUnusedInputs_KeepsInputsThePausedStepAsksFor() {
+	ctx := &EngineContext{
+		Context:  context.Background(),
+		FlowType: providers.FlowTypeAuthentication,
+		Graph:    s.inputsTestGraph(nil),
+		CurrentNode: s.promptNodeAsking("prompt_password",
+			providers.Input{Identifier: "password", Type: providers.InputTypePassword, Required: true}),
+		UserInputs: map[string]string{
+			"username": "alice", "password": "secret", "given_name": "Alice", "nickname": "al"},
+		additionalInputs: submitted("password", "given_name", "nickname"),
+	}
+	flowStep := &FlowStep{Type: common.StepTypeView,
+		Data: FlowData{Inputs: []providers.Input{{Identifier: "given_name", Type: "TEXT_INPUT"}}}}
+
+	dropUnusedInputsAtPause(ctx, flowStep)
+
+	s.Equal(map[string]string{"username": "alice", "password": "secret", "given_name": "Alice"}, ctx.UserInputs,
+		"Inputs of earlier requests are kept")
+}
+
+func (s *EngineTestSuite) TestDropUnusedInputs_KeepsApplicableInterceptorInputs() {
+	captcha := providers.Input{Identifier: "captcha_token", Type: "HIDDEN"}
+	otherNodeInput := providers.Input{Identifier: "other_node_input", Type: "HIDDEN"}
+	ctx := &EngineContext{
+		Context:  context.Background(),
+		FlowType: providers.FlowTypeRegistration,
+		Graph: s.inputsTestGraph(map[providers.InterceptorMode][]core.InterceptorUnitInterface{
+			providers.InterceptorModePreRequest: {s.interceptorUnit("request-check", "", nil, captcha)},
+			providers.InterceptorModePreNode: {s.interceptorUnit("node-check", providers.InterceptorScopeSelected,
+				[]string{"other_node"}, otherNodeInput)},
+		}),
+		CurrentNode:      s.promptNodeAsking("prompt_email", providers.Input{Identifier: "email", Type: "EMAIL_INPUT"}),
+		UserInputs:       map[string]string{"captcha_token": "c", "other_node_input": "o", "email": "a@example.com"},
+		additionalInputs: submitted("captcha_token", "other_node_input", "email"),
+	}
+
+	dropUnusedInputsAtPause(ctx, &FlowStep{Type: common.StepTypeView})
+
+	s.Equal(map[string]string{"captcha_token": "c", "email": "a@example.com"}, ctx.UserInputs)
+}
+
+func (s *EngineTestSuite) TestDropUnusedInputs_DropsInputsNoNodeUsed() {
+	identifyNode := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
+	identifyNode.On("GetID").Return("identify_user").Maybe()
+	identifyNode.On("GetProperties").Return(map[string]interface{}(nil)).Maybe()
+	identifyNode.On("GetInputs").Return([]providers.Input{{Identifier: "username", Type: "TEXT_INPUT"}})
+	ctx := &EngineContext{
+		Context:          context.Background(),
+		FlowType:         providers.FlowTypeRecovery,
+		Graph:            s.inputsTestGraph(nil),
+		CurrentNode:      s.promptNodeAsking("verify", providers.Input{Identifier: "inviteToken", Type: "HIDDEN"}),
+		UserInputs:       map[string]string{"username": "alice", "password": "secret", "given_name": "Alice"},
+		additionalInputs: submitted("username", "password", "given_name"),
+		consumedInputs:   map[string]struct{}{"given_name": {}},
+	}
+	ran(ctx, identifyNode)
+
+	dropUnusedInputsAtPause(ctx, &FlowStep{Type: common.StepTypeView})
+
+	s.Equal(map[string]string{"username": "alice", "given_name": "Alice"}, ctx.UserInputs)
+}
+
+func (s *EngineTestSuite) TestDropUnusedInputs_PromptThatRanCountsOnlyConsumedInputs() {
+	signInPrompt := s.promptNodeAsking("prompt_credentials",
+		providers.Input{Identifier: "username", Type: "TEXT_INPUT"},
+		providers.Input{Identifier: "password", Type: providers.InputTypePassword})
+	ctx := &EngineContext{
+		Context:          context.Background(),
+		FlowType:         providers.FlowTypeAuthentication,
+		Graph:            s.inputsTestGraph(nil),
+		CurrentNode:      s.promptNodeAsking("prompt_otp", providers.Input{Identifier: "otp", Type: "OTP_INPUT"}),
+		UserInputs:       map[string]string{"username": "alice", "password": "secret"},
+		additionalInputs: submitted("username", "password"),
+		consumedInputs:   map[string]struct{}{"username": {}},
+	}
+	ran(ctx, signInPrompt)
+
+	dropUnusedInputsAtPause(ctx, &FlowStep{Type: common.StepTypeView})
+
+	s.Equal(map[string]string{"username": "alice"}, ctx.UserInputs)
+}
+
+// A node a condition skipped did not use its inputs, so they are dropped when the flow pauses.
+func (s *EngineTestSuite) TestDropUnusedInputs_SkippedNodeDoesNotKeepItsInputs() {
+	otpPrompt := s.promptNodeAsking("prompt_otp", providers.Input{Identifier: "otp", Type: "OTP_INPUT"})
+	skippedNode := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
+	skippedNode.On("GetID").Return("collect_nickname").Maybe()
+	skippedNode.On("GetType").Return(common.NodeTypeTaskExecution).Maybe()
+	skippedNode.On("GetProperties").Return(map[string]interface{}(nil)).Maybe()
+	skippedNode.On("GetInputs").Return([]providers.Input{{Identifier: "nickname", Type: "TEXT_INPUT"}}).Maybe()
+	skippedNode.On("ShouldExecute", mock.Anything).Return(false)
+	skippedNode.On("GetCondition").Return(&core.NodeCondition{OnSkip: "prompt_otp"})
+	graph := s.inputsTestGraph(nil)
+	graph.On("GetNode", "prompt_otp").Return(otpPrompt, true)
+	graph.On("GetID").Return("flow-skip-inputs").Maybe()
+	fe := &flowEngine{logger: log.GetLogger(), observabilitySvc: setupNodePackageMockObs(s.T())}
+	ctx := &EngineContext{
+		Context:          context.Background(),
+		ExecutionID:      "exec-skip-inputs",
+		FlowType:         providers.FlowTypeAuthentication,
+		Graph:            graph,
+		CurrentNode:      skippedNode,
+		UserInputs:       map[string]string{"nickname": "al"},
+		additionalInputs: submitted("nickname"),
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
+	}
+
+	nextNode, exit, svcErr := fe.executeNodePackage(ctx, skippedNode, &FlowStep{}, 0)
+	s.Require().Nil(svcErr)
+	s.Require().False(exit)
+	s.Require().Equal(otpPrompt, nextNode)
+	dropUnusedInputsAtPause(ctx, &FlowStep{Type: common.StepTypeView})
+
+	s.Empty(ctx.UserInputs)
+}
+
+// A node of the calling flow that ran in the request before a CALL counts like any other.
+func (s *EngineTestSuite) TestDropUnusedInputs_KeepsInputsOfACallingFlowNode() {
+	callerNode := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
+	callerNode.On("GetID").Return("identify_user").Maybe()
+	callerNode.On("GetProperties").Return(map[string]interface{}(nil)).Maybe()
+	callerNode.On("GetInputs").Return([]providers.Input{{Identifier: "username", Type: "TEXT_INPUT"}})
+	ctx := &EngineContext{
+		Context:          context.Background(),
+		FlowType:         providers.FlowTypeRecovery,
+		Graph:            s.inputsTestGraph(nil),
+		CurrentNode:      s.promptNodeAsking("email_sent"),
+		UserInputs:       map[string]string{"username": "alice", "password": "secret"},
+		additionalInputs: submitted("username", "password"),
+	}
+	ran(ctx, callerNode)
+
+	dropUnusedInputsAtPause(ctx, &FlowStep{Type: common.StepTypeView})
+
+	s.Equal(map[string]string{"username": "alice"}, ctx.UserInputs)
+}
+
+// Only the request that starts a flow can set the authorization params, so they are kept until the authorization
+// step runs.
+func (s *EngineTestSuite) TestDropUnusedInputs_KeepsAuthorizationParams() {
+	ctx := &EngineContext{
+		Context:  context.Background(),
+		FlowType: providers.FlowTypeAuthentication,
+		Graph:    s.inputsTestGraph(nil),
+		CurrentNode: s.promptNodeAsking("prompt_credentials",
+			providers.Input{Identifier: "username", Type: "TEXT_INPUT"}),
+		UserInputs: map[string]string{common.RuntimeKeyRequestedPermissions: "read",
+			common.RuntimeKeyResourceServerIdentifier: "docs", "nickname": "al"},
+		additionalInputs: submitted(common.RuntimeKeyRequestedPermissions, common.RuntimeKeyResourceServerIdentifier,
+			"nickname"),
+	}
+
+	dropUnusedInputsAtPause(ctx, &FlowStep{Type: common.StepTypeView})
+
+	s.Equal(map[string]string{common.RuntimeKeyRequestedPermissions: "read",
+		common.RuntimeKeyResourceServerIdentifier: "docs"}, ctx.UserInputs)
+}
+
+// A redirection step keeps only what its node declares, like any other pause.
+func (s *EngineTestSuite) TestDropUnusedInputs_RedirectionKeepsOnlyDeclaredInputs() {
+	redirectNode := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
+	redirectNode.On("GetID").Return("google_auth").Maybe()
+	redirectNode.On("GetType").Return(common.NodeTypeTaskExecution)
+	redirectNode.On("GetProperties").Return(map[string]interface{}(nil)).Maybe()
+	redirectNode.On("GetExecutor").Return(nil).Maybe()
+	redirectNode.On("GetExecutorName").Return("").Maybe()
+	redirectNode.On("GetInputs").Return([]providers.Input{{Identifier: "code", Type: "HIDDEN"}})
+	ctx := &EngineContext{
+		Context:          context.Background(),
+		FlowType:         providers.FlowTypeRegistration,
+		Graph:            s.inputsTestGraph(nil),
+		CurrentNode:      redirectNode,
+		UserInputs:       map[string]string{"code": "c", "password": "secret"},
+		additionalInputs: submitted("code", "password"),
+	}
+
+	dropUnusedInputsAtPause(ctx, &FlowStep{Type: common.StepTypeRedirection})
+
+	s.Equal(map[string]string{"code": "c"}, ctx.UserInputs)
+}
+
+func (s *EngineTestSuite) TestRecordRequestedInputs() {
+	requested := map[string]struct{}{"password": {}, "given_name": {}}
+	tests := []struct {
+		name     string
+		flowType providers.FlowType
+		stepType common.FlowStepType
+		expected map[string]struct{}
+	}{
+		{"recovery records the paused step's inputs", providers.FlowTypeRecovery, common.StepTypeView, requested},
+		{"authentication records the paused step's inputs", providers.FlowTypeAuthentication,
+			common.StepTypeView, requested},
+		{"a redirection is not limited", providers.FlowTypeRegistration, common.StepTypeRedirection, nil},
+	}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			ctx := &EngineContext{FlowType: tt.flowType, requestedInputs: map[string]struct{}{"email": {}}}
+
+			(&flowEngine{}).recordRequestedInputs(ctx, &FlowStep{Type: tt.stepType}, requested)
+
+			s.Equal(tt.expected, ctx.requestedInputs)
+		})
+	}
+}
+
+// The node and POST_REQUEST interceptors of a calling flow run once the called flow returns, so their inputs are
+// recorded too.
+func (s *EngineTestSuite) TestRecordRequestedInputs_TakesCallingFlowInterceptorInputs() {
+	captcha := providers.Input{Identifier: "captcha_token", Type: "HIDDEN"}
+	exitToken := providers.Input{Identifier: "exit_token", Type: "HIDDEN"}
+	ctx := &EngineContext{
+		FlowType: providers.FlowTypeRecovery,
+		Graph:    s.inputsTestGraph(nil),
+		frameStack: []*frame{{graph: s.inputsTestGraph(map[providers.InterceptorMode][]core.InterceptorUnitInterface{
+			providers.InterceptorModePostNode: {s.interceptorUnit("captcha", providers.InterceptorScopeSelected,
+				[]string{"credentials_auth"}, captcha)},
+			providers.InterceptorModePostRequest: {s.interceptorUnit("request-exit", "", nil, exitToken)},
+		})}},
+	}
+
+	(&flowEngine{}).recordRequestedInputs(ctx, &FlowStep{Type: common.StepTypeView},
+		map[string]struct{}{"otp": {}})
+
+	s.Equal(map[string]struct{}{"captcha_token": {}, "exit_token": {}, "otp": {}}, ctx.requestedInputs)
+}
+
+// A node interceptor can run on a node the next request reaches past the paused step, so its inputs are recorded.
+func (s *EngineTestSuite) TestRecordRequestedInputs_TakesNodeInterceptorInputs() {
+	captcha := providers.Input{Identifier: "captcha_token", Type: "HIDDEN"}
+	ctx := &EngineContext{
+		FlowType: providers.FlowTypeAuthentication,
+		Graph: s.inputsTestGraph(map[providers.InterceptorMode][]core.InterceptorUnitInterface{
+			providers.InterceptorModePreNode: {s.interceptorUnit("captcha", providers.InterceptorScopeSelected,
+				[]string{"credentials_auth"}, captcha)},
+		}),
+	}
+
+	(&flowEngine{}).recordRequestedInputs(ctx, &FlowStep{Type: common.StepTypeView},
+		map[string]struct{}{"password": {}})
+
+	s.Equal(map[string]struct{}{"captcha_token": {}, "password": {}}, ctx.requestedInputs)
+}
+
+func (s *EngineTestSuite) TestOnlyRequestedInputs() {
+	inputs := map[string]string{"otp": "123456", "email": "other@example.com",
+		common.RuntimeKeyRequestedPermissions: "read", common.RuntimeKeyResourceServerIdentifier: "docs"}
+	tests := []struct {
+		name      string
+		requested map[string]struct{}
+		expected  map[string]string
+	}{
+		{"keeps the requested inputs", map[string]struct{}{"otp": {}}, map[string]string{"otp": "123456"}},
+		{"a step asking nothing accepts nothing", map[string]struct{}{}, map[string]string{}},
+		{"no record accepts all but the authorization params", nil,
+			map[string]string{"otp": "123456", "email": "other@example.com"}},
+		{"a recorded authorization param is still left out",
+			map[string]struct{}{"otp": {}, common.RuntimeKeyRequestedPermissions: {}},
+			map[string]string{"otp": "123456"}},
+	}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			ctx := &EngineContext{FlowType: providers.FlowTypeAuthentication, requestedInputs: tt.requested}
+			s.Equal(tt.expected, ctx.onlyRequestedInputs(inputs))
+		})
+	}
+}
+
+// An interceptor input of a node that ran counts only when the interceptor consumed it.
+func (s *EngineTestSuite) TestDropUnusedInputs_NodeInterceptorInputCountsWhenConsumed() {
+	signInPrompt := s.promptNodeAsking("prompt_credentials",
+		providers.Input{Identifier: "username", Type: "TEXT_INPUT"},
+		providers.Input{Identifier: "password", Type: providers.InputTypePassword})
+	captcha := providers.Input{Identifier: "captcha_token", Type: "HIDDEN"}
+	tests := []struct {
+		name     string
+		consumed map[string]struct{}
+		expected map[string]string
+	}{
+		{"consumed", map[string]struct{}{"captcha_token": {}}, map[string]string{"captcha_token": "c"}},
+		{"not consumed", nil, map[string]string{}},
+	}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			ctx := &EngineContext{
+				Context:  context.Background(),
+				FlowType: providers.FlowTypeAuthentication,
+				Graph: s.inputsTestGraph(map[providers.InterceptorMode][]core.InterceptorUnitInterface{
+					providers.InterceptorModePreNode: {s.interceptorUnit("captcha", providers.InterceptorScopeSelected,
+						[]string{"prompt_credentials"}, captcha)},
+				}),
+				CurrentNode: s.promptNodeAsking("prompt_otp",
+					providers.Input{Identifier: "otp", Type: "OTP_INPUT"}),
+				UserInputs:       map[string]string{"captcha_token": "c", "password": "secret"},
+				additionalInputs: submitted("captcha_token", "password"),
+				consumedInputs:   tt.consumed,
+			}
+			ran(ctx, signInPrompt)
+
+			dropUnusedInputsAtPause(ctx, &FlowStep{Type: common.StepTypeView})
+
+			s.Equal(tt.expected, ctx.UserInputs)
+		})
+	}
+}
+
+func (s *EngineTestSuite) TestDropUnusedInputs_NothingSubmittedKeepsInputs() {
+	ctx := &EngineContext{
+		FlowType:   providers.FlowTypeRegistration,
+		UserInputs: map[string]string{"email": "alice@example.com"},
+	}
+
+	dropUnusedInputsAtPause(ctx, &FlowStep{Type: common.StepTypeView})
+
+	s.Equal(map[string]string{"email": "alice@example.com"}, ctx.UserInputs)
+}
+
+func (s *EngineTestSuite) TestDropUnusedInputs_KeepsExecutorDefaultInputs() {
+	mockExecutor := coremock.NewExecutorInterfaceMock(s.T())
+	mockExecutor.On("GetDefaultInputs").Return([]providers.Input{{Identifier: "inviteToken", Type: "HIDDEN"}})
+	verifyNode := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
+	verifyNode.On("GetID").Return("verify").Maybe()
+	verifyNode.On("GetType").Return(common.NodeTypeTaskExecution)
+	verifyNode.On("GetProperties").Return(map[string]interface{}(nil)).Maybe()
+	verifyNode.On("GetInputs").Return([]providers.Input{})
+	verifyNode.On("GetExecutor").Return(mockExecutor)
+	ctx := &EngineContext{
+		Context:          context.Background(),
+		FlowType:         providers.FlowTypeRegistration,
+		Graph:            s.inputsTestGraph(nil),
+		CurrentNode:      verifyNode,
+		UserInputs:       map[string]string{"inviteToken": "t", "password": "secret"},
+		additionalInputs: submitted("inviteToken", "password"),
+	}
+
+	dropUnusedInputsAtPause(ctx, &FlowStep{Type: common.StepTypeView})
+
+	s.Equal(map[string]string{"inviteToken": "t"}, ctx.UserInputs)
+}
+
+func (s *EngineTestSuite) TestDropUnusedInputs_NodeWithoutExecutorKeepsDeclaredInputs() {
+	verifyNode := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
+	verifyNode.On("GetID").Return("verify").Maybe()
+	verifyNode.On("GetType").Return(common.NodeTypeTaskExecution)
+	verifyNode.On("GetProperties").Return(map[string]interface{}(nil)).Maybe()
+	verifyNode.On("GetExecutor").Return(nil)
+	verifyNode.On("GetExecutorName").Return("")
+	verifyNode.On("GetInputs").Return([]providers.Input{{Identifier: "inviteToken", Type: "HIDDEN"}})
+	ctx := &EngineContext{
+		Context:          context.Background(),
+		FlowType:         providers.FlowTypeRecovery,
+		Graph:            s.inputsTestGraph(nil),
+		CurrentNode:      verifyNode,
+		UserInputs:       map[string]string{"inviteToken": "t", "password": "secret"},
+		additionalInputs: submitted("inviteToken", "password"),
+	}
+
+	dropUnusedInputsAtPause(ctx, &FlowStep{Type: common.StepTypeView})
+
+	s.Equal(map[string]string{"inviteToken": "t"}, ctx.UserInputs)
+}
+
 func (s *EngineTestSuite) TestClearSensitiveInputs_UserOnboardingFlowRetainsPassword() {
 	mockNode := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
 	mockNode.On("GetInputs").Return([]providers.Input{
@@ -1082,7 +1506,7 @@ func (s *EngineTestSuite) TestClearNodePackageOneTimeUseInputs_ClearsSignaledNod
 	fe := &flowEngine{}
 	ctx := &EngineContext{
 		UserInputs:     map[string]string{"challenge": "abc123", "username": "testuser"},
-		consumedInputs: []string{"challenge"},
+		consumedInputs: map[string]struct{}{"challenge": {}},
 	}
 
 	fe.clearNodePackageOneTimeUseInputs(ctx, mockNode)
@@ -1090,7 +1514,6 @@ func (s *EngineTestSuite) TestClearNodePackageOneTimeUseInputs_ClearsSignaledNod
 	_, challengeExists := ctx.UserInputs["challenge"]
 	s.False(challengeExists, "signaled OneTimeUse node input should be removed")
 	s.Equal("testuser", ctx.UserInputs["username"], "non-OneTimeUse input should be preserved")
-	s.Empty(ctx.consumedInputs, "pending list should be drained")
 }
 
 func (s *EngineTestSuite) TestClearNodePackageOneTimeUseInputs_FallsBackToExecutorDefaults() {
@@ -1108,7 +1531,7 @@ func (s *EngineTestSuite) TestClearNodePackageOneTimeUseInputs_FallsBackToExecut
 	fe := &flowEngine{}
 	ctx := &EngineContext{
 		UserInputs:     map[string]string{"challenge": "abc123"},
-		consumedInputs: []string{"challenge"},
+		consumedInputs: map[string]struct{}{"challenge": {}},
 	}
 
 	fe.clearNodePackageOneTimeUseInputs(ctx, mockNode)
@@ -1128,7 +1551,7 @@ func (s *EngineTestSuite) TestClearNodePackageOneTimeUseInputs_IgnoresNonOneTime
 	fe := &flowEngine{}
 	ctx := &EngineContext{
 		UserInputs:     map[string]string{"username": "testuser"},
-		consumedInputs: []string{"username"},
+		consumedInputs: map[string]struct{}{"username": {}},
 	}
 
 	fe.clearNodePackageOneTimeUseInputs(ctx, mockNode)
@@ -1179,7 +1602,7 @@ func (s *EngineTestSuite) TestClearNodePackageOneTimeUseInputs_ClearsInterceptor
 	ctx := &EngineContext{
 		Graph:          mockGraph,
 		UserInputs:     map[string]string{"challenge": "abc123", "username": "testuser"},
-		consumedInputs: []string{"challenge"},
+		consumedInputs: map[string]struct{}{"challenge": {}},
 	}
 
 	fe.clearNodePackageOneTimeUseInputs(ctx, mockNode)
@@ -1212,17 +1635,16 @@ func (s *EngineTestSuite) TestClearRequestPackageOneTimeUseInputs_ClearsSignaled
 	ctx := &EngineContext{
 		Graph:          mockGraph,
 		UserInputs:     map[string]string{"captchaToken": "abc123"},
-		consumedInputs: []string{"captchaToken"},
+		consumedInputs: map[string]struct{}{"captchaToken": {}},
 	}
 
 	fe.clearRequestPackageOneTimeUseInputs(ctx)
 
 	_, exists := ctx.UserInputs["captchaToken"]
 	s.False(exists)
-	s.Empty(ctx.consumedInputs, "pending request list should be drained")
 }
 
-func (s *EngineTestSuite) TestClearRequestPackageOneTimeUseInputs_DrainsUnmatchedEntries() {
+func (s *EngineTestSuite) TestClearRequestPackageOneTimeUseInputs_KeepsUndeclaredInputs() {
 	t := s.T()
 
 	mockGraph := coremock.NewGraphInterfaceMock(t)
@@ -1235,14 +1657,13 @@ func (s *EngineTestSuite) TestClearRequestPackageOneTimeUseInputs_DrainsUnmatche
 	ctx := &EngineContext{
 		Graph:          mockGraph,
 		UserInputs:     map[string]string{"leftover": "value"},
-		consumedInputs: []string{"leftover"},
+		consumedInputs: map[string]struct{}{"leftover": {}},
 	}
 
 	fe.clearRequestPackageOneTimeUseInputs(ctx)
 
 	s.Equal("value", ctx.UserInputs["leftover"],
 		"unmatched identifiers should not be deleted from UserInputs")
-	s.Empty(ctx.consumedInputs, "consumed list should be drained after request package cleanup")
 }
 
 func (s *EngineTestSuite) TestClearNodePackageOneTimeUseInputs_PreservesUnmatchedForRequestScope() {
@@ -1265,7 +1686,7 @@ func (s *EngineTestSuite) TestClearNodePackageOneTimeUseInputs_PreservesUnmatche
 	ctx := &EngineContext{
 		Graph:          mockGraph,
 		UserInputs:     map[string]string{"challenge": "abc123", "captchaToken": "xyz"},
-		consumedInputs: []string{"challenge", "captchaToken"},
+		consumedInputs: map[string]struct{}{"challenge": {}, "captchaToken": {}},
 	}
 
 	fe.clearNodePackageOneTimeUseInputs(ctx, mockNode)
@@ -1273,9 +1694,7 @@ func (s *EngineTestSuite) TestClearNodePackageOneTimeUseInputs_PreservesUnmatche
 	_, challengeExists := ctx.UserInputs["challenge"]
 	s.False(challengeExists, "node-scope OneTimeUse identifier should be cleared")
 	s.Equal("xyz", ctx.UserInputs["captchaToken"],
-		"identifier not declared for this node should be preserved for the request-scope cleanup")
-	s.Equal([]string{"captchaToken"}, ctx.consumedInputs,
-		"unmatched identifiers stay in the list for later scopes")
+		"identifier not declared for this node is left for the request-scope cleanup")
 }
 
 // Tests for display-only prompt node handling
@@ -2830,16 +3249,23 @@ func (s *EngineTestSuite) TestExecuteNodePackage_OmitsSubjectTypeConstraintsOnOt
 	s.False(ok)
 }
 
+// A recovery flow and an administrator-initiated flow, whose user recovers access through it, are marked so
+// their proofs are checked at the recovery plane.
 func (s *EngineTestSuite) TestExecuteNodePackage_MarksRecoveryFlow() {
-	nodeCtx := s.executeNodePackageCapturingContext(providers.FlowTypeRecovery, providers.Application{}, "")
+	for _, flowType := range []providers.FlowType{providers.FlowTypeRecovery, providers.FlowTypeAdminInitiated} {
+		nodeCtx := s.executeNodePackageCapturingContext(flowType, providers.Application{}, "")
 
-	s.True(authnprovidercm.IsRecoveryProof(nodeCtx))
+		s.True(authnprovidercm.IsRecoveryProof(nodeCtx), string(flowType))
+	}
 }
 
 func (s *EngineTestSuite) TestExecuteNodePackage_DoesNotMarkOtherFlowsAsRecovery() {
-	nodeCtx := s.executeNodePackageCapturingContext(providers.FlowTypeAuthentication, providers.Application{}, "")
+	for _, flowType := range []providers.FlowType{providers.FlowTypeAuthentication,
+		providers.FlowTypeAdministration, providers.FlowTypeSelf} {
+		nodeCtx := s.executeNodePackageCapturingContext(flowType, providers.Application{}, "")
 
-	s.False(authnprovidercm.IsRecoveryProof(nodeCtx))
+		s.False(authnprovidercm.IsRecoveryProof(nodeCtx), string(flowType))
+	}
 }
 
 func (s *EngineTestSuite) TestExecuteNodePackage_CompletesAndReturnsNilNextNode() {
@@ -2921,6 +3347,8 @@ func (s *EngineTestSuite) TestExecuteNodePackage_IncompleteExitClearsNodeScopeBe
 		Return([]core.InterceptorUnitInterface{unit}).Maybe()
 	mockGraph.On("GetInterceptors", providers.InterceptorModePostNode).
 		Return([]core.InterceptorUnitInterface{}).Maybe()
+	mockGraph.On("GetInterceptors", providers.InterceptorModePreRequest).
+		Return([]core.InterceptorUnitInterface{}).Maybe()
 	mockGraph.On("GetInterceptors", providers.InterceptorModePostRequest).
 		Return([]core.InterceptorUnitInterface{}).Maybe()
 
@@ -2966,7 +3394,8 @@ func (s *EngineTestSuite) TestExecuteNodePackage_IncompleteExitClearsNodeScopeBe
 	s.False(captchaStillHere,
 		"node-scope OneTimeUse input must be cleared before request-scope cleanup wipes the list")
 	s.Equal("e@x", ctx.UserInputs["email"], "non-OneTimeUse input should remain")
-	s.Empty(ctx.consumedInputs, "consumed list should be fully drained at this exit path")
+	s.Equal(map[string]struct{}{"captcha": {}}, ctx.consumedInputs,
+		"the consumed input stays recorded for the request after the one time use cleanup")
 }
 
 // A node reads the bound subject; a write on its node context never reaches the engine.
@@ -3207,7 +3636,119 @@ func (s *EngineTestSuite) TestFlowEngineExecute_FailsWhenNodeExceedsVisitLimit()
 	s.Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
+func (s *EngineTestSuite) TestFlowEngineExecute_DropsSubmittedInputsNothingUsedUnlessComplete() {
+	dropped := map[string]string{"username": "alice", "email": "e@x"}
+	tests := []struct {
+		name     string
+		flowType providers.FlowType
+		nodeResp *common.NodeResponse
+		status   providers.FlowStatus
+		expected map[string]string
+	}{
+		{"pause", providers.FlowTypeAuthentication, &common.NodeResponse{
+			Status: common.NodeStatusIncomplete,
+			Type:   common.NodeResponseTypeView,
+			Inputs: []providers.Input{{Identifier: "email", Required: true}},
+		}, providers.FlowStatusIncomplete, dropped},
+		{"error step", providers.FlowTypeAuthentication, &common.NodeResponse{
+			Status: common.NodeStatusFailure,
+			Error:  &tidcommon.InternalServerError,
+		}, providers.FlowStatusError, dropped},
+		{"registration error step", providers.FlowTypeRegistration, &common.NodeResponse{
+			Status: common.NodeStatusFailure,
+			Error:  &tidcommon.InternalServerError,
+		}, providers.FlowStatusError, dropped},
+		{"complete", providers.FlowTypeAuthentication, &common.NodeResponse{
+			Status: common.NodeStatusComplete,
+		}, providers.FlowStatusComplete, map[string]string{"username": "alice", "email": "e@x", "nickname": "al"}},
+	}
+	for _, tt := range tests {
+		s.Run(tt.name, func() {
+			t := s.T()
+			mockGraph := coremock.NewGraphInterfaceMock(t)
+			mockGraph.On("HasSegments").Return(false).Maybe()
+			mockGraph.On("GetID").Return("auth-flow").Maybe()
+			mockGraph.On("GetInterceptors", mock.Anything).Return([]core.InterceptorUnitInterface{}).Maybe()
+
+			emailInput := []providers.Input{{Identifier: "email", Type: "EMAIL_INPUT"}}
+			mockNode := coremock.NewExecutorBackedNodeInterfaceMock(t)
+			mockNode.On("GetID").Return("collect_email").Maybe()
+			mockNode.On("GetType").Return(common.NodeTypeTaskExecution).Maybe()
+			mockNode.On("GetProperties").Return(map[string]interface{}(nil)).Maybe()
+			mockNode.On("GetExecutionPolicy").Return((*providers.ExecutionPolicy)(nil)).Maybe()
+			mockExecutor := coremock.NewExecutorInterfaceMock(t)
+			mockExecutor.On("GetName").Return("EmailCollector").Maybe()
+			mockExecutor.On("GetType").Return(providers.ExecutorTypeUtility).Maybe()
+			mockNode.On("GetExecutor").Return(mockExecutor).Maybe()
+			mockNode.On("GetMode").Return("").Maybe()
+			mockNode.On("GetInputs").Return(emailInput).Maybe()
+			mockNode.On("ShouldExecute", mock.Anything).Return(true)
+			mockNode.On("Execute", mock.Anything).Return(tt.nodeResp, nil)
+
+			mockRunner := NewInterceptorRunnerInterfaceMock(t)
+			mockRunner.On("runInterceptors", mock.Anything, mock.Anything).
+				Return(&common.InterceptorResponse{Status: common.InterceptorStatusComplete}, nil)
+
+			fe := &flowEngine{
+				logger:            log.GetLogger(),
+				observabilitySvc:  setupNodePackageMockObs(t),
+				interceptorRunner: mockRunner,
+			}
+			ctx := &EngineContext{
+				Context:          context.Background(),
+				ExecutionID:      "exec-pause",
+				FlowType:         tt.flowType,
+				Graph:            mockGraph,
+				CurrentNode:      mockNode,
+				UserInputs:       map[string]string{"username": "alice", "email": "e@x", "nickname": "al"},
+				additionalInputs: submitted("email", "nickname"),
+				ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
+			}
+
+			flowStep, err := fe.Execute(ctx)
+
+			s.Nil(err)
+			s.Equal(tt.status, flowStep.Status)
+			s.Equal(tt.expected, ctx.UserInputs)
+		})
+	}
+}
+
 // Tests for runInterceptors
+
+func (s *EngineTestSuite) TestRunInterceptors_RecordsConsumedInputs() {
+	t := s.T()
+	mockRunner := NewInterceptorRunnerInterfaceMock(t)
+	mockRunner.On("runInterceptors", providers.InterceptorModePreRequest,
+		mock.AnythingOfType("*flowexec.InterceptorRunnerContext")).
+		Run(func(args mock.Arguments) {
+			args.Get(1).(*InterceptorRunnerContext).AppendConsumedInputs([]string{"captcha_token"})
+		}).
+		Return(&common.InterceptorResponse{Status: common.InterceptorStatusComplete}, nil)
+
+	mockGraph := coremock.NewGraphInterfaceMock(t)
+	mockGraph.On("HasSegments").Return(false).Maybe()
+	mockGraph.On("GetInterceptors", mock.Anything).Return([]core.InterceptorUnitInterface{
+		newTestInterceptorUnitMock(t, "captcha", providers.InterceptorMode(""), providers.InterceptorScope(""), nil),
+	})
+
+	fe := &flowEngine{
+		interceptorRunner: mockRunner,
+		logger:            log.GetLogger(),
+	}
+	ctx := &EngineContext{
+		ExecutionID: "exec-captcha",
+		FlowType:    providers.FlowTypeRegistration,
+		Graph:       mockGraph,
+		UserInputs:  map[string]string{"captcha_token": "t"},
+	}
+
+	continueExec, err := fe.runInterceptors(providers.InterceptorModePreRequest, ctx, nil, &FlowStep{})
+
+	s.True(continueExec)
+	s.Nil(err)
+	s.Equal(map[string]struct{}{"captcha_token": {}}, ctx.consumedInputs)
+}
 
 func (s *EngineTestSuite) TestRunInterceptors_NilGraph() {
 	fe := &flowEngine{

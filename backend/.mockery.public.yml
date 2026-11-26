@@ -369,12 +369,25 @@ packages:
       filename: "{{.InterfaceName}}_mock.go"
 
   github.com/thunder-id/thunderid/internal/system/http:
-    config:
-      all: true
-      dir: tests/mocks/httpmock
-      structname: '{{.InterfaceName}}Mock'
-      pkgname: httpmock
-      filename: "{{.InterfaceName}}_mock.go"
+    interfaces:
+      DialerInterface:
+        config:
+          dir: tests/mocks/httpmock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: httpmock
+          filename: "{{.InterfaceName}}_mock.go"
+      HTTPClientInterface:
+        config:
+          dir: tests/mocks/httpmock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: httpmock
+          filename: "{{.InterfaceName}}_mock.go"
+      OutboundClientFactoryInterface:
+        config:
+          dir: tests/mocks/httpmock
+          structname: '{{.InterfaceName}}Mock'
+          pkgname: httpmock
+          filename: "{{.InterfaceName}}_mock.go"
 
   github.com/thunder-id/thunderid/internal/system/outboundauth/smtpauth:
     interfaces:
@@ -427,6 +440,15 @@ packages:
       OURoleResolver:
       OrganizationUnitServiceInterface:
       organizationUnitStoreInterface:
+
+  github.com/thunder-id/thunderid/internal/flow/config:
+    config:
+      dir: tests/mocks/flow/flowconfigmock
+      structname: '{{.InterfaceName}}Mock'
+      pkgname: flowconfigmock
+      filename: "{{.InterfaceName}}_mock.go"
+    interfaces:
+      ServerConfigReader:
 
   github.com/thunder-id/thunderid/internal/flow/core:
     config:

@@ -149,6 +149,20 @@ func (s *ConsentServiceTestSuite) TestCreateConsent_Success() {
 	s.NotZero(created.Authorizations[0].UpdatedTime)
 }
 
+func (s *ConsentServiceTestSuite) TestCreateConsent_KeepsProperties() {
+	s.mockStore.On("CreateConsent", mock.Anything, mock.MatchedBy(func(c *Consent) bool {
+		return c.Properties.OneTime
+	})).Return(nil)
+
+	req := s.validCreateRequest()
+	req.Properties = ConsentProperties{OneTime: true}
+
+	created, svcErr := s.service.CreateConsent(context.Background(), req)
+
+	s.Nil(svcErr)
+	s.True(created.Properties.OneTime)
+}
+
 func (s *ConsentServiceTestSuite) TestCreateConsent_StoreError() {
 	s.mockStore.On("CreateConsent", mock.Anything, mock.AnythingOfType("*consent.Consent")).
 		Return(errors.New("db down"))
@@ -258,6 +272,25 @@ func (s *ConsentServiceTestSuite) TestUpdateConsent_Success() {
 	s.Equal(int64(999), updated.ValidityTime)
 	s.Len(updated.Authorizations, 1)
 	s.NotEmpty(updated.Authorizations[0].ID)
+}
+
+func (s *ConsentServiceTestSuite) TestUpdateConsent_ReplacesProperties() {
+	existing := &Consent{
+		ID:         "c1",
+		GroupID:    "app1",
+		Status:     ConsentStatusActive,
+		Properties: ConsentProperties{OneTime: true},
+	}
+	s.mockStore.On("GetConsent", mock.Anything, "c1").Return(existing, nil)
+	s.mockStore.On("UpdateConsent", mock.Anything, mock.MatchedBy(func(c *Consent) bool {
+		return c.Properties == (ConsentProperties{})
+	})).Return(nil)
+
+	updated, svcErr := s.service.UpdateConsent(context.Background(), "c1", s.validCreateRequest())
+
+	s.Nil(svcErr)
+	// A decision that is remembered must not keep the flag of an earlier one time decision.
+	s.Equal(ConsentProperties{}, updated.Properties)
 }
 
 func (s *ConsentServiceTestSuite) TestUpdateConsent_StoreError() {

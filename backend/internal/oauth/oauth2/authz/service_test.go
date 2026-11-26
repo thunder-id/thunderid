@@ -37,6 +37,7 @@ import (
 	oauth2utils "github.com/thunder-id/thunderid/internal/oauth/oauth2/utils"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	sysContext "github.com/thunder-id/thunderid/internal/system/context"
+	httpservice "github.com/thunder-id/thunderid/internal/system/http"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
@@ -58,10 +59,6 @@ func authorizeServiceCfgFromRuntime() oauthconfig.Config {
 		OAuth:      runtime.Config.OAuth.ToEngineConfig(),
 		GateClient: runtime.Config.GateClient,
 	}
-}
-
-func resolveUserAttributesCacheTTLForTest(app *providers.OAuthClient) int64 {
-	return (&authorizeService{cfg: authorizeServiceCfgFromRuntime()}).resolveUserAttributesCacheTTL(app)
 }
 
 // stubTransactioner is a no-op Transactioner for use in service tests.
@@ -174,7 +171,7 @@ func (suite *AuthorizeServiceTestSuite) newService() *authorizeService {
 	inboundClient := actorprovider.Initialize(
 		suite.mockInboundClient, suite.mockEntityProvider, noopAuthnMgr(), nil, nil, nil)
 	return &authorizeService{
-		authzDetails:    authzdetailexec.Initialize(nil, time.Second),
+		authzDetails:    authzdetailexec.Initialize(nil, time.Second, httpservice.Initialize(false)),
 		cfg:             authorizeServiceCfgFromRuntime(),
 		inboundClient:   inboundClient,
 		resourceService: suite.mockResourceService,
@@ -496,6 +493,7 @@ func (suite *AuthorizeServiceTestSuite) TestHandleInitialAuthorizationRequest_Su
 	assert.NotNil(suite.T(), result)
 	assert.Equal(suite.T(), testAuthID, result.QueryParams[oauth2const.AuthID])
 	assert.Equal(suite.T(), "test-app-id", result.QueryParams[oauth2const.AppID])
+	assert.Equal(suite.T(), "~dGVzdC1hcHAtaWQ", result.QueryParams[oauth2const.Ref])
 	assert.Equal(suite.T(), "test-flow-id", result.QueryParams[oauth2const.ExecutionID])
 }
 
@@ -2070,153 +2068,6 @@ func (suite *AuthorizeServiceTestSuite) TestGetRequiredAttributes_NoOpenIDScope(
 	// Without openid scope, only access token claims should be included
 	assert.Empty(suite.T(), essential)
 	assert.Equal(suite.T(), "user_id", optional)
-}
-
-func (suite *AuthorizeServiceTestSuite) TestResolveAttrCacheTTL_RefreshAllowed_UsesMaxOfRefreshAndAccessValidity() {
-	config.ResetServerRuntime()
-	_ = config.InitializeServerRuntime("test", &config.Config{
-		JWT: engineconfig.JWTConfig{ValidityPeriod: 900},
-		OAuth: config.OAuthConfig{
-			RefreshToken:      engineconfig.RefreshTokenConfig{ValidityPeriod: 7200},
-			AuthorizationCode: engineconfig.AuthorizationCodeConfig{ValidityPeriod: 600},
-		},
-	})
-
-	app := &providers.OAuthClient{
-		GrantTypes: []providers.GrantType{
-			providers.GrantTypeAuthorizationCode,
-			providers.GrantTypeRefreshToken,
-		},
-		Token: &providers.OAuthTokenConfig{
-			AccessToken: &providers.AccessTokenConfig{
-				UserConfig: &providers.AccessTokenSubConfig{ValidityPeriod: 3600},
-			},
-		},
-	}
-
-	// Refresh token validity (7200) > access token validity (3600) → max(7200) + authCode(600) + buffer(60) = 7860.
-	assert.Equal(suite.T(), int64(7860), resolveUserAttributesCacheTTLForTest(app))
-}
-
-func (suite *AuthorizeServiceTestSuite) TestResolveAttrCacheTTL_RefreshTokenAllowed_UsesAccessTokenWhenLonger() {
-	config.ResetServerRuntime()
-	_ = config.InitializeServerRuntime("test", &config.Config{
-		JWT: engineconfig.JWTConfig{ValidityPeriod: 900},
-		OAuth: config.OAuthConfig{
-			RefreshToken:      engineconfig.RefreshTokenConfig{ValidityPeriod: 1800},
-			AuthorizationCode: engineconfig.AuthorizationCodeConfig{ValidityPeriod: 600},
-		},
-	})
-
-	app := &providers.OAuthClient{
-		GrantTypes: []providers.GrantType{
-			providers.GrantTypeAuthorizationCode,
-			providers.GrantTypeRefreshToken,
-		},
-		Token: &providers.OAuthTokenConfig{
-			AccessToken: &providers.AccessTokenConfig{
-				UserConfig: &providers.AccessTokenSubConfig{ValidityPeriod: 7200},
-			},
-		},
-	}
-
-	// Access token validity (7200) > refresh token validity (1800) → max(7200) + authCode(600) + buffer(60) = 7860.
-	assert.Equal(suite.T(), int64(7860), resolveUserAttributesCacheTTLForTest(app))
-}
-
-func (suite *AuthorizeServiceTestSuite) TestResolveUserAttributesCacheTTL_RefreshTokenAllowed_FallsBackToGlobalJWT() {
-	config.ResetServerRuntime()
-	_ = config.InitializeServerRuntime("test", &config.Config{
-		JWT: engineconfig.JWTConfig{ValidityPeriod: 900},
-		OAuth: config.OAuthConfig{
-			// RefreshToken.ValidityPeriod is 0 → ResolveTokenConfig falls back to global JWT validity.
-			RefreshToken:      engineconfig.RefreshTokenConfig{ValidityPeriod: 0},
-			AuthorizationCode: engineconfig.AuthorizationCodeConfig{ValidityPeriod: 600},
-		},
-	})
-
-	app := &providers.OAuthClient{
-		GrantTypes: []providers.GrantType{
-			providers.GrantTypeAuthorizationCode,
-			providers.GrantTypeRefreshToken,
-		},
-	}
-
-	// JWT fallback (900) + authCode(600) + buffer(60) = 1560.
-	assert.Equal(suite.T(), int64(1560), resolveUserAttributesCacheTTLForTest(app))
-}
-
-func (suite *AuthorizeServiceTestSuite) TestResolveAttrCacheTTL_RefreshTokenNotAllowed_UsesAccessTokenValidity() {
-	app := &providers.OAuthClient{
-		GrantTypes: []providers.GrantType{providers.GrantTypeAuthorizationCode},
-		Token: &providers.OAuthTokenConfig{
-			AccessToken: &providers.AccessTokenConfig{
-				UserConfig: &providers.AccessTokenSubConfig{ValidityPeriod: 3600},
-			},
-		},
-	}
-
-	// Access token validity (3600) + authCode(600) + buffer(60) = 4260.
-	assert.Equal(suite.T(), int64(4260), resolveUserAttributesCacheTTLForTest(app))
-}
-
-func (suite *AuthorizeServiceTestSuite) TestResolveAttrCacheTTL_NoRefreshToken_ZeroAccessTTL_FallsBackToGlobalJWT() {
-	config.ResetServerRuntime()
-	_ = config.InitializeServerRuntime("test", &config.Config{
-		JWT: engineconfig.JWTConfig{ValidityPeriod: 900},
-		OAuth: config.OAuthConfig{
-			AuthorizationCode: engineconfig.AuthorizationCodeConfig{ValidityPeriod: 600},
-		},
-	})
-
-	app := &providers.OAuthClient{
-		GrantTypes: []providers.GrantType{providers.GrantTypeAuthorizationCode},
-		Token: &providers.OAuthTokenConfig{
-			// ValidityPeriod 0 is treated as unset by ResolveTokenConfig → falls back to global JWT validity.
-			AccessToken: &providers.AccessTokenConfig{
-				UserConfig: &providers.AccessTokenSubConfig{ValidityPeriod: 0},
-			},
-		},
-	}
-
-	// JWT fallback (900) + authCode(600) + buffer(60) = 1560.
-	assert.Equal(suite.T(), int64(1560), resolveUserAttributesCacheTTLForTest(app))
-}
-
-func (suite *AuthorizeServiceTestSuite) TestResolveAttrCacheTTL_NoRefreshToken_NilToken_FallsBackToGlobalJWT() {
-	config.ResetServerRuntime()
-	_ = config.InitializeServerRuntime("test", &config.Config{
-		JWT: engineconfig.JWTConfig{ValidityPeriod: 900},
-		OAuth: config.OAuthConfig{
-			AuthorizationCode: engineconfig.AuthorizationCodeConfig{ValidityPeriod: 600},
-		},
-	})
-
-	app := &providers.OAuthClient{
-		GrantTypes: []providers.GrantType{providers.GrantTypeAuthorizationCode},
-		Token:      nil,
-	}
-
-	// JWT fallback (900) + authCode(600) + buffer(60) = 1560.
-	assert.Equal(suite.T(), int64(1560), resolveUserAttributesCacheTTLForTest(app))
-}
-
-func (suite *AuthorizeServiceTestSuite) TestResolveAttrCacheTTL_NoRefreshToken_NilAccessToken_FallsBackToGlobalJWT() {
-	config.ResetServerRuntime()
-	_ = config.InitializeServerRuntime("test", &config.Config{
-		JWT: engineconfig.JWTConfig{ValidityPeriod: 900},
-		OAuth: config.OAuthConfig{
-			AuthorizationCode: engineconfig.AuthorizationCodeConfig{ValidityPeriod: 600},
-		},
-	})
-
-	app := &providers.OAuthClient{
-		GrantTypes: []providers.GrantType{providers.GrantTypeAuthorizationCode},
-		Token:      &providers.OAuthTokenConfig{AccessToken: nil},
-	}
-
-	// JWT fallback (900) + authCode(600) + buffer(60) = 1560.
-	assert.Equal(suite.T(), int64(1560), resolveUserAttributesCacheTTLForTest(app))
 }
 
 // determineClaimsForTokens is a test helper retained to keep existing token-claim tests readable.

@@ -421,7 +421,8 @@ func presentationDefinitionIn(handle, ouID string) map[string]interface{} {
 }
 
 // A token that names no organization unit is refused on the Data Plane unless it holds system, which reaches every
-// unit: org and its children act only in the unit a token names, so a token naming none reaches nothing.
+// unit: org and its children act only in the unit a token names, so a token naming none reaches nothing, and
+// GET /capabilities offers it nothing.
 func (ts *OUResourceTestSuite) TestTokenWithoutOU() {
 	const clientID = "ou-resource-no-ou-sign-in"
 	appID, err := testutils.CreateApplication(testutils.Application{
@@ -464,12 +465,30 @@ func (ts *OUResourceTestSuite) TestTokenWithoutOU() {
 		status, body := ts.send(org, http.MethodGet, path, nil)
 		ts.Equalf(http.StatusForbidden, status, "%s: %s", path, body)
 	}
+	orgCapabilities := ts.capabilities(org)
+	ts.Require().NotEmpty(orgCapabilities.Resources)
+	for resource, actions := range orgCapabilities.Resources {
+		for action, allowed := range actions {
+			ts.Falsef(allowed, "%s:%s is offered to a token the management APIs refuse", resource, action)
+		}
+	}
 
 	system := signIn(ts.createSystemAdmin("ou-resource-no-ou-system-admin"), "system")
+	ts.True(ts.capabilities(system).Resources["flow"]["view"])
 	status, body := ts.send(system, http.MethodGet, "/flows?limit=100", nil)
 	ts.Require().Equal(http.StatusOK, status, string(body))
 	status, body = ts.send(system, http.MethodGet, "/flows/"+own, nil)
 	ts.Equal(http.StatusOK, status, string(body))
+}
+
+// capabilities reads GET /capabilities with client.
+func (ts *OUResourceTestSuite) capabilities(client *http.Client) testutils.CapabilitiesResponse {
+	ts.T().Helper()
+	status, body := ts.send(client, http.MethodGet, "/capabilities", nil)
+	ts.Require().Equal(http.StatusOK, status, string(body))
+	var capabilities testutils.CapabilitiesResponse
+	ts.Require().NoError(json.Unmarshal(body, &capabilities))
+	return capabilities
 }
 
 // A system token taken in OU1 reaches every unit. Without a filter it lists another tree's resources, and a filter

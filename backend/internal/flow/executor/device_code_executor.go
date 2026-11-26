@@ -5,6 +5,7 @@ package executor
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
@@ -57,14 +58,18 @@ func (e *deviceCodeExecutor) Execute(ctx *providers.NodeContext) (*providers.Exe
 	if verified.ApplicationID != ctx.Application.ID {
 		return invalidDeviceCodeResponse(input), nil
 	}
-	return &providers.ExecutorResponse{Status: providers.ExecComplete,
-		SharedRuntimeData: map[string]string{
-			flowcommon.RuntimeKeyAuthorizationRequestID:     verified.AuthID,
-			flowcommon.RuntimeKeyCallbackType:               string(providers.GrantTypeDeviceCode),
-			flowcommon.RuntimeKeyRequestedPermissions:       verified.RequestedPermissions,
-			flowcommon.RuntimeKeyResourceServerIdentifier:   verified.ResourceServerIdentifier,
-			flowcommon.RuntimeKeyRequiredOptionalAttributes: verified.RequiredOptionalAttributes,
-		}}, nil
+	sharedRuntimeData := map[string]string{
+		flowcommon.RuntimeKeyAuthorizationRequestID:     verified.AuthID,
+		flowcommon.RuntimeKeyCallbackType:               string(providers.GrantTypeDeviceCode),
+		flowcommon.RuntimeKeyRequestedPermissions:       verified.RequestedPermissions,
+		flowcommon.RuntimeKeyResourceServerIdentifier:   verified.ResourceServerIdentifier,
+		flowcommon.RuntimeKeyRequiredOptionalAttributes: verified.RequiredOptionalAttributes,
+	}
+	if verified.UserAttributesCacheTTLSeconds > 0 {
+		sharedRuntimeData[flowcommon.RuntimeKeyUserAttributesCacheTTLSeconds] = strconv.FormatInt(
+			verified.UserAttributesCacheTTLSeconds, 10)
+	}
+	return &providers.ExecutorResponse{Status: providers.ExecComplete, SharedRuntimeData: sharedRuntimeData}, nil
 }
 
 // invalidDeviceCodeResponse asks the user to re-enter a code that cannot be used for this flow.

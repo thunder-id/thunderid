@@ -31,13 +31,15 @@ The field's `modification` sets what the user may do:
 | :--- | :--- | :--- |
 | `decrease` | A number or date input | Enter a value up to the value shown |
 | `increase` | A number or date input | Enter a value from the value shown upward |
-| `removeItems` | One button per item | Remove items, except the last one kept, and add removed items back |
-| `addItems` | The items shown, and a button for each item the type allows | Add the allowed items, and remove the ones they added |
+| `removeItems` | One button per item | Remove items down to the row's `minItems`, never the last one, and add removed items back |
+| `addItems` | The items shown, and a button for each item the type allows | Add the allowed items up to the row's `maxItems`, and remove the ones they added |
 | None | The value as text | Nothing |
 
-A field renders read-only text instead when its value does not fit its `modification`: a `decrease` or `increase` field that is neither a number nor a date in `YYYY-MM-DD` form (a `dateTime` field is never editable), a `removeItems` list with fewer than two items, or a `removeItems` or `addItems` list whose items are not all strings, numbers, or booleans. An `addItems` list whose type lists no allowed values also shows a text input that adds a typed item when the user presses Enter.
+A field renders read-only text instead when its value does not fit its `modification`: a `decrease` or `increase` field that is neither a number nor a date in `YYYY-MM-DD` form (a `dateTime` field is never editable), a `removeItems` list with no more items than it must keep, or a `removeItems` or `addItems` list whose items are not all strings, numbers, or booleans. An `addItems` list whose type lists no allowed values also shows a text input that adds a typed item when the user presses Enter.
 
-A value the user enters outside its bound, or text that is not a number or a date, shows an error such as `Enter 120 or less.` The field then submits no change and marks itself invalid, which blocks approval through [`isApprovalBlocked`](../consent#render-props) until the user corrects it or declines the detail. The server checks every change it receives against the field policy.
+A number or date input also keeps the row's own limits: its `minimum` and `maximum`, and for a number its exclusive limits and its `multipleOf`. The input's `step` is the `multipleOf`, so the browser's arrows move between allowed values.
+
+A value the user enters outside its bound or limits, or text that is not a number or a date, shows an error such as `Enter 120 or less.` or `Enter a multiple of 5.` The field then submits no change and marks itself invalid, which blocks approval through [`isApprovalBlocked`](../consent#render-props) until the user corrects it or declines the detail. The server checks every change it receives against the field policy.
 
 ## Props
 
@@ -63,3 +65,9 @@ A value the user enters outside its bound, or text that is not a number or a dat
 | `as` | `'number' \| 'date' \| 'dateTime'` | How a field with a modification is compared. Present only with `decrease` or `increase` |
 | `options` | `unknown[]` | The values the type allows in an `addItems` list |
 | `origin` | `string` | `'server'` when the type's processor supplied the value |
+| `description` | `string` | The field's `description` from the type's schema |
+| `minimum`, `maximum` | `number \| string` | Inclusive limits of a field the user may change: the schema's own for a number, the field policy's for a date in `YYYY-MM-DD` form |
+| `exclusiveMinimum`, `exclusiveMaximum` | `number` | Exclusive limits of a number the user may change |
+| `multipleOf` | `number` | The step a number the user may change must be a multiple of |
+| `minItems` | `number` | The fewest items the user may keep in a `removeItems` list |
+| `maxItems` | `number` | The most items an `addItems` list may hold |

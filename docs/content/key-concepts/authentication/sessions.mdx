@@ -23,6 +23,12 @@ A **checkpoint** is the authentication that SSO can skip and reuse. You define i
 
 On a fresh sign-in, the flow runs those steps and saves the checkpoint under the session. On a later sign-in, the flow reuses the checkpoint and skips the steps it covers. If the checkpoint has expired, the user completes the steps again.
 
+## Sign-Ins Without SSO
+
+A flow without the session nodes still records a session for each sign-in, called a direct session, and the ID token names it in the `sid` claim. A direct session has no handle and no checkpoints, so no later sign-in reuses it. Every sign-in through the flow authenticates the user again and records a new direct session.
+
+An administrator can turn direct sessions off by setting `session.tracking.enabled` to `false` in the deployment configuration. A sign-in through a flow without the session nodes then records no session, so it cannot be listed or ended, and its tokens carry no `sid` claim. A flow with the session nodes still records its SSO session, so SSO is not affected. The setting applies to new sign-ins: sessions recorded earlier keep working until they end. See [Session Configuration](../../../deployment/configuration#session-configuration).
+
 ## Session Lifetime
 
 Two independent timeouts bound every session:
@@ -30,13 +36,13 @@ Two independent timeouts bound every session:
 | Timeout | Behavior | Default |
 |---|---|---|
 | Idle | Moves forward on each use of the session, at most once per activity-refresh interval (60 seconds by default), so an active session stays alive. A sign-in that reuses the session and a token refresh for a grant issued under it both count as use. The session expires after this much inactivity. | 2 hours |
-| Absolute | Fixed when the session is created and never extended. The session expires this long after creation regardless of activity. | 8 hours |
+| Absolute | Fixed when the session is created and never extended. The session expires this long after creation regardless of activity. | 24 hours |
 
 A session expires when it passes either deadline. After expiry, the next sign-in through the flow authenticates the user again. An administrator configures both timeouts in the server configuration. A token refresh keeps the session alive only if it arrives before the idle deadline, so an application that refreshes when its access token expires needs an idle timeout longer than the access token validity period. See [Configure Session Lifetime](../../../guides/flows/single-sign-on#configure-session-lifetime).
 
 ## Session Reference
 
-<ProductName /> references each session with an opaque handle that carries no user data. A browser holds the handle in a per-flow cookie, so SSO reuse happens within that browser: a user who authenticates in one browser does not gain a session in another. An application that runs flows itself through the Flow Execution API receives the handle in the response body and sends it back on later requests. See [App-Native Sign-In](../../../guides/flows/single-sign-on#app-native-sign-in).
+<ProductName /> references each SSO session with an opaque handle that carries no user data. A browser holds the handle in a per-flow cookie, so SSO reuse happens within that browser: a user who authenticates in one browser does not gain a session in another. An application that runs flows itself through the Flow Execution API receives the handle in the response body and sends it back on later requests. See [App-Native Sign-In](../../../guides/flows/single-sign-on#app-native-sign-in).
 
 ## Ending a Session
 
@@ -51,7 +57,9 @@ There are two ways to run the sign-out flow, matching the two [integration model
 - **Redirect-based (OIDC).** A browser-based application redirects the user to the `end_session_endpoint`, which runs the sign-out flow and returns the browser to the application. See [RP-Initiated Logout](../../../guides/protocols/oauth-oidc/rp-initiated-logout).
 - **App-native.** An application that drives flows directly runs the sign-out flow through the Flow Execution API, sending the session it holds in `sessionData`. Without it, the sign-out ends nothing. See [App-Native Sign-In](../../../guides/flows/single-sign-on#app-native-sign-in) and [Build a Sign-Out Flow](../../../guides/flows/build-a-flow#go-further).
 
-A session also ends on its own when it passes the idle or absolute timeout, as described above.
+A session also ends on its own when it passes the idle or absolute timeout, as described above. Expiry does not revoke tokens already issued.
+
+A direct session has no handle for the sign-out flow to send, so the sign-out flow does not end it. An administrative action such as deleting the user ends it.
 
 When a session ends, through either path or through an administrative action such as deleting the user, <ProductName /> posts a logout token to every application that took part in the session and registered a back-channel logout URI. Expiry sends no notification. See [Back-Channel Logout](../../../guides/protocols/oauth-oidc/backchannel-logout).
 

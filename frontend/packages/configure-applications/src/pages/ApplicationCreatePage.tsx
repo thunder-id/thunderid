@@ -21,7 +21,7 @@ import {
 } from '@thunderid/configure-organization-units';
 import {isRowEmpty, useGetCorsConfig, useUpdateCorsConfig} from '@thunderid/configure-settings';
 import {useGetUserTypes} from '@thunderid/configure-user-types';
-import {useProjectScope, useToast} from '@thunderid/contexts';
+import {useCapabilitiesContext, useProjectScope, useToast} from '@thunderid/contexts';
 import {DefaultTheme, useGetTheme, type Theme} from '@thunderid/design';
 import {useTemplateLiteralResolver} from '@thunderid/hooks';
 import {useLogger} from '@thunderid/logger/react';
@@ -32,7 +32,7 @@ import {ChevronLeft, ChevronRight, Home} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useState, useCallback, useEffect, useMemo, useRef} from 'react';
 import {useTranslation} from 'react-i18next';
-import {useNavigate} from 'react-router';
+import {Navigate, useNavigate} from 'react-router';
 import useCreateApplication from '../api/useCreateApplication';
 import useGetApplications from '../api/useGetApplications';
 import ConfigureMetadataDocument from '../components/create-application/cimd/ConfigureMetadataDocument';
@@ -68,7 +68,18 @@ import resolveApplicationType from '../utils/resolveApplicationType';
 import resolveCreationFlow from '../utils/resolveCreationFlow';
 import resolveRedirectUris from '../utils/resolveRedirectUris';
 
-export default function ApplicationCreatePage(): JSX.Element {
+/**
+ * Props for the {@link ApplicationCreatePage} component.
+ */
+export interface ApplicationCreatePageProps {
+  /**
+   * Whether an application is created in a project only. When set, the page returns to the list outside a selected
+   * project, since an application created there would be refused.
+   */
+  createInProjectsOnly?: boolean;
+}
+
+export default function ApplicationCreatePage({createInProjectsOnly = false}: ApplicationCreatePageProps): JSX.Element {
   const routes = useApplicationRoutes();
   const {t} = useTranslation();
   const {showToast} = useToast();
@@ -169,6 +180,7 @@ export default function ApplicationCreatePage(): JSX.Element {
   const {data: applicationsData} = useGetApplications({limit: 100});
   const {data: corsConfigData} = useGetCorsConfig();
   const updateCorsConfig = useUpdateCorsConfig();
+  const {can} = useCapabilitiesContext();
   const {projectId} = useProjectScope();
   // Inside a project the application goes to the system organization unit or one of the project's
   // own, picked on the organization unit step. The step is offered only when the project has
@@ -283,7 +295,7 @@ export default function ApplicationCreatePage(): JSX.Element {
       googleIdpId: integrations[googleProvider?.id ?? ''] ? googleProvider?.id : undefined,
       githubIdpId: integrations[githubProvider?.id ?? ''] ? githubProvider?.id : undefined,
       hasSmsOtp: integrations['sms-otp'] ?? false,
-      relyingPartyId: relyingPartyId || window.location.hostname,
+      relyingPartyId: relyingPartyId || undefined,
       relyingPartyName: relyingPartyName || appName,
       hasEmailOtpMfa: isEmailOtpMfaEnabled,
       hasSmsOtpMfa: isSmsOtpMfaEnabled,
@@ -362,11 +374,12 @@ export default function ApplicationCreatePage(): JSX.Element {
   const [walletClientId, setWalletClientId] = useState<string>('');
 
   // The template is chosen on the standalone selection page before this wizard mounts. If the
-  // wizard is reached directly (e.g. a bookmarked URL) with no template, send the user back to it.
+  // wizard is reached directly (e.g. a bookmarked URL) with no template, send the user back to it,
+  // unless the page is leaving for the list because no project is selected.
   useEffect((): void => {
-    if (selectedTemplateConfig) return;
+    if (selectedTemplateConfig || (createInProjectsOnly && !isInProject)) return;
     void navigate(routes.applications.types());
-  }, [selectedTemplateConfig, navigate, routes]);
+  }, [selectedTemplateConfig, createInProjectsOnly, isInProject, navigate, routes]);
 
   // Derive the OAuth config from the selected template's defaults, mirroring what the removed
   // in-wizard template step used to seed on mount.
@@ -757,7 +770,7 @@ export default function ApplicationCreatePage(): JSX.Element {
         // part of the application payload above. This is independent of application creation
         // succeeding, so it neither blocks nor is blocked by the navigation below.
         const corsAdditions = corsOrigins.filter((row) => !isRowEmpty(row));
-        if (selectedTemplateConfig?.capabilities?.cors && corsAdditions.length > 0) {
+        if (selectedTemplateConfig?.capabilities?.cors && can('serverconfig', 'update') && corsAdditions.length > 0) {
           updateCorsConfig.mutate(
             {
               data: mergeCorsOrigins(
@@ -862,7 +875,7 @@ export default function ApplicationCreatePage(): JSX.Element {
         googleIdpId: integrations[googleProvider?.id ?? ''] ? googleProvider?.id : undefined,
         githubIdpId: integrations[githubProvider?.id ?? ''] ? githubProvider?.id : undefined,
         hasSmsOtp: integrations['sms-otp'] ?? false,
-        relyingPartyId: relyingPartyId || window.location.hostname,
+        relyingPartyId: relyingPartyId || undefined,
         relyingPartyName: relyingPartyName || appName,
         hasEmailOtpMfa: isEmailOtpMfaEnabled,
         hasSmsOtpMfa: isSmsOtpMfaEnabled,
@@ -1182,6 +1195,10 @@ export default function ApplicationCreatePage(): JSX.Element {
   };
 
   const pageTitle = t('applications:listing.addApplication', 'Add application');
+
+  if (createInProjectsOnly && !isInProject) {
+    return <Navigate to={routes.applications.list()} replace />;
+  }
 
   if (currentStep === ApplicationCreateFlowStep.ORGANIZATION_UNIT) {
     if (isOuLoading || !hasMultipleOUs) {

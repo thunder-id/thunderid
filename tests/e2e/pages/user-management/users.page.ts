@@ -88,6 +88,11 @@ export class UsersPage extends BasePage {
   readonly confirmResetPasswordButton: Locator;
   readonly cancelResetPasswordButton: Locator;
 
+  // Credentials tab: the reset dialog's other way, emailing the user a link to set the new value
+  readonly resetLinkOption: Locator;
+  readonly sendResetLinkConfirmButton: Locator;
+  readonly credentialResetError: Locator;
+
   // Affiliations tab: the shared Organization Access screen
   readonly organizationAccess: OrganizationAccessSettings;
 
@@ -202,6 +207,9 @@ export class UsersPage extends BasePage {
     this.confirmCredentialValueInput = this.credentialResetDialog.locator("#credential-confirm-password");
     this.confirmResetPasswordButton = this.credentialResetDialog.getByRole("button", { name: /^reset password$/i });
     this.cancelResetPasswordButton = this.credentialResetDialog.getByRole("button", { name: /^cancel$/i });
+    this.resetLinkOption = this.credentialResetDialog.getByRole("radio", { name: /^email the user a link/i });
+    this.sendResetLinkConfirmButton = this.credentialResetDialog.getByRole("button", { name: /^send reset link$/i });
+    this.credentialResetError = this.credentialResetDialog.getByTestId("credential-reset-error");
 
     this.organizationAccess = new OrganizationAccessSettings(page);
   }
@@ -545,6 +553,12 @@ export class UsersPage extends BasePage {
     const button = this.activeTabPanel.getByRole("button", { name: new RegExp(`^reset ${fieldLabel}$`, "i") });
     await button.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
     await button.click();
+  }
+
+  /** In the open reset dialog, choose emailing the user a link instead of setting the value. */
+  async chooseResetLink() {
+    await this.resetLinkOption.waitFor({ state: "visible", timeout: Timeouts.ELEMENT_VISIBILITY });
+    await this.resetLinkOption.check();
   }
 
   /** Fill the New/Confirm fields in the credential reset dialog. Defaults confirm to match new. */

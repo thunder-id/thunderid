@@ -18,6 +18,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/group"
@@ -87,8 +88,6 @@ func newProvisioningExecutor(
 				{Property: propertyKeyMaxDynamicInputsPerPrompt},
 				{Property: common.NodePropertyAssignGroup},
 				{Property: common.NodePropertyAssignRole},
-				{Property: propertyKeySeedGroupsFromMapping},
-				{Property: propertyKeySeedRolesFromMapping},
 				{Property: common.NodePropertyAllowCrossOUProvisioning},
 				{Property: propertyKeyProvisioningOU},
 			},
@@ -285,17 +284,16 @@ func (p *provisioningExecutor) applyExistingLinkHolderRules(ctx *providers.NodeC
 		execResp.Error = errForEntityCategory(ErrEntityAlreadyExists, category)
 		return nil
 	}
-	// Several users hold the link, so the AuthUser names none of them yet.
-	if ctx.RuntimeData[common.RuntimeKeyEntityState] == entityStateAmbiguous {
-		if svcErr := authenticateEntityByID(ctx, p.authnProvider, holderIDs[0], execResp.AuthUser,
-			execResp); svcErr != nil {
-			if svcErr.Type == tidcommon.ServerErrorType {
-				return fmt.Errorf("failed to bind the existing link holder: %s", svcErr.Code)
-			}
-			execResp.Status = providers.ExecFailure
-			execResp.Error = cmp.Or(statedHold(svcErr), errForEntityCategory(ErrEntityAuthFailed, category))
-			return nil
+	// Signing in the account holding the link picks it when several users hold the link, and runs the
+	// deferred sync of the federated sign-in.
+	if svcErr := authenticateEntityByID(ctx, p.authnProvider, holderIDs[0], execResp.AuthUser,
+		execResp, false); svcErr != nil {
+		if svcErr.Type == tidcommon.ServerErrorType {
+			return fmt.Errorf("failed to bind the existing link holder: %s", svcErr.Code)
 		}
+		execResp.Status = providers.ExecFailure
+		execResp.Error = cmp.Or(statedHold(svcErr), errForEntityCategory(ErrEntityAuthFailed, category))
+		return nil
 	}
 	execResp.Status = providers.ExecComplete
 	return nil
@@ -336,8 +334,11 @@ func (p *provisioningExecutor) prepareProvisioning(ctx *providers.NodeContext,
 	if err != nil {
 		return nil, false, err
 	}
+	// A federated sign-in creates the user even with no attribute to save, as when its connection keeps
+	// the attributes to the session, so its link is kept.
 	if len(identifyingAttrs) == 0 && len(credentialAttrs) == 0 &&
-		!hasRecordValues(ctx, category) {
+		!hasRecordValues(ctx, category) && (category != entitytype.TypeCategoryUser ||
+		federatedIdentityFrom(ctx) == nil) {
 		logger.Debug(ctx.Context, "No entity attributes provided for provisioning")
 		execResp.Status = providers.ExecFailure
 		execResp.Error = errForEntityCategory(ErrProvisioningAttrsMissing, category)
@@ -500,9 +501,10 @@ func (p *provisioningExecutor) completeProvisioning(ctx *providers.NodeContext,
 // executor response.
 func (p *provisioningExecutor) authenticateProvisionedEntity(ctx *providers.NodeContext,
 	category entitytype.TypeCategory, entityID string, execResp *providers.ExecutorResponse) {
-	if svcErr := authenticateEntityByID(ctx, p.authnProvider, entityID, execResp.AuthUser, execResp); svcErr != nil {
+	if svcErr := authenticateEntityByID(ctx, p.authnProvider, entityID, execResp.AuthUser, execResp,
+		true); svcErr != nil {
 		execResp.Status = providers.ExecFailure
-		execResp.Error = errForEntityCategory(ErrEntityAuthFailed, category)
+		execResp.Error = cmp.Or(statedHold(svcErr), errForEntityCategory(ErrEntityAuthFailed, category))
 	}
 }
 
@@ -745,10 +747,7 @@ func (p *provisioningExecutor) buildMissingInputs(
 			continue
 		}
 		nodeInp, inNodeInputs := nodeInputMap[attr.Attribute]
-		effectiveRequired := attr.Required
-		if inNodeInputs {
-			effectiveRequired = attr.Required || nodeInp.Required
-		}
+		effectiveRequired := isEffectivelyRequired(attr, ctx.NodeInputs)
 		// An optional attribute the entity type hides on create is asked for only when the node
 		// declares it.
 		if !effectiveRequired && attr.HiddenOnCreate && !inNodeInputs {
@@ -882,12 +881,20 @@ func (p *provisioningExecutor) getMaxDynamicInputs(ctx *providers.NodeContext) i
 	return 0
 }
 
+// isEffectivelyRequired reports whether attr must have a value: the entity type requires it, or a node
+// input raises it to required. A node input cannot lower a required attribute to optional.
+func isEffectivelyRequired(attr entitytype.AttributeInfo, nodeInputs []providers.Input) bool {
+	return attr.Required || slices.ContainsFunc(nodeInputs, func(inp providers.Input) bool {
+		return inp.Identifier == attr.Attribute && inp.Required
+	})
+}
+
 // isAttrSatisfied returns true if the attribute has a non-empty usable value in the user inputs, the
 // runtime data or, for a non-credential attribute, the external identity's claims. Credentials are
 // never taken from claims, so a claim never stands in for one.
 func (p *provisioningExecutor) isAttrSatisfied(ctx *providers.NodeContext, extIdentity *core.ExternalIdentity,
 	attr entitytype.AttributeInfo) bool {
-	if val, ok := ctx.UserInputs[attr.Attribute]; ok && val != "" {
+	if val, ok := ctx.ConsumeInput(attr.Attribute); ok && val != "" {
 		return true
 	}
 	if val, ok := ctx.RuntimeData[attr.Attribute]; ok && val != "" {
@@ -896,19 +903,21 @@ func (p *provisioningExecutor) isAttrSatisfied(ctx *providers.NodeContext, extId
 	if attr.Credential {
 		return false
 	}
-	// External claims are only a fallback and must never take priority over runtime data.
-	if val, ok := extIdentity.Claim(attr.Attribute); ok && val != "" {
-		return true
+	// External claims are only a fallback and must never take priority over runtime data. A claim
+	// satisfies the attribute only when it converts to the attribute's type, as it's stored then.
+	if extIdentity == nil {
+		return false
 	}
-	return false
+	value, ok := entitytypemodel.ConvertReceivedValue(extIdentity.Claims[attr.Attribute], attr.Type)
+	return ok && value != nil
 }
 
 // getAttributesForProvisioning collects entity attributes from context in a single schema pass,
 // returning identifying (non-credential) and credential attributes as separate maps.
 // Schema is the whitelist for both maps.
-// Values are resolved from non-empty UserInputs then non-empty RuntimeData. Non-credential values
-// are converted from the engine's string representation to the type declared by the schema
-// attribute.
+// Values are resolved from non-empty UserInputs then non-empty RuntimeData, and a non-credential value
+// then from the external identity's claims. Non-credential values are converted to the type declared by
+// the schema attribute.
 func (p *provisioningExecutor) getAttributesForProvisioning(
 	ctx *providers.NodeContext, category entitytype.TypeCategory,
 ) (identifyingAttrs map[string]interface{}, credentialAttrs map[string]interface{}, err error) {
@@ -927,24 +936,34 @@ func (p *provisioningExecutor) getAttributesForProvisioning(
 	extIdentity := core.GetExternalIdentity(ctx.RuntimeData)
 	for _, a := range schemaAttrs {
 		if a.Credential {
-			if value, exists := ctx.UserInputs[a.Attribute]; exists && value != "" {
+			if value, exists := ctx.ConsumeInput(a.Attribute); exists && value != "" {
 				credentialAttrs[a.Attribute] = value
 			} else if runtimeValue, exists := ctx.RuntimeData[a.Attribute]; exists && runtimeValue != "" {
 				credentialAttrs[a.Attribute] = runtimeValue
 			}
 		} else {
 			// External claims are only a fallback and must never take priority over runtime data.
-			if value, exists := ctx.UserInputs[a.Attribute]; exists && value != "" {
+			if value, exists := ctx.ConsumeInput(a.Attribute); exists && value != "" {
 				identifyingAttrs[a.Attribute] = convertToSchemaType(value, a.Type)
 			} else if runtimeValue, exists := ctx.RuntimeData[a.Attribute]; exists && runtimeValue != "" {
 				identifyingAttrs[a.Attribute] = convertToSchemaType(runtimeValue, a.Type)
-			} else if claimValue, exists := extIdentity.Claim(a.Attribute); exists &&
-				claimValue != "" {
-				identifyingAttrs[a.Attribute] = convertToSchemaType(claimValue, a.Type)
+			} else if extIdentity != nil && (extIdentity.AttributesSync != providers.SyncModeSessionOnly ||
+				isEffectivelyRequired(a, ctx.NodeInputs)) {
+				// A connection that keeps the attributes to the session stores only the required ones.
+				value, ok := entitytypemodel.ConvertReceivedValue(extIdentity.Claims[a.Attribute], a.Type)
+				if !ok {
+					p.logger.Debug(ctx.Context, "Skipping a claim that doesn't match the attribute type",
+						log.String("attribute", a.Attribute))
+				} else if value != nil {
+					identifyingAttrs[a.Attribute] = value
+				}
 			}
 		}
 	}
 
+	if err := applyPinnedValue(ctx, schemaAttrs, identifyingAttrs); err != nil {
+		return nil, nil, err
+	}
 	return identifyingAttrs, credentialAttrs, nil
 }
 
@@ -1187,13 +1206,15 @@ func tokenIssuedToApplication(nodeCtx *providers.NodeContext) bool {
 // over what the caller submitted. Submitted values are unfiltered, so a resolved one wins. A constant
 // input of the node is read first.
 func collectedValue(ctx *providers.NodeContext, key string) string {
-	if isConstantNodeInput(ctx, key) && ctx.UserInputs[key] != "" {
-		return ctx.UserInputs[key]
+	if isConstantNodeInput(ctx, key) {
+		if val, _ := ctx.ConsumeInput(key); val != "" {
+			return val
+		}
 	}
 	if val, ok := ctx.RuntimeData[key]; ok && val != "" {
 		return val
 	}
-	if val, ok := ctx.UserInputs[key]; ok && val != "" {
+	if val, ok := ctx.ConsumeInput(key); ok && val != "" {
 		return val
 	}
 	return ""
@@ -1347,18 +1368,6 @@ func (p *provisioningExecutor) assignGroupsAndRoles(
 	groupIDs := p.getGroupsToAssign(ctx)
 	roleIDs := p.getRolesToAssign(ctx)
 
-	// Seeding from the authorization mapping (rule-based or direct) is a one-time assignment at
-	// creation, it opts in to whatever the federated login's mapping already resolved for this
-	// entity's claims, alongside the fixed lists above.
-	if isSeedGroupsFromMappingEnabled(ctx) {
-		mappedGroupIDs := systemutils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedGroupIDs], " ")
-		groupIDs = systemutils.MergeUniqueStrings(groupIDs, mappedGroupIDs)
-	}
-	if isSeedRolesFromMappingEnabled(ctx) {
-		mappedRoleIDs := systemutils.ParseStringArray(ctx.RuntimeData[common.RuntimeKeyMappedRoleIDs], " ")
-		roleIDs = systemutils.MergeUniqueStrings(roleIDs, mappedRoleIDs)
-	}
-
 	if len(groupIDs) == 0 && len(roleIDs) == 0 {
 		logger.Debug(ctx.Context, "No group or role configured for assignment, skipping")
 		return nil
@@ -1386,28 +1395,6 @@ func (p *provisioningExecutor) assignGroupsAndRoles(
 	logger.Debug(ctx.Context, "Successfully assigned groups and roles",
 		log.MaskedString(log.LoggerKeyEntityID, entityID))
 	return nil
-}
-
-// isSeedGroupsFromMappingEnabled returns the value of the seedGroupsFromMapping node property,
-// defaulting to false if absent or not a bool.
-func isSeedGroupsFromMappingEnabled(ctx *providers.NodeContext) bool {
-	if val, ok := ctx.NodeProperties[propertyKeySeedGroupsFromMapping]; ok {
-		if boolVal, ok := val.(bool); ok {
-			return boolVal
-		}
-	}
-	return false
-}
-
-// isSeedRolesFromMappingEnabled returns the value of the seedRolesFromMapping node property,
-// defaulting to false if absent or not a bool.
-func isSeedRolesFromMappingEnabled(ctx *providers.NodeContext) bool {
-	if val, ok := ctx.NodeProperties[propertyKeySeedRolesFromMapping]; ok {
-		if boolVal, ok := val.(bool); ok {
-			return boolVal
-		}
-	}
-	return false
 }
 
 // getGroupsToAssign parses the assignGroup node property into a slice of group IDs.
@@ -1516,4 +1503,27 @@ func (p *provisioningExecutor) selfRegistrableEntityTypes(ctx *providers.NodeCon
 		}
 	}
 	return types, nil
+}
+
+// applyPinnedValue sets the value a verification pin made before the user existed holds. The flow proved that
+// value, so a different one it collected since does not replace it.
+func applyPinnedValue(ctx *providers.NodeContext, schemaAttrs []entitytype.AttributeInfo,
+	identifyingAttrs map[string]interface{}) error {
+	proof, err := pinnedVerificationEvidence(ctx)
+	if err != nil || proof == nil || proof.Pin.Subject != "" {
+		return err
+	}
+
+	pin := proof.Pin
+	contactType := entitytypemodel.ContactTypeForChannel(pin.Channel)
+	for _, a := range schemaAttrs {
+		if a.Credential || a.Attribute != pin.Attribute {
+			continue
+		}
+		collected := systemutils.ConvertInterfaceValueToString(identifyingAttrs[a.Attribute])
+		if entitytypemodel.CanonicalContactValue(contactType, collected) != pin.Value {
+			identifyingAttrs[a.Attribute] = convertToSchemaType(pin.Value, a.Type)
+		}
+	}
+	return nil
 }

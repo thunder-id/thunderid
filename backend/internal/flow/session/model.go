@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/thunder-id/thunderid/internal/system/eventlistener"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // State represents the lifecycle state of a session.
@@ -20,6 +21,16 @@ const (
 	StateRevoked State = "REVOKED"
 	// StateEnded indicates the session ended (e.g. logout) and must not be resumed.
 	StateEnded State = "ENDED"
+)
+
+// Type is the kind of session.
+type Type string
+
+const (
+	// TypeSSO is a session a Session node established, which later logins can reuse.
+	TypeSSO Type = "SSO"
+	// TypeDirect is the session of one login through a flow without a Session node.
+	TypeDirect Type = "DIRECT"
 )
 
 // TerminationReason names the path that ended a session.
@@ -59,6 +70,8 @@ type Session struct {
 	// session receives the same value. Unlike HandleID it is not a credential. It is a UUIDv7, so it
 	// carries the session's creation time, and changing what is published would need a migration.
 	SessionID string
+	// Type is the kind of session. A direct session has no flow execution or handle.
+	Type Type
 	// SubjectID is the authenticated subject (user) the session belongs to.
 	SubjectID string
 	// FlowID is the flow this session is grouped under (the SSO group key).
@@ -96,6 +109,21 @@ type Session struct {
 	Version int
 }
 
+// idleSlide is one refresh of a session's idle deadline: where it moves the deadline, and the bounds a
+// session must be within to be moved.
+type idleSlide struct {
+	// now is the session's new last-active time.
+	now time.Time
+	// idleExpiresAt is the session's new idle deadline.
+	idleExpiresAt time.Time
+	// refreshedBefore throttles writes: a session refreshed after it is not moved.
+	refreshedBefore time.Time
+	// activeAfter and createdAfter keep the idle and absolute timeouts in effect now: a session last
+	// active, or created, before them has ended.
+	activeAfter  time.Time
+	createdAfter time.Time
+}
+
 // Participant records an application that has used (joined) an SSO session. A session is shared
 // across the applications that authenticate through its flow; each such application is tracked so
 // the session's audience is known — the basis for logout and subject-scoped revocation. An application
@@ -107,10 +135,8 @@ type Participant struct {
 	AppID string
 	// OUID is the organization unit the application signed in under, or empty when the sign-in had none.
 	OUID string
-	// TokenFamilyID is the token family id (tfid) minted for this application's most recent grant in
-	// the session. It links the session to the grant's tokens so logout can revoke the whole family.
-	// Refreshed on each re-authorization (latest grant wins); empty for participants recorded before
-	// tfid was introduced.
+	// TokenFamilyID is the token family id (tfid) the application's grants in the session share under this
+	// organization unit, until it is revoked. Empty for participants recorded before tfid was introduced.
 	TokenFamilyID string
 	// FirstJoinedAt is when the application first joined the session (write-once).
 	FirstJoinedAt time.Time
@@ -118,8 +144,8 @@ type Participant struct {
 	LastActiveAt time.Time
 }
 
-// SSOInputs are the transient, request-scoped inputs the SSO-Check and Session nodes need to resolve
-// or establish a session: the inbound handle for the current flow and the flow's identity/version
+// SSOInputs are the transient, request-scoped inputs the SSO-Check, Session and auth assert nodes need to
+// resolve or record a session: the inbound handle for the current flow and the flow's identity/version
 // (the SSO group key). They are carried on the Go context.Context rather than a NodeContext field, so
 // they never persist with the flow context and never enter the reusable engine's public contract.
 type SSOInputs struct {
@@ -165,4 +191,61 @@ type ClientInfo struct {
 	IP string
 	// UserAgent is the client's User-Agent header.
 	UserAgent string
+}
+
+// sessionDetail is a live session together with the applications that have joined it.
+type sessionDetail struct {
+	Session
+	Participants []Participant
+}
+
+// sessionPage is one page of a session listing, with the total number of live sessions that match.
+type sessionPage struct {
+	Sessions     []sessionDetail
+	TotalResults int
+}
+
+// participantResponse is an application that has joined a session under an organization unit. OUID is
+// omitted when the sign-in had none, and AppName and AppLogoURL when they can't be resolved.
+type participantResponse struct {
+	AppID         string `json:"appId"`
+	OUID          string `json:"ouId,omitempty"`
+	AppName       string `json:"appName,omitempty"`
+	AppLogoURL    string `json:"appLogoUrl,omitempty"`
+	FirstJoinedAt string `json:"firstJoinedAt"`
+	LastActiveAt  string `json:"lastActiveAt"`
+}
+
+// sessionResponse is the API view of a live session. It never carries the session handle, the
+// checkpoint contexts or the token family ids. UserDisplayName is omitted when it can't be resolved, and
+// IsCurrent is set only on the caller's own sessions.
+type sessionResponse struct {
+	ID                string                `json:"id"`
+	UserID            string                `json:"userId"`
+	UserDisplayName   string                `json:"userDisplayName,omitempty"`
+	UserAgent         string                `json:"userAgent,omitempty"`
+	CreationIP        string                `json:"creationIp,omitempty"`
+	LastActiveIP      string                `json:"lastActiveIp,omitempty"`
+	AuthenticatedAt   string                `json:"authenticatedAt"`
+	CreatedAt         string                `json:"createdAt"`
+	LastActiveAt      string                `json:"lastActiveAt"`
+	IdleExpiresAt     string                `json:"idleExpiresAt,omitempty"`
+	AbsoluteExpiresAt string                `json:"absoluteExpiresAt,omitempty"`
+	IsCurrent         *bool                 `json:"isCurrent,omitempty"`
+	Participants      []participantResponse `json:"participants"`
+}
+
+// sessionListResponse is the paginated body of GET /sessions and GET /users/me/sessions.
+type sessionListResponse struct {
+	TotalResults int               `json:"totalResults"`
+	StartIndex   int               `json:"startIndex"`
+	Count        int               `json:"count"`
+	Sessions     []sessionResponse `json:"sessions"`
+	Links        []sysutils.Link   `json:"links"`
+}
+
+// appDisplay is the name and logo of a participating application, shown with the session.
+type appDisplay struct {
+	name    string
+	logoURL string
 }

@@ -16,6 +16,7 @@ const (
 	resourceSecret          security.ResourceType = "secret"
 	resourceGatewayVariable security.ResourceType = "gatewayvariable"
 	resourceGatewaySecret   security.ResourceType = "gatewaysecret"
+	resourceSession         security.ResourceType = "session"
 )
 
 // requiredActions maps each catalog resource and action to the system actions a caller needs, all of
@@ -188,5 +189,8 @@ var requiredRoutes = map[security.ResourceType]map[string][]string{
 		"create": {"POST /gateways/*/secrets/**"},
 		"update": {"PUT /gateways/*/secrets/**"},
 		"delete": {"DELETE /gateways/*/secrets/**"},
+	},
+	resourceSession: {
+		"view": {"GET /sessions"},
 	},
 }

@@ -30,6 +30,10 @@ interface ContactsSectionProps {
    * Singular noun used to refer to the entity in user-visible copy (default: 'application').
    */
   entityLabel?: string;
+  /**
+   * Whether the application can't be edited here
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -48,6 +52,7 @@ export default function ContactsSection({
   editedApp,
   onFieldChange,
   entityLabel = 'application',
+  readOnly = false,
 }: ContactsSectionProps) {
   const {t} = useTranslation();
 
@@ -89,7 +94,7 @@ export default function ContactsSection({
         onInputChange={() => {
           if (inputError) setInputError('');
         }}
-        disabled={application.isReadOnly}
+        disabled={readOnly}
         renderTags={(value, getTagProps) =>
           value.map((option, index) => <Chip label={option} {...getTagProps({index})} key={option} />)
         }

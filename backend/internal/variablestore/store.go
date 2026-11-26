@@ -5,8 +5,9 @@ package variablestore
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -28,6 +29,9 @@ type variableStoreInterface interface {
 	UpsertVariable(ctx context.Context, v Variable) (created bool, err error)
 	// DeleteVariable removes a variable and reports whether one was stored under the name.
 	DeleteVariable(ctx context.Context, name string) (bool, error)
+	// DeleteVariables removes the named variables and returns the names of those it removed. A
+	// positive unchangedFor removes only those last set longer ago than it, by the database's clock.
+	DeleteVariables(ctx context.Context, names []string, unchangedFor time.Duration) ([]string, error)
 }
 
 // secretStoreInterface is the secrets half of persistence.
@@ -44,6 +48,9 @@ type secretStoreInterface interface {
 	UpsertSecret(ctx context.Context, name, encrypted, description string) (created bool, err error)
 	// DeleteSecret removes a secret and reports whether one was stored under the name.
 	DeleteSecret(ctx context.Context, name string) (bool, error)
+	// DeleteSecrets removes the named secrets and returns the names of those it removed. A positive
+	// unchangedFor removes only those last set longer ago than it, by the database's clock.
+	DeleteSecrets(ctx context.Context, names []string, unchangedFor time.Duration) ([]string, error)
 }
 
 // storeInterface is both halves, which is what the service holds.
@@ -241,97 +248,167 @@ func (s *store) DeleteSecret(ctx context.Context, name string) (bool, error) {
 	return deleted > 0, nil
 }
 
+// DeleteVariables removes the named variables in one statement and returns those it removed.
+func (s *store) DeleteVariables(ctx context.Context, names []string, unchangedFor time.Duration) ([]string, error) {
+	return s.deleteMany(ctx, "variables", queryDeleteVariables, names, unchangedFor)
+}
+
+// DeleteSecrets removes the named secrets in one statement and returns those it removed.
+func (s *store) DeleteSecrets(ctx context.Context, names []string, unchangedFor time.Duration) ([]string, error) {
+	return s.deleteMany(ctx, "secrets", queryDeleteSecrets, names, unchangedFor)
+}
+
+// deleteMany runs a delete of many names, given as one JSON array parameter the database expands, and
+// reads back the names the statement removed. The age a value must have is checked by the same
+// statement that removes it, against the database's own clock, so a value last set more recently than
+// that when the statement runs is never removed.
+func (s *store) deleteMany(ctx context.Context, collection string, query dbmodel.DBQuery,
+	names []string, unchangedFor time.Duration) ([]string, error) {
+	if len(names) == 0 {
+		return []string{}, nil
+	}
+	dbClient, err := s.client()
+	if err != nil {
+		return nil, err
+	}
+	encoded, err := json.Marshal(names)
+	if err != nil {
+		return nil, fmt.Errorf("failed to delete %s: %w", collection, err)
+	}
+	rows, err := dbClient.QueryContext(ctx, query, string(encoded), s.scope(ctx), ageBound(unchangedFor))
+	if err != nil {
+		return nil, fmt.Errorf("failed to delete %s: %w", collection, err)
+	}
+	deleted := make([]string, 0, len(rows))
+	for _, row := range rows {
+		deleted = append(deleted, rowString(row, "name"))
+	}
+	return deleted, nil
+}
+
+// ageBound is the age parameter of a delete of many names: NULL for none, which removes a value
+// whenever it was set, or the age in whole seconds, rounded up so a value is never removed younger.
+func ageBound(unchangedFor time.Duration) interface{} {
+	if unchangedFor <= 0 {
+		return nil
+	}
+	return int64((unchangedFor + time.Second - 1) / time.Second)
+}
+
 // ListVariables returns one page of variables and the total the query matched.
 func (s *store) ListVariables(ctx context.Context, q listQuery) ([]Variable, int, error) {
-	return listPage(ctx, s, queryListVariables, q, variableFromRow, func(v Variable) string { return v.Name })
+	return listPage(ctx, s, "variables", queryCountVariables, queryListVariables, q, variableFromRow)
 }
 
 // ListSecrets returns one page of secret names and the total the query matched. No value is read.
 func (s *store) ListSecrets(ctx context.Context, q listQuery) ([]Secret, int, error) {
-	return listPage(ctx, s, queryListSecrets, q, secretFromRow, func(sec Secret) string { return sec.Name })
+	return listPage(ctx, s, "secrets", queryCountSecrets, queryListSecrets, q, secretFromRow)
 }
 
-// listPage reads a collection, narrows it to what the query asked for, and returns one page of it
-// with the total that matched.
+// listPage counts what the query matches and reads one page of it, both in the database.
 //
-// The page is taken after filtering rather than in SQL, because a names= lookup and a prefix match
-// are not expressible as one indexable predicate without building the statement by string. The store
-// is bounded by what a deployment can hold, so reading the collection and slicing it is honest here;
-// if that stops being true it becomes a query, not a bigger loop.
+// The narrowing, the order and the page are all in the statements, so a names= lookup or an early
+// page reads the rows it returns rather than the whole collection. The statements are fixed: every
+// optional part of the query is always in them and is switched off by its parameter, so nothing is
+// built from the request. A names= lookup goes in as one JSON array parameter, which the database
+// expands, and a prefix goes in escaped so a name holding a LIKE wildcard matches only itself.
+//
+// The count runs first, so a page past the end is answered without reading the page at all.
 func listPage[T any](
 	ctx context.Context,
 	s *store,
-	query dbmodel.DBQuery,
+	collection string,
+	countQuery dbmodel.DBQuery,
+	pageQuery dbmodel.DBQuery,
 	q listQuery,
 	fromRow func(map[string]interface{}) T,
-	nameOf func(T) string,
 ) ([]T, int, error) {
 	dbClient, err := s.client()
 	if err != nil {
 		return nil, 0, err
 	}
-	rows, err := dbClient.QueryContext(ctx, query, s.scope(ctx))
+	args, err := listArgs(s.scope(ctx), q)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to list %s: %w", collectionName(query), err)
+		return nil, 0, fmt.Errorf("failed to list %s: %w", collection, err)
 	}
 
-	all := make([]T, 0, len(rows))
+	countRows, err := dbClient.QueryContext(ctx, countQuery, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count %s: %w", collection, err)
+	}
+	total := 0
+	if len(countRows) > 0 {
+		total, err = rowInt(countRows[0], "total")
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to count %s: %w", collection, err)
+		}
+	}
+	if total == 0 || q.offset >= total {
+		return []T{}, total, nil
+	}
+
+	rows, err := dbClient.QueryContext(ctx, pageQuery, append(args, q.limit, q.offset)...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to list %s: %w", collection, err)
+	}
+	page := make([]T, 0, len(rows))
 	for _, row := range rows {
-		item := fromRow(row)
-		if matches(nameOf(item), q) {
-			all = append(all, item)
-		}
+		page = append(page, fromRow(row))
 	}
-	sort.Slice(all, func(i, j int) bool { return nameOf(all[i]) < nameOf(all[j]) })
-
-	total := len(all)
-	start, end := pageBounds(total, q)
-	return all[start:end], total, nil
+	return page, total, nil
 }
 
-// collectionName names the collection a list query reads, for an error message.
-func collectionName(query dbmodel.DBQuery) string {
-	if query.ID == queryListSecrets.ID {
-		return "secrets"
-	}
-	return "variables"
-}
-
-// matches reports whether a name survives the query's narrowing.
-func matches(name string, q listQuery) bool {
+// listArgs are the parameters the list and count statements share, in their order. An absent part
+// of the query is passed as the value that switches its predicate off: NULL for names and an empty string for the
+// exact name and the prefix.
+func listArgs(deploymentID string, q listQuery) ([]interface{}, error) {
+	var names interface{}
 	if len(q.names) > 0 {
-		found := false
-		for _, want := range q.names {
-			if want == name {
-				found = true
-				break
-			}
+		encoded, err := json.Marshal(q.names)
+		if err != nil {
+			return nil, err
 		}
-		if !found {
-			return false
-		}
+		names = string(encoded)
 	}
-	if q.nameEquals != "" && name != q.nameEquals {
-		return false
+	pattern := ""
+	if q.namePrefix != "" {
+		pattern = likePrefix(q.namePrefix)
 	}
-	if q.namePrefix != "" && !strings.HasPrefix(name, q.namePrefix) {
-		return false
-	}
-	return true
+	return []interface{}{deploymentID, names, q.nameEquals, q.namePrefix, pattern}, nil
 }
 
-// pageBounds clamps offset and limit to what the slice actually holds, so an offset past the end is
-// an empty page rather than a panic.
-func pageBounds(total int, q listQuery) (int, int) {
-	start := q.offset
-	if start > total {
-		start = total
+// likeEscaper escapes what LIKE would read as other than itself. The backslash goes first, or it
+// would escape the escapes; the statements declare it with an ESCAPE clause.
+var likeEscaper = strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`)
+
+// likePrefix turns a prefix into a LIKE pattern matching any name that starts with it, and only
+// those: a name may hold an underscore, which unescaped would match any character.
+func likePrefix(prefix string) string {
+	return likeEscaper.Replace(prefix) + "%"
+}
+
+// rowInt reads a count column, which the drivers hand back as different integer types.
+func rowInt(row map[string]interface{}, column string) (int, error) {
+	value, ok := row[column]
+	if !ok {
+		value = row[strings.ToUpper(column)]
 	}
-	end := start + q.limit
-	if end > total {
-		end = total
+	switch typed := value.(type) {
+	case int64:
+		return int(typed), nil
+	case int:
+		return typed, nil
+	case int32:
+		return int(typed), nil
+	case float64:
+		return int(typed), nil
+	case []byte:
+		return strconv.Atoi(string(typed))
+	case string:
+		return strconv.Atoi(typed)
+	default:
+		return 0, fmt.Errorf("unexpected %s value %v", column, value)
 	}
-	return start, end
 }
 
 func variableFromRow(row map[string]interface{}) Variable {

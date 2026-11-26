@@ -334,7 +334,25 @@ describe('UsersList', () => {
     expect(deleteButtons.length).toBeGreaterThan(0);
   });
 
-  it('hides the edit and delete row actions when the admin may only view users', async () => {
+  it('marks a user shared into the organization unit as read only, with no edit or delete', async () => {
+    mockUseGetUsers.mockReturnValue({
+      data: {...mockUsersData, users: [{...mockUsersData.users[0], isOwnedByOU: false}]},
+      isLoading: false,
+      error: null,
+    });
+
+    render(<UsersList />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('row-user1')).toHaveTextContent('John Doe');
+    });
+
+    expect(screen.queryByRole('button', {name: /delete/i})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name: /edit/i})).not.toBeInTheDocument();
+    expect(screen.getByRole('button', {name: /read only/i})).toBeInTheDocument();
+  });
+
+  it('offers View instead of edit, and no delete, when the admin may only view users', async () => {
     render(
       <CapabilitiesProvider capabilities={viewOnly}>
         <UsersList />
@@ -347,6 +365,7 @@ describe('UsersList', () => {
 
     expect(screen.queryByRole('button', {name: /delete/i})).not.toBeInTheDocument();
     expect(screen.queryByRole('button', {name: /edit/i})).not.toBeInTheDocument();
+    expect(screen.getAllByRole('button', {name: /^view$/i}).length).toBeGreaterThan(0);
   });
 
   it('navigates to view page when row is clicked', async () => {

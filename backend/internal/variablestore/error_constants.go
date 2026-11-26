@@ -172,6 +172,65 @@ var (
 		},
 	}
 
+	// ErrorNamesRequired is returned when a delete of many names gives none, or gives the names
+	// parameter more than once.
+	ErrorNamesRequired = common.ServiceError{
+		Type: common.ClientErrorType,
+		Code: "VAR-1012",
+		Error: common.I18nMessage{
+			Key:          "error.variablestore.names_required",
+			DefaultValue: "Names are required",
+		},
+		ErrorDescription: common.I18nMessage{
+			Key:          "error.variablestore.names_required_description",
+			DefaultValue: "Give names once, as a comma-separated list of 1 to 100 names",
+		},
+	}
+
+	// ErrorUnknownDeleteParameter is returned when a delete of many names carries a parameter other
+	// than names and unchangedFor.
+	ErrorUnknownDeleteParameter = common.ServiceError{
+		Type: common.ClientErrorType,
+		Code: "VAR-1013",
+		Error: common.I18nMessage{
+			Key:          "error.variablestore.unknown_delete_parameter",
+			DefaultValue: "Unknown query parameter",
+		},
+		ErrorDescription: common.I18nMessage{
+			Key:          "error.variablestore.unknown_delete_parameter_description",
+			DefaultValue: "Only names and unchangedFor are accepted",
+		},
+	}
+
+	// ErrorInvalidDeleteQuery is returned when the query of a delete of many names cannot be decoded.
+	ErrorInvalidDeleteQuery = common.ServiceError{
+		Type: common.ClientErrorType,
+		Code: "VAR-1014",
+		Error: common.I18nMessage{
+			Key:          "error.variablestore.invalid_delete_query",
+			DefaultValue: "Invalid query",
+		},
+		ErrorDescription: common.I18nMessage{
+			Key:          "error.variablestore.invalid_delete_query_description",
+			DefaultValue: "The query could not be decoded",
+		},
+	}
+
+	// ErrorInvalidUnchangedFor is returned when unchangedFor is given more than once or is not a
+	// whole number of seconds from 1 to maxUnchangedForSeconds.
+	ErrorInvalidUnchangedFor = common.ServiceError{
+		Type: common.ClientErrorType,
+		Code: "VAR-1015",
+		Error: common.I18nMessage{
+			Key:          "error.variablestore.invalid_unchanged_for",
+			DefaultValue: "Invalid unchangedFor",
+		},
+		ErrorDescription: common.I18nMessage{
+			Key:          "error.variablestore.invalid_unchanged_for_description",
+			DefaultValue: "unchangedFor must be given at most once, as a whole number of seconds from 1 to 3153600000",
+		},
+	}
+
 	// ErrorInternalServerError is returned when the store cannot serve the request.
 	ErrorInternalServerError = common.ServiceError{
 		Type: common.ServerErrorType,

@@ -964,6 +964,26 @@ describe('ApplicationEditPage', () => {
       const lastCallProps = vi.mocked(EditAdvancedSettings).mock.calls.at(-1)?.[0];
       expect(lastCallProps?.allowedGrantTypes).toBeUndefined();
     });
+
+    it('locks the Advanced tab and withholds delete for an application shared into the organization unit', async () => {
+      const user = userEvent.setup();
+      mockUseGetApplication.mockReturnValue({
+        data: {...mockApplication, isOwnedByOU: false},
+        isLoading: false,
+        isError: false,
+        error: null,
+      } as UseQueryResult<Application>);
+      renderComponent();
+
+      await user.click(screen.getByRole('tab', {name: /advanced/i}));
+      await waitFor(() => {
+        expect(screen.getByTestId('edit-advanced-settings')).toBeInTheDocument();
+      });
+
+      const lastCallProps = vi.mocked(EditAdvancedSettings).mock.calls.at(-1)?.[0];
+      expect(lastCallProps?.readOnly).toBe(true);
+      expect(lastCallProps?.canDelete).toBe(false);
+    });
   });
 
   describe('Inline Editing', () => {
@@ -1250,23 +1270,23 @@ describe('ApplicationEditPage', () => {
       });
     });
 
-    it('disables save when the admin may not update applications', async () => {
-      const user = userEvent.setup();
+    it('offers the name and description edits when the admin may update applications', () => {
+      renderComponent();
+
+      expect(screen.getByRole('button', {name: 'Edit application name'})).toBeInTheDocument();
+      expect(screen.getByRole('button', {name: 'Edit description'})).toBeInTheDocument();
+    });
+
+    it('offers no name edit when the admin may not update applications', () => {
       render(
         <CapabilitiesProvider capabilities={viewOnly}>
           <ApplicationEditPage />
         </CapabilitiesProvider>,
       );
 
-      const nameSection = screen.getByText('Test Application').closest('div');
-      await user.click(nameSection!.querySelector('button')!);
-      const nameInput = screen.getByRole('textbox');
-      await user.clear(nameInput);
-      await user.type(nameInput, 'Updated Application{Enter}');
-
-      await waitFor(() => {
-        expect(screen.getByRole('button', {name: /save changes/i})).toBeDisabled();
-      });
+      expect(screen.queryByRole('button', {name: 'Edit application name'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Edit description'})).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: /save changes/i})).not.toBeInTheDocument();
     });
 
     it('disables save with a named issue when authorization_code has no redirect URI', async () => {
@@ -2921,7 +2941,7 @@ describe('ApplicationEditPage', () => {
       await mountSectionTab(user, 'Organization Access', 'organization-access-settings');
 
       expect(vi.mocked(EditOrganizationAccessSettings).mock.calls.at(-1)?.[0]).toEqual(
-        expect.objectContaining({application: m2mApplication, access: mockOrganizationAccess}),
+        expect.objectContaining({application: m2mApplication, readOnly: false, access: mockOrganizationAccess}),
       );
     });
 

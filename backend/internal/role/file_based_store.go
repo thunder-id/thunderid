@@ -851,6 +851,12 @@ func (f *fileBasedStore) GetEntityRoleIDs(
 	return roleIDs, nil
 }
 
+// GetDirectEntityRoleIDs returns nothing for the file-based store: declared assignments are not
+// writable.
+func (f *fileBasedStore) GetDirectEntityRoleIDs(_ context.Context, _, _ string) ([]string, error) {
+	return nil, nil
+}
+
 // IsRoleDeclarative returns true for roles in the file-based store because they are declarative.
 func (f *fileBasedStore) IsRoleDeclarative(ctx context.Context, roleID string) (bool, error) {
 	exists, err := f.IsRoleExist(ctx, roleID)

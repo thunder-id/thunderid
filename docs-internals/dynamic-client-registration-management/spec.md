@@ -1,7 +1,7 @@
 # Dynamic Client Registration Management Specification
 
 - **Status:** Final
-- **Version:** 1.1
+- **Version:** 1.2
 - **Related documents:**
   - Feature issue: [#5150](https://github.com/thunder-id/thunderid/issues/5150)
   - [RFC 7592](https://www.rfc-editor.org/rfc/rfc7592) OAuth 2.0 Dynamic Client Registration Management Protocol
@@ -46,6 +46,8 @@ The driving consumer is what settles this. An API or application portal register
 Every operation follows the same sequence: authorize the caller, then resolve the client named in the request path, then act. Authorizing first means an unauthorized caller cannot learn which client identifiers exist, since every unauthorized request fails the same way whether or not the client is real.
 
 Failure behavior: a caller without the system permission is unauthorized. The response is `401` and carries an RFC 6750 `WWW-Authenticate` challenge. A caller that presented a credential gets a challenge naming an invalid token, so it learns the credential was the problem. A caller that presented no credential gets a bare `Bearer` challenge, since RFC 6750 §3.1 says an unauthenticated request should get no error code. There is no `403` path. A caller either holds the permission that governs every registration or holds nothing, so there is no state in which a caller is authenticated for one registration and refused another.
+
+A token that has been revoked is handled the same way as an expired one, so the request is unauthorized.
 
 The permission is checked per request and nothing about it is bound to a particular client, which is also why deleting a client does not need to invalidate any credential. A deleted client no longer resolves, so every subsequent operation on it reports the client as not found.
 
@@ -188,6 +190,7 @@ This feature adds no configuration keys. The existing dynamic client registratio
 - **AC4.3:** Given a caller authenticated without the system permission, when it reaches the client configuration endpoint, then it is rejected with `401`, not `403`.
 - **AC4.4:** Given a rejected request at the client configuration endpoint, when the response is inspected, then it carries a `WWW-Authenticate` challenge consistent with Bearer token usage.
 - **AC4.5:** Given a successful registration, when the response is inspected, then it contains neither a `registration_access_token` nor a `registration_client_uri`.
+- **AC4.6:** Given a token that has been revoked, when it reaches the client configuration endpoint, then it is rejected with `401` and the registration is neither disclosed nor modified.
 
 ## Change log
 
@@ -195,3 +198,4 @@ This feature adds no configuration keys. The existing dynamic client registratio
 |---|---|---|
 | 1.0 | 2026-09-21 | Initial specification. |
 | 1.1 | 2026-11-07 | A request with no credential gets a bare `Bearer` challenge. |
+| 1.2 | 2026-11-21 | A revoked token is handled like an expired one. |

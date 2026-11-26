@@ -135,6 +135,14 @@ func (s *CompositeStoreTestSuite) TestLockEntity_Delegates() {
 	s.Equal("u1", e.ID)
 }
 
+func (s *CompositeStoreTestSuite) TestLockEntityWithCredentials_Delegates() {
+	locked := &entityWithCredentials{Entity: &providers.Entity{ID: "u1"}}
+	s.dbStore.On("LockEntityWithCredentials", mock.Anything, "u1").Return(locked, nil)
+	got, err := s.store.LockEntityWithCredentials(s.ctx, "u1")
+	s.NoError(err)
+	s.Same(locked, got)
+}
+
 func (s *CompositeStoreTestSuite) TestUpdateCredentials_Delegates() {
 	s.dbStore.On("UpdateCredentials", mock.Anything, "u1", mock.Anything).Return(nil)
 	s.NoError(s.store.UpdateCredentials(s.ctx, "u1", nil))

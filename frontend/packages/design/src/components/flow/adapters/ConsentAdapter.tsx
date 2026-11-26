@@ -3,32 +3,64 @@
 
 import {
   CONSENT_DETAIL_DISPLAY_LIMITS,
+  CONSENT_ONE_TIME_KEY,
+  CONSENT_VALIDITY_PERIOD_KEY,
   Consent,
   ConsentAuthorizationDetail,
   ConsentCheckboxList,
   formatConsentDetailValue,
   isConsentDetailStructured,
   isConsentDetailTextClamped,
+  getConsentDetailDescriptionId,
   getConsentOptionalKey,
+  getConsentValidityChoices,
+  getConsentValidityCustomMax,
+  getConsentValidityCustomPeriod,
+  getConsentValidityCustomUnits,
+  getConsentValidityOptionText,
+  getConsentValidityUnitLabel,
+  splitConsentValidityPeriod,
   type ConsentDetailRow,
   type ConsentPurpose,
   type ConsentRenderProps,
+  type ConsentValidityChoices,
+  type ConsentValidityCustomPeriod,
+  type ConsentValidityOption,
+  type ConsentValidityOptionText,
+  type ConsentValidityTextKey,
+  type ConsentValidityUnit,
   useConsentDetailField,
 } from '@thunderid/react';
 import {cn} from '@thunderid/utils';
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
+  Checkbox,
   Chip,
   Divider,
+  FormControl,
   FormControlLabel,
+  FormHelperText,
+  FormLabel,
+  MenuItem,
+  Select,
   Switch,
   TextField,
   TreeView,
   Typography,
 } from '@wso2/oxygen-ui';
-import {useState, type ChangeEvent, type JSX, type KeyboardEvent, type ReactNode} from 'react';
+import {
+  useEffect,
+  useState,
+  type ChangeEvent,
+  type FocusEvent,
+  type JSX,
+  type KeyboardEvent,
+  type ReactNode,
+  type SyntheticEvent,
+} from 'react';
 import {useTranslation} from 'react-i18next';
 import getAuthorizationDetailRowLayout from '../../../utils/getAuthorizationDetailRowLayout';
 
@@ -113,6 +145,10 @@ interface ConsentAdapterProps {
   redirectUriHost?: string;
   /** Whether the redirect URI host is a loopback host, so the client runs on the user's device. */
   redirectUriLoopback?: boolean;
+  /** Whether the user can choose how long their consent lasts. */
+  promptValidityPeriod?: boolean;
+  /** The longest validity period, in seconds, the user can choose. Absent when there is no limit. */
+  maxValidityPeriod?: number;
 }
 
 interface ClientHostsProps {
@@ -415,7 +451,11 @@ export function AuthorizationDetailValue({
         slotProps={{
           htmlInput: {
             'aria-label': label,
-            ...(field.kind === 'number' && {step: 'any'}),
+            // The description, and the error once there is one, describe the input. Passing the attribute
+            // replaces the one the text field sets for its error, so both are named here.
+            'aria-describedby':
+              [field.descriptionId, field.error && `${inputId}-helper-text`].filter(Boolean).join(' ') || undefined,
+            ...(field.kind === 'number' && {step: field.step ?? 'any'}),
             max: field.max,
             min: field.min,
           },
@@ -427,13 +467,13 @@ export function AuthorizationDetailValue({
 
   if (field.kind === 'removeItems') {
     return (
-      <Box role="group" aria-label={label} sx={groupSx}>
+      <Box role="group" aria-label={label} aria-describedby={field.descriptionId} sx={groupSx}>
         {collapse(
           field.items.map(({selected, toggleable, value}, index) => {
             const toggle = toggleable ? (): void => field.handleToggle(value) : undefined;
-            // The whole chip toggles the item: a kept item is removed, except the last one, since to grant
-            // none of them the user declines the detail instead. A removed item stays visible so the user can
-            // add it back.
+            // The whole chip toggles the item: a kept item is removed while more than the fewest the field
+            // must keep remain, and never the last one, since to grant none of them the user declines the
+            // detail instead. A removed item stays visible so the user can add it back.
             return (
               <Chip
                 key={String(value)}
@@ -484,9 +524,9 @@ export function AuthorizationDetailValue({
     // The items shown cannot be removed, since removing one would grant more. Items the user adds can be
     // taken out again before approving, and the values the type allows are offered to add.
     return (
-      <Box role="group" aria-label={label} sx={groupSx}>
+      <Box role="group" aria-label={label} aria-describedby={field.descriptionId} sx={groupSx}>
         {collapse(
-          field.items.map(({origin, value}, index) => {
+          field.items.map(({origin, toggleable, value}, index) => {
             if (origin === 'shown') {
               return (
                 <Chip
@@ -525,6 +565,7 @@ export function AuthorizationDetailValue({
                 />
               );
             }
+            // An offered value cannot be added once the list holds the most items its type allows.
             return (
               <Chip
                 key={`offered-${String(value)}`}
@@ -539,7 +580,8 @@ export function AuthorizationDetailValue({
                   {item: String(value)},
                   '{{item}}, add',
                 )}
-                onClick={toggle}
+                disabled={!toggleable}
+                onClick={toggleable ? toggle : undefined}
                 sx={{...CHIP_SX, '&&': {borderStyle: 'dashed', borderColor: 'divider', color: 'text.secondary'}}}
               />
             );
@@ -562,6 +604,7 @@ export function AuthorizationDetailValue({
             slotProps={{
               htmlInput: {
                 'aria-label': detailText('consent.authorization_details.new_item', {label}, '{{label}}, add'),
+                'aria-describedby': field.descriptionId,
               },
             }}
             sx={{maxWidth: 140}}
@@ -660,9 +703,27 @@ function AuthorizationDetailCard({
                 const layout = getAuthorizationDetailRowLayout(row);
                 return (
                   <Box key={row.path ?? rowIdx} sx={layout.row}>
-                    <Typography className={cn('Text--body2')} variant="body2" color="text.secondary" sx={layout.label}>
-                      {row.label || row.path}
-                    </Typography>
+                    <Box sx={{...layout.label, display: 'flex', flexDirection: 'column'}}>
+                      <Typography
+                        className={cn('Text--body2')}
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{lineHeight: 'inherit'}}
+                      >
+                        {row.label || row.path}
+                      </Typography>
+                      {row.description && (
+                        <Typography
+                          id={getConsentDetailDescriptionId(purposeId, detailId, row.path)}
+                          className={cn('Text--caption', 'Flow--consent-detail-description')}
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{lineHeight: 1.4}}
+                        >
+                          {row.description}
+                        </Typography>
+                      )}
+                    </Box>
                     <Box sx={layout.value}>
                       <AuthorizationDetailValue
                         align={layout.stacked ? 'start' : 'end'}
@@ -777,6 +838,214 @@ function PermissionBranch({
   );
 }
 
+interface ValidityPeriodInputProps {
+  value: string;
+  maxValidityPeriod?: number;
+  onChange: (value: string) => void;
+  onOneTimeChange: (oneTime: boolean) => void;
+}
+
+const VALIDITY_TEXT: Record<ConsentValidityTextKey, [key: string, fallback: string]> = {
+  custom_label: ['consent:validity.customLabel', 'Custom validity'],
+  custom_unit_label: ['consent:validity.customUnitLabel', 'Unit'],
+  hint_custom: ['consent:validity.hintCustom', 'Enter a whole number.'],
+  hint_custom_max: ['consent:validity.hintCustomMax', 'Enter a whole number, up to {{max}}.'],
+  hint_expires: ['consent:validity.hintExpires', 'Your consent expires in {{duration}}.'],
+  hint_never: [
+    'consent:validity.hintNever',
+    'You will not be asked again unless this application asks for more access.',
+  ],
+  hint_once: ['consent:validity.hintOnce', 'You will be asked again the next time you sign in.'],
+  option_custom: ['consent:validity.optionCustom', 'Custom'],
+  option_never: ['consent:validity.optionNever', 'No expiry'],
+};
+
+const DIGITS_ONLY = /^\d*$/;
+
+// Returns the text of the validity field after an edit, or undefined to keep the current text. The field shows a
+// period name such as "1 hour" or the digits of a typed number of seconds. Over a name, deleting clears the field,
+// typing a digit starts a number, and anything else is refused.
+function editValidityText(shown: string, next: string, event: SyntheticEvent): string | undefined {
+  if (DIGITS_ONLY.test(shown)) return next.replace(/\D/g, '');
+  if (DIGITS_ONLY.test(next)) return next;
+
+  const {data, inputType} = event.nativeEvent as Partial<InputEvent>;
+  if (inputType?.startsWith('delete')) return '';
+  if (typeof data === 'string' && data !== '' && DIGITS_ONLY.test(data)) return data;
+
+  return undefined;
+}
+
+// Lets the user decide whether the decision is remembered. Ticked, the user picks a period that fits the limit or
+// types a number of seconds. Unticked, the user is asked again at the next sign-in. The shortest period is put in the
+// form when the field starts, so what the user sees is what is submitted. Nothing is shown when there is no choice.
+function ValidityPeriodInput({
+  value,
+  maxValidityPeriod = undefined,
+  onChange,
+  onOneTimeChange,
+}: ValidityPeriodInputProps): JSX.Element | null {
+  const {t, i18n} = useTranslation();
+  const [remembering, setRemembering] = useState<boolean>(
+    () => getConsentValidityChoices(maxValidityPeriod, value).remember,
+  );
+  const {initial, once, remember, remembered, selected}: ConsentValidityChoices = getConsentValidityChoices(
+    maxValidityPeriod,
+    value,
+    remembering,
+  );
+  const translate = (key: ConsentValidityTextKey, params?: Record<string, string>): string =>
+    t(VALIDITY_TEXT[key][0], VALIDITY_TEXT[key][1], params);
+  const periodLabel: string = t('consent:validity.label', 'Ask me again');
+  const textOf = (option: ConsentValidityOption): ConsentValidityOptionText =>
+    getConsentValidityOptionText(option, translate, i18n.language);
+  const units: ConsentValidityUnit[] = getConsentValidityCustomUnits(maxValidityPeriod);
+  const prefilled: {amount: string; unit: ConsentValidityUnit} | undefined =
+    !selected && Number.isFinite(Number(value)) ? splitConsentValidityPeriod(Number(value), units) : undefined;
+  const [text, setText] = useState<string>(() => (selected ? textOf(selected).label : (prefilled?.amount ?? value)));
+  const [unitOpen, setUnitOpen] = useState<boolean>(false);
+  const [unit, setUnit] = useState<ConsentValidityUnit>(
+    () => prefilled?.unit ?? (units.includes('minute') ? 'minute' : 'second'),
+  );
+
+  useEffect(() => {
+    if (once && value === '') onChange(initial.value);
+  }, [initial.value, once, onChange, value]);
+
+  if (!once) return null;
+
+  const typing: boolean = remember && DIGITS_ONLY.test(text);
+  const maxAmount: number | undefined = getConsentValidityCustomMax(maxValidityPeriod, unit);
+  let hintText: string = textOf(selected ?? once).hint;
+  if (typing) {
+    hintText =
+      maxAmount === undefined ? translate('hint_custom') : translate('hint_custom_max', {max: String(maxAmount)});
+  }
+
+  // When focus leaves the field and the unit select, a typed number that is one of the periods shows as its name.
+  const settleText = (event: FocusEvent<HTMLElement>): void => {
+    if (unitOpen || event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+    if (selected) setText(textOf(selected).label);
+  };
+
+  const applyCustom = (digits: string, nextUnit: ConsentValidityUnit): void => {
+    const period: ConsentValidityCustomPeriod = getConsentValidityCustomPeriod(digits, maxValidityPeriod, nextUnit);
+    setUnit(nextUnit);
+    setText(period.amount === '' ? digits : period.amount);
+    onChange(period.seconds === '' ? initial.value : period.seconds);
+  };
+  const hint: ReactNode = (
+    <FormHelperText id="consent-validity-period-hint" sx={{m: 0}}>
+      {hintText}
+    </FormHelperText>
+  );
+
+  return (
+    <Box className={cn('Flow--consentValidity')} sx={{display: 'flex', flexDirection: 'column', gap: 2}}>
+      <FormControlLabel
+        control={
+          <Checkbox
+            size="small"
+            id="consent-validity-remember"
+            checked={remember}
+            onChange={(e) => {
+              setRemembering(e.target.checked);
+              setText(textOf(initial).label);
+              onOneTimeChange(!e.target.checked);
+              onChange(e.target.checked ? initial.value : once.value);
+            }}
+          />
+        }
+        label={t('consent:validity.remember', 'Remember my decision')}
+      />
+      {remember ? (
+        <FormControl fullWidth className={cn('FormControl--root')} sx={{gap: 1.5}}>
+          <Box sx={{display: 'flex', alignItems: 'flex-start', gap: 1.5}} onBlur={settleText}>
+            <Box sx={{flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column'}}>
+              <FormLabel htmlFor="consent-validity-period" className={cn('Label--root')}>
+                {periodLabel}
+              </FormLabel>
+              <Autocomplete<ConsentValidityOption, false, true, true>
+                freeSolo
+                forcePopupIcon
+                disableClearable
+                selectOnFocus
+                fullWidth
+                size="small"
+                className={cn('Autocomplete--root')}
+                id="consent-validity-period"
+                options={remembered}
+                filterOptions={(options: ConsentValidityOption[]) => options}
+                value={selected ?? value}
+                inputValue={text}
+                getOptionLabel={(option: ConsentValidityOption | string) =>
+                  typeof option === 'string' ? option : textOf(option).label
+                }
+                isOptionEqualToValue={(option: ConsentValidityOption, current: ConsentValidityOption) =>
+                  option.id === current.id
+                }
+                onInputChange={(event, next: string, reason) => {
+                  if (reason !== 'input') return;
+                  const digits: string | undefined = editValidityText(text, next, event);
+                  if (digits === undefined) return;
+                  applyCustom(digits, unit);
+                }}
+                onChange={(_event, picked: ConsentValidityOption | string) => {
+                  if (typeof picked === 'string') return;
+                  setText(textOf(picked).label);
+                  onChange(picked.value);
+                }}
+                renderInput={(params) => (
+                  <TextField
+                    {...params}
+                    size="small"
+                    slotProps={{
+                      htmlInput: {
+                        ...params.inputProps,
+                        'aria-label': periodLabel,
+                        'aria-describedby': 'consent-validity-period-hint',
+                        inputMode: 'numeric',
+                      },
+                    }}
+                  />
+                )}
+              />
+            </Box>
+            {typing && (
+              <Box sx={{display: 'flex', flexDirection: 'column'}}>
+                <FormLabel htmlFor="consent-validity-unit" className={cn('Label--root')}>
+                  {translate('custom_unit_label')}
+                </FormLabel>
+                <Select
+                  size="small"
+                  id="consent-validity-unit"
+                  value={unit}
+                  onOpen={() => setUnitOpen(true)}
+                  onClose={() => setUnitOpen(false)}
+                  onChange={(e) =>
+                    applyCustom(DIGITS_ONLY.test(text) ? text : '', e.target.value as ConsentValidityUnit)
+                  }
+                  SelectDisplayProps={{'aria-label': translate('custom_unit_label')}}
+                  sx={{minWidth: 120}}
+                >
+                  {units.map((option: ConsentValidityUnit) => (
+                    <MenuItem key={option} value={option}>
+                      {getConsentValidityUnitLabel(option, i18n.language)}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </Box>
+            )}
+          </Box>
+          {hint}
+        </FormControl>
+      ) : (
+        hint
+      )}
+    </Box>
+  );
+}
+
 export default function ConsentAdapter({
   consentData = undefined,
   formValues,
@@ -784,6 +1053,8 @@ export default function ConsentAdapter({
   clientIdHost = undefined,
   redirectUriHost = undefined,
   redirectUriLoopback = false,
+  promptValidityPeriod = false,
+  maxValidityPeriod = undefined,
 }: ConsentAdapterProps): JSX.Element | null {
   const {t} = useTranslation();
   if (!consentData) return null;
@@ -1008,6 +1279,14 @@ export default function ConsentAdapter({
               {idx < purposes.length - 1 && <Divider className={cn('Divider--root')} sx={{mt: 2}} />}
             </Box>
           ))}
+          {promptValidityPeriod && (
+            <ValidityPeriodInput
+              value={formValues[CONSENT_VALIDITY_PERIOD_KEY] ?? ''}
+              maxValidityPeriod={maxValidityPeriod}
+              onChange={(value) => onInputChange(CONSENT_VALIDITY_PERIOD_KEY, value)}
+              onOneTimeChange={(oneTime) => onInputChange(CONSENT_ONE_TIME_KEY, String(oneTime))}
+            />
+          )}
         </Box>
       )}
     </Consent>

@@ -20,8 +20,9 @@ type flowTypeValue struct {
 	ExpirySeconds int64  `json:"expirySeconds"`
 }
 
-// FlowConfigAPITestSuite covers the selfFlow entry of the flow server-config section: it takes an
-// expiry, and refuses a negative expiry and a default handle.
+// FlowConfigAPITestSuite covers the selfFlow entry of the flow server-config section, which takes an
+// expiry and refuses a negative expiry and a default handle, and the defaultReturnUrl entry, which
+// must be an absolute URL.
 type FlowConfigAPITestSuite struct {
 	suite.Suite
 	// original is the writable flow layer before the suite, restored before each test and at the end.
@@ -77,7 +78,57 @@ func (suite *FlowConfigAPITestSuite) TestPutInvalidSelfFlowReturns400() {
 	}
 }
 
+func (suite *FlowConfigAPITestSuite) TestPutDefaultReturnURLPersistsAndReadsBack() {
+	status, body := suite.putDefaultReturnURL("https://home.example.com")
+	suite.Require().Equal(http.StatusOK, status, "body: %s", body)
+
+	suite.Equal("https://home.example.com", suite.writableDefaultReturnURL())
+}
+
+// TestPutInvalidDefaultReturnURLReturns400 writes a valid URL first, so a refused write that changed the
+// layer would show.
+func (suite *FlowConfigAPITestSuite) TestPutInvalidDefaultReturnURLReturns400() {
+	for _, value := range []string{"/signin", "home.example.com", "javascript://example.com/%0aalert(1)"} {
+		suite.Run(value, func() {
+			status, body := suite.putDefaultReturnURL("https://before.example.com")
+			suite.Require().Equal(http.StatusOK, status, "precondition: a valid URL is stored: %s", body)
+
+			status, body = suite.putDefaultReturnURL(value)
+
+			suite.Equal(http.StatusBadRequest, status, "body: %s", body)
+			suite.Equal("SCF-1003", suite.errorCode(body))
+			suite.Equal("https://before.example.com", suite.writableDefaultReturnURL(),
+				"a rejected value must not persist")
+		})
+	}
+}
+
 // --- helpers ---
+
+// putDefaultReturnURL writes defaultReturnUrl over the suite's original layer, keeping its other keys.
+func (suite *FlowConfigAPITestSuite) putDefaultReturnURL(value string) (int, []byte) {
+	section := map[string]interface{}{}
+	suite.Require().NoError(json.Unmarshal(suite.original, &section))
+	section["defaultReturnUrl"] = value
+	payload, err := json.Marshal(section)
+	suite.Require().NoError(err)
+
+	status, body, err := testutils.PutWritableServerConfigWithStatus(flowSection, payload)
+	suite.Require().NoError(err)
+	return status, body
+}
+
+// writableDefaultReturnURL reads defaultReturnUrl from the writable flow layer.
+func (suite *FlowConfigAPITestSuite) writableDefaultReturnURL() string {
+	layer, err := testutils.GetWritableServerConfig(flowSection)
+	suite.Require().NoError(err)
+
+	var section struct {
+		DefaultReturnURL string `json:"defaultReturnUrl"`
+	}
+	suite.Require().NoError(json.Unmarshal(layer, &section), "layer: %s", layer)
+	return section.DefaultReturnURL
+}
 
 // putSelfFlow writes value as selfFlow over the suite's original layer, keeping its other keys.
 func (suite *FlowConfigAPITestSuite) putSelfFlow(value flowTypeValue) (int, []byte) {

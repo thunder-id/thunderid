@@ -67,4 +67,26 @@ describe('CredentialResetSection', () => {
       expect(screen.queryByText('Reset Password?')).not.toBeInTheDocument();
     });
   });
+
+  it("offers a credential's reset link in its dialog only", async () => {
+    const onSend = vi.fn();
+    render(
+      <CredentialResetSection
+        fields={[...fields, {fieldName: 'pin', label: 'PIN'}]}
+        onReset={onReset}
+        getErrorMessage={getErrorMessage}
+        getResetLink={(field) => (field.fieldName === 'password' ? {onSend, getErrorMessage} : undefined)}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', {name: 'Reset PIN'}));
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', {name: 'Cancel'}));
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', {name: 'Reset Password'}));
+    expect(screen.getByRole('radio', {name: 'Email the user a link to set a new password'})).toBeEnabled();
+  });
 });

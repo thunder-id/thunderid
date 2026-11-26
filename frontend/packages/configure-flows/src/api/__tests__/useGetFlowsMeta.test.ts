@@ -3,7 +3,7 @@
 
 import {renderHook} from '@testing-library/react';
 import type {TFunction} from 'i18next';
-import {describe, it, expect, vi} from 'vitest';
+import {describe, it, expect} from 'vitest';
 import actions from '../../data/actions.json';
 import elements from '../../data/elements.json';
 import steps from '../../data/steps.json';
@@ -16,25 +16,6 @@ import {transformReactFlow, validateFlowGraph} from '../../utils/reactFlowTransf
 import {computeValidationNotifications} from '../../validation/computeValidationNotifications';
 import {COMMON_GRAPH_VALIDATION_RULES, VALIDATION_RULES} from '../../validation/validation-rules';
 import useGetFlowsMeta from '../useGetFlowsMeta';
-
-const TEST_PRODUCT_NAME = 'TestProduct';
-
-// Mock useConfig to avoid ConfigProvider requirement.
-vi.mock('@thunderid/contexts', async (importOriginal) => {
-  // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
-  const actual = (await importOriginal()) as Record<string, unknown>;
-
-  return {
-    ...actual,
-    useConfig: () => ({
-      config: {
-        brand: {
-          product_name: TEST_PRODUCT_NAME,
-        },
-      },
-    }),
-  };
-});
 
 describe('useGetFlowsMeta', () => {
   describe('Return Structure', () => {
@@ -64,15 +45,6 @@ describe('useGetFlowsMeta', () => {
       const {result} = renderHook(() => useGetFlowsMeta());
 
       expect(result.current.data.templates).toHaveLength((rawTemplates as FlowTemplate[]).length);
-    });
-
-    it('should substitute {{productName}} placeholders in templates with the configured product name', () => {
-      const {result} = renderHook(() => useGetFlowsMeta());
-
-      const serialised = JSON.stringify(result.current.data.templates);
-
-      expect(serialised).not.toContain('{{productName}}');
-      expect(serialised).toContain(TEST_PRODUCT_NAME);
     });
 
     it('should return actions from JSON file', () => {
@@ -408,7 +380,7 @@ describe('useGetFlowsMeta', () => {
         return result.current.data.templates;
       };
 
-      it('should offer only the administrator attribute verification template', () => {
+      it('should offer the administrator attribute verification and credential reset templates', () => {
         expect(
           adminTemplates().map((template) => [
             template.type,
@@ -422,6 +394,12 @@ describe('useGetFlowsMeta', () => {
             'Administrator Attribute Verification with Email Link',
             'Administrator Attribute Verification with Email Link Flow',
             'admin-attribute-verification-email-link-flow',
+          ],
+          [
+            'ADMIN_USER_CREDENTIAL_RESET_EMAIL_LINK',
+            'Administrator User Credential Reset with Email Link',
+            'Administrator User Credential Reset with Email Link Flow',
+            'admin-user-credential-reset-email-link-flow',
           ],
         ]);
       });
@@ -473,6 +451,71 @@ describe('useGetFlowsMeta', () => {
             canvas.edges,
           ).keys(),
         ]).toEqual([]);
+      });
+
+      describe('credential reset', () => {
+        const resetTemplate = (): FlowTemplate =>
+          adminTemplates().find((template) => template.type === 'ADMIN_USER_CREDENTIAL_RESET_EMAIL_LINK')!;
+
+        it('should check the request, send the link, remove the credential, then let the user set one', () => {
+          const template = resetTemplate();
+
+          expect(walk(template, 'start')).toEqual([
+            'start',
+            'PermissionValidator undefined',
+            'CredentialSetter validate',
+            'InviteExecutor generate',
+            'EmailExecutor send',
+            'CredentialSetter invalidate',
+            'link_sent',
+            'InviteExecutor verify',
+            'CredentialSetter undefined',
+            'IdentityGovernanceExecutor unlock',
+            'reset_complete',
+          ]);
+          expect(node(template, 'permission_validator')?.properties).toEqual({
+            requiredScopes: ['system:user:update', 'org:user:update'],
+          });
+          expect(node(template, 'validate_reset')?.executor?.inputs).toEqual([
+            {identifier: 'credential', type: 'TEXT_INPUT', required: true},
+          ]);
+          // Not best effort: a link that was not sent must stop the flow before the credential is removed.
+          expect(node(template, 'send_link')?.properties).toEqual({emailTemplate: 'admin-user-credential-reset'});
+          // A refused value asks again rather than ending the reset.
+          expect(node(template, 'set_credential')?.onIncomplete).toBe('prompt_new_credential');
+          expect(node(template, 'prompt_new_credential')?.prompts?.[0]?.action?.nextNode).toBe('set_credential');
+        });
+
+        it('should keep every link and need only an email sender through a load and save', () => {
+          const template = resetTemplate();
+          const nodes = structuredClone(template.config.nodes).map((item) =>
+            item.id === 'send_link' ? {...item, properties: {...item.properties, senderId: 'sender-1'}} : item,
+          );
+
+          const canvas = transformFlowToCanvas({nodes} as FlowDefinitionResponse);
+          const saved = transformReactFlow(canvas);
+
+          expect(links(saved.nodes as TemplateNode[])).toEqual(links(template.config.nodes));
+          expect(
+            (saved.nodes as TemplateNode[])
+              .filter((item) => item.executor?.name === 'CredentialSetter')
+              .map((item) => [item.id, item.executor?.['mode']]),
+          ).toEqual([
+            ['validate_reset', 'validate'],
+            ['invalidate_credential', 'invalidate'],
+            ['set_credential', undefined],
+          ]);
+          expect(validateFlowGraph(saved)).toEqual([]);
+          expect([
+            ...computeValidationNotifications(
+              canvas.nodes,
+              VALIDATION_RULES,
+              ((key: string) => key) as TFunction,
+              COMMON_GRAPH_VALIDATION_RULES,
+              canvas.edges,
+            ).keys(),
+          ]).toEqual([]);
+        });
       });
     });
 

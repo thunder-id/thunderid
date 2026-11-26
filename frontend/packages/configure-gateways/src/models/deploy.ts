@@ -303,3 +303,21 @@ export interface StoredValue {
   createdAt?: string;
   updatedAt?: string;
 }
+
+/** What one read of a target's variables or secrets asks for. */
+export interface StoredValueQuery {
+  /** How many to answer with, at most 100. */
+  limit?: number;
+  /** How many to skip. */
+  offset?: number;
+  /** Only the names that start with this. */
+  prefix?: string;
+  /** Only these names, at most 100. A name the target does not hold is simply absent. */
+  names?: string[];
+}
+
+/** One page of a target's variables or secrets, and how many match in all. */
+export interface StoredValuePage {
+  values: StoredValue[];
+  totalResults: number;
+}

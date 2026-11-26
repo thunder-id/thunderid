@@ -59,3 +59,11 @@ func SubjectTypeConstraintsFrom(ctx context.Context) (SubjectTypeConstraints, bo
 	c, ok := ctx.Value(subjectTypeConstraintsContextKey{}).(SubjectTypeConstraints)
 	return c, ok
 }
+
+// SubjectAllowed reports whether the subject type constraints carried on the context accept the entity.
+// A context without constraints, or no entity, accepts.
+func SubjectAllowed(ctx context.Context, entityRef *providers.EntityReference) bool {
+	constraints, ok := SubjectTypeConstraintsFrom(ctx)
+	return !ok || entityRef == nil || constraints.PermitsSubjectID(entityRef.EntityID) &&
+		constraints.PermitsSubject(providers.EntityCategory(entityRef.EntityCategory), entityRef.EntityType)
+}

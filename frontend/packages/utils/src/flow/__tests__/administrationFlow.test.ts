@@ -13,6 +13,7 @@ import {
   resolveAdministrationFlowId,
   resolveAdministrationFlows,
   runAdministrationFlow,
+  startAdminInitiatedFlow,
   type HttpLike,
 } from '../administrationFlow';
 
@@ -214,6 +215,34 @@ describe('runAdministrationFlow', () => {
     await expect(
       runAdministrationFlow(http, SERVER, AdministrationFlowConfigKey.USER_SUSPEND, {}, 'user suspension'),
     ).rejects.toThrow('requires additional input');
+  });
+});
+
+describe('startAdminInitiatedFlow', () => {
+  it('starts the flow by handle, verbosely, and returns a paused response as is', async () => {
+    const paused = {flowStatus: 'INCOMPLETE', data: {additionalData: {emailSent: 'true'}}};
+    const http = {request: vi.fn(() => Promise.resolve({data: paused}))};
+
+    await expect(
+      startAdminInitiatedFlow(http, SERVER, 'default-admin-user-credential-reset-flow', {subject: 'user-1'}),
+    ).resolves.toEqual(paused);
+    expect(http.request).toHaveBeenCalledWith({
+      url: `${SERVER}/flow/execute`,
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      data: {
+        flowType: 'ADMIN_INITIATED',
+        handle: 'default-admin-user-credential-reset-flow',
+        inputs: {subject: 'user-1'},
+        verbose: true,
+      },
+    });
+  });
+
+  it('returns an empty response when the server sends no body', async () => {
+    const http = {request: vi.fn(() => Promise.resolve({}))};
+
+    await expect(startAdminInitiatedFlow(http, SERVER, 'flow', {})).resolves.toEqual({});
   });
 });
 

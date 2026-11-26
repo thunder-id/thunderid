@@ -4,7 +4,11 @@
 // Package common defines shared constants for authentication providers.
 package common
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+)
 
 const (
 	// UserAttributeUserID is the attribute key used to identify the user ID.
@@ -120,4 +124,22 @@ func FindReservedCredentialType(credentials map[string]interface{}) (string, boo
 		}
 	}
 	return "", false
+}
+
+// ClaimSessionValues is the reserved authenticated-claims key a provider returns SessionValues under.
+// Flows read it into their runtime data instead of copying it as a claim.
+const ClaimSessionValues = "__sessionValues"
+
+// SessionValues is what a federated sign-in grants the session without storing it on the account.
+type SessionValues struct {
+	// Attributes holds the attribute values that win over the stored ones for the session.
+	Attributes map[string]interface{}
+	// GroupIDs holds the session groups, and GroupIDsWithAncestors the same groups with their
+	// ancestors.
+	GroupIDs              []string
+	GroupIDsWithAncestors []string
+	// RoleIDs holds the session roles.
+	RoleIDs []string
+	// Permissions holds the permissions the authorization mapping grants directly.
+	Permissions []providers.AuthorizationTarget
 }

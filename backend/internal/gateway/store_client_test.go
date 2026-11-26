@@ -9,7 +9,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -41,7 +44,7 @@ func storeGateway(t *testing.T, status int, body string) (*Gateway, *[]storeCall
 
 // Each variable call reaches its own path of the gateway's store with the key, and reads the answer.
 func TestTheStoreClientCallsTheGatewaysVariables(t *testing.T) {
-	ctx, client := context.Background(), newGatewayClient()
+	ctx, client := context.Background(), testGatewayClient()
 	gw, calls := storeGateway(t, http.StatusOK, `{"name":"A","value":"1"}`)
 
 	variable, err := client.GetVariable(ctx, gw, "the-key", "A")
@@ -68,7 +71,7 @@ func TestTheStoreClientCallsTheGatewaysVariables(t *testing.T) {
 // Each secret call reaches its own path of the gateway's store, and a write that created the value
 // says so.
 func TestTheStoreClientCallsTheGatewaysSecrets(t *testing.T) {
-	ctx, client := context.Background(), newGatewayClient()
+	ctx, client := context.Background(), testGatewayClient()
 	gw, calls := storeGateway(t, http.StatusCreated, `{"name":"S","exists":true}`)
 
 	secret, created, err := client.SetSecret(ctx, gw, "k", "S", variablestore.SecretUpdateRequest{Value: "v"})
@@ -89,7 +92,7 @@ func TestTheStoreClientCallsTheGatewaysSecrets(t *testing.T) {
 
 // A listing passes only the narrowing it was given, and reads the gateway's page.
 func TestTheStoreClientListsWithTheQueryGiven(t *testing.T) {
-	ctx, client := context.Background(), newGatewayClient()
+	ctx, client := context.Background(), testGatewayClient()
 	gw, calls := storeGateway(t, http.StatusOK, `{"totalResults":1,"count":1,"secrets":[{"name":"S","exists":true}]}`)
 
 	listing, err := client.ListSecrets(ctx, gw, "k", StoreListQuery{Limit: "5", Filter: `name sw "S"`})
@@ -105,11 +108,43 @@ func TestTheStoreClientListsWithTheQueryGiven(t *testing.T) {
 	assert.Empty(t, (*calls)[1].query)
 }
 
+// A removal of many names reaches the collection with them in names=, and an age, when given, as whole
+// seconds rounded up in unchangedFor=; it answers with the names the gateway removed.
+func TestTheStoreClientRemovesManyNamesInOneCall(t *testing.T) {
+	ctx, client := context.Background(), testGatewayClient()
+	gw, calls := storeGateway(t, http.StatusOK, `{"deleted":["A"]}`)
+
+	deleted, err := client.DeleteVariables(ctx, gw, "the-key", []string{"A", "B"}, 0)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"A"}, deleted)
+	deleted, err = client.DeleteSecrets(ctx, gw, "the-key", []string{"S"}, time.Hour+time.Millisecond)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"A"}, deleted)
+
+	assert.Equal(t, []storeCall{
+		{method: http.MethodDelete, path: "/variables", query: "names=A%2CB", key: "the-key"},
+		{method: http.MethodDelete, path: "/secrets", query: "names=S&unchangedFor=3601",
+			key: "the-key"},
+	}, *calls)
+}
+
+// A gateway too old to remove many names at once refuses with its status, which the caller reads as no
+// way to remove values by age.
+func TestTheStoreClientReportsARefusedRemovalOfManyNames(t *testing.T) {
+	gw, _ := storeGateway(t, http.StatusMethodNotAllowed, ``)
+
+	_, err := testGatewayClient().DeleteVariables(context.Background(), gw, "k", []string{"A"}, time.Second)
+
+	var refusal *StoreRefusal
+	require.ErrorAs(t, err, &refusal)
+	assert.Equal(t, http.StatusMethodNotAllowed, refusal.Status)
+}
+
 // A name is escaped on its way to the gateway, so it cannot reach past the store.
 func TestTheStoreClientEscapesTheName(t *testing.T) {
 	gw, calls := storeGateway(t, http.StatusNotFound, `{"code":"VAR-1004"}`)
 
-	_, _ = newGatewayClient().GetVariable(context.Background(), gw, "k", "../import")
+	_, _ = testGatewayClient().GetVariable(context.Background(), gw, "k", "../import")
 
 	assert.Equal(t, "/variables/..%2Fimport", (*calls)[0].path)
 }
@@ -117,7 +152,7 @@ func TestTheStoreClientEscapesTheName(t *testing.T) {
 // A call the gateway refuses fails with the gateway's status and error as it gave them, and one
 // whose answer cannot be read, or that cannot reach the gateway, fails otherwise.
 func TestTheStoreClientReportsWhatWentWrong(t *testing.T) {
-	ctx, client := context.Background(), newGatewayClient()
+	ctx, client := context.Background(), testGatewayClient()
 	refusing, _ := storeGateway(t, http.StatusConflict, `{"code":"VAR-1005"}`)
 	_, err := client.CreateVariable(ctx, refusing, "k", variablestore.VariableRequest{Name: "A"})
 	var refusal *StoreRefusal
@@ -148,7 +183,7 @@ func TestHeldValuesReportsWhatTheGatewayHoldsAndSince(t *testing.T) {
 		secrets[i] = fmt.Sprintf("S%d", i)
 	}
 
-	held, err := newGatewayClient().HeldValues(context.Background(), gw, "the-key", []string{"A", "B"}, secrets)
+	held, err := testGatewayClient().HeldValues(context.Background(), gw, "the-key", []string{"A", "B"}, secrets)
 
 	require.NoError(t, err)
 	missing := held.missing([]string{"A", "B"}, secrets)
@@ -173,13 +208,50 @@ func TestHeldValuesReportsWhatTheGatewayHoldsAndSince(t *testing.T) {
 	assert.Equal(t, "/secrets", (*calls)[2].path)
 
 	refusing, _ := storeGateway(t, http.StatusUnauthorized, `{"code":"AUTH-4010"}`)
-	_, err = newGatewayClient().HeldValues(context.Background(), refusing, "k", nil, []string{"S"})
+	_, err = testGatewayClient().HeldValues(context.Background(), refusing, "k", nil, []string{"S"})
 	assert.True(t, isRefusal(err))
-	_, err = newGatewayClient().HeldValues(context.Background(), refusing, "k", []string{"A"}, nil)
+	_, err = testGatewayClient().HeldValues(context.Background(), refusing, "k", []string{"A"}, nil)
 	assert.True(t, isRefusal(err))
 }
 
 func isRefusal(err error) bool {
 	var refusal *StoreRefusal
 	return errors.As(err, &refusal)
+}
+
+// A batch holds at most maxNamesPerLookup names, and no more than fit in maxNamesQueryBytes as sent,
+// so long names make smaller batches; every name is in exactly one batch, in order.
+func TestNameBatchesBoundTheCountAndTheSize(t *testing.T) {
+	short := make([]string, 250)
+	for i := range short {
+		short[i] = fmt.Sprintf("N%03d", i)
+	}
+	long := make([]string, 100)
+	for i := range long {
+		long[i] = fmt.Sprintf("%03d", i) + strings.Repeat("L", 252)
+	}
+	cases := map[string]struct {
+		names []string
+		sizes []int
+	}{
+		"none":  {nil, nil},
+		"short": {short, []int{100, 100, 50}},
+		// 255 characters and a %2C each: 23 fit in 6 KB.
+		"long": {long, []int{23, 23, 23, 23, 8}},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			batches := nameBatches(tc.names)
+			var sizes []int
+			var all []string
+			for _, batch := range batches {
+				sizes = append(sizes, len(batch))
+				all = append(all, batch...)
+				sent := url.Values{"names": {strings.Join(batch, ",")}}.Encode()
+				assert.LessOrEqual(t, len(sent)-len("names="), maxNamesQueryBytes)
+			}
+			assert.Equal(t, tc.sizes, sizes)
+			assert.Equal(t, tc.names, all)
+		})
+	}
 }

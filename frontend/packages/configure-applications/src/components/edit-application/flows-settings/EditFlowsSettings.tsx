@@ -31,6 +31,10 @@ interface EditFlowsSettingsProps {
    * Singular noun used to refer to the entity in user-visible copy (default: 'application').
    */
   entityLabel?: string;
+  /**
+   * Whether the application can't be edited here
+   */
+  readOnly?: boolean;
 }
 
 /**
@@ -48,35 +52,41 @@ export default function EditFlowsSettings({
   editedApp,
   onFieldChange,
   entityLabel = 'application',
+  readOnly = false,
 }: EditFlowsSettingsProps) {
   return (
     <Stack spacing={3}>
       <AuthenticationFlowSection
         application={application}
+        readOnly={readOnly}
         editedApp={editedApp}
         onFieldChange={onFieldChange}
         entityLabel={entityLabel}
       />
       <RegistrationFlowSection
         application={application}
+        readOnly={readOnly}
         editedApp={editedApp}
         onFieldChange={onFieldChange}
         entityLabel={entityLabel}
       />
       <RecoveryFlowSection
         application={application}
+        readOnly={readOnly}
         editedApp={editedApp}
         onFieldChange={onFieldChange}
         entityLabel={entityLabel}
       />
       <SignOutFlowSection
         application={application}
+        readOnly={readOnly}
         editedApp={editedApp}
         onFieldChange={onFieldChange}
         entityLabel={entityLabel}
       />
       <DeviceGrantFlowSection
         application={application}
+        readOnly={readOnly}
         editedApp={editedApp}
         onFieldChange={onFieldChange}
         entityLabel={entityLabel}
