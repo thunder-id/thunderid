@@ -12,6 +12,7 @@ import (
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -21,6 +22,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 	"gopkg.in/yaml.v3"
+
+	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 )
 
 func TestProcessResourceServerAuthorizationEngine(t *testing.T) {
@@ -61,6 +64,7 @@ func TestProcessResourceServerAuthorizationEngine(t *testing.T) {
 type ResourceServerExporterTestSuite struct {
 	suite.Suite
 	mockService *ResourceServiceInterfaceMock
+	mockSharing *sharingmock.SharingServiceInterfaceMock
 	exporter    *resourceServerExporter
 	logger      *log.Logger
 }
@@ -71,7 +75,8 @@ func TestResourceServerExporterTestSuite(t *testing.T) {
 
 func (s *ResourceServerExporterTestSuite) SetupTest() {
 	s.mockService = NewResourceServiceInterfaceMock(s.T())
-	s.exporter = newResourceServerExporterForTest(s.mockService)
+	s.mockSharing = sharingmock.NewSharingServiceInterfaceMock(s.T())
+	s.exporter = newResourceServerExporterForTest(s.mockService, s.mockSharing)
 	s.logger = log.GetLogger()
 }
 
@@ -203,6 +208,8 @@ func (s *ResourceServerExporterTestSuite) TestGetResourceByID_Success() {
 
 	resourceID := "res1"
 	s.mockService.EXPECT().GetResourceServer(ctx, serverID).Return(server, nil)
+	s.mockSharing.On("ExportPolicies", ctx, ResourceServerSharingType, serverID).
+		Return([]sharing.ReplayablePolicy(nil), nil)
 	s.mockService.EXPECT().
 		GetActionList(ctx, serverID, (*string)(nil), providers.ActionKind(""), serverconst.MaxPageSize, 0).
 		Return(serverActions, nil)
@@ -217,7 +224,7 @@ func (s *ResourceServerExporterTestSuite) TestGetResourceByID_Success() {
 	assert.Equal(s.T(), "Test Server", name)
 	assert.NotNil(s.T(), result)
 
-	dto, ok := result.(*providers.ResourceServer)
+	dto, ok := resourceServerOf(result)
 	assert.True(s.T(), ok)
 	assert.Equal(s.T(), serverID, dto.ID)
 	assert.Equal(s.T(), "Test Server", dto.Name)
@@ -253,6 +260,8 @@ func (s *ResourceServerExporterTestSuite) TestGetResourceByID_PagesServerActions
 	}
 
 	s.mockService.EXPECT().GetResourceServer(ctx, serverID).Return(server, nil)
+	s.mockSharing.On("ExportPolicies", ctx, ResourceServerSharingType, serverID).
+		Return([]sharing.ReplayablePolicy(nil), nil)
 	s.mockService.EXPECT().
 		GetActionList(ctx, serverID, (*string)(nil), providers.ActionKind(""), serverconst.MaxPageSize, 0).
 		Return(&ActionList{TotalResults: 2, Actions: []providers.Action{{Name: "Read", Handle: "read"}}}, nil)
@@ -264,7 +273,7 @@ func (s *ResourceServerExporterTestSuite) TestGetResourceByID_PagesServerActions
 	result, _, err := s.exporter.GetResourceByID(ctx, serverID)
 
 	s.Require().Nil(err)
-	dto, ok := result.(*providers.ResourceServer)
+	dto, ok := resourceServerOf(result)
 	s.Require().True(ok)
 	assert.Equal(s.T(), []providers.Action{{Name: "Read", Handle: "read"}, {Name: "Write", Handle: "write"}},
 		dto.Actions)
@@ -334,6 +343,8 @@ func (s *ResourceServerExporterTestSuite) TestGetResourceByID_MCPExportImportRou
 
 	resourceID := "res1"
 	s.mockService.EXPECT().GetResourceServer(ctx, serverID).Return(server, nil)
+	s.mockSharing.On("ExportPolicies", ctx, ResourceServerSharingType, serverID).
+		Return([]sharing.ReplayablePolicy(nil), nil)
 	s.mockService.EXPECT().
 		GetActionList(ctx, serverID, (*string)(nil), providers.ActionKind(""), serverconst.MaxPageSize, 0).
 		Return(serverActions, nil)
@@ -345,7 +356,7 @@ func (s *ResourceServerExporterTestSuite) TestGetResourceByID_MCPExportImportRou
 	result, _, err := s.exporter.GetResourceByID(ctx, serverID)
 	assert.Nil(s.T(), err)
 
-	dto, ok := result.(*providers.ResourceServer)
+	dto, ok := resourceServerOf(result)
 	assert.True(s.T(), ok)
 
 	// Marshal the exported DTO to YAML, then re-import it. This guards the export->import
@@ -386,6 +397,8 @@ func (s *ResourceServerExporterTestSuite) TestGetResourceByID_ExportsParentPath(
 	}
 
 	s.mockService.EXPECT().GetResourceServer(ctx, serverID).Return(server, nil)
+	s.mockSharing.On("ExportPolicies", ctx, ResourceServerSharingType, serverID).
+		Return([]sharing.ReplayablePolicy(nil), nil)
 	s.mockService.EXPECT().GetAllResourceList(ctx, serverID).Return(resources, nil)
 	s.mockService.EXPECT().
 		GetActionList(ctx, serverID, mock.Anything, providers.ActionKind(""), serverconst.MaxPageSize, 0).
@@ -394,7 +407,7 @@ func (s *ResourceServerExporterTestSuite) TestGetResourceByID_ExportsParentPath(
 	result, _, err := s.exporter.GetResourceByID(ctx, serverID)
 
 	assert.Nil(s.T(), err)
-	dto, ok := result.(*providers.ResourceServer)
+	dto, ok := resourceServerOf(result)
 	assert.True(s.T(), ok)
 	parents := make([]string, len(dto.Resources))
 	for i, res := range dto.Resources {
@@ -696,7 +709,7 @@ ouId: "ou1"
 	result, err := parser(yamlData)
 
 	assert.NoError(t, err)
-	rs, ok := result.(*providers.ResourceServer)
+	rs, ok := resourceServerOf(result)
 	assert.True(t, ok)
 	assert.Equal(t, providers.ResourceServerTypeMCP, rs.Type)
 }
@@ -1252,7 +1265,7 @@ resources:
 	result, err := parser(yamlData)
 
 	assert.NoError(t, err)
-	rs, ok := result.(*providers.ResourceServer)
+	rs, ok := resourceServerOf(result)
 	assert.True(t, ok)
 	assert.Equal(t, "users", rs.Resources[0].Permission)
 	assert.Equal(t, "users:read", rs.Resources[0].Actions[0].Permission)
@@ -1308,7 +1321,7 @@ resources:
 	result, err := parser(yamlData)
 
 	assert.NoError(t, err)
-	rs, ok := result.(*providers.ResourceServer)
+	rs, ok := resourceServerOf(result)
 	assert.True(t, ok)
 	assert.Equal(t, "ops:deploy", rs.Resources[0].Actions[0].Permission)
 	assert.Equal(t, "ops:status", rs.Resources[0].Actions[1].Permission)
@@ -1531,4 +1544,61 @@ func TestLoadDeclarativeResources_InvalidStoreType(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid store type")
+}
+
+func (s *ResourceServerExporterTestSuite) TestGetResourceByID_CarriesSharingPolicies() {
+	ctx := context.Background()
+	serverID := testRS1ID
+	server := &providers.ResourceServer{
+		ID: serverID, Name: "Test Server", Identifier: "test-server", OUID: "ou1", Delimiter: ":",
+	}
+	policy := sharing.PolicyRequest{
+		ID: "to-children", ChildUnits: &sharing.ChildUnitsRequest{Mode: sharing.ChildUnitsAll},
+	}
+
+	s.mockService.EXPECT().GetResourceServer(ctx, serverID).Return(server, nil)
+	s.mockService.EXPECT().
+		GetActionList(ctx, serverID, (*string)(nil), providers.ActionKind(""), serverconst.MaxPageSize, 0).
+		Return(&ActionList{}, nil)
+	s.mockService.EXPECT().GetAllResourceList(ctx, serverID).Return([]providers.Resource{}, nil)
+	s.mockSharing.On("ExportPolicies", ctx, ResourceServerSharingType, serverID).
+		Return([]sharing.ReplayablePolicy{{InitiatingOUID: "ou1", Request: policy}}, nil)
+
+	result, _, err := s.exporter.GetResourceByID(ctx, serverID)
+
+	s.Require().Nil(err)
+	exported, ok := result.(*resourceServerDeclarativeResource)
+	s.Require().True(ok)
+	s.Equal([]sharing.PolicyRequest{policy}, exported.SharingPolicies)
+	s.Equal(serverID, s.exporter.GetResourceID(result))
+
+	yamlBytes, marshalErr := yaml.Marshal(exported)
+	s.Require().NoError(marshalErr)
+	s.Contains(string(yamlBytes), "sharingPolicies:")
+	s.Contains(string(yamlBytes), "identifier: test-server")
+
+	s.mockService.On("ResolveResourceServerOUHandle", mock.Anything, mock.Anything).Return(nil)
+	declared, parseErr := makeResourceServerSharingParser(s.mockService)(yamlBytes)
+	s.Require().NoError(parseErr)
+	s.Equal([]sharing.PolicyRequest{policy}, declared.Policies)
+}
+
+func (s *ResourceServerExporterTestSuite) TestGetResourceByID_SharingExportError() {
+	ctx := context.Background()
+	serverID := testRS1ID
+	server := &providers.ResourceServer{ID: serverID, Name: "Test Server", Identifier: "test-server", OUID: "ou1"}
+
+	s.mockService.EXPECT().GetResourceServer(ctx, serverID).Return(server, nil)
+	s.mockService.EXPECT().
+		GetActionList(ctx, serverID, (*string)(nil), providers.ActionKind(""), serverconst.MaxPageSize, 0).
+		Return(&ActionList{}, nil)
+	s.mockService.EXPECT().GetAllResourceList(ctx, serverID).Return([]providers.Resource{}, nil)
+	s.mockSharing.On("ExportPolicies", ctx, ResourceServerSharingType, serverID).
+		Return(nil, &tidcommon.InternalServerError)
+
+	result, _, err := s.exporter.GetResourceByID(ctx, serverID)
+
+	s.Nil(result)
+	s.Require().NotNil(err)
+	s.Equal(tidcommon.InternalServerError.Code, err.Code)
 }

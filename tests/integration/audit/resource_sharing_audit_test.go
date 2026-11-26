@@ -18,8 +18,8 @@ const (
 	auditVariableName = "auditSupportEmail"
 )
 
-// Creating, updating and deleting a sharing policy of a role, a flow and a connection writes one line
-// each, with the policy as target and the role, flow or connection as subject. A notification sender is
+// Creating, updating and deleting a sharing policy of a role, a flow, a connection and a resource server writes
+// one line each, with the policy as target and the role, flow, connection or resource server as subject. A notification sender is
 // shared through the connections API, so its lines are connection events with the sender as subject. A
 // delete of a policy the resource does not hold still succeeds and writes no line. No organization unit
 // the policy names appears in any line.
@@ -58,6 +58,15 @@ func (ts *AuditLogTestSuite) TestARoleFlowAndConnectionSharingPolicyLifecycleWri
 				return ts.createSender(ts.prefix+"share-sender", ouID)
 			},
 			base: func(id string) string { return "/connections/twilio/" + id + "/sharing-policies" },
+		},
+		{
+			name: "resource-server", resourceType: "resource_server", subjectType: "resource_server",
+			create: func(ouID string) string {
+				_, rsID := ts.create("/resource-servers", map[string]interface{}{"name": ts.prefix + "share-rs",
+					"identifier": auditRSIdentifier + "/share/" + ts.prefix, "ouId": ouID})
+				return rsID
+			},
+			base: func(id string) string { return "/resource-servers/" + id + "/sharing-policies" },
 		},
 	}
 	for _, tc := range cases {

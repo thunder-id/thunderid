@@ -47,7 +47,7 @@ func exportedResourceServerDocument(t *testing.T) *yaml.Node {
 
 func viewResourceServerParts(t *testing.T) map[string]interface{} {
 	t.Helper()
-	parts, err := newResourceServerExporterForTest(nil).ViewResourceParts(context.Background(),
+	parts, err := newResourceServerExporterForTest(nil, nil).ViewResourceParts(context.Background(),
 		exportedResourceServerDocument(t))
 	require.NoError(t, err)
 	return parts
@@ -55,7 +55,7 @@ func viewResourceServerParts(t *testing.T) map[string]interface{} {
 
 // An exported resource server is shown as a read returns it, with its references as they are.
 func TestViewResourceShowsAnExportedResourceServerAsItsRead(t *testing.T) {
-	view, err := newResourceServerExporterForTest(nil).ViewResource(context.Background(),
+	view, err := newResourceServerExporterForTest(nil, nil).ViewResource(context.Background(),
 		exportedResourceServerDocument(t))
 
 	require.NoError(t, err)
@@ -150,7 +150,7 @@ func TestViewResourcePartsShowsTheResourceServerActions(t *testing.T) {
 
 // A resource server without actions of its own shows them as an empty list.
 func TestViewResourcePartsShowsNoResourceServerActions(t *testing.T) {
-	parts, err := newResourceServerExporterForTest(nil).ViewResourceParts(context.Background(),
+	parts, err := newResourceServerExporterForTest(nil, nil).ViewResourceParts(context.Background(),
 		viewDocument(t, "resource_type: resource_server\nid: rs-1\nresources:\n  - { name: Orders, handle: orders }"))
 
 	require.NoError(t, err)
@@ -161,7 +161,7 @@ func TestViewResourcePartsShowsNoResourceServerActions(t *testing.T) {
 
 // A document that is not a resource server is refused, and so is one whose resources do not resolve.
 func TestViewResourceRefusesAnUnreadableDocument(t *testing.T) {
-	exporter := newResourceServerExporterForTest(nil)
+	exporter := newResourceServerExporterForTest(nil, nil)
 	_, err := exporter.ViewResource(context.Background(), viewDocument(t, "name: [not, a, name]"))
 	assert.Error(t, err)
 

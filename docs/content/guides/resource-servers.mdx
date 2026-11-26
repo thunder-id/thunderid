@@ -202,7 +202,7 @@ curl -kL https://localhost:8090/resource-servers/<resource-server-id> \
 
 ## Update a Resource Server
 
-Update the name, description, identifier, or organization unit. The `delimiter` cannot be changed.
+Update the name, description, identifier, or organization unit. The `delimiter` cannot be changed. A resource server that has sharing policies cannot move to another organization unit. See [Share a Resource Server With Other Organization Units](#share-a-resource-server-with-other-organization-units).
 
 ```bash
 curl -kL -X PUT https://localhost:8090/resource-servers/<resource-server-id> \
@@ -221,13 +221,72 @@ curl -kL -X PUT https://localhost:8090/resource-servers/<resource-server-id> \
 On the control plane, a resource server can belong to a project. A resource server without a `projectId` belongs to no project and stays available to every project.
 
 - **Create or update**: set `projectId` in the request body of `POST /resource-servers` or `PUT /resource-servers/{id}`. On create, a resource server in a project without `ouId` is placed in the system organization unit. An update without `ouId` keeps the resource server's organization unit. With `ouId`, it must be the system organization unit or an organization unit of the project. Any other organization unit fails the request with `RES-1026`, and a project that does not exist fails it with `RES-1025`.
-- **Update without `projectId` or `ouId`**: the resource server keeps its current project and organization unit. A different `projectId` moves the resource server to that project.
+- **Update without `projectId` or `ouId`**: the resource server keeps its current project and organization unit. A different `projectId` moves the resource server to that project. A resource server that has sharing policies cannot move. See [Share a Resource Server With Other Organization Units](#share-a-resource-server-with-other-organization-units).
 - **List**: `GET /resource-servers?projectId=<project-id>` returns the resource servers of the project. To list only the ones an organization unit in the project owns, add `filter=ouId eq "<ou-id>"`. A project that does not exist returns an empty list.
 - **Delete the project**: a project that still has resource servers, runtime or declared, cannot be deleted. `DELETE /projects/{id}` fails with `PRJ-1013` until its resource servers are deleted or moved to another project. The API cannot delete or move a resource server defined in a declarative resource file, so remove it from the file or set a different `projectId` there, and reload the configuration.
 
 A project groups resource servers for management only. At runtime, a resource server is found by its `identifier` whatever project it belongs to, so the `identifier` stays unique across all projects.
 
 A server without projects, such as the all-in-one server, keeps the `projectId` it receives without checking it, so configuration imported from a control plane keeps its project.
+
+## Share a Resource Server With Other Organization Units
+
+A sharing policy makes a resource server available in organization units other than its own. It can reach the organization units beneath the resource server's organization unit, the top organization units of other trees, or both. An organization unit the policy reaches gets the whole resource server, with every resource and action it defines. A policy cannot grant or withhold part of it yet. To see what an organization unit holds, read the overlay rules for that unit: `rules.permissions.value` lists every permission of the resource server, and `editable` is `false` because the unit cannot choose its own.
+
+Create a sharing policy in one of three places:
+
+- **The resource server's resource file**, in a `sharingPolicies` list. See [Sharing Policies on Resource Servers](./declarative-configurations/import-resources.mdx#sharing-policies-on-resource-servers).
+- **Management API**, through the [Resource Server Sharing API](../apis.mdx#tag/resource-server-sharing).
+- **Console**, on the resource server's **Organization Access** tab.
+
+To share a resource server from the Console:
+
+1. Open the resource server from the **Resource servers** list.
+2. Select the **Organization Access** tab.
+3. Select whether only the resource server's own organization unit can use it, or the organization units you choose. For chosen organization units, grant child organization units of the resource server's organization unit, top organization units of other trees, or both.
+4. Click **Save**.
+
+The following request shares a resource server with every organization unit beneath its owner:
+
+```bash
+curl -kL -X POST https://localhost:8090/resource-servers/<resource-server-id>/sharing-policies \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <access-token>' \
+  -d '{
+    "childUnits": {
+      "mode": "all"
+    }
+  }'
+```
+
+The following request reads what one of those organization units holds:
+
+```bash
+curl -kL https://localhost:8090/resource-servers/<resource-server-id>/overlay-rules?ouId=<organization-unit-id> \
+  -H 'Authorization: Bearer <access-token>'
+```
+
+```json
+{
+  "ouId": "<organization-unit-id>",
+  "isOwnedByOU": false,
+  "visible": true,
+  "policyIds": ["<policy-id>"],
+  "rules": {
+    "permissions": {
+      "editable": false,
+      "value": ["orders", "orders:read", "orders:write"]
+    }
+  }
+}
+```
+
+Keep these rules in mind:
+
+- The API and the Console cannot create a policy that reaches every organization unit in the deployment or the root of every other tree. Only a resource file or an import can set those.
+- The policy of a resource server defined in a resource file, or deployed from the control plane, can only change there, and is read-only in the Console. An organization unit the policy reaches can still share the resource server onward through the API.
+- A resource server that has sharing policies stays in its organization unit and project. An update that moves it fails with `RES-1037` until you delete its sharing policies.
+- Deleting a resource server deletes its sharing policies.
 
 ## Delete a Resource Server
 

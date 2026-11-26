@@ -29,6 +29,7 @@ type exportRequest struct {
 	Layouts           []string `json:"layouts,omitempty"`
 	ServerConfigs     []string `json:"serverConfigs,omitempty"`
 	Connections       []string `json:"connections,omitempty"`
+	ResourceServers   []string `json:"resourceServers,omitempty"`
 
 	PresentationDefinitions []string `json:"presentationDefinitions,omitempty"`
 }

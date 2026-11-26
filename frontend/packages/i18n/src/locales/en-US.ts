@@ -6497,7 +6497,9 @@ const translations = {
     'create.submit': 'Create resource server',
     'create.submitMcp': 'Create MCP server',
     'edit.tab.resources': 'Resources',
+    'edit.tab.organizationAccess': 'Organization Access',
     'edit.tab.advanced': 'Advanced',
+    'edit.organizationAccess.saveError': 'Failed to update organization access. Please try again.',
     'edit.defaultBadge': 'Default resource server',
     'edit.defaultBadgeManaged': 'Managed by server configuration.',
     'edit.back': 'Back to resource servers',
@@ -6609,6 +6611,28 @@ const translations = {
     'errors.RES-1023': 'A resource server with the specified ID already exists.',
     'errors.RES-1024':
       'An MCP server identifier must be an http or https URL with no fragment, such as https://mcp.example.com/mcp.',
+    'errors.RES-1028': 'This resource server was deployed by the control plane and can only be changed there.',
+    'errors.RES-1029':
+      'This organization access change is not allowed. An organization unit may have moved since you opened the resource server. Reset to load the latest, then try again.',
+    'errors.RES-1030':
+      'This organization access no longer exists. It may have been removed already. Reset to load the latest.',
+    'errors.RES-1031':
+      "This resource server's organization access was already set by a change made elsewhere. Reset to load it, then redo your change.",
+    'errors.RES-1032':
+      "Someone else changed this resource server's organization access while you were editing. Reset to load the latest, then redo your change.",
+    'errors.RES-1033': "This organization access is declared in a resource file and can't be changed here.",
+    'errors.RES-1036':
+      'Access for every organization unit, or for every other tree, can only be set in a resource file or by importing.',
+    'errors.RES-1037':
+      'This resource server is available in other organization units. Remove its organization access before moving it to another organization unit or project.',
+    'errors.RES-1038':
+      'Sharing only part of a resource server is not supported. Share the whole resource server instead.',
+
+    // Organization Access
+    'organizationAccess.title': 'Where {{resource}} is available',
+    'organizationAccess.description':
+      '{{resource}} and all of its permissions are available in the organization units selected here.',
+    'organizationAccess.ownerOnly': "{{resource}} isn't available in any other organization unit.",
   },
 
   // ============================================================================

@@ -755,7 +755,7 @@ func (s *importService) importDocument(
 	case resourceTypeGroup:
 		return s.importGroup(ctx, doc, options, dryRun)
 	case resourceTypeResourceServer:
-		return s.importResourceServer(ctx, doc, options, dryRun)
+		return s.importResourceServer(ctx, doc, options, dryRun, plan)
 	case resourceTypeAuthorizationDetailType:
 		return s.importAuthorizationDetailType(ctx, doc, options, dryRun)
 	case resourceTypeTheme:

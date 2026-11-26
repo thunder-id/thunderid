@@ -28,7 +28,7 @@ var sharingPoliciesKey = regexp.MustCompile(`^sharingPolicies:`)
 // dropped policy can be removed from. An agent is not among them: its policies are declared in its own resource file
 // on each deployment, and an import never replays them. This mirrors the importer's own list, which a test keeps in
 // step.
-var sharedResourceTypes = []string{"flow", "application", "role", "user", "connection"}
+var sharedResourceTypes = []string{"flow", "application", "role", "user", "connection", "resource_server"}
 
 // SharedResourceTypes returns the resource types whose dropped sharing policies are sent to a gateway to remove.
 func SharedResourceTypes() []string {

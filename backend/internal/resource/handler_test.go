@@ -9,8 +9,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -1545,4 +1547,158 @@ func (suite *HandlerTestSuite) TestHandleResourceServerListRequest_InvalidFilter
 			suite.Contains(w.Body.String(), ErrorInvalidFilter.Code)
 		})
 	}
+}
+
+func (suite *HandlerTestSuite) TestHandleSharingPolicyPostRequest() {
+	suite.Run("records the policy", func() {
+		suite.SetupTest()
+		suite.mockService.On("CreateSharingPolicy", mock.Anything, "rs-123", mock.MatchedBy(
+			func(req sharing.PolicyRequest) bool {
+				return req.ChildUnits != nil && req.ChildUnits.Mode == sharing.ChildUnitsAll
+			})).Return(sharing.Policy{ID: "policy-1", ResourceID: "rs-123"}, nil)
+		req := httptest.NewRequest(http.MethodPost, "/resource-servers/rs-123/sharing-policies",
+			strings.NewReader(`{"childUnits":{"mode":"all"}}`))
+		req.SetPathValue("id", "rs-123")
+		w := httptest.NewRecorder()
+
+		suite.handler.HandleSharingPolicyPostRequest(w, req)
+
+		suite.Equal(http.StatusCreated, w.Code)
+		suite.Contains(w.Body.String(), `"id":"policy-1"`)
+	})
+	suite.Run("refuses a deployment-wide reach", func() {
+		suite.SetupTest()
+		req := httptest.NewRequest(http.MethodPost, "/resource-servers/rs-123/sharing-policies",
+			strings.NewReader(`{"allUnits":{}}`))
+		req.SetPathValue("id", "rs-123")
+		w := httptest.NewRecorder()
+
+		suite.handler.HandleSharingPolicyPostRequest(w, req)
+
+		suite.Equal(http.StatusBadRequest, w.Code)
+		suite.Contains(w.Body.String(), ErrorDeploymentWideSharingNotAllowed.Code)
+		suite.mockService.AssertNotCalled(suite.T(), "CreateSharingPolicy", mock.Anything, mock.Anything,
+			mock.Anything)
+	})
+	suite.Run("refuses a malformed body", func() {
+		suite.SetupTest()
+		req := httptest.NewRequest(http.MethodPost, "/resource-servers/rs-123/sharing-policies",
+			strings.NewReader(`{`))
+		req.SetPathValue("id", "rs-123")
+		w := httptest.NewRecorder()
+
+		suite.handler.HandleSharingPolicyPostRequest(w, req)
+
+		suite.Equal(http.StatusBadRequest, w.Code)
+	})
+	suite.Run("an existing policy of the organization unit", func() {
+		suite.SetupTest()
+		suite.mockService.On("CreateSharingPolicy", mock.Anything, "rs-123", mock.Anything).
+			Return(sharing.Policy{}, &ErrorSharingPolicyExists)
+		req := httptest.NewRequest(http.MethodPost, "/resource-servers/rs-123/sharing-policies",
+			strings.NewReader(`{"childUnits":{"mode":"all"}}`))
+		req.SetPathValue("id", "rs-123")
+		w := httptest.NewRecorder()
+
+		suite.handler.HandleSharingPolicyPostRequest(w, req)
+
+		suite.Equal(http.StatusConflict, w.Code)
+	})
+}
+
+func (suite *HandlerTestSuite) TestHandleSharingPolicyListRequest() {
+	suite.mockService.On("ListSharingPolicies", mock.Anything, "rs-123", 30, 0).Return(sharing.PolicyList{
+		TotalResults: 1, StartIndex: 1, Count: 1, Policies: []sharing.Policy{{ID: "policy-1"}},
+	}, nil)
+	req := httptest.NewRequest(http.MethodGet, "/resource-servers/rs-123/sharing-policies?limit=30", nil)
+	req.SetPathValue("id", "rs-123")
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleSharingPolicyListRequest(w, req)
+
+	suite.Equal(http.StatusOK, w.Code)
+	suite.Contains(w.Body.String(), `"totalResults":1`)
+}
+
+func (suite *HandlerTestSuite) TestHandleSharingPolicyGetRequest() {
+	suite.Run("returns the policy", func() {
+		suite.SetupTest()
+		suite.mockService.On("GetSharingPolicy", mock.Anything, "rs-123", "policy-1").
+			Return(sharing.Policy{ID: "policy-1"}, nil)
+		req := httptest.NewRequest(http.MethodGet, "/resource-servers/rs-123/sharing-policies/policy-1", nil)
+		req.SetPathValue("id", "rs-123")
+		req.SetPathValue("policyId", "policy-1")
+		w := httptest.NewRecorder()
+
+		suite.handler.HandleSharingPolicyGetRequest(w, req)
+
+		suite.Equal(http.StatusOK, w.Code)
+	})
+	suite.Run("an unknown policy", func() {
+		suite.SetupTest()
+		suite.mockService.On("GetSharingPolicy", mock.Anything, "rs-123", "policy-1").
+			Return(sharing.Policy{}, &ErrorSharingPolicyNotFound)
+		req := httptest.NewRequest(http.MethodGet, "/resource-servers/rs-123/sharing-policies/policy-1", nil)
+		req.SetPathValue("id", "rs-123")
+		req.SetPathValue("policyId", "policy-1")
+		w := httptest.NewRecorder()
+
+		suite.handler.HandleSharingPolicyGetRequest(w, req)
+
+		suite.Equal(http.StatusNotFound, w.Code)
+	})
+}
+
+func (suite *HandlerTestSuite) TestHandleSharingPolicyPutRequest() {
+	suite.mockService.On("UpdateSharingPolicy", mock.Anything, "rs-123", "policy-1", mock.MatchedBy(
+		func(req sharing.PolicyRequest) bool { return req.Version == 2 })).
+		Return(sharing.Policy{}, &ErrorSharingPolicyVersionMismatch)
+	req := httptest.NewRequest(http.MethodPut, "/resource-servers/rs-123/sharing-policies/policy-1",
+		strings.NewReader(`{"version":2,"childUnits":{"mode":"all"}}`))
+	req.SetPathValue("id", "rs-123")
+	req.SetPathValue("policyId", "policy-1")
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleSharingPolicyPutRequest(w, req)
+
+	suite.Equal(http.StatusConflict, w.Code)
+}
+
+func (suite *HandlerTestSuite) TestHandleSharingPolicyDeleteRequest() {
+	suite.mockService.On("DeleteSharingPolicy", mock.Anything, "rs-123", "policy-1").Return(nil)
+	req := httptest.NewRequest(http.MethodDelete, "/resource-servers/rs-123/sharing-policies/policy-1", nil)
+	req.SetPathValue("id", "rs-123")
+	req.SetPathValue("policyId", "policy-1")
+	w := httptest.NewRecorder()
+
+	suite.handler.HandleSharingPolicyDeleteRequest(w, req)
+
+	suite.Equal(http.StatusNoContent, w.Code)
+}
+
+func (suite *HandlerTestSuite) TestHandleOverlayRuleGetRequest() {
+	suite.Run("a reached organization unit", func() {
+		suite.SetupTest()
+		suite.mockService.On("ResolveSharingOverlay", mock.Anything, "rs-123", "ou-child").
+			Return(sharing.ResolvedOverlay{OUID: "ou-child", Visible: true}, nil)
+		req := httptest.NewRequest(http.MethodGet, "/resource-servers/rs-123/overlay-rules?ouId=ou-child", nil)
+		req.SetPathValue("id", "rs-123")
+		w := httptest.NewRecorder()
+
+		suite.handler.HandleOverlayRuleGetRequest(w, req)
+
+		suite.Equal(http.StatusOK, w.Code)
+	})
+	suite.Run("an organization unit never reached", func() {
+		suite.SetupTest()
+		suite.mockService.On("ResolveSharingOverlay", mock.Anything, "rs-123", "ou-child").
+			Return(sharing.ResolvedOverlay{}, &ErrorResourceServerNotSharedToOU)
+		req := httptest.NewRequest(http.MethodGet, "/resource-servers/rs-123/overlay-rules?ouId=ou-child", nil)
+		req.SetPathValue("id", "rs-123")
+		w := httptest.NewRecorder()
+
+		suite.handler.HandleOverlayRuleGetRequest(w, req)
+
+		suite.Equal(http.StatusNotFound, w.Code)
+	})
 }

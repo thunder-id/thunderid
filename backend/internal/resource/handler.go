@@ -13,6 +13,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/filter"
@@ -603,14 +604,120 @@ func parseActionKindParam(query url.Values) (providers.ActionKind, *tidcommon.Se
 	return kind, nil
 }
 
+// Sharing Policy Handlers
+
+// HandleSharingPolicyPostRequest records a sharing policy on a resource server.
+func (h *resourceHandler) HandleSharingPolicyPostRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	wire, ok := sharing.DecodePolicyBody[sharing.PolicyCreateBody](ctx, w, r, ErrorInvalidRequestFormat)
+	if !ok {
+		return
+	}
+	req := wire.ToPolicyRequest()
+	// A reach not bounded by where the issuer sits is a deployment decision, so this API leaves it to a
+	// resource file or an import. An edit may still restate such a section to move its exclusions, and the
+	// framework refuses any edit that would introduce one.
+	if req.IsDeploymentWide() {
+		handleError(ctx, w, &ErrorDeploymentWideSharingNotAllowed)
+		return
+	}
+
+	policy, svcErr := h.resourceService.CreateSharingPolicy(ctx, r.PathValue("id"), req)
+	if svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusCreated, sharing.ToPolicyResponse(policy))
+}
+
+// HandleSharingPolicyListRequest returns one page of a resource server's sharing policies.
+func (h *resourceHandler) HandleSharingPolicyListRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	limit, offset, svcErr := parsePaginationParams(r.URL.Query())
+	if svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+
+	resourceServerID := r.PathValue("id")
+	list, svcErr := h.resourceService.ListSharingPolicies(ctx, resourceServerID, limit, offset)
+	if svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, sharing.ToPolicyListResponse(
+		list, "/resource-servers/"+resourceServerID+"/sharing-policies", limit, offset))
+}
+
+// HandleSharingPolicyGetRequest returns one of a resource server's sharing policies.
+func (h *resourceHandler) HandleSharingPolicyGetRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	policy, svcErr := h.resourceService.GetSharingPolicy(ctx, r.PathValue("id"), r.PathValue("policyId"))
+	if svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, sharing.ToPolicyResponse(policy))
+}
+
+// HandleSharingPolicyPutRequest replaces a sharing policy's contents.
+func (h *resourceHandler) HandleSharingPolicyPutRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	wire, ok := sharing.DecodePolicyBody[sharing.PolicyUpdateBody](ctx, w, r, ErrorInvalidRequestFormat)
+	if !ok {
+		return
+	}
+
+	policy, svcErr := h.resourceService.UpdateSharingPolicy(
+		ctx, r.PathValue("id"), r.PathValue("policyId"), wire.ToPolicyRequest())
+	if svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, sharing.ToPolicyResponse(policy))
+}
+
+// HandleSharingPolicyDeleteRequest removes a sharing policy.
+func (h *resourceHandler) HandleSharingPolicyDeleteRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	if svcErr := h.resourceService.DeleteSharingPolicy(
+		ctx, r.PathValue("id"), r.PathValue("policyId")); svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// HandleOverlayRuleGetRequest answers whether the organization unit named in ouId owns the resource server or
+// is shared it, and which policies reached it.
+func (h *resourceHandler) HandleOverlayRuleGetRequest(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	overlay, svcErr := h.resourceService.ResolveSharingOverlay(
+		ctx, r.PathValue("id"), r.URL.Query().Get("ouId"))
+	if svcErr != nil {
+		handleError(ctx, w, svcErr)
+		return
+	}
+	sysutils.WriteSuccessResponse(ctx, w, http.StatusOK, sharing.ToResolvedOverlayResponse(overlay))
+}
+
 // handleError writes an error response based on the provided service error.
 func handleError(ctx context.Context, w http.ResponseWriter, svcErr *tidcommon.ServiceError) {
 	statusCode := http.StatusInternalServerError
 	if svcErr.Type == tidcommon.ClientErrorType {
 		switch svcErr.Code {
-		case ErrorResourceServerNotFound.Code, ErrorResourceNotFound.Code, ErrorActionNotFound.Code:
+		case ErrorResourceServerNotFound.Code, ErrorResourceNotFound.Code, ErrorActionNotFound.Code,
+			ErrorSharingPolicyNotFound.Code, ErrorResourceServerNotSharedToOU.Code:
 			statusCode = http.StatusNotFound
-		case ErrorNameConflict.Code, ErrorHandleConflict.Code, ErrorIdentifierConflict.Code:
+		case ErrorNameConflict.Code, ErrorHandleConflict.Code, ErrorIdentifierConflict.Code,
+			ErrorSharingPolicyExists.Code, ErrorSharingPolicyVersionMismatch.Code:
 			statusCode = http.StatusConflict
 		case tidcommon.ErrorUnauthorized.Code:
 			statusCode = http.StatusForbidden

@@ -29,6 +29,12 @@ tags:
     description: Define actions on resources; actions map directly to OAuth2 scopes used in permission grants.
   - name: Permissions
     description: Preview and retrieve derived permissions based on the resource handle hierarchy.
+  - name: Resource Server Sharing
+    description: |
+      Share a resource server with other organization units. A reached organization unit gets the whole
+      resource server: every resource, sub-resource and action it defines. A policy cannot yet grant or
+      withhold part of it, so its only overlay rule is `permissions` with `editable: false`, the same as
+      stating no rule.
 
 security:
   - OAuth2: [system]
@@ -269,7 +275,6 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
       responses:
         "200":
           description: Resource server details
@@ -334,14 +339,16 @@ paths:
       tags:
         - Resource Servers
       summary: Update resource server
-      description: Updates resource server name, description, identifier, and organization unit.
+      description: |
+        Updates resource server name, description, identifier, and organization unit. A resource server
+        with sharing policies stays in its organization unit and project: delete its policies before moving
+        it.
       parameters:
         - in: path
           name: id
           required: true
           schema:
             type: string
-            format: uuid
       requestBody:
         required: true
         content:
@@ -423,6 +430,16 @@ paths:
                     description:
                       key: "error.resourceservice.cannot_modify_declarative_resource_server_description"
                       defaultValue: "Resource server is defined in declarative configuration and cannot be modified"
+                shared-resource-server-cannot-move:
+                  summary: A shared resource server moved to another organization unit or project
+                  value:
+                    code: "RES-1037"
+                    message:
+                      key: "error.resourceservice.shared_resource_server_cannot_move"
+                      defaultValue: "Resource server with sharing policies cannot be moved"
+                    description:
+                      key: "error.resourceservice.shared_resource_server_cannot_move_description"
+                      defaultValue: "The resource server is shared into other organization units. Delete its sharing policies before moving it to another organization unit or project"
                 invalid-mcp-identifier:
                   summary: MCP server identifier is not an http or https URL
                   value:
@@ -495,14 +512,15 @@ paths:
       tags:
         - Resource Servers
       summary: Delete a resource server by id
-      description: Deletes a resource server. Cannot delete if it has resources or actions.
+      description: |
+        Deletes a resource server. Cannot delete if it has resources or actions. The sharing policies
+        recorded for the resource server are deleted with it.
       parameters:
         - in: path
           name: id
           required: true
           schema:
             type: string
-            format: uuid
       responses:
         "204":
           description: Resource server deleted
@@ -560,6 +578,164 @@ paths:
                   key: "error.internal_server_error_description"
                   defaultValue: "An unexpected error occurred while processing the request"
 
+  /resource-servers/{id}/sharing-policies:
+    parameters:
+      - $ref: '#/components/parameters/resourceServerIdPathParam'
+    post:
+      tags:
+        - Resource Server Sharing
+      summary: Create a sharing policy
+      description: |
+        Records one organization unit's decision about which other organization units this resource server
+        is shared with. Exactly one policy exists per resource server per initiating organization unit; a
+        second create is refused.
+
+        A resource server declared in a resource file, or deployed from the control plane, carries its
+        owner's policy with it, so this endpoint refuses one for it. An organization unit that policy shares
+        with can still record its own reshare here, unless resource servers are configured to load from
+        resource files only: then all of their sharing, reshares included, is declared, and this endpoint
+        refuses every policy.
+      requestBody:
+        $ref: '#/components/requestBodies/ResourceServerSharingPolicyCreate'
+      responses:
+        "201":
+          $ref: '#/components/responses/ResourceServerSharingPolicyCreated'
+        "400":
+          $ref: '#/components/responses/ResourceServerSharingPolicyCreateBadRequest'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/ResourceServerSharingNotFound'
+        "409":
+          $ref: '#/components/responses/ResourceServerSharingPolicyConflict'
+        "500":
+          $ref: '#/components/responses/ResourceServerSharingServerError'
+    get:
+      tags:
+        - Resource Server Sharing
+      summary: List sharing policies
+      description: |
+        Returns the resource server's sharing policies, declared ones included. A policy a resource file
+        declares is listed with `isReadOnly` set to true and cannot be edited or deleted here. A caller who
+        may read resource servers in the owning organization unit sees every policy; any other caller sees
+        the ones its own organization units issued.
+      parameters:
+        - $ref: '#/components/parameters/limitQueryParam'
+        - $ref: '#/components/parameters/offsetQueryParam'
+      responses:
+        "200":
+          $ref: '#/components/responses/ResourceServerSharingPolicyList'
+        "400":
+          $ref: '#/components/responses/ResourceServerSharingPolicyListBadRequest'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/ResourceServerSharingNotFound'
+        "500":
+          $ref: '#/components/responses/ResourceServerSharingServerError'
+
+  /resource-servers/{id}/sharing-policies/{policyId}:
+    parameters:
+      - $ref: '#/components/parameters/resourceServerIdPathParam'
+      - $ref: '#/components/parameters/resourceServerSharingPolicyIdPathParam'
+    get:
+      tags:
+        - Resource Server Sharing
+      summary: Get a sharing policy
+      responses:
+        "200":
+          $ref: '#/components/responses/ResourceServerSharingPolicyReturned'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/ResourceServerSharingPolicyNotFound'
+        "500":
+          $ref: '#/components/responses/ResourceServerSharingServerError'
+    put:
+      tags:
+        - Resource Server Sharing
+      summary: Replace a sharing policy
+      description: |
+        Replaces the policy's sections. `version` must be the policy's current version; a stale one is
+        refused.
+
+        A section reaching a whole group (`mode: all`, or `allUnits`) keeps that reach and can only change
+        its `excludedOuIds`. A section naming units can add or drop them, but cannot become one that reaches
+        a whole group.
+
+        Refused for resource servers that load from resource files only.
+      requestBody:
+        $ref: '#/components/requestBodies/ResourceServerSharingPolicyUpdate'
+      responses:
+        "200":
+          $ref: '#/components/responses/ResourceServerSharingPolicyReturned'
+        "400":
+          $ref: '#/components/responses/ResourceServerSharingPolicyUpdateBadRequest'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/ResourceServerSharingPolicyNotFound'
+        "409":
+          $ref: '#/components/responses/ResourceServerSharingPolicyConflict'
+        "500":
+          $ref: '#/components/responses/ResourceServerSharingServerError'
+    delete:
+      tags:
+        - Resource Server Sharing
+      summary: Delete a sharing policy
+      description: |
+        Removes the policy and the policies its sharees issued beneath it.
+
+        A declared policy cannot be deleted here. Its existence belongs to the resource file that declares
+        it, so it goes away by being removed from that file. Where resource servers load from resource files
+        only, no policy is deleted here.
+      responses:
+        "204":
+          description: Sharing policy deleted, or the resource server holds no policy under that id.
+        "400":
+          $ref: '#/components/responses/ResourceServerSharingPolicyDeleteBadRequest'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/ResourceServerSharingNotFound'
+        "500":
+          $ref: '#/components/responses/ResourceServerSharingServerError'
+
+  /resource-servers/{id}/overlay-rules:
+    parameters:
+      - $ref: '#/components/parameters/resourceServerIdPathParam'
+    get:
+      tags:
+        - Resource Server Sharing
+      summary: Overlay rules for an organization unit
+      description: |
+        Answers for one organization unit, named in the `ouId` query parameter: whether it owns the
+        resource server, which policies reached it, and the permissions it holds there. `rules.permissions`
+        lists every permission the resource server defines, with `editable: false`: a reached organization
+        unit gets the whole resource server and cannot choose its own permissions.
+
+        An organization unit no policy reaches answers `404`, because the resource server is not available
+        there.
+      parameters:
+        - in: query
+          name: ouId
+          required: true
+          description: The organization unit to resolve for.
+          schema:
+            type: string
+          example: "acme-customer-a"
+      responses:
+        "200":
+          $ref: '#/components/responses/ResourceServerOverlayRules'
+        "400":
+          $ref: '#/components/responses/ResourceServerOverlayRulesBadRequest'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/ResourceServerOverlayNotResolvable'
+        "500":
+          $ref: '#/components/responses/ResourceServerSharingServerError'
+
   /resource-servers/{rsId}/resources:
     get:
       tags:
@@ -575,7 +751,6 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
           description: Resource server ID
         - in: query
           name: parentId
@@ -719,7 +894,6 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
           description: Resource server ID
       requestBody:
         required: true
@@ -851,7 +1025,6 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
           description: Resource server ID
         - in: path
           name: id
@@ -943,7 +1116,6 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
           description: Resource server ID
         - in: path
           name: id
@@ -1066,7 +1238,6 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
           description: Resource server ID
         - in: path
           name: id
@@ -1147,7 +1318,6 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
           description: Resource server ID
         - in: query
           name: kind
@@ -1298,7 +1468,6 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
           description: Resource server ID
       requestBody:
         required: true
@@ -1417,7 +1586,6 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
           description: Resource server ID
         - in: path
           name: id
@@ -1507,7 +1675,6 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
           description: Resource server ID
         - in: path
           name: id
@@ -1629,7 +1796,6 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
           description: Resource server ID
         - in: path
           name: id
@@ -1700,7 +1866,6 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
           description: Resource server ID
         - in: path
           name: resourceId
@@ -1865,7 +2030,6 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
           description: Resource server ID
         - in: path
           name: resourceId
@@ -1994,7 +2158,6 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
           description: Resource server ID
         - in: path
           name: resourceId
@@ -2101,7 +2264,6 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
           description: Resource server ID
         - in: path
           name: resourceId
@@ -2240,7 +2402,6 @@ paths:
           required: true
           schema:
             type: string
-            format: uuid
           description: Resource server ID
         - in: path
           name: resourceId
@@ -2348,6 +2509,22 @@ components:
       schema:
         type: string
       example: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+    resourceServerIdPathParam:
+      in: path
+      name: id
+      required: true
+      description: Resource server ID
+      schema:
+        type: string
+      example: "550e8400-e29b-41d4-a716-446655440000"
+    resourceServerSharingPolicyIdPathParam:
+      in: path
+      name: policyId
+      required: true
+      description: Sharing policy ID
+      schema:
+        type: string
+      example: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
     resourceServerFilterQueryParam:
       in: query
       name: filter
@@ -2362,6 +2539,83 @@ components:
         organization-unit:
           summary: Resource servers an organization unit owns
           value: 'ouId eq "a839f4bd-39dc-4eaa-b5cc-210d8ecaee87"'
+
+  requestBodies:
+    ResourceServerSharingPolicyCreate:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ResourceServerSharingPolicyRequest'
+          examples:
+            allChildUnits:
+              summary: Every organization unit beneath the issuer
+              value:
+                childUnits:
+                  mode: all
+            allChildUnitsWithExclusion:
+              summary: Every organization unit beneath the issuer except one branch
+              value:
+                childUnits:
+                  mode: all
+                  excludedOuIds: ["acme-trial-customers"]
+            selectedChildUnits:
+              summary: Named children, one at a time
+              value:
+                childUnits:
+                  mode: selected
+                  units:
+                    - ouId: "acme-customer-a"
+                      reach: unit
+                    - ouId: "acme-customer-b"
+                      reach: unit
+            childAndItsSubtree:
+              summary: One direct child and everything beneath it
+              value:
+                childUnits:
+                  mode: selected
+                  units:
+                    - ouId: "acme-customer-a"
+                      reach: subtree
+            selectedRoots:
+              summary: Named roots of other trees, owner only
+              value:
+                otherTreeRoots:
+                  mode: selected
+                  units:
+                    - ouId: "partner-root"
+            reshare:
+              summary: A reshare issued by a sharee
+              value:
+                initiatingOuId: "acme-customer-a"
+                childUnits:
+                  mode: selected
+                  units:
+                    - ouId: "acme-customer-a-eu"
+                      reach: unit
+    ResourceServerSharingPolicyUpdate:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ResourceServerSharingPolicyUpdateRequest'
+          examples:
+            addAnExclusion:
+              summary: Exclude one organization unit from every child unit
+              value:
+                version: 1
+                childUnits:
+                  mode: all
+                  excludedOuIds: ["acme-trial-customers"]
+            widenANamedUnit:
+              summary: Carry the resource server on beneath a named child
+              value:
+                version: 1
+                childUnits:
+                  mode: selected
+                  units:
+                    - ouId: "acme-customer-a"
+                      reach: subtree
 
   responses:
     Forbidden:
@@ -2380,6 +2634,448 @@ components:
             description:
               key: "error.unauthorized_description"
               defaultValue: "The caller is not authorized to perform this operation"
+    ResourceServerSharingPolicyCreated:
+      description: Sharing policy created
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ResourceServerSharingPolicy'
+          example:
+            id: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
+            initiatingOuId: "acme-root"
+            stage: share
+            isReadOnly: false
+            version: 1
+            childUnits:
+              mode: all
+              excludedOuIds: ["acme-trial-customers"]
+    ResourceServerSharingPolicyReturned:
+      description: Sharing policy
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ResourceServerSharingPolicy'
+          example:
+            id: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
+            initiatingOuId: "acme-root"
+            stage: share
+            isReadOnly: false
+            version: 1
+            childUnits:
+              mode: all
+              excludedOuIds: ["acme-trial-customers"]
+    ResourceServerSharingPolicyList:
+      description: Sharing policies
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ResourceServerSharingPolicyListResponse'
+          example:
+            totalResults: 2
+            startIndex: 1
+            count: 2
+            policies:
+              # The owner's decision: two named customers, each reached and stopped at, which leaves each
+              # free to carry the resource server on itself.
+              - id: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
+                initiatingOuId: "acme-root"
+                stage: share
+                isReadOnly: false
+                version: 2
+                childUnits:
+                  mode: selected
+                  units:
+                    - ouId: "acme-customer-a"
+                      reach: unit
+                    - ouId: "acme-customer-b"
+                      reach: unit
+              # One of those customers carrying the resource server one hop further, which is why this
+              # one names the policy that reached it.
+              - id: "0195a2c0-7b41-7c66-8f03-9d1e6a2b4c57"
+                initiatingOuId: "acme-customer-a"
+                stage: reshare
+                parentPolicyId: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
+                isReadOnly: false
+                version: 1
+                childUnits:
+                  mode: selected
+                  units:
+                    - ouId: "acme-customer-a-eu"
+                      reach: unit
+            links: []
+    ResourceServerOverlayRules:
+      description: Resolved overlay
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ResourceServerResolvedOverlay'
+          examples:
+            reached:
+              summary: An organization unit a policy reached
+              value:
+                ouId: "acme-customer-a"
+                isOwnedByOU: false
+                visible: true
+                policyIds: ["0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"]
+                rules:
+                  permissions:
+                    editable: false
+                    value: ["admin", "orders", "orders:read", "orders:write"]
+            owner:
+              summary: The organization unit that owns the resource server
+              value:
+                ouId: "acme-root"
+                isOwnedByOU: true
+                visible: true
+                policyIds: []
+                rules:
+                  permissions:
+                    editable: false
+                    value: ["admin", "orders", "orders:read", "orders:write"]
+    ResourceServerSharingPolicyCreateBadRequest:
+      description: The policy is not one the issuing organization unit may write.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            malformedBody:
+              summary: A body that is not valid JSON, or carries a field the policy does not declare
+              value:
+                code: "RES-1001"
+                message:
+                  key: "error.resourceservice.invalid_request_format"
+                  defaultValue: "Invalid request format"
+                description:
+                  key: "error.resourceservice.invalid_request_format_description"
+                  defaultValue: "The request body is malformed or contains invalid data"
+            noSection:
+              summary: No section stated
+              value:
+                code: "RES-1029"
+                message:
+                  key: "error.resourceservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.invalid_request_format_description"
+                  defaultValue: "The request body is malformed, reaches no organization unit, or states a section with fields its mode does not take: the policy reaches no organization unit"
+            fieldTheModeDoesNotTake:
+              summary: A section carrying a field its mode does not take
+              value:
+                code: "RES-1029"
+                message:
+                  key: "error.resourceservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.invalid_request_format_description"
+                  defaultValue: "The request body is malformed, reaches no organization unit, or states a section with fields its mode does not take: childUnits with mode all takes no units"
+            unitNamedTwice:
+              summary: An organization unit named twice, or one the issuer may not name
+              value:
+                code: "RES-1029"
+                message:
+                  key: "error.resourceservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.invalid_target_ou_description"
+                  defaultValue: "The target organization unit does not satisfy the policy's constraints: acme-customer-a is named more than once"
+            partialServer:
+              summary: A permissions rule naming the permissions it shares or withholds
+              value:
+                code: "RES-1038"
+                message:
+                  key: "error.resourceservice.permissions_rule_not_supported"
+                  defaultValue: "Sharing part of a resource server is not supported"
+                description:
+                  key: "error.resourceservice.permissions_rule_not_supported_description"
+                  defaultValue: "A sharing policy shares the whole resource server. Its permissions rule cannot name a value or excludedValues"
+            deploymentWideReach:
+              summary: A reach this endpoint may not create
+              value:
+                code: "RES-1036"
+                message:
+                  key: "error.resourceservice.deployment_wide_sharing_not_allowed"
+                  defaultValue: "Deployment-wide sharing is not allowed"
+                description:
+                  key: "error.resourceservice.deployment_wide_sharing_not_allowed_description"
+                  defaultValue: "A policy reaching all organization units or the roots of all other trees can only be created from a declarative resource file or an import"
+            declaredResourceServer:
+              summary: The owner's policy of a resource server a resource file declares
+              value:
+                code: "RES-1018"
+                message:
+                  key: "error.resourceservice.cannot_modify_declarative_resource_server"
+                  defaultValue: "Cannot modify declarative resource server"
+                description:
+                  key: "error.resourceservice.cannot_modify_declarative_resource_server_description"
+                  defaultValue: "Resource server 550e8400-e29b-41d4-a716-446655440000 is defined in declarative configuration and cannot be modified"
+            managedResourceServer:
+              summary: The owner's policy of a resource server the control plane deployed
+              value:
+                code: "RES-1028"
+                message:
+                  key: "error.resourceservice.cannot_modify_managed_resource_server"
+                  defaultValue: "Cannot modify a resource server deployed by the control plane"
+                description:
+                  key: "error.resourceservice.cannot_modify_managed_resource_server_description"
+                  defaultValue: "Resource server 550e8400-e29b-41d4-a716-446655440000 was deployed by the control plane and can only be changed there"
+    ResourceServerSharingPolicyListBadRequest:
+      description: The page the listing asked for is not one it can return.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            invalidPage:
+              summary: A limit or offset outside its bounds, or not a number at all
+              value:
+                code: "RES-1011"
+                message:
+                  key: "error.resourceservice.invalid_limit_parameter"
+                  defaultValue: "Invalid limit parameter"
+                description:
+                  key: "error.resourceservice.invalid_limit_parameter_description"
+                  defaultValue: "The limit parameter must be a positive integer"
+    ResourceServerSharingPolicyUpdateBadRequest:
+      description: The replacement is not one this policy may become.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            declaredResourceServer:
+              summary: The owner's policy of a resource server a resource file declares
+              value:
+                code: "RES-1018"
+                message:
+                  key: "error.resourceservice.cannot_modify_declarative_resource_server"
+                  defaultValue: "Cannot modify declarative resource server"
+                description:
+                  key: "error.resourceservice.cannot_modify_declarative_resource_server_description"
+                  defaultValue: "Resource server 550e8400-e29b-41d4-a716-446655440000 is defined in declarative configuration and cannot be modified"
+            managedResourceServer:
+              summary: The owner's policy of a resource server the control plane deployed
+              value:
+                code: "RES-1028"
+                message:
+                  key: "error.resourceservice.cannot_modify_managed_resource_server"
+                  defaultValue: "Cannot modify a resource server deployed by the control plane"
+                description:
+                  key: "error.resourceservice.cannot_modify_managed_resource_server_description"
+                  defaultValue: "Resource server 550e8400-e29b-41d4-a716-446655440000 was deployed by the control plane and can only be changed there"
+            malformedBody:
+              summary: A body that is not valid JSON, or carries a field the policy does not declare
+              value:
+                code: "RES-1001"
+                message:
+                  key: "error.resourceservice.invalid_request_format"
+                  defaultValue: "Invalid request format"
+                description:
+                  key: "error.resourceservice.invalid_request_format_description"
+                  defaultValue: "The request body is malformed or contains invalid data"
+            noSection:
+              summary: No section stated
+              value:
+                code: "RES-1029"
+                message:
+                  key: "error.resourceservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.invalid_request_format_description"
+                  defaultValue: "The request body is malformed, reaches no organization unit, or states a section with fields its mode does not take: the policy reaches no organization unit"
+            sectionKindChange:
+              summary: An edit that turns a section naming units into one reaching a whole group, or the reverse
+              value:
+                code: "RES-1029"
+                message:
+                  key: "error.resourceservice.invalid_sharing_policy"
+                  defaultValue: "Invalid sharing policy"
+                description:
+                  key: "error.sharingservice.scope_family_change_description"
+                  defaultValue: "A section naming organization units individually cannot become one reaching a whole family, or the reverse; delete the policy and issue the one you want instead"
+            partialServer:
+              summary: A permissions rule naming the permissions it shares or withholds
+              value:
+                code: "RES-1038"
+                message:
+                  key: "error.resourceservice.permissions_rule_not_supported"
+                  defaultValue: "Sharing part of a resource server is not supported"
+                description:
+                  key: "error.resourceservice.permissions_rule_not_supported_description"
+                  defaultValue: "A sharing policy shares the whole resource server. Its permissions rule cannot name a value or excludedValues"
+            declaredPolicy:
+              summary: An edit aimed at a reshare a resource file declares
+              value:
+                code: "RES-1033"
+                message:
+                  key: "error.resourceservice.sharing_policy_declared"
+                  defaultValue: "Sharing policy is declared"
+                description:
+                  key: "error.resourceservice.sharing_policy_declared_description"
+                  defaultValue: "The sharing policy is declared in a resource file and cannot be changed through the API"
+    ResourceServerSharingPolicyDeleteBadRequest:
+      description: The policy exists but is not this endpoint's to remove.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            declaredResourceServer:
+              summary: The owner's policy of a resource server a resource file declares
+              value:
+                code: "RES-1018"
+                message:
+                  key: "error.resourceservice.cannot_modify_declarative_resource_server"
+                  defaultValue: "Cannot modify declarative resource server"
+                description:
+                  key: "error.resourceservice.cannot_modify_declarative_resource_server_description"
+                  defaultValue: "Resource server 550e8400-e29b-41d4-a716-446655440000 is defined in declarative configuration and cannot be modified"
+            managedResourceServer:
+              summary: The owner's policy of a resource server the control plane deployed
+              value:
+                code: "RES-1028"
+                message:
+                  key: "error.resourceservice.cannot_modify_managed_resource_server"
+                  defaultValue: "Cannot modify a resource server deployed by the control plane"
+                description:
+                  key: "error.resourceservice.cannot_modify_managed_resource_server_description"
+                  defaultValue: "Resource server 550e8400-e29b-41d4-a716-446655440000 was deployed by the control plane and can only be changed there"
+            declaredPolicy:
+              summary: A delete aimed at a reshare a resource file declares
+              value:
+                code: "RES-1033"
+                message:
+                  key: "error.resourceservice.sharing_policy_declared"
+                  defaultValue: "Sharing policy is declared"
+                description:
+                  key: "error.resourceservice.sharing_policy_declared_description"
+                  defaultValue: "The sharing policy is declared in a resource file and cannot be changed through the API"
+    ResourceServerOverlayRulesBadRequest:
+      description: The request does not say which organization unit to resolve for.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            missingOuId:
+              summary: The ouId query parameter is absent or empty
+              value:
+                code: "RES-1035"
+                message:
+                  key: "error.resourceservice.missing_ou_id_parameter"
+                  defaultValue: "Missing required parameter"
+                description:
+                  key: "error.resourceservice.missing_ou_id_parameter_description"
+                  defaultValue: "The 'ouId' query parameter is required"
+    ResourceServerOverlayNotResolvable:
+      description: No such resource server, or no policy reaches the organization unit.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            notShared:
+              summary: An organization unit no policy reaches
+              value:
+                code: "RES-1034"
+                message:
+                  key: "error.resourceservice.resource_server_not_shared_to_ou"
+                  defaultValue: "Resource server is not shared to the organization unit"
+                description:
+                  key: "error.resourceservice.resource_server_not_shared_to_ou_description"
+                  defaultValue: "No sharing policy reaches the specified organization unit, so the resource server is not available there"
+            noSuchResourceServer:
+              summary: No such resource server
+              value:
+                code: "RES-1003"
+                message:
+                  key: "error.resourceservice.resource_server_not_found"
+                  defaultValue: "Resource server not found"
+                description:
+                  key: "error.resourceservice.resource_server_not_found_description"
+                  defaultValue: "The resource server with the specified id does not exist"
+    ResourceServerSharingNotFound:
+      description: No resource server with the specified id
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "RES-1003"
+            message:
+              key: "error.resourceservice.resource_server_not_found"
+              defaultValue: "Resource server not found"
+            description:
+              key: "error.resourceservice.resource_server_not_found_description"
+              defaultValue: "The resource server with the specified id does not exist"
+    ResourceServerSharingPolicyNotFound:
+      description: No such resource server, or no such sharing policy on this resource server
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            resourceServerNotFound:
+              summary: No resource server with the specified id
+              value:
+                code: "RES-1003"
+                message:
+                  key: "error.resourceservice.resource_server_not_found"
+                  defaultValue: "Resource server not found"
+                description:
+                  key: "error.resourceservice.resource_server_not_found_description"
+                  defaultValue: "The resource server with the specified id does not exist"
+            policyNotFound:
+              summary: The resource server holds no policy with the specified id
+              value:
+                code: "RES-1030"
+                message:
+                  key: "error.resourceservice.sharing_policy_not_found"
+                  defaultValue: "Sharing policy not found"
+                description:
+                  key: "error.resourceservice.sharing_policy_not_found_description"
+                  defaultValue: "The resource server has no sharing policy with the specified id"
+    ResourceServerSharingPolicyConflict:
+      description: The organization unit already holds a policy for this resource server, or the policy is stale.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            alreadyExists:
+              summary: A second policy for the same organization unit
+              value:
+                code: "RES-1031"
+                message:
+                  key: "error.resourceservice.sharing_policy_exists"
+                  defaultValue: "Sharing policy already exists"
+                description:
+                  key: "error.resourceservice.sharing_policy_exists_description"
+                  defaultValue: "This organization unit already has a sharing policy for the resource server; edit it instead"
+            staleVersion:
+              summary: An edit against a stale version
+              value:
+                code: "RES-1032"
+                message:
+                  key: "error.resourceservice.sharing_policy_version_mismatch"
+                  defaultValue: "Sharing policy version mismatch"
+                description:
+                  key: "error.resourceservice.sharing_policy_version_mismatch_description"
+                  defaultValue: "The sharing policy changed since it was read; read it again and retry the edit"
+    ResourceServerSharingServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: "SSE-5000"
+            message:
+              key: "error.internal_server_error"
+              defaultValue: "Internal server error"
+            description:
+              key: "error.internal_server_error_description"
+              defaultValue: "An unexpected error occurred while processing the request"
   schemas:
     ResourceServer:
       type: object
@@ -2694,6 +3390,325 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/Link'
+
+    ResourceServerSharingPolicyRequest:
+      type: object
+      additionalProperties: false
+      description: One organization unit's decision about this resource server.
+      anyOf:
+        - required: [childUnits]
+        - required: [otherTreeRoots]
+      properties:
+        initiatingOuId:
+          type: string
+          description: The organization unit whose decision this is. Omitted means the resource server's owner.
+          example: "acme-root"
+        childUnits:
+          $ref: '#/components/schemas/ResourceServerChildUnits'
+        otherTreeRoots:
+          $ref: '#/components/schemas/ResourceServerOtherTreeRootsSelected'
+        version:
+          type: integer
+          description: |
+            The policy version the caller believes it is editing. Required on an edit, ignored on a
+            create.
+          example: 1
+
+    ResourceServerSharingPolicyUpdateRequest:
+      type: object
+      additionalProperties: false
+      required: [version]
+      description: A replacement for a policy's sections.
+      anyOf:
+        - required: [allUnits]
+        - required: [childUnits]
+        - required: [otherTreeRoots]
+      properties:
+        allUnits:
+          $ref: '#/components/schemas/ResourceServerAllUnits'
+        childUnits:
+          $ref: '#/components/schemas/ResourceServerChildUnits'
+        otherTreeRoots:
+          $ref: '#/components/schemas/ResourceServerOtherTreeRoots'
+        version:
+          type: integer
+          description: The policy version the caller believes it is editing.
+          example: 1
+
+    ResourceServerAllUnits:
+      type: object
+      additionalProperties: false
+      description: Every organization unit in the deployment, at any depth, including units created later.
+      properties:
+        excludedOuIds:
+          type: array
+          description: Organization units withheld from the section, each taking everything beneath it out of reach as well.
+          items:
+            type: string
+          example: ["acme-trial-customers"]
+        overlayRules:
+          $ref: '#/components/schemas/ResourceServerOverlayRules'
+
+    ResourceServerChildUnits:
+      description: The organization units beneath the issuer.
+      oneOf:
+        - $ref: '#/components/schemas/ResourceServerChildUnitsAll'
+        - $ref: '#/components/schemas/ResourceServerChildUnitsSelected'
+      discriminator:
+        propertyName: mode
+        mapping:
+          all: '#/components/schemas/ResourceServerChildUnitsAll'
+          selected: '#/components/schemas/ResourceServerChildUnitsSelected'
+
+    ResourceServerChildUnitsAll:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      description: Everything beneath the issuing organization unit, at any depth, including units created later.
+      properties:
+        mode:
+          type: string
+          enum: [all]
+        excludedOuIds:
+          type: array
+          description: Organization units withheld from the section, each taking everything beneath it out of reach as well.
+          items:
+            type: string
+          example: ["acme-trial-customers"]
+        overlayRules:
+          $ref: '#/components/schemas/ResourceServerOverlayRules'
+
+    ResourceServerChildUnitsSelected:
+      type: object
+      additionalProperties: false
+      required: [mode, units]
+      description: Named organization units directly beneath the issuer.
+      properties:
+        mode:
+          type: string
+          enum: [selected]
+        units:
+          type: array
+          minItems: 1
+          description: The organization units reached.
+          items:
+            $ref: '#/components/schemas/ResourceServerChildUnit'
+
+    ResourceServerChildUnit:
+      type: object
+      additionalProperties: false
+      required: [ouId, reach]
+      properties:
+        ouId:
+          type: string
+          description: A direct child of the issuing organization unit.
+          example: "acme-customer-a"
+        reach:
+          type: string
+          enum: [unit, subtree]
+          description: How far the resource server carries from the named organization unit.
+          example: unit
+        overlayRules:
+          $ref: '#/components/schemas/ResourceServerOverlayRules'
+
+    ResourceServerOtherTreeRoots:
+      description: The root organization units of other trees, as a policy carries them.
+      oneOf:
+        - $ref: '#/components/schemas/ResourceServerOtherTreeRootsSelected'
+        - $ref: '#/components/schemas/ResourceServerOtherTreeRootsAll'
+      discriminator:
+        propertyName: mode
+        mapping:
+          selected: '#/components/schemas/ResourceServerOtherTreeRootsSelected'
+          all: '#/components/schemas/ResourceServerOtherTreeRootsAll'
+
+    ResourceServerOtherTreeRootsSelected:
+      type: object
+      additionalProperties: false
+      required: [mode, units]
+      description: Named root organization units of other trees, and nothing below them.
+      properties:
+        mode:
+          type: string
+          enum: [selected]
+        units:
+          type: array
+          minItems: 1
+          description: The root organization units reached.
+          items:
+            $ref: '#/components/schemas/ResourceServerRootUnit'
+
+    ResourceServerOtherTreeRootsAll:
+      type: object
+      additionalProperties: false
+      required: [mode]
+      description: The root organization unit of every other tree, including trees created later.
+      properties:
+        mode:
+          type: string
+          enum: [all]
+        excludedOuIds:
+          type: array
+          description: Root organization units withheld from the section, and with them their trees.
+          items:
+            type: string
+          example: ["partner-root"]
+        overlayRules:
+          $ref: '#/components/schemas/ResourceServerOverlayRules'
+
+    ResourceServerRootUnit:
+      type: object
+      additionalProperties: false
+      required: [ouId]
+      properties:
+        ouId:
+          type: string
+          description: The root organization unit of another tree.
+          example: "partner-root"
+        overlayRules:
+          $ref: '#/components/schemas/ResourceServerOverlayRules'
+
+    ResourceServerOverlayRules:
+      type: object
+      additionalProperties: false
+      description: |
+        The terms the organization units a section reaches hold the resource server on. A resource server
+        declares one field, `permissions`, whose values are permission strings compared as a hierarchy, so
+        naming `orders` covers `orders:read`. A section that names no rule shares every permission.
+      properties:
+        permissions:
+          $ref: '#/components/schemas/ResourceServerPermissionsRule'
+
+    ResourceServerPermissionsRule:
+      type: object
+      additionalProperties: false
+      required: [editable]
+      properties:
+        editable:
+          type: boolean
+          description: |
+            Always `false`: a reached organization unit cannot choose its own permissions. `true` is refused
+            with `RES-1029`, as is `allowedValues`.
+          example: false
+        value:
+          type: array
+          description: |
+            The permissions shared. Not supported yet: a policy shares the whole resource server, so stating
+            it is refused with `RES-1038`.
+          items:
+            type: string
+        excludedValues:
+          type: array
+          description: |
+            The permissions withheld. Not supported yet: a policy shares the whole resource server, so stating
+            it is refused with `RES-1038`.
+          items:
+            type: string
+
+    ResourceServerSharingPolicy:
+      type: object
+      description: A recorded sharing policy.
+      properties:
+        id:
+          type: string
+          description: The policy's own identifier.
+          example: "0195a2c0-6f3e-7a21-9f2a-2c4f8f1d9a10"
+        initiatingOuId:
+          type: string
+          description: The organization unit whose decision this policy is.
+          example: "acme-root"
+        stage:
+          type: string
+          enum: [share, reshare]
+          description: "`share` when the owner issued it, `reshare` when a sharee did."
+        parentPolicyId:
+          type: string
+          description: The policy that made this one's issuer able to see the resource server.
+        isReadOnly:
+          type: boolean
+          readOnly: true
+          description: Indicates if the policy is defined in declarative configuration and cannot be modified.
+        version:
+          type: integer
+          description: Bumped on every edit, and carried back on the next one.
+          example: 1
+        allUnits:
+          $ref: '#/components/schemas/ResourceServerAllUnits'
+        childUnits:
+          $ref: '#/components/schemas/ResourceServerChildUnits'
+        otherTreeRoots:
+          $ref: '#/components/schemas/ResourceServerOtherTreeRoots'
+
+    ResourceServerSharingPolicyListResponse:
+      type: object
+      properties:
+        totalResults:
+          type: integer
+          description: How many policies the resource server has, not how many this page holds.
+          example: 2
+        startIndex:
+          type: integer
+          description: The one-based position of the first policy in this page.
+          example: 1
+        count:
+          type: integer
+          description: How many policies this page holds.
+          example: 2
+        policies:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceServerSharingPolicy'
+        links:
+          type: array
+          description: Links to the first, previous, next and last pages, where they exist.
+          items:
+            $ref: '#/components/schemas/Link'
+          example:
+            - href: "/resource-servers/550e8400-e29b-41d4-a716-446655440000/sharing-policies?offset=30&limit=30"
+              rel: "next"
+
+    ResourceServerResolvedOverlay:
+      type: object
+      description: What one organization unit may do with the resource server.
+      properties:
+        ouId:
+          type: string
+          example: "acme-customer-a"
+        isOwnedByOU:
+          type: boolean
+          description: Whether the organization unit owns the resource server rather than being shared it.
+        visible:
+          type: boolean
+          description: Whether the organization unit can see the resource server at all.
+        policyIds:
+          type: array
+          description: Every policy that contributed, so an answer is traceable to its inputs.
+          items:
+            type: string
+        rules:
+          type: object
+          description: The effective rule per field. A resource server declares one, `permissions`.
+          additionalProperties:
+            $ref: '#/components/schemas/ResourceServerOverlayRule'
+
+    ResourceServerOverlayRule:
+      type: object
+      description: What a reached organization unit may do with one field.
+      properties:
+        editable:
+          type: boolean
+        value:
+          type: array
+          items:
+            type: string
+        allowedValues:
+          type: array
+          items:
+            type: string
+        excludedValues:
+          type: array
+          items:
+            type: string
 
     Link:
       type: object

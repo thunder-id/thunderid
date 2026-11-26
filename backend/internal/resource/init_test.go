@@ -18,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
@@ -74,13 +75,23 @@ func TestInitTestSuite(t *testing.T) {
 	suite.Run(t, new(InitTestSuite))
 }
 
+// sharingForInit returns a sharing service that accepts the registration Initialize makes, and the declared
+// policies it loads when resource servers load from files.
+func (suite *InitTestSuite) sharingForInit() *sharingmock.SharingServiceInterfaceMock {
+	sharingService := sharingmock.NewSharingServiceInterfaceMock(suite.T())
+	sharingService.On("RegisterResourceType", mock.AnythingOfType("*resource.resourceServerSharingDeclaration")).
+		Once()
+	sharingService.On("LoadDeclarativeResources", mock.Anything, mock.Anything).Return(nil).Maybe()
+	return sharingService
+}
+
 // TestInitialize tests the Initialize function
 func (suite *InitTestSuite) TestInitialize() {
 	mux := http.NewServeMux()
 
 	// Execute
 	service, exporter, err := Initialize(mux, suite.mockOUService, nil, nil, nil, discardingBus{},
-		allowAllAuthz(suite.T()))
+		allowAllAuthz(suite.T()), suite.sharingForInit())
 
 	// Assert
 	suite.NoError(err)
@@ -310,6 +321,7 @@ func (suite *InitTestSuite) TestNewResourceService() {
 	mockTransactioner := &fakeTransactioner{}
 	service, err := newResourceService(
 		suite.mockOUService, mockStore, mockTransactioner, nil, nil, nil, discardingBus{}, allowAllAuthz(suite.T()),
+		sharingmock.NewSharingServiceInterfaceMock(suite.T()),
 	)
 
 	// Assert
@@ -379,7 +391,8 @@ func (suite *InitTestSuite) TestInitialize_IntegrationFlow() {
 	mux := http.NewServeMux()
 
 	// Execute
-	service, _, err := Initialize(mux, suite.mockOUService, nil, nil, nil, discardingBus{}, allowAllAuthz(suite.T()))
+	service, _, err := Initialize(mux, suite.mockOUService, nil, nil, nil, discardingBus{}, allowAllAuthz(suite.T()),
+		suite.sharingForInit())
 
 	// Assert service is created
 	suite.NoError(err)

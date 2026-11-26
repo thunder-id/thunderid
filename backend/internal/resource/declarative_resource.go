@@ -13,6 +13,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -30,22 +31,48 @@ const (
 	resourceServerPartActions   = "actions"
 )
 
+// resourceServerDeclarativeResource is a resource server as an export writes it, with the sharing policies that
+// govern it carried alongside.
+type resourceServerDeclarativeResource struct {
+	providers.ResourceServer `yaml:",inline"`
+
+	SharingPolicies []sharing.PolicyRequest `yaml:"sharingPolicies,omitempty" json:"sharingPolicies,omitempty"`
+}
+
+// resourceServerOf reads the resource server out of either shape the export pipeline hands around: the document
+// this package writes, and the bare resource server.
+func resourceServerOf(resource interface{}) (*providers.ResourceServer, bool) {
+	switch v := resource.(type) {
+	case *resourceServerDeclarativeResource:
+		return &v.ResourceServer, true
+	case *providers.ResourceServer:
+		return v, true
+	default:
+		return nil, false
+	}
+}
+
 // resourceServerExporter implements declarativeresource.ResourceExporter for resource servers.
 type resourceServerExporter struct {
-	service ResourceServiceInterface
+	service        ResourceServiceInterface
+	sharingService sharing.SharingServiceInterface
 }
 
 // newResourceServerExporter creates a new resource server exporter.
-func newResourceServerExporter(service ResourceServiceInterface) *resourceServerExporter {
-	return &resourceServerExporter{service: service}
+func newResourceServerExporter(
+	service ResourceServiceInterface, sharingService sharing.SharingServiceInterface,
+) *resourceServerExporter {
+	return &resourceServerExporter{service: service, sharingService: sharingService}
 }
 
 // newResourceServerExporterForTest creates a new resource server exporter for testing purposes.
-func newResourceServerExporterForTest(service ResourceServiceInterface) *resourceServerExporter {
+func newResourceServerExporterForTest(
+	service ResourceServiceInterface, sharingService sharing.SharingServiceInterface,
+) *resourceServerExporter {
 	if !testing.Testing() {
 		panic("only for tests!")
 	}
-	return newResourceServerExporter(service)
+	return newResourceServerExporter(service, sharingService)
 }
 
 // GetResourceType returns the resource type for resource servers.
@@ -84,7 +111,8 @@ func (e *resourceServerExporter) GetAllResourceIDs(ctx context.Context) ([]strin
 	return ids, nil
 }
 
-// GetResourceByID retrieves a resource server with all its nested resources and actions by its ID.
+// GetResourceByID retrieves a resource server with all its nested resources and actions by its ID, with the
+// sharing policies recorded for it.
 func (e *resourceServerExporter) GetResourceByID(ctx context.Context, id string) (
 	interface{}, string, *tidcommon.ServiceError,
 ) {
@@ -147,14 +175,25 @@ func (e *resourceServerExporter) GetResourceByID(ctx context.Context, id string)
 		rs.Resources = append(rs.Resources, resource)
 	}
 
-	return rs, server.Name, nil
+	// A document that silently lost its sharing would re-import as a resource server shared with nobody, so
+	// this fails the export rather than thinning it.
+	replayable, sharingErr := e.sharingService.ExportPolicies(ctx, ResourceServerSharingType, id)
+	if sharingErr != nil {
+		return nil, "", translateSharingError(sharingErr)
+	}
+	exported := &resourceServerDeclarativeResource{ResourceServer: *rs}
+	for _, r := range replayable {
+		exported.SharingPolicies = append(exported.SharingPolicies, r.Request)
+	}
+
+	return exported, server.Name, nil
 }
 
 // ValidateResource validates a resource server resource.
 func (e *resourceServerExporter) ValidateResource(ctx context.Context,
 	resource interface{}, id string, logger *log.Logger,
 ) (string, *declarativeresource.ExportError) {
-	server, ok := resource.(*providers.ResourceServer)
+	server, ok := resourceServerOf(resource)
 	if !ok {
 		return "", declarativeresource.CreateTypeError(resourceTypeResourceServer, id)
 	}
@@ -169,7 +208,7 @@ func (e *resourceServerExporter) ValidateResource(ctx context.Context,
 
 // GetResourceID returns the ID of an exported resource server.
 func (e *resourceServerExporter) GetResourceID(resource interface{}) string {
-	if server, ok := resource.(*providers.ResourceServer); ok {
+	if server, ok := resourceServerOf(resource); ok {
 		return server.ID
 	}
 	return ""
@@ -770,4 +809,47 @@ func validateResourceServerWrapper(
 	}
 
 	return nil
+}
+
+// makeResourceServerSharingConfig creates the loader config the sharing framework reads a resource server's
+// declared policies with. It names the resource servers directory, because a policy is carried inside the
+// resource server that declares it rather than in a document of its own.
+func makeResourceServerSharingConfig(service ResourceServiceInterface) sharing.DeclarativeLoaderConfig {
+	return sharing.DeclarativeLoaderConfig{
+		ResourceType:  ResourceServerSharingType,
+		DirectoryName: "resource_servers",
+		Parser:        makeResourceServerSharingParser(service),
+	}
+}
+
+// makeResourceServerSharingParser returns a parser that reads the sharing half of one resource server
+// document. It resolves through the service because a document may name its organization unit by handle, and
+// a policy has to be declared against the id.
+func makeResourceServerSharingParser(
+	service ResourceServiceInterface,
+) func([]byte) (*sharing.DeclaredResourcePolicies, error) {
+	return func(data []byte) (*sharing.DeclaredResourcePolicies, error) {
+		var doc resourceServerDeclarativeResource
+		if err := yaml.Unmarshal(data, &doc); err != nil {
+			return nil, fmt.Errorf("failed to parse resource server YAML: %w", err)
+		}
+		// Most documents declare no policy, and resolving one that has nothing to declare would be a lookup
+		// for an answer nobody reads.
+		if len(doc.SharingPolicies) == 0 {
+			return &sharing.DeclaredResourcePolicies{ResourceID: doc.ID}, nil
+		}
+
+		resourceServer := doc.ResourceServer
+		if svcErr := service.ResolveResourceServerOUHandle(context.Background(), &resourceServer); svcErr != nil {
+			return nil, fmt.Errorf("organization unit with handle %q not found for resource server '%s'",
+				doc.OUHandle, doc.Name)
+		}
+
+		return &sharing.DeclaredResourcePolicies{
+			ResourceID:   doc.ID,
+			ResourceName: doc.Name,
+			OwningOUID:   resourceServer.OUID,
+			Policies:     doc.SharingPolicies,
+		}, nil
+	}
 }

@@ -425,6 +425,33 @@ The importer handles the policies of a document as follows:
 - An export writes the sharing policies of each connection into its document, so importing the export recreates the same sharing.
 - Connection files loaded at startup declare their policies the same way.
 
+### Sharing Policies on Resource Servers
+
+A `resource_server` document can carry a `sharingPolicies` list that shares the resource server with other organization units. Each entry has the same fields as a [sharing policy](../../key-concepts/resource-sharing.mdx) on any other resource. A shared resource server stays in its owner's organization unit, and only the owner changes its definition. An organization unit the policy reaches gets the whole resource server, with every resource and action it defines. A policy cannot grant or withhold part of it yet, so a `permissions` overlay rule that names a `value` or `excludedValues` fails the item.
+
+```yaml
+resource_type: resource_server
+id: 0193b0a1-2001-7000-8000-000000000001
+name: Booking API
+identifier: https://api.example.com/booking
+ouHandle: default
+sharingPolicies:
+  - id: 0193b0a1-2001-7000-8000-000000000002
+    childUnits:
+      mode: all
+resources:
+  - name: Reservations
+    handle: reservations
+```
+
+The importer handles the policies of a document as follows:
+
+- It writes the resource server, its resources, and its actions first, and then records the policies against the organization unit that owns the resource server, whether the document names that unit with `ouId` or `ouHandle`. A policy the resource server already has from that organization unit is updated, and a policy that the document does not name is kept. The exception is a reshare beneath a policy the document narrows: when the narrower policy no longer reaches the organization unit that issued the reshare, the reshare is removed, and the item's result lists it in `removedSharing`.
+- If <ProductName /> refuses a policy, the item fails. When the import created the resource server, it removes the resource server so that a retry is not blocked by a resource server that is left behind. An update that fails on a policy keeps the changes it made to the resource server.
+- A dry run validates the resource server and records no policy.
+- An export writes the sharing policies of each resource server into its document, so importing the export recreates the same sharing.
+- Resource server files loaded at startup declare their policies the same way. Each policy in such a file needs an `id` that stays the same across restarts, because a reshare beneath the policy refers to it by that `id`.
+
 ### Sharing Policies on Flows
 
 A `flow` document can carry a `sharingPolicies` list that shares the flow with other organization units. Each entry has the same fields as a [sharing policy](../../key-concepts/resource-sharing.mdx) on any other resource. A flow document must name its owner with `ouId` or `ouHandle`. A shared flow stays in its owner's organization unit. The organization units it reaches cannot change its definition, but they can set the values of the variables the owner opens to them.

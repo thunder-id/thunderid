@@ -118,6 +118,7 @@ explicitSubGroups:
       - Roles
       - Role Sharing
       - Resource Servers
+      - Resource Server Sharing
       - Resources
       - Actions
       - Permissions
