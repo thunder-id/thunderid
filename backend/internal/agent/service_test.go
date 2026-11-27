@@ -113,7 +113,12 @@ func (suite *AgentServiceTestSuite) setupService() (
 	mockEntity.On("IdentifyEntity", mock.Anything, mock.Anything).
 		Maybe().Return((*string)(nil), entity.ErrEntityNotFound)
 	mockEntity.On("UpdateEntity", mock.Anything, mock.Anything, mock.Anything).
-		Maybe().Return(&providers.Entity{}, nil)
+		Maybe().Return(func(_ context.Context, _ string, entity *providers.Entity) *providers.Entity {
+		if entity == nil {
+			return &providers.Entity{}
+		}
+		return entity
+	}, nil)
 	mockEntity.On("UpdateSystemCredentials", mock.Anything, mock.Anything, mock.Anything).
 		Maybe().Return(nil)
 	mockEntity.On("GetEntityList", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
@@ -1339,7 +1344,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_Success_EntityOnly() {
 
 	clearMockCalls(mockEntity, "UpdateEntity")
 	mockEntity.On("UpdateEntity", mock.Anything, testAgentID, mock.Anything).
-		Return(&providers.Entity{}, nil)
+		Return(&providers.Entity{Attributes: json.RawMessage(`{"name":"test-agent"}`)}, nil)
 
 	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
 		Type: testAgentType, Attributes: json.RawMessage(`{"name":"test-agent"}`),
