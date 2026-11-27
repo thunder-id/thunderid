@@ -66,6 +66,10 @@ func (f *fakeEntityTypeService) DeleteEntityType(
 	return nil
 }
 
+func (f *fakeOUService) GetSystemOUID(context.Context) (string, *tidcommon.ServiceError) {
+	return "system-ou", nil
+}
+
 func (f *fakeOUService) DeleteOrganizationUnit(context.Context, string) *tidcommon.ServiceError {
 	return nil
 }
