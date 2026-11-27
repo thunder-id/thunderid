@@ -38,6 +38,8 @@ const (
 	paConsentAllowAction = "consent_action_allow"
 	paUnauthorizedClient = "unauthorized_client"
 	paGrantRefusedCode   = "AGT-1056"
+	paDeviceCodeGrant    = "urn:ietf:params:oauth:grant-type:device_code"
+	paDeviceFlowRequired = "AGT-1065"
 
 	// The agent asks for a permission the owner holds, so the owner has something to consent to.
 	paResourceIdentifier = "https://personal-agent-api.example.com"
@@ -58,6 +60,8 @@ type PersonalAgentTestSuite struct {
 	noOUPortalAppID    string
 	noOUPortalClientID string
 	flows              *testutils.PersonalAgentRegistrationFlows
+	defaultAuthFlowID  string
+	deviceGrantFlowID  string
 	ownerID            string
 	ownerUsername      string
 	otherID            string
@@ -110,6 +114,11 @@ func (ts *PersonalAgentTestSuite) SetupSuite() {
 	ts.Require().NoError(err)
 
 	ts.registerAgent()
+
+	ts.defaultAuthFlowID, err = testutils.GetFlowIDByHandle("default-flow", "AUTHENTICATION")
+	ts.Require().NoError(err)
+	ts.deviceGrantFlowID, err = testutils.GetFlowIDByHandle("default-device-grant-flow", "DEVICE_GRANT")
+	ts.Require().NoError(err)
 }
 
 func (ts *PersonalAgentTestSuite) TearDownSuite() {
@@ -192,7 +201,7 @@ func (ts *PersonalAgentTestSuite) TestAdminCreatesAPersonalAgentForAUser() {
 }
 
 // The personal rules still apply on the agent API: a local owner is required, no grant beyond the personal
-// ones is accepted, and an unknown kind is refused.
+// ones is accepted, an unknown kind is refused, and the device code grant needs a Device Grant flow.
 func (ts *PersonalAgentTestSuite) TestAdminCreateKeepsThePersonalRules() {
 	for name, tc := range map[string]struct {
 		owner    string
@@ -208,6 +217,8 @@ func (ts *PersonalAgentTestSuite) TestAdminCreateKeepsThePersonalRules() {
 			code: paGrantRefusedCode},
 		"UnknownKind": {owner: ts.otherID, grants: []string{"authorization_code"}, kind: "personal_assistant",
 			code: "AGT-1057"},
+		"DeviceCodeWithoutFlow": {owner: ts.otherID, grants: []string{paDeviceCodeGrant},
+			code: paDeviceFlowRequired},
 	} {
 		ts.Run(name, func() {
 			request := ts.personalAgentRequest(tc.owner, tc.grants...)
@@ -521,6 +532,34 @@ func (ts *PersonalAgentTestSuite) TestOwnerUpdatesTheirAgent() {
 	ts.Require().NoError(err)
 	resp.Body.Close()
 	ts.Contains(resp.Header.Get("Location"), paUnauthorizedClient, "without grants the agent cannot authorize")
+}
+
+// The device code grant needs a Device Grant flow, which only an administrator assigns. The owner cannot add the
+// grant to an agent without one, keeps the flow while the grant stays, and loses it with the grant.
+func (ts *PersonalAgentTestSuite) TestOwnerChangesTheDeviceCodeGrant() {
+	ownerToken := ts.userToken(ts.ownerUsername)
+	redirectURIs := `["` + paRedirectURI + `"]`
+	withDeviceCode := `["authorization_code","` + paDeviceCodeGrant + `"]`
+
+	plain := ts.createOwnedAgent("authorization_code")
+	defer func() { _ = deleteAgent(plain.id) }()
+	status, body := ts.selfServiceCall(http.MethodPut, "/users/me/agents/"+plain.id, ownerToken,
+		ownedAgentBody(plain.name, "x", withDeviceCode, redirectURIs))
+	ts.Equal(http.StatusBadRequest, status, body)
+	ts.Contains(body, paDeviceFlowRequired)
+
+	agent := ts.createDeviceAgent()
+	defer func() { _ = deleteAgent(agent.id) }()
+	path := "/users/me/agents/" + agent.id
+	status, body = ts.selfServiceCall(http.MethodPut, path, ownerToken,
+		ownedAgentBody(agent.name, "x", withDeviceCode, redirectURIs))
+	ts.Require().Equal(http.StatusOK, status, body)
+	ts.Equal(ts.deviceGrantFlowID, ts.agentDeviceGrantFlowID(agent.id), "the assigned flow is kept")
+
+	status, body = ts.selfServiceCall(http.MethodPut, path, ownerToken,
+		ownedAgentBody(agent.name, "x", `["authorization_code"]`, redirectURIs))
+	ts.Require().Equal(http.StatusOK, status, body)
+	ts.Empty(ts.agentDeviceGrantFlowID(agent.id), "the Device Grant flow goes with the grant")
 }
 
 // The owner resets their agent's password. Other callers are refused, and so is an update that names it.
@@ -1191,6 +1230,54 @@ func (ts *PersonalAgentTestSuite) TestAnotherUserIsRefused() {
 	ts.Empty(step.Assertion, "no assertion is issued for another user")
 }
 
+// A personal agent that signs in with the default login flow and uses the default Device Grant flow: the owner
+// enters the user code and signs in, and the token names the owner as the subject and the agent as the actor.
+func (ts *PersonalAgentTestSuite) TestOwnerGetsATokenThroughTheDeviceGrant() {
+	agent := ts.createDeviceAgent()
+	defer func() { _ = deleteAgent(agent.id) }()
+	restore := ts.actAs(agent)
+	defer restore()
+
+	deviceCode, userCode := ts.deviceAuthorize()
+	step := ts.deviceSignIn(agent.id, userCode, ts.ownerUsername)
+	ts.Require().Equal("COMPLETE", step.FlowStatus)
+	ts.Require().NotEmpty(step.Assertion)
+
+	assertionClaims, err := testutils.DecodeJWT(step.Assertion)
+	ts.Require().NoError(err)
+	authRequestID, _ := assertionClaims.Additional["authorization_request_id"].(string)
+	ts.Require().NotEmpty(authRequestID)
+	status, body := ts.postJSON("/oauth2/auth/callback", map[string]string{
+		"authId": authRequestID, "assertion": step.Assertion, "type": paDeviceCodeGrant,
+	})
+	ts.Require().Equal(http.StatusOK, status, body)
+
+	status, body = ts.postToken(url.Values{"grant_type": {paDeviceCodeGrant}, "device_code": {deviceCode}})
+	ts.Require().Equal(http.StatusOK, status, body)
+	var token testutils.TokenResponse
+	ts.Require().NoError(json.Unmarshal([]byte(body), &token))
+	claims, err := testutils.DecodeJWTPayloadMap(token.AccessToken)
+	ts.Require().NoError(err)
+	ts.Equal(ts.ownerID, claims["sub"], "the subject is the owner")
+	act, ok := claims["act"].(map[string]any)
+	ts.Require().True(ok, "the token names the agent as the actor: %v", claims)
+	ts.Equal(agent.id, act["sub"])
+}
+
+// A user other than the owner cannot approve the agent's device request: even with correct credentials they are
+// asked to sign in again, and no assertion is issued.
+func (ts *PersonalAgentTestSuite) TestAnotherUserIsRefusedThroughTheDeviceGrant() {
+	agent := ts.createDeviceAgent()
+	defer func() { _ = deleteAgent(agent.id) }()
+	restore := ts.actAs(agent)
+	defer restore()
+
+	_, userCode := ts.deviceAuthorize()
+	step := ts.deviceSignIn(agent.id, userCode, ts.otherUsername)
+	ts.Equal("INCOMPLETE", step.FlowStatus, "the sign-in is asked for again")
+	ts.Empty(step.Assertion, "no assertion is issued for another user")
+}
+
 // A personal agent has no grants of its own (client credentials, token exchange): it only acts for its owner.
 func (ts *PersonalAgentTestSuite) TestNoGrantsOfItsOwn() {
 	for _, form := range []url.Values{
@@ -1249,7 +1336,24 @@ func (ts *PersonalAgentTestSuite) createOwnedAgent(grants ...string) ownedAgent 
 // createAgentFor creates a personal agent for owner with the given grants.
 func (ts *PersonalAgentTestSuite) createAgentFor(owner string, grants ...string) ownedAgent {
 	ts.T().Helper()
-	request := ts.personalAgentRequest(owner, grants...)
+	return ts.createAgent(ts.personalAgentRequest(owner, grants...))
+}
+
+// createDeviceAgent creates a personal agent for the suite's owner with the device code grant, the default login
+// flow and the default Device Grant flow, which calls it.
+func (ts *PersonalAgentTestSuite) createDeviceAgent() ownedAgent {
+	ts.T().Helper()
+	request := ts.personalAgentRequest(ts.ownerID, paDeviceCodeGrant)
+	request["authFlowId"] = ts.defaultAuthFlowID
+	request["deviceGrantFlowId"] = ts.deviceGrantFlowID
+	agent := ts.createAgent(request)
+	ts.Require().Equal(ts.deviceGrantFlowID, ts.agentDeviceGrantFlowID(agent.id))
+	return agent
+}
+
+// createAgent creates a personal agent from request.
+func (ts *PersonalAgentTestSuite) createAgent(request map[string]interface{}) ownedAgent {
+	ts.T().Helper()
 	resp, err := doPost(testServerURL+agentBasePath, request)
 	ts.Require().NoError(err)
 	defer resp.Body.Close()
@@ -1567,6 +1671,82 @@ func (ts *PersonalAgentTestSuite) exchangeCode(code, verifier string) (int, stri
 		"code_verifier": {verifier},
 		"resource":      {paResourceIdentifier},
 	})
+}
+
+// agentDeviceGrantFlowID reads the Device Grant flow assigned to an agent.
+func (ts *PersonalAgentTestSuite) agentDeviceGrantFlowID(agentID string) string {
+	ts.T().Helper()
+	resp, err := doGet(testServerURL + agentBasePath + "/" + agentID)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	body := readBody(resp)
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, body)
+	var agent struct {
+		DeviceGrantFlowID string `json:"deviceGrantFlowId"`
+	}
+	ts.Require().NoError(json.Unmarshal([]byte(body), &agent))
+	return agent.DeviceGrantFlowID
+}
+
+// deviceAuthorize starts a device authorization request as the agent and returns its device and user codes.
+func (ts *PersonalAgentTestSuite) deviceAuthorize() (string, string) {
+	ts.T().Helper()
+	form := url.Values{"scope": {paScope}, "resource": {paResourceIdentifier}}
+	req, err := http.NewRequest(http.MethodPost, testServerURL+"/oauth2/device-authorize",
+		strings.NewReader(form.Encode()))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth(ts.clientID, ts.clientSecret)
+	resp, err := testutils.GetRawHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	body := readBody(resp)
+	ts.Require().Equal(http.StatusOK, resp.StatusCode, body)
+	var codes struct {
+		DeviceCode string `json:"device_code"`
+		UserCode   string `json:"user_code"`
+	}
+	ts.Require().NoError(json.Unmarshal([]byte(body), &codes))
+	ts.Require().NotEmpty(codes.DeviceCode)
+	ts.Require().NotEmpty(codes.UserCode)
+	return codes.DeviceCode, codes.UserCode
+}
+
+// deviceSignIn runs the agent's Device Grant flow: it enters the user code and signs username in, returning the
+// step after the credentials.
+func (ts *PersonalAgentTestSuite) deviceSignIn(agentID, userCode, username string) *testutils.FlowStep {
+	ts.T().Helper()
+	status, body := ts.postJSON("/flow/execute", map[string]any{
+		"applicationId": agentID, "flowType": "DEVICE_GRANT", "verbose": true,
+	})
+	ts.Require().Equal(http.StatusOK, status, body)
+	var codePrompt testutils.FlowStep
+	ts.Require().NoError(json.Unmarshal([]byte(body), &codePrompt))
+
+	signInPrompt, err := testutils.ExecuteAuthenticationFlow(codePrompt.ExecutionID,
+		map[string]string{"user_code": userCode}, "device-code-submit", codePrompt.ChallengeToken)
+	ts.Require().NoError(err)
+	ts.Require().Equal("INCOMPLETE", signInPrompt.FlowStatus)
+
+	step, err := testutils.ExecuteAuthenticationFlow(signInPrompt.ExecutionID, map[string]string{
+		"username": username, "password": paPassword,
+	}, paSignInAction, signInPrompt.ChallengeToken)
+	ts.Require().NoError(err)
+	return step
+}
+
+// postJSON posts a JSON body to the server without credentials.
+func (ts *PersonalAgentTestSuite) postJSON(path string, payload any) (int, string) {
+	ts.T().Helper()
+	encoded, err := json.Marshal(payload)
+	ts.Require().NoError(err)
+	req, err := http.NewRequest(http.MethodPost, testServerURL+path, bytes.NewReader(encoded))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := testutils.GetRawHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	return resp.StatusCode, readBody(resp)
 }
 
 // postToken calls the token endpoint as the agent, with client_secret_basic.

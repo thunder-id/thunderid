@@ -62,7 +62,7 @@ var defaultMessages = map[string]string{
 	"error.agentservice.error_retrieving_flow_definition": "Error retrieving flow definition",
 	"error.agentservice.error_retrieving_flow_definition_description": "An error occurred while retrieving the flow definition",
 	"error.agentservice.grant_type_not_allowed_for_personal_agent": "Grant type not allowed",
-	"error.agentservice.grant_type_not_allowed_for_personal_agent_description": "A personal agent can only use the authorization code, CIBA, and refresh token grants",
+	"error.agentservice.grant_type_not_allowed_for_personal_agent_description": "A personal agent can only use the authorization code, CIBA, device code, and refresh token grants",
 	"error.agentservice.idjag_cannot_use_none_auth_description": "ID-JAG configuration requires a confidential client and cannot use 'none' token endpoint authentication method",
 	"error.agentservice.idjag_requires_allowed_audience_description": "ID-JAG configuration requires at least one allowed audience, and allowed audiences must not be blank",
 	"error.agentservice.idjag_requires_token_exchange_description": "ID-JAG configuration requires the urn:ietf:params:oauth:grant-type:token-exchange grant type",

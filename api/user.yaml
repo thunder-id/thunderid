@@ -2361,8 +2361,11 @@ paths:
         `POST /users/me/agents/{id}/update-credentials`. Read the agent first and send these fields back with the
         changes.
 
-        Grant types must be a subset of `authorization_code`, `urn:openid:params:grant-type:ciba` and
-        `refresh_token`. An empty list removes every grant, so the agent gets no tokens until one is added.
+        Grant types must be a subset of `authorization_code`, `urn:openid:params:grant-type:ciba`,
+        `urn:ietf:params:oauth:grant-type:device_code` and `refresh_token`. The device code grant needs the Device
+        Grant flow an administrator assigned, so it is refused on an agent that has none (`AGT-1065`), and removing
+        the grant removes the flow. An empty list removes every grant, so the agent gets no tokens until one is
+        added.
         With `authorization_code`, the agent uses response type `code` and PKCE, and needs at least one redirect
         URI; without it, both are removed. A grant the owner removes is refused from then on, including for
         outstanding refresh tokens.
@@ -2411,7 +2414,7 @@ paths:
                   defaultValue: "Grant type not allowed"
                 description:
                   key: "error.agentservice.grant_type_not_allowed_for_personal_agent_description"
-                  defaultValue: "A personal agent can only use the authorization code, CIBA, and refresh token grants"
+                  defaultValue: "A personal agent can only use the authorization code, CIBA, device code, and refresh token grants"
         "401":
           description: No user access token
           content:
@@ -4590,8 +4593,10 @@ components:
           items:
             type: string
           description: |
-            For a personal agent, a subset of `authorization_code`, `urn:openid:params:grant-type:ciba` and
-            `refresh_token`. An empty list removes every grant, so the agent gets no tokens until one is added.
+            For a personal agent, a subset of `authorization_code`, `urn:openid:params:grant-type:ciba`,
+            `urn:ietf:params:oauth:grant-type:device_code` and `refresh_token`. The device code grant needs the Device
+            Grant flow an administrator assigned, so it is refused on an agent that has none, and removing the grant
+            removes the flow. An empty list removes every grant, so the agent gets no tokens until one is added.
         redirectUris:
           type: array
           items:

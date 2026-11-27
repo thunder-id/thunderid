@@ -24,6 +24,7 @@ const (
 	authCode          = providers.GrantTypeAuthorizationCode
 	refreshToken      = providers.GrantTypeRefreshToken
 	ciba              = providers.GrantTypeCIBA
+	deviceCode        = providers.GrantTypeDeviceCode
 	tokenExchange     = providers.GrantTypeTokenExchange
 	jwtBearer         = providers.GrantTypeJWTBearer
 )
@@ -255,6 +256,8 @@ func (suite *DelegationTestSuite) TestPersonalAgentFollowsThePersonalRules() {
 		{"ClientCredentialsIsNotAdded", false, []providers.GrantType{authCode, refreshToken},
 			[]providers.GrantType{authCode, refreshToken}, true},
 		{"CIBAAloneNeedsNoCodeFlow", false, []providers.GrantType{ciba}, []providers.GrantType{ciba}, false},
+		{"DeviceCodeAloneNeedsNoCodeFlow", false, []providers.GrantType{deviceCode, refreshToken},
+			[]providers.GrantType{deviceCode, refreshToken}, false},
 	}
 
 	for _, tt := range tests {
