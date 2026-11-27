@@ -379,6 +379,14 @@ func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrantApprovalFailurePath
 			expectedError: constants.ErrorServerError,
 		},
 		{
+			name: "access token refused",
+			setupMocks: func() {
+				suite.tokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.Anything).
+					Return(nil, tokenservice.ErrIssuanceRefused)
+			},
+			expectedError: constants.ErrorInvalidGrant,
+		},
+		{
 			name: "ID token failure",
 			setupMocks: func() {
 				suite.tokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.Anything).
@@ -387,6 +395,16 @@ func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrantApprovalFailurePath
 					Return(nil, errors.New("signer unavailable"))
 			},
 			expectedError: constants.ErrorServerError,
+		},
+		{
+			name: "ID token refused",
+			setupMocks: func() {
+				suite.tokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.Anything).
+					Return(&model.TokenDTO{Token: "access-token"}, nil)
+				suite.tokenBuilder.EXPECT().BuildIDToken(mock.Anything, mock.Anything).
+					Return(nil, tokenservice.ErrIssuanceRefused)
+			},
+			expectedError: constants.ErrorInvalidGrant,
 		},
 		{
 			name: "request consumption failure",

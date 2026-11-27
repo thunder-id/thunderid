@@ -217,9 +217,7 @@ func (h *deviceCodeGrantHandler) issueTokens(
 	}
 	accessToken, err := h.tokenBuilder.BuildAccessToken(ctx, accessTokenCtx)
 	if err != nil {
-		h.logger.Error(ctx, "Failed to generate Device Grant access token", log.Error(err))
-		return nil, &model.ErrorResponse{
-			Error: constants.ErrorServerError, ErrorDescription: "Failed to generate token"}
+		return nil, tokenBuildErrorResponse(ctx, h.logger, err, "Failed to generate token")
 	}
 	accessToken.OriginalAudiences = audiences
 	tokenResponse := &model.TokenResponseDTO{AccessToken: *accessToken, SessionID: record.SessionID}
@@ -231,9 +229,7 @@ func (h *deviceCodeGrantHandler) issueTokens(
 			CompletedACR: record.CompletedACR, SessionID: record.SessionID,
 		})
 		if idErr != nil {
-			h.logger.Error(ctx, "Failed to generate Device Grant ID token", log.Error(idErr))
-			return nil, &model.ErrorResponse{
-				Error: constants.ErrorServerError, ErrorDescription: "Failed to generate token"}
+			return nil, tokenBuildErrorResponse(ctx, h.logger, idErr, "Failed to generate token")
 		}
 		tokenResponse.IDToken = *idToken
 	}
