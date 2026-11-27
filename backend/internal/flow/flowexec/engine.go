@@ -79,13 +79,17 @@ func newFlowEngine(
 	}
 }
 
-// Execute executes a step in the flow
+// Execute executes a step in the flow. A step that fails with a service error ends the flow, so what the
+// flow created is rolled back.
 func (fe *flowEngine) Execute(ctx *EngineContext) (FlowStep, *tidcommon.ServiceError) {
 	flowStep, svcErr := fe.executeRequest(ctx)
 	if svcErr == nil && flowStep.Status != providers.FlowStatusComplete {
 		requested := fe.pausedStepInputs(ctx, &flowStep)
 		fe.dropUnusedInputs(ctx, requested)
 		fe.recordRequestedInputs(ctx, &flowStep, requested)
+	}
+	if svcErr != nil {
+		fe.rollback(ctx, fe.logger.With(log.String(log.LoggerKeyExecutionID, ctx.ExecutionID)))
 	}
 	return flowStep, svcErr
 }
@@ -334,6 +338,7 @@ func (fe *flowEngine) executeNodePackage(ctx *EngineContext,
 
 	fe.trackPresentedOptionalInputs(ctx, nodeResp)
 	fe.updateContextWithNodeResponse(ctx, nodeResp)
+	fe.recordRollback(ctx, currentNode, nodeResp)
 
 	nextNode, continueExecution, svcErr := fe.processNodeResponse(ctx, nodeResp, flowStep, logger)
 	if svcErr != nil {
@@ -1055,6 +1060,7 @@ func (fe *flowEngine) processNodeResponse(ctx *EngineContext, nodeResp *common.N
 		if ctx.frameDepth() > 0 {
 			return fe.handleCalleeFailure(ctx, nodeResp, flowStep, logger)
 		}
+		fe.rollback(ctx, logger)
 		flowStep.Status = providers.FlowStatusError
 		flowStep.Error = nodeResp.Error
 		return nil, false, nil
@@ -1063,6 +1069,62 @@ func (fe *flowEngine) processNodeResponse(ctx *EngineContext, nodeResp *common.N
 			log.String("status", string(nodeResp.Status)))
 		return nil, false, &tidcommon.InternalServerError
 	}
+}
+
+// recordRollback records the changes the node reported, with the flow and node that made them, so the node can
+// undo them if the flow ends in an error.
+func (fe *flowEngine) recordRollback(ctx *EngineContext, node core.NodeInterface,
+	nodeResp *common.NodeResponse) {
+	for _, action := range nodeResp.RollbackActions {
+		ctx.rollbacks = append(ctx.rollbacks, rollbackEntry{FlowID: ctx.Graph.GetID(), NodeID: node.GetID(),
+			Action: action})
+	}
+}
+
+// rollback has each node undo the changes it made in the flow, newest first. A failed rollback is logged and does
+// not change the error the flow ends with.
+func (fe *flowEngine) rollback(ctx *EngineContext, logger *log.Logger) {
+	if len(ctx.rollbacks) == 0 {
+		return
+	}
+	ctx.rolledBack = true
+	graphs := make(map[string]core.GraphInterface)
+	for _, c := range slices.Backward(ctx.rollbacks) {
+		if err := fe.rollbackChange(ctx, graphs, c, logger); err != nil {
+			logger.Error(ctx.Context, "Failed to roll back the node's change", log.String("flowID", c.FlowID),
+				log.String(log.LoggerKeyNodeID, c.NodeID), log.String("action", c.Action.Action), log.Error(err))
+		}
+	}
+	ctx.rollbacks = nil
+}
+
+// rollbackChange finds the node that made the change in the graph of the flow it ran in, and has it undo the change.
+// The graphs it loads are kept in graphs for the rest of the rollback.
+func (fe *flowEngine) rollbackChange(ctx *EngineContext, graphs map[string]core.GraphInterface,
+	c rollbackEntry, logger *log.Logger) error {
+	graph, ok := graphs[c.FlowID]
+	if !ok {
+		if ctx.Graph != nil && ctx.Graph.GetID() == c.FlowID {
+			graph = ctx.Graph
+		} else {
+			flow, svcErr := fe.flowProvider.GetFlow(security.WithRuntimeContext(ctx.Context), c.FlowID)
+			if svcErr != nil {
+				return fmt.Errorf("failed to get the flow: %s", svcErr.Code)
+			}
+			if graph, svcErr = fe.graphBuilder.GetGraph(ctx.Context, flow); svcErr != nil {
+				return fmt.Errorf("failed to build the flow graph: %s", svcErr.Code)
+			}
+		}
+		graphs[c.FlowID] = graph
+	}
+	node, exists := graph.GetNode(c.NodeID)
+	if !exists {
+		return errors.New("node not found in its flow")
+	}
+	if svcErr := fe.setNodeExecutor(ctx.Context, node, logger); svcErr != nil {
+		return errors.New("failed to set the node's executor")
+	}
+	return node.Rollback(ctx.Context, c.Action)
 }
 
 // isSignInBoundaryRefusal reports whether a node refused a sign-in for its organization unit boundary.
@@ -1372,6 +1434,7 @@ func (fe *flowEngine) handleCalleeFailure(ctx *EngineContext, nodeResp *common.N
 	// If the call node has no onFailure target, terminate the flow with error
 	onFailureID := cn.GetOnFailure()
 	if onFailureID == "" {
+		fe.rollback(ctx, logger)
 		flowStep.Status = providers.FlowStatusError
 		flowStep.Error = nodeResp.Error
 		return nil, false, nil

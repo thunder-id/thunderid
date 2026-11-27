@@ -135,6 +135,17 @@ func (suite *OUProviderTestSuite) TestCreateOrganizationUnitReturnsServiceError(
 	suite.Equal(providers.OrganizationUnit{}, got)
 }
 
+func (suite *OUProviderTestSuite) TestDeleteOrganizationUnitDelegates() {
+	suite.mockService.On("DeleteOrganizationUnit", mock.Anything, providerTestOUID).
+		Return(&ErrorOrganizationUnitNotFound).Once()
+
+	deleter, ok := suite.provider.(providers.OrganizationUnitDeleter)
+	suite.Require().True(ok)
+	svcErr := deleter.DeleteOrganizationUnit(suite.T().Context(), providerTestOUID)
+
+	suite.Equal(&ErrorOrganizationUnitNotFound, svcErr)
+}
+
 func (suite *OUProviderTestSuite) TestIsParentDelegates() {
 	suite.mockService.On("IsParent", mock.Anything, providerTestParentID, providerTestChildID).
 		Return(true, (*tidcommon.ServiceError)(nil)).Once()

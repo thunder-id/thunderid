@@ -52,6 +52,12 @@ func (s *ExecutorTestSuite) TestGetName() {
 	s.Equal(testExecutorName, exec.GetName())
 }
 
+func (s *ExecutorTestSuite) TestRollbackBaseExecutorDoesNothing() {
+	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication, nil, nil, nil)
+
+	s.NoError(exec.Rollback(context.Background(), providers.RollbackAction{Action: "create", Ref: "ou-1"}))
+}
+
 func (s *ExecutorTestSuite) TestGetType() {
 	exec := newExecutor(testExecutorName, providers.ExecutorTypeAuthentication,
 		nil, nil, &providers.ExecutorMeta{})

@@ -4,6 +4,8 @@
 package core
 
 import (
+	"context"
+
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -31,6 +33,8 @@ type NodeInterface interface {
 	GetCondition() *NodeCondition
 	SetCondition(condition *NodeCondition)
 	GetExecutionPolicy() *providers.ExecutionPolicy
+	// Rollback undoes one change the node reported in NodeResponse.RollbackActions.
+	Rollback(ctx context.Context, action providers.RollbackAction) error
 }
 
 // node implements the NodeInterface
@@ -208,5 +212,10 @@ func (n *node) SetCondition(condition *NodeCondition) {
 // GetExecutionPolicy returns the execution policy for the node. By default, it returns nil, indicating
 // no special execution policy. Nodes that need special execution behavior should override this method.
 func (n *node) GetExecutionPolicy() *providers.ExecutionPolicy {
+	return nil
+}
+
+// Rollback does nothing by default, since a node reports no changes unless it overrides Execute to do so.
+func (n *node) Rollback(ctx context.Context, action providers.RollbackAction) error {
 	return nil
 }

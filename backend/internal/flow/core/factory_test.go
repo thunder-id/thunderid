@@ -4,6 +4,7 @@
 package core
 
 import (
+	"context"
 	"testing"
 
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -523,6 +524,10 @@ func (f *fakeExecutorBackedNode) ShouldExecute(ctx *providers.NodeContext) bool 
 }
 
 func (f *fakeExecutorBackedNode) GetExecutionPolicy() *providers.ExecutionPolicy {
+	return nil
+}
+
+func (f *fakeExecutorBackedNode) Rollback(ctx context.Context, action providers.RollbackAction) error {
 	return nil
 }
 

@@ -2665,6 +2665,166 @@ func (s *EngineTestSuite) TestProcessNodeResponse_FailureStatus() {
 	s.False(continueExec)
 	s.Nil(next)
 	s.Equal(providers.FlowStatusError, flowStep.Status)
+	s.False(ctx.rolledBack)
+}
+
+// ouCreated is the change the OU executor reports for the OU it created.
+var ouCreated = providers.RollbackAction{Action: "create", Ref: "ou-1"}
+
+// ouCreatedEntry is the OU creation node's record of the OU it created.
+var ouCreatedEntry = rollbackEntry{FlowID: "flow-1", NodeID: "ou_creation", Action: ouCreated}
+
+// newRollbackNode returns a task execution node, with its executor set, that undoes the given change once.
+func (s *EngineTestSuite) newRollbackNode(action providers.RollbackAction,
+	rollbackErr error) *coremock.ExecutorBackedNodeInterfaceMock {
+	n := coremock.NewExecutorBackedNodeInterfaceMock(s.T())
+	n.On("GetType").Return(common.NodeTypeTaskExecution)
+	n.On("GetExecutor").Return(coremock.NewExecutorInterfaceMock(s.T()))
+	n.On("Rollback", mock.Anything, action).Return(rollbackErr).Once()
+	return n
+}
+
+func (s *EngineTestSuite) TestRecordRollback() {
+	testCases := []struct {
+		name     string
+		actions  []providers.RollbackAction
+		expected []rollbackEntry
+	}{
+		{
+			name: "Node reports its changes in order",
+			actions: []providers.RollbackAction{
+				{Action: "create", Ref: "user-1"},
+				{Action: "assign", Ref: "group-1", Data: map[string]string{"userId": "user-1"}},
+			},
+			expected: []rollbackEntry{
+				{FlowID: "flow-1", NodeID: "provisioning", Action: providers.RollbackAction{Action: "create",
+					Ref: "user-1"}},
+				{FlowID: "flow-1", NodeID: "provisioning", Action: providers.RollbackAction{Action: "assign",
+					Ref: "group-1", Data: map[string]string{"userId": "user-1"}}},
+			},
+		},
+		{
+			name: "Node reports nothing",
+		},
+	}
+
+	for _, tc := range testCases {
+		s.Run(tc.name, func() {
+			graph := coremock.NewGraphInterfaceMock(s.T())
+			graph.On("GetID").Return("flow-1").Maybe()
+			node := coremock.NewNodeInterfaceMock(s.T())
+			node.On("GetID").Return("provisioning").Maybe()
+			fe := &flowEngine{logger: log.GetLogger()}
+			ctx := &EngineContext{Context: context.Background(), Graph: graph}
+
+			fe.recordRollback(ctx, node, &common.NodeResponse{RollbackActions: tc.actions})
+
+			s.Equal(tc.expected, ctx.rollbacks)
+		})
+	}
+}
+
+func (s *EngineTestSuite) TestProcessNodeResponse_FailureStatus_RollsBackNewestFirst() {
+	t := s.T()
+	var order []string
+	record := func(args mock.Arguments) {
+		order = append(order, args.Get(1).(providers.RollbackAction).Ref)
+	}
+	ref := func(r string) providers.RollbackAction { return providers.RollbackAction{Action: "create", Ref: r} }
+
+	// The node whose executor is not set yet has the engine set it before undoing its change.
+	ouExec := coremock.NewExecutorInterfaceMock(t)
+	mockRegistry := executormock.NewExecutorRegistryInterfaceMock(t)
+	mockRegistry.EXPECT().GetExecutor("OUExecutor").Return(ouExec, nil)
+	first := coremock.NewExecutorBackedNodeInterfaceMock(t)
+	first.On("GetType").Return(common.NodeTypeTaskExecution)
+	first.On("GetExecutor").Return(nil)
+	first.On("GetExecutorName").Return("OUExecutor")
+	first.On("SetExecutor", ouExec).Once()
+	first.On("Rollback", mock.Anything, ref("ref-4")).Run(record).Return(nil).Once()
+	second := coremock.NewNodeInterfaceMock(t)
+	second.On("GetType").Return(common.NodeTypePrompt)
+	second.On("Rollback", mock.Anything, ref("ref-2")).Run(record).Return(errors.New("rollback failed")).Once()
+	graph := coremock.NewGraphInterfaceMock(t)
+	graph.On("GetID").Return("flow-1")
+	graph.On("GetNode", "missing").Return(nil, false)
+	graph.On("GetNode", "first").Return(first, true)
+	graph.On("GetNode", "second").Return(second, true)
+
+	// A node whose executor cannot be constructed is skipped.
+	mockRegistry.EXPECT().GetExecutor("Unknown").Return(nil, errors.New("not registered"))
+	noExec := coremock.NewExecutorBackedNodeInterfaceMock(t)
+	noExec.On("GetType").Return(common.NodeTypeTaskExecution)
+	noExec.On("GetExecutor").Return(nil)
+	noExec.On("GetExecutorName").Return("Unknown")
+	graph.On("GetNode", "no-exec").Return(noExec, true)
+
+	// A node in another flow is found in that flow's graph, which is loaded once.
+	sub := coremock.NewExecutorBackedNodeInterfaceMock(t)
+	sub.On("GetType").Return(common.NodeTypeTaskExecution)
+	sub.On("GetExecutor").Return(coremock.NewExecutorInterfaceMock(t))
+	sub.On("Rollback", mock.Anything, ref("ref-3")).Run(record).Return(nil).Once()
+	sub.On("Rollback", mock.Anything, ref("ref-1")).Run(record).Return(nil).Once()
+	subFlow := &providers.CompleteFlowDefinition{ID: "flow-3"}
+	subGraph := coremock.NewGraphInterfaceMock(t)
+	subGraph.On("GetNode", "sub").Return(sub, true)
+	flowProvider := NewFlowProviderMock(t)
+	flowProvider.On("GetFlow", mock.Anything, "flow-2").Return(nil, &tidcommon.ServiceError{Code: "FLW-1"}).Once()
+	flowProvider.On("GetFlow", mock.Anything, "flow-3").Return(subFlow, nil).Once()
+	graphBuilder := NewGraphBuilderInterfaceMock(t)
+	graphBuilder.On("GetGraph", mock.Anything, subFlow).Return(subGraph, nil).Once()
+
+	// A flow whose graph cannot be built is skipped.
+	brokenFlow := &providers.CompleteFlowDefinition{ID: "flow-4"}
+	flowProvider.On("GetFlow", mock.Anything, "flow-4").Return(brokenFlow, nil).Once()
+	graphBuilder.On("GetGraph", mock.Anything, brokenFlow).Return(nil, &tidcommon.ServiceError{Code: "FLW-2"}).Once()
+
+	fe := &flowEngine{executorRegistry: mockRegistry, flowProvider: flowProvider, graphBuilder: graphBuilder,
+		logger: log.GetLogger()}
+	ctx := &EngineContext{Context: context.Background(), Graph: graph, rollbacks: []rollbackEntry{
+		{FlowID: "flow-1", NodeID: "missing", Action: ref("ref-0")},
+		{FlowID: "flow-2", NodeID: "gone", Action: ref("ref-x")},
+		{FlowID: "flow-4", NodeID: "broken", Action: ref("ref-y")},
+		{FlowID: "flow-1", NodeID: "no-exec", Action: ref("ref-z")},
+		{FlowID: "flow-3", NodeID: "sub", Action: ref("ref-1")},
+		{FlowID: "flow-1", NodeID: "second", Action: ref("ref-2")},
+		{FlowID: "flow-3", NodeID: "sub", Action: ref("ref-3")},
+		{FlowID: "flow-1", NodeID: "first", Action: ref("ref-4")},
+	}}
+	nodeErr := &tidcommon.ServiceError{Code: "err-1"}
+	flowStep := &FlowStep{}
+
+	next, continueExec, svcErr := fe.processNodeResponse(ctx,
+		&common.NodeResponse{Status: common.NodeStatusFailure, Error: nodeErr}, flowStep, log.GetLogger())
+
+	s.Nil(svcErr)
+	s.False(continueExec)
+	s.Nil(next)
+	s.Equal(providers.FlowStatusError, flowStep.Status)
+	s.Equal(nodeErr, flowStep.Error)
+	s.Equal([]string{"ref-4", "ref-3", "ref-2", "ref-1"}, order)
+	s.Nil(ctx.rollbacks)
+	s.True(ctx.rolledBack)
+}
+
+func (s *EngineTestSuite) TestProcessNodeResponse_ForwardStatus_KeepsRollbacks() {
+	t := s.T()
+	mockGraph := coremock.NewGraphInterfaceMock(t)
+	mockNextNode := coremock.NewNodeInterfaceMock(t)
+	mockGraph.On("GetNode", "retry-prompt").Return(mockNextNode, true)
+	mockNextNode.On("GetID").Return("retry-prompt").Maybe()
+
+	fe := &flowEngine{logger: log.GetLogger()}
+	rollbacks := []rollbackEntry{ouCreatedEntry}
+	ctx := &EngineContext{Context: context.Background(), Graph: mockGraph, rollbacks: rollbacks}
+
+	_, _, svcErr := fe.processNodeResponse(ctx, &common.NodeResponse{
+		Status: common.NodeStatusForward, NextNodeID: "retry-prompt",
+		Error: &tidcommon.ServiceError{Code: "err-1"},
+	}, &FlowStep{}, log.GetLogger())
+
+	s.Nil(svcErr)
+	s.Equal(rollbacks, ctx.rollbacks)
 }
 
 func (s *EngineTestSuite) TestProcessNodeResponse_CompleteStatus() {
@@ -3567,6 +3727,34 @@ func (s *EngineTestSuite) TestFlowEngineExecute_NilGraph() {
 
 	_, err := fe.Execute(ctx)
 	s.NotNil(err)
+}
+
+func (s *EngineTestSuite) TestFlowEngineExecute_ServiceErrorRollsBack() {
+	t := s.T()
+	mockObs := observabilitymock.NewObservabilityServiceInterfaceMock(t)
+	mockObs.EXPECT().IsEnabled().Return(false).Maybe()
+	flow := &providers.CompleteFlowDefinition{ID: "flow-1"}
+	graph := coremock.NewGraphInterfaceMock(t)
+	graph.On("GetNode", "ou_creation").Return(s.newRollbackNode(ouCreated, nil), true)
+	flowProvider := NewFlowProviderMock(t)
+	flowProvider.On("GetFlow", mock.Anything, "flow-1").Return(flow, nil)
+	graphBuilder := NewGraphBuilderInterfaceMock(t)
+	graphBuilder.On("GetGraph", mock.Anything, flow).Return(graph, nil)
+
+	fe := &flowEngine{flowProvider: flowProvider, graphBuilder: graphBuilder, logger: log.GetLogger(),
+		observabilitySvc: mockObs}
+	ctx := &EngineContext{
+		Context:          context.Background(),
+		ExecutionID:      "exec-1",
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
+		rollbacks:        []rollbackEntry{ouCreatedEntry},
+	}
+
+	_, err := fe.Execute(ctx)
+
+	s.NotNil(err)
+	s.True(ctx.rolledBack)
+	s.Nil(ctx.rollbacks)
 }
 
 func (s *EngineTestSuite) TestFlowEngineExecute_FailsWhenNodeExceedsVisitLimit() {
@@ -5261,8 +5449,16 @@ func (s *EngineTestSuite) TestHandleCalleeFailure_NoOnFailure() {
 
 	mockCallerGraph.On("GetNode", "call-node-1").Return(mockCallNode, true)
 	mockCallNode.On("GetOnFailure").Return("")
+	mockCallerGraph.On("GetID").Return("caller-flow")
+	calleeFlow := &providers.CompleteFlowDefinition{ID: "flow-1"}
+	calleeGraph := coremock.NewGraphInterfaceMock(t)
+	calleeGraph.On("GetNode", "ou_creation").Return(s.newRollbackNode(ouCreated, nil), true)
+	flowProvider := NewFlowProviderMock(t)
+	flowProvider.On("GetFlow", mock.Anything, "flow-1").Return(calleeFlow, nil)
+	graphBuilder := NewGraphBuilderInterfaceMock(t)
+	graphBuilder.On("GetGraph", mock.Anything, calleeFlow).Return(calleeGraph, nil)
 
-	fe := &flowEngine{logger: log.GetLogger()}
+	fe := &flowEngine{flowProvider: flowProvider, graphBuilder: graphBuilder, logger: log.GetLogger()}
 	flowStep := &FlowStep{}
 
 	callerErr := &tidcommon.ServiceError{Code: "callee-failed"}
@@ -5271,7 +5467,8 @@ func (s *EngineTestSuite) TestHandleCalleeFailure_NoOnFailure() {
 		Error:  callerErr,
 	}
 
-	ctx := &EngineContext{Context: context.Background(), Graph: mockCallerGraph}
+	ctx := &EngineContext{Context: context.Background(), Graph: mockCallerGraph,
+		rollbacks: []rollbackEntry{ouCreatedEntry}}
 	ctx.pushFrame("call-node-1")
 	ctx.Graph = coremock.NewGraphInterfaceMock(t)
 
@@ -5281,6 +5478,7 @@ func (s *EngineTestSuite) TestHandleCalleeFailure_NoOnFailure() {
 	s.Nil(svcErr)
 	s.Equal(providers.FlowStatusError, flowStep.Status)
 	s.Equal(callerErr, flowStep.Error)
+	s.Nil(ctx.rollbacks)
 }
 
 func (s *EngineTestSuite) TestHandleCalleeFailure_WithOnFailure() {
@@ -5302,7 +5500,8 @@ func (s *EngineTestSuite) TestHandleCalleeFailure_WithOnFailure() {
 		Error:  callerErr,
 	}
 
-	ctx := &EngineContext{Context: context.Background(), Graph: mockCallerGraph}
+	rollbacks := []rollbackEntry{ouCreatedEntry}
+	ctx := &EngineContext{Context: context.Background(), Graph: mockCallerGraph, rollbacks: rollbacks}
 	ctx.pushFrame("call-node-1")
 	ctx.Graph = coremock.NewGraphInterfaceMock(t)
 
@@ -5313,6 +5512,7 @@ func (s *EngineTestSuite) TestHandleCalleeFailure_WithOnFailure() {
 	s.NotNil(ctx.CurrentNodeResponse)
 	s.Equal(common.NodeStatusForward, ctx.CurrentNodeResponse.Status)
 	s.Equal(callerErr, ctx.CurrentNodeResponse.Error)
+	s.Equal(rollbacks, ctx.rollbacks)
 }
 
 func (s *EngineTestSuite) TestHandleCalleeFailure_DeviceGrantRoutesToConfiguredFailureNode() {

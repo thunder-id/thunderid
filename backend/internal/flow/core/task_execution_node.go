@@ -4,7 +4,9 @@
 package core
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
@@ -230,6 +232,7 @@ func (n *taskExecutionNode) buildNodeResponse(execResp *providers.ExecutorRespon
 		Assertion:         execResp.Assertion,
 		AuthUser:          execResp.AuthUser,
 		EngineData:        execResp.EngineData,
+		RollbackActions:   execResp.RollbackActions,
 	}
 	if nodeResp.AdditionalData == nil {
 		nodeResp.AdditionalData = make(map[string]string)
@@ -278,6 +281,14 @@ func (n *taskExecutionNode) GetExecutionPolicy() *providers.ExecutionPolicy {
 		return nil
 	}
 	return n.executor.GetExecutionPolicy(n.mode)
+}
+
+// Rollback has the node's executor undo one change it reported.
+func (n *taskExecutionNode) Rollback(ctx context.Context, action providers.RollbackAction) error {
+	if n.executor == nil {
+		return fmt.Errorf("executor %s is not set on the node", n.executorName)
+	}
+	return n.executor.Rollback(ctx, action)
 }
 
 // GetExecutorName returns the executor name for the task execution node

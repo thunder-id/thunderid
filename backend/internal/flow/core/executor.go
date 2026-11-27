@@ -4,6 +4,8 @@
 package core
 
 import (
+	"context"
+
 	"github.com/thunder-id/thunderid/internal/system/log"
 	systemutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -207,6 +209,11 @@ func (e *executor) GetRequiredInputs(ctx *providers.NodeContext) []providers.Inp
 // GetExecutionPolicy returns the execution policy for the given mode. By default, it returns nil,
 // indicating no special execution policy. Executors that need per-mode policies should override this method.
 func (e *executor) GetExecutionPolicy(mode string) *providers.ExecutionPolicy {
+	return nil
+}
+
+// Rollback does nothing by default, since an executor reports no changes unless it overrides Execute to do so.
+func (e *executor) Rollback(ctx context.Context, action providers.RollbackAction) error {
 	return nil
 }
 

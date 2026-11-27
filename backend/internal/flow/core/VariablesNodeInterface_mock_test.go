@@ -5,6 +5,8 @@
 package core
 
 import (
+	"context"
+
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	common0 "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -762,6 +764,63 @@ func (_c *VariablesNodeInterfaceMock_RemovePreviousNode_Call) Return() *Variable
 
 func (_c *VariablesNodeInterfaceMock_RemovePreviousNode_Call) RunAndReturn(run func(previousNodeID string)) *VariablesNodeInterfaceMock_RemovePreviousNode_Call {
 	_c.Run(run)
+	return _c
+}
+
+// Rollback provides a mock function for the type VariablesNodeInterfaceMock
+func (_mock *VariablesNodeInterfaceMock) Rollback(ctx context.Context, action providers.RollbackAction) error {
+	ret := _mock.Called(ctx, action)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Rollback")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, providers.RollbackAction) error); ok {
+		r0 = returnFunc(ctx, action)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// VariablesNodeInterfaceMock_Rollback_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Rollback'
+type VariablesNodeInterfaceMock_Rollback_Call struct {
+	*mock.Call
+}
+
+// Rollback is a helper method to define mock.On call
+//   - ctx context.Context
+//   - action providers.RollbackAction
+func (_e *VariablesNodeInterfaceMock_Expecter) Rollback(ctx any, action any) *VariablesNodeInterfaceMock_Rollback_Call {
+	return &VariablesNodeInterfaceMock_Rollback_Call{Call: _e.mock.On("Rollback", ctx, action)}
+}
+
+func (_c *VariablesNodeInterfaceMock_Rollback_Call) Run(run func(ctx context.Context, action providers.RollbackAction)) *VariablesNodeInterfaceMock_Rollback_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 providers.RollbackAction
+		if args[1] != nil {
+			arg1 = args[1].(providers.RollbackAction)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *VariablesNodeInterfaceMock_Rollback_Call) Return(err error) *VariablesNodeInterfaceMock_Rollback_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *VariablesNodeInterfaceMock_Rollback_Call) RunAndReturn(run func(ctx context.Context, action providers.RollbackAction) error) *VariablesNodeInterfaceMock_Rollback_Call {
+	_c.Call.Return(run)
 	return _c
 }
 

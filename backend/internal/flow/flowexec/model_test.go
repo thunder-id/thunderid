@@ -1058,6 +1058,35 @@ func (s *ModelTestSuite) TestInterceptorSharedData_RoundTrip() {
 	s.Equal("3", resultCtx.InterceptorSharedData["reqCount"])
 }
 
+func (s *ModelTestSuite) TestRollbacks_RoundTrip() {
+	mockGraph := coremock.NewGraphInterfaceMock(s.T())
+	mockGraph.On("GetID").Return("test-graph-id")
+	mockGraph.On("GetType").Return(providers.FlowTypeRegistration)
+
+	rollbacks := []rollbackEntry{
+		ouCreatedEntry,
+		{FlowID: "sub-flow", NodeID: "other", Action: providers.RollbackAction{
+			Action: "update", Ref: "r-2", Data: map[string]string{"name": "previous"}}},
+	}
+	ctx := EngineContext{
+		Context:          context.Background(),
+		ExecutionID:      "test-exec-id",
+		FlowType:         providers.FlowTypeRegistration,
+		UserInputs:       map[string]string{},
+		RuntimeData:      map[string]string{},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
+		Graph:            mockGraph,
+		rollbacks:        rollbacks,
+	}
+
+	dbModel := &FlowContextDB{}
+	s.NoError(dbModel.FromEngineContext(ctx))
+
+	resultCtx, err := dbModel.ToEngineContext(context.Background(), mockGraph, nil)
+	s.NoError(err)
+	s.Equal(rollbacks, resultCtx.rollbacks)
+}
+
 // FrameStack tests
 
 func (s *ModelTestSuite) TestFrameStack_PushAndDepth() {

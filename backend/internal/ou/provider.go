@@ -40,6 +40,8 @@ type organizationUnitProvider struct {
 	logger       *log.Logger
 }
 
+var _ providers.OrganizationUnitDeleter = (*organizationUnitProvider)(nil)
+
 // NewOrganizationUnitProvider adapts an organization unit service to the runtime provider
 // contract. It performs no initialization of its own: it only converts between the management
 // model and the runtime view.
@@ -78,6 +80,11 @@ func (p *organizationUnitProvider) CreateOrganizationUnit(
 		return providers.OrganizationUnit{}, svcErr
 	}
 	return toProviderOU(orgUnit), nil
+}
+
+// DeleteOrganizationUnit deletes the organization unit with the given ID.
+func (p *organizationUnitProvider) DeleteOrganizationUnit(ctx context.Context, id string) *tidcommon.ServiceError {
+	return p.ouService.DeleteOrganizationUnit(ctx, id)
 }
 
 // IsParent reports whether parentID is an ancestor of childID.

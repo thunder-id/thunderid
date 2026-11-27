@@ -1608,6 +1608,20 @@ type ExecutorResponse struct {
 	// transport signal such as a minted session handle). Unlike AdditionalData, it is never
 	// serialized to the client.
 	EngineData map[string]string `json:"-"`
+	// RollbackActions lists the changes the executor made, in the order it made them, so the engine can have it
+	// undo them if the flow ends in an error. An executor that fails partway returns the changes it completed in a
+	// response with ExecFailure, since a response returned with an error is dropped. Never serialized to the client.
+	RollbackActions []RollbackAction `json:"-"`
+}
+
+// RollbackAction is one change an executor made, which it undoes if the flow ends in an error.
+type RollbackAction struct {
+	// Action names the change, so the executor knows how to undo it. Ex: create, update, assign.
+	Action string `json:"action"`
+	// Ref identifies what the change applied to. Ex: the ID of the created resource.
+	Ref string `json:"ref"`
+	// Data holds anything else the undo needs. Ex: the values an update replaced.
+	Data map[string]string `json:"data,omitempty"`
 }
 
 // ExecutionPolicy defines behavioral policies for node execution.

@@ -4,6 +4,7 @@
 package registration
 
 import (
+	"encoding/json"
 	"fmt"
 	"maps"
 	"testing"
@@ -395,7 +396,8 @@ var (
 				"credential": true,
 			},
 			"email": map[string]interface{}{
-				"type": "string",
+				"type":   "string",
+				"unique": true,
 			},
 			"given_name": map[string]interface{}{
 				"type": "string",
@@ -678,6 +680,89 @@ func (ts *OURegistrationFlowTestSuite) TestBasicRegistrationFlowWithOU() {
 			}
 
 			ts.createdOUs = append(ts.createdOUs, jwtClaims.OUID)
+		})
+	}
+}
+
+func (ts *OURegistrationFlowTestSuite) TestBasicRegistrationFlowWithOURemovesOUWhenUserCreationFails() {
+	testCases := []struct {
+		name           string
+		acrossRequests bool
+	}{
+		{name: "FailsInTheSameRequest"},
+		{name: "FailsInALaterRequest", acrossRequests: true},
+	}
+
+	for _, tc := range testCases {
+		ts.Run(tc.name, func() {
+			existingUsername := common.GenerateUniqueUsername("ouexisting")
+			existingEmail := existingUsername + "@example.com"
+			existingUserID, err := testutils.CreateUser(testutils.User{
+				OUID: ts.basicFlowTestOUID,
+				Type: dynamicEntityType.Handle,
+				Attributes: json.RawMessage(fmt.Sprintf(`{"username":%q,"email":%q,"password":"testpassword123"}`,
+					existingUsername, existingEmail)),
+			})
+			ts.Require().NoError(err)
+			ts.config.CreatedUserIDs = append(ts.config.CreatedUserIDs, existingUserID)
+
+			ouHandle := generateUniqueHandle("ou-rollback")
+			accountInputs := func(username string) map[string]string {
+				return map[string]string{
+					"username": username,
+					"password": "testpassword123",
+					"ouName":   "Rollback OU " + tc.name,
+					"ouHandle": ouHandle,
+				}
+			}
+			profileInputs := func(email string) map[string]string {
+				return map[string]string{"given_name": "Test", "family_name": "User", "email": email}
+			}
+
+			// Without the profile inputs, provisioning pauses after OU Creation and fails in the next request.
+			inputs := accountInputs(common.GenerateUniqueUsername("ouuser"))
+			if !tc.acrossRequests {
+				maps.Copy(inputs, profileInputs(existingEmail))
+			}
+			flowStep, err := common.InitiateRegistrationFlow(ts.basicFlowTestAppID, false, inputs, "")
+			ts.Require().NoError(err)
+			if tc.acrossRequests {
+				ts.Require().Equal("INCOMPLETE", flowStep.FlowStatus)
+				flowStep, err = common.CompleteFlow(flowStep.ExecutionID, profileInputs(existingEmail), "",
+					flowStep.ChallengeToken)
+				ts.Require().NoError(err)
+			}
+			ts.Require().Equal("ERROR", flowStep.FlowStatus)
+			ts.Require().NotNil(flowStep.Error)
+			ts.Require().Equal("FET-1080", flowStep.Error.Code)
+
+			// The failed flow cannot be resumed, since what it created is gone.
+			_, rawBody, err := common.CompleteFlowWithRawResponse(flowStep.ExecutionID,
+				profileInputs("resume@example.com"), "", flowStep.ChallengeToken)
+			ts.Require().Error(err)
+			var errResp common.ErrorResponse
+			ts.Require().NoError(json.Unmarshal([]byte(rawBody), &errResp))
+			ts.Require().Equal("FES-1004", errResp.Code)
+
+			// The organization unit the failed sign-up created is gone, so its name and handle can be used again.
+			username := common.GenerateUniqueUsername("ouuser")
+			retryInputs := accountInputs(username)
+			maps.Copy(retryInputs, profileInputs(username+"@example.com"))
+			flowStep, err = common.InitiateRegistrationFlow(ts.basicFlowTestAppID, false, retryInputs, "")
+			ts.Require().NoError(err)
+			ts.Require().Equal("COMPLETE", flowStep.FlowStatus)
+
+			jwtClaims, err := testutils.DecodeJWT(flowStep.Assertion)
+			ts.Require().NoError(err)
+			ts.createdOUs = append(ts.createdOUs, jwtClaims.OUID)
+			user, err := testutils.FindUserByAttribute("username", username)
+			ts.Require().NoError(err)
+			ts.Require().NotNil(user)
+			ts.config.CreatedUserIDs = append(ts.config.CreatedUserIDs, user.ID)
+
+			ou, err := testutils.GetOrganizationUnit(jwtClaims.OUID)
+			ts.Require().NoError(err)
+			ts.Require().Equal(ouHandle, ou.Handle)
 		})
 	}
 }
