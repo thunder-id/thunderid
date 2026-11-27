@@ -1670,7 +1670,7 @@ WebAuthn/Passkey settings (typically defined in `deployment.yaml`).
 
 | Setting | Description |
 |---------|-------------|
-| `passkey.allowed_origins` | Array of allowed origins for passkey operations |
+| `passkey.allowed_origins` | Array of allowed origins for passkey operations, used for an application that sets none of its own. Defaults to the origin of the <ProductName /> sign-in page (the `gate_client` scheme, hostname and port). |
 
 **Example:**
 ```yaml

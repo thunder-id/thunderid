@@ -80,7 +80,3 @@ crypto:
 
 jwt:
     preferred_key_id: "default-key"
-
-passkey:
-  allowed_origins:
-    - "https://localhost:8090"

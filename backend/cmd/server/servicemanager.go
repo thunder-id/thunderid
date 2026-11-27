@@ -410,7 +410,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	deviceCodeVerifier := deviceauth.NewUserCodeVerifier(runtimeStoreProvider)
 
 	// Initialize passkey service
-	passkeyService := passkey.Initialize(entityService, runtimeStoreProvider, governanceService)
+	authnCfg := authnconfig.FromServerRuntime()
+	passkeyService := passkey.Initialize(entityService, runtimeStoreProvider, governanceService, authnCfg)
 
 	// Shared DPoP verifier (and its JTI replay cache) so OAuth and OpenID4VCI
 	// share JTI replay protection.
@@ -456,7 +457,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	_, directAuthGuard := authn.Initialize(mux, mcpServer, idpService, jwtService, authnProvider, authAssertGen,
 		otpCoreService, notifSenderSvc, notifTemplateRenderer, magicLinkService, oauthAuthnService,
 		oidcAuthnService, googleAuthnService, githubAuthnService, entityTypeService, governanceService,
-		authnconfig.FromServerRuntime())
+		authnCfg)
 
 	// AuthZEN access-evaluation endpoints are Direct API endpoints, so they reuse the Direct Auth
 	// guard created by the authn service.

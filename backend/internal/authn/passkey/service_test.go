@@ -33,6 +33,8 @@ const (
 	//nolint:gosec // Token type identifier, not a credential
 	testCredentialID = "credential_123"
 	testSessionKey   = "test-session-key"
+	// testAllowedOrigin is the deployment's origin, accepted for an application that names none.
+	testAllowedOrigin = "https://localhost:8090"
 )
 
 type WebAuthnServiceTestSuite struct {
@@ -65,10 +67,11 @@ func (suite *WebAuthnServiceTestSuite) SetupTest() {
 	suite.mockSessionStore = newSessionStoreInterfaceMock(suite.T())
 
 	suite.service = &passkeyService{
-		entityService: suite.mockEntityService,
-		sessionStore:  suite.mockSessionStore,
-		governance:    suite.admitAll(),
-		logger:        log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
+		entityService:  suite.mockEntityService,
+		sessionStore:   suite.mockSessionStore,
+		governance:     suite.admitAll(),
+		allowedOrigins: []string{testAllowedOrigin},
+		logger:         log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
 	}
 }
 
@@ -1769,4 +1772,12 @@ func (suite *WebAuthnServiceTestSuite) TestFinishRegistration_RefusesAHeldIdenti
 			suite.mockSessionStore.AssertNotCalled(suite.T(), "deleteSession", mock.Anything, mock.Anything)
 		})
 	}
+}
+
+func (suite *WebAuthnServiceTestSuite) TestResolveAllowedOrigins() {
+	appOrigins := []string{"https://app.example.com", "https://mobile.example.com"}
+
+	suite.Equal(appOrigins, suite.service.resolveAllowedOrigins(appOrigins))
+	suite.Equal([]string{testAllowedOrigin}, suite.service.resolveAllowedOrigins(nil))
+	suite.Equal([]string{testAllowedOrigin}, suite.service.resolveAllowedOrigins([]string{}))
 }
