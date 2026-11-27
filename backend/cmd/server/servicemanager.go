@@ -198,8 +198,10 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	exporters = append(exporters, i18nExporter)
 
 	// Initialize the variable store. It takes the config crypto provider directly, since that is
-	// what seals a secret before it reaches the database.
-	_, references, err := variablestore.Initialize(mux, configCryptoSvc, cacheManager, auditBus)
+	// what seals a secret before it reaches the database. With a management API key configured, what
+	// holds the key keeps the store, so only the key may call its APIs.
+	_, references, err := variablestore.Initialize(mux, configCryptoSvc, cacheManager, auditBus,
+		runtime.Config.Server.SecurityConfig.HasManagementAPIKey())
 	fatalOnError(ctx, logger, err, "Failed to initialize variable store")
 
 	ouService, ouHierarchyResolver, ouEnumerator, ouExporter, err := ou.Initialize(

@@ -2109,6 +2109,8 @@ var defaultMessages = map[string]string{
 	"error.variablestore.invalid_unchanged_for_description": "unchangedFor must be given at most once, as a whole number of seconds from 1 to 3153600000",
 	"error.variablestore.invalid_value": "Invalid value",
 	"error.variablestore.invalid_value_description": "A value is required and must be at most 8192 characters",
+	"error.variablestore.management_api_key_required": "Management API key required",
+	"error.variablestore.management_api_key_required_description": "Variables and secrets can only be managed with the management API key",
 	"error.variablestore.names_required": "Names are required",
 	"error.variablestore.names_required_description": "Give names once, as a comma-separated list of 1 to 100 names",
 	"error.variablestore.not_found": "Not found",

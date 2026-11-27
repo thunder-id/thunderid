@@ -555,7 +555,7 @@ func (ts *GatewayVersionsTestSuite) TestAGatewaysVariablesAreManagedThroughThisP
 	var direct struct {
 		Value string `json:"value"`
 	}
-	ts.Require().Equal(http.StatusOK, ts.call(http.MethodGet, "/variables/"+name, nil, &direct),
+	ts.Require().Equal(http.StatusOK, ts.callWithKey(http.MethodGet, "/variables/"+name, nil, &direct),
 		"the variable did not land in the gateway's own store")
 	ts.Equal("second", direct.Value)
 
@@ -571,7 +571,7 @@ func (ts *GatewayVersionsTestSuite) TestAGatewaysVariablesAreManagedThroughThisP
 	ts.Equal(http.StatusBadRequest, ts.call(http.MethodPost, base, map[string]any{"name": "not a name"}, nil),
 		"the gateway's own validation did not come back")
 	ts.Equal(http.StatusNoContent, ts.call(http.MethodDelete, base+"/"+name, nil, nil))
-	ts.Equal(http.StatusNotFound, ts.call(http.MethodGet, "/variables/"+name, nil, nil))
+	ts.Equal(http.StatusNotFound, ts.callWithKey(http.MethodGet, "/variables/"+name, nil, nil))
 }
 
 // A gateway's secrets are written through this plane and, as on the gateway, never read back.
@@ -662,6 +662,18 @@ func (ts *GatewayVersionsTestSuite) unitStatus(id string) int {
 // call sends a request and decodes a successful answer into out.
 func (ts *GatewayVersionsTestSuite) call(method, path string, body any, out any) int {
 	ts.T().Helper()
+	return ts.callAs(testutils.GetHTTPClient(), method, path, body, out)
+}
+
+// callWithKey calls this plane with the management API key, the only caller its own variable store
+// answers where a key is configured.
+func (ts *GatewayVersionsTestSuite) callWithKey(method, path string, body any, out any) int {
+	ts.T().Helper()
+	return ts.callAs(testutils.GetManagementAPIKeyHTTPClient(), method, path, body, out)
+}
+
+func (ts *GatewayVersionsTestSuite) callAs(client *http.Client, method, path string, body any, out any) int {
+	ts.T().Helper()
 	var reader io.Reader
 	if body != nil {
 		encoded, err := json.Marshal(body)
@@ -673,7 +685,7 @@ func (ts *GatewayVersionsTestSuite) call(method, path string, body any, out any)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	resp, err := testutils.GetHTTPClient().Do(req)
+	resp, err := client.Do(req)
 	ts.Require().NoError(err)
 	defer func() { _ = resp.Body.Close() }()
 	if out != nil && resp.StatusCode < http.StatusBadRequest {
