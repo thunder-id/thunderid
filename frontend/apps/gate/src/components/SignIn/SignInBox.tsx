@@ -6,10 +6,38 @@ import {useTemplateLiteralResolver} from '@thunderid/hooks';
 import {SignIn, useThunderID, type EmbeddedFlowComponent} from '@thunderid/react';
 import {TemplateLiteralType} from '@thunderid/utils';
 import {Box, Alert, CircularProgress, Link, Typography} from '@wso2/oxygen-ui';
-import type {JSX} from 'react';
+import {useEffect, useRef, useState, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import useFlowForm from '../../hooks/useFlowForm';
 import FlowExpired from '../FlowExpired/FlowExpired';
+
+interface ClearInputsOnNewStepProps {
+  components: EmbeddedFlowComponent[];
+  hasFieldErrors: boolean;
+  onNewStep: () => void;
+}
+
+/**
+ * Clears the form when the flow moves to a new step. A response with field errors shows the same step
+ * again, so the values stay for the user to correct.
+ */
+function ClearInputsOnNewStep({components, hasFieldErrors, onNewStep}: ClearInputsOnNewStepProps): null {
+  const hasFieldErrorsRef = useRef(hasFieldErrors);
+
+  // The SDK clears field errors when a submission starts, before the next step arrives, so only a
+  // change of components marks a new step. The ref carries the latest value into that effect.
+  useEffect(() => {
+    hasFieldErrorsRef.current = hasFieldErrors;
+  });
+
+  useEffect(() => {
+    if (!hasFieldErrorsRef.current) {
+      onNewStep();
+    }
+  }, [components, onNewStep]);
+
+  return null;
+}
 
 export default function SignInBox(): JSX.Element {
   const {resolve, resolveAll} = useTemplateLiteralResolver();
@@ -18,6 +46,7 @@ export default function SignInBox(): JSX.Element {
   const {meta} = useThunderID();
   const {formInputs, fieldErrors, touched, collectInputComponents, validateForm, updateInput, clearInputs} =
     useFlowForm(resolve);
+  const [submittedInputs, setSubmittedInputs] = useState<Record<string, string>>({});
 
   return (
     <AuthCardLayout
@@ -41,6 +70,7 @@ export default function SignInBox(): JSX.Element {
           flowExpiryRedirect,
           components,
           error,
+          fieldErrors: serverFieldErrors,
           meta: flowMeta,
           additionalData,
         }) =>
@@ -70,10 +100,26 @@ export default function SignInBox(): JSX.Element {
                     )}
                 </Alert>
               )}
+              <ClearInputsOnNewStep
+                components={components}
+                hasFieldErrors={Object.keys(serverFieldErrors).length > 0}
+                onNewStep={clearInputs}
+              />
               {(() => {
                 const renderComponents = components && components.length > 0 ? components : [];
 
                 collectInputComponents(renderComponents);
+
+                // A server error stays on its field until the user changes the value that was refused.
+                const visibleFieldErrors: Record<string, string> = {...fieldErrors};
+                const visibleTouched: Record<string, boolean> = {...touched};
+                Object.entries(serverFieldErrors).forEach(([ref, message]) => {
+                  if ((formInputs[ref] ?? '') === (submittedInputs[ref] ?? '')) {
+                    visibleFieldErrors[ref] = message;
+                    visibleTouched[ref] = true;
+                  }
+                });
+
                 if (renderComponents.length > 0) {
                   return (
                     <Box sx={{display: 'flex', flexDirection: 'column', gap: 2}}>
@@ -83,8 +129,8 @@ export default function SignInBox(): JSX.Element {
                           component={component}
                           index={index}
                           values={formInputs}
-                          touched={touched}
-                          fieldErrors={fieldErrors}
+                          touched={visibleTouched}
+                          fieldErrors={visibleFieldErrors}
                           isLoading={isLoading}
                           additionalData={additionalData}
                           resolve={(template) =>
@@ -105,9 +151,8 @@ export default function SignInBox(): JSX.Element {
                           onInputChange={updateInput}
                           onValidate={validateForm}
                           onSubmit={(action, inputs) => {
-                            void onSubmit({inputs, action: action.id}).finally(() => {
-                              clearInputs();
-                            });
+                            setSubmittedInputs(inputs);
+                            void onSubmit({inputs, action: action.id});
                           }}
                         />
                       ))}

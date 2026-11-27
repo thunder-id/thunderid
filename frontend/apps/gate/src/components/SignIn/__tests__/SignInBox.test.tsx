@@ -80,6 +80,7 @@ interface MockSignInRenderProps {
   isLoading: boolean;
   components: MockFlowComponent[];
   error: {message?: string} | null;
+  fieldErrors: Record<string, string>;
   isFlowExpired?: boolean;
   isFlowRestarted?: boolean;
   flowExpiryRedirect?: null;
@@ -98,6 +99,7 @@ const createMockSignInRenderProps = (overrides: Partial<MockSignInRenderProps> =
   isLoading: false,
   components: [],
   error: null,
+  fieldErrors: {},
   isInitialized: true,
   meta: {},
   ...overrides,
@@ -2718,5 +2720,87 @@ describe('SignInBox', () => {
     // Valid email — no error
     expect(screen.queryByText('Please enter a valid email address.')).not.toBeInTheDocument();
     vi.useRealTimers();
+  });
+
+  describe('server field errors', () => {
+    const MOBILE_ERROR = 'Enter your mobile number with the country code.';
+
+    const detailsStep = (): MockFlowComponent[] => [
+      {
+        id: 'block-details',
+        type: 'BLOCK',
+        components: [
+          {id: 'mobile-input', type: 'TEXT_INPUT', ref: 'mobile_number', label: 'Mobile number', required: true},
+          {id: 'submit-details', type: 'ACTION', eventType: 'SUBMIT', label: 'Create account', variant: 'PRIMARY'},
+        ],
+      },
+    ];
+
+    const renderWithRerender = () => {
+      const wrap = () => (
+        <DesignContext.Provider value={{isDesignEnabled: false, isLoading: false}}>
+          <SignInBox />
+        </DesignContext.Provider>
+      );
+      const result = testRender(wrap());
+      return () => result.rerender(wrap());
+    };
+
+    const submitMobile = async (value: string) => {
+      await userEvent.type(screen.getByLabelText(/Mobile number/), value);
+      fireEvent.click(screen.getByText('Create account'));
+      await waitFor(() => expect(mockOnSubmit).toHaveBeenCalled());
+    };
+
+    it('shows the message the server returns for a field', () => {
+      mockSignInRenderProps = createMockSignInRenderProps({
+        components: detailsStep(),
+        fieldErrors: {mobile_number: MOBILE_ERROR},
+      });
+      render(<SignInBox />);
+
+      expect(screen.getByText(MOBILE_ERROR)).toBeInTheDocument();
+    });
+
+    it('keeps the values when the step comes back with field errors', async () => {
+      mockSignInRenderProps = createMockSignInRenderProps({components: detailsStep()});
+      const rerender = renderWithRerender();
+
+      await submitMobile('555 0100');
+      mockSignInRenderProps = createMockSignInRenderProps({
+        components: detailsStep(),
+        fieldErrors: {mobile_number: MOBILE_ERROR},
+      });
+      rerender();
+
+      expect(screen.getByLabelText(/Mobile number/)).toHaveValue('555 0100');
+      expect(screen.getByText(MOBILE_ERROR)).toBeInTheDocument();
+    });
+
+    it('hides the server message once the user changes the value', async () => {
+      mockSignInRenderProps = createMockSignInRenderProps({components: detailsStep()});
+      const rerender = renderWithRerender();
+
+      await submitMobile('555 0100');
+      mockSignInRenderProps = createMockSignInRenderProps({
+        components: detailsStep(),
+        fieldErrors: {mobile_number: MOBILE_ERROR},
+      });
+      rerender();
+      await userEvent.type(screen.getByLabelText(/Mobile number/), '9');
+
+      expect(screen.queryByText(MOBILE_ERROR)).not.toBeInTheDocument();
+    });
+
+    it('clears the values when the flow moves to a new step', async () => {
+      mockSignInRenderProps = createMockSignInRenderProps({components: detailsStep()});
+      const rerender = renderWithRerender();
+
+      await submitMobile('+15550100');
+      mockSignInRenderProps = createMockSignInRenderProps({components: detailsStep()});
+      rerender();
+
+      await waitFor(() => expect(screen.getByLabelText(/Mobile number/)).toHaveValue(''));
+    });
   });
 });
