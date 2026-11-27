@@ -165,6 +165,24 @@ func (s *FileBasedStoreTestSuite) TestIdentifyEntity_MultipleMatches() {
 	s.Error(err)
 }
 
+func (s *FileBasedStoreTestSuite) TestIdentifyEntity_LeavesOutOrganizationUnits() {
+	attrs, _ := json.Marshal(map[string]interface{}{"registrationNo": "LK-778"})
+	s.seedEntity(providers.Entity{ID: "ou-e1", Category: providers.EntityCategoryOU, Attributes: attrs})
+	s.seedEntity(providers.Entity{ID: "user-e1", Category: providers.EntityCategoryUser, Attributes: attrs})
+
+	id, err := s.store.IdentifyEntity(s.ctx, map[string]interface{}{"registrationNo": "LK-778"})
+	s.NoError(err)
+	s.Equal("user-e1", *id)
+}
+
+func (s *FileBasedStoreTestSuite) TestIdentifyEntity_OnlyOrganizationUnitMatches_NotFound() {
+	attrs, _ := json.Marshal(map[string]interface{}{"registrationNo": "LK-778"})
+	s.seedEntity(providers.Entity{ID: "ou-e2", Category: providers.EntityCategoryOU, Attributes: attrs})
+
+	_, err := s.store.IdentifyEntity(s.ctx, map[string]interface{}{"registrationNo": "LK-778"})
+	s.ErrorIs(err, ErrEntityNotFound)
+}
+
 func (s *FileBasedStoreTestSuite) seedLinkedEntity(id, linkedIDs string) {
 	s.seedEntity(providers.Entity{ID: id, Category: providers.EntityCategoryUser,
 		SystemAttributes: json.RawMessage(`{"linkedIds":` + linkedIDs + `}`)})
@@ -481,6 +499,17 @@ func (s *FileBasedStoreTestSuite) TestSearchEntities_MultipleMatches() {
 	got, err := s.store.SearchEntities(s.ctx, map[string]interface{}{"email": "shared@test.com"})
 	s.NoError(err)
 	s.Len(got, 2)
+}
+
+func (s *FileBasedStoreTestSuite) TestSearchEntities_LeavesOutOrganizationUnits() {
+	attrs, _ := json.Marshal(map[string]interface{}{"region": "APAC"})
+	s.seedEntity(providers.Entity{ID: "ou-s1", Category: providers.EntityCategoryOU, Attributes: attrs})
+	s.seedEntity(providers.Entity{ID: "user-s1", Category: providers.EntityCategoryUser, Attributes: attrs})
+
+	got, err := s.store.SearchEntities(s.ctx, map[string]interface{}{"region": "APAC"})
+	s.NoError(err)
+	s.Len(got, 1)
+	s.Equal("user-s1", got[0].ID)
 }
 
 func (s *FileBasedStoreTestSuite) TestProjectListing() {

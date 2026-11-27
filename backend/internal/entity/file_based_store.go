@@ -161,7 +161,8 @@ func (f *entityFileBasedStore) ResolveLinkedAccounts(ctx context.Context,
 	return matches, nil
 }
 
-// IdentifyEntity identifies an entity with the given filters by linear search.
+// IdentifyEntity identifies an entity with the given filters by linear search. Organization unit
+// entities are left out.
 func (f *entityFileBasedStore) IdentifyEntity(ctx context.Context,
 	filters map[string]interface{}) (*string, error) {
 	resources, err := f.listEntityResources()
@@ -171,6 +172,9 @@ func (f *entityFileBasedStore) IdentifyEntity(ctx context.Context,
 
 	var matches []string
 	for _, resource := range resources {
+		if resource.Entity.Category == providers.EntityCategoryOU {
+			continue
+		}
 		combined := mergeJSONObjects(resource.Entity.Attributes, resource.Entity.SystemAttributes)
 		if matchesFilters(combined, filters) {
 			matches = append(matches, resource.Entity.ID)
@@ -188,6 +192,7 @@ func (f *entityFileBasedStore) IdentifyEntity(ctx context.Context,
 }
 
 // SearchEntities searches for all entities matching the provided filters from the file store.
+// Organization unit entities are left out.
 func (f *entityFileBasedStore) SearchEntities(ctx context.Context,
 	filters map[string]interface{}) ([]providers.Entity, error) {
 	resources, err := f.listEntityResources()
@@ -197,6 +202,9 @@ func (f *entityFileBasedStore) SearchEntities(ctx context.Context,
 
 	var matched []providers.Entity
 	for _, resource := range resources {
+		if resource.Entity.Category == providers.EntityCategoryOU {
+			continue
+		}
 		combined := mergeJSONObjects(resource.Entity.Attributes, resource.Entity.SystemAttributes)
 		if matchesFilters(combined, filters) {
 			matched = append(matched, resource.Entity)

@@ -5,6 +5,7 @@ package entity
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -345,9 +346,10 @@ func (s *StoreConstantsTestSuite) TestBuildIdentifyQuery_COALESCE_PostgresQuery(
 	s.Contains(q.PostgresQuery, "SYSTEM_ATTRIBUTES->>'clientId'")
 	s.Contains(q.PostgresQuery, "$1")
 	s.Contains(q.PostgresQuery, "$2")
-	s.Len(args, 2)
+	s.Len(args, 3)
 	s.Equal("app123", args[0])
-	s.Equal(testDeploymentID, args[1])
+	s.Equal("ou", args[1])
+	s.Equal(testDeploymentID, args[2])
 }
 
 func (s *StoreConstantsTestSuite) TestBuildIdentifyQuery_COALESCE_SQLiteQuery() {
@@ -360,15 +362,16 @@ func (s *StoreConstantsTestSuite) TestBuildIdentifyQuery_COALESCE_SQLiteQuery() 
 }
 
 func (s *StoreConstantsTestSuite) TestBuildIdentifyQuery_MultipleFilters_CorrectParamIndexes() {
-	// keys are sorted: clientId < name, so clientId=$1, name=$2, deploymentID=$3
+	// keys are sorted: clientId < name, so clientId=$1, name=$2, category=$3, deploymentID=$4
 	filters := map[string]interface{}{"clientId": "app123", "name": "myapp"}
 	q, args, err := buildIdentifyQuery(filters, testDeploymentID)
 	s.NoError(err)
 	s.Contains(q.PostgresQuery, "$1")
 	s.Contains(q.PostgresQuery, "$2")
-	s.Contains(q.PostgresQuery, "$3")
-	s.Len(args, 3)
-	s.Equal(testDeploymentID, args[2])
+	s.Contains(q.PostgresQuery, "AND CATEGORY <> $3 AND DEPLOYMENT_ID = $4")
+	s.Len(args, 4)
+	s.Equal("ou", args[2])
+	s.Equal(testDeploymentID, args[3])
 }
 
 func (s *StoreConstantsTestSuite) TestBuildIdentifyQuery_NestedKey_UsesPathSyntax() {
@@ -391,6 +394,50 @@ func (s *StoreConstantsTestSuite) TestBuildIdentifyQueryHybrid_NonIndexed_UsesCO
 	s.Contains(q.SQLiteQuery, "COALESCE")
 	s.Contains(q.SQLiteQuery, "json_extract(e.ATTRIBUTES, '$.clientId')")
 	s.Contains(q.SQLiteQuery, "json_extract(e.SYSTEM_ATTRIBUTES, '$.clientId')")
+}
+
+func (s *StoreConstantsTestSuite) TestBuildIdentifyQueryFromIdentifiers_LeavesOutOrganizationUnits() {
+	q, args, err := buildIdentifyQueryFromIdentifiers(map[string]interface{}{"email": "a@b.com"}, testDeploymentID)
+	s.NoError(err)
+	s.Equal(`SELECT DISTINCT ia1.ENTITY_ID AS id FROM "ENTITY_IDENTIFIER" ia1`+
+		` INNER JOIN "ENTITY" e ON e.ID = ia1.ENTITY_ID AND e.DEPLOYMENT_ID = ia1.DEPLOYMENT_ID`+
+		` WHERE ia1.NAME = $1 AND ia1.VALUE = $2 AND e.CATEGORY <> $3 AND ia1.DEPLOYMENT_ID = $4`, q.PostgresQuery)
+	s.Equal(`SELECT DISTINCT ia1.ENTITY_ID AS id FROM "ENTITY_IDENTIFIER" ia1`+
+		` INNER JOIN "ENTITY" e ON e.ID = ia1.ENTITY_ID AND e.DEPLOYMENT_ID = ia1.DEPLOYMENT_ID`+
+		` WHERE ia1.NAME = ? AND ia1.VALUE = ? AND e.CATEGORY <> ? AND ia1.DEPLOYMENT_ID = ?`, q.SQLiteQuery)
+	s.Equal([]interface{}{"email", "a@b.com", "ou", testDeploymentID}, args)
+}
+
+func (s *StoreConstantsTestSuite) TestBuildIdentifyQueryHybrid_LeavesOutOrganizationUnits() {
+	indexed := map[string]interface{}{"email": "a@b.com"}
+	nonIndexed := map[string]interface{}{"username": "user1"}
+	q, args, err := buildIdentifyQueryHybrid(indexed, nonIndexed, testDeploymentID)
+	s.NoError(err)
+	s.True(strings.HasSuffix(q.PostgresQuery, " AND e.CATEGORY <> $4 AND e.DEPLOYMENT_ID = $5"), q.PostgresQuery)
+	s.True(strings.HasSuffix(q.SQLiteQuery, " AND e.CATEGORY <> ? AND e.DEPLOYMENT_ID = ?"), q.SQLiteQuery)
+	s.Equal([]interface{}{"email", "a@b.com", "user1", "ou", testDeploymentID}, args)
+}
+
+func (s *StoreConstantsTestSuite) TestBuildIdentifyQuery_LeavesOutOrganizationUnits() {
+	q, _, err := buildIdentifyQuery(map[string]interface{}{"email": "a@b.com"}, testDeploymentID)
+	s.NoError(err)
+	s.True(strings.HasSuffix(q.PostgresQuery, " AND CATEGORY <> $2 AND DEPLOYMENT_ID = $3"), q.PostgresQuery)
+	s.True(strings.HasSuffix(q.SQLiteQuery, " AND CATEGORY <> ? AND DEPLOYMENT_ID = ?"), q.SQLiteQuery)
+}
+
+func (s *StoreConstantsTestSuite) TestBuildEntityListQuery_AcrossCategoriesLeavesOutOrganizationUnits() {
+	q, args, err := buildEntityListQuery("", nil, nil, 10, 0, testDeploymentID)
+	s.NoError(err)
+	s.Equal(QuerySearchEntityList, q)
+	s.Contains(q.Query, "CATEGORY <> $3 AND DEPLOYMENT_ID = $4")
+	s.Equal([]interface{}{10, 0, "ou", testDeploymentID}, args)
+
+	q, args, err = buildEntityListQuery("", map[string]interface{}{"email": "a@b.com"}, nil, 10, 0,
+		testDeploymentID)
+	s.NoError(err)
+	s.Contains(q.PostgresQuery, `FROM "ENTITY" WHERE CATEGORY <> $1 AND`)
+	s.Contains(q.SQLiteQuery, `FROM "ENTITY" WHERE CATEGORY <> ? AND`)
+	s.Equal("ou", args[0])
 }
 
 // The stores resolve their deployment from the loaded server runtime rather than holding one, so
