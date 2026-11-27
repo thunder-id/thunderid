@@ -18,15 +18,19 @@ import {Lock, Plus, Search} from '@wso2/oxygen-ui-icons-react';
 import type {JSX, ReactNode} from 'react';
 import {useEffect, useMemo, useState} from 'react';
 import {useTranslation} from 'react-i18next';
+import AudienceFilter from './AudienceFilter';
 import useGetFlowsMeta from '../../api/useGetFlowsMeta';
 import type {FlowType} from '../../models/flows';
-import type {FlowTemplate} from '../../models/templates';
+import type {FlowTemplate, TemplateAudiences} from '../../models/templates';
 import resolveStaticResourcePath from '../../utils/resolveStaticResourcePath';
+import {matchesTemplateAudience} from '../../utils/templateAudience';
 
 interface SelectFlowTemplateProps {
   flowType: FlowType;
   selectedTemplate: FlowTemplate | null;
   onTemplateChange: (template: FlowTemplate) => void;
+  audience: TemplateAudiences;
+  onAudienceChange: (audience: TemplateAudiences) => void;
 }
 
 const CATEGORY_ORDER = ['PASSWORD', 'SOCIAL_LOGIN', 'MFA', 'PASSWORDLESS', 'DEVICE_AUTHORIZATION'];
@@ -90,6 +94,8 @@ export default function SelectFlowTemplate({
   flowType,
   selectedTemplate,
   onTemplateChange,
+  audience,
+  onAudienceChange,
 }: SelectFlowTemplateProps): JSX.Element {
   const {t} = useTranslation();
   const {data} = useGetFlowsMeta({flowType});
@@ -118,14 +124,19 @@ export default function SelectFlowTemplate({
     }
   }, [templates, selectedTemplate, onTemplateChange]);
 
+  const audienceTemplates = useMemo(
+    () => nonBlankTemplates.filter((template) => matchesTemplateAudience(template.audience, audience)),
+    [nonBlankTemplates, audience],
+  );
+
   const categories = useMemo(() => {
-    const present = new Set(nonBlankTemplates.map((template) => template.category));
+    const present = new Set(audienceTemplates.map((template) => template.category));
     return CATEGORY_ORDER.filter((cat) => present.has(cat));
-  }, [nonBlankTemplates]);
+  }, [audienceTemplates]);
 
   const filteredTemplates = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    return nonBlankTemplates.filter((template) => {
+    return audienceTemplates.filter((template) => {
       if (selectedCategory && template.category !== selectedCategory) return false;
       if (query) {
         const inLabel = template.display.label.toLowerCase().includes(query);
@@ -134,7 +145,17 @@ export default function SelectFlowTemplate({
       }
       return true;
     });
-  }, [nonBlankTemplates, selectedCategory, searchQuery]);
+  }, [audienceTemplates, selectedCategory, searchQuery]);
+
+  // The chosen category may have no template left for the new audience, so it is cleared. A selected template the new
+  // audience hides is swapped for the blank one, so nothing stays selected out of sight.
+  const handleAudienceChange = (nextAudience: TemplateAudiences): void => {
+    onAudienceChange(nextAudience);
+    setSelectedCategory(null);
+    if (blankTemplate && selectedTemplate && !matchesTemplateAudience(selectedTemplate.audience, nextAudience)) {
+      onTemplateChange(blankTemplate);
+    }
+  };
 
   const isBlankSelected = selectedTemplate?.type === 'BLANK' && selectedTemplate?.flowType === flowType;
 
@@ -266,7 +287,12 @@ export default function SelectFlowTemplate({
             },
           }}
         />
-        <Box sx={{display: 'flex', flexWrap: 'wrap', gap: 0.75}}>
+        <AudienceFilter value={audience} onChange={handleAudienceChange} />
+        <Box
+          role="group"
+          aria-label={t('flows:create.template.categoryFilter', 'Filter by category')}
+          sx={{display: 'flex', flexWrap: 'wrap', gap: 0.75}}
+        >
           <Chip
             label={t('common:all', 'All')}
             onClick={() => setSelectedCategory(null)}

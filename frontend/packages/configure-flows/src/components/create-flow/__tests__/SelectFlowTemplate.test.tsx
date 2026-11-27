@@ -1,7 +1,7 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {render, screen, fireEvent} from '@testing-library/react';
+import {render, screen, fireEvent, within} from '@testing-library/react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {FlowTemplate} from '../../../models/templates';
 import SelectFlowTemplate from '../SelectFlowTemplate';
@@ -44,6 +44,7 @@ const blankTemplate: FlowTemplate = {
   category: 'STARTER',
   type: 'BLANK',
   flowType: 'AUTHENTICATION',
+  audience: 'ALL',
   display: {label: 'Blank', description: 'Start from scratch', image: 'blank.svg', showOnResourcePanel: true},
   config: {name: '', handle: '', nodes: []},
 };
@@ -53,6 +54,7 @@ const passwordTemplate: FlowTemplate = {
   category: 'PASSWORD',
   type: 'CREDENTIALS_AUTH',
   flowType: 'AUTHENTICATION',
+  audience: 'USER',
   display: {
     label: 'Username & password',
     description: 'Basic authentication',
@@ -67,6 +69,7 @@ const googleTemplate: FlowTemplate = {
   category: 'SOCIAL_LOGIN',
   type: 'GOOGLE',
   flowType: 'AUTHENTICATION',
+  audience: 'USER',
   display: {label: 'Google', description: 'Sign in with Google', image: 'google.svg', showOnResourcePanel: true},
   config: {name: '', handle: '', nodes: []},
 };
@@ -76,6 +79,7 @@ const githubTemplate: FlowTemplate = {
   category: 'SOCIAL_LOGIN',
   type: 'GITHUB',
   flowType: 'AUTHENTICATION',
+  audience: 'USER',
   display: {label: 'GitHub', description: 'Sign in with GitHub', image: 'github.svg', showOnResourcePanel: true},
   config: {name: '', handle: '', nodes: []},
 };
@@ -85,6 +89,7 @@ const compositeTemplate: FlowTemplate = {
   category: 'SOCIAL_LOGIN',
   type: 'GOOGLE_GITHUB',
   flowType: 'AUTHENTICATION',
+  audience: 'USER',
   display: {
     label: 'Google + GitHub',
     description: 'Sign in with Google or GitHub',
@@ -99,6 +104,7 @@ const unknownIconTemplate: FlowTemplate = {
   category: 'MFA',
   type: 'SOME_UNMAPPED_TYPE',
   flowType: 'AUTHENTICATION',
+  audience: 'USER',
   display: {label: 'Custom flow', description: 'A flow with no mapped icon', image: '', showOnResourcePanel: true},
   config: {name: '', handle: '', nodes: []},
 };
@@ -108,6 +114,7 @@ const deviceGrantTemplate: FlowTemplate = {
   category: 'DEVICE_AUTHORIZATION',
   type: 'DEVICE_GRANT',
   flowType: 'DEVICE_GRANT',
+  audience: 'ALL',
   display: {
     label: 'Device authorization',
     description: 'Verify a device code and sign in to authorize the device',
@@ -117,6 +124,38 @@ const deviceGrantTemplate: FlowTemplate = {
   config: {name: 'Device Authorization Flow', handle: 'device-authorization-flow', nodes: []},
 };
 
+const agentTemplate: FlowTemplate = {
+  resourceType: 'TEMPLATE',
+  category: 'PASSWORDLESS',
+  type: 'AGENT_APPROVAL',
+  flowType: 'AUTHENTICATION',
+  audience: 'AGENT',
+  display: {
+    label: 'Agent approval',
+    description: 'Approve an action an agent requested',
+    image: '',
+    showOnResourcePanel: true,
+  },
+  config: {name: '', handle: '', nodes: []},
+};
+
+const sharedTemplate: FlowTemplate = {
+  resourceType: 'TEMPLATE',
+  category: 'MFA',
+  type: 'SHARED_CONSENT',
+  flowType: 'AUTHENTICATION',
+  audience: 'ALL',
+  display: {
+    label: 'Shared consent',
+    description: 'Consent for people and agents alike',
+    image: '',
+    showOnResourcePanel: true,
+  },
+  config: {name: '', handle: '', nodes: []},
+};
+
+// The audiences are set to exercise the filter on one flow type, so they are not the shipped labels, where every
+// sign-in template is written for everyone.
 const mockTemplates: FlowTemplate[] = [
   blankTemplate,
   passwordTemplate,
@@ -124,6 +163,8 @@ const mockTemplates: FlowTemplate[] = [
   githubTemplate,
   compositeTemplate,
   unknownIconTemplate,
+  agentTemplate,
+  sharedTemplate,
   deviceGrantTemplate,
 ];
 
@@ -144,12 +185,18 @@ vi.mock('../../../api/useGetFlowsMeta', () => ({
 
 describe('SelectFlowTemplate', () => {
   const mockOnTemplateChange = vi.fn();
+  const mockOnAudienceChange = vi.fn();
 
   const defaultProps = {
     flowType: 'AUTHENTICATION' as const,
     selectedTemplate: null,
     onTemplateChange: mockOnTemplateChange,
+    audience: 'ALL' as const,
+    onAudienceChange: mockOnAudienceChange,
   };
+
+  const categoryFilters = (): HTMLElement => screen.getByRole('group', {name: 'Filter by category'});
+  const audienceFilter = (): HTMLElement => screen.getByRole('group', {name: 'Filter by audience'});
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -254,7 +301,7 @@ describe('SelectFlowTemplate', () => {
     it('should render the All chip', () => {
       render(<SelectFlowTemplate {...defaultProps} />);
 
-      expect(screen.getByText('All')).toBeInTheDocument();
+      expect(within(categoryFilters()).getByText('All')).toBeInTheDocument();
     });
 
     it('should render category chips for present categories', () => {
@@ -277,10 +324,113 @@ describe('SelectFlowTemplate', () => {
       render(<SelectFlowTemplate {...defaultProps} />);
 
       fireEvent.click(screen.getByText('Password'));
-      fireEvent.click(screen.getByText('All'));
+      fireEvent.click(within(categoryFilters()).getByText('All'));
 
       expect(screen.getByText('Username & password')).toBeInTheDocument();
       expect(screen.getByText('Google')).toBeInTheDocument();
+    });
+  });
+
+  describe('Audience filter', () => {
+    const audienceButton = (name: string): HTMLElement => within(audienceFilter()).getByRole('button', {name});
+
+    it('should render the audience choices', () => {
+      render(<SelectFlowTemplate {...defaultProps} />);
+
+      expect(audienceButton('All')).toBeInTheDocument();
+      expect(audienceButton('Users')).toBeInTheDocument();
+      expect(audienceButton('Agents')).toBeInTheDocument();
+    });
+
+    it('should mark the active audience as pressed', () => {
+      render(<SelectFlowTemplate {...defaultProps} audience="AGENT" />);
+
+      expect(audienceButton('Agents')).toHaveAttribute('aria-pressed', 'true');
+      expect(audienceButton('All')).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('should list every template when the audience is All', () => {
+      render(<SelectFlowTemplate {...defaultProps} audience="ALL" />);
+
+      expect(screen.getByText('Username & password')).toBeInTheDocument();
+      expect(screen.getByText('Agent approval')).toBeInTheDocument();
+      expect(screen.getByText('Shared consent')).toBeInTheDocument();
+    });
+
+    it('should list user and shared templates when the audience is Users', () => {
+      render(<SelectFlowTemplate {...defaultProps} audience="USER" />);
+
+      expect(screen.getByText('Username & password')).toBeInTheDocument();
+      expect(screen.getByText('Shared consent')).toBeInTheDocument();
+      expect(screen.queryByText('Agent approval')).not.toBeInTheDocument();
+    });
+
+    it('should list agent and shared templates when the audience is Agents', () => {
+      render(<SelectFlowTemplate {...defaultProps} audience="AGENT" />);
+
+      expect(screen.getByText('Agent approval')).toBeInTheDocument();
+      expect(screen.getByText('Shared consent')).toBeInTheDocument();
+      expect(screen.queryByText('Username & password')).not.toBeInTheDocument();
+      expect(screen.queryByText('Google')).not.toBeInTheDocument();
+    });
+
+    it('should keep the blank template under every audience', () => {
+      render(<SelectFlowTemplate {...defaultProps} audience="AGENT" />);
+
+      expect(screen.getByText('Start from scratch')).toBeInTheDocument();
+    });
+
+    it('should show category chips only for categories that have a template for the audience', () => {
+      render(<SelectFlowTemplate {...defaultProps} audience="AGENT" />);
+
+      const chips = within(categoryFilters());
+      expect(chips.getByText('Passwordless')).toBeInTheDocument();
+      expect(chips.getByText('Multi-factor')).toBeInTheDocument();
+      expect(chips.queryByText('Password')).not.toBeInTheDocument();
+      expect(chips.queryByText('Social login')).not.toBeInTheDocument();
+    });
+
+    it('should report the audience the user picks', () => {
+      render(<SelectFlowTemplate {...defaultProps} />);
+
+      fireEvent.click(audienceButton('Agents'));
+
+      expect(mockOnAudienceChange).toHaveBeenCalledWith('AGENT');
+    });
+
+    it('should not report a change when the active audience is clicked again', () => {
+      render(<SelectFlowTemplate {...defaultProps} audience="USER" />);
+
+      fireEvent.click(audienceButton('Users'));
+
+      expect(mockOnAudienceChange).not.toHaveBeenCalled();
+    });
+
+    it('should clear the selected category when the audience changes', () => {
+      render(<SelectFlowTemplate {...defaultProps} />);
+
+      fireEvent.click(screen.getByText('Password'));
+      expect(screen.queryByText('Google')).not.toBeInTheDocument();
+
+      fireEvent.click(audienceButton('Users'));
+
+      expect(screen.getByText('Google')).toBeInTheDocument();
+    });
+
+    it('should fall back to the blank template when the new audience hides the selected template', () => {
+      render(<SelectFlowTemplate {...defaultProps} selectedTemplate={passwordTemplate} />);
+
+      fireEvent.click(audienceButton('Agents'));
+
+      expect(mockOnTemplateChange).toHaveBeenCalledWith(blankTemplate);
+    });
+
+    it('should keep the selected template when the new audience still lists it', () => {
+      render(<SelectFlowTemplate {...defaultProps} selectedTemplate={sharedTemplate} />);
+
+      fireEvent.click(audienceButton('Agents'));
+
+      expect(mockOnTemplateChange).not.toHaveBeenCalled();
     });
   });
 

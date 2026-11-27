@@ -4656,6 +4656,11 @@ const translations = {
     'create.template.recommended': 'Recommended',
     'create.template.search': 'Search templates...',
     'create.template.noResults': 'No templates match your search.',
+    'create.template.categoryFilter': 'Filter by category',
+    'create.audience.label': 'Filter by audience',
+    'create.audience.all': 'All',
+    'create.audience.user': 'Users',
+    'create.audience.agent': 'Agents',
     'create.error.createFailed': 'Failed to create flow. Please try again.',
 
     // Flow labels and navigation

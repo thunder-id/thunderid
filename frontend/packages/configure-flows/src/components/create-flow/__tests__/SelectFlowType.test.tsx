@@ -1,8 +1,9 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-import {render, screen, fireEvent} from '@testing-library/react';
+import {render, screen, fireEvent, within} from '@testing-library/react';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
+import type {FlowTemplate, TemplateAudiences} from '../../../models/templates';
 import SelectFlowType from '../SelectFlowType';
 
 // Mock react-i18next
@@ -26,15 +27,61 @@ vi.mock('@wso2/oxygen-ui-icons-react', async (importOriginal) => {
   };
 });
 
+const template = (flowType: FlowTemplate['flowType'], type: string, audience: TemplateAudiences): FlowTemplate => ({
+  resourceType: 'TEMPLATE',
+  category: 'PASSWORD',
+  type,
+  flowType,
+  audience,
+  display: {label: type, image: '', showOnResourcePanel: true},
+  config: {name: '', handle: '', nodes: []},
+});
+
+// Mirrors how the shipped templates are labelled: blanks, sign-in, device authorization and the personal assistant
+// sign-up are written for everyone, and a flow type is offered to an audience only through its other templates.
+const mockTemplates: FlowTemplate[] = [
+  template('AUTHENTICATION', 'BLANK', 'ALL'),
+  template('AUTHENTICATION', 'CREDENTIALS_AUTH', 'ALL'),
+  template('AUTHENTICATION', 'BASIC_WITH_CONSENT', 'ALL'),
+  template('REGISTRATION', 'BLANK', 'ALL'),
+  template('REGISTRATION', 'BASIC', 'USER'),
+  template('REGISTRATION', 'PERSONAL_AGENT', 'ALL'),
+  template('RECOVERY', 'BLANK', 'ALL'),
+  template('RECOVERY', 'Email_Link', 'USER'),
+  template('SIGNOUT', 'BLANK', 'ALL'),
+  template('SIGNOUT', 'BASIC', 'USER'),
+  template('ADMINISTRATION', 'BLANK', 'ALL'),
+  template('ADMINISTRATION', 'AGENT_ONBOARDING_OBO', 'AGENT'),
+  template('INVITATION', 'DEFAULT', 'USER'),
+  template('DEVICE_GRANT', 'DEVICE_GRANT', 'ALL'),
+  template('SELF', 'BLANK', 'ALL'),
+  template('SELF', 'SELF_ATTRIBUTE_VERIFICATION', 'USER'),
+  template('ADMIN_INITIATED', 'ADMIN_ATTRIBUTE_VERIFICATION_EMAIL_LINK', 'USER'),
+];
+
+vi.mock('../../../api/useGetFlowsMeta', () => ({
+  default: () => ({
+    data: {templates: mockTemplates, steps: [], actions: [], elements: [], widgets: [], executors: []},
+    error: null,
+    isLoading: false,
+  }),
+}));
+
 describe('SelectFlowType', () => {
   const mockOnTypeChange = vi.fn();
   const mockOnReadyChange = vi.fn();
+  const mockOnAudienceChange = vi.fn();
 
   const defaultProps = {
     selectedType: null,
     onTypeChange: mockOnTypeChange,
     onReadyChange: mockOnReadyChange,
+    audience: 'ALL' as const,
+    onAudienceChange: mockOnAudienceChange,
   };
+
+  const audienceButton = (name: string): HTMLElement =>
+    within(screen.getByRole('group', {name: 'Filter by audience'})).getByRole('button', {name});
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -107,6 +154,112 @@ describe('SelectFlowType', () => {
         screen.getByText('Let administrators start an action for a user, such as verifying their email address'),
       ).toBeInTheDocument();
       expect(screen.getByTestId('icon-shield-check')).toBeInTheDocument();
+    });
+  });
+
+  describe('Audience filter', () => {
+    const allLabels = [
+      'Sign-in',
+      'Self sign-up',
+      'Password recovery',
+      'Sign out',
+      'Administration',
+      'Invitation',
+      'Device authorization',
+      'Self',
+      'Administrator-initiated',
+    ];
+
+    it('should render the audience choices', () => {
+      render(<SelectFlowType {...defaultProps} />);
+
+      expect(audienceButton('All')).toBeInTheDocument();
+      expect(audienceButton('Users')).toBeInTheDocument();
+      expect(audienceButton('Agents')).toBeInTheDocument();
+    });
+
+    it('should mark the active audience as pressed', () => {
+      render(<SelectFlowType {...defaultProps} audience="USER" />);
+
+      expect(audienceButton('Users')).toHaveAttribute('aria-pressed', 'true');
+      expect(audienceButton('All')).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('should offer every flow type when the audience is All', () => {
+      render(<SelectFlowType {...defaultProps} audience="ALL" />);
+
+      allLabels.forEach((label) => expect(screen.getByText(label)).toBeInTheDocument());
+    });
+
+    it('should hide a flow type whose only non-blank templates are for agents when the audience is Users', () => {
+      render(<SelectFlowType {...defaultProps} audience="USER" />);
+
+      expect(screen.queryByText('Administration')).not.toBeInTheDocument();
+      allLabels
+        .filter((label) => label !== 'Administration')
+        .forEach((label) => expect(screen.getByText(label)).toBeInTheDocument());
+    });
+
+    it('should offer only the flow types with a template for agents when the audience is Agents', () => {
+      render(<SelectFlowType {...defaultProps} audience="AGENT" />);
+
+      ['Sign-in', 'Self sign-up', 'Administration', 'Device authorization'].forEach((label) =>
+        expect(screen.getByText(label)).toBeInTheDocument(),
+      );
+      ['Password recovery', 'Sign out', 'Invitation', 'Self', 'Administrator-initiated'].forEach((label) =>
+        expect(screen.queryByText(label)).not.toBeInTheDocument(),
+      );
+    });
+
+    it('should not count a blank template as a reason to offer a flow type', () => {
+      render(<SelectFlowType {...defaultProps} audience="AGENT" />);
+
+      // Password recovery has a blank template written for everyone, and nothing else for agents.
+      expect(screen.queryByText('Password recovery')).not.toBeInTheDocument();
+    });
+
+    it('should report the audience the user picks', () => {
+      render(<SelectFlowType {...defaultProps} />);
+
+      fireEvent.click(audienceButton('Agents'));
+
+      expect(mockOnAudienceChange).toHaveBeenCalledWith('AGENT');
+    });
+
+    it('should not report a change when the active audience is clicked again', () => {
+      render(<SelectFlowType {...defaultProps} audience="AGENT" />);
+
+      fireEvent.click(audienceButton('Agents'));
+
+      expect(mockOnAudienceChange).not.toHaveBeenCalled();
+    });
+
+    it('should not report readiness on mount when no flow type is selected', () => {
+      render(<SelectFlowType {...defaultProps} audience="AGENT" />);
+
+      expect(mockOnReadyChange).not.toHaveBeenCalled();
+    });
+
+    it('should report the step as ready while the selected flow type is offered', () => {
+      render(<SelectFlowType {...defaultProps} selectedType="ADMINISTRATION" audience="AGENT" />);
+
+      expect(mockOnReadyChange).toHaveBeenLastCalledWith(true);
+    });
+
+    it('should report the step as not ready when the audience hides the selected flow type', () => {
+      const {rerender} = render(<SelectFlowType {...defaultProps} selectedType="ADMINISTRATION" audience="AGENT" />);
+
+      rerender(<SelectFlowType {...defaultProps} selectedType="ADMINISTRATION" audience="USER" />);
+
+      expect(mockOnReadyChange).toHaveBeenLastCalledWith(false);
+    });
+
+    it('should report the step as ready again when the audience offers the selected flow type once more', () => {
+      const {rerender} = render(<SelectFlowType {...defaultProps} selectedType="ADMINISTRATION" audience="USER" />);
+
+      rerender(<SelectFlowType {...defaultProps} selectedType="ADMINISTRATION" audience="ALL" />);
+
+      expect(mockOnReadyChange).toHaveBeenLastCalledWith(true);
     });
   });
 

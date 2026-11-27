@@ -4,6 +4,7 @@
     "category": "ADMINISTRATION",
     "type": "AGENT_ONBOARDING_OWN_IDENTITY",
     "flowType": "ADMINISTRATION",
+    "audience": "AGENT",
     "display": {
       "label": "Agent Onboarding Flow (Own Identity)",
       "description": "Create an agent that acts using its own identity",
@@ -452,6 +453,7 @@
     "category": "ADMINISTRATION",
     "type": "AGENT_ONBOARDING_OBO",
     "flowType": "ADMINISTRATION",
+    "audience": "AGENT",
     "display": {
       "label": "Agent Onboarding Flow (On Behalf of a User)",
       "description": "Create an agent that acts on behalf of a signed-in user",
@@ -1079,6 +1081,7 @@
     "category": "ADMINISTRATION",
     "type": "AGENT_ONBOARDING_GENERIC",
     "flowType": "ADMINISTRATION",
+    "audience": "AGENT",
     "display": {
       "label": "Agent Onboarding Flow (Choose Mode)",
       "description": "Let the administrator choose whether the agent acts using its own identity or on behalf of a signed-in user",
@@ -1719,6 +1722,7 @@
     "category": "DEVICE_AUTHORIZATION",
     "type": "DEVICE_GRANT",
     "flowType": "DEVICE_GRANT",
+    "audience": "ALL",
     "display": {
       "label": "Device authorization",
       "description": "Verify a device code and sign in to authorize the device",
@@ -1897,6 +1901,7 @@
     "category": "STARTER",
     "type": "BLANK",
     "flowType": "AUTHENTICATION",
+    "audience": "ALL",
     "display": {
       "label": "Blank",
       "description": "Start from scratch with an empty canvas",
@@ -2024,6 +2029,7 @@
     "category": "PASSWORD",
     "type": "CREDENTIALS_AUTH",
     "flowType": "AUTHENTICATION",
+    "audience": "ALL",
     "display": {
       "label": "Basic",
       "description": "Username and password authentication",
@@ -2213,6 +2219,7 @@
     "category": "PASSWORD",
     "type": "BASIC_SSO",
     "flowType": "AUTHENTICATION",
+    "audience": "ALL",
     "display": {
       "label": "Basic with SSO",
       "description": "Username and password authentication with single sign-on",
@@ -2470,6 +2477,7 @@
     "category": "PASSWORDLESS",
     "type": "PASSKEY",
     "flowType": "AUTHENTICATION",
+    "audience": "ALL",
     "display": {
       "label": "Passkey",
       "description": "Passwordless sign-in with passkey",
@@ -2654,6 +2662,7 @@
     "category": "PASSWORDLESS",
     "type": "MAGIC_LINK",
     "flowType": "AUTHENTICATION",
+    "audience": "ALL",
     "display": {
       "label": "Magic Link",
       "description": "Passwordless sign-in via magic link",
@@ -2928,6 +2937,7 @@
     "category": "MFA",
     "type": "SMS_OTP",
     "flowType": "AUTHENTICATION",
+    "audience": "ALL",
     "display": {
       "label": "SMS OTP",
       "description": "Passwordless sign-in via SMS one-time password",
@@ -3254,6 +3264,7 @@
     "category": "MFA",
     "type": "EMAIL_OTP",
     "flowType": "AUTHENTICATION",
+    "audience": "ALL",
     "display": {
       "label": "Email OTP",
       "description": "Passwordless sign-in via Email one-time password",
@@ -3588,6 +3599,7 @@
     "category": "SOCIAL_LOGIN",
     "type": "GOOGLE",
     "flowType": "AUTHENTICATION",
+    "audience": "ALL",
     "display": {
       "label": "Google Login",
       "description": "Sign in with Google",
@@ -3764,6 +3776,7 @@
     "category": "SOCIAL_LOGIN",
     "type": "GITHUB",
     "flowType": "AUTHENTICATION",
+    "audience": "ALL",
     "display": {
       "label": "GitHub Login",
       "description": "Sign in with GitHub",
@@ -3940,6 +3953,7 @@
     "category": "SOCIAL_LOGIN",
     "type": "GOOGLE_GITHUB",
     "flowType": "AUTHENTICATION",
+    "audience": "ALL",
     "display": {
       "label": "Google Login + GitHub Login",
       "description": "Sign in with Google or GitHub",
@@ -4235,6 +4249,7 @@
     "category": "SOCIAL_LOGIN",
     "type": "BASIC_GOOGLE",
     "flowType": "AUTHENTICATION",
+    "audience": "ALL",
     "display": {
       "label": "Basic + Google Login",
       "description": "Username/password or Google sign-in",
@@ -4577,6 +4592,7 @@
     "category": "SOCIAL_LOGIN",
     "type": "BASIC_GITHUB",
     "flowType": "AUTHENTICATION",
+    "audience": "ALL",
     "display": {
       "label": "Basic + GitHub Login",
       "description": "Username/password or GitHub sign-in",
@@ -4919,6 +4935,7 @@
     "category": "SOCIAL_LOGIN",
     "type": "BASIC_GOOGLE_GITHUB",
     "flowType": "AUTHENTICATION",
+    "audience": "ALL",
     "display": {
       "label": "Basic + Google Login + GitHub Login",
       "description": "Username/password, Google, or GitHub sign-in",
@@ -5316,6 +5333,7 @@
     "category": "PASSWORDLESS",
     "type": "BASIC_PASSKEY",
     "flowType": "AUTHENTICATION",
+    "audience": "ALL",
     "display": {
       "label": "Basic + Passkey",
       "description": "Username/password or passkey sign-in",
@@ -5856,6 +5874,7 @@
     "category": "PASSWORDLESS",
     "type": "BASIC_MAGIC_LINK",
     "flowType": "AUTHENTICATION",
+    "audience": "ALL",
     "display": {
       "label": "Basic + Magic Link",
       "description": "Multi-method sign-in with magic link second factor",
@@ -6266,6 +6285,7 @@
     "category": "MFA",
     "type": "BASIC_GOOGLE_GITHUB_SMS",
     "flowType": "AUTHENTICATION",
+    "audience": "ALL",
     "display": {
       "label": "Basic + Google Login + GitHub Login + SMS",
       "description": "Multi-method sign-in with SMS OTP second factor",
@@ -7946,6 +7966,7 @@
     "category": "PASSWORD",
     "type": "BASIC_WITH_CONSENT",
     "flowType": "AUTHENTICATION",
+    "audience": "ALL",
     "display": {
       "label": "Basic + Consent",
       "description": "Username and password authentication with consent collection",
@@ -8254,6 +8275,7 @@
     "category": "PASSWORD",
     "type": "DISAMBIGUATION_LOGIN",
     "flowType": "AUTHENTICATION",
+    "audience": "ALL",
     "display": {
       "label": "Disambiguation Login",
       "description": "Resolve user identity across multiple organizational units before authentication",
@@ -8656,6 +8678,7 @@
     "category": "PASSWORDLESS",
     "type": "CIBA_EMAIL_NOTIFICATION",
     "flowType": "AUTHENTICATION",
+    "audience": "ALL",
     "display": {
       "label": "CIBA Email Notification",
       "description": "Backchannel authentication with email-based approval",
@@ -9054,6 +9077,7 @@
     "category": "STARTER",
     "type": "BLANK",
     "flowType": "REGISTRATION",
+    "audience": "ALL",
     "display": {
       "label": "Blank",
       "description": "Start from scratch with an empty canvas",
@@ -9253,6 +9277,7 @@
     "category": "PASSWORD",
     "type": "BASIC",
     "flowType": "REGISTRATION",
+    "audience": "USER",
     "display": {
       "label": "Basic",
       "description": "Username, password, and profile info registration",
@@ -9488,6 +9513,7 @@
     "category": "PASSWORDLESS",
     "type": "PASSKEY",
     "flowType": "REGISTRATION",
+    "audience": "USER",
     "display": {
       "label": "Passkey",
       "description": "Register with a passkey",
@@ -9751,6 +9777,7 @@
     "category": "PASSWORDLESS",
     "type": "MAGIC_LINK",
     "flowType": "REGISTRATION",
+    "audience": "USER",
     "display": {
       "label": "Magic Link",
       "description": "Register via magic link",
@@ -10164,6 +10191,7 @@
     "category": "MFA",
     "type": "SMS_OTP",
     "flowType": "REGISTRATION",
+    "audience": "USER",
     "display": {
       "label": "SMS OTP",
       "description": "Register via SMS one-time password",
@@ -10624,6 +10652,7 @@
     "category": "MFA",
     "type": "EMAIL_OTP",
     "flowType": "REGISTRATION",
+    "audience": "USER",
     "display": {
       "label": "Email OTP",
       "description": "Register via Email one-time password",
@@ -11101,6 +11130,7 @@
     "category": "SOCIAL_LOGIN",
     "type": "BASIC_GOOGLE_GITHUB",
     "flowType": "REGISTRATION",
+    "audience": "USER",
     "display": {
       "label": "Basic + Google Signup + GitHub Signup",
       "description": "Register with password, Google, or GitHub",
@@ -11530,6 +11560,7 @@
     "category": "PASSWORDLESS",
     "type": "BASIC_PASSKEY",
     "flowType": "REGISTRATION",
+    "audience": "USER",
     "display": {
       "label": "Basic + Passkey",
       "description": "Register with password or passkey",
@@ -12121,6 +12152,7 @@
     "category": "PASSWORDLESS",
     "type": "BASIC_MAGIC_LINK",
     "flowType": "REGISTRATION",
+    "audience": "USER",
     "display": {
       "label": "Basic + Magic Link",
       "description": "Multi-method registration with magic link",
@@ -12566,6 +12598,7 @@
     "category": "MFA",
     "type": "BASIC_GOOGLE_GITHUB_SMS",
     "flowType": "REGISTRATION",
+    "audience": "USER",
     "display": {
       "label": "Basic + Google Signup + GitHub Signup + SMS",
       "description": "Multi-method registration with SMS",
@@ -13271,6 +13304,7 @@
     "category": "PASSWORD",
     "type": "BASIC_WITH_PROMPT",
     "flowType": "REGISTRATION",
+    "audience": "USER",
     "display": {
       "label": "Basic with Full Profile",
       "description": "Single-screen registration with all fields",
@@ -13660,6 +13694,7 @@
     "category": "PASSWORD",
     "type": "PERSONAL_AGENT",
     "flowType": "REGISTRATION",
+    "audience": "ALL",
     "display": {
       "label": "User and Personal Assistants",
       "description": "Register users with a password, or their personal assistants",
@@ -14117,6 +14152,7 @@
     "category": "STARTER",
     "type": "EMAIL_SELF_INVITE",
     "flowType": "REGISTRATION",
+    "audience": "USER",
     "display": {
       "label": "Email Self Invite",
       "description": "Email-based self-registration with invite link",
@@ -14719,6 +14755,7 @@
     "category": "STARTER",
     "type": "SMS_SELF_INVITE",
     "flowType": "REGISTRATION",
+    "audience": "USER",
     "display": {
       "label": "SMS Self Invite",
       "description": "SMS-based self-registration with invite link",
@@ -15336,6 +15373,7 @@
     "category": "STARTER",
     "type": "BLANK",
     "flowType": "USER_ONBOARDING",
+    "audience": "ALL",
     "display": {
       "label": "Blank",
       "description": "Start from scratch with an empty canvas",
@@ -15453,6 +15491,7 @@
     "category": "STARTER",
     "type": "DEFAULT",
     "flowType": "USER_ONBOARDING",
+    "audience": "USER",
     "display": {
       "label": "Default Onboarding",
       "description": "Standard user onboarding with direct creation and invite options",
@@ -16162,6 +16201,7 @@
     "category": "STARTER",
     "type": "DEFAULT",
     "flowType": "INVITATION",
+    "audience": "USER",
     "display": {
       "label": "Invite into Organization",
       "description": "Invite a user of one user type into your organization unit and assign roles once they accept",
@@ -17058,6 +17098,7 @@
     "category": "STARTER",
     "type": "BLANK",
     "flowType": "RECOVERY",
+    "audience": "ALL",
     "display": {
       "label": "Blank",
       "description": "Start from scratch with an empty canvas",
@@ -17157,6 +17198,7 @@
     "category": "PASSWORD",
     "type": "Email_Link",
     "flowType": "RECOVERY",
+    "audience": "USER",
     "display": {
       "label": "Email Link",
       "description": "Email-based password recovery with email link",
@@ -17565,6 +17607,7 @@
     "category": "PASSWORD",
     "type": "SMS_OTP",
     "flowType": "RECOVERY",
+    "audience": "USER",
     "display": {
       "label": "SMS OTP",
       "description": "SMS OTP-based password recovery",
@@ -18008,6 +18051,7 @@
     "category": "STARTER",
     "type": "BLANK",
     "flowType": "SIGNOUT",
+    "audience": "ALL",
     "display": {
       "label": "Blank",
       "description": "Start from scratch with an empty canvas",
@@ -18107,6 +18151,7 @@
     "category": "STARTER",
     "type": "DIRECT",
     "flowType": "SIGNOUT",
+    "audience": "USER",
     "display": {
       "label": "Silent Sign Out",
       "description": "Terminate the user's SSO session immediately, with no confirmation step",
@@ -18173,6 +18218,7 @@
     "category": "STARTER",
     "type": "BASIC",
     "flowType": "SIGNOUT",
+    "audience": "USER",
     "display": {
       "label": "Confirm & Sign Out",
       "description": "Ask the user to confirm, then terminate their SSO session",
@@ -18300,6 +18346,7 @@
     "category": "STARTER",
     "type": "BASIC_CONDITIONAL",
     "flowType": "SIGNOUT",
+    "audience": "USER",
     "display": {
       "label": "Conditional Confirmation",
       "description": "Ask the user to confirm only when the request has no ID token hint, otherwise sign out immediately",
@@ -18432,6 +18479,7 @@
     "resourceType": "TEMPLATE",
     "category": "STARTER",
     "type": "BLANK",
+    "audience": "ALL",
     "display": {
       "label": "Blank",
       "description": "Start a new login flow from scratch",
@@ -18554,6 +18602,7 @@
     "resourceType": "TEMPLATE",
     "category": "STARTER",
     "type": "BASIC",
+    "audience": "ALL",
     "display": {
       "label": "Password Login",
       "description": "Login experience with an identifier and a password",
@@ -18726,6 +18775,7 @@
     "resourceType": "TEMPLATE",
     "category": "STARTER",
     "type": "BASIC_FEDERATED",
+    "audience": "ALL",
     "display": {
       "label": "Password Login or Google Login",
       "description": "Login experience with Google as an additional option",
@@ -19051,6 +19101,7 @@
     "resourceType": "TEMPLATE",
     "category": "STARTER",
     "type": "BASIC_SMS_OTP_MFA",
+    "audience": "ALL",
     "display": {
       "label": "Password + SMS OTP",
       "description": "Password login with SMS OTP as second factor authentication",
@@ -19417,6 +19468,7 @@
     "resourceType": "TEMPLATE",
     "category": "STARTER",
     "type": "SMS_OTP",
+    "audience": "ALL",
     "display": {
       "label": "SMS OTP",
       "description": "Authentication flow with SMS OTP verification",
@@ -19716,6 +19768,7 @@
     "resourceType": "TEMPLATE",
     "category": "STARTER",
     "type": "PASSKEY_LOGIN",
+    "audience": "ALL",
     "display": {
       "label": "Passkey Login",
       "description": "Passwordless login experience using passkeys with registration fallback",
@@ -20092,6 +20145,7 @@
     "resourceType": "TEMPLATE",
     "category": "AUTHENTICATION",
     "type": "MAGIC_LINK",
+    "audience": "ALL",
     "display": {
       "label": "Magic Link",
       "description": "Authenticate users securely with an emailed Magic Link.",
@@ -20370,6 +20424,7 @@
     "category": "STARTER",
     "type": "BLANK",
     "flowType": "ADMINISTRATION",
+    "audience": "ALL",
     "display": {
       "label": "Blank Administrative Flow",
       "description": "Build an authenticated administrative flow from reusable executors and call nodes",
@@ -20416,6 +20471,7 @@
     "category": "STARTER",
     "type": "BLANK",
     "flowType": "SELF",
+    "audience": "ALL",
     "display": {
       "label": "Blank",
       "description": "Start from scratch with an empty canvas",
@@ -20515,6 +20571,7 @@
     "category": "STARTER",
     "type": "SELF_ATTRIBUTE_VERIFICATION",
     "flowType": "SELF",
+    "audience": "USER",
     "display": {
       "label": "Self Attribute Verification",
       "description": "A signed-in user verifies their own email address or mobile number with a one-time code",
@@ -20934,6 +20991,7 @@
     "category": "STARTER",
     "type": "SELF_ATTRIBUTE_VERIFICATION_EMAIL_LINK",
     "flowType": "SELF",
+    "audience": "USER",
     "display": {
       "label": "Self Attribute Verification with Email Link",
       "description": "A signed-in user verifies their own email address from a link, or their mobile number with a one-time code",
@@ -21386,6 +21444,7 @@
     "category": "STARTER",
     "type": "ADMIN_ATTRIBUTE_VERIFICATION_EMAIL_LINK",
     "flowType": "ADMIN_INITIATED",
+    "audience": "USER",
     "display": {
       "label": "Administrator Attribute Verification with Email Link",
       "description": "An administrator starts verification of a user's email address, and the user confirms it from an emailed link",
@@ -22049,6 +22108,7 @@
     "category": "PASSWORD",
     "type": "ORGANIZATION_SIGNUP",
     "flowType": "REGISTRATION",
+    "audience": "USER",
     "configureBeforeSave": true,
     "display": {
       "label": "Organization Sign-up",
@@ -22406,6 +22466,7 @@
     "category": "PASSWORD",
     "type": "ORGANIZATION_SIGNUP_SHARED_ACCOUNT",
     "flowType": "REGISTRATION",
+    "audience": "USER",
     "configureBeforeSave": true,
     "display": {
       "label": "Organization Sign-up with Shared Account",
@@ -22780,6 +22841,7 @@
     "category": "SOCIAL_LOGIN",
     "type": "BASIC_ENTERPRISE_SSO",
     "flowType": "AUTHENTICATION",
+    "audience": "ALL",
     "display": {
       "label": "Basic + Enterprise SSO",
       "description": "Password sign-in, or sign-in through the identity provider each organization sets for itself",
