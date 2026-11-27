@@ -15,6 +15,7 @@ const (
 	PropTokenEndpoint         = "token_endpoint"
 	PropUserInfoEndpoint      = "userinfo_endpoint"
 	PropUserEmailEndpoint     = "user_email_endpoint"
+	PropUserTeamsEndpoint     = "user_teams_endpoint"
 	PropJwksEndpoint          = "jwks_endpoint"
 	PropPrompt                = "prompt"
 	PropIssuer                = "issuer"
@@ -53,6 +54,7 @@ const (
 	gitHubTokenEndpoint         = "https://github.com/login/oauth/access_token" // #nosec G101
 	gitHubUserInfoEndpoint      = "https://api.github.com/user"
 	gitHubUserEmailEndpoint     = "https://api.github.com/user/emails"
+	gitHubUserTeamsEndpoint     = "https://api.github.com/user/teams"
 
 	gitHubLoginClaim     = "login"
 	gitHubUserScope      = "user"
@@ -139,6 +141,7 @@ var idpPropertyConfigs = map[providers.IDPType]idpPropertyConfig{
 			PropTokenEndpoint,
 			PropUserInfoEndpoint,
 			PropUserEmailEndpoint,
+			PropUserTeamsEndpoint,
 			PropScopes,
 			PropPrompt,
 		},
@@ -147,6 +150,7 @@ var idpPropertyConfigs = map[providers.IDPType]idpPropertyConfig{
 			PropTokenEndpoint:         gitHubTokenEndpoint,
 			PropUserInfoEndpoint:      gitHubUserInfoEndpoint,
 			PropUserEmailEndpoint:     gitHubUserEmailEndpoint,
+			PropUserTeamsEndpoint:     gitHubUserTeamsEndpoint,
 		},
 	},
 }

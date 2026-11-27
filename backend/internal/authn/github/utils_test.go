@@ -218,3 +218,66 @@ func (suite *GithubUtilsTestSuite) TestSendUserEmailRequestCloseError() {
 	suite.NotNil(emails)
 	suite.Len(emails, 1)
 }
+
+func (suite *GithubUtilsTestSuite) TestBuildUserTeamsRequest() {
+	endpoint := "https://api.github.com/user/teams"
+	accessToken := "test_token"
+
+	req, err := buildUserTeamsRequest(context.Background(), endpoint, accessToken, suite.logger)
+	suite.Nil(err)
+	suite.NotNil(req)
+	suite.Equal(http.MethodGet, req.Method)
+	suite.Equal("https://api.github.com/user/teams?per_page=100", req.URL.String())
+	suite.Equal("Bearer test_token", req.Header.Get("Authorization"))
+	suite.Equal("application/json", req.Header.Get("Accept"))
+
+	// Preserves existing per_page query param
+	reqWithPage, err := buildUserTeamsRequest(
+		context.Background(), "https://api.github.com/user/teams?page=2&per_page=50", accessToken, suite.logger)
+	suite.Nil(err)
+	suite.NotNil(reqWithPage)
+	suite.Equal("https://api.github.com/user/teams?page=2&per_page=50", reqWithPage.URL.String())
+}
+
+func (suite *GithubUtilsTestSuite) TestBuildUserTeamsRequestError() {
+	req, err := buildUserTeamsRequest(context.Background(), "http://\x00", "token", suite.logger)
+	suite.Nil(req)
+	suite.NotNil(err)
+}
+
+func (suite *GithubUtilsTestSuite) TestSendUserTeamsRequestSuccessAndLinkPagination() {
+	body := `[{"slug":"platform-engineers","organization":{"login":"my-org"}}]`
+	headers := http.Header{}
+	headers.Set(linkHeaderName,
+		`<https://api.github.com/user/teams?page=1>; rel="prev", `+
+			`<https://api.github.com/user/teams?page=3&per_page=100>; rel="next"`)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     headers,
+		Body:       io.NopCloser(bytes.NewReader([]byte(body))),
+	}
+
+	req, _ := http.NewRequest(http.MethodGet, "https://api.github.com/user/teams?page=2&per_page=100", nil)
+	suite.mockHTTPClient.On("Do", req).Return(resp, nil).Once()
+
+	teams, nextURL, err := sendUserTeamsRequest(req, suite.mockHTTPClient, suite.logger)
+	suite.Nil(err)
+	suite.Len(teams, 1)
+	suite.Equal("platform-engineers", teams[0].Slug)
+	suite.Equal("my-org", teams[0].Organization.Login)
+	suite.Equal("https://api.github.com/user/teams?page=3&per_page=100", nextURL)
+}
+
+func (suite *GithubUtilsTestSuite) TestSendUserTeamsRequestNon2xxError() {
+	resp := &http.Response{
+		StatusCode: http.StatusForbidden,
+		Body:       io.NopCloser(bytes.NewReader([]byte(`{"message":"Forbidden"}`))),
+	}
+	req, _ := http.NewRequest(http.MethodGet, "https://api.github.com/user/teams?per_page=100", nil)
+	suite.mockHTTPClient.On("Do", req).Return(resp, nil).Once()
+
+	teams, nextURL, err := sendUserTeamsRequest(req, suite.mockHTTPClient, suite.logger)
+	suite.Nil(teams)
+	suite.Empty(nextURL)
+	suite.NotNil(err)
+}

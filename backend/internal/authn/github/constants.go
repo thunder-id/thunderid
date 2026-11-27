@@ -7,4 +7,5 @@ package github
 const (
 	UserScope      = "user"
 	UserEmailScope = "user:email"
+	ReadOrgScope   = "read:org"
 )

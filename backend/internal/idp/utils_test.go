@@ -233,7 +233,7 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_GitHub_WithDefaults() {
 
 	s.Nil(err)
 	s.NotNil(result)
-	s.GreaterOrEqual(len(result), 6)
+	s.GreaterOrEqual(len(result), 8)
 
 	foundProperties := make(map[string]string)
 	for _, prop := range result {
@@ -244,6 +244,8 @@ func (s *IDPUtilsTestSuite) TestValidateIDPProperties_GitHub_WithDefaults() {
 	s.Equal(gitHubAuthorizationEndpoint, foundProperties[PropAuthorizationEndpoint])
 	s.Equal(gitHubTokenEndpoint, foundProperties[PropTokenEndpoint])
 	s.Equal(gitHubUserInfoEndpoint, foundProperties[PropUserInfoEndpoint])
+	s.Equal(gitHubUserEmailEndpoint, foundProperties[PropUserEmailEndpoint])
+	s.Equal(gitHubUserTeamsEndpoint, foundProperties[PropUserTeamsEndpoint])
 }
 
 func (s *IDPUtilsTestSuite) TestValidateIDPProperties_GitHub_WithCustomEndpoints() {
