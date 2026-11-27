@@ -124,6 +124,7 @@ type flowAdapter interface {
 		*tidcommon.ServiceError,
 	)
 	GetFlow(ctx context.Context, flowID string) (*providers.CompleteFlowDefinition, *tidcommon.ServiceError)
+	IsValidFlow(ctx context.Context, flowID string, flowType providers.FlowType) (bool, *tidcommon.ServiceError)
 	GetFlowByHandle(ctx context.Context, handle string, flowType providers.FlowType) (*providers.CompleteFlowDefinition,
 		*tidcommon.ServiceError)
 	UpdateFlow(ctx context.Context, flowID string, flowDef *flowmgt.FlowDefinition) (*providers.CompleteFlowDefinition,
@@ -535,6 +536,8 @@ func (s *importService) importResources(
 	flowIDAliases := make(map[string]string)
 	var mandating []userSharingReplay
 	var links []linkedDocument
+	var ouDefaults []ouDefaultFlowsReplay
+	stopped := false
 	if request.DryRun {
 		ctx = withPlannedUnits(ctx, newPlannedUnits())
 	}
@@ -542,6 +545,15 @@ func (s *importService) importResources(
 	orderedDocs := orderDocumentsByDependencies(docs)
 
 	for _, doc := range orderedDocs {
+		refusedDefaults, stop := s.setOUDefaultFlowsBefore(
+			ctx, &ouDefaults, doc.ResourceType, flowIDAliases, results, options)
+		imported -= refusedDefaults
+		failed += refusedDefaults
+		if stop {
+			stopped = true
+			break
+		}
+
 		originalFlowID := ""
 		if doc.ResourceType == resourceTypeFlow {
 			var flowReq providers.CompleteFlowDefinition
@@ -551,11 +563,12 @@ func (s *importService) importResources(
 		}
 
 		pendingBefore := len(mandating)
+		ouDefaultsBefore := len(ouDefaults)
 		docCtx, replayReport := sharing.WithReplayReport(ctx)
 		outcome, resolved := s.resolveReferences(docCtx, doc)
 		if resolved {
 			outcome = s.importDocument(docCtx, doc, options, request.DryRun, flowIDAliases, &mandating,
-				plan)
+				&ouDefaults, plan)
 		}
 		listRemovedSharing(&outcome, replayReport)
 		outcome = s.markManaged(ctx, request, doc.ResourceType, outcome)
@@ -576,6 +589,9 @@ func (s *importService) importResources(
 		for i := pendingBefore; i < len(mandating); i++ {
 			mandating[i].resultIndex = len(results) - 1
 		}
+		for i := ouDefaultsBefore; i < len(ouDefaults); i++ {
+			ouDefaults[i].resultIndex = len(results) - 1
+		}
 
 		plannedUnitsOf(ctx).record(doc, outcome)
 
@@ -589,6 +605,7 @@ func (s *importService) importResources(
 		} else {
 			failed++
 			if !options.IsContinueOnErrorEnabled() {
+				stopped = true
 				break
 			}
 		}
@@ -599,6 +616,12 @@ func (s *importService) importResources(
 	unlinked := s.linkGroupsAndRoles(ctx, links, results)
 	imported -= unlinked
 	failed += unlinked
+
+	// A unit imported before its flows, in a bundle with nothing after the flows, is set now. When the import
+	// stopped, the flows may not be in, so the units are left as they were written.
+	refusedDefaults := s.settleOUDefaultFlows(ctx, ouDefaults, flowIDAliases, results, stopped)
+	imported -= refusedDefaults
+	failed += refusedDefaults
 
 	// The sharing policies of a user that mandate roles are replayed now, once the roles' members and assignments are
 	// added, for every user imported, whatever failed after it.
@@ -733,7 +756,7 @@ func (s *importService) publishConfigurationEvent(ctx context.Context, name stri
 
 func (s *importService) importDocument(
 	ctx context.Context, doc parsedDocument, options *ImportOptions, dryRun bool, flowIDAliases map[string]string,
-	mandating *[]userSharingReplay, plan *removalPlan,
+	mandating *[]userSharingReplay, ouDefaults *[]ouDefaultFlowsReplay, plan *removalPlan,
 ) ImportItemOutcome {
 	switch doc.ResourceType {
 	case resourceTypeApplication:
@@ -743,7 +766,7 @@ func (s *importService) importDocument(
 	case resourceTypeFlow:
 		return s.importFlow(ctx, doc, options, dryRun, plan)
 	case resourceTypeOrganizationUnit:
-		return s.importOrganizationUnit(ctx, doc, options, dryRun)
+		return s.importOrganizationUnit(ctx, doc, options, dryRun, ouDefaults)
 	case resourceTypeProject:
 		return s.importProject(ctx, doc, options, dryRun)
 	case resourceTypeEntityType:
@@ -1453,6 +1476,17 @@ func groupsAndRolesBeforeFlows(order []string) []string {
 		result = append(result, resourceType)
 	}
 	return result
+}
+
+// resourceTypeOrder returns the position of a resource type in the order an import writes resources in. A type the
+// order does not name is imported after the ones it does.
+func resourceTypeOrder(resourceType string) int {
+	for i, ordered := range importDependencyOrder {
+		if ordered == resourceType {
+			return i
+		}
+	}
+	return len(importDependencyOrder) + 1
 }
 
 func orderDocumentsByDependencies(docs []parsedDocument) []parsedDocument {

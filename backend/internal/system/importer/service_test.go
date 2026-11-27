@@ -50,6 +50,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/outboundauth"
 	"github.com/thunder-id/thunderid/internal/user"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
+	"github.com/thunder-id/thunderid/tests/mocks/managedresourcemock"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -381,8 +382,10 @@ type fakeFlowService struct {
 	ouIDByPath map[string]string
 	sharingErr *tidcommon.ServiceError
 	// getErr, when set, is what GetFlow fails with for a flow the fake holds.
-	getErr  *tidcommon.ServiceError
-	deleted []string
+	getErr *tidcommon.ServiceError
+	// validErr, when set, is what IsValidFlow fails with.
+	validErr *tidcommon.ServiceError
+	deleted  []string
 	// refused records each create and update the fake refused, as the audited service would record it.
 	refused []string
 	// withSharing records the policies each update that came with them carried, and updateSharingErr refuses them.
@@ -654,6 +657,12 @@ type fakeOUService struct {
 	existing map[string]ou.OrganizationUnit
 	// updateAttempts counts every update called, including one of a unit that does not exist.
 	updateAttempts int
+	// updatedRequests holds every update request whole, default flows included.
+	updatedRequests []ou.OrganizationUnitRequestWithID
+	// refuseDefaultFlows, when set, is what an update that names a default flow fails with.
+	refuseDefaultFlows *tidcommon.ServiceError
+	// refusedFlowIDs holds the default flow ids an update is refused for, as one that names a flow that is gone.
+	refusedFlowIDs map[string]*tidcommon.ServiceError
 }
 
 func (f *fakeOUService) CreateOrganizationUnit(
@@ -665,17 +674,22 @@ func (f *fakeOUService) CreateOrganizationUnit(
 	}
 
 	created := ou.OrganizationUnit{
-		ID:              id,
-		Handle:          request.Handle,
-		Name:            request.Name,
-		Description:     request.Description,
-		Parent:          request.Parent,
-		ThemeID:         request.ThemeID,
-		LayoutID:        request.LayoutID,
-		LogoURL:         request.LogoURL,
-		TosURI:          request.TosURI,
-		PolicyURI:       request.PolicyURI,
-		CookiePolicyURI: request.CookiePolicyURI,
+		ID:                   id,
+		Handle:               request.Handle,
+		Name:                 request.Name,
+		Description:          request.Description,
+		Parent:               request.Parent,
+		ThemeID:              request.ThemeID,
+		LayoutID:             request.LayoutID,
+		AuthFlowID:           request.AuthFlowID,
+		RegistrationFlowID:   request.RegistrationFlowID,
+		RecoveryFlowID:       request.RecoveryFlowID,
+		SignOutFlowID:        request.SignOutFlowID,
+		UserOnboardingFlowID: request.UserOnboardingFlowID,
+		LogoURL:              request.LogoURL,
+		TosURI:               request.TosURI,
+		PolicyURI:            request.PolicyURI,
+		CookiePolicyURI:      request.CookiePolicyURI,
 	}
 	f.created = append(f.created, request)
 	if f.existing == nil {
@@ -719,6 +733,16 @@ func (f *fakeOUService) UpdateOrganizationUnit(
 	_ context.Context, id string, request ou.OrganizationUnitRequestWithID,
 ) (ou.OrganizationUnit, *tidcommon.ServiceError) {
 	f.updateAttempts++
+	if f.refuseDefaultFlows != nil && defaultFlowsOfRequest(request) != (ouDefaultFlows{}) {
+		return ou.OrganizationUnit{}, f.refuseDefaultFlows
+	}
+	for _, flowID := range []string{request.AuthFlowID, request.RegistrationFlowID, request.RecoveryFlowID,
+		request.SignOutFlowID, request.UserOnboardingFlowID} {
+		if svcErr, refused := f.refusedFlowIDs[flowID]; refused && flowID != "" {
+			return ou.OrganizationUnit{}, svcErr
+		}
+	}
+	f.updatedRequests = append(f.updatedRequests, request)
 	updateReq := ou.OrganizationUnitRequest{
 		Handle:          request.Handle,
 		Name:            request.Name,
@@ -731,7 +755,17 @@ func (f *fakeOUService) UpdateOrganizationUnit(
 		PolicyURI:       request.PolicyURI,
 		CookiePolicyURI: request.CookiePolicyURI,
 	}
-	return updateOUCommon(f.existing, &f.updated, id, updateReq)
+	updated, svcErr := updateOUCommon(f.existing, &f.updated, id, updateReq)
+	if svcErr != nil {
+		return updated, svcErr
+	}
+	updated.AuthFlowID = request.AuthFlowID
+	updated.RegistrationFlowID = request.RegistrationFlowID
+	updated.RecoveryFlowID = request.RecoveryFlowID
+	updated.SignOutFlowID = request.SignOutFlowID
+	updated.UserOnboardingFlowID = request.UserOnboardingFlowID
+	f.existing[id] = updated
+	return updated, nil
 }
 
 type fakeRoleService struct {
@@ -956,6 +990,16 @@ func (f *fakeFlowService) CreateFlow(
 	f.byID[id] = created
 	f.byKey[string(flowDef.FlowType)+":"+flowDef.Handle] = created
 	return created, nil
+}
+
+func (f *fakeFlowService) IsValidFlow(
+	_ context.Context, flowID string, flowType providers.FlowType,
+) (bool, *tidcommon.ServiceError) {
+	if f.validErr != nil {
+		return false, f.validErr
+	}
+	v, ok := f.byID[flowID]
+	return ok && v.FlowType == flowType, nil
 }
 
 func (f *fakeFlowService) GetFlow(
@@ -2387,23 +2431,88 @@ func TestImportResources_OrganizationUnitUpsertLooksUpBeforeWriting(t *testing.T
 	assert.Equal(t, 1, ouSvc.updateAttempts, "only the unit that exists is updated")
 }
 
-func TestImportResources_OrganizationUnitCarriesDefaultFlowFields(t *testing.T) {
-	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{}}
-	svc := newImportService(
-		nil, nil, nil, nil, ouSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-		discardingBus{})
+const ouWithDefaultFlowsDocument = "resource_type: organization_unit\n" +
+	"id: ou-456\n" +
+	"handle: eng\n" +
+	"name: Engineering\n" +
+	"authFlowId: auth-flow-1\n" +
+	"registrationFlowId: reg-flow-1\n" +
+	"isRegistrationFlowEnabled: true\n" +
+	"recoveryFlowId: recovery-flow-1\n" +
+	"isRecoveryFlowEnabled: true\n" +
+	"signOutFlowId: signout-flow-1\n" +
+	"userOnboardingFlowId: onboarding-flow-1\n"
 
+func newOUImportService(ouSvc *fakeOUService, flowSvc *fakeFlowService) ImportServiceInterface {
+	var flows flowAdapter
+	if flowSvc != nil {
+		flows = flowSvc
+	}
+	return newImportService(
+		nil, nil, nil, flows, ouSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		discardingBus{})
+}
+
+func TestImportResources_OrganizationUnitDefaultFlowsAreSetAfterTheUnitIsCreated(t *testing.T) {
+	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{}}
+	svc := newOUImportService(ouSvc, nil)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: ouWithDefaultFlowsDocument})
+
+	require.Nil(t, err)
+	require.NotNil(t, resp)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.Equal(t, operationCreate, resp.Results[0].Operation)
+	assert.Equal(t, 1, resp.Summary.Imported)
+	assert.Equal(t, 0, resp.Summary.Failed)
+
+	// The unit is written without its flows, which may not exist yet.
+	require.Len(t, ouSvc.created, 1)
+	assert.Equal(t, ouDefaultFlows{}, defaultFlowsOfRequest(ouSvc.created[0]))
+	assert.True(t, ouSvc.created[0].IsRegistrationFlowEnabled)
+	assert.True(t, ouSvc.created[0].IsRecoveryFlowEnabled)
+
+	require.Len(t, ouSvc.updatedRequests, 1)
+	assert.Equal(t, ouDefaultFlows{
+		auth: "auth-flow-1", registration: "reg-flow-1", recovery: "recovery-flow-1",
+		signOut: "signout-flow-1", userOnboarding: "onboarding-flow-1",
+	}, defaultFlowsOfRequest(ouSvc.updatedRequests[0]))
+	assert.True(t, ouSvc.updatedRequests[0].IsRegistrationFlowEnabled)
+	assert.True(t, ouSvc.updatedRequests[0].IsRecoveryFlowEnabled)
+}
+
+func TestImportResources_OrganizationUnitDefaultFlowsFollowTheFlowsOfTheSameBundle(t *testing.T) {
+	flowSvc := &fakeFlowService{
+		byID: map[string]*providers.CompleteFlowDefinition{
+			"stored-auth-flow-id": {
+				ID:       "stored-auth-flow-id",
+				Handle:   "eng-login",
+				Name:     "Engineering Login",
+				FlowType: providers.FlowTypeAuthentication,
+			},
+		},
+		byKey: map[string]*providers.CompleteFlowDefinition{},
+	}
+	flowSvc.byKey[string(providers.FlowTypeAuthentication)+":eng-login"] = flowSvc.byID["stored-auth-flow-id"]
+	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{}}
+	svc := newOUImportService(ouSvc, flowSvc)
+
+	// The flow comes first in the file but is imported after the unit that owns it.
 	content := strings.Join([]string{
+		"resource_type: flow",
+		"id: bundle-auth-flow-id",
+		"handle: eng-login",
+		"name: Engineering Login",
+		"flowType: AUTHENTICATION",
+		"ouId: ou-456",
+		"nodes: []",
+		"---",
 		"resource_type: organization_unit",
 		"id: ou-456",
 		"handle: eng",
 		"name: Engineering",
-		"authFlowId: auth-flow-1",
-		"registrationFlowId: reg-flow-1",
-		"isRegistrationFlowEnabled: true",
-		"recoveryFlowId: recovery-flow-1",
-		"isRecoveryFlowEnabled: true",
-		"signOutFlowId: signout-flow-1",
+		"authFlowId: bundle-auth-flow-id",
 		"",
 	}, "\n")
 
@@ -2411,15 +2520,401 @@ func TestImportResources_OrganizationUnitCarriesDefaultFlowFields(t *testing.T) 
 
 	require.Nil(t, err)
 	require.NotNil(t, resp)
+	require.Len(t, resp.Results, 2)
+	assert.Equal(t, resourceTypeOrganizationUnit, resp.Results[0].ResourceType)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.Equal(t, statusSuccess, resp.Results[1].Status)
+	assert.Equal(t, 2, resp.Summary.Imported)
+	assert.Equal(t, 0, resp.Summary.Failed)
+
+	require.Len(t, ouSvc.updatedRequests, 1)
+	assert.Equal(t, "stored-auth-flow-id", ouSvc.updatedRequests[0].AuthFlowID)
+}
+
+func TestImportResources_OrganizationUnitDefaultFlowsAreSetBeforeApplications(t *testing.T) {
+	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{}}
+	appSvc := &fakeApplicationService{existing: map[string]*providers.Application{}}
+	svc := newImportService(
+		appSvc, nil, nil, nil, ouSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		discardingBus{})
+
+	content := strings.Join([]string{
+		"resource_type: application",
+		"name: My App",
+		"authFlowId: auth-flow-1",
+		"---",
+		ouWithDefaultFlowsDocument,
+	}, "\n")
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: content})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 2)
+	assert.Equal(t, resourceTypeOrganizationUnit, resp.Results[0].ResourceType)
+	assert.Equal(t, resourceTypeApplication, resp.Results[1].ResourceType)
+	assert.Equal(t, 0, resp.Summary.Failed)
+	assert.Len(t, ouSvc.updatedRequests, 1)
+}
+
+func TestImportResources_OrganizationUnitDefaultFlowsRefusedLeavesTheUnitImported(t *testing.T) {
+	ouSvc := &fakeOUService{
+		existing: map[string]ou.OrganizationUnit{},
+		refuseDefaultFlows: &tidcommon.ServiceError{
+			Type:  tidcommon.ClientErrorType,
+			Code:  "OU-1015",
+			Error: tidcommon.I18nMessage{DefaultValue: "Invalid default authentication flow ID"},
+			ErrorDescription: tidcommon.I18nMessage{
+				DefaultValue: "The authFlowId does not reference an existing authentication flow"},
+		},
+	}
+	svc := newOUImportService(ouSvc, nil)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: ouWithDefaultFlowsDocument})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, "OU-1015", resp.Results[0].Code)
+	assert.Equal(t, operationCreate, resp.Results[0].Operation)
+	assert.Equal(t, "ou-456", resp.Results[0].ResourceID)
+	assert.Equal(t, "Invalid default authentication flow ID: The authFlowId does not reference an existing "+
+		"authentication flow (flow id: auth-flow-1). The organization unit was imported, but the requested "+
+		"default-flow changes were not applied",
+		resp.Results[0].Message)
+	assert.Equal(t, 0, resp.Summary.Imported)
+	assert.Equal(t, 1, resp.Summary.Failed)
+	assert.Len(t, ouSvc.created, 1)
+}
+
+func TestRefusedDefaultFlowID(t *testing.T) {
+	flows := ouDefaultFlows{
+		auth: "auth-1", registration: "reg-1", recovery: "rec-1", signOut: "out-1", userOnboarding: "onb-1",
+	}
+
+	assert.Equal(t, "auth-1", refusedDefaultFlowID(ou.ErrorInvalidAuthFlowID.Code, flows))
+	assert.Equal(t, "reg-1", refusedDefaultFlowID(ou.ErrorInvalidRegistrationFlowID.Code, flows))
+	assert.Equal(t, "rec-1", refusedDefaultFlowID(ou.ErrorInvalidRecoveryFlowID.Code, flows))
+	assert.Equal(t, "out-1", refusedDefaultFlowID(ou.ErrorInvalidSignOutFlowID.Code, flows))
+	assert.Equal(t, "onb-1", refusedDefaultFlowID(ou.ErrorInvalidUserOnboardingFlowID.Code, flows))
+	assert.Empty(t, refusedDefaultFlowID("OU-9999", flows))
+}
+
+func TestImportResources_OrganizationUnitDefaultFlowsRefusedStopsTheImportWithoutContinueOnError(t *testing.T) {
+	ouSvc := &fakeOUService{
+		existing: map[string]ou.OrganizationUnit{},
+		refuseDefaultFlows: &tidcommon.ServiceError{
+			Type:  tidcommon.ClientErrorType,
+			Code:  "OU-1015",
+			Error: tidcommon.I18nMessage{DefaultValue: "Invalid default authentication flow ID"},
+		},
+	}
+	appSvc := &fakeApplicationService{existing: map[string]*providers.Application{}}
+	svc := newImportService(
+		appSvc, nil, nil, nil, ouSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		discardingBus{})
+	stopOnError := false
+
+	content := strings.Join([]string{
+		ouWithDefaultFlowsDocument,
+		"---",
+		"resource_type: application",
+		"name: My App",
+		"authFlowId: auth-flow-1",
+		"",
+	}, "\n")
+
+	resp, err := svc.ImportResources(context.Background(),
+		&ImportRequest{Content: content, Options: &ImportOptions{ContinueOnError: &stopOnError}})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Empty(t, appSvc.created)
+	assert.Empty(t, appSvc.updated)
+}
+
+func TestImportResources_OrganizationUnitDefaultFlowsAreNotSetWhenTheImportStopped(t *testing.T) {
+	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{}}
+	svc := newOUImportService(ouSvc, nil)
+	stopOnError := false
+
+	// The user type adapter is not configured, so its document fails, and the import stops before the flows.
+	content := strings.Join([]string{
+		ouWithDefaultFlowsDocument,
+		"---",
+		"resource_type: " + resourceTypeEntityType,
+		"id: user-type-1",
+		"name: person",
+		"",
+	}, "\n")
+
+	resp, err := svc.ImportResources(context.Background(),
+		&ImportRequest{Content: content, Options: &ImportOptions{ContinueOnError: &stopOnError}})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 2)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.Contains(t, resp.Results[0].Message, "default flows were not set")
+	assert.Equal(t, statusFailed, resp.Results[1].Status)
+	assert.Empty(t, ouSvc.updatedRequests)
+}
+
+func TestImportResources_OrganizationUnitWithoutDefaultFlowsIsWrittenOnce(t *testing.T) {
+	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{}}
+	svc := newOUImportService(ouSvc, nil)
+
+	content := "resource_type: organization_unit\nid: ou-456\nhandle: eng\nname: Engineering\n"
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: content})
+
+	require.Nil(t, err)
 	require.Len(t, resp.Results, 1)
 	assert.Equal(t, statusSuccess, resp.Results[0].Status)
-	require.Len(t, ouSvc.created, 1)
-	assert.Equal(t, "auth-flow-1", ouSvc.created[0].AuthFlowID)
-	assert.Equal(t, "reg-flow-1", ouSvc.created[0].RegistrationFlowID)
-	assert.True(t, ouSvc.created[0].IsRegistrationFlowEnabled)
-	assert.Equal(t, "recovery-flow-1", ouSvc.created[0].RecoveryFlowID)
-	assert.True(t, ouSvc.created[0].IsRecoveryFlowEnabled)
-	assert.Equal(t, "signout-flow-1", ouSvc.created[0].SignOutFlowID)
+	assert.Len(t, ouSvc.created, 1)
+	assert.Zero(t, ouSvc.updateAttempts)
+}
+
+func TestImportResources_OrganizationUnitReplacesItsDefaultFlowsAfterTheFlowsAreImported(t *testing.T) {
+	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{
+		"ou-456": {ID: "ou-456", Handle: "eng", Name: "Engineering", AuthFlowID: "old-auth-flow"},
+	}}
+	svc := newOUImportService(ouSvc, nil)
+
+	content := "resource_type: organization_unit\nid: ou-456\nhandle: eng\nname: Engineering\n" +
+		"authFlowId: new-auth-flow\n"
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: content})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
+	require.Len(t, ouSvc.updatedRequests, 2)
+	assert.Empty(t, ouSvc.updatedRequests[0].AuthFlowID)
+	assert.Equal(t, "new-auth-flow", ouSvc.updatedRequests[1].AuthFlowID)
+}
+
+func TestImportResources_OrganizationUnitReplacesADefaultFlowThatIsGone(t *testing.T) {
+	ouSvc := &fakeOUService{
+		existing: map[string]ou.OrganizationUnit{
+			"ou-456": {ID: "ou-456", Handle: "eng", Name: "Engineering", AuthFlowID: "gone-auth-flow"},
+		},
+		refusedFlowIDs: map[string]*tidcommon.ServiceError{
+			"gone-auth-flow": {
+				Type:  tidcommon.ClientErrorType,
+				Code:  "OU-1015",
+				Error: tidcommon.I18nMessage{DefaultValue: "Invalid default authentication flow ID"},
+			},
+		},
+	}
+	svc := newOUImportService(ouSvc, nil)
+
+	content := "resource_type: organization_unit\nid: ou-456\nhandle: eng\nname: Engineering\n" +
+		"authFlowId: new-auth-flow\n"
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: content})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.Equal(t, 0, resp.Summary.Failed)
+	assert.Equal(t, "new-auth-flow", ouSvc.existing["ou-456"].AuthFlowID)
+}
+
+func TestImportResources_OrganizationUnitLastDocumentWithoutDefaultFlowsLeavesNone(t *testing.T) {
+	ouSvc := &fakeOUService{}
+	svc := newOUImportService(ouSvc, nil)
+
+	content := "resource_type: organization_unit\nid: ou-456\nhandle: eng\nname: Engineering\n" +
+		"authFlowId: auth-flow-1\n---\n" +
+		"resource_type: organization_unit\nid: ou-456\nhandle: eng\nname: Engineering Platform\n"
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: content})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 2)
+	assert.Equal(t, 0, resp.Summary.Failed)
+	assert.Equal(t, "Engineering Platform", ouSvc.existing["ou-456"].Name)
+	assert.Empty(t, ouSvc.existing["ou-456"].AuthFlowID)
+}
+
+func TestImportResources_OrganizationUnitLastDocumentDecidesTheDefaultFlows(t *testing.T) {
+	ouSvc := &fakeOUService{}
+	svc := newOUImportService(ouSvc, nil)
+
+	content := "resource_type: organization_unit\nid: ou-456\nhandle: eng\nname: Engineering\n" +
+		"authFlowId: auth-flow-1\nrecoveryFlowId: recovery-flow-1\n---\n" +
+		"resource_type: organization_unit\nid: ou-456\nhandle: eng\nname: Engineering Platform\n" +
+		"authFlowId: auth-flow-2\n"
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: content})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 2)
+	assert.Equal(t, 0, resp.Summary.Failed)
+	assert.Equal(t, "Engineering Platform", ouSvc.existing["ou-456"].Name)
+	assert.Equal(t, "auth-flow-2", ouSvc.existing["ou-456"].AuthFlowID)
+	assert.Empty(t, ouSvc.existing["ou-456"].RecoveryFlowID)
+}
+
+func TestImportResources_OrganizationUnitFailedToBeMarkedManagedIsNotCountedAgainByItsRefusedDefaults(t *testing.T) {
+	ouSvc := &fakeOUService{
+		refuseDefaultFlows: &tidcommon.ServiceError{
+			Type:  tidcommon.ClientErrorType,
+			Code:  "OU-1015",
+			Error: tidcommon.I18nMessage{DefaultValue: "Invalid default authentication flow ID"},
+		},
+	}
+	store := managedresourcemock.NewStoreInterfaceMock(t)
+	store.EXPECT().Mark(mock.Anything, mock.Anything, mock.Anything).Return(errMarkerStore).Once()
+	svc := newOUImportService(ouSvc, nil)
+	svc.(*importService).managed = store
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: ouWithDefaultFlowsDocument, Managed: true,
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, "the resource was written but could not be marked as deployed by the control plane",
+		resp.Results[0].Message)
+	assert.Equal(t, 0, resp.Summary.Imported)
+	assert.Equal(t, 1, resp.Summary.Failed)
+	assert.Empty(t, ouSvc.updatedRequests)
+}
+
+func TestImportResources_OrganizationUnitRefusedChangeKeepsTheUnchangedDefaultFlows(t *testing.T) {
+	ouSvc := &fakeOUService{
+		existing: map[string]ou.OrganizationUnit{
+			"ou-456": {ID: "ou-456", Handle: "eng", Name: "Engineering", RegistrationFlowID: "reg-1"},
+		},
+		refusedFlowIDs: map[string]*tidcommon.ServiceError{
+			"bad-auth-flow": {
+				Type:  tidcommon.ClientErrorType,
+				Code:  "OU-1015",
+				Error: tidcommon.I18nMessage{DefaultValue: "Invalid default authentication flow ID"},
+			},
+		},
+	}
+	svc := newOUImportService(ouSvc, nil)
+
+	content := "resource_type: organization_unit\nid: ou-456\nhandle: eng\nname: Engineering Platform\n" +
+		"authFlowId: bad-auth-flow\nregistrationFlowId: reg-1\n"
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: content})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Contains(t, resp.Results[0].Message,
+		"The organization unit was imported, but the requested default-flow changes were not applied")
+	assert.Equal(t, "Engineering Platform", ouSvc.existing["ou-456"].Name)
+	assert.Equal(t, "reg-1", ouSvc.existing["ou-456"].RegistrationFlowID)
+	assert.Empty(t, ouSvc.existing["ou-456"].AuthFlowID)
+}
+
+func TestImportResources_OrganizationUnitKeptDefaultFlowThatIsGoneIsSetAfterTheFlowsAreImported(t *testing.T) {
+	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{
+		"ou-456": {ID: "ou-456", Handle: "eng", Name: "Engineering", AuthFlowID: "auth-flow-1"},
+	}}
+	svc := newOUImportService(ouSvc, &fakeFlowService{})
+
+	content := "resource_type: organization_unit\nid: ou-456\nhandle: eng\nname: Engineering\n" +
+		"authFlowId: auth-flow-1\n"
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: content})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	require.Len(t, ouSvc.updatedRequests, 2)
+	assert.Empty(t, ouSvc.updatedRequests[0].AuthFlowID)
+	assert.Equal(t, "auth-flow-1", ouSvc.updatedRequests[1].AuthFlowID)
+}
+
+func TestImportResources_OrganizationUnitKeptDefaultFlowThatExistsIsWrittenOnce(t *testing.T) {
+	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{
+		"ou-456": {ID: "ou-456", Handle: "eng", Name: "Engineering", AuthFlowID: "auth-flow-1"},
+	}}
+	flowSvc := &fakeFlowService{byID: map[string]*providers.CompleteFlowDefinition{
+		"auth-flow-1": {ID: "auth-flow-1", FlowType: providers.FlowTypeAuthentication},
+	}}
+	svc := newOUImportService(ouSvc, flowSvc)
+
+	content := "resource_type: organization_unit\nid: ou-456\nhandle: eng\nname: Engineering Platform\n" +
+		"authFlowId: auth-flow-1\n"
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: content})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	require.Len(t, ouSvc.updatedRequests, 1)
+	assert.Equal(t, "auth-flow-1", ouSvc.updatedRequests[0].AuthFlowID)
+}
+
+func TestImportResources_OrganizationUnitFailsWhenAKeptDefaultFlowCannotBeChecked(t *testing.T) {
+	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{
+		"ou-456": {ID: "ou-456", Handle: "eng", Name: "Engineering", AuthFlowID: "auth-flow-1"},
+	}}
+	flowSvc := &fakeFlowService{validErr: &tidcommon.InternalServerError}
+	svc := newOUImportService(ouSvc, flowSvc)
+
+	content := "resource_type: organization_unit\nid: ou-456\nhandle: eng\nname: Engineering\n" +
+		"authFlowId: auth-flow-1\n"
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: content})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, tidcommon.InternalServerError.Code, resp.Results[0].Code)
+	assert.Empty(t, ouSvc.updatedRequests)
+}
+
+func TestImportResources_OrganizationUnitKeepsTheDefaultFlowsTheDocumentLeavesUnchanged(t *testing.T) {
+	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{
+		"ou-456": {
+			ID: "ou-456", Handle: "eng", Name: "Engineering",
+			AuthFlowID: "old-auth-flow", RegistrationFlowID: "reg-flow-1",
+		},
+	}}
+	svc := newOUImportService(ouSvc, nil)
+
+	content := "resource_type: organization_unit\nid: ou-456\nhandle: eng\nname: Engineering\n" +
+		"authFlowId: new-auth-flow\nregistrationFlowId: reg-flow-1\n"
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: content})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	require.Len(t, ouSvc.updatedRequests, 2)
+	assert.Equal(t, ouDefaultFlows{registration: "reg-flow-1"}, defaultFlowsOfRequest(ouSvc.updatedRequests[0]))
+	assert.Equal(t, ouDefaultFlows{auth: "new-auth-flow", registration: "reg-flow-1"},
+		defaultFlowsOfRequest(ouSvc.updatedRequests[1]))
+}
+
+func TestImportResources_OrganizationUnitWithUnchangedDefaultFlowsIsUpdatedOnce(t *testing.T) {
+	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{
+		"ou-456": {ID: "ou-456", Handle: "eng", Name: "Engineering", AuthFlowID: "auth-flow-1"},
+	}}
+	svc := newOUImportService(ouSvc, nil)
+
+	content := "resource_type: organization_unit\nid: ou-456\nhandle: eng\nname: Engineering\n" +
+		"authFlowId: auth-flow-1\n"
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: content})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	require.Len(t, ouSvc.updatedRequests, 1)
+	assert.Equal(t, "auth-flow-1", ouSvc.updatedRequests[0].AuthFlowID)
+}
+
+func TestImportResources_OrganizationUnitDryRunSetsNoDefaultFlows(t *testing.T) {
+	ouSvc := &fakeOUService{existing: map[string]ou.OrganizationUnit{}}
+	svc := newOUImportService(ouSvc, nil)
+
+	resp, err := svc.ImportResources(context.Background(),
+		&ImportRequest{Content: ouWithDefaultFlowsDocument, DryRun: true})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.Empty(t, ouSvc.created)
+	assert.Empty(t, ouSvc.updatedRequests)
 }
 
 func newFlowImportService(flowSvc *fakeFlowService) ImportServiceInterface {
