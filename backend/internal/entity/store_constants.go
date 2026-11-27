@@ -10,6 +10,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/database/model"
 	"github.com/thunder-id/thunderid/internal/system/database/utils"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
 const (
@@ -47,11 +48,12 @@ var (
 		Query: `SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY" ` +
 			`WHERE CATEGORY = $4 AND DEPLOYMENT_ID = $3 ORDER BY ID LIMIT $1 OFFSET $2`,
 	}
-	// QuerySearchEntityList is the query to search entities across all categories.
+	// QuerySearchEntityList is the query to search entities across all categories except organization
+	// units.
 	QuerySearchEntityList = model.DBQuery{
 		ID: "ASQ-ENTITY_MGT-03",
 		Query: `SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY" ` +
-			`WHERE DEPLOYMENT_ID = $3 ORDER BY ID LIMIT $1 OFFSET $2`,
+			`WHERE CATEGORY <> $3 AND DEPLOYMENT_ID = $4 ORDER BY ID LIMIT $1 OFFSET $2`,
 	}
 	// QueryCreateEntity is the query to create a new entity.
 	QueryCreateEntity = model.DBQuery{
@@ -416,7 +418,7 @@ func buildSystemAttributeConditions(
 
 // buildIdentifyQuery constructs a query to identify an entity based on the provided filters.
 // It searches both ATTRIBUTES and SYSTEM_ATTRIBUTES columns so that any entity can be found
-// regardless of which column holds the filter key.
+// regardless of which column holds the filter key. Organization unit entities are left out.
 func buildIdentifyQuery(filters map[string]interface{}, deploymentID string) (model.DBQuery, []interface{}, error) {
 	if len(filters) == 0 {
 		return model.DBQuery{}, nil, fmt.Errorf("filters cannot be empty")
@@ -433,7 +435,7 @@ func buildIdentifyQuery(filters map[string]interface{}, deploymentID string) (mo
 
 	pgQuery := `SELECT ID FROM "ENTITY" WHERE 1=1`
 	sqQuery := `SELECT ID FROM "ENTITY" WHERE 1=1`
-	args := make([]interface{}, 0, len(keys)+1)
+	args := make([]interface{}, 0, len(keys)+2)
 
 	for i, key := range keys {
 		pg, sq := buildDualColumnConditions("", key, i+1)
@@ -442,9 +444,9 @@ func buildIdentifyQuery(filters map[string]interface{}, deploymentID string) (mo
 		args = append(args, filters[key])
 	}
 
-	pgQuery += fmt.Sprintf(" AND DEPLOYMENT_ID = $%d", len(keys)+1)
-	sqQuery += " AND DEPLOYMENT_ID = ?"
-	args = append(args, deploymentID)
+	pgQuery += fmt.Sprintf(" AND CATEGORY <> $%d AND DEPLOYMENT_ID = $%d", len(keys)+1, len(keys)+2)
+	sqQuery += " AND CATEGORY <> ? AND DEPLOYMENT_ID = ?"
+	args = append(args, string(providers.EntityCategoryOU), deploymentID)
 
 	return model.DBQuery{
 		ID:            "ASQ-ENTITY_MGT-22",
@@ -560,8 +562,8 @@ func buildEntityListQuery(
 			baseWithCategory = baseQuery + " WHERE CATEGORY = $1"
 			args = []interface{}{category}
 		} else {
-			baseWithCategory = baseQuery + " WHERE 1=1"
-			args = []interface{}{}
+			baseWithCategory = baseQuery + " WHERE CATEGORY <> $1"
+			args = []interface{}{string(providers.EntityCategoryOU)}
 		}
 		fq, fArgs, err := buildFilterQueryWithOffset(
 			queryID, baseWithCategory, filters, indexedAttrs, len(args))
@@ -591,7 +593,8 @@ func buildEntityListQuery(
 	}
 
 	if category == "" {
-		return QuerySearchEntityList, []interface{}{limit, offset, deploymentID}, nil
+		return QuerySearchEntityList,
+			[]interface{}{limit, offset, string(providers.EntityCategoryOU), deploymentID}, nil
 	}
 
 	// No filters, use the pre-defined query
@@ -622,7 +625,7 @@ func buildEntityCountQuery(
 }
 
 // buildIdentifyQueryFromIdentifiers constructs a query to identify
-// an entity using only indexed identifiers.
+// an entity using only indexed identifiers. Organization unit entities are left out.
 func buildIdentifyQueryFromIdentifiers(
 	filters map[string]interface{}, deploymentID string,
 ) (model.DBQuery, []interface{}, error) {
@@ -636,7 +639,8 @@ func buildIdentifyQueryFromIdentifiers(
 	}
 	sort.Strings(keys)
 
-	pgBase := `SELECT DISTINCT ia1.ENTITY_ID AS id FROM "ENTITY_IDENTIFIER" ia1`
+	pgBase := `SELECT DISTINCT ia1.ENTITY_ID AS id FROM "ENTITY_IDENTIFIER" ia1` +
+		` INNER JOIN "ENTITY" e ON e.ID = ia1.ENTITY_ID AND e.DEPLOYMENT_ID = ia1.DEPLOYMENT_ID`
 	sqBase := pgBase
 	pgConditions := []string{}
 	sqConditions := []string{}
@@ -665,10 +669,10 @@ func buildIdentifyQueryFromIdentifiers(
 	}
 
 	pgQueryString := pgBase + " WHERE " + strings.Join(pgConditions, " AND ") +
-		fmt.Sprintf(" AND ia1.DEPLOYMENT_ID = $%d", paramIndex)
+		fmt.Sprintf(" AND e.CATEGORY <> $%d AND ia1.DEPLOYMENT_ID = $%d", paramIndex, paramIndex+1)
 	sqQueryString := sqBase + " WHERE " + strings.Join(sqConditions, " AND ") +
-		" AND ia1.DEPLOYMENT_ID = ?"
-	args = append(args, deploymentID)
+		" AND e.CATEGORY <> ? AND ia1.DEPLOYMENT_ID = ?"
+	args = append(args, string(providers.EntityCategoryOU), deploymentID)
 
 	return model.DBQuery{
 		ID:            "ASQ-ENTITY_MGT-27",
@@ -679,7 +683,8 @@ func buildIdentifyQueryFromIdentifiers(
 }
 
 // buildIdentifyQueryHybrid constructs a query using indexed identifiers
-// for initial filtering, then JSON attributes for remaining filters.
+// for initial filtering, then JSON attributes for remaining filters. Organization unit entities are
+// left out.
 func buildIdentifyQueryHybrid(
 	indexedFilters, nonIndexedFilters map[string]interface{},
 	deploymentID string,
@@ -745,9 +750,10 @@ func buildIdentifyQueryHybrid(
 		paramIndex++
 	}
 
-	postgresQuery += fmt.Sprintf(" AND e.DEPLOYMENT_ID = $%d", paramIndex)
-	sqliteQuery += " AND e.DEPLOYMENT_ID = ?"
-	args = append(args, deploymentID)
+	postgresQuery += fmt.Sprintf(" AND e.CATEGORY <> $%d AND e.DEPLOYMENT_ID = $%d",
+		paramIndex, paramIndex+1)
+	sqliteQuery += " AND e.CATEGORY <> ? AND e.DEPLOYMENT_ID = ?"
+	args = append(args, string(providers.EntityCategoryOU), deploymentID)
 
 	query := model.DBQuery{
 		ID:            "ASQ-ENTITY_MGT-28",
