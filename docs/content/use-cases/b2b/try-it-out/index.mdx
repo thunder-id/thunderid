@@ -16,17 +16,18 @@ provider to book flights.
 
 ## The Companies
 
-The walkthroughs use two companies, each an organization unit (OU) beneath the platform organization, Wayfinder
-Enterprise:
+The walkthroughs use two companies, each an organization unit (OU) beneath the Default organization unit, which
+stands for the Wayfinder Enterprise platform:
 
 ```text
-Wayfinder Enterprise            the platform organization: the app, its roles, flows and user type
+Default                         the platform: the app, its roles, flows and user type
 ├── Northstar Labs              a company whose employees sign in with passwords
 └── Initech                     a company whose employees sign in through Initech's own identity provider
 ```
 
-The application, its two roles (`Wayfinder Admin` and `Wayfinder Member`), and its sign-in flow are defined once in
-Wayfinder Enterprise and shared with every company, so a company works the moment it signs up.
+The application, its two roles (`Wayfinder Admin` and `Wayfinder Member`), its resource server, and its sign-in flow
+are defined once in the Default organization unit and shared with every company, so a company works the moment it
+signs up.
 
 ## Architecture
 
@@ -67,31 +68,36 @@ cd wayfinder-enterprise
 
 ## Import the Bundle
 
-The fastest way to create the resources the walkthroughs need. First, [get <ProductName /> running](../../../getting-started/get-thunderid); then import two files through the Console, in this order:
+The fastest way to create the resources the walkthroughs need. First, [get <ProductName /> running](../../../getting-started/get-thunderid); then import one file through the Console and share the System resource server:
 
 1. Generate a client secret for each of the two applications, for example with `openssl rand -base64 32`, and set them
    as `WAYFINDER_ENTERPRISE_CLIENT_SECRET` and `WAYFINDER_ENTERPRISE_BACKEND_CLIENT_SECRET` in
    `thunderid-config/thunderid.env`. The file ships without them, and the Console does not import it until both are
    set. Keep the values for the app's `.env.local`.
 2. Sign in to the Control Plane console at `https://localhost:8095/console`.
-3. Choose **Import / Export**, then **Import**. Upload `thunderid-config/organization-unit.yaml` as the configuration
-   file. It needs no environment file. Choose **Continue**, and once the import test passes, choose
-   **Import configuration**.
-4. Choose **Import / Export**, then **Import** again. Upload `thunderid-config/thunderid-config.yaml` as the
-   configuration file and `thunderid-config/thunderid.env` as the environment variables file, to provide the variables
-   the YAML references. Choose **Continue**, then **Import configuration**. A secret you left empty can be entered in
-   the **Environment variables** editor before you import.
+3. Choose **Import / Export**, then **Import**. Upload `thunderid-config/thunderid-config.yaml` as the configuration
+   file and `thunderid-config/thunderid.env` as the environment variables file, to provide the variables the YAML
+   references. Choose **Continue**, then **Import configuration**. A secret you left empty can be entered in the
+   **Environment variables** editor before you import.
+4. Share the System resource server with the companies, so the backend client gets a token for the company it acts
+   for. Clear the project selection, choose **Resource servers**, open **System**, and select the
+   **Organization Access** tab. Choose **Default and chosen organization units**, keep
+   **All child organization units**, and choose **Save**.
 
-The Console tests each import before it runs it, and that test only finds an organization unit that already exists. The
-second file places every resource in the organization unit the first one creates, so import the first one on its own.
+:::note Deploy to the Data Plane
+The Control Plane deploys the imported resources to the Data Plane. If **Auto deploy** is off, open the Default
+project's **Deployment pipeline** and choose **Deploy**. The System resource server belongs to no project and is
+already on the Data Plane, so the deploy brings its new sharing only when you tick **System**. The deploy lists it
+under **What they need** or **Shared resources**. Without it, the backend client's token request for a company fails
+with `invalid_target`.
+:::
 
 ### What the Import Creates
 
 | Resource | Name | What it does |
 |---|---|---|
-| Organization unit | Wayfinder Enterprise (`wayfinder-enterprise`) | The platform organization, a root organization unit in the Default project. Every company that signs up becomes its child. |
-| User type | Wayfinder User (`wayfinder-user`) | The account schema, with self-registration on. Owned by the platform organization, so every company can use it. |
-| Resource server | Wayfinder Enterprise API (`urn:wayfinder-enterprise:api`) | The app's own permissions, for bookings, travel policies, and the admin pages |
+| User type | Wayfinder User (`wayfinder-user`) | The account schema, with self-registration on. Owned by the Default organization unit, so every company can use it. |
+| Resource server | Wayfinder Enterprise API (`urn:wayfinder-enterprise:api`) | The app's own permissions, for bookings, travel policies, and the admin pages. Shared with every company, so the roles grant its permissions there. |
 | Server config | `defaultResourceServer` | Makes the Wayfinder Enterprise API the default resource server |
 | Roles | Wayfinder Admin, Wayfinder Member | Shared with every company. An admin manages the company; a member books within its travel policy. |
 | Flow | Wayfinder Enterprise Company Sign-up | Creates the company, creates its first admin inside it, and assigns `Wayfinder Admin` |

@@ -42,18 +42,19 @@ section calls an OU that represents a customer company an **organization**.
 
 Wayfinder Enterprise uses two levels:
 
-- **The platform organization**, `Wayfinder Enterprise` (handle `wayfinder-enterprise`), belongs to Wayfinder's own
-  team. Everything every customer shares, the application, its roles, and its sign-in journeys, reaches the customers
-  through it.
+- **The platform organization**, the Default organization unit (handle `default`), stands for Wayfinder's own
+  platform and belongs to Wayfinder's team. Everything every customer shares, the application, its roles, and its
+  sign-in journeys, reaches the customers through it.
 - **Customer organizations**, such as Northstar Labs (`northstar`) and Initech (`initech`), sit directly beneath it.
   Each one is created the moment a company signs up, so Wayfinder's team does not have to provision customers by hand.
 
 Every OU has a **handle**, a short URL-safe name that is unique among its siblings, so `northstar` names one
-organization under `wayfinder-enterprise`. A handle path joins the handles from the top of the tree down, such as
-`wayfinder-enterprise/northstar` in the sample app. An employee who signs in through their company's
+organization under `default`. A handle path joins the handles from the top of the tree down, such as
+`default/northstar` in the sample app. An employee who signs in through their company's
 identity provider types the company's own handle, `northstar`, to say which company they work for.
 
-**See it:** the [sample app's import](./try-it-out/index.mdx#what-the-import-creates) creates the platform organization.
+**See it:** the [sample app's import](./try-it-out/index.mdx#what-the-import-creates) puts everything the companies
+share in the Default organization unit.
 
 ## Members
 
@@ -93,9 +94,9 @@ Wayfinder shares its application and its two roles with **all child organization
 so each company can set its own identity provider. That policy reaches every organization beneath the platform
 organization, including the ones that sign up tomorrow, so a new company works the moment its sign-up finishes.
 
-A shared resource can be owned by the platform organization or by an OU above it. In the sample app, the application,
-roles, and flows belong to `Wayfinder Enterprise` itself. In the B2B quickstarts, the platform organization sits beneath
-`Default`, and sharing with all child organization units reaches every company the same way.
+A shared resource can be owned by the platform organization or by an OU above it. In the sample app and the B2B
+quickstarts, the application, roles, and flows belong to the Default organization unit itself, and sharing with all
+child organization units reaches every company.
 
 The resource types you can share are applications, roles, flows, connections to identity providers, resource servers,
 users, and agents. Groups are never shared: a group belongs to one organization, and its members must live in or be

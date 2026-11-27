@@ -66,15 +66,40 @@ sequenceDiagram
 
 <Stepper stepNode="h3" as="h3">
 
+### Share the System Resource Server
+
+The backend client, in the next step, gets a token for each company that carries a permission of the System resource server. The Default organization unit owns the System resource server and, by default, shares it with no other organization unit. Share it with every company before the backend requests a token. Without the share, a token request for a company fails with `invalid_target`. See [Where Its Permissions Can Be Used](../../../guides/resource-servers.mdx#where-its-permissions-can-be-used).
+
+In the Console, clear the project selection, choose **Resource servers**, open **System**, and select the **Organization Access** tab. Choose **Default and chosen organization units**, keep **All child organization units**, and choose **Save**. The policy reaches every company beneath the Default organization unit, including the ones that sign up later.
+
+To share it through the management API instead, send the same policy:
+
+```bash
+curl -X POST https://localhost:8095/resource-servers/01900000-0000-7000-8000-000000000020/sharing-policies \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer <access-token>' \
+  -d '{
+    "childUnits": {
+      "mode": "all"
+    }
+  }'
+```
+
+Send it to the same place you import the file in the next step, with a token that holds `system` from an administrator of the Default organization unit. The request above goes to the Control Plane at `https://localhost:8095`, where the Control Plane console imports the file. If you import straight into the Data Plane instead, send it to the Data Plane at `https://localhost:8090`.
+
+:::note Deploy the share to the Data Plane
+The System resource server belongs to no project and is already on the Data Plane from its setup, so a project deploy brings its new sharing policy only when you tick **System**. Without it, a token request for a company fails with `invalid_target`. If **Auto deploy** is off, open the project's **Deployment pipeline**, tick **System** under **What they need** or **Shared resources**, and choose **Deploy**.
+:::
+
 ### Create the Backend Client
 
-Create a confidential client for your backend that signs no one in. Share it with every child organization, so it can get a token for any of them, and give it a role that holds the management permission it calls with. The role is assigned in the client's own OU, Wayfinder Enterprise, and only roles assigned there count when the client gets a token for an organization.
+Create a confidential client for your backend that signs no one in. Share it with every child organization, so it can get a token for any of them, and give it a role that holds the management permission it calls with. The role is assigned in the client's own OU, the Default organization unit, and only roles assigned there count when the client gets a token for an organization.
 
 ```yaml title="wayfinder-enterprise-backend.yaml"
 resource_type: role
 id: 019f0a10-0000-7000-8000-000000000013
 name: Wayfinder Enterprise Backend
-ouHandle: wayfinder-enterprise
+ouHandle: default
 permissions:
   - resourceServerId: 01900000-0000-7000-8000-000000000020   # The System resource server
     permissions:
@@ -85,7 +110,7 @@ assignments:
 ---
 resource_type: application
 id: 019f0a10-0000-7000-8000-000000000032
-ouHandle: wayfinder-enterprise
+ouHandle: default
 name: Wayfinder Enterprise Backend
 type: m2m
 sharingPolicies:
@@ -116,6 +141,8 @@ inboundAuthConfig:
 
 The admin's token carries your application's permissions, not <ProductName />'s. Create a resource server for your application's API, with the identifier `urn:wayfinder-enterprise:api`, and declare these permissions on it. See [Manage Resource Servers](../../../guides/resource-servers.mdx).
 
+The `Wayfinder Admin` role is shared with the companies, so share the resource server with them too, with a policy that reaches every child of the Default organization unit. Otherwise the role confers none of its permissions in a company. See [Share a Resource Server](../../../guides/resource-servers.mdx#share-a-resource-server-with-other-organization-units).
+
 Then add the permissions to the `Wayfinder Admin` role you already created: in the Console, open **Roles**, select `Wayfinder Admin`, and add them on the **Permissions** tab. Do not create a second role. If you manage the role as a declarative resource, these are the permissions to add to it:
 
 ```yaml title="Excerpt: permissions of the Wayfinder Admin role"
@@ -144,7 +171,7 @@ curl -X POST https://localhost:8090/ou/<admin-ou-id>/oauth2/token \
   -d 'resource=https://localhost:8090/mcp'
 ```
 
-The token's `ouId`, `ouHandle`, and `ouName` claims name the admin's organization. An organization the client is not shared with gets `400 unauthorized_client`. Cache one token per organization until it nears expiry. The journeys that follow call this token `$NORTHSTAR_TOKEN` when it is issued for Northstar Labs, and `$INITECH_TOKEN` when it is issued for Initech.
+The token's `ouId`, `ouHandle`, and `ouName` claims name the admin's organization. An organization the client is not shared with gets `400 unauthorized_client`. An organization the System resource server is not shared with gets `400 invalid_target`, as for a resource server that does not exist. See [Share the System Resource Server](#share-the-system-resource-server). Cache one token per organization until it nears expiry. The journeys that follow call this token `$NORTHSTAR_TOKEN` when it is issued for Northstar Labs, and `$INITECH_TOKEN` when it is issued for Initech.
 
 ### Pin Every Call to the Caller's Organization
 
@@ -275,6 +302,7 @@ The proxy decides which organization a call acts in, and <ProductName /> still c
 - A group member, or a role assignee, must live in the organization or be shared into it.
 - A role can be assigned only in an organization the role is owned by or shared with, with assignments left on. See [Share a Role With Other Organization Units](../../../guides/users/manage-roles.mdx#share-a-role-with-other-organization-units).
 - An organization the backend client is not shared with gets no token.
+- A token for an organization carries the System resource server's permissions only when the System resource server is shared with that organization.
 
 :::warning Allow-list the roles
 The backend client holds the root `system` permission, so the rule that you grant only what you hold never stops it. Let the proxy assign only the roles your Team page offers, such as `Wayfinder Admin` and `Wayfinder Member`, and refuse every other role ID.

@@ -46,7 +46,7 @@ sequenceDiagram
   TID-->>App: Tokens for the Initech organization
 ```
 
-The handle resolves only to a direct child of the platform organization, so an employee cannot reach an organization outside Wayfinder Enterprise. A company that has not set a connection cannot use the SSO path: its employees see "No identity provider has been set up for your organization. Contact your administrator" (`FES-1022`).
+The handle resolves only to a direct child of the platform organization, so an employee can reach only one of the platform organization's companies. A company that has not set a connection cannot use the SSO path: its employees see "No identity provider has been set up for your organization. Contact your administrator" (`FES-1022`).
 
 ## Set Up the Shared Sign-In Flow
 
@@ -60,7 +60,7 @@ If you imported the sample, open `Wayfinder Enterprise Sign-in`: it is already t
 
 ### Set the Parent Organization
 
-The template has two **Resolve OU** steps, one for the SSO path and one after a password sign-in. On both, set **Parent OU ID** to the ID of Wayfinder Enterprise.
+The template has two **Resolve OU** steps, one for the SSO path and one after a password sign-in. On both, set **Parent OU ID** to the ID of the Default organization unit, `01900000-0000-7000-8000-000000000001` in a default deployment.
 
 ### Give First-Time Employees a Role
 
