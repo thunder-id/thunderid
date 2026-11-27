@@ -63,6 +63,7 @@ export default function AppearanceSection({
           </Typography>
           <Autocomplete
             fullWidth
+            disabled={organizationUnit.isReadOnly === true}
             options={themeOptions}
             getOptionLabel={(option) => (typeof option === 'string' ? option : option.displayName)}
             value={themeOptions.find((theme) => theme.id === (editedOU.themeId ?? organizationUnit.themeId)) ?? null}
@@ -93,6 +94,7 @@ export default function AppearanceSection({
           </Typography>
           <Autocomplete
             fullWidth
+            disabled={organizationUnit.isReadOnly === true}
             options={layoutOptions}
             getOptionLabel={(option) => (typeof option === 'string' ? option : option.displayName)}
             value={
