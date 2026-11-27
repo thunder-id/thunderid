@@ -33,7 +33,7 @@ JWT authentication is the foundation of API security with Kong Konnect and <Prod
 
 #### Create an Application
 
-1. Sign in to the <ProductName /> Console at `https://<THUNDER_HOST>:8090/console`.
+1. Sign in to the <ProductName /> Console at `https://<THUNDERID_HOST>:8090/console`.
 2. Navigate to **Applications** → **New Application**.
 3. Enter an **Application name** (for example, `kong-api-client`).
 4. Select **Backend service** as the application type.
@@ -45,7 +45,7 @@ JWT authentication is the foundation of API security with Kong Konnect and <Prod
 Use the client credentials grant to request an access token:
 
 ```bash
-curl --location 'https://<THUNDER_HOST>:8090/oauth2/token' \
+curl --location 'https://<THUNDERID_HOST>:8090/oauth2/token' \
   --header 'Content-Type: application/x-www-form-urlencoded' \
   --data-urlencode 'grant_type=client_credentials' \
   --data-urlencode 'client_id=<CLIENT_ID>' \
@@ -62,18 +62,18 @@ The response contains an `access_token`:
 }
 ```
 
-The token is a JWT signed with RS256. Its `iss` claim is `https://<THUNDER_HOST>:8090`, which matches the `issuer` you configure on the plugin. Copy the `access_token` value. You will use it to call the protected route.
+The token is a JWT signed with RS256. Its `iss` claim is `https://<THUNDERID_HOST>:8090`, which matches the `issuer` you configure on the plugin. Copy the `access_token` value. You will use it to call the protected route.
 
 ### Configure Kong Konnect
 
 #### Create a Control Plane and Data Plane
 
 1. Sign in to [Kong Konnect](https://cloud.konghq.com/).
-2. Open **Gateway Manager** and create a new **Control Plane** (for example, `thunder-demo`).
+2. Open **Gateway Manager** and create a new **Control Plane** (for example, `thunderid-demo`).
 3. Konnect displays a `docker run` command, pre-filled with your control plane's cluster endpoints and the generated mTLS certificates, to start a data plane node. Copy that command, and add the following so the data plane can proxy HTTPS traffic and resolve <ProductName />:
 
    - `-p 8443:8443`: publishes the HTTPS proxy port.
-   - `--add-host=<THUNDER_HOST>:host-gateway`: maps the issuer hostname to the Docker host from inside the data plane container.
+   - `--add-host=<THUNDERID_HOST>:host-gateway`: maps the issuer hostname to the Docker host from inside the data plane container.
 
    The resulting command looks similar to this (use the exact endpoints and certificate values from Konnect):
 
@@ -91,7 +91,7 @@ The token is a JWT signed with RS256. Its `iss` claim is `https://<THUNDER_HOST>
      -e "KONG_LUA_SSL_TRUSTED_CERTIFICATE=system" \
      -e "KONG_KONNECT_MODE=on" \
      -e "KONG_PROXY_LISTEN=0.0.0.0:8443 ssl" \
-     --add-host=<THUNDER_HOST>:host-gateway \
+     --add-host=<THUNDERID_HOST>:host-gateway \
      -p 8443:8443 \
      kong/kong-gateway:3.9
    ```
@@ -99,7 +99,7 @@ The token is a JWT signed with RS256. Its `iss` claim is `https://<THUNDER_HOST>
 4. Wait until the data plane shows as **Connected** in the Konnect **Gateway Manager**.
 
 :::important
-`<THUNDER_HOST>` must be a hostname the Kong data plane container can resolve to your <ProductName /> instance, not `localhost`, which from inside the container points to Kong itself. The same hostname must appear in the discovery document's `issuer`, the access token's `iss` claim, and the plugin's `issuer` value.
+`<THUNDERID_HOST>` must be a hostname the Kong data plane container can resolve to your <ProductName /> instance, not `localhost`, which from inside the container points to Kong itself. The same hostname must appear in the discovery document's `issuer`, the access token's `iss` claim, and the plugin's `issuer` value.
 :::
 
 #### Create a Service and Route
@@ -118,7 +118,7 @@ Attach the plugin to the route so it validates every incoming token.
 
    | Parameter | Value |
    |-----------|-------|
-   | `issuer` | `https://<THUNDER_HOST>:8090/.well-known/openid-configuration` |
+   | `issuer` | `https://<THUNDERID_HOST>:8090/.well-known/openid-configuration` |
    | `client_id` | `<CLIENT_ID>` |
    | `client_secret` | `<CLIENT_SECRET>` |
    | `client_auth` | `client_secret_post` |
@@ -222,7 +222,7 @@ To restrict tokens to this API, set `audience_required` to the protected resourc
 Request a token for the application that has the role assigned:
 
 ```bash
-curl --location 'https://<THUNDER_HOST>:8090/oauth2/token' \
+curl --location 'https://<THUNDERID_HOST>:8090/oauth2/token' \
   --header 'Content-Type: application/x-www-form-urlencoded' \
   --data-urlencode 'grant_type=client_credentials' \
   --data-urlencode 'scope=bookings:read' \
@@ -266,7 +266,7 @@ Kong inspects the token, finds the `bookings:read` scope absent, and returns `40
 
 | Parameter | Value | Description |
 |-----------|-------|-------------|
-| `issuer` | `https://<THUNDER_HOST>:8090/.well-known/openid-configuration` | <ProductName />'s discovery endpoint. The plugin fetches the JWKS from here and verifies each token's signature, issuer, and expiry. |
+| `issuer` | `https://<THUNDERID_HOST>:8090/.well-known/openid-configuration` | <ProductName />'s discovery endpoint. The plugin fetches the JWKS from here and verifies each token's signature, issuer, and expiry. |
 | `client_id` | `<CLIENT_ID>` | Client ID of the <ProductName /> Backend Service application. |
 | `client_secret` | `<CLIENT_SECRET>` | Client secret of the <ProductName /> Backend Service application. |
 | `client_auth` | `client_secret_post` | Sends plugin client credentials in the request body when the plugin calls <ProductName /> endpoints. |

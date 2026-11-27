@@ -42,6 +42,7 @@ export interface DocusaurusProductConfig {
   };
   local: {
     consoleUrl: string;
+    controlPlaneConsoleUrl: string;
     samples: {
       wayfinderUrl: string;
       wayfinderMailUrl: string;
@@ -90,6 +91,7 @@ const DocusaurusProductConfig = {
   },
   local: {
     consoleUrl: 'https://localhost:8090/console',
+    controlPlaneConsoleUrl: 'https://localhost:8095/console',
     samples: {
       wayfinderUrl: 'http://localhost:5173',
       wayfinderMailUrl: 'http://localhost:8788',

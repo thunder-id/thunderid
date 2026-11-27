@@ -623,7 +623,7 @@ export function getProtectedResourceMetadata(request) {
     const host =
         request.headers.host || `localhost:${process.env.PORT || 8787}`;
     const issuer =
-        process.env.THUNDER_ISSUER || process.env.THUNDER_BASE_URL || "";
+        process.env.THUNDERID_ISSUER || process.env.THUNDERID_BASE_URL || "";
 
     return {
         resource: `${protocol}://${host}/mcp`,

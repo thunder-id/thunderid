@@ -11,9 +11,9 @@ import { NativeAuthProvider } from "./auth/NativeAuthContext.jsx";
 import { AUTH_CONFIG, SCOPES } from "./auth/config.js";
 import { nativeVerboseAuthExtensions } from "./pages/NativeVerboseAuthPage.jsx";
 
-const clientId = import.meta.env.VITE_THUNDER_CLIENT_ID;
-const appId = import.meta.env.VITE_THUNDER_APP_ID || clientId;
-const baseUrl = import.meta.env.VITE_THUNDER_BASE_URL;
+const clientId = import.meta.env.VITE_THUNDERID_CLIENT_ID;
+const appId = import.meta.env.VITE_THUNDERID_APP_ID || clientId;
+const baseUrl = import.meta.env.VITE_THUNDERID_BASE_URL;
 const thunderidReady = Boolean(clientId && baseUrl);
 const afterSignInUrl = AUTH_CONFIG.isRedirectBased ? window.location.origin : "";
 

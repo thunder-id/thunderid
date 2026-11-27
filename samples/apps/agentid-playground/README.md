@@ -31,10 +31,14 @@ carry the identity story highlighted. Nothing is added: what you see is what Thu
 
 ## Self-contained resources
 
-Everything the playground imports is its own. Every id is prefixed `agent-identity-`, the resource
-servers use their own identifiers under `travel.example`, and the customer is `johndoe`, so importing
-it will not overwrite or collide with anything else already in your instance. Import is upsert by id,
-so re-importing, or importing the per-tab slices the app offers, is always safe.
+The playground uses `agent-identity-` IDs for its resource servers, agents, user, and roles.
+The authentication flow is an exception: its ID is the UUID
+`0193b0a1-2001-7000-8000-000000000001`, while its handle is
+`agent-identity-agent-auth-flow`. Resource server identifiers use `travel.example`,
+and the demo user is `johndoe`.
+
+Imports use upsert by ID. Re-importing an existing resource ID updates that resource,
+so check for ID conflicts before importing into an instance with existing resources.
 
 ## Prerequisites
 
@@ -107,8 +111,12 @@ Every sign-in sends `prompt=consent`, so the Allow screen appears every time. Wi
 remembers a granted consent and silently skips the prompt on later logins, which is right for
 production and wrong here.
 
-John holds two roles. `Chat User` grants `agent:access`, which the consent flow checks before it
-will show him the Allow screen, and `Booking User` grants the `booking:read` and `booking:create`
+On the consent screen, enable the `booking:read` and `booking:create` permission
+toggles before selecting **Allow**. Otherwise the resulting access token may not
+include the booking permissions needed by the delegation examples.
+
+John holds two roles. `Playground Chat User` grants `agent:access`, which the consent flow checks before it
+will show him the Allow screen, and `Playground Booking User` grants the `booking:read` and `booking:create`
 that end up in his token. A user without `agent:access` is rejected before consent, which is the
 "Protect the Agent" behaviour from the docs.
 
@@ -165,7 +173,7 @@ No customer is involved, so there is no `act` claim at all.
 
 Watch three things. `sub` is the agent. `aud` is the booking API rather than the agent's own client
 id, because the request carries a `resource` (RFC 8707). And `scope` is `booking:read
-booking:recommend` and nothing more, because that is exactly what the Concierge's own `Recommender`
+booking:recommend` and nothing more, because that is exactly what the Concierge's own `Playground Recommender`
 role grants. It can recommend a flight; it cannot book one. The remaining highlighted rows are its
 identity claims (`name`, `owner`, `ou*`) and its `modelProvider` attribute, opted in through
 `token.accessToken.clientConfig.attributes`.
@@ -196,8 +204,9 @@ Then use the buttons:
 
 ### Delegates to agents
 
-Three exchanges, each narrowed to `booking:read`, showing how ThunderID both nests `act` and shrinks
-authority:
+The tab has four guided UI steps: step 3 signs John in, and step 4 runs three token
+exchanges. Each exchange is narrowed to `booking:read`, showing how ThunderID
+both nests `act` and shrinks authority:
 
 | Step | subject_token | actor_token | Resulting token |
 |------|---------------|-------------|-----------------|
@@ -212,7 +221,7 @@ merge the subject token's existing actor. That is why step 2 exists.
 **This tab signs John in itself.** The chain starts with a person asking for something, so step 3
 runs its own login at `/chain/callback` and John consents to `openid booking:read booking:create`.
 The exchanges then narrow that to `booking:read` for the worker. Nothing is borrowed from the Acts
-for a customer tab.
+for a customer tab. On John's consent screen, enable the `booking:read` and `booking:create` permission toggles before selecting **Allow**.
 
 `npm run cli` is the exception: there is no browser, so it uses the Concierge's own token as the
 subject and labels it a stand-in. The `act` nesting is identical; only the subject differs.

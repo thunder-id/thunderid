@@ -2032,14 +2032,6 @@ value:
 
 ---
 resource_type: server_config
-# Allows the Wayfinder web app's browser origin to call the server
-name: cors
-value:
-  allowedOrigins:
-    - "http://localhost:5173"
-
----
-resource_type: server_config
 # Activates the Wayfinder staff onboarding flow. An import replaces the whole section, so this
 # repeats every default from the server bootstrap and changes only userOnboardingFlow.
 name: flow

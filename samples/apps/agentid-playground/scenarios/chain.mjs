@@ -175,7 +175,7 @@ export default {
       scope: CONCIERGE_SCOPES,
       resource: config.resources.booking,
       expect: ["booking:read", "booking:recommend"],
-      role: "Recommender",
+      role: "Playground Recommender",
     });
     if (!concierge.ok) return {ok: false, detail: `Concierge: ${concierge.detail}`};
 

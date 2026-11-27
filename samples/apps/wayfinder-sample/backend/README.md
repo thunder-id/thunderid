@@ -11,9 +11,7 @@ scope checks.
 
 Set `AUTHORIZATION_MODE=authzen` to have the MCP server request each protected
 tool decision from the ThunderID AuthZEN PDP. In this mode, configure
-`THUNDERID_DIRECT_AUTH_SECRET` with the same value stored in
-`backend/cmd/server/config/secrets/direct_auth_secret`. ThunderID reads that file
-through the `file://config/secrets/direct_auth_secret` setting in `deployment.yaml`.
+`THUNDERID_DIRECT_AUTH_SECRET` with the same value stored in the Data Plane's Direct Auth Secret file. ThunderID reads this file through the `file://config/secrets/direct_auth_secret` setting in `deployment.yaml`. For a source checkout, the file is under `backend/cmd/server/config/secrets/`; for a release artifact, it is under `config/secrets/`; for Docker, it is under `/opt/thunderid/config/secrets/` in the mounted secrets volume.
 The backend sends this secret on the PDP call, while the user or agent from the
 incoming MCP token remains the evaluation subject.
 
@@ -69,5 +67,10 @@ Sample flights, hotels, and trips live in memory (`src/data.js`) and are reloade
 | `get_flight_bookings` | `booking:read`        | `GET /api/bookings/flights`   |
 | `create_booking`      | `booking:create`      | `POST /api/bookings`          |
 | `delete_all_bookings` | `booking:cancel`      | `DELETE /api/bookings/flights` |
+| `find_upgrade_options` | `upgrade:search` | — (direct MCP handler) |
+| `upgrade_booking` | `booking:upgrade` | — (direct MCP handler) |
+| `request_upgrade` | `booking:upgrade` | — (direct MCP handler) |
+| `get_pending_upgrade` | `upgrade:read` | — (direct MCP handler) |
+| `process_upgrade` | `upgrade:process` | — (direct MCP handler) |
 
 OpenAPI documentation is available in `openapi.yaml`.

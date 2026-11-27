@@ -15,7 +15,7 @@ import { useLocation, useNavigate } from "react-router";
 import { useNativeAuth } from "../auth/NativeAuthContext";
 import { exchangeAssertion } from "../auth/nativeAuthService";
 
-const AUTH_SERVER_BASE_URL = import.meta.env.VITE_THUNDER_BASE_URL || "";
+const AUTH_SERVER_BASE_URL = import.meta.env.VITE_THUNDERID_BASE_URL || "";
 
 function extractManagedLinkCopy(html, fallbackPrefix, fallbackLabel) {
   if (typeof html !== "string") return { linkLabel: fallbackLabel, prefix: fallbackPrefix };

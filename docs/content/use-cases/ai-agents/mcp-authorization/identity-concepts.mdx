@@ -34,7 +34,7 @@ See [Authorization](../../../../key-concepts/authorization).
 
 This tryout reuses the Wayfinder resource server defined under [Resources and Permissions](../../try-it-out#resources-and-permissions). The same `booking:*` permissions protect both `/api/*` (REST) and `/mcp` (MCP tools). The Wayfinder Server enforces them per-route on the REST side and per-tool on the MCP side, against the same service layer.
 
-Each MCP tool checks for the same scope its REST counterpart checks for:
+The following table shows REST-backed MCP tool examples and their access requirements. It is not the full MCP tool catalog; upgrade-related MCP tools have separate permission requirements:
 
 | MCP tool | REST endpoint | Required scope |
 | --- | --- | --- |

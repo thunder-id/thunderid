@@ -33,8 +33,8 @@ The bundle imports a `Wayfinder Mock SMTP` email provider connection pointed at 
 In `frontend/.env`, set:
 
 ```env
-VITE_THUNDER_BASE_URL=https://localhost:8090
-VITE_THUNDER_APP_ID=wayfinder-app
+VITE_THUNDERID_BASE_URL=https://localhost:8090
+VITE_THUNDERID_APP_ID=wayfinder-app
 
 # Disable redirect-based auth
 VITE_AUTH_IS_REDIRECT_BASED=false
@@ -43,7 +43,7 @@ VITE_AUTH_IS_REDIRECT_BASED=false
 VITE_AUTH_IS_VERBOSE=false
 ```
 
-`VITE_THUNDER_CLIENT_ID` is not required in app-native mode.
+`VITE_THUNDERID_CLIENT_ID` is not required in app-native mode.
 
 ## Run
 

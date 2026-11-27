@@ -3,27 +3,45 @@
 
 import { SCOPES } from "./config.js";
 
-const AUTH_SERVER_BASE_URL = import.meta.env.VITE_THUNDER_BASE_URL || "";
-const CLIENT_ID = import.meta.env.VITE_THUNDER_CLIENT_ID || "WAYFINDER";
-const APP_ID = import.meta.env.VITE_THUNDER_APP_ID || CLIENT_ID;
+const AUTH_SERVER_BASE_URL = import.meta.env.VITE_THUNDERID_BASE_URL || "";
+const CLIENT_ID = import.meta.env.VITE_THUNDERID_CLIENT_ID || "WAYFINDER";
+const APP_ID = import.meta.env.VITE_THUNDERID_APP_ID || CLIENT_ID;
 const FETCH_TIMEOUT_MS = 15000;
 
-async function fetchWithTimeout(url, options = {}) {
+async function fetchWithTimeout(url, options = {}, handleResponse) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
-    return await fetch(url, { ...options, signal: controller.signal });
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return await handleResponse(response);
   } finally {
     clearTimeout(timer);
   }
 }
 
+async function throwResponseError(response, operation) {
+  let body = "";
+  try {
+    body = (await response.text()).trim();
+  } catch {
+    // Preserve the HTTP status if the error body cannot be read.
+  }
+  const details = body ? `: ${body}` : "";
+  throw new Error(`${operation} (${response.status})${details}`);
+}
+
 export async function getAppMetadata() {
-  const res = await fetchWithTimeout(
-    `${AUTH_SERVER_BASE_URL}/flow/meta?type=APP&id=${encodeURIComponent(APP_ID)}`
+  return fetchWithTimeout(
+    `${AUTH_SERVER_BASE_URL}/flow/meta?type=APP&id=${encodeURIComponent(APP_ID)}`,
+    {},
+    async (res) => {
+      if (!res.ok) return null;
+      return (await res.json())?.application || null;
+    }
   );
-  if (!res.ok) return null;
-  return (await res.json())?.application || null;
 }
 
 export async function initiateFlow(flowType) {
@@ -31,16 +49,17 @@ export async function initiateFlow(flowType) {
   if (flowType === "AUTHENTICATION" || flowType === "REGISTRATION") {
     body.inputs = { requested_permissions: SCOPES.join(" ") };
   }
-  const res = await fetchWithTimeout(`${AUTH_SERVER_BASE_URL}/flow/execute`, {
+  return fetchWithTimeout(`${AUTH_SERVER_BASE_URL}/flow/execute`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
     // The SSO session handle rides a cookie the server sets during sign-in. Credentials must be
     // included for the browser to store it here and send it back on later flow calls.
     credentials: "include",
+  }, async (res) => {
+    if (!res.ok) await throwResponseError(res, "Flow initiation failed");
+    return res.json();
   });
-  if (!res.ok) throw new Error(`Flow initiation failed: ${res.status}`);
-  return res.json();
 }
 
 export async function submitFlowStep({ executionId, action, inputs, challengeToken }) {
@@ -49,14 +68,15 @@ export async function submitFlowStep({ executionId, action, inputs, challengeTok
   if (inputs && Object.keys(inputs).length > 0) payload.inputs = inputs;
   if (challengeToken) payload.challengeToken = challengeToken;
 
-  const res = await fetchWithTimeout(`${AUTH_SERVER_BASE_URL}/flow/execute`, {
+  return fetchWithTimeout(`${AUTH_SERVER_BASE_URL}/flow/execute`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
     credentials: "include",
+  }, async (res) => {
+    if (!res.ok) await throwResponseError(res, "Flow step failed");
+    return res.json();
   });
-  if (!res.ok) throw new Error(`Flow step failed: ${res.status}`);
-  return res.json();
 }
 
 /**
@@ -92,7 +112,7 @@ export async function signOutNatively() {
 }
 
 export async function exchangeAssertion(assertion) {
-  const res = await fetchWithTimeout(`${AUTH_SERVER_BASE_URL}/oauth2/token`, {
+  return fetchWithTimeout(`${AUTH_SERVER_BASE_URL}/oauth2/token`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -101,7 +121,8 @@ export async function exchangeAssertion(assertion) {
       subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
       client_id: CLIENT_ID,
     }),
+  }, async (res) => {
+    if (!res.ok) await throwResponseError(res, "Token exchange failed");
+    return res.json();
   });
-  if (!res.ok) throw new Error(`Token exchange failed (${res.status})`);
-  return res.json();
 }

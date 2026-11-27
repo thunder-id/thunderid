@@ -29,7 +29,7 @@ dotenv.config({
 // so fetch() and the SDK would otherwise refuse to talk to it.
 // We disable Node's TLS verification ONLY when the configured base URL points
 // at localhost / 127.0.0.1 to keep production builds safe.
-const __thunderBaseUrl = process.env.THUNDER_BASE_URL || "";
+const __thunderBaseUrl = process.env.THUNDERID_BASE_URL || "";
 if (
   /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/.test(__thunderBaseUrl)
 ) {
@@ -43,6 +43,20 @@ const agentConfig = {
   agentID: process.env.AGENT_ID || "",
   agentSecret: process.env.AGENT_SECRET || "",
 };
+
+// Fail closed before initializing the model or starting the server.
+const hasAgentCredentials = Boolean(
+  agentConfig.agentID || agentConfig.agentSecret,
+);
+
+if (
+  hasAgentCredentials &&
+  (!__thunderBaseUrl || !agentConfig.agentID || !agentConfig.agentSecret)
+) {
+  throw new Error(
+    "[ai-agent] Incomplete authentication configuration: set THUNDERID_BASE_URL, AGENT_ID, and AGENT_SECRET together.",
+  );
+}
 
 // Separate CIBA-only credentials for the upgrade scheduler.
 // Uses wayfinder-ciba-email-flow; kept separate from the main agent because
@@ -218,9 +232,9 @@ Some tools require user authorization. The system handles this automatically at 
 // it cannot use its own client-credentials token — it needs a token that
 // represents the signed-in user. The frontend obtains an authorization code
 // via a popup and submits it to POST /chat/consent. The agent exchanges it
-// at THUNDER_BASE_URL/oauth2/token for a user-context access token.
+// at THUNDERID_BASE_URL/oauth2/token for a user-context access token.
 
-const THUNDER_BASE_URL = process.env.THUNDER_BASE_URL || "";
+const THUNDERID_BASE_URL = process.env.THUNDERID_BASE_URL || "";
 const AGENT_REDIRECT_URI =
   process.env.AGENT_REDIRECT_URI || "http://localhost:5173/agent-callback";
 const MCP_SERVER_URL =
@@ -357,7 +371,7 @@ function buildAuthorizeUrl(
     code_challenge_method: "S256",
   });
 
-  return `${THUNDER_BASE_URL}/oauth2/authorize?${params.toString()}`;
+  return `${THUNDERID_BASE_URL}/oauth2/authorize?${params.toString()}`;
 }
 
 async function exchangeCodeForUserToken(
@@ -377,7 +391,7 @@ async function exchangeCodeForUserToken(
     `${agentConfig.agentID}:${agentConfig.agentSecret}`,
   ).toString("base64");
 
-  const response = await fetch(`${THUNDER_BASE_URL}/oauth2/token`, {
+  const response = await fetch(`${THUNDERID_BASE_URL}/oauth2/token`, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -458,7 +472,7 @@ async function initiateCiba(
     `${upgradeAgentConfig.agentID}:${upgradeAgentConfig.agentSecret}`,
   ).toString("base64");
 
-  const response = await fetch(`${THUNDER_BASE_URL}/oauth2/bc-authorize`, {
+  const response = await fetch(`${THUNDERID_BASE_URL}/oauth2/bc-authorize`, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -514,7 +528,7 @@ async function pollCibaToken(authReqId: string): Promise<CibaPollResult> {
     `${upgradeAgentConfig.agentID}:${upgradeAgentConfig.agentSecret}`,
   ).toString("base64");
 
-  const response = await fetch(`${THUNDER_BASE_URL}/oauth2/token`, {
+  const response = await fetch(`${THUNDERID_BASE_URL}/oauth2/token`, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -608,7 +622,7 @@ function wrapToolForSession(
     return originalTool;
   }
 
-  if (!THUNDER_BASE_URL) {
+  if (!THUNDERID_BASE_URL) {
     return originalTool;
   }
 
@@ -735,7 +749,7 @@ async function fetchAgentToken(): Promise<TokenState> {
     `${agentConfig.agentID}:${agentConfig.agentSecret}`,
   ).toString("base64");
 
-  const response = await fetch(`${THUNDER_BASE_URL}/oauth2/token`, {
+  const response = await fetch(`${THUNDERID_BASE_URL}/oauth2/token`, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -801,7 +815,7 @@ async function fetchUpgradeAgentToken(): Promise<TokenState> {
     `${upgradeAgentConfig.agentID}:${upgradeAgentConfig.agentSecret}`,
   ).toString("base64");
 
-  const response = await fetch(`${THUNDER_BASE_URL}/oauth2/token`, {
+  const response = await fetch(`${THUNDERID_BASE_URL}/oauth2/token`, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -859,7 +873,7 @@ async function getOrRefreshUpgradeAgentToken(): Promise<string> {
 }
 
 async function ensureMcpConnection(): Promise<void> {
-  if (!THUNDER_BASE_URL || !agentConfig.agentID || !agentConfig.agentSecret) {
+  if (!THUNDERID_BASE_URL || !agentConfig.agentID || !agentConfig.agentSecret) {
     return;
   }
   const token = await getOrRefreshAgentToken();
@@ -896,14 +910,14 @@ async function createAgent() {
   );
   console.log(`[ai-agent] LLM provider: ${LLM_PROVIDER}`);
 
-  if (THUNDER_BASE_URL && agentConfig.agentID && agentConfig.agentSecret) {
+  if (THUNDERID_BASE_URL && agentConfig.agentID && agentConfig.agentSecret) {
     await ensureMcpConnection();
   } else {
     console.log(
       "[ai-agent] ThunderID not configured, running without agent authentication.",
     );
     console.log(
-      "[ai-agent] Set THUNDER_BASE_URL, AGENT_ID, and AGENT_SECRET to enable OAuth flows.",
+      "[ai-agent] Set THUNDERID_BASE_URL, AGENT_ID, and AGENT_SECRET to enable OAuth flows.",
     );
     mcpClient = new MultiServerMCPClient({
       travel: { transport: "http", url: MCP_SERVER_URL },
@@ -997,7 +1011,7 @@ async function handleChat(
   response: ServerResponse,
   baseTools: DynamicStructuredTool[],
 ): Promise<void> {
-  if (THUNDER_BASE_URL && agentConfig.agentID) {
+  if (THUNDERID_BASE_URL && agentConfig.agentID) {
     const authHeader = request.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       sendJson(response, 401, { error: "Missing or invalid token" });
@@ -1389,7 +1403,7 @@ function startUpgradeScheduler(): void {
     return;
   }
 
-  if (!THUNDER_BASE_URL || !agentConfig.agentID || !agentConfig.agentSecret) {
+  if (!THUNDERID_BASE_URL || !agentConfig.agentID || !agentConfig.agentSecret) {
     console.log(
       "[upgrade-scheduler] ThunderID not configured, upgrade scheduler disabled.",
     );
@@ -1456,7 +1470,7 @@ async function runAgentServer() {
     }
 
     if (url.pathname === "/chat/access" && request.method === "GET") {
-      if (THUNDER_BASE_URL && agentConfig.agentID) {
+      if (THUNDERID_BASE_URL && agentConfig.agentID) {
         const authHeader = request.headers.authorization;
         if (!authHeader || !authHeader.startsWith("Bearer ")) {
           sendJson(response, 401, {

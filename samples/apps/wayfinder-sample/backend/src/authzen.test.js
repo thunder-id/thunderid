@@ -10,7 +10,7 @@ import {
 } from "./authzen.js";
 
 const env = {
-    THUNDER_BASE_URL: "https://localhost:8090",
+    THUNDERID_BASE_URL: "https://localhost:8090",
     THUNDERID_DIRECT_AUTH_SECRET: "authzen-direct-auth-secret",
 };
 const silentLogger = {
@@ -86,7 +86,7 @@ test("sends the direct auth secret for access evaluations", async () => {
 
 test("requires the direct auth secret in authzen mode", async () => {
     const evaluateAccess = createAuthzenAuthorizer({
-        env: { THUNDER_BASE_URL: "https://localhost:8090" },
+        env: { THUNDERID_BASE_URL: "https://localhost:8090" },
         fetchImpl: async () => Response.json({ decision: true }),
         logger: silentLogger,
     });
@@ -97,7 +97,7 @@ test("requires the direct auth secret in authzen mode", async () => {
             resource: { type: "http://localhost:8787/mcp" },
             action: { name: "booking:read" },
         }),
-        /THUNDER_BASE_URL and THUNDERID_DIRECT_AUTH_SECRET are required/,
+        /THUNDERID_BASE_URL and THUNDERID_DIRECT_AUTH_SECRET are required/,
     );
 });
 

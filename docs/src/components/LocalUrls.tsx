@@ -42,6 +42,13 @@ export function ConsoleUrl(props: UrlComponentProps): ReactNode {
 }
 
 /**
+ * Renders the local Control Plane Console URL.
+ */
+export function ControlPlaneConsoleUrl(props: UrlComponentProps): ReactNode {
+  return renderUrl(useProductConfig().local.controlPlaneConsoleUrl, props);
+}
+
+/**
  * Renders a URL to the local Wayfinder sample, based on the `local.samples.wayfinderUrl` configuration.
  */
 export function WayFinderSampleUrl(props: UrlComponentProps): ReactNode {
