@@ -323,13 +323,20 @@ func (s *deviceAuthService) HandleCallback(ctx context.Context, requestID, asser
 	}
 	scopes := append(utils.ParseStringArray(record.StandardScopes, " "),
 		utils.ParseStringArray(claims.authorizedPermissions, " ")...)
+	binding, err := tokenservice.ResolveBinding(providers.GrantTypeDeviceCode,
+		tokenservice.SessionBinding{SessionID: claims.sessionID, TokenFamilyID: claims.tokenFamilyID})
+	if err != nil {
+		s.logger.Error(ctx, "Failed to resolve the Device Grant's binding", log.Error(err))
+		return deviceCallbackServerError()
+	}
 	if err := s.store.MarkApproved(ctx, record.RequestID, &DeviceApproval{
 		UserID:           claims.userID,
 		SubjectID:        claims.subjectID,
 		AuthorizedScopes: utils.StringifyStringArray(scopes, " "),
 		AttributeCacheID: claims.attributeCacheID,
 		CompletedACR:     claims.completedACR,
-		SessionID:        claims.sessionID,
+		SessionID:        binding.SessionID,
+		TokenFamilyID:    binding.TokenFamilyID,
 		AuthTime:         authTime,
 		SessionData:      oauth2utils.KeepDeviceSessions(scopes, sessionData),
 	}); err != nil {
@@ -381,15 +388,12 @@ func decodeDeviceAssertion(assertion string) (assertionClaims, time.Time, error)
 		return assertionClaims{}, time.Time{}, err
 	}
 	claims := assertionClaims{userID: base.UserID, subjectID: base.SubjectID, attributeCacheID: base.AttributeCacheID,
-		completedACR: base.CompletedACR}
+		completedACR: base.CompletedACR, sessionID: base.SessionID, tokenFamilyID: base.TokenFamilyID}
 	if value, ok := payload[oauth2const.ClaimAuthorizationRequestID].(string); ok {
 		claims.requestID = value
 	}
 	if value, ok := payload["authorized_permissions"].(string); ok {
 		claims.authorizedPermissions = value
-	}
-	if value, ok := payload[oauth2const.ClaimSessionID].(string); ok {
-		claims.sessionID = value
 	}
 	if value, ok := payload[flowcm.ClaimFlowErrorType].(string); ok {
 		claims.flowErrorType = value

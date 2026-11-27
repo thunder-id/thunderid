@@ -32,6 +32,7 @@ const (
 	testGrantCompletedACR     = "urn:acr:pwd"
 	testGrantSubjectID        = "user-entity-id"
 	testGrantOUID             = "ou-a"
+	testGrantTokenFamilyID    = "grant-family-1"
 )
 
 // denyListLookup answers like the criteria deny list: boundary rows match artifacts established by their cutoff.

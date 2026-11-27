@@ -114,15 +114,15 @@ func (h *refreshTokenGrantHandler) ValidateGrant(ctx context.Context, tokenReque
 // resolveRefreshToken validates the presented refresh token and confirms it was issued to the
 // requesting client. ValidateRefreshToken enforces the RFC 7009 deny list, so a revoked token is
 // rejected as invalid_grant like any other invalid token and an unavailable deny list fails closed
-// with a server_error.
+// with a server_error. It returns the token's claims and the binding the new tokens carry.
 func (h *refreshTokenGrantHandler) resolveRefreshToken(ctx context.Context,
 	tokenRequest *model.TokenRequest, logger *log.Logger) (
-	*tokenservice.RefreshTokenClaims, *model.ErrorResponse) {
+	*tokenservice.RefreshTokenClaims, tokenservice.SessionBinding, *model.ErrorResponse) {
 	refreshTokenClaims, err := h.tokenValidator.ValidateRefreshToken(ctx, tokenRequest.RefreshToken)
 	if err != nil {
 		logger.Debug(ctx, "Failed to validate refresh token", log.Error(err))
 		if errors.Is(err, revocation.ErrEnforcementUnavailable) {
-			return nil, &model.ErrorResponse{
+			return nil, tokenservice.SessionBinding{}, &model.ErrorResponse{
 				Error:            constants.ErrorServerError,
 				ErrorDescription: "Token revocation status could not be verified",
 			}
@@ -133,7 +133,7 @@ func (h *refreshTokenGrantHandler) resolveRefreshToken(ctx context.Context,
 		if errors.Is(err, revocation.ErrTokenIDRevoked) {
 			h.revokeTokenFamilyOnReplay(ctx, tokenRequest.RefreshToken, logger)
 		}
-		return nil, &model.ErrorResponse{
+		return nil, tokenservice.SessionBinding{}, &model.ErrorResponse{
 			Error:            constants.ErrorInvalidGrant,
 			ErrorDescription: "Invalid refresh token",
 		}
@@ -142,13 +142,19 @@ func (h *refreshTokenGrantHandler) resolveRefreshToken(ctx context.Context,
 	// A client may only redeem refresh tokens issued to it.
 	if refreshTokenClaims.ClientID != tokenRequest.ClientID {
 		logger.Debug(ctx, "Refresh token does not belong to the requesting client")
-		return nil, &model.ErrorResponse{
+		return nil, tokenservice.SessionBinding{}, &model.ErrorResponse{
 			Error:            constants.ErrorInvalidGrant,
 			ErrorDescription: "Invalid refresh token",
 		}
 	}
 
-	return refreshTokenClaims, nil
+	binding, err := tokenservice.ResolveBinding(providers.GrantTypeRefreshToken, tokenservice.SessionBinding{
+		SessionID: refreshTokenClaims.SessionID, TokenFamilyID: refreshTokenClaims.TokenFamilyID})
+	if err != nil {
+		return nil, tokenservice.SessionBinding{}, tokenBuildErrorResponse(ctx, logger, err,
+			"Failed to generate access token")
+	}
+	return refreshTokenClaims, binding, nil
 }
 
 // getCachedAttributes returns the user attributes held in the attribute cache entry with the given ID, and the
@@ -183,7 +189,7 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 	*model.TokenResponseDTO, *model.ErrorResponse) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, "RefreshTokenGrantHandler"))
 
-	refreshTokenClaims, errResp := h.resolveRefreshToken(ctx, tokenRequest, logger)
+	refreshTokenClaims, binding, errResp := h.resolveRefreshToken(ctx, tokenRequest, logger)
 	if errResp != nil {
 		return nil, errResp
 	}
@@ -309,7 +315,7 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 		ClaimsLocales:        refreshTokenClaims.ClaimsLocales,
 		ValidityPeriod:       userSubConfig.ValidityPeriodOrZero(),
 		DPoPJkt:              dpop.GetJkt(ctx),
-		TokenFamilyID:        refreshTokenClaims.TokenFamilyID,
+		TokenFamilyID:        binding.TokenFamilyID,
 		AuthorizationDetails: authorizationDetails,
 		AuthTime:             refreshTokenClaims.AuthTime,
 	}
@@ -327,7 +333,7 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 	// Prepare the token response
 	tokenResponse := &model.TokenResponseDTO{
 		AccessToken:                     *accessToken,
-		SessionID:                       refreshTokenClaims.SessionID,
+		SessionID:                       binding.SessionID,
 		RefreshableAuthorizationDetails: grantedDetails,
 		OUID:                            refreshTokenClaims.OUID,
 	}
@@ -341,7 +347,7 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 			UserAttributes:  attrs,
 			OAuthApp:        oauthApp,
 			ClaimsRequest:   refreshTokenClaims.ClaimsRequest,
-			SessionID:       refreshTokenClaims.SessionID,
+			SessionID:       binding.SessionID,
 			SubjectEntityID: accessToken.SubjectID,
 		})
 		if idErr != nil {
@@ -360,7 +366,7 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 			refreshTokenClaims.Sub, audiences,
 			refreshTokenClaims.GrantType, newTokenScopes,
 			refreshTokenClaims.ClaimsRequest, refreshTokenClaims.ClaimsLocales,
-			refreshTokenClaims.AttributeCacheID, refreshTokenClaims.TokenFamilyID,
+			refreshTokenClaims.AttributeCacheID, binding.TokenFamilyID,
 			refreshTokenClaims.Exp)
 		if errResp != nil && errResp.Error != "" {
 			logger.Error(ctx, "Failed to issue refresh token", log.String("error", errResp.Error))
@@ -396,7 +402,7 @@ func (h *refreshTokenGrantHandler) HandleGrant(ctx context.Context, tokenRequest
 		return nil, errResp
 	}
 
-	h.recordSessionActivity(ctx, refreshTokenClaims.SessionID, logger)
+	h.recordSessionActivity(ctx, binding.SessionID, logger)
 
 	return tokenResponse, nil
 }

@@ -991,3 +991,25 @@ func ExpandMappedGroupAncestors(
 	}
 	return expanded, nil
 }
+
+// ResolveBinding decides every grant's binding, from the login's assertion or the presented token. A login
+// without a token family gets a new one, keeping any session id, so its grant can still be revoked on its own.
+func ResolveBinding(grantType providers.GrantType, from SessionBinding) (SessionBinding, error) {
+	switch grantType {
+	case providers.GrantTypeAuthorizationCode, providers.GrantTypeCIBA, providers.GrantTypeDeviceCode:
+		if from.TokenFamilyID != "" {
+			return from, nil
+		}
+		id, err := systemutils.GenerateUUIDv7()
+		if err != nil {
+			return SessionBinding{}, fmt.Errorf("failed to generate token family id: %w", err)
+		}
+		return SessionBinding{SessionID: from.SessionID, TokenFamilyID: id}, nil
+	case providers.GrantTypeRefreshToken, providers.GrantTypeTokenExchange:
+		return from, nil
+	case providers.GrantTypeClientCredentials, providers.GrantTypeJWTBearer:
+		return SessionBinding{}, nil
+	default:
+		return SessionBinding{}, fmt.Errorf("no binding rule for grant type %q", grantType)
+	}
+}

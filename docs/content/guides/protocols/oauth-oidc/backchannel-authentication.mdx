@@ -171,6 +171,8 @@ Wait for the interval (or a longer interval after a `slow_down` response), then 
 }
 ```
 
+The tokens are bound to the session the user signed in with to approve the request, so ending that session revokes them, as it does for any other sign-in. A sign-in that recorded no session, for example with session tracking off, has no session to end, and its tokens get a token family of their own instead. See [Sessions and Single Sign-On](../../../../key-concepts/authentication/sessions) and [Where `tfid` Comes From](../token-revocation#where-tfid-comes-from).
+
 ## Actor on the Issued Token
 
 The issued access token represents the user who approved the request, so `sub` holds that user's subject identifier. The token additionally names the client that obtained it in an `act` (actor) claim, so a resource server sees both the user who approved the request and the client acting for them.

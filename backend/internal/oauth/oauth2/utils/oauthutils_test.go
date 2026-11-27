@@ -1705,6 +1705,8 @@ func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_ValidWithAllCla
 		"aci":                  "cache-abc",
 		"completed_auth_class": "urn:acr:pwd",
 		"iat":                  float64(1700000000),
+		"sid":                  "sess-1",
+		"tfid":                 "tfid-1",
 	})
 
 	claims, payload, err := DecodeFlowAssertionClaims(assertion)
@@ -1714,6 +1716,8 @@ func (suite *OAuth2UtilsTestSuite) TestDecodeFlowAssertionClaims_ValidWithAllCla
 	suite.Equal("cache-abc", claims.AttributeCacheID)
 	suite.Equal("urn:acr:pwd", claims.CompletedACR)
 	suite.Equal(int64(1700000000), claims.AuthTime.Unix())
+	suite.Equal("sess-1", claims.SessionID)
+	suite.Equal("tfid-1", claims.TokenFamilyID)
 	suite.NotNil(payload)
 }
 

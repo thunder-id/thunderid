@@ -171,6 +171,46 @@ func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_ApprovedIssuesToke
 	suite.Empty(response.DeviceSecret.Token, "a request that kept no session returns no device secret")
 }
 
+func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_ApprovedCarriesTheTokenFamily() {
+	record := suite.request(deviceauth.DeviceStateApproved)
+	record.TokenFamilyID = testGrantTokenFamilyID
+	suite.deviceService.EXPECT().GetByDeviceCode(mock.Anything, "device-code-1").Return(record, nil)
+	suite.tokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return ctx.TokenFamilyID == testGrantTokenFamilyID
+		})).Return(&model.TokenDTO{Token: "access-token"}, nil)
+	suite.tokenBuilder.EXPECT().BuildIDToken(mock.Anything, mock.Anything).
+		Return(&model.TokenDTO{Token: "id-token"}, nil)
+	suite.deviceService.EXPECT().MarkConsumed(mock.Anything, "device-request-1").Return(true, nil)
+
+	response, errResp := suite.handler.HandleGrant(context.Background(), suite.tokenRequest, suite.oauthApp)
+	suite.Nil(errResp)
+	suite.Equal("access-token", response.AccessToken.Token)
+}
+
+func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_RevokedTokenFamilyIsRefused() {
+	record := suite.request(deviceauth.DeviceStateApproved)
+	record.TokenFamilyID = testGrantTokenFamilyID
+	record.AuthTime = time.Now().Add(-time.Minute)
+	enforcement := revocationmock.NewEnforcementServiceInterfaceMock(suite.T())
+	suite.handler = newDeviceCodeGrantHandler(suite.deviceService, suite.tokenBuilder,
+		suite.attributeCache, suite.resourceService, enforcement, nil)
+	suite.deviceService.EXPECT().GetByDeviceCode(mock.Anything, "device-code-1").Return(record, nil)
+	enforcement.EXPECT().EnsureNotRevoked(mock.Anything, mock.Anything).RunAndReturn(denyListLookup(
+		revocation.CriteriaRevocation{
+			Criterion: revocation.Criterion{Type: revocation.CriterionTypeTokenFamily, Value: testGrantTokenFamilyID},
+			Reason:    revocation.RevocationReasonSessionLogout,
+			Cutoff:    time.Now(),
+		}))
+
+	response, errResp := suite.handler.HandleGrant(context.Background(), suite.tokenRequest, suite.oauthApp)
+
+	suite.Nil(response)
+	suite.Require().NotNil(errResp)
+	suite.Equal(constants.ErrorInvalidGrant, errResp.Error)
+	suite.tokenBuilder.AssertNotCalled(suite.T(), "BuildAccessToken", mock.Anything, mock.Anything)
+}
+
 func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_ApprovedReturnsTheDeviceSecret() {
 	sessions := []model.SessionData{{FlowIdentifier: "77e0937879f72858", SessionHandle: "handle-1"}}
 	record := suite.request(deviceauth.DeviceStateApproved)

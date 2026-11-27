@@ -53,7 +53,7 @@ With `org:session:view`, you see only the sessions with an application signed in
 
 ## Let Users View Their Own Sessions
 
-Signed-in users can list their own sessions with `GET /users/me/sessions`, using only their own access token. Each session has `isCurrent`, which is `true` for the session that issued the access token, and the listing leaves out `userDisplayName`. It shows only the sessions and applications of the organization unit the user signed in under. An access token from a sign-in without SSO finds its direct session the same way, except one from the CIBA or device grant, which carries no token family and so lists no sessions. A token from a sign-in that recorded no session, for example with direct sessions turned off, lists no sessions. See the [Sessions API Reference](../../../apis#tag/sessions).
+Signed-in users can list their own sessions with `GET /users/me/sessions`, using only their own access token. Each session has `isCurrent`, which is `true` for the session that issued the access token, and the listing leaves out `userDisplayName`. It shows only the sessions and applications of the organization unit the user signed in under. An access token from a sign-in without SSO finds its direct session the same way. A token from a sign-in that recorded no session, for example with direct sessions turned off, lists no sessions. See the [Sessions API Reference](../../../apis#tag/sessions).
 
 ## Next Steps
 

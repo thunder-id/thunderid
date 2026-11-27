@@ -48,6 +48,7 @@ type CIBAAuthRequest struct {
 	CompletedACR     string
 	AuthTime         time.Time
 	SessionID        string
+	TokenFamilyID    string
 	LastPolledAt     time.Time
 	ExpiryTime       time.Time
 	// AuthorizedAt is when the request was marked authenticated, which a reused session's AuthTime predates.
@@ -56,6 +57,20 @@ type CIBAAuthRequest struct {
 	AuthorizationDetails []providers.AuthorizationDetail `json:",omitempty"`
 	// FailureDescription is why a denied request was refused, returned to the client when it polls.
 	FailureDescription string `json:",omitempty"`
+}
+
+// CIBAApproval is what an approving flow assertion records on its CIBA request.
+type CIBAApproval struct {
+	UserID               string
+	SubjectID            string
+	SubjectCategory      string
+	AuthorizedScopes     string
+	AttributeCacheID     string
+	CompletedACR         string
+	SessionID            string
+	TokenFamilyID        string
+	AuthTime             time.Time
+	AuthorizationDetails []providers.AuthorizationDetail
 }
 
 // BackchannelAuthResponse represents the response body for a successful backchannel authentication request.
@@ -94,6 +109,7 @@ type assertionClaims struct {
 	attributeCacheID      string
 	completedACR          string
 	sessionID             string
+	tokenFamilyID         string
 	authReqID             string
 	authorizedPermissions string
 	flowErrorType         string

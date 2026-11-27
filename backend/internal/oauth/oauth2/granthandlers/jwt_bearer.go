@@ -193,6 +193,11 @@ func (h *jwtBearerGrantHandler) HandleGrant(ctx context.Context, tokenRequest *m
 	// includeActClaim, is recorded as acting for that user.
 	grantedScopes = compactPermissionScopes(grantedScopes, oidcScopes, targetRS)
 
+	binding, err := tokenservice.ResolveBinding(providers.GrantTypeJWTBearer, tokenservice.SessionBinding{})
+	if err != nil {
+		return nil, tokenBuildErrorResponse(ctx, logger, err, "Failed to generate token")
+	}
+
 	accessTokenCtx := &tokenservice.AccessTokenBuildContext{
 		Subject:           assertionClaims.Sub,
 		Audiences:         audiences,
@@ -204,6 +209,7 @@ func (h *jwtBearerGrantHandler) HandleGrant(ctx context.Context, tokenRequest *m
 		SourceIDP:         assertionClaims.Iss,
 		ValidityPeriod:    oauthApp.UserAccessTokenConfig().ValidityPeriodOrZero(),
 		DPoPJkt:           dpop.GetJkt(ctx),
+		TokenFamilyID:     binding.TokenFamilyID,
 	}
 	if oauthApp.ShouldAppendActorClaim() {
 		accessTokenCtx.ActorClaims = &tokenservice.SubjectTokenClaims{Sub: oauthApp.ID}

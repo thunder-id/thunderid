@@ -71,6 +71,23 @@ func (ts *DeviceGrantTestSuite) TestDeviceGrant_NoDeviceSecretWithoutPostedSessi
 	ts.Empty(tokens.deviceSecret)
 }
 
+// TestSigningOutRevokesDeviceGrantTokens verifies that signing out with the session a device approval started
+// revokes the device's tokens, since they carry that session's token family.
+func (ts *DeviceGrantTestSuite) TestSigningOutRevokesDeviceGrantTokens() {
+	tokens, sessions := ts.approveWithSessions("openid", false)
+	ts.Require().Equal(http.StatusOK, tokens.statusCode, tokens.errorCode)
+	ts.Require().Len(sessions, 1, "the approval started one session")
+	active, err := testutils.IntrospectActive(tokens.accessToken, deviceSecretClientID, deviceSecretClientSecret)
+	ts.Require().NoError(err)
+	ts.Require().True(active, "the access token should be active before sign-out")
+
+	ts.Require().NoError(testutils.SignOutWithSessions(tokens.idToken, sessions))
+
+	active, err = testutils.IntrospectActive(tokens.accessToken, deviceSecretClientID, deviceSecretClientSecret)
+	ts.Require().NoError(err)
+	ts.False(active, "signing out must revoke the device's tokens")
+}
+
 // approveWithSessions runs a device authorization for the device secret application's client with the given
 // scope, approves it as a browser would (collecting the sessions every flow response returns and, when post is
 // set, posting them with the callback), then polls once, and returns the token response and the sessions

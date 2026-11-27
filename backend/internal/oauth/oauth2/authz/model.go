@@ -46,9 +46,8 @@ type AuthorizationCode struct {
 	Nonce               string
 	CompletedACR        string
 	DPoPJkt             string
-	// TokenFamilyID is the token family id (tfid) minted during the login flow and carried on the flow
-	// assertion. It is stamped onto the access and refresh tokens issued for this code so revocation
-	// can target the whole family. Empty when the login flow issued no tfid (e.g. pre-rollout tokens).
+	// TokenFamilyID is the token family id (tfid) from the flow assertion, or a new one when it has none. The
+	// access and refresh tokens issued for this code carry it, so revocation can target the whole family.
 	TokenFamilyID string
 	// CorrelationID is the login flow's execution id, carried on the flow assertion. It is reported
 	// on the token issuance events for this code so they correlate with the flow's own events.

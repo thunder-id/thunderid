@@ -127,6 +127,8 @@ curl -X POST "https://{{productSlug}}.example.com/oauth2/token" \
 
 After the user approves, the response contains an access token and may also contain an ID token when the request included the `openid` scope and a refresh token when the application allows the `refresh_token` grant. Stop polling after a token response or terminal error.
 
+The tokens are bound to the session the user signed in with to approve the request, so ending that session revokes them, as it does for any other sign-in. A sign-in that recorded no session, for example with session tracking off, has no session to end, and its tokens get a token family of their own instead. See [Sessions and Single Sign-On](../../../../key-concepts/authentication/sessions) and [Where `tfid` Comes From](../token-revocation#where-tfid-comes-from).
+
 The access token includes the user attributes configured for it. The ID token includes configured attributes released by the granted scopes. If the Authentication flow includes a Consent step, both tokens include only the attributes the user approved. When the access token includes `ouId`, the claim names the organization unit the sign-in decided: the application's own for an application that is not shared, or the one the **Resolve OU** node chose for a shared application. See [Configure an application](#configure-an-application).
 
 ## Related Guides

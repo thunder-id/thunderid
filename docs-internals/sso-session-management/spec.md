@@ -1,7 +1,7 @@
 # SSO Session Management Specification
 
 - **Status:** Draft
-- **Version:** 0.5
+- **Version:** 0.6
 - **Related documents:** [Feature issue #3400: Self-service and admin session management](https://github.com/thunder-id/thunderid/issues/3400), [Design discussion #4130: Session visibility](https://github.com/thunder-id/thunderid/discussions/4130), [Revised design: session visibility and revocation](https://github.com/thunder-id/thunderid/discussions/4130#discussioncomment-18580774), [Client IP design](https://github.com/thunder-id/thunderid/discussions/4130#discussioncomment-18771408), [Design discussion #6322: Session tracking, token lifecycle and session management](https://github.com/thunder-id/thunderid/discussions/6322), [OIDC back-channel logout specification](../back-channel-logout/spec.md)
 
 ## Summary
@@ -312,7 +312,7 @@ The key is also exposed through the Helm chart as `configuration.server.trustedP
 - **AC7.2:** Given the access token was issued in the latest grant of one of those sessions, when the user lists their sessions, then that session has `isCurrent: true` and the others `false`.
 - **AC7.3:** Given a user signed in to an application shared into two organization units, under both, when they call `GET /users/me/sessions` with the token of one of those sign-ins, then the session is listed with only the participant of that unit, whether or not the token carries an `ouId` claim.
 - **AC7.4:** Given an access token whose token family no participant of the caller's sessions holds, such as one from a sign-in with session tracking off, when the caller calls `GET /users/me/sessions`, then the response holds no sessions.
-- **AC7.5:** Given a user signed in through a flow without a session step, when they call `GET /users/me/sessions` with that sign-in's token, then their sessions are listed, each with its `type`, and the direct session has `isCurrent: true`. A CIBA or device grant token carries no token family until #7072, so until then it lists no sessions.
+- **AC7.5:** Given a user signed in through a flow without a session step, when they call `GET /users/me/sessions` with that sign-in's token, then their sessions are listed, each with its `type`, and the direct session has `isCurrent: true`.
 
 ### R8. End a user's sessions as an administrator
 
@@ -376,3 +376,4 @@ The key is also exposed through the Helm chart as `configuration.server.trustedP
 | 0.3 | 2026-11-24 | Session listing by organization unit: `org:session:view` and `org:session:delete`, with only `system` reaching every unit, the self-service listing confined to the unit its own participant was recorded under, the participant's `ouId`, `userDisplayName` in place of `userName`, display names resolved for users and agents, only SSO sessions listed, the management API made part of the session service, with its routes registered in `Initialize`, the `?appId=` listing under an organization unit and the `session` capability made explicit. |
 | 0.4 | 2026-11-26 | The application page shows the Sessions tab whatever its grant types, and the Console re-reads the list every 30 seconds until a `403`. |
 | 0.5 | 2026-11-26 | Direct sessions are listed with SSO sessions, each with its `type`, a token from a direct session's sign-in finds its own session, except a CIBA or device grant token until #7072, and a direct session is revoked the same way. |
+| 0.6 | 2026-11-27 | A CIBA or device grant token finds its own session too, since it carries the session's token family. |

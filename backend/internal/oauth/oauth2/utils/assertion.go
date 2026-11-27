@@ -24,6 +24,9 @@ type FlowAssertionClaims struct {
 	AttributeCacheID string
 	CompletedACR     string
 	AuthTime         time.Time
+	// SessionID and TokenFamilyID are the login's session and token family, empty when it recorded no session.
+	SessionID     string
+	TokenFamilyID string
 }
 
 // FlowErrorAssertionClaims holds the claims of a flow error assertion, minted by the flow service
@@ -53,7 +56,7 @@ func DecodeFlowErrorAssertionClaims(assertion string) (FlowErrorAssertionClaims,
 
 // DecodeFlowAssertionClaims decodes the common flow assertion claims from a JWT string.
 // It extracts sub (user ID), sub_id (entity ID), aci (attribute cache ID), completed_auth_class
-// (completed ACR), and iat (authentication time). The raw JWT payload is also returned so callers
+// (completed ACR), iat (authentication time), sid and tfid. The raw JWT payload is also returned so callers
 // can extract grant-type-specific claims (e.g. auth_req_id for CIBA, authorized_permissions for
 // auth code).
 func DecodeFlowAssertionClaims(assertion string) (FlowAssertionClaims, map[string]interface{}, error) {
@@ -90,6 +93,8 @@ func DecodeFlowAssertionClaims(assertion string) (FlowAssertionClaims, map[strin
 		claims.UserID = strValue
 	}
 	claims.SubjectID, _ = jwtPayload[oauth2const.ClaimSubjectID].(string)
+	claims.SessionID, _ = jwtPayload[oauth2const.ClaimSessionID].(string)
+	claims.TokenFamilyID, _ = jwtPayload[oauth2const.ClaimTokenFamilyID].(string)
 
 	if aciValue, ok := jwtPayload["aci"]; ok {
 		strValue, ok := aciValue.(string)

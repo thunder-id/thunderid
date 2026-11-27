@@ -374,6 +374,12 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 
 	finalScopes = compactPermissionScopes(finalScopes, oidcScopes, targetRS)
 
+	binding, err := tokenservice.ResolveBinding(providers.GrantTypeTokenExchange,
+		tokenservice.SessionBinding{TokenFamilyID: subjectClaims.TokenFamilyID})
+	if err != nil {
+		return nil, tokenBuildErrorResponse(ctx, logger, err, "Failed to generate token")
+	}
+
 	// Build access token using token builder. It joins the subject token's token family, so revoking the grant
 	// it came from, or ending the session that grant belongs to, also revokes it.
 	userSubConfig := oauthApp.UserAccessTokenConfig()
@@ -388,7 +394,7 @@ func (h *tokenExchangeGrantHandler) HandleGrant(ctx context.Context, tokenReques
 		ActorClaims:       actorClaims,
 		ValidityPeriod:    userSubConfig.ValidityPeriodOrZero(),
 		DPoPJkt:           dpop.GetJkt(ctx),
-		TokenFamilyID:     subjectClaims.TokenFamilyID,
+		TokenFamilyID:     binding.TokenFamilyID,
 		SubjectEntityID:   subjectEntityID,
 		SubjectCategory:   subjectCategory,
 		SourceIDP:         subjectClaims.SourceIDP,
