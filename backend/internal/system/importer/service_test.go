@@ -6482,6 +6482,8 @@ type fakeAuthorizationDetailTypeService struct {
 	updateErr   *tidcommon.ServiceError
 	validateErr *tidcommon.ServiceError
 	validated   []providers.AuthorizationDetailType
+	// updateAttempts counts every update asked for, a missing type's included.
+	updateAttempts int
 }
 
 func (f *fakeAuthorizationDetailTypeService) DeleteAuthorizationDetailType(
@@ -6528,6 +6530,7 @@ func (f *fakeAuthorizationDetailTypeService) GetAuthorizationDetailType(
 func (f *fakeAuthorizationDetailTypeService) UpdateAuthorizationDetailType(
 	ctx context.Context, id string, t providers.AuthorizationDetailType,
 ) (*providers.AuthorizationDetailType, *tidcommon.ServiceError) {
+	f.updateAttempts++
 	if _, svcErr := f.GetAuthorizationDetailType(ctx, id); svcErr != nil {
 		return nil, svcErr
 	}
