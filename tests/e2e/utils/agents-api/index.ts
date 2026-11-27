@@ -19,7 +19,7 @@ export type ApiAgent = {
   id: string;
   display?: string;
   clientId?: string;
-  owner?: { id: string; idType?: string; isLocal?: boolean };
+  owner?: { id: string; idType?: string; isLocal?: boolean; verified?: boolean; verifiedAt?: string };
   type?: string;
   ouId?: string;
   attributes?: Record<string, unknown>;
@@ -31,9 +31,9 @@ export class AgentsApi {
 
   /**
    * Create an agent of the bootstrap `default` type directly via the API, in the organization unit
-   * that type belongs to.
+   * that type belongs to. Without an owner, the signed-in administrator owns it.
    */
-  async create(name: string): Promise<ApiAgent> {
+  async create(name: string, owner?: ApiAgent["owner"]): Promise<ApiAgent> {
     const types = (await (await sendOk(this.request, "GET", "/agent-types?limit=100")).json()) as {
       types?: { handle: string; ouId: string }[];
     };
@@ -45,6 +45,7 @@ export class AgentsApi {
       ouId: agentType.ouId,
       type: agentType.handle,
       attributes: { name },
+      ...(owner ? { owner } : {}),
     });
     return (await response.json()) as ApiAgent;
   }

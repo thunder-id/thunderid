@@ -294,7 +294,8 @@ func (s *agentService) createAgent(ctx context.Context, agent *providers.Agent) 
 		}
 	}
 
-	resp := buildCompleteResponse(agentID, owner, clientID, clientSecret,
+	withOwnerVerification(owner, "")
+	resp := buildCompleteResponse(agentID, s.responseOwner(owner, false), clientID, clientSecret,
 		agent.Type, agent.Description, agent.LogoURL, createdEntity.Attributes,
 		authFlowID, regFlowID, agent.IsRegistrationFlowEnabled,
 		agent.ThemeID, agent.LayoutID, assertion, loginConsent,
@@ -1302,7 +1303,7 @@ func (s *agentService) updateAgent(ctx context.Context, agentID string,
 		}}
 	}
 
-	resp := buildCompleteResponse(agentID, owner, clientID, clientSecret,
+	resp := buildCompleteResponse(agentID, s.responseOwner(owner, false), clientID, clientSecret,
 		req.Type, req.Description, req.LogoURL, req.Attributes,
 		authFlowID, regFlowID, resolvedClient.IsRegistrationFlowEnabled,
 		req.ThemeID, req.LayoutID, assertion, loginConsent,
@@ -2464,6 +2465,8 @@ func (s *agentService) resolveUpdateOwner(
 		return nil, svcErr
 	}
 	if sameOwner(owner, currentOwner) {
+		// The owner's verification survives an update that keeps the owner, so the response reports it.
+		withOwnerVerification(owner, currentOwner.VerifiedAt)
 		return owner, nil
 	}
 	if kind == providers.AgentKindPersonalAssistant {
@@ -2472,6 +2475,14 @@ func (s *agentService) resolveUpdateOwner(
 	if svcErr := s.checkOwner(ctx, owner); svcErr != nil {
 		return nil, svcErr
 	}
+	// An owner written differently with the same canonical contact keeps its verification, as the stored one does.
+	verifiedAt := ""
+	if value, _ := entity.AgentOwnerContactOf(owner); value != "" && currentOwner != nil {
+		if current, _ := entity.AgentOwnerContactOf(currentOwner); current == value {
+			verifiedAt = currentOwner.VerifiedAt
+		}
+	}
+	withOwnerVerification(owner, verifiedAt)
 	return owner, nil
 }
 
@@ -2907,7 +2918,7 @@ func (s *agentService) composeGetResponse(ctx context.Context, e *providers.Enti
 		ProjectID:   e.ProjectID,
 		Type:        e.Type,
 		Description: sysAttrs.Description,
-		Owner:       sysAttrs.Owner,
+		Owner:       s.responseOwner(sysAttrs.Owner, e.IsReadOnly),
 		ClientID:    clientID,
 		Kind:        sysAttrs.Kind,
 		Attributes:  e.Attributes,
@@ -3032,7 +3043,7 @@ func (s *agentService) buildListResponse(ctx context.Context, entities []provide
 			Description: sysAttrs.Description,
 			LogoURL:     logoByID[e.ID],
 			ClientID:    sysAttrs.ClientID,
-			Owner:       sysAttrs.Owner,
+			Owner:       s.responseOwner(sysAttrs.Owner, e.IsReadOnly),
 			Kind:        sysAttrs.Kind,
 			Attributes:  e.Attributes,
 			ValidUntil:  validUntil,
@@ -3271,7 +3282,10 @@ func buildSystemAttributesJSON(sysAttrs model.AgentSystemAttributes, validUntil 
 		attrs[fieldDescription] = sysAttrs.Description
 	}
 	if sysAttrs.Owner != nil {
-		attrs[fieldOwner] = sysAttrs.Owner
+		// The owner's verification is kept apart from it, as the entity's recorded verifications.
+		owner := *sysAttrs.Owner
+		owner.Verified, owner.VerifiedAt = nil, ""
+		attrs[fieldOwner] = &owner
 	}
 	if sysAttrs.ClientID != "" {
 		attrs[fieldClientID] = sysAttrs.ClientID
@@ -3318,6 +3332,13 @@ func readSystemAttributes(raw json.RawMessage) model.AgentSystemAttributes {
 	}
 	if json.Unmarshal(raw, &stored) == nil && stored.Owner != nil && stored.Owner.ID != "" {
 		sysAttrs.Owner = stored.Owner
+		// The entity service removes the verification whenever the owner changes, so a recorded one is always
+		// the current owner's. An unreadable record reads as not verified.
+		verifiedAt := ""
+		if entries, err := entity.ReadRecordedAttributeVerifications(raw); err == nil {
+			verifiedAt = entries[entity.AgentOwnerVerificationAttribute].VerifiedAt
+		}
+		withOwnerVerification(sysAttrs.Owner, verifiedAt)
 	}
 	if v, ok := attrs[fieldClientID].(string); ok {
 		sysAttrs.ClientID = v
@@ -3326,6 +3347,33 @@ func readSystemAttributes(raw json.RawMessage) model.AgentSystemAttributes {
 		sysAttrs.Kind = providers.AgentKind(v)
 	}
 	return sysAttrs
+}
+
+// withOwnerVerification states on an owner that can be verified, one managed in another identity system and
+// named by an email address or a mobile number, whether and when it was verified. Any other owner states
+// neither.
+func withOwnerVerification(owner *providers.AgentOwner, verifiedAt string) {
+	if owner == nil {
+		return
+	}
+	owner.Verified, owner.VerifiedAt = nil, ""
+	if value, _ := entity.AgentOwnerContactOf(owner); value == "" {
+		return
+	}
+	verified := verifiedAt != ""
+	owner.Verified, owner.VerifiedAt = &verified, verifiedAt
+}
+
+// responseOwner returns the owner a response states. A control plane runs no flows, and each deployment it
+// deploys to verifies the owner on its own, so a control plane states no verification. A declarative agent's owner
+// cannot be verified, as a declarative user's contacts cannot, so no verification is stated for it either.
+func (s *agentService) responseOwner(owner *providers.AgentOwner, declarative bool) *providers.AgentOwner {
+	if owner == nil || (!s.keepsReferences && !declarative) {
+		return owner
+	}
+	stated := *owner
+	stated.Verified, stated.VerifiedAt = nil, ""
+	return &stated
 }
 
 // systemAttributeQuery returns the lookup for a filter on the kind or the owner, which are matched against the

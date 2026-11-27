@@ -965,6 +965,11 @@ type AgentOwner struct {
 	IDType AgentOwnerIDType `json:"idType,omitempty" yaml:"idType,omitempty"`
 	// IsLocal is empty when the owner does not say, which reads as local.
 	IsLocal AgentOwnerLocality `json:"isLocal,omitempty" yaml:"isLocal,omitempty"`
+	// Verified says, for an owner managed in another identity system, whether it proved control of its email
+	// address or mobile number. VerifiedAt is when it did. The server sets both on reads; they are never
+	// accepted as input, stored with the owner or exported.
+	Verified   *bool  `json:"verified,omitempty"   yaml:"-"`
+	VerifiedAt string `json:"verifiedAt,omitempty" yaml:"-"`
 }
 
 // Local reports whether the owner is an entity of this deployment. An owner whose locality is a

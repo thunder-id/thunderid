@@ -11,7 +11,7 @@ import {
 } from '@thunderid/configure-applications';
 import {useGetUserTypes} from '@thunderid/configure-user-types';
 import {useGetUsers} from '@thunderid/configure-users';
-import {useConfig, useRuntimeUrl} from '@thunderid/contexts';
+import {AdministrationModes, useAdministrationOperation, useConfig, useRuntimeUrl} from '@thunderid/contexts';
 import {getUserTypeLabel} from '@thunderid/utils';
 import {Box, Button, Chip, Divider, Paper, Stack, Typography} from '@wso2/oxygen-ui';
 import {ArrowRight} from '@wso2/oxygen-ui-icons-react';
@@ -19,7 +19,9 @@ import {useMemo, type JSX, type ReactNode} from 'react';
 import {useTranslation} from 'react-i18next';
 import ConnectAgentGuide from './ConnectAgentGuide';
 import {PERSONAL_AGENT_KIND, type Agent, type OAuthAgentConfig} from '../../../models/agent';
+import {isVerifiableOwner} from '../../../utils/externalOwner';
 import {hasDelegationGrant} from '../../../utils/isDelegatedAgent';
+import OwnerVerificationStatus from '../../OwnerVerificationStatus';
 import AttributesSummarySection from '../attributes/AttributesSummarySection';
 
 const formatUserLabel = (user: {id: string; display?: string; attributes?: Record<string, unknown>}): string => {
@@ -107,6 +109,8 @@ export default function AgentOverview({
   const externalLinkConfirmation = useExternalLinkConfirmation();
   const {data: usersData} = useGetUsers({limit: 100, offset: 0});
   const {data: userTypesData} = useGetUserTypes();
+  // An owner is verified where agent administration runs through flows; elsewhere no verification is recorded.
+  const ownerVerificationRuns = useAdministrationOperation('agents', 'verifyOwner') === AdministrationModes.FLOW;
 
   // The endpoints below are for someone to copy into their own agent, so they have to name
   // the deployment that answers them rather than the one the console is configured against.
@@ -249,6 +253,11 @@ export default function AgentOverview({
             }
             value={ownerLabel}
           />
+        )}
+        {ownerVerificationRuns && isVerifiableOwner(agent.owner) && (
+          <Box sx={{mb: 2}}>
+            <OwnerVerificationStatus owner={agent.owner} />
+          </Box>
         )}
         <CopyableField
           label={t('agents:edit.overview.agentDetails.organizationUnitId', 'Organization unit ID')}

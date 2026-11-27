@@ -2,19 +2,29 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import userEvent from '@testing-library/user-event';
+import {AdministrationModes, AdministrationProvider} from '@thunderid/contexts';
 import {render, screen, within, waitFor} from '@thunderid/test-utils';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
 import type {Agent} from '../../../../models/agent';
 import OwnerSection from '../OwnerSection';
 
-const {mockUseGetUsers} = vi.hoisted(() => ({
+const {mockUseGetUsers, mockSendVerification, mockUseGetHandle} = vi.hoisted(() => ({
   mockUseGetUsers: vi.fn(),
+  mockSendVerification: vi.fn(),
+  mockUseGetHandle: vi.fn(),
+}));
+
+vi.mock('../../../../api/useSendOwnerVerification', () => ({
+  default: () => ({mutate: mockSendVerification, isPending: false, isError: false, reset: vi.fn()}),
 }));
 
 vi.mock('@thunderid/configure-users', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@thunderid/configure-users')>()),
   useGetUsers: (...args: unknown[]): unknown => mockUseGetUsers(...args) as unknown,
+  useGetAdministrationFlowHandle: (...args: unknown[]): unknown => mockUseGetHandle(...args) as unknown,
 }));
+
+const OWNER_FLOW = 'default-agent-owner-verification-flow';
 
 describe('OwnerSection', () => {
   const mockOnFieldChange = vi.fn();
@@ -29,6 +39,7 @@ describe('OwnerSection', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseGetHandle.mockReturnValue({data: OWNER_FLOW});
     mockUseGetUsers.mockReturnValue({
       data: {
         users: [
@@ -217,5 +228,170 @@ describe('OwnerSection', () => {
     render(<OwnerSection agent={mockAgent} editedAgent={{}} onFieldChange={mockOnFieldChange} />);
 
     expect(screen.getByText('user-1')).toBeInTheDocument();
+  });
+
+  describe('owner verification', () => {
+    const emailOwner = {id: 'jane@example.com', idType: 'email', isLocal: false, verified: false} as const;
+
+    it('shows an unverified external owner and sends it a verification link', async () => {
+      const user = userEvent.setup();
+      render(
+        <OwnerSection agent={{...mockAgent, owner: emailOwner}} editedAgent={{}} onFieldChange={mockOnFieldChange} />,
+      );
+
+      expect(screen.getByTestId('agent-owner-not-verified')).toHaveTextContent('Not verified');
+      await user.click(screen.getByRole('button', {name: 'Send verification link'}));
+
+      expect(mockSendVerification).toHaveBeenCalledWith({agentId: 'agent-1', handle: OWNER_FLOW}, expect.anything());
+    });
+
+    it('shows when the owner was verified and offers a new link', () => {
+      render(
+        <OwnerSection
+          agent={{...mockAgent, owner: {...emailOwner, verifiedAt: '2026-11-09T10:12:00Z'}}}
+          editedAgent={{}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(screen.getByTestId('agent-owner-verified')).toHaveTextContent('Verified on');
+      expect(screen.getByRole('button', {name: 'Send a new verification link'})).toBeEnabled();
+    });
+
+    it('asks for a changed owner to be saved before a link is sent', () => {
+      render(
+        <OwnerSection
+          agent={{...mockAgent, owner: emailOwner}}
+          editedAgent={{owner: {...emailOwner, id: 'bob@example.com'}}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(screen.getByRole('button', {name: 'Send verification link'})).toBeDisabled();
+      expect(screen.getByText('Save the new owner before you send a verification link.')).toBeInTheDocument();
+      expect(screen.queryByTestId('agent-owner-not-verified')).not.toBeInTheDocument();
+    });
+
+    it('sends a link for an agent a control plane deployed, which is read only here', async () => {
+      const user = userEvent.setup();
+      render(
+        <OwnerSection
+          agent={{...mockAgent, owner: emailOwner, isReadOnly: true}}
+          editedAgent={{}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', {name: 'Send verification link'}));
+
+      expect(mockSendVerification).toHaveBeenCalledWith({agentId: 'agent-1', handle: OWNER_FLOW}, expect.anything());
+    });
+
+    it('sends a link to a mobile owner', async () => {
+      const user = userEvent.setup();
+      const mobileOwner = {id: '+94771234567', idType: 'mobile', isLocal: false, verified: false} as const;
+      render(
+        <OwnerSection agent={{...mockAgent, owner: mobileOwner}} editedAgent={{}} onFieldChange={mockOnFieldChange} />,
+      );
+
+      expect(screen.getByTestId('agent-owner-not-verified')).toHaveTextContent('Not verified');
+      await user.click(screen.getByRole('button', {name: 'Send verification link'}));
+
+      expect(mockSendVerification).toHaveBeenCalledWith({agentId: 'agent-1', handle: OWNER_FLOW}, expect.anything());
+    });
+
+    it.each([
+      ['a local owner', {id: 'user-1', idType: 'uuid', isLocal: true}],
+      ['an external subject', {id: 'sub-1', idType: 'uuid', isLocal: false}],
+    ] as const)('offers no verification link for %s', (_name, owner) => {
+      render(<OwnerSection agent={{...mockAgent, owner}} editedAgent={{}} onFieldChange={mockOnFieldChange} />);
+
+      expect(screen.queryByTestId('agent-owner-send-verification')).not.toBeInTheDocument();
+    });
+
+    it('reads the flow the server configures for agent owner verification', () => {
+      render(
+        <OwnerSection agent={{...mockAgent, owner: emailOwner}} editedAgent={{}} onFieldChange={mockOnFieldChange} />,
+      );
+
+      expect(mockUseGetHandle).toHaveBeenCalledWith('adminAgentOwnerVerificationFlow', true);
+    });
+
+    it('offers no verification where agent administration does not run through flows', () => {
+      render(
+        <AdministrationProvider administration={{mode: AdministrationModes.NATIVE}}>
+          <OwnerSection agent={{...mockAgent, owner: emailOwner}} editedAgent={{}} onFieldChange={mockOnFieldChange} />
+        </AdministrationProvider>,
+      );
+
+      expect(mockUseGetHandle).toHaveBeenCalledWith('adminAgentOwnerVerificationFlow', false);
+      expect(screen.queryByTestId('agent-owner-send-verification')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('agent-owner-not-verified')).not.toBeInTheDocument();
+    });
+
+    it('shows only the status when the server configures no flow for it', () => {
+      mockUseGetHandle.mockReturnValue({data: ''});
+      render(
+        <OwnerSection agent={{...mockAgent, owner: emailOwner}} editedAgent={{}} onFieldChange={mockOnFieldChange} />,
+      );
+
+      expect(screen.queryByTestId('agent-owner-send-verification')).not.toBeInTheDocument();
+      expect(screen.getByTestId('agent-owner-not-verified')).toBeInTheDocument();
+      expect(screen.queryByText(/server configuration could not be read/)).not.toBeInTheDocument();
+    });
+
+    it('says so when the setting naming the flow cannot be read', () => {
+      mockUseGetHandle.mockReturnValue({data: undefined, error: new Error('Network down')});
+      render(
+        <OwnerSection agent={{...mockAgent, owner: emailOwner}} editedAgent={{}} onFieldChange={mockOnFieldChange} />,
+      );
+
+      expect(screen.queryByTestId('agent-owner-send-verification')).not.toBeInTheDocument();
+      expect(screen.getByTestId('agent-owner-not-verified')).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          'A verification link cannot be sent from here, because the server configuration could not be read.',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('shows no verification for a declarative agent, for which the server states none', () => {
+      render(
+        <OwnerSection
+          agent={{...mockAgent, owner: {id: 'jane@example.com', idType: 'email', isLocal: false}, isReadOnly: true}}
+          editedAgent={{}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(mockUseGetHandle).toHaveBeenCalledWith('adminAgentOwnerVerificationFlow', false);
+      expect(screen.queryByTestId('agent-owner-send-verification')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('agent-owner-not-verified')).not.toBeInTheDocument();
+    });
+
+    it('shows only the status, quietly, to an operator who may not read the server configuration', () => {
+      mockUseGetHandle.mockReturnValue({data: undefined, error: {response: {status: 403}}});
+      render(
+        <OwnerSection agent={{...mockAgent, owner: emailOwner}} editedAgent={{}} onFieldChange={mockOnFieldChange} />,
+      );
+
+      expect(screen.queryByTestId('agent-owner-send-verification')).not.toBeInTheDocument();
+      expect(screen.getByTestId('agent-owner-not-verified')).toBeInTheDocument();
+      expect(screen.queryByText(/server configuration could not be read/)).not.toBeInTheDocument();
+    });
+
+    it('offers no link for an agent shared into this organization unit', () => {
+      render(
+        <OwnerSection
+          agent={{...mockAgent, owner: emailOwner, isOwnedByOU: false, isReadOnly: true}}
+          editedAgent={{}}
+          onFieldChange={mockOnFieldChange}
+        />,
+      );
+
+      expect(mockUseGetHandle).toHaveBeenCalledWith('adminAgentOwnerVerificationFlow', false);
+      expect(screen.queryByTestId('agent-owner-send-verification')).not.toBeInTheDocument();
+      expect(screen.getByTestId('agent-owner-not-verified')).toBeInTheDocument();
+    });
   });
 });

@@ -24,6 +24,8 @@ value:
     defaultHandle: default-admin-attribute-verification-flow
   adminUserCredentialResetFlow:
     defaultHandle: default-admin-user-credential-reset-flow
+  adminAgentOwnerVerificationFlow:
+    defaultHandle: default-agent-owner-verification-flow
   userUnlockFlow:
     defaultHandle: default-user-unlock-flow
   userSuspendFlow:

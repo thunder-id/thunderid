@@ -13,7 +13,7 @@
  * await agentDetails.accountStatus.chooseAction("Suspend");
  */
 
-import { Page } from "@playwright/test";
+import { Locator, Page } from "@playwright/test";
 import { ConsoleRoutes } from "../../configs/routes/console-routes";
 import { Timeouts } from "../../constants/timeouts";
 import { BasePage } from "../base.page";
@@ -24,10 +24,23 @@ export class AgentDetailsPage extends BasePage {
 
   readonly accountStatus: AccountStatusControls;
 
+  // An external owner's verification: its status, and the panel on the Advanced tab that sends the owner a link.
+  readonly ownerNotVerified: Locator;
+  readonly ownerVerificationPanel: Locator;
+  readonly sendOwnerVerificationButton: Locator;
+
   constructor(page: Page, baseUrl: string) {
     super(page);
     this.baseUrl = baseUrl;
     this.accountStatus = new AccountStatusControls(page);
+    this.ownerNotVerified = page.getByTestId("agent-owner-not-verified");
+    this.ownerVerificationPanel = page.getByTestId("agent-owner-verification");
+    this.sendOwnerVerificationButton = page.getByTestId("agent-owner-send-verification");
+  }
+
+  /** Open one of the agent's tabs by its name. */
+  async clickTab(name: RegExp): Promise<void> {
+    await this.page.getByRole("tab", { name }).click();
   }
 
   /** Navigate straight to an agent's details page by id and wait for its tabs. */

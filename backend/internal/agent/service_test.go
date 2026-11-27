@@ -393,6 +393,123 @@ func (suite *AgentServiceTestSuite) TestBuildSystemAttributesJSON_EmptyFields() 
 	assert.Nil(suite.T(), raw)
 }
 
+// A recorded owner verification is read onto the owner, and is never written back into it.
+func (suite *AgentServiceTestSuite) TestOwnerVerifiedAt_ReadOnTheOwnerAndNotStored() {
+	raw := json.RawMessage(`{"owner":{"id":"jane@example.com","idType":"email","isLocal":false},` +
+		`"attributeVerification":{"owner":{"verifiedAt":"2026-11-09T10:12:00Z"}}}`)
+
+	sysAttrs := readSystemAttributes(raw)
+
+	suite.Require().NotNil(sysAttrs.Owner)
+	assert.Equal(suite.T(), "2026-11-09T10:12:00Z", sysAttrs.Owner.VerifiedAt)
+	suite.Require().NotNil(sysAttrs.Owner.Verified)
+	assert.True(suite.T(), *sysAttrs.Owner.Verified)
+	var stored struct {
+		Owner map[string]interface{} `json:"owner"`
+	}
+	suite.Require().NoError(json.Unmarshal(buildSystemAttributesJSON(sysAttrs, ""), &stored))
+	assert.NotContains(suite.T(), stored.Owner, "verifiedAt")
+	assert.NotContains(suite.T(), stored.Owner, "verified")
+	assert.Equal(suite.T(), "2026-11-09T10:12:00Z", sysAttrs.Owner.VerifiedAt, "the read owner is not changed")
+}
+
+// An owner that can be verified, without a recorded verification or with one that does not read, reads as
+// not verified.
+func (suite *AgentServiceTestSuite) TestOwnerVerifiedAt_NotVerified() {
+	for name, raw := range map[string]string{
+		"none":       `{"owner":{"id":"jane@example.com","idType":"email","isLocal":false}}`,
+		"mobile":     `{"owner":{"id":"+94771234567","idType":"mobile","isLocal":false}}`,
+		"unreadable": `{"owner":{"id":"jane@example.com","idType":"email","isLocal":false},"attributeVerification":[]}`,
+	} {
+		suite.Run(name, func() {
+			sysAttrs := readSystemAttributes(json.RawMessage(raw))
+			suite.Require().NotNil(sysAttrs.Owner)
+			assert.Empty(suite.T(), sysAttrs.Owner.VerifiedAt)
+			suite.Require().NotNil(sysAttrs.Owner.Verified)
+			assert.False(suite.T(), *sysAttrs.Owner.Verified)
+		})
+	}
+}
+
+// An owner that cannot be verified states neither whether nor when it was, even with a recorded verification.
+func (suite *AgentServiceTestSuite) TestOwnerVerifiedAt_NotStatedForAnOwnerThatCannotBeVerified() {
+	verification := `,"attributeVerification":{"owner":{"verifiedAt":"2026-11-09T10:12:00Z"}}}`
+	for name, owner := range map[string]string{
+		"local":               `{"owner":{"id":"user-1","idType":"uuid","isLocal":true}`,
+		"external subject":    `{"owner":{"id":"sub-1","idType":"uuid","isLocal":false}`,
+		"referenced id":       `{"owner":{"id":"var:OWNER_ID","idType":"email","isLocal":false}`,
+		"referenced locality": `{"owner":{"id":"jane@example.com","idType":"email","isLocal":"var:OWNER_LOCAL"}`,
+	} {
+		suite.Run(name, func() {
+			sysAttrs := readSystemAttributes(json.RawMessage(owner + verification))
+			suite.Require().NotNil(sysAttrs.Owner)
+			assert.Nil(suite.T(), sysAttrs.Owner.Verified)
+			assert.Empty(suite.T(), sysAttrs.Owner.VerifiedAt)
+		})
+	}
+}
+
+// A caller cannot mark an owner verified.
+func (suite *AgentServiceTestSuite) TestNormalizeOwner_IgnoresVerification() {
+	verified := true
+	owner, svcErr := normalizeOwner(&providers.AgentOwner{ID: "jane@example.com",
+		IDType: providers.AgentOwnerIDTypeEmail, IsLocal: providers.AgentOwnerExternal, Verified: &verified,
+		VerifiedAt: "2026-11-09T10:12:00Z"}, false)
+
+	suite.Require().Nil(svcErr)
+	assert.Nil(suite.T(), owner.Verified)
+	assert.Empty(suite.T(), owner.VerifiedAt)
+}
+
+// An update that keeps the owner reports the verification the owner keeps; a caller's claim is ignored.
+func (suite *AgentServiceTestSuite) TestResolveUpdateOwner_KeepsTheVerificationOfAnUnchangedOwner() {
+	verified := true
+	current := &providers.AgentOwner{ID: "jane@example.com", IDType: providers.AgentOwnerIDTypeEmail,
+		IsLocal: providers.AgentOwnerExternal, Verified: &verified, VerifiedAt: "2026-11-09T10:12:00Z"}
+	requested := &providers.AgentOwner{ID: "jane@example.com", IDType: providers.AgentOwnerIDTypeEmail,
+		IsLocal: providers.AgentOwnerExternal, VerifiedAt: "2020-01-01T00:00:00Z"}
+
+	owner, svcErr := (&agentService{}).resolveUpdateOwner(context.Background(), requested, current, "")
+
+	suite.Require().Nil(svcErr)
+	assert.Equal(suite.T(), "2026-11-09T10:12:00Z", owner.VerifiedAt)
+	suite.Require().NotNil(owner.Verified)
+	assert.True(suite.T(), *owner.Verified)
+}
+
+// An owner written differently that names the same contact keeps its verification, as the stored one does.
+func (suite *AgentServiceTestSuite) TestResolveUpdateOwner_KeepsTheVerificationOfTheSameContact() {
+	verified := true
+	current := &providers.AgentOwner{ID: "jane@example.com", IDType: providers.AgentOwnerIDTypeEmail,
+		IsLocal: providers.AgentOwnerExternal, Verified: &verified, VerifiedAt: "2026-11-09T10:12:00Z"}
+	requested := &providers.AgentOwner{ID: "jane@EXAMPLE.com", IDType: providers.AgentOwnerIDTypeEmail,
+		IsLocal: providers.AgentOwnerExternal}
+
+	owner, svcErr := (&agentService{}).resolveUpdateOwner(context.Background(), requested, current, "")
+
+	suite.Require().Nil(svcErr)
+	assert.Equal(suite.T(), "jane@EXAMPLE.com", owner.ID)
+	assert.Equal(suite.T(), "2026-11-09T10:12:00Z", owner.VerifiedAt)
+	suite.Require().NotNil(owner.Verified)
+	assert.True(suite.T(), *owner.Verified)
+}
+
+// A changed owner that can be verified starts unverified, whatever the caller claims.
+func (suite *AgentServiceTestSuite) TestResolveUpdateOwner_ANewOwnerIsNotVerified() {
+	verified := true
+	current := &providers.AgentOwner{ID: "jane@example.com", IDType: providers.AgentOwnerIDTypeEmail,
+		IsLocal: providers.AgentOwnerExternal, Verified: &verified, VerifiedAt: "2026-11-09T10:12:00Z"}
+	requested := &providers.AgentOwner{ID: "+94771234567", IDType: providers.AgentOwnerIDTypeMobile,
+		IsLocal: providers.AgentOwnerExternal, Verified: &verified, VerifiedAt: "2026-11-09T10:12:00Z"}
+
+	owner, svcErr := (&agentService{}).resolveUpdateOwner(context.Background(), requested, current, "")
+
+	suite.Require().Nil(svcErr)
+	assert.Empty(suite.T(), owner.VerifiedAt)
+	suite.Require().NotNil(owner.Verified)
+	assert.False(suite.T(), *owner.Verified)
+}
+
 // --- validateBaseFields ---
 
 func (suite *AgentServiceTestSuite) TestValidateBaseFields_MissingType() {
@@ -1957,10 +2074,18 @@ func (suite *AgentServiceTestSuite) TestCreateAgent_ExternalOwner_StoredWithoutL
 		Type: testAgentType, OUID: testOUID, Owner: owner,
 	})
 	suite.Require().Nil(svcErr)
-	suite.Equal(owner, resp.Owner)
+	suite.Equal(unverifiedOwner(owner), resp.Owner)
 	mockEntity.AssertNotCalled(suite.T(), "GetEntityProfile", mock.Anything, owner.ID)
 	suite.Require().NotNil(stored)
-	suite.Equal(owner, readSystemAttributes(stored.SystemAttributes).Owner)
+	suite.Equal(unverifiedOwner(owner), readSystemAttributes(stored.SystemAttributes).Owner)
+}
+
+// unverifiedOwner is the owner as a read states it: an owner that can be verified, not yet verified.
+func unverifiedOwner(owner *providers.AgentOwner) *providers.AgentOwner {
+	read := *owner
+	verified := false
+	read.Verified = &verified
+	return &read
 }
 
 // On a control plane, an owner given by references is stored as given and never looked up, so its
@@ -2166,7 +2291,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_ExternalOwner_SkipsLookup() 
 		Type: testAgentType, Owner: owner,
 	})
 	suite.Require().Nil(svcErr)
-	suite.Equal(owner, resp.Owner)
+	suite.Equal(unverifiedOwner(owner), resp.Owner)
 	mockEntity.AssertNotCalled(suite.T(), "GetEntityProfile", mock.Anything, owner.ID)
 }
 
@@ -7698,4 +7823,32 @@ func (suite *AgentServiceTestSuite) TestRegenerateAgentSecret() {
 		_, svcErr := svc.RegenerateAgentSecret(context.Background(), testAgentID)
 		suite.Equal(&tidcommon.InternalServerError, svcErr)
 	})
+}
+
+// A control plane states no verification of an owner, which each deployment it deploys to makes on its own.
+func (suite *AgentServiceTestSuite) TestResponseOwner_NoVerificationOnAControlPlane() {
+	verified := false
+	owner := &providers.AgentOwner{ID: "jane@example.com", IDType: providers.AgentOwnerIDTypeEmail,
+		IsLocal: providers.AgentOwnerExternal, Verified: &verified}
+
+	assert.Same(suite.T(), owner, (&agentService{}).responseOwner(owner, false))
+	stated := (&agentService{keepsReferences: true}).responseOwner(owner, false)
+	assert.Nil(suite.T(), stated.Verified)
+	assert.Empty(suite.T(), stated.VerifiedAt)
+	assert.NotNil(suite.T(), owner.Verified, "the owner given is not changed")
+}
+
+// A declarative agent's owner cannot be verified, as a declarative user's contacts cannot, so a data plane states
+// no verification for it.
+func (suite *AgentServiceTestSuite) TestResponseOwner_NoVerificationForADeclarativeAgent() {
+	verified := false
+	owner := &providers.AgentOwner{ID: "jane@example.com", IDType: providers.AgentOwnerIDTypeEmail,
+		IsLocal: providers.AgentOwnerExternal, Verified: &verified}
+
+	stated := (&agentService{}).responseOwner(owner, true)
+
+	assert.Nil(suite.T(), stated.Verified)
+	assert.Empty(suite.T(), stated.VerifiedAt)
+	assert.Equal(suite.T(), owner.ID, stated.ID)
+	assert.NotNil(suite.T(), owner.Verified, "the owner given is not changed")
 }

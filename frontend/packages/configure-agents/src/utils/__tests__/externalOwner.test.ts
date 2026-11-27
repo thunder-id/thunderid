@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {describe, expect, it} from 'vitest';
-import {getExternalOwnerIdError, isInvalidExternalOwner} from '../externalOwner';
+import {getExternalOwnerIdError, isInvalidExternalOwner, isVerifiableOwner} from '../externalOwner';
 
 describe('getExternalOwnerIdError', () => {
   it.each([
@@ -42,5 +42,20 @@ describe('isInvalidExternalOwner', () => {
   it('checks an external owner against its type, defaulting to uuid', () => {
     expect(isInvalidExternalOwner({id: 'jane', idType: 'email', isLocal: false})).toBe(true);
     expect(isInvalidExternalOwner({id: 'jane', isLocal: false})).toBe(false);
+  });
+});
+
+describe('owner verification', () => {
+  it.each([
+    [{id: 'jane@example.com', idType: 'email', isLocal: false, verified: false}, true],
+    [{id: '+94771234567', idType: 'mobile', isLocal: false, verified: true, verifiedAt: '2026-11-17T06:19:41Z'}, true],
+    // A control plane, or a declarative agent, states no verification for an owner of these types.
+    [{id: 'jane@example.com', idType: 'email', isLocal: false}, false],
+    [{id: 'sub-1', idType: 'uuid', isLocal: false}, false],
+    [{id: 'user-1', idType: 'uuid', isLocal: true}, false],
+    [{id: 'user-1'}, false],
+    [undefined, false],
+  ] as const)('%j is verifiable: %s', (owner, verifiable) => {
+    expect(isVerifiableOwner(owner)).toBe(verifiable);
   });
 });

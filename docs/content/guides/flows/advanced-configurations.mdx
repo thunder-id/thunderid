@@ -2464,7 +2464,7 @@ Pins the email address or mobile number to verify, so that every later node acts
 
 **When to use:** Before Generate OTP or Generate Invite, in one of these flow types:
 - **Self:** at the start of the flow. The user is the signed-in user whose access token, issued by this deployment, started the flow.
-- **Administrator-initiated:** at the start of the flow, after Validate Permission. The user is the one the administrator names in the `subject` input of the request that starts the flow. The flow keeps that user to the end, so a later request cannot change it. The node refuses a user the administrator may not update, such as a user outside an organization unit administrator's units.
+- **Administrator-initiated:** at the start of the flow, after Validate Permission. The user is the one the administrator names in the `subject` input of the request that starts the flow. The flow keeps that user to the end, so a later request cannot change it. The node refuses a user the administrator may not update, such as a user outside an organization unit administrator's units. When `subject` names an agent and the attribute is `owner`, the node pins the agent's external owner instead, and refuses an agent the administrator may not update. `default-agent-owner-verification-flow` does this.
 - **Recovery:** after Identify User. The user is the one the flow identified.
 - **Registration** and **User Onboarding:** the user is the one the flow established. Before Provisioning creates the user, the node pins the value the flow collected for the attribute, such as the address entered on the sign-up form or the invited address, and **Record Verification** after Provisioning records it for the new user.
 
@@ -2512,13 +2512,16 @@ For an existing user, on the start and on each resend, the node publishes the `A
 - The flow's caller may not update the user, such as a user outside an organization unit administrator's units (`FET-1112`)
 - The user is suspended (`FET-1114`, Account suspended)
 - Attribute is not a top-level `email` or `mobile` attribute of the user's type, is a credential, or holds no value; for a user not created yet, no user type is resolved (`FET-1112`)
+- For an agent: the attribute is not `owner`, the agent is declarative, or the flow's caller may not update the agent (`FET-1112`)
+- For an agent: the agent has no owner, or its owner is local, named by a user ID, or holds a variable reference, so it is not an external owner named by an email address or mobile number (`FET-1112`)
+- For an agent: the agent is suspended (`FET-1114`, Account suspended), or its lifespan has ended (`FET-1112`)
 
 </details>
 
 <details>
 <summary>Record Verification</summary>
 
-Records that the user verified the email address or mobile number that **Prepare Verification** pinned. The user API then lists the attribute in the user's `verifiedAttributes`, with the time it was verified. Runs in the background: no user interaction at this step.
+Records that the user verified the email address or mobile number that **Prepare Verification** pinned. The user API then lists the attribute in the user's `verifiedAttributes`, with the time it was verified. For an agent's external owner, the agent API reports the verification as `owner.verified` and `owner.verifiedAt`. Runs in the background: no user interaction at this step.
 
 **When to use:** After Verify OTP or Verify Invite accepts the code or link. In a Registration or User Onboarding flow that pinned before the user existed, place it after Provisioning. Place a confirmation prompt between Verify Invite and this node, so opening the link alone records nothing, for example when a mail security scanner opens it. <ProductName /> does not check for the prompt. The Console's **Self Attribute Verification with Email Link** and **Administrator Attribute Verification with Email Link** templates include one.
 
@@ -2558,6 +2561,8 @@ A recorded verification publishes the `ATTRIBUTE_VERIFICATION_VERIFIED` event. A
 - User suspended since the pin (`FET-1114`, Account suspended)
 - User deleted, or the value changed or can no longer be verified, since the pin (`FET-1112`)
 - The flow's caller may no longer update the user, such as an administrator who lost the permission before the user confirmed (`FET-1112`)
+- For an agent: the agent was deleted, its owner changed, or the flow's caller may no longer update the agent, since the pin (`FET-1112`)
+- For an agent: the agent was suspended (`FET-1114`), or its lifespan ended (`FET-1112`), since the pin
 
 </details>
 

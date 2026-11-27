@@ -15,6 +15,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	entitypkg "github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/idp"
 	oauthconfig "github.com/thunder-id/thunderid/internal/oauth/config"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
@@ -692,6 +693,11 @@ func resolveClientEntityAttributes(
 		if reserved[name] {
 			continue
 		}
+		// owner_verified asserts that the server verified an agent's owner, so an attribute of the agent cannot
+		// state it, even where the server states no verification.
+		if name == constants.ClaimOwnerVerified && entity.Category == providers.EntityCategoryAgent {
+			continue
+		}
 		if val, ok := allAttrs[name]; ok {
 			filtered[name] = val
 		}
@@ -699,8 +705,8 @@ func resolveClientEntityAttributes(
 	return filtered, nil
 }
 
-// resolveClientSystemAttributes returns the agent system attributes (owner, sub_valid_until) selected by
-// ClientConfig.Attributes, read from Entity.SystemAttributes. Restricted to agent entities so an
+// resolveClientSystemAttributes returns the agent system attributes (owner, owner_verified, sub_valid_until)
+// selected by ClientConfig.Attributes, read from Entity.SystemAttributes. Restricted to agent entities so an
 // application client can never surface these claims regardless of its stored allow-list.
 // sub_valid_until is the stored validUntil, kept in RFC 3339 and surfaced in Unix seconds, as the other
 // time claims are, and is left out when the lifespan does not end.
@@ -726,6 +732,15 @@ func resolveClientSystemAttributes(
 			// An unreadable end is refused at issuance, so it never reaches a token.
 			if end, bounded, err := authnprovidercm.ValidUntilOf(entity.SystemAttributes); err == nil && bounded {
 				filtered[name] = end.Unix()
+			}
+			continue
+		}
+		if name == constants.ClaimOwnerVerified {
+			// Stated only for an owner that can be verified, as the agent's own reads state it: never for a
+			// declarative agent.
+			verifiedAt, verifiable := entitypkg.AgentOwnerVerifiedAt(entity.SystemAttributes)
+			if verifiable && !entity.IsReadOnly {
+				filtered[name] = verifiedAt != ""
 			}
 			continue
 		}

@@ -113,8 +113,8 @@ export const FLOW_PAGE_SIZE = 100;
 /**
  * `flow` server-config entries; an unset handle is the opt-out, running the native endpoint. The
  * account lifecycle actions and attribute verification have no native endpoint, so an unset handle
- * withholds them. Attribute verification and credential reset name an `ADMIN_INITIATED` flow, which
- * starts by handle.
+ * withholds them. Attribute verification, credential reset and agent owner verification name an
+ * `ADMIN_INITIATED` flow, which starts by handle.
  */
 export const AdministrationFlowConfigKey = {
   USER_UNLOCK: 'userUnlockFlow',
@@ -127,6 +127,7 @@ export const AdministrationFlowConfigKey = {
   APPLICATION_UNSUSPEND: 'applicationUnsuspendFlow',
   ADMIN_ATTRIBUTE_VERIFICATION: 'adminAttributeVerificationFlow',
   ADMIN_USER_CREDENTIAL_RESET: 'adminUserCredentialResetFlow',
+  ADMIN_AGENT_OWNER_VERIFICATION: 'adminAgentOwnerVerificationFlow',
 } as const;
 
 export type AdministrationFlowConfigKeyValue =
@@ -147,13 +148,14 @@ export const AdministrationFlowInput = {
 } as const;
 
 /**
- * Keys of values a flow returns. `emailSent` is `"false"` when a best-effort email node sent nothing.
- * `channel` and `maskedDestination` say where a verification link went.
+ * Keys of values a flow returns. `emailSent` is `"false"` when a best-effort email node sent nothing, and
+ * `smsSent` is the same for an SMS node. `channel` and `maskedDestination` say where a verification link went.
  */
 export const AdministrationFlowData = {
   CHANNEL: 'channel',
   EMAIL_SENT: 'emailSent',
   MASKED_DESTINATION: 'maskedDestination',
+  SMS_SENT: 'smsSent',
 } as const;
 
 /**

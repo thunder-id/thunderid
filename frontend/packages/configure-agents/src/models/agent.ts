@@ -36,6 +36,13 @@ export interface AgentOwner {
   idType?: AgentOwnerIdType;
   /** Absent reads as local. */
   isLocal?: boolean;
+  /**
+   * Whether an owner managed in another identity system, named by an email address or mobile number, proved
+   * control of it. Set by the server for such an owner only, and never sent.
+   */
+  verified?: boolean;
+  /** When the owner proved control of its contact. Set by the server, absent while not verified, never sent. */
+  verifiedAt?: string;
 }
 
 export interface Agent {

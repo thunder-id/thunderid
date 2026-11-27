@@ -304,6 +304,10 @@ const (
 	ClaimOUHandle       string = "ouHandle"
 	// ClaimOwner carries an agent's system-attribute owner on its client token.
 	ClaimOwner string = "owner"
+	// ClaimOwnerVerified carries, on an agent's client token, whether its owner proved control of the
+	// email address or mobile number that names it. It is stated only for an owner that can be verified:
+	// one managed in another identity system and named by an email address or mobile number.
+	ClaimOwnerVerified string = "owner_verified"
 	// ClaimSubValidUntil carries when the subject agent's lifespan ends, its validUntil, on the agent's
 	// client token, in Unix seconds like the other time claims. It is omitted for an agent whose
 	// lifespan does not end.
@@ -374,6 +378,7 @@ const (
 // surfaced as client-token claims.
 var SurfaceableClientSystemClaims = map[string]bool{
 	ClaimOwner:         true,
+	ClaimOwnerVerified: true,
 	ClaimSubValidUntil: true,
 }
 

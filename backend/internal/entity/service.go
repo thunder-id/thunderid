@@ -696,7 +696,8 @@ func (s *entityService) UpdateSystemAttributes(ctx context.Context, entityID str
 	if err := s.validateIndexedValueLimit(attrs); err != nil {
 		return err
 	}
-	return s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+	var cleared []clearedVerification
+	err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		current, err := s.store.LockEntity(txCtx, entityID)
 		if err != nil {
 			return err
@@ -706,8 +707,20 @@ func (s *entityService) UpdateSystemAttributes(ctx context.Context, entityID str
 		if err != nil {
 			return err
 		}
+
+		if current.Category == providers.EntityCategoryAgent {
+			if preserved, cleared, err = s.invalidateOwnerVerification(current, preserved); err != nil {
+				return err
+			}
+		}
 		return s.store.UpdateSystemAttributes(txCtx, entityID, preserved)
 	})
+	if err != nil {
+		return err
+	}
+
+	s.publishClearedVerifications(ctx, entityID, cleared)
+	return nil
 }
 
 // UpdateOwnership moves an entity to another organization unit and project.
@@ -2422,7 +2435,7 @@ func (s *entityService) RecordAttributeVerification(ctx context.Context,
 	applied := false
 	_, err := s.transactOnLockedEntity(ctx, pinned, func(txCtx context.Context, current providers.Entity,
 		verifiableAttributes map[string]string) error {
-		stored, err := s.storedContactValue(current.Attributes, verifiableAttributes, record.Attribute)
+		stored, err := s.verifiableValue(current, verifiableAttributes, record.Attribute)
 		if err != nil || stored != record.Value {
 			return err
 		}
@@ -2528,11 +2541,15 @@ func (s *entityService) publishClearedVerifications(ctx context.Context, entityI
 // attribute, never its value, and names the caller as the actor outside a runtime context.
 func (s *entityService) newVerificationInvalidatedEvent(ctx context.Context, entityID string,
 	cleared clearedVerification) *providers.Event {
+	subjectType := event.PrincipalTypeUser
+	if cleared.isAgent {
+		subjectType = event.PrincipalTypeAgent
+	}
 	evt := event.NewEvent(syscontext.GetTraceID(ctx), string(event.EventTypeAttributeVerificationInvalidated),
 		event.ComponentEntityService).
 		WithStatus(providers.StatusSuccess).
 		WithData(event.DataKey.Subject, entityID).
-		WithData(event.DataKey.SubjectType, event.PrincipalTypeUser).
+		WithData(event.DataKey.SubjectType, subjectType).
 		WithData(event.DataKey.Attribute, cleared.attribute).
 		WithData(event.DataKey.InvalidationReason, string(cleared.reason))
 	if actor := security.GetSubject(ctx); actor != "" && !security.IsRuntimeContext(ctx) {
@@ -2605,6 +2622,10 @@ func (s *entityService) transactOnLockedEntity(ctx context.Context, existing pro
 func (s *entityService) invalidateVerification(current providers.Entity, nextType string,
 	verifiableAttributes map[string]string, nextAttributes, systemAttributes json.RawMessage) (
 	json.RawMessage, []clearedVerification, error) {
+	if current.Category == providers.EntityCategoryAgent {
+		return s.invalidateOwnerVerification(current, systemAttributes)
+	}
+
 	if current.Category != providers.EntityCategoryUser {
 		return systemAttributes, nil, nil
 	}
@@ -2645,6 +2666,52 @@ func (s *entityService) invalidateVerification(current providers.Entity, nextTyp
 	}
 
 	return invalidated, cleared, nil
+}
+
+// invalidateOwnerVerification removes an agent's owner verification when the system attributes being written
+// change the owner it was recorded for, or no longer name an owner that can be verified.
+func (s *entityService) invalidateOwnerVerification(current providers.Entity, systemAttributes json.RawMessage) (
+	json.RawMessage, []clearedVerification, error) {
+	entries, err := ReadRecordedAttributeVerifications(systemAttributes)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if _, recorded := entries[AgentOwnerVerificationAttribute]; !recorded {
+		return systemAttributes, nil, nil
+	}
+
+	before, beforeType := AgentOwnerContact(current.SystemAttributes)
+	after, afterType := AgentOwnerContact(systemAttributes)
+	if after != "" && after == before && afterType == beforeType {
+		return systemAttributes, nil, nil
+	}
+
+	reason := verificationValueChanged
+	if after == "" {
+		reason = verificationValueRemoved
+	}
+
+	delete(entries, AgentOwnerVerificationAttribute)
+	invalidated, err := s.withVerifiedAttributes(systemAttributes, entries)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return invalidated, []clearedVerification{{attribute: AgentOwnerVerificationAttribute, reason: reason,
+		isAgent: true}}, nil
+}
+
+// verifiableValue returns the canonical value a verification of the attribute is recorded for: an agent's
+// owner managed in another identity system, or an email or mobile attribute of the entity's type.
+func (s *entityService) verifiableValue(current providers.Entity, verifiableAttributes map[string]string,
+	attribute string) (string, error) {
+	if current.Category == providers.EntityCategoryAgent && attribute == AgentOwnerVerificationAttribute {
+		value, _ := AgentOwnerContact(current.SystemAttributes)
+		return value, nil
+	}
+
+	return s.storedContactValue(current.Attributes, verifiableAttributes, attribute)
 }
 
 // withVerifiedAttributes returns the system attributes with the recorded verification replaced by entries.

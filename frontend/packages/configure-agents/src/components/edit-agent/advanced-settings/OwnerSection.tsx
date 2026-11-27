@@ -2,12 +2,17 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {SettingsCard} from '@thunderid/components';
-import {useGetUsers} from '@thunderid/configure-users';
-import {MenuItem, Select, Typography} from '@wso2/oxygen-ui';
+import {useGetAdministrationFlowHandle, useGetUsers} from '@thunderid/configure-users';
+import {AdministrationModes, useAdministrationOperation} from '@thunderid/contexts';
+import {AdministrationFlowConfigKey} from '@thunderid/utils';
+import {Box, MenuItem, Select, Typography} from '@wso2/oxygen-ui';
 import {useMemo, type JSX} from 'react';
 import {useTranslation} from 'react-i18next';
-import {PERSONAL_AGENT_KIND, type Agent} from '../../../models/agent';
+import OwnerVerificationPanel from './OwnerVerificationPanel';
+import {PERSONAL_AGENT_KIND, type Agent, type AgentOwner} from '../../../models/agent';
+import {isVerifiableOwner} from '../../../utils/externalOwner';
 import AgentOwnerField from '../../AgentOwnerField';
+import OwnerVerificationStatus from '../../OwnerVerificationStatus';
 
 interface OwnerSectionProps {
   agent: Agent;
@@ -16,6 +21,11 @@ interface OwnerSectionProps {
   /** Whether the signed-in admin may change the agent here. */
   readOnly?: boolean;
 }
+
+/** Whether the edited owner differs from the saved one, so it would be lost by verifying the saved owner. */
+const isOwnerUnsaved = (saved?: AgentOwner, edited?: AgentOwner): boolean =>
+  edited !== undefined &&
+  (edited.id !== saved?.id || edited.idType !== saved?.idType || edited.isLocal !== saved?.isLocal);
 
 interface UserOption {
   id: string;
@@ -31,7 +41,11 @@ const formatUserLabel = (user: {id: string; display?: string; attributes?: Recor
 };
 
 /**
- * Shows and edits the agent's owner. A read-only agent's owner, and a personal agent's, cannot be changed.
+ * Shows and edits the agent's owner. A read-only agent's owner, and a personal agent's, cannot be changed. An
+ * external owner that can be verified shows whether it is, and where the deployment runs flows, a way to send it a
+ * verification link. The link is sent through the flow the server's `adminAgentOwnerVerificationFlow` setting names;
+ * with none set, for an agent shared into this organization unit, for an operator who may not read the server
+ * configuration, or when it cannot be read, only the status is shown, and a failed read says so.
  */
 export default function OwnerSection({
   agent,
@@ -54,6 +68,47 @@ export default function OwnerSection({
   // A personal agent keeps the owner it was registered for.
   const isPersonal = agent.kind === PERSONAL_AGENT_KIND;
   const isOwnerLocked = readOnly || isPersonal;
+  const ownerUnsaved = isOwnerUnsaved(agent.owner, editedAgent.owner);
+  const verifiable =
+    useAdministrationOperation('agents', 'verifyOwner') === AdministrationModes.FLOW && isVerifiableOwner(agent.owner);
+  // The organization unit an agent is shared into cannot send its owner a link.
+  const canSend = verifiable && agent.isOwnedByOU !== false;
+  const {data: verificationHandle, error: handleError} = useGetAdministrationFlowHandle(
+    AdministrationFlowConfigKey.ADMIN_AGENT_OWNER_VERIFICATION,
+    canSend,
+  );
+  // An operator who may not read the server configuration is not offered the link, as for a user's contacts. Any
+  // other failure to read it is reported.
+  const handleUnreadable =
+    handleError !== null &&
+    handleError !== undefined &&
+    (handleError as {response?: {status?: number}}).response?.status !== 403;
+  let verification: JSX.Element | null = null;
+  if (canSend && verificationHandle) {
+    verification = (
+      <OwnerVerificationPanel
+        // A link sent to an earlier owner says nothing about this one.
+        key={`${agent.owner?.idType}:${agent.owner?.id}`}
+        agent={agent}
+        ownerUnsaved={ownerUnsaved}
+        handle={verificationHandle}
+      />
+    );
+  } else if (verifiable && !ownerUnsaved) {
+    verification = (
+      <Box data-testid="agent-owner-verification-status" sx={{mt: 2}}>
+        <OwnerVerificationStatus owner={agent.owner} />
+        {canSend && handleUnreadable && (
+          <Typography variant="body2" color="error" sx={{mt: 1}}>
+            {t(
+              'agents:owner.verification.settingUnreadable',
+              'A verification link cannot be sent from here, because the server configuration could not be read.',
+            )}
+          </Typography>
+        )}
+      </Box>
+    );
+  }
 
   return (
     <SettingsCard
@@ -107,6 +162,7 @@ export default function OwnerSection({
           </Select>
         }
       />
+      {verification}
     </SettingsCard>
   );
 }
