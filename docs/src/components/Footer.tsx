@@ -110,6 +110,7 @@ export default function Footer(): JSX.Element {
             links={[
               {label: 'Contributing', href: '/community/contributing/propose-a-feature'},
               {label: 'Events', href: '/events'},
+              {label: 'Discord', href: productConfig.project.community.discord.inviteUrl},
               {label: 'Discussions', href: productConfig.project.source.github.discussionsUrl},
               {label: 'Report an Issue', href: productConfig.project.source.github.issuesUrl},
             ]}
