@@ -180,4 +180,27 @@ describe('fieldsForMode', () => {
       expect(timeout?.pattern?.test(invalid)).toBe(false);
     }
   });
+
+  it('asks only for the name and URL when creating an authentication endpoint, and edits the rest', () => {
+    expect(fieldNames(ConnectionTypes.AUTHENTICATION_ENDPOINT, 'create')).toEqual(['name', 'url']);
+    expect(fieldNames(ConnectionTypes.AUTHENTICATION_ENDPOINT, 'edit')).toEqual([
+      'name',
+      'description',
+      'url',
+      'timeoutMs',
+      'username',
+      'password',
+    ]);
+    const fields = fieldsForMode(ConnectionTypes.AUTHENTICATION_ENDPOINT, 'edit');
+    expect(fields.find((field) => field.name === 'password')).toMatchObject({kind: 'secret', pairedWith: 'username'});
+    expect(fields.find((field) => field.name === 'username')).toMatchObject({
+      configuresAuthentication: true,
+      pairedWith: 'password',
+    });
+    expect(fields.find((field) => field.name === 'url')).toMatchObject({
+      requiresHttpsWhenAuthenticated: true,
+      rejectsLoopbackHttp: true,
+      rejectsUserInfo: true,
+    });
+  });
 });

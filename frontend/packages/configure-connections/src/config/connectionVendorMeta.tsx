@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {GithubIcon, GoogleIcon, ResourceAvatar} from '@thunderid/components';
-import {Mail, MessageSquare, Send, ServerCog, Webhook} from '@wso2/oxygen-ui-icons-react';
+import {Fingerprint, Mail, MessageSquare, Send, ServerCog, Webhook} from '@wso2/oxygen-ui-icons-react';
 import {CONNECTION_CATEGORIES} from '../constants/connection-categories';
 import ConnectionConstants from '../constants/connection-constants';
 import {
@@ -156,6 +156,19 @@ export const CONNECTION_VENDOR_META: ConnectionVendorMeta[] = [
     showsUsages: true,
     generalSettingsCardCopy: 'configuration',
     deleteDescriptionKey: 'connections:detail.dangerZone.delete.httpDescription',
+  },
+  {
+    key: 'authentication-endpoint',
+    backendType: ConnectionTypes.AUTHENTICATION_ENDPOINT,
+    displayName: 'Authentication endpoint',
+    descriptionKey: 'connections:vendor.authentication-endpoint.description',
+    logo: <ResourceAvatar transparent variant="rounded" size={AVATAR_SIZE} fallback={<Fingerprint size={28} />} />,
+    categories: ['custom'],
+    presentation: 'custom',
+    supportsAttributeMapping: true,
+    showsUsages: true,
+    generalSettingsCardCopy: 'configuration',
+    deleteDescriptionKey: 'connections:detail.dangerZone.delete.authenticationEndpointDescription',
   },
 ];
 

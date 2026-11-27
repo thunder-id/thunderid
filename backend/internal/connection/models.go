@@ -30,7 +30,13 @@ var idpBackedVendors = []idpBackedVendor{
 	{name: "github", idpType: providers.IDPTypeGitHub},
 	{name: "oidc", idpType: providers.IDPTypeOIDC},
 	{name: "oauth", idpType: providers.IDPTypeOAuth},
+	{name: authenticationEndpointVendorName, idpType: providers.IDPTypeExtensionAuthentication},
 }
+
+// authenticationEndpointVendorName is the connection vendor name for an authentication endpoint connection,
+// where an organization's own service authenticates the user. It is backed by an identity provider of type
+// EXTENSION_AUTHENTICATION so its attribute mapping and account linking are the ones a federated connection has.
+const authenticationEndpointVendorName = "authentication-endpoint"
 
 // smsGatewayVendorName is the connection vendor name for the generic HTTP SMS gateway. The
 // stored message provider stays NotificationProviderTypeCustom; this name is presentation-only,

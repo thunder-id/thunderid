@@ -90,6 +90,19 @@ func (e *connectionExporter) GetParameterizerType() string {
 // GetAllResourceIDs returns the IDs of every configured connection instance across both
 // backing services, restricted to vendors registered with /connections.
 func (e *connectionExporter) GetAllResourceIDs(ctx context.Context) ([]string, *tidcommon.ServiceError) {
+	return e.resourceIDs(ctx, false)
+}
+
+// GetReferringResourceIDs returns the IDs GetAllResourceIDs does, and those of the HTTP and AuthZEN PDP
+// connections declared in a file, whose values a gateway still has to hold.
+func (e *connectionExporter) GetReferringResourceIDs(ctx context.Context) ([]string, *tidcommon.ServiceError) {
+	return e.resourceIDs(ctx, true)
+}
+
+// resourceIDs returns the IDs of the connections across the backing services, those declared in a file
+// only with withReadOnly.
+func (e *connectionExporter) resourceIDs(ctx context.Context, withReadOnly bool) ([]string,
+	*tidcommon.ServiceError) {
 	ids := make([]string, 0)
 
 	idps, svcErr := e.idpService.GetIdentityProviderList(ctx)
@@ -125,7 +138,7 @@ func (e *connectionExporter) GetAllResourceIDs(ctx context.Context) ([]string, *
 			return nil, svcErr
 		}
 		for _, connection := range pdpConnections {
-			if !connection.IsReadOnly {
+			if withReadOnly || !connection.IsReadOnly {
 				ids = append(ids, connection.ID)
 			}
 		}
@@ -137,7 +150,7 @@ func (e *connectionExporter) GetAllResourceIDs(ctx context.Context) ([]string, *
 			return nil, svcErr
 		}
 		for _, connection := range httpConnections {
-			if !connection.IsReadOnly {
+			if withReadOnly || !connection.IsReadOnly {
 				ids = append(ids, connection.ID)
 			}
 		}
@@ -281,7 +294,7 @@ func (e *connectionExporter) GetResourceRulesForResource(
 		return e.GetResourceRules()
 	}
 
-	if isIDPBackedVendorName(model.Type) {
+	if isIDPBackedVendorName(model.Type) && model.Type != authenticationEndpointVendorName {
 		if model.ClientSecret == "" {
 			return &declarativeresource.ResourceRules{}
 		}
@@ -289,6 +302,11 @@ func (e *connectionExporter) GetResourceRulesForResource(
 	}
 
 	switch model.Type {
+	case authenticationEndpointVendorName:
+		if model.Password == "" {
+			return &declarativeresource.ResourceRules{}
+		}
+		return &declarativeresource.ResourceRules{SecretVariables: []string{"Password"}}
 	case "twilio":
 		return &declarativeresource.ResourceRules{SecretVariables: []string{"AuthToken"}}
 	case "vonage":
@@ -309,7 +327,7 @@ func (e *connectionExporter) GetResourceRulesForResource(
 // identity provider client secret, each message vendor's own secret, and the credential fields of
 // every outbound authentication method an email connection can use.
 func (e *connectionExporter) SecretFields() []string {
-	return append([]string{"clientSecret", "authToken", "apiSecret"},
+	return append([]string{"clientSecret", "authToken", "apiSecret", "password"},
 		outboundauth.SecretFieldPaths("authentication.properties")...)
 }
 
@@ -401,6 +419,12 @@ func connectionModelFromIDPDTO(dto providers.IDPDTO) (connectionExportModel, err
 		Issuer:                 values[idp.PropIssuer],
 		TrustedTokenAudience:   values[idp.PropTrustedTokenAudience],
 		AttributeConfiguration: dto.AttributeConfiguration,
+	}
+	if dto.Type == providers.IDPTypeExtensionAuthentication {
+		model.URL = values[idp.PropEndpointURL]
+		model.TimeoutMS, _ = strconv.Atoi(values[idp.PropTimeoutMS])
+		model.Username = values[idp.PropAuthUsername]
+		model.Password = values[idp.PropAuthPassword]
 	}
 	if raw, ok := values[idp.PropTokenExchangeEnabled]; ok {
 		if enabled, parseErr := strconv.ParseBool(raw); parseErr == nil {
@@ -566,6 +590,18 @@ func connectionModelToDTO(model connectionExportModel) (*providers.IDPDTO, *ncom
 			ClientSecret: model.ClientSecret, RedirectURI: model.RedirectURI,
 			AuthorizationEndpoint: model.AuthorizationEndpoint, TokenEndpoint: model.TokenEndpoint,
 			UserInfoEndpoint: model.UserInfoEndpoint, Scopes: model.Scopes, Prompt: model.Prompt,
+			AttributeConfiguration: model.AttributeConfiguration,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		dto.ID = model.ID
+		dto.OUHandle = model.OUHandle
+		return dto, nil, nil
+	case authenticationEndpointVendorName:
+		dto, err := extensionAuthenticationToIDPDTO(extensionAuthenticationConnectionRequest{
+			Name: model.Name, Description: model.Description, OUID: model.OUID, URL: model.URL,
+			TimeoutMS: model.TimeoutMS, Username: model.Username, Password: model.Password,
 			AttributeConfiguration: model.AttributeConfiguration,
 		})
 		if err != nil {
@@ -934,6 +970,8 @@ func viewIDPConnection(dto providers.IDPDTO) (interface{}, error) {
 		return oidcFromIDPDTO(dto)
 	case providers.IDPTypeOAuth:
 		return oauthFromIDPDTO(dto)
+	case providers.IDPTypeExtensionAuthentication:
+		return extensionAuthenticationFromIDPDTO(dto)
 	default:
 		return nil, fmt.Errorf("unsupported identity provider type for connection view: %s", dto.Type)
 	}

@@ -7,10 +7,12 @@ package executor
 
 import (
 	"errors"
+	"fmt"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/entityprovider"
 	"github.com/thunder-id/thunderid/internal/entitytype"
@@ -100,6 +102,10 @@ func (b *credentialsAuthExecutor) Execute(ctx *providers.NodeContext) (*provider
 		return execResp, nil
 	}
 
+	if err := b.validateCredentialInputs(ctx); err != nil {
+		return nil, err
+	}
+
 	// TODO: Should handle client errors here. Service should return a ServiceError and
 	//  client errors should be appended as a failure.
 	//  For the moment handling returned error as a authentication failure.
@@ -141,6 +147,18 @@ func (b *credentialsAuthExecutor) getCredentialInputs(ctx *providers.NodeContext
 		}
 	}
 	return credentials
+}
+
+// validateCredentialInputs returns an error naming the reserved credential type when a credential input
+// names one, which would let the user select that mechanism.
+func (b *credentialsAuthExecutor) validateCredentialInputs(ctx *providers.NodeContext) error {
+	for _, input := range b.getCredentialInputs(ctx) {
+		if authnprovidercm.IsReservedCredentialType(input.Identifier) {
+			return fmt.Errorf("credentials step declares the internal credential type %s as an input",
+				input.Identifier)
+		}
+	}
+	return nil
 }
 
 // authenticateUser perform authentication based on the provided identifying and

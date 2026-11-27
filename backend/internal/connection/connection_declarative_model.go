@@ -77,6 +77,10 @@ type connectionExportModel struct {
 	// of those names.
 	Headers []httpconnection.Header `yaml:"headers,omitempty" json:"headers,omitempty"`
 
+	// Authentication endpoint connection fields. The URL and timeout are the shared fields of those names.
+	Username string `yaml:"username,omitempty" json:"username,omitempty"`
+	Password string `yaml:"password,omitempty" json:"password,omitempty"`
+
 	// Outbound authentication, shared by every vendor that dials out with credentials.
 	Authentication *outboundauth.Authentication `yaml:"authentication,omitempty" json:"authentication,omitempty"`
 

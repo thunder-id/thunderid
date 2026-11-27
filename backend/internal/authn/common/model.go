@@ -81,6 +81,20 @@ type OpenID4VPCredential struct {
 	Claims  map[string]interface{}
 }
 
+// ExtensionVerifiedCredential carries the identity an organization's service verified through an
+// authentication endpoint connection: the subject it names and the attributes it returns for that subject.
+type ExtensionVerifiedCredential struct {
+	ConnectionID string
+	Subject      string
+	Claims       map[string]interface{}
+}
+
+// ExtensionVerifiedAuthenticator defines the interface for the service that builds the authentication result of
+// an identity an organization's service verified.
+type ExtensionVerifiedAuthenticator interface {
+	Authenticate(ctx context.Context, credential *ExtensionVerifiedCredential) (*AuthnResult, *tidcommon.ServiceError)
+}
+
 // FederatedAuthenticator defines the interface for federated authentication services.
 // Authenticate exchanges the code, extracts the claims and builds the federated token; the entity
 // is resolved later through recorded links.

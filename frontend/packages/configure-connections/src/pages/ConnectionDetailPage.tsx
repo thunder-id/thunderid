@@ -82,6 +82,7 @@ import {
   HTTPS_REQUIRED_WITH_AUTHENTICATION_ERROR,
   responseToFormValues,
   smtpServerChanged,
+  credentialPairErrors,
   urlOriginChanged,
   validateConnectionForm,
 } from '../utils/connectionFormMapping';
@@ -348,7 +349,24 @@ export default function ConnectionDetailPage(): JSX.Element | null {
     values,
     authenticationMethods,
   );
-  const fieldErrors: Record<string, string> = validateConnectionForm(values, fields, 'edit');
+  // An authentication endpoint keeps its basic credentials in its own fields. They come back masked, so a
+  // stored password is kept unless it is replaced, and it must not follow the URL to another origin.
+  const isAuthenticationEndpoint: boolean = connectionType === ConnectionTypes.AUTHENTICATION_ENDPOINT;
+  const hasStoredEndpointCredential: boolean = isAuthenticationEndpoint && Boolean(data?.password);
+  const endpointCredentialMustBeReentered: boolean =
+    hasStoredEndpointCredential && urlOriginChanged(baseline['url'] ?? '', values['url'] ?? '');
+  const endpointSecretReplacing: boolean = isAuthenticationEndpoint
+    ? secretReplacing || !hasStoredEndpointCredential || endpointCredentialMustBeReentered
+    : secretReplacing;
+  const endpointPasswordMissing: boolean =
+    endpointCredentialMustBeReentered && (values['password'] ?? '').trim() === '';
+  const fieldErrors: Record<string, string> = {
+    ...validateConnectionForm(values, fields, 'edit'),
+    ...(isAuthenticationEndpoint
+      ? credentialPairErrors(values, fields, hasStoredEndpointCredential && !endpointCredentialMustBeReentered)
+      : {}),
+    ...(endpointPasswordMissing ? {password: 'connections:validation.required'} : {}),
+  };
   const valid: boolean =
     Object.keys(fieldErrors).length === 0 &&
     !outboundAuthenticationIncomplete &&
@@ -423,7 +441,7 @@ export default function ConnectionDetailPage(): JSX.Element | null {
     const payload = {
       ...formValuesToRequest(values, requestFields, {
         mode: 'edit',
-        secretReplaced: secretReplacing,
+        secretReplaced: endpointSecretReplacing,
         excludeGenericAuthentication: supportsAuthentication,
         authenticationMethods,
       }),
@@ -676,8 +694,8 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                     type={connectionType}
                     mode="edit"
                     values={values}
-                    secretReplacing={secretReplacing}
-                    hasStoredSecret
+                    secretReplacing={endpointSecretReplacing}
+                    hasStoredSecret={isAuthenticationEndpoint ? hasStoredEndpointCredential : true}
                     vendorDisplayName={meta.displayName}
                     nameError={nameError}
                     showNameField={isCustom}
@@ -686,6 +704,14 @@ export default function ConnectionDetailPage(): JSX.Element | null {
                     onFieldChange={handleFieldChange}
                     onSecretReplacingChange={setSecretReplacing}
                   />
+                  {endpointCredentialMustBeReentered && (
+                    <Alert severity="warning" sx={{mt: 2}}>
+                      {t(
+                        'detail.authentication.endpointOriginChanged',
+                        'The URL origin changed. Enter the password again before saving.',
+                      )}
+                    </Alert>
+                  )}
                 </ReadOnlyFieldset>
                 {credentialsMustBeReentered && (
                   <Alert severity="warning" sx={{mt: 2}}>

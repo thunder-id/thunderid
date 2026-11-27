@@ -183,9 +183,12 @@ export const VALIDATION_RULES: ValidationRuleDefinition[] = [
     fields: [{name: 'data.properties.senderId', errorMessageKey: 'flows:core.validation.fields.input.senderId'}],
     generalMessageKey: 'flows:core.validation.fields.executor.general',
   },
-  // Extension executor: the service is reached only through a connection
+  // Extension and extension authentication executors: the service is reached only through a connection
   {
-    match: (r) => (r as {data?: StepData}).data?.action?.executor?.name === ExecutionTypes.ExtensionExecutor,
+    match: (r) => {
+      const name = (r as {data?: StepData}).data?.action?.executor?.name;
+      return name === ExecutionTypes.ExtensionExecutor || name === ExecutionTypes.ExtensionAuthenticationExecutor;
+    },
     fields: [
       {name: 'data.properties.connectionId', errorMessageKey: 'flows:core.validation.fields.input.connectionId'},
     ],

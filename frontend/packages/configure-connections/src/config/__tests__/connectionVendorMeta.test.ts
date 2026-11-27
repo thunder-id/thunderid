@@ -104,4 +104,32 @@ describe('VENDOR_META_BY_TYPE', () => {
       status: 'configured',
     });
   });
+
+  it('presents the authentication endpoint as an IdP-backed custom connection with mapping and usages', () => {
+    expect(VENDOR_META_BY_TYPE[ConnectionTypes.AUTHENTICATION_ENDPOINT]).toMatchObject({
+      key: 'authentication-endpoint',
+      displayName: 'Authentication endpoint',
+      descriptionKey: 'connections:vendor.authentication-endpoint.description',
+      categories: ['custom'],
+      presentation: 'custom',
+      supportsAttributeMapping: true,
+      showsUsages: true,
+      generalSettingsCardCopy: 'configuration',
+      deleteDescriptionKey: 'connections:detail.dangerZone.delete.authenticationEndpointDescription',
+    });
+    expect(VENDOR_META_BY_TYPE[ConnectionTypes.AUTHENTICATION_ENDPOINT]?.supportsAuthentication).toBeUndefined();
+  });
+
+  it('renders each authentication endpoint instance as its own custom card', () => {
+    const cards = buildConnectionCards(
+      [{id: 'a1', name: 'Partner login', type: 'authentication-endpoint', categories: ['identity-provider']}],
+      CONNECTION_VENDOR_META,
+    );
+
+    expect(cards.find((card) => card.id === 'authentication-endpoint:a1')).toMatchObject({
+      displayName: 'Partner login',
+      categories: ['custom'],
+      status: 'configured',
+    });
+  });
 });

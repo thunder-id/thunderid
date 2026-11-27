@@ -1162,3 +1162,8 @@ func (s *UtilsTestSuite) TestFederatedSignInMetadata_DefersSyncInRegistrationAnd
 		s.Equal(deferred, metadata.DeferSync, string(flowType))
 	}
 }
+
+func (s *UtilsTestSuite) TestExtensionKeysAreScopedToTheNode() {
+	s.Equal("extensionAttemptCount:pin_check", extensionAttemptCountKey("pin_check"))
+	s.Equal("extensionRedirectPending:pin_check", extensionRedirectPendingKey("pin_check"))
+}

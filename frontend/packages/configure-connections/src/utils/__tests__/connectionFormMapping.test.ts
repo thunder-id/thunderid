@@ -10,6 +10,8 @@ import {
   AUTH_TYPE_FIELD,
   authenticationAdditionalPropertiesError,
   authPropertyField,
+  CREDENTIAL_PAIR_ERROR,
+  credentialPairErrors,
   emptyFormValues,
   formValuesToRequest,
   MASKED_SECRET,
@@ -30,6 +32,7 @@ const SMS_GENERAL_FIELDS = SMS_GATEWAY_FIELDS.filter((field) => !AUTHENTICATION_
 const AUTHZEN_PDP_FIELDS = CONNECTION_FORM_FIELDS['authzen-pdp'];
 const SMTP_FIELDS = CONNECTION_FORM_FIELDS['email-smtp'];
 const HTTP_FIELDS = CONNECTION_FORM_FIELDS.http;
+const AUTH_ENDPOINT_FIELDS = CONNECTION_FORM_FIELDS['authentication-endpoint'];
 const REDIRECT = 'https://id.acme.io/oauth/callback/google';
 const VALID_ACCOUNT_SID = `AC${'a1b2c3d4e5f6'.repeat(2)}01234567`;
 
@@ -1123,5 +1126,96 @@ describe('smtpServerChanged', () => {
   it('detects a change of host or port', () => {
     expect(smtpServerChanged(stored, {...stored, host: 'smtp.example.net'})).toBe(true);
     expect(smtpServerChanged(stored, {...stored, port: '465'})).toBe(true);
+  });
+});
+
+describe('authentication endpoint', () => {
+  const values = {
+    name: 'Partner login',
+    description: '',
+    url: 'https://login.example.com/verify',
+    timeoutMs: '5000',
+    username: 'svc',
+    password: 'pw',
+  };
+
+  it('sends the timeout as a number and omits empty optional fields', () => {
+    expect(
+      formValuesToRequest({...values, username: '', password: '', description: ''}, AUTH_ENDPOINT_FIELDS, {
+        mode: 'create',
+      }),
+    ).toEqual({name: 'Partner login', url: 'https://login.example.com/verify', timeoutMs: 5000});
+  });
+
+  it('sends the credentials on create, keeps the stored password on edit, and replaces it on request', () => {
+    expect(formValuesToRequest(values, AUTH_ENDPOINT_FIELDS, {mode: 'create'})).toMatchObject({
+      username: 'svc',
+      password: 'pw',
+    });
+    expect(formValuesToRequest(values, AUTH_ENDPOINT_FIELDS, {mode: 'edit'})).not.toHaveProperty('password');
+    expect(formValuesToRequest(values, AUTH_ENDPOINT_FIELDS, {mode: 'edit', secretReplaced: true})).toMatchObject({
+      password: 'pw',
+    });
+  });
+
+  it('reads the connection back with the password left blank', () => {
+    const response = {
+      id: 'a1',
+      type: 'authentication-endpoint',
+      name: 'Partner login',
+      ouId: 'ou-1',
+      url: 'https://login.example.com/verify',
+      timeoutMs: 5000,
+      username: 'svc',
+      password: MASKED_SECRET,
+    } as ConnectionResponse;
+
+    expect(responseToFormValues(response, AUTH_ENDPOINT_FIELDS, REDIRECT)).toMatchObject({
+      url: 'https://login.example.com/verify',
+      timeoutMs: '5000',
+      username: 'svc',
+      password: '',
+    });
+  });
+
+  it('requires https once a username is set, and refuses loopback http and embedded credentials', () => {
+    expect(validateConnectionForm({...values, url: 'http://login.example.com'}, AUTH_ENDPOINT_FIELDS, 'edit')).toEqual({
+      url: 'connections:validation.authEndpointHttpsRequired',
+    });
+    expect(validateConnectionForm({...values, url: 'http://localhost:9000'}, AUTH_ENDPOINT_FIELDS, 'edit')).toEqual({
+      url: 'connections:validation.authEndpointHttpsRequired',
+    });
+    expect(
+      validateConnectionForm(
+        {...values, username: '', password: '', url: 'http://login.example.com'},
+        AUTH_ENDPOINT_FIELDS,
+        'edit',
+      ),
+    ).toEqual({});
+    expect(
+      validateConnectionForm({...values, url: 'https://u:p@login.example.com'}, AUTH_ENDPOINT_FIELDS, 'edit'),
+    ).toEqual({url: 'connections:validation.httpEndpointUrlUserInfo'});
+  });
+
+  it('bounds the timeout', () => {
+    expect(validateConnectionForm({...values, timeoutMs: '20001'}, AUTH_ENDPOINT_FIELDS, 'edit')).toEqual({
+      timeoutMs: 'connections:validation.httpEndpointTimeoutRange',
+    });
+  });
+
+  it('wants the username and password together, counting a stored password as given', () => {
+    expect(credentialPairErrors({...values, password: ''}, AUTH_ENDPOINT_FIELDS, false)).toEqual({
+      password: CREDENTIAL_PAIR_ERROR,
+    });
+    expect(credentialPairErrors({...values, username: ''}, AUTH_ENDPOINT_FIELDS, false)).toEqual({
+      username: CREDENTIAL_PAIR_ERROR,
+    });
+    expect(credentialPairErrors({...values, password: ''}, AUTH_ENDPOINT_FIELDS, true)).toEqual({});
+    expect(credentialPairErrors({...values, username: ''}, AUTH_ENDPOINT_FIELDS, true)).toEqual({
+      username: CREDENTIAL_PAIR_ERROR,
+    });
+    expect(validateConnectionForm({...values, password: ''}, AUTH_ENDPOINT_FIELDS, 'create').password).toBe(
+      CREDENTIAL_PAIR_ERROR,
+    );
   });
 });

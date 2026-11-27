@@ -693,7 +693,9 @@ func (s *flowMgtService) identityProviderUsages(
 
 	usages := make([]resourcedependency.ResourceDependency, 0)
 	for _, flow := range flows {
-		used := flowReferencesResource(flow, "", nodePropertyKeyIDPID, id)
+		used := flowReferencesResource(flow, "", nodePropertyKeyIDPID, id) ||
+			flowReferencesResource(flow, executormeta.ExecutorNameExtensionAuthentication,
+				common.NodePropertyConnectionID, id)
 		if !used {
 			if used, err = s.flowVariablesUseConnection(ctx, flow, id); err != nil {
 				return nil, err

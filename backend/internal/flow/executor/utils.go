@@ -774,6 +774,18 @@ func orderByDisplayOrder(inputs []providers.Input, attrs []entitytype.AttributeI
 	})
 }
 
+// extensionAttemptCountKey scopes common.RuntimeKeyExtensionAttemptCount to an extension step's node ID,
+// so two extension steps in one flow count separately.
+func extensionAttemptCountKey(nodeID string) string {
+	return common.RuntimeKeyExtensionAttemptCount + ":" + nodeID
+}
+
+// extensionRedirectPendingKey scopes common.RuntimeKeyExtensionRedirectPending to an extension step's
+// node ID.
+func extensionRedirectPendingKey(nodeID string) string {
+	return common.RuntimeKeyExtensionRedirectPending + ":" + nodeID
+}
+
 // isEmptyAttribute reports whether a profile attribute holds no value, so the collector treats it as missing.
 func isEmptyAttribute(value any) bool {
 	return value == nil || value == ""

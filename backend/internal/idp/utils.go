@@ -756,6 +756,12 @@ func validateIDPProperties(ctx context.Context, idpType providers.IDPType, prope
 		}
 	}
 
+	if idpType == providers.IDPTypeExtensionAuthentication {
+		if svcErr := validateExtensionAuthenticationProperties(filteredPropsMap); svcErr != nil {
+			return nil, svcErr
+		}
+	}
+
 	// Apply default properties
 	effectiveDefaults := resolveEndpointDefaults(config.Defaults, endpointBaseURLOverride(idpType))
 	for propName, defaultValue := range effectiveDefaults {
@@ -922,4 +928,47 @@ func propertyMapToSlice(propertyMap map[string]cmodels.Property) []cmodels.Prope
 		properties = append(properties, prop)
 	}
 	return properties
+}
+
+// validateExtensionAuthenticationProperties checks the endpoint of an authentication endpoint connection:
+// an http or https URL without embedded credentials, a bounded timeout and a username that comes with its
+// password.
+func validateExtensionAuthenticationProperties(props map[string]cmodels.Property) *tidcommon.ServiceError {
+	invalid := func(description string) *tidcommon.ServiceError {
+		return tidcommon.CustomServiceError(ErrorInvalidIDPProperty, tidcommon.I18nMessage{
+			Key:          "error.idpservice.extension_authentication_property_invalid_description",
+			DefaultValue: "invalid authentication endpoint property: {{param(reason)}}",
+			Params:       map[string]string{"reason": description},
+		})
+	}
+	value := func(name string) string {
+		prop, ok := props[name]
+		if !ok {
+			return ""
+		}
+		v, _ := prop.GetValue()
+		return v
+	}
+
+	endpoint := value(PropEndpointURL)
+	parsed, err := url.Parse(endpoint)
+	if err != nil || !sysutils.IsHTTPURL(endpoint) || parsed.User != nil {
+		return invalid("the endpoint URL must be an absolute http or https URL without a user name or password")
+	}
+	_, hasUsername := props[PropAuthUsername]
+	_, hasPassword := props[PropAuthPassword]
+	if hasUsername != hasPassword {
+		return invalid("the user name and password must be given together")
+	}
+	if hasUsername && parsed.Scheme != "https" {
+		return invalid("the endpoint must use https when it carries a credential")
+	}
+	if timeout, ok := props[PropTimeoutMS]; ok {
+		raw, _ := timeout.GetValue()
+		ms, convErr := strconv.Atoi(raw)
+		if convErr != nil || ms < 1 || ms > maxExtensionAuthenticationTimeoutMS {
+			return invalid("the timeout must be between 1 and 20000 milliseconds")
+		}
+	}
+	return nil
 }

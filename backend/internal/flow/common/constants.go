@@ -414,7 +414,7 @@ const (
 	// assignments.
 	RuntimeKeySessionRoleIDs = "session_role_ids"
 	// RuntimeKeyExtensionAttemptCount holds the number of FAILED and INCOMPLETE answers an extension
-	// step has had in the current flow execution, scoped to the step by ExtensionAttemptCountKey.
+	// step has had in the current flow execution, scoped to the step by its node ID.
 	RuntimeKeyExtensionAttemptCount = "extensionAttemptCount"
 	// RuntimeKeyAttributeVerificationEvidence holds the attribute verification evidence on shared runtime
 	// data: the pinned contact and whether a challenge issued for it was passed.
@@ -435,6 +435,10 @@ const (
 	// RuntimeKeyResetCredentialRequested marks that the reset's set step asked the user for the new credential,
 	// in the request that opened the link. The value is read only from a later request.
 	RuntimeKeyResetCredentialRequested = "resetCredentialRequested" //nolint:gosec // a runtime data key
+
+	// RuntimeKeyExtensionRedirectPending holds the URL of the service's page an extension step sent the
+	// browser to while it waits for the browser to return, scoped to the step by its node ID.
+	RuntimeKeyExtensionRedirectPending = "extensionRedirectPending"
 )
 
 // ExtensionDataKeyPrefix starts every runtime-data key an extension step stores from its service's
@@ -442,18 +446,15 @@ const (
 // attribute or a credential.
 const ExtensionDataKeyPrefix = "extension."
 
+// UserAttributeUsername is the user attribute that holds the username.
+const UserAttributeUsername = "username"
+
 // Bounds and default of an extension step's maxAttempts property.
 const (
 	extensionMinAttempts     = 1
 	extensionMaxAttempts     = 20
 	extensionDefaultAttempts = 5
 )
-
-// ExtensionAttemptCountKey scopes RuntimeKeyExtensionAttemptCount to an extension step's node ID, so
-// two extension steps in one flow count separately.
-func ExtensionAttemptCountKey(nodeID string) string {
-	return RuntimeKeyExtensionAttemptCount + ":" + nodeID
-}
 
 // SSOCheckpointKey scopes a per-checkpoint SSO control key (RuntimeKeySSOSessionPresent,
 // RuntimeKeySSOSessionSaved) to a checkpoint id, so multiple skip/join checkpoints in one flow keep

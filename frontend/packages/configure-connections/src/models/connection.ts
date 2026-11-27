@@ -19,6 +19,7 @@ export const ConnectionTypes = {
   AUTHZEN_PDP: 'authzen-pdp',
   SMTP: 'email-smtp',
   HTTP: 'http',
+  AUTHENTICATION_ENDPOINT: 'authentication-endpoint',
 } as const;
 
 export type ConnectionType = (typeof ConnectionTypes)[keyof typeof ConnectionTypes];
@@ -411,6 +412,23 @@ export interface HTTPConnectionRequest {
   authentication?: OutboundAuthConfig;
 }
 
+/**
+ * Request payload for an authentication endpoint connection: an organization's own service that
+ * authenticates the user, with the mapping and account linking of a federated connection.
+ */
+export interface AuthenticationEndpointConnectionRequest {
+  name: string;
+  description?: string;
+  /** Must be https when a username and password are set. */
+  url: string;
+  /** 1 to 20000. Omit for the 10000 default. */
+  timeoutMs?: number;
+  /** Basic credentials for the service. Sent together or not at all. */
+  username?: string;
+  password?: string;
+  attributeConfiguration?: AttributeConfiguration;
+}
+
 export interface HTTPHeader {
   name: string;
   value: string;
@@ -439,7 +457,8 @@ export type ConnectionRequest =
   | SMSGatewayConnectionRequest
   | AuthZENPDPConnectionRequest
   | SMTPConnectionRequest
-  | HTTPConnectionRequest;
+  | HTTPConnectionRequest
+  | AuthenticationEndpointConnectionRequest;
 
 /**
  * Request payload for creating a connection of any type. Every connection is owned by an organization unit,
@@ -487,6 +506,9 @@ export interface ConnectionResponse extends Partial<OIDCConnectionRequest> {
   fromAddress?: string;
   fromName?: string;
   tls?: string;
+  /** Authentication endpoint credentials. The password comes back masked. */
+  username?: string;
+  password?: string;
   /** HTTP endpoint plain headers. The URL and timeout share the fields above. */
   headers?: HTTPHeader[] | null;
   /** Outbound authentication returned with credential values masked. */

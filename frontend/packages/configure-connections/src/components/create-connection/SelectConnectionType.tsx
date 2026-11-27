@@ -2,7 +2,15 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {Box, Stack, Typography} from '@wso2/oxygen-ui';
-import {KeyRound, Mail, MessagesSquare, ServerCog, ShieldCheck, Webhook} from '@wso2/oxygen-ui-icons-react';
+import {
+  Fingerprint,
+  KeyRound,
+  Mail,
+  MessagesSquare,
+  ServerCog,
+  ShieldCheck,
+  Webhook,
+} from '@wso2/oxygen-ui-icons-react';
 import type {JSX} from 'react';
 import {useTranslation} from 'react-i18next';
 import SelectableConnectionCard from './SelectableConnectionCard';
@@ -113,6 +121,17 @@ export default function SelectConnectionType({selectedType, onSelect}: SelectCon
       tagKey: 'wizard.type.http.tag',
       tagDefault: 'Extension · HTTP',
       icon: <Webhook size={28} />,
+      comingSoon: false,
+    },
+    {
+      type: ConnectionTypes.AUTHENTICATION_ENDPOINT,
+      labelKey: 'wizard.type.authenticationEndpoint.label',
+      labelDefault: 'Authentication endpoint',
+      descriptionKey: 'wizard.type.authenticationEndpoint.description',
+      descriptionDefault: 'Let your own service authenticate users in a flow, with mapping and account linking.',
+      tagKey: 'wizard.type.authenticationEndpoint.tag',
+      tagDefault: 'Login provider · Extension',
+      icon: <Fingerprint size={28} />,
       comingSoon: false,
     },
   ];
