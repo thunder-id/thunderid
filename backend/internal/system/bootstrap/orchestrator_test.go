@@ -83,6 +83,10 @@ func TestRun_AppliesBundleWithEnvSubstitutionAndOptions(t *testing.T) {
 	if o == nil || !o.IsUpsertEnabled() || o.IsContinueOnErrorEnabled() || o.Target != "runtime" {
 		t.Fatalf("unexpected import options: %#v", o)
 	}
+	// Resources a control plane deployed are left alone rather than failing the bootstrap on the refusal.
+	if !o.SkipManaged {
+		t.Fatal("expected the bootstrap to skip resources a control plane deployed")
+	}
 }
 
 func TestRun_EmptyDirectoryIsNoOp(t *testing.T) {

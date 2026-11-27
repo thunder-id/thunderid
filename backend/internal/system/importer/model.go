@@ -62,6 +62,11 @@ type ImportOptions struct {
 	// different reach, by rewriting the policy and removing the reshares that lose their standing. A control plane
 	// sets it when it publishes a version to a gateway.
 	ForceSharingEdits bool `json:"forceSharingEdits,omitempty"`
+	// SkipManaged leaves a resource this deployment already holds as deployed by a control plane untouched, and
+	// reports it skipped, rather than writing it and being refused. A non-managed import of defaults, such as the
+	// bootstrap, sets it so a restart does not fail on what a control plane deployed. It is not read from a
+	// request body, and a managed import ignores it.
+	SkipManaged bool `json:"-"`
 }
 
 // IsUpsertEnabled returns whether upsert behavior is enabled.
