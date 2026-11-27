@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -215,15 +216,15 @@ func (ts *DispatchTestSuite) TestDispatchJSONPost() {
 	ts.Equal(http.MethodPost, message.Method, "The sender should dispatch over POST")
 	ts.Contains(message.ContentType, "application/json", "The body should be sent as JSON")
 	ts.NotEmpty(message.OTP, "The dispatched message should carry the OTP")
+
+	var payload map[string]string
+	ts.Require().NoError(json.Unmarshal([]byte(message.Message), &payload),
+		"A plain-text template should reach the gateway as a JSON object, got %q", message.Message)
+	ts.Equal(ts.mobileNumber, payload["to"])
+	ts.Contains(payload["message"], message.OTP)
 }
 
 // TestDispatchFormPost sends through a sender configured for a form encoded body.
-//
-// The form encoder builds its fields by splitting the rendered message into "key=value" lines. The
-// OTP SMS template renders prose rather than key value pairs, so no fields are produced and the
-// gateway receives an empty body while the send still reports success. This test pins that
-// behaviour; if the encoder is changed to carry the message, the assertion below will fail and
-// should be updated to assert the OTP is present.
 func (ts *DispatchTestSuite) TestDispatchFormPost() {
 	senderID := ts.createSender("Dispatch FORM POST Sender", map[string]interface{}{
 		"httpMethod":  "POST",
@@ -237,8 +238,11 @@ func (ts *DispatchTestSuite) TestDispatchFormPost() {
 	ts.Equal(http.MethodPost, message.Method, "The sender should dispatch over POST")
 	ts.Contains(message.ContentType, "application/x-www-form-urlencoded",
 		"The body should be form encoded")
-	ts.Empty(message.Message,
-		"A prose template produces no form fields, so the body reaches the gateway empty")
+	form, err := url.ParseQuery(message.Message)
+	ts.Require().NoError(err)
+	ts.Equal(ts.mobileNumber, form.Get("to"))
+	ts.NotEmpty(message.OTP, "The dispatched message should carry the OTP")
+	ts.Contains(form.Get("message"), message.OTP)
 }
 
 // TestDispatchCustomHeaders confirms configured headers reach the gateway.
