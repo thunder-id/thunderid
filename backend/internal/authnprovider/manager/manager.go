@@ -270,7 +270,9 @@ func (m *authnProviderManager) GetEntityReference(ctx context.Context, authUser 
 }
 
 // GetUserAvailableAttributes returns the merged attributes available across
-// every provider's state in the AuthUser.
+// every provider's state in the AuthUser. It returns nil without an error when
+// any provider still holds an unresolved attribute token, since the user's
+// attributes are not known until that token is resolved.
 func (m *authnProviderManager) GetUserAvailableAttributes(ctx context.Context,
 	authUser providers.AuthUser) (*providers.AttributesResponse, *tidcommon.ServiceError) {
 	if !authUser.IsAuthenticated() {
@@ -281,6 +283,9 @@ func (m *authnProviderManager) GetUserAvailableAttributes(ctx context.Context,
 	available := newAttributesResponse()
 	for _, name := range authUser.ProviderNames() {
 		state, _ := authUser.StateFor(name)
+		if state.AttributeToken != nil {
+			return nil, nil
+		}
 		mergeAttributes(available, state.Attributes)
 	}
 	return available, nil

@@ -24,6 +24,8 @@ When users authenticate with an application that requires specific profile attri
 
 Attribute consent requirements are driven by the requested attributes during application configuration. If an application requires specific user attributes (e.g., username, email), the user will be asked to grant consent before the login process completes.
 
+Only attributes the user actually holds are included in the prompt. Requested attributes that are not present in the user's profile are omitted, and if the profile holds no attributes at all, no attribute consent is prompted. Where the attribute set cannot be determined, for example, when the provider returns an attribute token rather than individual claims, no filtering is applied and all requested attributes are prompted for.
+
 ## Configuring Consent in Flows
 
 The **User Consent** widget adds a pre-wired consent executor and consent screen and connects them into your flow automatically:

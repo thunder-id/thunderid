@@ -607,15 +607,45 @@ func (s *ManagerTestSuite) TestGetUserAvailableAttributes_EmptyAuthUser() {
 	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 }
 
-func (s *ManagerTestSuite) TestGetUserAvailableAttributes_NilAttributes() {
+func (s *ManagerTestSuite) TestGetUserAvailableAttributes_AttributeTokenReturnsNil() {
 	authUser := authenticatedAuthUserWithTokens("ref-tok", "attr-tok")
+
+	attrs, svcErr := s.mgr.GetUserAvailableAttributes(context.Background(), authUser)
+	s.Nil(svcErr)
+	s.Nil(attrs)
+	s.mockProvider.AssertNotCalled(s.T(), "GetAttributes")
+}
+
+func (s *ManagerTestSuite) TestGetUserAvailableAttributes_PartialAttributeTokenReturnsNil() {
+	authUser := authUserWithStates(map[string]providers.AuthState{
+		"resolved": {
+			EntityReference: &providers.EntityReference{EntityID: "user-1"},
+			Attributes: &providers.AttributesResponse{
+				Attributes: map[string]*providers.AttributeResponse{"email": {Value: "a@b.com"}},
+			},
+		},
+		"pending": {
+			EntityReferenceToken: "ref-tok",
+			AttributeToken:       "attr-tok",
+		},
+	})
+
+	attrs, svcErr := s.mgr.GetUserAvailableAttributes(context.Background(), authUser)
+	s.Nil(svcErr)
+	s.Nil(attrs)
+	s.mockProvider.AssertNotCalled(s.T(), "GetAttributes")
+}
+
+func (s *ManagerTestSuite) TestGetUserAvailableAttributes_EmptyAttributes() {
+	authUser := authenticatedAuthUserWithResolved(
+		&providers.EntityReference{EntityID: "user-1"},
+		&providers.AttributesResponse{Attributes: map[string]*providers.AttributeResponse{}},
+	)
 
 	attrs, svcErr := s.mgr.GetUserAvailableAttributes(context.Background(), authUser)
 	s.Nil(svcErr)
 	s.NotNil(attrs)
 	s.Empty(attrs.Attributes)
-	s.Empty(attrs.Verifications)
-	s.mockProvider.AssertNotCalled(s.T(), "GetAttributes")
 }
 
 // --- GetUserAttributes tests ---
