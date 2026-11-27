@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
@@ -364,4 +365,50 @@ func (ts *ControlPlaneTestSuite) TestADataPlaneRecordsTheSharingOfAResourceServe
 		}
 	}
 	ts.Equal([]string{"RES-1037"}, codes, "the data plane holds the policy, so the shared resource server stays")
+}
+
+// A Flow Secret regenerated on the Control Plane reaches the default gateway's store at once, but the
+// Data Plane accepts it only once the application is deployed again. Until then the project's status
+// counts the application as pending, like any other change, though no version changed.
+func (ts *ControlPlaneTestSuite) TestARegeneratedFlowSecretIsPendingUntilDeployed() {
+	gatewayID := ts.registerDataPlaneAs(true)
+	ts.deployDefaultProject(gatewayID)
+	appID, err := testutils.CreateApplication(testutils.Application{
+		ProjectID: defaultProjectID, Name: unique("Regenerated Flow Secret App"), Type: "custom", Embedded: true,
+	})
+	ts.Require().NoError(err)
+	ts.T().Cleanup(func() { _ = testutils.DeleteApplication(appID) })
+	issued := testutils.GetFlowSecret(appID)
+	ts.Require().NotEmpty(issued, "the application was not issued a Flow Secret")
+	flowSecret := storedValue{"secrets", variableName("APPLICATION", appID, "FLOW_SECRET")}
+	ts.Require().Eventually(func() bool { return ts.heldOnDataPlane(flowSecret) },
+		15*time.Second, 200*time.Millisecond, "the issued Flow Secret did not reach the default gateway")
+	// A SQLite store keeps when a value was set in whole seconds, so the new value is set in a later one.
+	setAgainFrom := time.Now().Truncate(time.Second).Add(time.Second)
+	ts.deployDefaultProject(gatewayID)
+	ts.Require().Equal(0, ts.statusOf(gatewayID, defaultProjectID).Project.Pending)
+	time.Sleep(time.Until(setAgainFrom))
+
+	var app map[string]any
+	status, raw := ts.call(http.MethodGet, "/applications/"+appID, nil, &app)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	for _, field := range []string{"id", "createdAt", "updatedAt"} {
+		delete(app, field)
+	}
+	regenerated := unique("regenerated-flow-secret")
+	app["flowSecret"] = regenerated
+	status, raw = ts.call(http.MethodPut, "/applications/"+appID, app, nil)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+
+	ts.Require().Eventually(func() bool {
+		return ts.statusOf(gatewayID, defaultProjectID).Project.Pending == 1
+	}, 15*time.Second, 200*time.Millisecond, "the regenerated Flow Secret was not counted as pending")
+	ts.Equal("FES-1012", ts.startFlowOnDataPlane(appID, regenerated).Code,
+		"the Data Plane took the regenerated Flow Secret before a deploy")
+
+	ts.deployDefaultProject(gatewayID)
+	ts.Equal(0, ts.statusOf(gatewayID, defaultProjectID).Project.Pending)
+	ts.Equal("INCOMPLETE", ts.startFlowOnDataPlane(appID, regenerated).FlowStatus,
+		"the regenerated Flow Secret was refused once deployed")
+	ts.Equal("FES-1012", ts.startFlowOnDataPlane(appID, issued).Code, "the replaced Flow Secret still started a flow")
 }

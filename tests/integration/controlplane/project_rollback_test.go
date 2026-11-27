@@ -14,6 +14,7 @@ import (
 type projectStatus struct {
 	Project struct {
 		Versions   []struct{} `json:"versions"`
+		Pending    int        `json:"pending"`
 		DeployedAt string     `json:"deployedAt"`
 		LastAction string     `json:"lastAction"`
 		Rollback   struct {
