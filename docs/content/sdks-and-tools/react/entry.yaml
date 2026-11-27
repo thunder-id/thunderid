@@ -19,9 +19,9 @@ docs:
 links:
   github: https://github.com/thunder-id/javascript-sdks
   package: https://www.npmjs.com/package/@thunderid/react
-  samples: https://github.com/thunder-id/samples/tree/main/quickstarts/react
+  samples: https://github.com/thunder-id/samples/tree/main/quickstarts/quickstart-react
 # Offers the quickstart's released zip at the top of the page, from the samples repo releases.
-sample: quickstarts/react
+sample: quickstarts/quickstart-react
 apiReference:
   source: typedoc
 
@@ -1651,7 +1651,7 @@ guides:
       title: Beyond this guide
       items:
       - label: React and Express BFF sample
-        href: https://github.com/thunder-id/samples/tree/main/patterns/react-express-bff
+        href: https://github.com/thunder-id/samples/tree/main/patterns/bff-react-express
       - label: Express SDK
         href: /sdks-and-tools/express
       - label: Back-channel logout

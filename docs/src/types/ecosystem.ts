@@ -397,7 +397,7 @@ export interface EcosystemEntry {
   /**
    * The sample in the `thunder-id/samples` repository whose released zip the
    * page offers for download, as `<category>/<name>` (e.g.
-   * `integrations/flutter-app-auth`). Omit to offer the SDK quickstart sample
+   * `integrations/app-auth-flutter`). Omit to offer the SDK quickstart sample
    * released under this entry's id instead.
    */
   sample?: string;

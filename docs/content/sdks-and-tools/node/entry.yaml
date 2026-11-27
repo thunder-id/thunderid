@@ -18,9 +18,9 @@ docs:
 links:
   github: https://github.com/thunder-id/javascript-sdks
   package: https://www.npmjs.com/package/@thunderid/node
-  samples: https://github.com/thunder-id/samples/tree/main/quickstarts/node
+  samples: https://github.com/thunder-id/samples/tree/main/quickstarts/quickstart-node
 # Offers the quickstart's released zip at the top of the page, from the samples repo releases.
-sample: quickstarts/node
+sample: quickstarts/quickstart-node
 apiReference:
   source: typedoc
 

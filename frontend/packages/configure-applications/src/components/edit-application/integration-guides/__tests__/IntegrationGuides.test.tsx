@@ -32,7 +32,7 @@ const documentationLinks: Record<string, string> = {
   'applications.templates.react.docs':
     'https://thunderid.dev/docs/next/guides/getting-started/connect-your-application/react/',
   'applications.templates.react.playground':
-    'https://stackblitz.com/fork/github/thunder-id/samples/tree/main/quickstarts/react?file=README.md',
+    'https://stackblitz.com/fork/github/thunder-id/samples/tree/main/quickstarts/quickstart-react?file=README.md',
   'applications.templates.react.llmPrompt.redirectBased': 'https://thunderid.dev/prompts/react/redirect-based.txt',
   'applications.templates.nextjs.llmPrompt.redirectBased': 'https://thunderid.dev/prompts/nextjs/redirect-based.txt',
   'applications.templates.browser.docs':
@@ -126,7 +126,7 @@ const reactGuideWithSample = [
   '',
   '## Run the Sample App',
   '',
-  'The [React sample](https://github.com/thunder-id/samples/tree/main/quickstarts/react) is a working version of the app this guide builds.',
+  'The [React sample](https://github.com/thunder-id/samples/tree/main/quickstarts/quickstart-react) is a working version of the app this guide builds.',
   '',
   "1. Create `.env` in the sample's folder with your application's values:",
   '',
@@ -144,7 +144,7 @@ const ecosystemReleases = JSON.stringify({
   releases: [
     {
       type: 'sample',
-      packageId: 'quickstarts/react',
+      packageId: 'quickstarts/quickstart-react',
       latestVersion: '1.0.0',
       assets: [
         {
@@ -300,7 +300,7 @@ describe('IntegrationGuides', () => {
     const stackblitzLink = screen.getByRole('link', {name: /Open on StackBlitz/i});
     expect(stackblitzLink).toHaveAttribute(
       'href',
-      'https://stackblitz.com/fork/github/thunder-id/samples/tree/main/quickstarts/react?file=README.md',
+      'https://stackblitz.com/fork/github/thunder-id/samples/tree/main/quickstarts/quickstart-react?file=README.md',
     );
   });
 
@@ -622,7 +622,7 @@ describe('IntegrationGuides', () => {
       '',
       '## Run the Sample App',
       '',
-      'The [sample](https://github.com/thunder-id/samples/tree/main/quickstarts/react) runs instead.',
+      'The [sample](https://github.com/thunder-id/samples/tree/main/quickstarts/quickstart-react) runs instead.',
     ].join('\n');
 
     renderWithProviders(

@@ -16,9 +16,9 @@ description: >-
   sign Flutter users in to {{ProductName}} with authorization code and PKCE.
 links:
   external: https://pub.dev/packages/flutter_appauth
-  samples: https://github.com/thunder-id/samples/tree/main/integrations/flutter-app-auth
+  samples: https://github.com/thunder-id/samples/tree/main/integrations/app-auth-flutter
 # Offers the sample's released zip at the top of the page, from the samples repo releases.
-sample: integrations/flutter-app-auth
+sample: integrations/app-auth-flutter
 
 hero:
   description: >-

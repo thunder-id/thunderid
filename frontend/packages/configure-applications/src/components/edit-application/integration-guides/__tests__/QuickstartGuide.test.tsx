@@ -85,7 +85,7 @@ app.use(plugin)
 const reactGuideWithSample = `${reactGuide}
 ## Run the Sample App
 
-The [React sample](https://github.com/example/samples/tree/main/quickstarts/react) runs instead.
+The [React sample](https://github.com/example/samples/tree/main/quickstarts/quickstart-react) runs instead.
 
 \`\`\`dotenv title=".env"
 CLIENT_ID=<your-client-id>
@@ -320,7 +320,7 @@ describe('QuickstartGuide', () => {
       releases: [
         {
           type: 'sample',
-          packageId: 'quickstarts/react',
+          packageId: 'quickstarts/quickstart-react',
           latestVersion: '1.2.0',
           assets: [{downloadUrl: 'https://example.com/react.zip'}],
         },

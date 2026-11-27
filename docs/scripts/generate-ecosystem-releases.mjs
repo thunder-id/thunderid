@@ -18,7 +18,7 @@ const logger = createLogger('generate-ecosystem-releases');
 //
 // javascript-sdks is a monorepo where each package is tagged independently, e.g. `sdk/react/v0.3.3`.
 // The other SDK repos each publish a single package, so they're keyed off the repo's own releases.
-// The samples repo tags each sample independently, e.g. `sample/self-care/account/v1.0.1`, and
+// The samples repo tags each sample independently, e.g. `sample/self-service/myaccount-react/v1.0.1`, and
 // samples are picked up from their tags as they're released rather than listed up front.
 const RELEASE_SOURCES = [
   {

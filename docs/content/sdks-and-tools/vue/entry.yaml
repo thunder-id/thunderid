@@ -18,9 +18,9 @@ docs:
 links:
   github: https://github.com/thunder-id/javascript-sdks
   package: https://www.npmjs.com/package/@thunderid/vue
-  samples: https://github.com/thunder-id/samples/tree/main/quickstarts/vue
+  samples: https://github.com/thunder-id/samples/tree/main/quickstarts/quickstart-vue
 # Offers the quickstart's released zip at the top of the page, from the samples repo releases.
-sample: quickstarts/vue
+sample: quickstarts/quickstart-vue
 apiReference:
   source: typedoc
 

@@ -24,10 +24,14 @@ describe('useGetSampleRelease', () => {
   it("returns the sample's released archive", async () => {
     respondWith({
       releases: [
-        {type: 'sdk', packageId: 'quickstarts/react', assets: [{downloadUrl: 'https://example.com/sdk.zip'}]},
+        {
+          type: 'sdk',
+          packageId: 'quickstarts/quickstart-react',
+          assets: [{downloadUrl: 'https://example.com/sdk.zip'}],
+        },
         {
           type: 'sample',
-          packageId: 'quickstarts/react',
+          packageId: 'quickstarts/quickstart-react',
           latestVersion: '1.0.0',
           assets: [
             {downloadUrl: 'https://example.com/react.tar.gz'},
@@ -37,7 +41,7 @@ describe('useGetSampleRelease', () => {
       ],
     });
 
-    const {result} = renderHook(() => useGetSampleRelease(releasesUrl, 'quickstarts/react'));
+    const {result} = renderHook(() => useGetSampleRelease(releasesUrl, 'quickstarts/quickstart-react'));
 
     await waitFor(() => {
       expect(result.current.isSuccess).toBe(true);
@@ -51,9 +55,9 @@ describe('useGetSampleRelease', () => {
   });
 
   it('returns null when the sample has no released archive', async () => {
-    respondWith({releases: [{type: 'sample', packageId: 'quickstarts/vue', assets: []}]});
+    respondWith({releases: [{type: 'sample', packageId: 'quickstarts/quickstart-vue', assets: []}]});
 
-    const {result} = renderHook(() => useGetSampleRelease(releasesUrl, 'quickstarts/react'));
+    const {result} = renderHook(() => useGetSampleRelease(releasesUrl, 'quickstarts/quickstart-react'));
 
     await waitFor(() => {
       expect(result.current.isSuccess).toBe(true);
@@ -64,7 +68,7 @@ describe('useGetSampleRelease', () => {
   it('fails when the feed cannot be fetched', async () => {
     mockFetch.mockResolvedValue({ok: false, status: 500});
 
-    const {result} = renderHook(() => useGetSampleRelease(releasesUrl, 'quickstarts/react'));
+    const {result} = renderHook(() => useGetSampleRelease(releasesUrl, 'quickstarts/quickstart-react'));
 
     await waitFor(() => {
       expect(result.current.isError).toBe(true);
@@ -72,7 +76,7 @@ describe('useGetSampleRelease', () => {
   });
 
   it('does not fetch without a feed URL or a sample', () => {
-    renderHook(() => useGetSampleRelease(undefined, 'quickstarts/react'));
+    renderHook(() => useGetSampleRelease(undefined, 'quickstarts/quickstart-react'));
     renderHook(() => useGetSampleRelease(releasesUrl, undefined));
 
     expect(mockFetch).not.toHaveBeenCalled();

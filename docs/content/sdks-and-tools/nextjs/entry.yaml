@@ -18,9 +18,9 @@ docs:
 links:
   github: https://github.com/thunder-id/javascript-sdks
   package: https://www.npmjs.com/package/@thunderid/nextjs
-  samples: https://github.com/thunder-id/samples/tree/main/quickstarts/nextjs
+  samples: https://github.com/thunder-id/samples/tree/main/quickstarts/quickstart-nextjs
 # Offers the quickstart's released zip at the top of the page, from the samples repo releases.
-sample: quickstarts/nextjs
+sample: quickstarts/quickstart-nextjs
 apiReference:
   source: typedoc
 

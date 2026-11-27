@@ -13,7 +13,7 @@ vi.mock('../../config/TechnologyBasedApplicationTemplateMetadata', () => ({
           {
             label: 'React',
             environment: 'stackblitz',
-            url: 'https://stackblitz.com/fork/github/thunder-id/samples/tree/main/quickstarts/react?file=README.md',
+            url: 'https://stackblitz.com/fork/github/thunder-id/samples/tree/main/quickstarts/quickstart-react?file=README.md',
           },
         ],
       },
@@ -52,7 +52,7 @@ describe('getPlaygroundsForTemplate', () => {
       {
         label: 'React',
         environment: 'stackblitz',
-        url: 'https://stackblitz.com/fork/github/thunder-id/samples/tree/main/quickstarts/react?file=README.md',
+        url: 'https://stackblitz.com/fork/github/thunder-id/samples/tree/main/quickstarts/quickstart-react?file=README.md',
       },
     ]);
   });
@@ -62,7 +62,7 @@ describe('getPlaygroundsForTemplate', () => {
       {
         label: 'React',
         environment: 'stackblitz',
-        url: 'https://stackblitz.com/fork/github/thunder-id/samples/tree/main/quickstarts/react?file=README.md',
+        url: 'https://stackblitz.com/fork/github/thunder-id/samples/tree/main/quickstarts/quickstart-react?file=README.md',
       },
     ]);
   });
