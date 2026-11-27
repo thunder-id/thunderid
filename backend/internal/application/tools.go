@@ -82,8 +82,9 @@ Behavior:
   field in the request body, not nested under inboundAuthProfile.`,
 		InputSchema: getCreateAppSchema(),
 		Annotations: &mcp.ToolAnnotations{
-			Title:          "Create Application",
-			IdempotentHint: false,
+			Title:           "Create Application",
+			DestructiveHint: new(false),
+			IdempotentHint:  false,
 		},
 	}, tools.createApplication)
 
@@ -102,8 +103,9 @@ Any field not provided will be reset to empty/default, except projectId: leaving
 application in its project.`,
 		InputSchema: getUpdateAppSchema(),
 		Annotations: &mcp.ToolAnnotations{
-			Title:          "Update Application",
-			IdempotentHint: true,
+			Title:           "Update Application",
+			DestructiveHint: new(true),
+			IdempotentHint:  true,
 		},
 	}, tools.updateApplication)
 
@@ -117,8 +119,9 @@ Behavior:
   and the notice says whether they were.
 - The new secret is returned only this once.`,
 		Annotations: &mcp.ToolAnnotations{
-			Title:          "Regenerate Application Secret",
-			IdempotentHint: false,
+			Title:           "Regenerate Application Secret",
+			DestructiveHint: new(true),
+			IdempotentHint:  false,
 		},
 	}, tools.regenerateApplicationSecret)
 

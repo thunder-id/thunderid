@@ -5,7 +5,6 @@ package reactsdk
 
 import (
 	"context"
-	"reflect"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -76,24 +75,18 @@ func (suite *ReactSDKToolsTestSuite) TestRegisterTools() {
 
 	RegisterTools(server, "Acme IAM")
 
-	toolsField := reflect.ValueOf(server).Elem().FieldByName("tools")
-	if !toolsField.IsValid() {
-		suite.T().Fatal("tools field not found in mcp.Server")
-	}
+	ctx := context.Background()
+	serverTransport, clientTransport := mcp.NewInMemoryTransports()
+	_, err := server.Connect(ctx, serverTransport, nil)
+	suite.Require().NoError(err)
+	session, err := mcp.NewClient(&mcp.Implementation{Name: "test-client", Version: "1.0.0"}, nil).
+		Connect(ctx, clientTransport, nil)
+	suite.Require().NoError(err)
+	defer func() { _ = session.Close() }()
+	tools, err := session.ListTools(ctx, nil)
+	suite.Require().NoError(err)
 
-	featuresField := toolsField.Elem().FieldByName("features")
-	if !featuresField.IsValid() {
-		suite.T().Fatal("features field not found in featureSet")
-	}
-
-	// Check if our tool is in the map
-	found := false
-	iter := featuresField.MapRange()
-	for iter.Next() {
-		if iter.Key().String() == "integrate_react_sdk" {
-			found = true
-			break
-		}
-	}
-	assert.True(suite.T(), found, "integrate_react_sdk tool should be registered")
+	suite.Require().Len(tools.Tools, 1)
+	suite.Equal("integrate_react_sdk", tools.Tools[0].Name)
+	suite.True(tools.Tools[0].Annotations.ReadOnlyHint, "the tool only returns instructions")
 }

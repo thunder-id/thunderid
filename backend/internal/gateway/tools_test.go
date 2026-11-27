@@ -99,15 +99,12 @@ func (s *GatewayToolsTestSuite) TestToolsAreListedWithTheirHints() {
 		s.Require().Contains(byName, name)
 		s.True(byName[name].Annotations.ReadOnlyHint, name)
 	}
-	for _, name := range []string{"deploy_version", "promote_gateway",
-		"rollback_gateway", "delete_gateway_variable", "delete_gateway_secret"} {
+	for _, name := range []string{"capture_configuration_version", "deploy_version", "promote_gateway",
+		"rollback_gateway", "set_gateway_variable", "set_gateway_secret", "delete_gateway_variable",
+		"delete_gateway_secret"} {
 		s.Require().Contains(byName, name)
 		s.Require().NotNil(byName[name].Annotations.DestructiveHint, name)
 		s.True(*byName[name].Annotations.DestructiveHint, name)
-	}
-	for _, name := range []string{"capture_configuration_version", "set_gateway_variable",
-		"set_gateway_secret"} {
-		s.Contains(byName, name)
 	}
 }
 
