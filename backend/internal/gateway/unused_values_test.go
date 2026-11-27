@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -498,6 +499,30 @@ func (s *UnusedValueSweeperTestSuite) TestASweepPagesThroughTheStore() {
 
 // A version and a master are read with their content once: both are immutable, so a later sweep
 // takes what they refer to from the cache.
+// namesOfALargeVersion is what namesIn finds in a version whose one application has a note of the given
+// size, read and dropped within the call, as a sweep reads a version it then caches the names of.
+func namesOfALargeVersion(size int) map[string]struct{} {
+	note := strings.Repeat("x", size)
+	return namesIn(joinBundle([]string{applicationUsing(appA) + "\nnotes: " + note}))
+}
+
+// The names a sweep caches are copies, so a cached set does not keep the whole version it was read
+// from in memory.
+func (s *UnusedValueSweeperTestSuite) TestTheNamesOfAVersionKeepNoneOfItsText() {
+	const size = 32 << 20
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+
+	names := namesOfALargeVersion(size)
+	runtime.GC()
+	runtime.ReadMemStats(&after)
+
+	s.Equal(map[string]struct{}{hostOf(appA): {}, secretOf(appA): {}}, names)
+	s.Less(after.HeapAlloc, before.HeapAlloc+size/4, "the names kept the version they were read from")
+	runtime.KeepAlive(names)
+}
+
 func (s *UnusedValueSweeperTestSuite) TestASweepReadsEachVersionOnce() {
 	first, second := keep(s.versions, appA), keep(s.versions, appB)
 	master := Master{GatewayID: "gw-1", Seq: 1, Hash: "m-1", Resources: applicationUsing(appA)}
