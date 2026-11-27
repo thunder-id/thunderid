@@ -5,6 +5,7 @@ package client
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -338,6 +339,63 @@ func (suite *CustomClientTestSuite) TestSendSMS_FORM_Success() {
 	err := client.Send(context.Background(), common.ChannelTypeSMS, data)
 
 	suite.NoError(err)
+}
+
+func (suite *CustomClientTestSuite) TestSendSMSRequestBody() {
+	for _, test := range []struct {
+		name        string
+		contentType string
+		body        string
+		expected    string
+	}{
+		{"JSON object template", "JSON", `{"to":"+15559876543","text":"Code 1234"}`,
+			`{"to":"+15559876543","text":"Code 1234"}`},
+		{"JSON array template", "JSON", `[{"to":"+15559876543"}]`, `[{"to":"+15559876543"}]`},
+		{"JSON plain-text template", "JSON", `Your code is: 1234. "Do not share it."`,
+			`{"message":"Your code is: 1234. \"Do not share it.\"","to":"+15559876543"}`},
+		{"JSON template that is a bare JSON value", "JSON", "1234",
+			`{"message":"1234","to":"+15559876543"}`},
+		{"JSON plain-text template starting with a bracket", "JSON", "[App] Your code is 1234",
+			`{"message":"[App] Your code is 1234","to":"+15559876543"}`},
+		{"FORM key-value template", "FORM", "to=+15559876543\nmessage=Code 1234",
+			"message=Code+1234&to=%2B15559876543"},
+		{"FORM plain-text template", "FORM", "Your code is: 1234.",
+			"message=Your+code+is%3A+1234.&to=%2B15559876543"},
+		{"FORM plain-text template with a link", "FORM", "Register: https://host/invite?id=1&token=2",
+			"message=Register%3A+https%3A%2F%2Fhost%2Finvite%3Fid%3D1%26token%3D2&to=%2B15559876543"},
+		{"FORM template with a field and a plain-text line", "FORM", "Code 1234.\nhttps://host/reset?token=abc",
+			"message=Code+1234.%0Ahttps%3A%2F%2Fhost%2Freset%3Ftoken%3Dabc&to=%2B15559876543"},
+		{"FORM JSON template", "FORM", `{"text":"code=1234"}`,
+			"message=%7B%22text%22%3A%22code%3D1234%22%7D&to=%2B15559876543"},
+	} {
+		suite.Run(test.name, func() {
+			var received string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body, err := io.ReadAll(r.Body)
+				suite.NoError(err)
+				received = string(body)
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer server.Close()
+
+			client, err := newCustomClient(context.Background(), common.NotificationSenderDTO{
+				Name:     "Test Custom",
+				Provider: common.NotificationProviderTypeCustom,
+				Properties: []cmodels.Property{
+					createProperty("url", server.URL, false),
+					createProperty("http_method", "POST", false),
+					createProperty("content_type", test.contentType, false),
+				},
+			}, privateAllowed)
+			suite.Require().NoError(err)
+
+			err = client.Send(context.Background(), common.ChannelTypeSMS,
+				common.MessageData{Recipient: "+15559876543", Body: test.body})
+
+			suite.Require().NoError(err)
+			suite.Equal(test.expected, received)
+		})
+	}
 }
 
 func (suite *CustomClientTestSuite) TestSendSMS_Error() {

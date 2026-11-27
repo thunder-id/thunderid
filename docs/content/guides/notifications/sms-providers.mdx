@@ -81,7 +81,14 @@ A gateway URL on a private address, such as `localhost`, is refused by default. 
 
 #### Customize the Gateway Request Body
 
-<ProductName /> does not assemble a request payload for the gateway. It sends the rendered SMS template as the request body exactly as written. The template defines both the payload shape and the field names your gateway expects.
+<ProductName /> sends the rendered SMS template as the request body when the template is already written in the connection's content type: a JSON object or array for `JSON`, or `key=value` lines for `FORM`. The template then defines both the payload shape and the field names your gateway expects.
+
+Any other template, such as the default plain-text `otp` template, is sent in a default payload that carries the recipient's mobile number in `to` and the rendered text in `message`:
+
+| Content type | Default payload |
+| :--- | :--- |
+| `JSON` | `{"message":"Your verification code is: 385464. It expires in 2 minutes.","to":"+15551234567"}` |
+| `FORM` | `message=Your+verification+code+is%3A+385464.+It+expires+in+2+minutes.&to=%2B15551234567` |
 
 To change the request body, edit the SMS template your flow uses (for example the `otp` template) from the Console under **Customize → Notifications → SMS Templates** (on the control plane, open the project first, where **Notifications** is under **Customize**), or through the [Notification Templates API](./templates.mdx#manage-templates). Changes take effect immediately, with no restart.
 

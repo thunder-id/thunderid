@@ -6,11 +6,13 @@ package client
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
+	"unicode"
 
 	"github.com/thunder-id/thunderid/internal/notification/common"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
@@ -22,6 +24,10 @@ import (
 
 const (
 	customClientLoggerComponentName = "CustomMessageClient"
+	// defaultPayloadKeyRecipient names the recipient field of the payload sent for a plain-text template.
+	defaultPayloadKeyRecipient = "to"
+	// defaultPayloadKeyMessage names the message field of the payload sent for a plain-text template.
+	defaultPayloadKeyMessage = "message"
 )
 
 // CustomClient implements the NotificationClientInterface for sending messages via a custom message provider.
@@ -131,19 +137,30 @@ func (c *CustomClient) sendSMS(ctx context.Context, data common.MessageData) err
 	var err error
 
 	if strings.ToUpper(c.contentType) == "JSON" {
-		req, err = http.NewRequest(c.httpMethod, c.url, bytes.NewBufferString(data.Body))
+		body := []byte(data.Body)
+		if !isJSONPayload(body) {
+			body, err = json.Marshal(map[string]string{
+				defaultPayloadKeyRecipient: data.Recipient,
+				defaultPayloadKeyMessage:   data.Body,
+			})
+			if err != nil {
+				return fmt.Errorf("failed to build the JSON payload: %w", err)
+			}
+		}
+		req, err = http.NewRequest(c.httpMethod, c.url, bytes.NewReader(body))
 		if err != nil {
 			return fmt.Errorf("failed to create HTTP request: %w", err)
 		}
 		req.Header.Set(serverconst.ContentTypeHeaderName, serverconst.ContentTypeJSON)
 	} else if strings.ToUpper(c.contentType) == "FORM" {
-		formData := url.Values{}
-		lines := strings.Split(data.Body, "\n")
-		for _, line := range lines {
-			parts := strings.SplitN(line, "=", 2)
-			if len(parts) == 2 {
-				formData.Add(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
-			}
+		var formData url.Values
+		if !isJSONPayload([]byte(data.Body)) {
+			formData = parseFormFields(data.Body)
+		}
+		if len(formData) == 0 {
+			formData = url.Values{}
+			formData.Set(defaultPayloadKeyRecipient, data.Recipient)
+			formData.Set(defaultPayloadKeyMessage, data.Body)
 		}
 		req, err = http.NewRequest(c.httpMethod, c.url, strings.NewReader(formData.Encode()))
 		if err != nil {
@@ -183,6 +200,29 @@ func (c *CustomClient) sendSMS(ctx context.Context, data common.MessageData) err
 	}
 
 	return nil
+}
+
+// isJSONPayload reports whether the body is a JSON object or array.
+func isJSONPayload(body []byte) bool {
+	trimmed := bytes.TrimSpace(body)
+	return len(trimmed) > 0 && (trimmed[0] == '{' || trimmed[0] == '[') && json.Valid(trimmed)
+}
+
+// parseFormFields reads one key=value field per non-blank line, and returns nil when any line is not a field.
+func parseFormFields(body string) url.Values {
+	fields := url.Values{}
+	for _, line := range strings.Split(body, "\n") {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		key, value, found := strings.Cut(line, "=")
+		key = strings.TrimSpace(key)
+		if !found || key == "" || strings.ContainsFunc(key, unicode.IsSpace) {
+			return nil
+		}
+		fields.Add(key, strings.TrimSpace(value))
+	}
+	return fields
 }
 
 func parseCustomHTTPHeaders(value string) (map[string]string, error) {
