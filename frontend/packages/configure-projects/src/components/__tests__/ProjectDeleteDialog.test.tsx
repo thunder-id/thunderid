@@ -12,14 +12,19 @@ vi.mock('../../api/useDeleteProject', () => ({
   default: () => ({mutate: mockMutate, isPending: false, reset: vi.fn()}),
 }));
 
+const catalog: Record<string, string> = {
+  'common:errors.PRJ-1013': 'This project still has resources.',
+};
+
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    // Keys translate to themselves, except where a default value is given: there the key is
-    // treated as missing from the locale, as the API's own error keys are.
+    // Keys in the catalog below translate to their message. Other keys translate to themselves, except
+    // where a default value is given: there the key is treated as missing from the locale.
     t: (key: string, options?: unknown) =>
-      typeof options === 'object' && options !== null && 'defaultValue' in options
+      catalog[key] ??
+      (typeof options === 'object' && options !== null && 'defaultValue' in options
         ? (options as {defaultValue: string}).defaultValue
-        : key,
+        : key),
   }),
 }));
 
@@ -65,7 +70,7 @@ describe('ProjectDeleteDialog', () => {
     expect(screen.getAllByRole('alert')).toHaveLength(2);
   });
 
-  it('shows the reason the API gives for refusing the delete', async () => {
+  it('shows the console message for the code the API refuses the delete with', async () => {
     const description = "Delete or move the project's applications and agents before deleting the project";
     mockMutate.mockImplementation((_id, options) =>
       options.onError?.(
@@ -91,7 +96,8 @@ describe('ProjectDeleteDialog', () => {
 
     await user.click(screen.getByRole('button', {name: 'common:actions.delete'}));
 
-    expect(screen.getByText(description)).toBeInTheDocument();
+    expect(screen.getByText('This project still has resources.')).toBeInTheDocument();
+    expect(screen.queryByText(description)).not.toBeInTheDocument();
   });
 
   it('closes without deleting when cancelled', async () => {
