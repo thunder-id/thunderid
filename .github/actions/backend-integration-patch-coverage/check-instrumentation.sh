@@ -39,6 +39,7 @@ INSTRUMENTED_LIST="${2:?instrumented-file list is required}"
 
 NOT_IN_SERVER_BINARY=(
   "backend/pkg/thunderidengine/engine.go"
+  "backend/pkg/thunderidengine/audit_sink.go"
 )
 
 missing=()
