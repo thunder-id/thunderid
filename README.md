@@ -25,6 +25,7 @@ Core design goals of ThunderID include:
 
 Get started by exploring how ThunderID can be used to secure:
 * Applications - by following [Securing B2C Application Guide](https://thunderid.dev/docs/next/use-cases/b2c/try-it-out)
+* B2B Applications - by following [Securing B2B Application Guide](https://thunderid.dev/docs/next/use-cases/b2b/try-it-out)
 * AI Agents - by following [Securing AI Agents Guide](https://thunderid.dev/docs/next/use-cases/ai-agents/try-it-out)
 * MCP - by following [Securing MCP Guide](https://thunderid.dev/docs/next/use-cases/ai-agents/mcp-authorization/try-it-out)
 
