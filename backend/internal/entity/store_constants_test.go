@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/database/model"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
@@ -88,12 +89,14 @@ func (s *StoreConstantsTestSuite) TestBuildEntityListQueryBySystemAttributes_All
 		"agent", sysQuery, map[string]bool{"name": true}, 10, 20, testDeploymentID)
 	s.NoError(err)
 	s.Equal("ASQ-ENTITY_MGT-33", q.ID)
-	s.Equal(`SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY" `+
+	s.Equal(`SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES, CREATED_AT, UPDATED_AT `+
+		`FROM "ENTITY" `+
 		`WHERE CATEGORY = $1 `+
 		`AND (ATTRIBUTES->>'name' = $2 OR `+fmt.Sprintf(identifierExistsCondition, "name", "$3")+`) `+
 		`AND SYSTEM_ATTRIBUTES->>'agentCategory' = $4 AND SYSTEM_ATTRIBUTES->>'owner' = $5 `+
 		`AND DEPLOYMENT_ID = $6 ORDER BY ID LIMIT $7 OFFSET $8`, q.PostgresQuery)
-	s.Equal(`SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY" `+
+	s.Equal(`SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES, CREATED_AT, UPDATED_AT `+
+		`FROM "ENTITY" `+
 		`WHERE CATEGORY = ? `+
 		`AND (json_extract(ATTRIBUTES, '$.name') = ? OR `+fmt.Sprintf(identifierExistsCondition, "name", "?")+`) `+
 		`AND json_extract(SYSTEM_ATTRIBUTES, '$.agentCategory') = ? `+
@@ -122,7 +125,8 @@ func (s *StoreConstantsTestSuite) TestBuildEntityQueryBySystemAttributesAndOUIDs
 		"agent", sysQuery, []string{"ou1"}, nil, 10, 0, testDeploymentID)
 	s.NoError(err)
 	s.Equal("ASQ-ENTITY_MGT-35", q.ID)
-	s.Equal(`SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY" `+
+	s.Equal(`SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES, CREATED_AT, UPDATED_AT `+
+		`FROM "ENTITY" `+
 		`WHERE CATEGORY = $1 `+
 		`AND SYSTEM_ATTRIBUTES->>'owner' = $2 AND OU_ID IN ($3) AND DEPLOYMENT_ID = $4 `+
 		`ORDER BY ID LIMIT $5 OFFSET $6`, q.PostgresQuery)
@@ -421,7 +425,8 @@ func (s *StoreConstantsTestSuite) TestBuildProjectQueries() {
 		q, args, err := buildEntityListQueryByProject("app", "project-1", []string{"ou-1", "ou-2"}, 10, 5, "dep")
 		s.NoError(err)
 		s.Equal("ASQ-ENTITY_MGT-37", q.ID)
-		s.Equal(`SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES FROM "ENTITY" `+
+		s.Equal(`SELECT ID, OU_ID, PROJECT_ID, CATEGORY, TYPE, ATTRIBUTES, SYSTEM_ATTRIBUTES, CREATED_AT, UPDATED_AT `+
+			`FROM "ENTITY" `+
 			`WHERE CATEGORY = $1 AND PROJECT_ID = $2 AND OU_ID IN ($3, $4) AND DEPLOYMENT_ID = $5 `+
 			`ORDER BY ID LIMIT $6 OFFSET $7`, q.PostgresQuery)
 		s.Equal([]interface{}{"app", "project-1", "ou-1", "ou-2", "dep", 10, 5}, args)
@@ -430,4 +435,35 @@ func (s *StoreConstantsTestSuite) TestBuildProjectQueries() {
 		q, _ := buildEntityCountQueryByProject("app", "project-1", []string{}, "dep")
 		s.Contains(q.PostgresQuery, "AND 1=0")
 	})
+}
+
+// Every query whose rows buildEntityFromResultRow parses must select the timestamps it requires.
+func (s *StoreConstantsTestSuite) TestEntityRowQueriesSelectTimestamps() {
+	sysQuery := SystemAttributeQuery{SystemAttributes: map[string]interface{}{"owner": "u1"}}
+	built := func(q model.DBQuery, _ []interface{}, err error) model.DBQuery {
+		s.Require().NoError(err)
+		return q
+	}
+	queries := []model.DBQuery{
+		QueryGetEntityList,
+		QuerySearchEntityList,
+		QueryGetEntityByID,
+		QueryGetEntityWithCredentials,
+		queryGetEntityListByType,
+		built(buildEntityListQueryByOUIDs("user", []string{"ou1"}, nil, nil, 10, 0, testDeploymentID)),
+		built(buildEntityListQueryBySystemAttributes("agent", sysQuery, nil, 10, 0, testDeploymentID)),
+		built(buildEntityListQueryBySystemAttributesAndOUIDs(
+			"agent", sysQuery, []string{"ou1"}, nil, 10, 0, testDeploymentID)),
+		built(buildEntityListQuery("user", nil, nil, 10, 0, testDeploymentID)),
+		built(buildEntityListQueryByProject("user", "project-1", nil, 10, 0, testDeploymentID)),
+		built(buildGetEntitiesByIDsQuery([]string{"e1"}, testDeploymentID)),
+	}
+	for _, q := range queries {
+		for _, text := range []string{q.Query, q.PostgresQuery, q.SQLiteQuery} {
+			if text == "" {
+				continue
+			}
+			s.Contains(text, "CREATED_AT, UPDATED_AT", q.ID)
+		}
+	}
 }

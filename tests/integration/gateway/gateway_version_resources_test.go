@@ -264,8 +264,11 @@ func (ts *GatewayVersionsTestSuite) TestTheAppliedDirectoryShowsAsItsReads() {
 	user := ts.shown(applied, "user", userID)
 	userRead := ts.read("/users/" + userID)
 	ts.Contains(userRead, "status", "a user read carries its access status")
-	ts.Equal(withoutAccessState(userRead), user.Resource)
+	ts.Contains(userRead, "createdAt", "a user read carries when it was stored")
+	ts.Equal(withoutTimestamps(withoutAccessState(userRead)), user.Resource)
 	ts.assertNoAccessState(user.Resource, "user")
+	ts.NotContains(user.Resource, "createdAt", "a version must not hold createdAt")
+	ts.NotContains(user.Resource, "updatedAt", "a version must not hold updatedAt")
 	ts.Empty(user.Parts)
 
 	group := ts.shown(applied, "group", groupID)
@@ -805,6 +808,18 @@ func withoutUpdatedAt(read document) document {
 	trimmed := make(document, len(read))
 	for key, value := range read {
 		if key != "updatedAt" {
+			trimmed[key] = value
+		}
+	}
+	return trimmed
+}
+
+// withoutTimestamps leaves out of a read when it was stored and last written, which belong to the
+// server's row, not to a version.
+func withoutTimestamps(read document) document {
+	trimmed := make(document, len(read))
+	for key, value := range read {
+		if key != "createdAt" && key != "updatedAt" {
 			trimmed[key] = value
 		}
 	}

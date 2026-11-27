@@ -35,6 +35,8 @@ type User struct {
 	Display     string          `json:"display,omitempty"`
 	Attributes  json.RawMessage `json:"attributes"`
 	IsOwnedByOU *bool           `json:"isOwnedByOU,omitempty"`
+	CreatedAt   string          `json:"createdAt"`
+	UpdatedAt   string          `json:"updatedAt"`
 }
 
 // VerifiedAttribute is one entry of a user response's verifiedAttributes.
