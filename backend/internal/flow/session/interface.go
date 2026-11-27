@@ -79,7 +79,8 @@ type sessionStore interface {
 	ListBySessionIDs(ctx context.Context, sessionIDs []string) ([]Participant, error)
 	// DeleteBySessionID removes all participants of a session.
 	DeleteBySessionID(ctx context.Context, sessionID string) error
-	// ListByAppID returns every participation of the application, across sessions, oldest first.
+	// ListByAppID returns every participation of the application, across sessions, oldest first. It is the
+	// only listing that fills Participant.SubjectID.
 	ListByAppID(ctx context.Context, appID string) ([]Participant, error)
 	// DeleteParticipant removes one application's participation in one session under one organization unit.
 	DeleteParticipant(ctx context.Context, sessionID, appID, ouID string) error
