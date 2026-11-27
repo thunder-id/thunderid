@@ -380,6 +380,8 @@ type fakeFlowService struct {
 	byKey      map[string]*providers.CompleteFlowDefinition
 	ouIDByPath map[string]string
 	sharingErr *tidcommon.ServiceError
+	// missingProject makes ResolveFlowOU refuse a flow that names a project, as a project not yet created is.
+	missingProject bool
 	// getErr, when set, is what GetFlow fails with for a flow the fake holds.
 	getErr  *tidcommon.ServiceError
 	deleted []string
@@ -1045,6 +1047,9 @@ func (f *fakeFlowService) SetVariables(
 }
 
 func (f *fakeFlowService) ResolveFlowOU(_ context.Context, flowDef *flowmgt.FlowDefinition) *tidcommon.ServiceError {
+	if f.missingProject && flowDef.ProjectID != "" {
+		return &flowmgt.ErrorInvalidProject
+	}
 	if flowDef.OUID == "" {
 		if flowDef.OUHandle == "" {
 			return &flowmgt.ErrorFlowOURequired
@@ -2426,6 +2431,48 @@ func newFlowImportService(flowSvc *fakeFlowService) ImportServiceInterface {
 	return newImportService(
 		nil, nil, nil, flowSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		discardingBus{})
+}
+
+// A dry run takes a project the same import creates as there, as the real import finds it; a project it does not
+// create is refused.
+func TestImportResources_FlowDryRunTakesAPlannedProject(t *testing.T) {
+	project := "resource_type: project\nid: project-1\nhandle: shop\ndisplayName: Shop\n---\n"
+	flow := "resource_type: flow\nhandle: project-login\nname: Project Login\nflowType: AUTHENTICATION\n" +
+		"ouId: ou-1\nprojectId: project-1\nnodes: []\n"
+	for name, tc := range map[string]struct {
+		content string
+		status  string
+	}{
+		"planned":     {project + flow, statusSuccess},
+		"not planned": {flow, statusFailed},
+	} {
+		flowSvc := &fakeFlowService{missingProject: true,
+			byID: map[string]*providers.CompleteFlowDefinition{}, byKey: map[string]*providers.CompleteFlowDefinition{}}
+		svc := newImportServiceWithProjects(nil, &fakeProjectService{})
+		svc.(*importService).flowService = flowSvc
+
+		resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: tc.content, DryRun: true})
+
+		require.Nil(t, err, name)
+		assert.Equal(t, tc.status, resp.Results[len(resp.Results)-1].Status, name)
+		assert.Empty(t, flowSvc.created, name)
+	}
+}
+
+// A flow that names only a planned project is owned by the system unit, as the real import resolves it.
+func TestImportResources_FlowDryRunTakesSystemUnitForAPlannedProjectOnlyFlow(t *testing.T) {
+	content := "resource_type: project\nid: project-1\nhandle: shop\ndisplayName: Shop\n---\n" +
+		"resource_type: flow\nhandle: project-login\nname: Project Login\nflowType: AUTHENTICATION\n" +
+		"projectId: project-1\nnodes: []\n"
+	flowSvc := &fakeFlowService{missingProject: true,
+		byID: map[string]*providers.CompleteFlowDefinition{}, byKey: map[string]*providers.CompleteFlowDefinition{}}
+	svc := newImportServiceWithProjects(&fakeOUService{}, &fakeProjectService{})
+	svc.(*importService).flowService = flowSvc
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: content, DryRun: true})
+
+	require.Nil(t, err)
+	assert.Equal(t, statusSuccess, resp.Results[len(resp.Results)-1].Status)
 }
 
 func TestImportResources_FlowKeepsProjectID(t *testing.T) {
