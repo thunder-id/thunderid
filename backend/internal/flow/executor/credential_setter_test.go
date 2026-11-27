@@ -22,6 +22,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/user"
+	"github.com/thunder-id/thunderid/tests/mocks/agentmgtprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/authnprovider/managermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entityprovidermock"
 	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
@@ -31,19 +32,21 @@ import (
 
 type CredentialSetterTestSuite struct {
 	suite.Suite
-	mockFlowFactory     *coremock.FlowFactoryInterfaceMock
-	mockEntityProvider  *entityprovidermock.EntityProviderInterfaceMock
-	mockUserMgtProvider *usermgtprovidermock.UserMgtProviderMock
-	mockAuthnProvider   *managermock.AuthnProviderManagerMock
-	mockBaseExecutor    *coremock.ExecutorInterfaceMock
-	mockEntityTypes     *entitytypemock.EntityTypeServiceInterfaceMock
-	executor            *credentialSetter
+	mockFlowFactory      *coremock.FlowFactoryInterfaceMock
+	mockEntityProvider   *entityprovidermock.EntityProviderInterfaceMock
+	mockUserMgtProvider  *usermgtprovidermock.UserMgtProviderMock
+	mockAgentMgtProvider *agentmgtprovidermock.AgentMgtProviderMock
+	mockAuthnProvider    *managermock.AuthnProviderManagerMock
+	mockBaseExecutor     *coremock.ExecutorInterfaceMock
+	mockEntityTypes      *entitytypemock.EntityTypeServiceInterfaceMock
+	executor             *credentialSetter
 }
 
 func (suite *CredentialSetterTestSuite) SetupTest() {
 	suite.mockFlowFactory = coremock.NewFlowFactoryInterfaceMock(suite.T())
 	suite.mockEntityProvider = entityprovidermock.NewEntityProviderInterfaceMock(suite.T())
 	suite.mockUserMgtProvider = usermgtprovidermock.NewUserMgtProviderMock(suite.T())
+	suite.mockAgentMgtProvider = agentmgtprovidermock.NewAgentMgtProviderMock(suite.T())
 	suite.mockAuthnProvider = managermock.NewAuthnProviderManagerMock(suite.T())
 	suite.mockBaseExecutor = coremock.NewExecutorInterfaceMock(suite.T())
 	suite.mockEntityTypes = entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
@@ -61,7 +64,7 @@ func (suite *CredentialSetterTestSuite) SetupTest() {
 		}, mock.Anything).Return(suite.mockBaseExecutor)
 
 	suite.executor = newCredentialSetter(suite.mockFlowFactory, suite.mockEntityProvider, suite.mockUserMgtProvider,
-		suite.mockAuthnProvider,
+		suite.mockAgentMgtProvider, suite.mockAuthnProvider,
 		newAccessGuard(nil), suite.mockEntityTypes)
 }
 
@@ -396,7 +399,7 @@ func (suite *CredentialSetterTestSuite) TestExecute_FailedWriteRecordsNothing() 
 func (suite *CredentialSetterTestSuite) heldCredentialWrite(decision providers.AccessDecision,
 	fault *tidcommon.ServiceError) (*providers.ExecutorResponse, error) {
 	suite.executor = newCredentialSetter(suite.mockFlowFactory, suite.mockEntityProvider, suite.mockUserMgtProvider,
-		suite.mockAuthnProvider,
+		suite.mockAgentMgtProvider, suite.mockAuthnProvider,
 		newAccessGuard(expectAccess(suite.T(), testUserID, providers.AccessPlaneRecovery, "", decision, fault)),
 		suite.mockEntityTypes)
 	ctx := &providers.NodeContext{
@@ -537,6 +540,7 @@ func (suite *CredentialSetterTestSuite) TestValidate_RecordsTheReset() {
 	ctx.UserInputs[revocationInputSubject] = testUserID
 	ctx.UserInputs[userInputCredential] = userAttributePassword
 	ctx.RuntimeData[userAttributeUserID] = "another-user"
+	suite.expectEntity(providers.EntityCategoryUser)
 	suite.mockUserMgtProvider.EXPECT().
 		ValidateRemoveUserCredential(mock.Anything, testUserID, userAttributePassword).
 		Return(nil).Once()
@@ -550,6 +554,7 @@ func (suite *CredentialSetterTestSuite) TestValidate_RecordsTheReset() {
 	suite.Equal(userAttributePassword, resp.RuntimeData[common.RuntimeKeyResetCredential])
 	suite.NotContains(resp.RuntimeData, common.RuntimeKeyRecipientType)
 	suite.NotContains(resp.RuntimeData, common.RuntimeKeyExpectedRecipient)
+	suite.NotContains(resp.RuntimeData, common.RuntimeKeyResetSubjectCategory)
 	for _, cleared := range []string{common.RuntimeKeyStoredInviteToken, common.RuntimeKeyInviteLink} {
 		value, ok := resp.RuntimeData[cleared]
 		suite.True(ok, "%s must be cleared", cleared)
@@ -573,6 +578,7 @@ func (suite *CredentialSetterTestSuite) TestValidate_AcceptsACredentialNamedLike
 			ctx := suite.resetContext(ExecutorModeValidate)
 			ctx.UserInputs[revocationInputSubject] = testUserID
 			ctx.UserInputs[userInputCredential] = credential
+			suite.expectEntity(providers.EntityCategoryUser)
 			suite.mockUserMgtProvider.EXPECT().
 				ValidateRemoveUserCredential(mock.Anything, testUserID, credential).
 				Return(nil).Once()
@@ -662,6 +668,7 @@ func (suite *CredentialSetterTestSuite) TestValidate_RefusalsRecordNothing() {
 			credential := cmp.Or(test.credential, userAttributePassword)
 			ctx.UserInputs[userInputCredential] = credential
 			if test.reached >= checked {
+				suite.expectEntity(providers.EntityCategoryUser)
 				suite.mockUserMgtProvider.EXPECT().ValidateRemoveUserCredential(mock.Anything, testUserID,
 					credential).Return(test.checkErr).Once()
 			}
@@ -689,6 +696,7 @@ func (suite *CredentialSetterTestSuite) TestValidate_ServerFaultsAreErrors() {
 		suite.SetupTest()
 		ctx := suite.resetContext(ExecutorModeValidate)
 		ctx.UserInputs[userInputCredential] = userAttributePassword
+		suite.expectEntity(providers.EntityCategoryUser)
 		suite.mockUserMgtProvider.EXPECT().
 			ValidateRemoveUserCredential(mock.Anything, testUserID, userAttributePassword).
 			Return(&tidcommon.InternalServerError).Once()
@@ -1019,6 +1027,225 @@ func (suite *CredentialSetterTestSuite) TestSetInAdminInitiatedFlow_OutcomesBefo
 	}
 }
 
+// An agent's reset is checked by the agent management provider, which names the owner's address. The address is
+// handed to the email step as the expected recipient, so the agent's own email is never read, and the reset is
+// recorded as an agent's.
+func (suite *CredentialSetterTestSuite) TestValidate_AnAgentsLinkGoesToItsOwner() {
+	suite.useGovernance(providers.AccessDecision{Admitted: true}, nil)
+	ctx := suite.resetContext(ExecutorModeValidate)
+	ctx.UserInputs[userInputCredential] = userAttributePassword
+	suite.expectEntity(providers.EntityCategoryAgent)
+	suite.mockAgentMgtProvider.EXPECT().
+		ValidateRemoveAgentCredential(mock.Anything, testUserID, userAttributePassword).
+		Return("owner@example.com", nil).Once()
+
+	resp, err := suite.executor.Execute(ctx)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecComplete, resp.Status)
+	suite.Equal(entitytypemodel.TypeEmail, resp.RuntimeData[common.RuntimeKeyRecipientType])
+	suite.Equal("owner@example.com", resp.RuntimeData[common.RuntimeKeyExpectedRecipient])
+	suite.Equal(string(providers.EntityCategoryAgent), resp.RuntimeData[common.RuntimeKeyResetSubjectCategory])
+	suite.Equal(userAttributePassword, resp.RuntimeData[common.RuntimeKeyResetCredential])
+	suite.Empty(ctx.UserInputs)
+	suite.mockUserMgtProvider.AssertNotCalled(suite.T(), "ValidateRemoveUserCredential", mock.Anything,
+		mock.Anything, mock.Anything)
+}
+
+// A refused agent reset, such as one whose owner has no email address, fails with the agent service's reason and
+// records no recipient. A server fault is an error of the flow.
+func (suite *CredentialSetterTestSuite) TestValidate_AnAgentRefusalRecordsNothing() {
+	ownerAddressUnavailable := &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "AGT-1070"}
+	for name, test := range map[string]struct {
+		checkErr *tidcommon.ServiceError
+		wantErr  bool
+	}{
+		"no owner address": {checkErr: ownerAddressUnavailable},
+		"a server fault":   {checkErr: &tidcommon.InternalServerError, wantErr: true},
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			ctx := suite.resetContext(ExecutorModeValidate)
+			ctx.UserInputs[userInputCredential] = userAttributePassword
+			suite.expectEntity(providers.EntityCategoryAgent)
+			suite.mockAgentMgtProvider.EXPECT().
+				ValidateRemoveAgentCredential(mock.Anything, testUserID, userAttributePassword).
+				Return("", test.checkErr).Once()
+
+			resp, err := suite.executor.Execute(ctx)
+
+			if test.wantErr {
+				suite.Error(err)
+				suite.Nil(resp)
+				return
+			}
+			suite.Require().NoError(err)
+			suite.Equal(providers.ExecFailure, resp.Status)
+			suite.Equal(ownerAddressUnavailable.Code, resp.Error.Code)
+			suite.Empty(resp.RuntimeData[common.RuntimeKeyExpectedRecipient])
+			suite.Empty(resp.RuntimeData[common.RuntimeKeyResetCredential])
+			suite.Equal(userAttributePassword, ctx.UserInputs[userInputCredential])
+		})
+	}
+}
+
+// A subject that is no entity is checked by the user management provider, which refuses it as before. A fault
+// reading the subject, and an agent's reset where no agent management provider is configured, are errors.
+func (suite *CredentialSetterTestSuite) TestValidate_TheSubjectsCategoryChoosesTheProvider() {
+	suite.Run("an unknown subject", func() {
+		suite.SetupTest()
+		ctx := suite.resetContext(ExecutorModeValidate)
+		ctx.UserInputs[userInputCredential] = userAttributePassword
+		suite.mockEntityProvider.On("GetEntity", mock.Anything, testUserID).Return(nil,
+			entityprovider.NewEntityProviderError(entityprovider.ErrorCodeEntityNotFound, "not found", "")).Once()
+		suite.mockUserMgtProvider.EXPECT().
+			ValidateRemoveUserCredential(mock.Anything, testUserID, userAttributePassword).
+			Return(&user.ErrorUserNotFound).Once()
+
+		resp, err := suite.executor.Execute(ctx)
+
+		suite.Require().NoError(err)
+		suite.Equal(providers.ExecFailure, resp.Status)
+		suite.Equal(user.ErrorUserNotFound.Code, resp.Error.Code)
+	})
+	suite.Run("a fault reading the subject", func() {
+		suite.SetupTest()
+		ctx := suite.resetContext(ExecutorModeValidate)
+		ctx.UserInputs[userInputCredential] = userAttributePassword
+		suite.mockEntityProvider.On("GetEntity", mock.Anything, testUserID).Return(nil,
+			entityprovider.NewEntityProviderError(entityprovider.ErrorCodeSystemError, "db error", "")).Once()
+
+		resp, err := suite.executor.Execute(ctx)
+
+		suite.Error(err)
+		suite.Nil(resp)
+	})
+	suite.Run("no agent management provider", func() {
+		suite.SetupTest()
+		suite.executor.agentMgtProvider = nil
+		ctx := suite.resetContext(ExecutorModeValidate)
+		ctx.UserInputs[userInputCredential] = userAttributePassword
+		suite.expectEntity(providers.EntityCategoryAgent)
+
+		resp, err := suite.executor.Execute(ctx)
+
+		suite.Error(err)
+		suite.Nil(resp)
+		suite.mockUserMgtProvider.AssertNotCalled(suite.T(), "ValidateRemoveUserCredential", mock.Anything,
+			mock.Anything, mock.Anything)
+	})
+}
+
+// The agent provider injected after construction is the one an agent's reset uses.
+func (suite *CredentialSetterTestSuite) TestSetAgentMgtProviderReplacesTheProvider() {
+	injected := agentmgtprovidermock.NewAgentMgtProviderMock(suite.T())
+
+	suite.executor.setAgentMgtProvider(injected)
+
+	suite.Same(injected, suite.executor.agentMgtProvider)
+}
+
+// An agent's invalidation goes through the agent management provider, and a failure voids the link as a user's
+// does.
+func (suite *CredentialSetterTestSuite) TestInvalidate_AnAgentsCredentialIsRemovedThroughTheAgentProvider() {
+	for name, test := range map[string]struct {
+		marker string
+		svcErr *tidcommon.ServiceError
+	}{
+		"removed": {marker: "2026-11-12T10:00:00.123456789Z"},
+		"failed":  {svcErr: &tidcommon.InternalServerError},
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			ctx := suite.deliveredResetContext()
+			ctx.RuntimeData[common.RuntimeKeyResetSubjectCategory] = string(providers.EntityCategoryAgent)
+			suite.mockAgentMgtProvider.EXPECT().RemoveAgentCredential(mock.Anything, testUserID,
+				userAttributePassword).Return(test.marker, test.svcErr).Once()
+
+			resp, err := suite.executor.Execute(ctx)
+
+			suite.Require().NoError(err)
+			suite.mockUserMgtProvider.AssertNotCalled(suite.T(), "RemoveUserCredential", mock.Anything,
+				mock.Anything, mock.Anything)
+			if test.svcErr == nil {
+				suite.Equal(providers.ExecComplete, resp.Status)
+				suite.Equal(test.marker, resp.RuntimeData[common.RuntimeKeyResetCredentialMarker])
+				return
+			}
+			suite.Equal(providers.ExecFailure, resp.Status)
+			suite.Equal(ErrCredentialInvalidationFailed.Code, resp.Error.Code)
+			token, cleared := resp.RuntimeData[common.RuntimeKeyStoredInviteToken]
+			suite.True(cleared, "the link must be voided")
+			suite.Empty(token, "the link must be voided")
+		})
+	}
+}
+
+// An agent's reset is checked against the agent's marker and written through the agent management provider, so
+// the agent service checks the administrator's control and audits it. A value the agent's schema refuses is asked
+// for again, and any other failure fails the set.
+func (suite *CredentialSetterTestSuite) TestSetInAdminInitiatedFlow_AnAgentsGoesThroughTheAgentProvider() {
+	const recorded = "2026-11-12T10:00:00Z"
+	for name, test := range map[string]struct {
+		current    bool
+		writeErr   *tidcommon.ServiceError
+		wrote      bool
+		wantStatus providers.ExecutorStatus
+		wantCode   string
+	}{
+		"written":        {current: true, wrote: true, wantStatus: providers.ExecComplete},
+		"a voided reset": {wantStatus: providers.ExecFailure, wantCode: ErrInvalidInviteToken.Code},
+		"a value the schema refuses": {current: true, wrote: true, wantStatus: providers.ExecUserInputRequired,
+			writeErr: &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: agentSchemaValidationFailedCode},
+			wantCode: ErrCredentialValueInvalid.Code},
+		"a refused write": {current: true, wrote: true, wantStatus: providers.ExecFailure,
+			writeErr: &tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "AGT-1069"},
+			wantCode: ErrCredentialSetFailed.Code},
+	} {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			if test.current {
+				suite.useGovernance(providers.AccessDecision{Admitted: true}, nil)
+			}
+			ctx := suite.requestedResetContext(ExecutorModeSet, recorded)
+			ctx.RuntimeData[common.RuntimeKeyResetSubjectCategory] = string(providers.EntityCategoryAgent)
+			ctx.UserInputs = map[string]string{userAttributePassword: "New-Secret-1!"}
+			suite.mockAgentMgtProvider.EXPECT().IsAgentCredentialUnchangedSince(mock.Anything, testUserID, recorded).
+				Return(test.current, nil).Once()
+			if test.current {
+				suite.mockEntityProvider.On("GetEntityProfile", mock.Anything, testUserID).Return(&providers.Entity{
+					ID: testUserID, Category: providers.EntityCategoryAgent, Type: "assistant",
+				}, nil).Once()
+				suite.mockEntityTypes.EXPECT().GetAttributes(mock.Anything, entitytype.TypeCategoryAgent, "assistant",
+					entitytype.AttributeFilter{AllowCredential: true, AllowNonCredential: true}).
+					Return([]entitytype.AttributeInfo{
+						{Attribute: userAttributePassword, Type: entitytypemodel.TypeString, Credential: true},
+					}, nil).Once()
+			}
+			if test.wrote {
+				suite.mockAgentMgtProvider.EXPECT().UpdateAgentCredentials(mock.Anything, testUserID,
+					json.RawMessage(`{"password":"New-Secret-1!"}`)).Return(test.writeErr).Once()
+			}
+
+			resp, err := suite.executor.Execute(ctx)
+
+			suite.Require().NoError(err)
+			suite.Equal(test.wantStatus, resp.Status)
+			if test.wantCode != "" {
+				suite.Require().NotNil(resp.Error)
+				suite.Equal(test.wantCode, resp.Error.Code)
+			}
+			if test.wantStatus == providers.ExecComplete {
+				suite.Equal(testUserID, resp.SharedRuntimeData[common.RuntimeKeyProvenSubject])
+			}
+			suite.mockUserMgtProvider.AssertNotCalled(suite.T(), "IsUserCredentialUnchangedSince", mock.Anything,
+				mock.Anything, mock.Anything)
+			suite.mockEntityProvider.AssertNotCalled(suite.T(), "UpdateCredentials", mock.Anything, mock.Anything,
+				mock.Anything)
+		})
+	}
+}
+
 func TestCredentialSetterSuite(t *testing.T) {
 	suite.Run(t, new(CredentialSetterTestSuite))
 }
@@ -1027,7 +1254,7 @@ func TestCredentialSetterSuite(t *testing.T) {
 func (suite *CredentialSetterTestSuite) useGovernance(decision providers.AccessDecision,
 	fault *tidcommon.ServiceError) {
 	suite.executor = newCredentialSetter(suite.mockFlowFactory, suite.mockEntityProvider, suite.mockUserMgtProvider,
-		suite.mockAuthnProvider,
+		suite.mockAgentMgtProvider, suite.mockAuthnProvider,
 		newAccessGuard(expectAccess(suite.T(), testUserID, providers.AccessPlaneRecovery, "", decision, fault)),
 		suite.mockEntityTypes)
 }

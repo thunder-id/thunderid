@@ -11,6 +11,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
@@ -619,4 +620,101 @@ func (s *AgentServiceAuditTestSuite) TestDeleteAgent_SucceedsWhenTheBusRefusesTh
 	s.entities.On("DeleteEntity", mock.Anything, testAgentID).Return(nil).Once()
 
 	s.Nil(s.service.DeleteAgent(adminContext(), testAgentID))
+}
+
+// resettable makes the agent's type declare a password, so its removal passes the service's checks.
+func (s *AgentServiceAuditTestSuite) resettable() {
+	s.types.ExpectedCalls = nil
+	s.types.On("GetAttributes", mock.Anything, entitytype.TypeCategoryAgent, testAgentType,
+		entitytype.AttributeFilter{AllowCredential: true}).
+		Return([]entitytype.AttributeInfo{{Attribute: "password", Type: "string", Credential: true}},
+			(*tidcommon.ServiceError)(nil)).Maybe()
+}
+
+// Invalidating an agent's credential records the attempt on the agent with the credential's type, never its value.
+// A removal whose revocation then fails is recorded as succeeded, since the credential is gone.
+func (s *AgentServiceAuditTestSuite) TestRemoveAgentCredential_PublishesTheInvalidation() {
+	cases := []struct {
+		name      string
+		arrange   func()
+		removeErr error
+		outcome   audit.Outcome
+	}{
+		{name: "removed", outcome: audit.OutcomeSucceeded,
+			arrange: func() { s.existing(); s.access(true) }},
+		{name: "the revocation after it fails", removeErr: fmt.Errorf("%w: SSE-5000", entity.ErrRevocationIncomplete),
+			outcome: audit.OutcomeSucceeded, arrange: func() { s.existing(); s.access(true) }},
+		{name: "the caller may not change the agent", outcome: audit.OutcomeDenied("forbidden"),
+			arrange: func() { s.existing(); s.access(false) }},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			published := s.record()
+			s.resettable()
+			tc.arrange()
+			if tc.outcome == audit.OutcomeSucceeded {
+				s.entities.On("RemoveCredential", mock.Anything, testAgentID, "password").
+					Return("2026-11-24T10:00:00.1Z", tc.removeErr).Once()
+			}
+
+			_, _ = s.service.RemoveAgentCredential(adminContext(), testAgentID, "password")
+
+			events := published()
+			s.Require().Len(events, 1)
+			s.Equal(audit.EventAgentCredentialInvalidate, events[0].name)
+			s.Equal(audit.Ref{Type: audit.TargetTypeAgent, ID: testAgentID}, events[0].payload.Target())
+			s.Equal(tc.outcome, events[0].payload.Outcome())
+			s.Equal(audit.Actor{Type: audit.ActorTypeUser, ID: testAuditAdminID}, events[0].payload.Actor())
+			s.Equal(map[string]string{audit.DetailCredentialType: "password"}, events[0].payload.Details())
+		})
+	}
+}
+
+// An owner completing a reset from its link sends no token, so the step runs as the administrator rebuilt from
+// the flow. The write is recorded with the owner as the actor when the owner is a local user, and anonymously
+// when the owner is not, or when the write fails.
+func (s *AgentServiceAuditTestSuite) TestUpdateAgentCredentials_AResetCompletionIsTheOwners() {
+	const ownerID = "owner-1"
+	recorded := security.WithRecordedCaller(context.Background(), testAuditAdminID, testOUID, nil)
+	credentials := json.RawMessage(`{"password":"` + testAuditClientSecret + `"}`)
+	owned := func(owner map[string]interface{}) *providers.Entity {
+		agent := buildAgentEntityFixture(testAuditAgentName, "", "", "")
+		agent.SystemAttributes, _ = json.Marshal(map[string]interface{}{fieldOwner: owner})
+		return agent
+	}
+	cases := []struct {
+		name     string
+		owner    map[string]interface{}
+		category providers.EntityCategory
+		writeErr error
+		want     audit.Actor
+	}{
+		{name: "a local user owner", owner: storedOwner(ownerID, true), category: providers.EntityCategoryUser,
+			want: audit.Actor{Type: audit.ActorTypeUser, ID: ownerID}},
+		{name: "a local owner that is an agent", owner: storedOwner(ownerID, true),
+			category: providers.EntityCategoryAgent, want: audit.Actor{Type: audit.ActorTypeAnonymous}},
+		{name: "an external owner", owner: map[string]interface{}{"id": "ext@example.com", "idType": "email",
+			"isLocal": false}, want: audit.Actor{Type: audit.ActorTypeAnonymous}},
+		{name: "a failed write", owner: storedOwner(ownerID, true), writeErr: assert.AnError,
+			want: audit.Actor{Type: audit.ActorTypeAnonymous}},
+	}
+	for _, tc := range cases {
+		s.Run(tc.name, func() {
+			published := s.record()
+			s.entities.On("GetEntityProfile", mock.Anything, testAgentID).Return(owned(tc.owner), nil)
+			if tc.category != "" {
+				s.entities.On("GetEntityProfile", mock.Anything, ownerID).
+					Return(&providers.Entity{ID: ownerID, Category: tc.category}, nil).Once()
+			}
+			s.access(true)
+			s.entities.On("UpdateCredentials", mock.Anything, testAgentID, credentials).Return(tc.writeErr).Once()
+
+			_ = s.service.UpdateAgentCredentials(recorded, testAgentID, credentials)
+
+			events := published()
+			s.Require().Len(events, 1)
+			s.Equal(audit.EventAgentCredentialUpdate, events[0].name)
+			s.Equal(tc.want, events[0].payload.Actor())
+		})
+	}
 }

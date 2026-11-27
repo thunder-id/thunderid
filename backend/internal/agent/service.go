@@ -24,6 +24,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/cert"
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	"github.com/thunder-id/thunderid/internal/inboundclient"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
@@ -68,6 +69,16 @@ type AgentServiceInterface interface {
 	UpdateAgentCredentials(ctx context.Context, agentID string, credentials json.RawMessage) *tidcommon.ServiceError
 	UpdateOwnedAgentCredentials(ctx context.Context, ownerID, agentID string, kind providers.AgentKind,
 		credentials json.RawMessage) *tidcommon.ServiceError
+	// ValidateRemoveAgentCredential runs the checks of RemoveAgentCredential, changing nothing, and returns the
+	// email address of the agent's owner, where a reset link for the agent goes.
+	ValidateRemoveAgentCredential(ctx context.Context, agentID, credentialType string) (string,
+		*tidcommon.ServiceError)
+	// RemoveAgentCredential removes one credential the agent's type declares, so its value no longer
+	// authenticates, and returns the credential marker the removal wrote.
+	RemoveAgentCredential(ctx context.Context, agentID, credentialType string) (string, *tidcommon.ServiceError)
+	// IsAgentCredentialUnchangedSince reports whether no credential change was written to the agent since the
+	// removal that returned marker.
+	IsAgentCredentialUnchangedSince(ctx context.Context, agentID, marker string) (bool, *tidcommon.ServiceError)
 	RegenerateAgentSecret(ctx context.Context, agentID string) (*model.ClientSecretResponse, *tidcommon.ServiceError)
 	ValidateClientSecretRegeneration(ctx context.Context, agentID string) *tidcommon.ServiceError
 	DeleteAgent(ctx context.Context, agentID string) *tidcommon.ServiceError
@@ -1326,8 +1337,8 @@ func (s *agentService) updateAgent(ctx context.Context, agentID string,
 func (s *agentService) UpdateAgentCredentials(ctx context.Context, agentID string,
 	credentials json.RawMessage) *tidcommon.ServiceError {
 	var written bool
-	svcErr := s.updateAgentCredentials(ctx, agentID, credentials, &written)
-	s.publishCredentialUpdate(ctx, agentID, svcErr, written)
+	existing, svcErr := s.updateAgentCredentials(ctx, agentID, credentials, &written)
+	s.publishCredentialUpdate(ctx, agentID, existing, svcErr, written)
 	return svcErr
 }
 
@@ -1337,59 +1348,104 @@ func (s *agentService) UpdateOwnedAgentCredentials(ctx context.Context, ownerID,
 	kind providers.AgentKind, credentials json.RawMessage) *tidcommon.ServiceError {
 	var written bool
 	svcErr := s.updateOwnedAgentCredentials(ctx, ownerID, agentID, kind, credentials, &written)
-	s.publishCredentialUpdate(ctx, agentID, svcErr, written)
+	s.publishCredentialUpdate(ctx, agentID, nil, svcErr, written)
 	return svcErr
 }
 
 // publishCredentialUpdate audits the attempt. A failure after the credentials are stored is audited as the
-// change it made.
-func (s *agentService) publishCredentialUpdate(ctx context.Context, agentID string, svcErr *tidcommon.ServiceError,
-	written bool) {
+// change it made. A step sent without a token in a flow an administrator started, such as an owner completing a
+// credential reset from its link, runs as that administrator rebuilt from the flow, and a flow on the server's
+// authority runs with the subject of the request it came in on. In both the actor is set explicitly: the agent's
+// owner, who received the link, when the credentials were set and the owner is a local user, and anonymous
+// otherwise. agent is the agent the attempt read, or nil when it read none.
+func (s *agentService) publishCredentialUpdate(ctx context.Context, agentID string, agent *providers.Entity,
+	svcErr *tidcommon.ServiceError, written bool) {
 	if written {
 		svcErr = nil
 	}
-	s.publishAgentEvent(ctx, audit.EventAgentCredentialUpdate, audit.ActionUpdate, agentID, svcErr)
+	target := audit.Ref{Type: audit.TargetTypeAgent, ID: agentID}
+	payload := audit.ChangePayload(ctx, target, audit.ActionUpdate, svcErr)
+	if security.IsRuntimeContext(ctx) || security.IsRecordedCaller(ctx) {
+		actor := audit.Actor{Type: audit.ActorTypeAnonymous}
+		if svcErr == nil {
+			if ownerID := s.localUserOwnerID(ctx, agent); ownerID != "" {
+				actor = audit.Actor{Type: audit.ActorTypeUser, ID: ownerID}
+			}
+		}
+		payload = payload.WithActor(actor)
+	}
+	eventbus.TryPublish(ctx, s.bus, eventbus.NewEvent(ctx, audit.EventAgentCredentialUpdate).With(payload))
+}
+
+// localUserOwnerID returns the ID of the agent's owner when the owner is a user of this deployment, or an empty
+// string otherwise, including when the agent is nil or the owner cannot be read.
+func (s *agentService) localUserOwnerID(ctx context.Context, agent *providers.Entity) string {
+	if agent == nil {
+		return ""
+	}
+	ownerID := localOwnerID(readSystemAttributes(agent.SystemAttributes).Owner)
+	if ownerID == "" {
+		return ""
+	}
+	owner, err := s.entityService.GetEntityProfile(ctx, ownerID)
+	if err != nil || owner.Category != providers.EntityCategoryUser {
+		return ""
+	}
+	return ownerID
 }
 
 // updateAgentCredentials sets the given credentials of an agent without publishing its audit event, and sets
-// written once they are stored, since a failure after that leaves them changed.
+// written once they are stored, since a failure after that leaves them changed. It returns the agent once it is
+// read.
 func (s *agentService) updateAgentCredentials(ctx context.Context, agentID string,
-	credentials json.RawMessage, written *bool) *tidcommon.ServiceError {
+	credentials json.RawMessage, written *bool) (*providers.Entity, *tidcommon.ServiceError) {
 	if agentID == "" {
-		return &ErrorMissingAgentID
+		return nil, &ErrorMissingAgentID
 	}
 	values, svcErr := parseCredentialValues(credentials)
 	if svcErr != nil {
-		return svcErr
+		return nil, svcErr
 	}
+	existing, svcErr := s.checkCredentialWrite(ctx, agentID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	return existing, s.storeAgentCredentials(ctx, agentID, existing, credentials, values, written)
+}
+
+// checkCredentialWrite returns the agent whose credentials an administrator is about to change, refusing an
+// unknown agent, an agent the caller may not update or control, a declarative or control plane deployed agent,
+// and a personal agent, whose credentials only its owner sets.
+func (s *agentService) checkCredentialWrite(ctx context.Context,
+	agentID string) (*providers.Entity, *tidcommon.ServiceError) {
 	existing, err := s.entityService.GetEntityProfile(ctx, agentID)
 	if err != nil {
 		if errors.Is(err, entity.ErrEntityNotFound) {
-			return &ErrorAgentNotFound
+			return nil, &ErrorAgentNotFound
 		}
 		s.logger.Error(ctx, "Failed to retrieve agent entity for a credential update",
 			log.MaskedString("agentID", agentID), log.Error(err))
-		return &tidcommon.InternalServerError
+		return nil, &tidcommon.InternalServerError
 	}
 	if existing.Category != providers.EntityCategoryAgent {
-		return &ErrorAgentNotFound
+		return nil, &ErrorAgentNotFound
 	}
 	if svcErr := s.refuseReadOnly(ctx, existing); svcErr != nil {
-		return svcErr
+		return nil, svcErr
 	}
 	// Setting the agent's credentials lets the caller act as the agent, so the caller must hold every permission
 	// the agent holds.
 	if svcErr := s.checkAgentControl(ctx, security.ActionUpdateAgent, existing.OUID, agentID); svcErr != nil {
-		return svcErr
+		return nil, svcErr
 	}
 	if svcErr := s.refuseManaged(ctx, agentID); svcErr != nil {
-		return svcErr
+		return nil, svcErr
 	}
 	// Only the owner sets a personal agent's credentials.
 	if readSystemAttributes(existing.SystemAttributes).Kind == providers.AgentKindPersonalAssistant {
-		return &ErrorPersonalAgentCredentialsNotUpdatable
+		return nil, &ErrorPersonalAgentCredentialsNotUpdatable
 	}
-	return s.storeAgentCredentials(ctx, agentID, existing, credentials, values, written)
+	return existing, nil
 }
 
 // updateOwnedAgentCredentials sets the credentials of an owner's agent without publishing its audit event, and
@@ -1462,6 +1518,145 @@ func (s *agentService) storeAgentCredentials(ctx context.Context, agentID string
 	}
 	s.captureCredentials(ctx, existing, values)
 	return nil
+}
+
+// ValidateRemoveAgentCredential runs the checks of RemoveAgentCredential, changing nothing, and returns the email
+// address of the agent's owner, where the link of a reset of the agent's credential goes. A reset the owner cannot
+// receive is refused here, before anything is sent.
+func (s *agentService) ValidateRemoveAgentCredential(ctx context.Context, agentID,
+	credentialType string) (string, *tidcommon.ServiceError) {
+	existing, svcErr := s.checkCredentialRemoval(ctx, agentID, credentialType)
+	if svcErr != nil {
+		return "", svcErr
+	}
+	return s.ownerAddress(ctx, readSystemAttributes(existing.SystemAttributes).Owner)
+}
+
+// RemoveAgentCredential removes the agent's credential the way a direct change replaces one: the entity service
+// revokes what the agent was issued before it. When revoking after the removal fails, the credential is already
+// removed. It returns the credential marker the removal wrote.
+func (s *agentService) RemoveAgentCredential(ctx context.Context, agentID,
+	credentialType string) (string, *tidcommon.ServiceError) {
+	var written bool
+	marker, svcErr := s.removeAgentCredential(ctx, agentID, credentialType, &written)
+	auditErr := svcErr
+	if written {
+		auditErr = nil
+	}
+	target := audit.Ref{Type: audit.TargetTypeAgent, ID: agentID}
+	payload := audit.ChangePayload(ctx, target, audit.ActionUpdate, auditErr).
+		WithDetails(map[string]string{audit.DetailCredentialType: credentialType})
+	eventbus.TryPublish(ctx, s.bus, eventbus.NewEvent(ctx, audit.EventAgentCredentialInvalidate).With(payload))
+	return marker, svcErr
+}
+
+// removeAgentCredential removes the agent's credential without publishing its audit event, and sets written once
+// it is removed, since a failure after that leaves it removed.
+func (s *agentService) removeAgentCredential(ctx context.Context, agentID, credentialType string,
+	written *bool) (string, *tidcommon.ServiceError) {
+	if _, svcErr := s.checkCredentialRemoval(ctx, agentID, credentialType); svcErr != nil {
+		return "", svcErr
+	}
+	marker, err := s.entityService.RemoveCredential(ctx, agentID, credentialType)
+	if err != nil {
+		// The checks above leave only a server failure. When it is the revocation after the removal, the
+		// credential is already removed.
+		*written = errors.Is(err, entity.ErrRevocationIncomplete)
+		s.logger.Error(ctx, "Failed to invalidate the agent's credential", log.MaskedString("agentID", agentID),
+			log.Error(err))
+		return "", &tidcommon.InternalServerError
+	}
+	*written = true
+	s.logger.Debug(ctx, "Invalidated agent credential", log.MaskedString("agentID", agentID),
+		log.String("credentialType", credentialType))
+	return marker, nil
+}
+
+// IsAgentCredentialUnchangedSince reports whether no credential change was written to the agent since the removal
+// that returned marker, so the reset that removal started can still be completed. Every write of a credential the
+// agent's type declares stamps a new credential marker, so a later change shows as a different value. A deleted
+// agent counts as changed.
+func (s *agentService) IsAgentCredentialUnchangedSince(ctx context.Context, agentID,
+	marker string) (bool, *tidcommon.ServiceError) {
+	if strings.TrimSpace(agentID) == "" || marker == "" {
+		return false, nil
+	}
+	existing, err := s.entityService.GetEntity(ctx, agentID)
+	if err != nil {
+		if errors.Is(err, entity.ErrEntityNotFound) {
+			return false, nil
+		}
+		s.logger.Error(ctx, "Failed to retrieve agent entity", log.MaskedString("agentID", agentID),
+			log.Error(err))
+		return false, &tidcommon.InternalServerError
+	}
+	// Attributes that cannot be read hold no marker, so the reset reads as voided.
+	var attrs map[string]any
+	_ = json.Unmarshal(existing.SystemAttributes, &attrs)
+	current, _ := attrs[authnprovidercm.SystemAttrCredentialUpdatedAt].(string)
+	return current == marker, nil
+}
+
+// checkCredentialRemoval refuses an invalidation the caller may not make: one checkCredentialWrite refuses, such
+// as for an unknown agent, and a credential the agent's type does not declare as a string, such as an empty one.
+// A number credential is not hashed when stored, so it is not removed this way.
+func (s *agentService) checkCredentialRemoval(ctx context.Context, agentID,
+	credentialType string) (*providers.Entity, *tidcommon.ServiceError) {
+	existing, svcErr := s.checkCredentialWrite(ctx, agentID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	// An agent's type cannot be deleted while the agent exists, so any failure to read it is the server's.
+	declared, svcErr := s.entityTypeService.GetAttributes(ctx, entitytype.TypeCategoryAgent, existing.Type,
+		entitytype.AttributeFilter{AllowCredential: true})
+	if svcErr != nil {
+		s.logger.Error(ctx, "Failed to read the agent type's credential attributes",
+			log.String("agentType", existing.Type), log.String("errorCode", svcErr.Code))
+		return nil, &tidcommon.InternalServerError
+	}
+	for _, info := range declared {
+		if info.Attribute == credentialType && info.Type == entitytypemodel.TypeString {
+			return existing, nil
+		}
+	}
+	return nil, &ErrorInvalidCredential
+}
+
+// ownerAddress returns the email address of an agent's owner: a local user owner's email attribute, or the ID of
+// an external owner identified by email. An agent without an owner, an external owner identified any other way, a
+// local owner that is not a user, such as another agent, and a user without an email address have none, and are
+// refused.
+func (s *agentService) ownerAddress(ctx context.Context,
+	owner *providers.AgentOwner) (string, *tidcommon.ServiceError) {
+	if owner == nil || (s.keepsReferences && isVariableReference(owner.ID)) {
+		return "", &ErrorOwnerAddressUnavailable
+	}
+	if !owner.Local() {
+		if owner.IDType == providers.AgentOwnerIDTypeEmail {
+			return owner.ID, nil
+		}
+		return "", &ErrorOwnerAddressUnavailable
+	}
+	ownerEntity, err := s.entityService.GetEntityProfile(ctx, owner.ID)
+	if err != nil {
+		if errors.Is(err, entity.ErrEntityNotFound) {
+			return "", &ErrorOwnerAddressUnavailable
+		}
+		s.logger.Error(ctx, "Failed to retrieve the agent's owner", log.MaskedString("ownerID", owner.ID),
+			log.Error(err))
+		return "", &tidcommon.InternalServerError
+	}
+	if ownerEntity.Category != providers.EntityCategoryUser {
+		return "", &ErrorOwnerAddressUnavailable
+	}
+	// Attributes that cannot be read hold no address, so the reset is refused.
+	var attrs map[string]any
+	_ = json.Unmarshal(ownerEntity.Attributes, &attrs)
+	address, _ := attrs[ownerEmailAttribute].(string)
+	if strings.TrimSpace(address) == "" {
+		return "", &ErrorOwnerAddressUnavailable
+	}
+	return address, nil
 }
 
 // refuseCredentialAttributes refuses an update that names a credential attribute of the agent type.

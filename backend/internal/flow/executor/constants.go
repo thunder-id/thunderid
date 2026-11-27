@@ -214,6 +214,9 @@ const (
 	// here rather than referenced from internal/agent: that package reaches the flow executor through
 	// the inbound client and flow management services, so importing it would close an import cycle.
 	agentAttributeConflictCode = "AGT-1014"
+	// agentSchemaValidationFailedCode is the agent service's code for a value its type's schema refuses, repeated
+	// here for the same reason.
+	agentSchemaValidationFailedCode = "AGT-1015"
 
 	dataValueTrue  = "true"
 	dataValueFalse = "false"

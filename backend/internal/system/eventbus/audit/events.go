@@ -16,6 +16,9 @@ const (
 	// EventAgentCredentialUpdate names an attempt to set credentials of an agent. It never carries a
 	// credential or its type.
 	EventAgentCredentialUpdate = "agent.credential.update" //nolint:gosec // an event name, not a credential
+	// EventAgentCredentialInvalidate names an attempt to invalidate a credential of an agent. It carries the
+	// credential's type, never its value.
+	EventAgentCredentialInvalidate = "agent.credential.invalidate" //nolint:gosec // an event name, not a credential
 	// EventAgentTypeCreate names an attempt to create an agent type.
 	EventAgentTypeCreate = "agent_type.create"
 	// EventAgentTypeUpdate names an attempt to change an agent type.
@@ -363,7 +366,8 @@ var auditedEvents = map[string][]string{
 	EventAgentUpdate: nil,
 	EventAgentDelete: nil,
 
-	EventAgentCredentialUpdate: nil,
+	EventAgentCredentialUpdate:     nil,
+	EventAgentCredentialInvalidate: {DetailCredentialType},
 
 	EventAgentTypeCreate: nil,
 	EventAgentTypeUpdate: nil,

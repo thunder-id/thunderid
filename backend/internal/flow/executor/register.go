@@ -132,14 +132,15 @@ func (r *executorRegistry) setActorProvider(provider providers.ActorProvider) {
 	}
 }
 
-// agentMgtProviderConsumerInterface is implemented by the executors that provision agents.
+// agentMgtProviderConsumerInterface is implemented by the executors that provision agents or change their
+// credentials.
 type agentMgtProviderConsumerInterface interface {
 	setAgentMgtProvider(provider providers.AgentMgtProvider)
 }
 
 // SetAgentMgtProvider injects the agent provider into every registered executor that provisions
-// agents. The agent service behind it is built after the executors (agent -> inboundclient ->
-// flowmgt -> executor), so it cannot be passed to their constructors.
+// agents or changes their credentials. The agent service behind it is built after the executors
+// (agent -> inboundclient -> flowmgt -> executor), so it cannot be passed to their constructors.
 func SetAgentMgtProvider(reg ExecutorRegistryInterface, provider providers.AgentMgtProvider) error {
 	registry, ok := reg.(*executorRegistry)
 	if !ok {
@@ -359,8 +360,8 @@ func newBuiltInExecutorRegistrars() map[string]builtInExecutorRegistrar {
 		},
 		ExecutorNameCredentialSetter: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNameCredentialSetter, newCredentialSetter(
-				deps.FlowFactory, deps.EntityProvider, deps.UserMgtProvider, deps.AuthnProvider,
-				newAccessGuard(deps.IdentityGovernance), deps.EntityTypeService))
+				deps.FlowFactory, deps.EntityProvider, deps.UserMgtProvider, deps.AgentMgtProvider,
+				deps.AuthnProvider, newAccessGuard(deps.IdentityGovernance), deps.EntityTypeService))
 		},
 		ExecutorNamePermissionValidator: func(reg ExecutorRegistryInterface, deps ExecutorDependencies) {
 			reg.RegisterExecutor(ExecutorNamePermissionValidator, newPermissionValidator(deps.FlowFactory))

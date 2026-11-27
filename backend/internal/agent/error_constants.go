@@ -883,6 +883,21 @@ var (
 			DefaultValue: "A personal agent's credentials can only be set by its owner",
 		},
 	}
+
+	// ErrorOwnerAddressUnavailable is returned when a credential reset for an agent has no owner email address to
+	// send its link to.
+	ErrorOwnerAddressUnavailable = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGT-1070",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentservice.owner_address_unavailable",
+			DefaultValue: "Owner email address unavailable",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentservice.owner_address_unavailable_description",
+			DefaultValue: "The agent's owner has no email address to send the reset link to",
+		},
+	}
 )
 
 // errInvalidDeclarativeLifespan is returned when a declarative agent's validUntil is not an RFC 3339

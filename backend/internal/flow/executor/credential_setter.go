@@ -5,7 +5,6 @@ package executor
 
 import (
 	"cmp"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -33,14 +32,15 @@ var credentialSetterModeFlowTypes = map[string][]providers.FlowType{
 }
 
 // credentialSetter allows users to set their credentials for an existing user account. In an
-// administrator-initiated flow it also runs a credential reset: it checks the reset, invalidates the credential
-// once the link was sent, and sets the credential the reset invalidated unless a later credential change voided
-// the reset.
+// administrator-initiated flow it also runs a credential reset of a user or an agent: it checks the reset,
+// invalidates the credential once the link was sent, and sets the credential the reset invalidated unless a later
+// credential change voided the reset. An agent's reset link goes to the agent's owner.
 type credentialSetter struct {
 	providers.Executor
 	entityProvider    entityprovider.EntityProviderInterface
 	entityTypeService entitytype.EntityTypeServiceInterface
 	userMgtProvider   providers.UserMgtProvider
+	agentMgtProvider  providers.AgentMgtProvider
 	authnProvider     providers.AuthnProviderManager
 	accessGuard       *accessGuard
 	logger            *log.Logger
@@ -51,6 +51,7 @@ func newCredentialSetter(
 	flowFactory core.FlowFactoryInterface,
 	entityProvider entityprovider.EntityProviderInterface,
 	userMgtProvider providers.UserMgtProvider,
+	agentMgtProvider providers.AgentMgtProvider,
 	authnProvider providers.AuthnProviderManager,
 	accessGuard *accessGuard,
 	entityTypeService entitytype.EntityTypeServiceInterface,
@@ -83,10 +84,16 @@ func newCredentialSetter(
 		entityProvider:    entityProvider,
 		entityTypeService: entityTypeService,
 		userMgtProvider:   userMgtProvider,
+		agentMgtProvider:  agentMgtProvider,
 		authnProvider:     authnProvider,
 		accessGuard:       accessGuard,
 		logger:            logger,
 	}
+}
+
+// setAgentMgtProvider injects the agent provider. See SetAgentMgtProvider.
+func (e *credentialSetter) setAgentMgtProvider(provider providers.AgentMgtProvider) {
+	e.agentMgtProvider = provider
 }
 
 // Execute runs the node's mode. Without a mode it sets the credential.
@@ -204,7 +211,7 @@ func (e *credentialSetter) writeCredential(ctx *providers.NodeContext, execResp 
 		return execResp
 	}
 
-	refused, err := e.setCredentials(ctx.Context, userID, category, credentials)
+	refused, err := e.setCredentials(ctx, userID, category, credentials)
 	if err != nil {
 		logger.Debug(ctx.Context, "Failed to update user credentials",
 			log.MaskedString(log.LoggerKeyUserID, userID), log.Error(err))
@@ -249,20 +256,33 @@ func (e *credentialSetter) recoveryHold(ctx *providers.NodeContext, execResp *pr
 }
 
 // setCredentials writes the entity's credentials and reports whether the value was refused. A user's go
-// through the user management provider, so the user service revokes what the user holds. Any other
-// entity's are written through the entity provider.
-func (e *credentialSetter) setCredentials(ctx context.Context, entityID string, category providers.EntityCategory,
-	credentials json.RawMessage) (bool, error) {
-	if category == providers.EntityCategoryUser {
-		if svcErr := e.userMgtProvider.UpdateUserCredentials(ctx, entityID, credentials); svcErr != nil {
+// through the user management provider, so the user service revokes what the user holds. An agent's in an
+// administrator-initiated reset go through the agent management provider, which checks the administrator's
+// control of the agent and audits the change. Any other entity's are written through the entity provider.
+func (e *credentialSetter) setCredentials(ctx *providers.NodeContext, entityID string,
+	category providers.EntityCategory, credentials json.RawMessage) (bool, error) {
+	switch {
+	case category == providers.EntityCategoryUser:
+		if svcErr := e.userMgtProvider.UpdateUserCredentials(ctx.Context, entityID, credentials); svcErr != nil {
 			if svcErr.Code == user.ErrorInvalidCredentialValue.Code {
 				return true, nil
 			}
 			return false, fmt.Errorf("failed to update user credentials: %s", svcErr.Code)
 		}
 		return false, nil
+	case category == providers.EntityCategoryAgent && ctx.FlowType == providers.FlowTypeAdminInitiated:
+		if e.agentMgtProvider == nil {
+			return false, errors.New("agent management provider is not configured")
+		}
+		if svcErr := e.agentMgtProvider.UpdateAgentCredentials(ctx.Context, entityID, credentials); svcErr != nil {
+			if svcErr.Code == agentSchemaValidationFailedCode {
+				return true, nil
+			}
+			return false, fmt.Errorf("failed to update agent credentials: %s", svcErr.Code)
+		}
+		return false, nil
 	}
-	if providerErr := e.entityProvider.UpdateCredentials(ctx, entityID, credentials); providerErr != nil {
+	if providerErr := e.entityProvider.UpdateCredentials(ctx.Context, entityID, credentials); providerErr != nil {
 		if providerErr.Code == entityprovider.ErrorCodeSchemaValidationFailed {
 			return true, nil
 		}
@@ -272,8 +292,9 @@ func (e *credentialSetter) setCredentials(ctx context.Context, entityID string, 
 }
 
 // validateReset checks, changing nothing, that the administrator may invalidate the chosen credential of the
-// user the flow was started for, and that the user is not held. The checks run before anything is sent, so a refused
-// reset sends nothing.
+// user or agent the flow was started for, and that it is not held. The checks run before anything is sent, so a
+// refused reset sends nothing. An agent's link goes to its owner's email address, which the email step is given as
+// the expected recipient, so it never reads an address from the agent.
 func (e *credentialSetter) validateReset(ctx *providers.NodeContext,
 	logger *log.Logger) (*providers.ExecutorResponse, error) {
 	execResp := e.newResetResponse()
@@ -292,7 +313,19 @@ func (e *credentialSetter) validateReset(ctx *providers.NodeContext,
 		return execResp, nil
 	}
 
-	if svcErr := e.userMgtProvider.ValidateRemoveUserCredential(ctx.Context, subject,
+	category, err := e.resetSubjectCategory(ctx, subject)
+	if err != nil {
+		return nil, err
+	}
+	if category == providers.EntityCategoryAgent {
+		recipient, svcErr := e.agentMgtProvider.ValidateRemoveAgentCredential(ctx.Context, subject, credentialType)
+		if svcErr != nil {
+			return refusalResponse(execResp, svcErr, ErrCredentialSetFailed, "failed to check the credential reset")
+		}
+		execResp.RuntimeData[common.RuntimeKeyRecipientType] = entitytypemodel.TypeEmail
+		execResp.RuntimeData[common.RuntimeKeyExpectedRecipient] = recipient
+		execResp.RuntimeData[common.RuntimeKeyResetSubjectCategory] = string(providers.EntityCategoryAgent)
+	} else if svcErr := e.userMgtProvider.ValidateRemoveUserCredential(ctx.Context, subject,
 		credentialType); svcErr != nil {
 		return refusalResponse(execResp, svcErr, ErrCredentialSetFailed, "failed to check the credential reset")
 	}
@@ -328,9 +361,15 @@ func (e *credentialSetter) invalidate(ctx *providers.NodeContext,
 		return e.voidedReset(execResp, &ErrCredentialResetNotDelivered), nil
 	}
 
-	marker, svcErr := e.userMgtProvider.RemoveUserCredential(ctx.Context, subject, credentialType)
+	var marker string
+	var svcErr *tidcommon.ServiceError
+	if e.resetsAgent(ctx) {
+		marker, svcErr = e.agentMgtProvider.RemoveAgentCredential(ctx.Context, subject, credentialType)
+	} else {
+		marker, svcErr = e.userMgtProvider.RemoveUserCredential(ctx.Context, subject, credentialType)
+	}
 	if svcErr != nil {
-		logger.Debug(ctx.Context, "Failed to invalidate the user's credential",
+		logger.Debug(ctx.Context, "Failed to invalidate the credential",
 			log.MaskedString(log.LoggerKeyUserID, subject), log.String("errorCode", svcErr.Code))
 		return e.voidedReset(execResp, &ErrCredentialInvalidationFailed), nil
 	}
@@ -413,15 +452,22 @@ func (e *credentialSetter) entityAttributes(ctx *providers.NodeContext,
 	return entity, attributes, nil
 }
 
-// currentReset returns the user of the flow's credential reset and whether the reset is still current: its
-// invalidation was recorded, and the user management provider says no credential change followed it.
+// currentReset returns the user or agent of the flow's credential reset and whether the reset is still current:
+// its invalidation was recorded, and the management provider of its category says no credential change followed
+// it.
 func (e *credentialSetter) currentReset(ctx *providers.NodeContext) (string, bool, error) {
 	subject := ctx.GetBoundSubject()
 	recorded := ctx.RuntimeData[common.RuntimeKeyResetCredentialMarker]
 	if subject == "" || recorded == "" || ctx.RuntimeData[common.RuntimeKeyResetCredential] == "" {
 		return subject, false, nil
 	}
-	current, svcErr := e.userMgtProvider.IsUserCredentialUnchangedSince(ctx.Context, subject, recorded)
+	var current bool
+	var svcErr *tidcommon.ServiceError
+	if e.resetsAgent(ctx) {
+		current, svcErr = e.agentMgtProvider.IsAgentCredentialUnchangedSince(ctx.Context, subject, recorded)
+	} else {
+		current, svcErr = e.userMgtProvider.IsUserCredentialUnchangedSince(ctx.Context, subject, recorded)
+	}
 	if svcErr != nil {
 		if svcErr.Type == tidcommon.ClientErrorType {
 			return subject, false, nil
@@ -429,6 +475,32 @@ func (e *credentialSetter) currentReset(ctx *providers.NodeContext) (string, boo
 		return "", false, fmt.Errorf("failed to check the credential reset: %s", svcErr.Code)
 	}
 	return subject, current, nil
+}
+
+// resetSubjectCategory returns the category of the entity a credential reset is for: agent for an agent, and user
+// for any other entity or one that does not exist, so the user management provider refuses it as it always has.
+// An agent's reset fails when no agent management provider is configured.
+func (e *credentialSetter) resetSubjectCategory(ctx *providers.NodeContext,
+	subject string) (providers.EntityCategory, error) {
+	entity, providerErr := e.entityProvider.GetEntity(ctx.Context, subject)
+	if providerErr != nil {
+		if providerErr.Code == entityprovider.ErrorCodeEntityNotFound {
+			return providers.EntityCategoryUser, nil
+		}
+		return "", fmt.Errorf("failed to get the entity: %w", providerErr)
+	}
+	if entity.Category != providers.EntityCategoryAgent {
+		return providers.EntityCategoryUser, nil
+	}
+	if e.agentMgtProvider == nil {
+		return "", errors.New("agent management provider is not configured")
+	}
+	return providers.EntityCategoryAgent, nil
+}
+
+// resetsAgent reports whether the flow's credential reset is for an agent, as validateReset recorded.
+func (e *credentialSetter) resetsAgent(ctx *providers.NodeContext) bool {
+	return ctx.RuntimeData[common.RuntimeKeyResetSubjectCategory] == string(providers.EntityCategoryAgent)
 }
 
 // credentialTypeInput returns the input that names the credential to reset: the node's first input, or

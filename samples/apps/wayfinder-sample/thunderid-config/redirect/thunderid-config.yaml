@@ -2071,6 +2071,8 @@ value:
     defaultHandle: default-role-permission-removal-flow
   adminUserCredentialResetFlow:
     defaultHandle: default-admin-user-credential-reset-flow
+  adminAgentCredentialResetFlow:
+    defaultHandle: default-admin-agent-credential-reset-flow
   userUnlockFlow:
     defaultHandle: default-user-unlock-flow
   userSuspendFlow:

@@ -138,6 +138,16 @@ paths:
                     "subject": "019fd0e4-de6c-7ea5-9541-7982f40beeb9",
                     "credential": "password"
                   }
+              adminInitiatedAgentCredentialResetRequest:
+                summary: Administrator-initiated credential reset of an agent's password, completed by its owner
+                value:
+                  flowType: "ADMIN_INITIATED"
+                  handle: "default-admin-agent-credential-reset-flow"
+                  verbose: true
+                  inputs: {
+                    "subject": "019fd0e4-e2a1-7c3d-8f10-3b6a2c9d4e51",
+                    "credential": "password"
+                  }
               adminInitiatedFlowLinkRequest:
                 summary: The user continues an administrator-initiated flow from the emailed link
                 value:
@@ -493,14 +503,16 @@ components:
           description: >-
             Required handle of the `ADMIN_INITIATED` flow to execute. The server ships
             `default-admin-attribute-verification-flow`, which emails the user a link to verify
-            their email address, and `default-admin-user-credential-reset-flow`, which emails the user a
-            link to set a new password or PIN and invalidates the current one once the email is sent.
+            their email address; `default-admin-user-credential-reset-flow`, which emails the user a
+            link to set a new password or PIN and invalidates the current one once the email is sent; and
+            `default-admin-agent-credential-reset-flow`, which does the same for an agent's credential with
+            the link emailed to the agent's owner.
           example: "default-admin-attribute-verification-flow"
         inputs:
           type: object
           description: >-
-            Input data for the flow. The start binds the flow to the user whose ID the `subject` input
-            names; later requests cannot change it. The shipped verification flow verifies the email
+            Input data for the flow. The start binds the flow to the user or agent whose ID the `subject`
+            input names; later requests cannot change it. The shipped verification flow verifies the email
             attribute the `attribute` input names, `email` when it is absent. The shipped credential
             reset flow resets the credential the `credential` input names, such as `password` or `pin`,
             which the user's type must declare. The link goes to the address stored on the user's
@@ -509,7 +521,11 @@ components:
             user has no email address, and the credential still works. `FET-1139` means the same in a
             flow whose email step may complete without sending. A reset that ends with `FET-1140` sent a
             link that no longer works, and the credential may already be removed, so start the reset
-            again. Other flows may read further inputs.
+            again. For an agent, the subject is the agent's ID and the link goes to its owner: the `email`
+            attribute of an owner who is a user of this deployment, or the ID of an external owner
+            identified by email. An agent whose
+            owner has no such address is refused with `AGT-1070` before anything is sent. Other flows may
+            read further inputs.
           additionalProperties:
             type: string
           example: {subject: "019fd0e4-de6c-7ea5-9541-7982f40beeb9"}

@@ -156,6 +156,9 @@ func (s *FlowConfigHandlerTestSuite) TestValidate_AdminInitiatedEntriesAreAdminI
 		{"adminUserCredentialResetFlow", "default-admin-user-credential-reset-flow",
 			flowconfig.FlowSectionConfig{AdminUserCredentialResetFlow: flowconfig.FlowTypeConfig{
 				DefaultHandle: "default-admin-user-credential-reset-flow"}}},
+		{"adminAgentCredentialResetFlow", "default-admin-agent-credential-reset-flow",
+			flowconfig.FlowSectionConfig{AdminAgentCredentialResetFlow: flowconfig.FlowTypeConfig{
+				DefaultHandle: "default-admin-agent-credential-reset-flow"}}},
 	} {
 		s.Run(test.key, func() {
 			var gotHandle string
@@ -332,6 +335,7 @@ func everyAdministrationFlow(prefix string) flowconfig.FlowSectionConfig {
 	return flowconfig.FlowSectionConfig{
 		AdminAttributeVerificationFlow: handle("admin-attribute-verification"),
 		AdminUserCredentialResetFlow:   handle("admin-user-credential-reset"),
+		AdminAgentCredentialResetFlow:  handle("admin-agent-credential-reset"),
 		UserUnlockFlow:                 handle("user-unlock"),
 		UserSuspendFlow:                handle("user-suspend"),
 		UserUnsuspendFlow:              handle("user-unsuspend"),

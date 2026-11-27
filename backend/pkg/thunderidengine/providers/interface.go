@@ -113,6 +113,23 @@ type AgentMgtProvider interface {
 	// client credentials. Fields the agent service does not echo come back zero, so the result is
 	// not a full round-trip. Owner falls back to the authenticated caller when nil.
 	CreateAgent(ctx context.Context, agent *Agent) (*Agent, *common.ServiceError)
+	// UpdateAgentCredentials sets schema-defined credentials, such as a password, for an existing agent, as an
+	// administrator does. Errors from the agent service are returned unchanged.
+	UpdateAgentCredentials(ctx context.Context, agentID string, credentials json.RawMessage) *common.ServiceError
+	// ValidateRemoveAgentCredential checks whether the caller may invalidate the agent's credential of
+	// credentialType, changing nothing, and returns the email address of the agent's owner, where the reset
+	// link goes. An agent whose owner has no such address is refused. Errors from the agent service are returned
+	// unchanged.
+	ValidateRemoveAgentCredential(ctx context.Context, agentID, credentialType string) (string,
+		*common.ServiceError)
+	// RemoveAgentCredential removes the agent's credential of credentialType, so its value no longer
+	// authenticates, and returns a marker of the removal for IsAgentCredentialUnchangedSince. Errors from the
+	// agent service are returned unchanged.
+	RemoveAgentCredential(ctx context.Context, agentID, credentialType string) (string, *common.ServiceError)
+	// IsAgentCredentialUnchangedSince reports whether no credential change was written to the agent since the
+	// removal that returned marker, so the reset it started can still be completed. Errors from the agent
+	// service are returned unchanged.
+	IsAgentCredentialUnchangedSince(ctx context.Context, agentID, marker string) (bool, *common.ServiceError)
 }
 
 // UserMgtProvider provisions users on behalf of runtime capabilities. The rules and semantics of a

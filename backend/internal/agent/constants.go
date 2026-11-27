@@ -64,6 +64,10 @@ var ownerIDTypes = []providers.AgentOwnerIDType{
 // least, the same as the suspend flow's.
 const suspensionRevocationTTL = 7 * 24 * time.Hour
 
+// ownerEmailAttribute is the attribute of a local owner's profile that holds the address a reset link for the
+// owner's agent goes to.
+const ownerEmailAttribute = "email"
+
 // personalAgentAuthFlowHandle is the shipped login flow for a personal agent whose registration flow fixes none.
 const personalAgentAuthFlowHandle = "default-personal-agent-auth-flow"
 

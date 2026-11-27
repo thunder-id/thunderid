@@ -219,6 +219,21 @@ func (ts *AgentOAuthFlowsTestSuite) resetAgentPassword(agentID, password string)
 	return resp.StatusCode, string(responseBody)
 }
 
+// Setting a password for an ID that names no agent, or names a user, is refused as an unknown agent.
+func (ts *AgentOAuthFlowsTestSuite) TestResetAgentPassword_RefusesWhatIsNotAnAgent() {
+	for name, id := range map[string]string{
+		"an unknown ID": "01900000-0000-7000-8000-0000000000ee",
+		"a user's ID":   ts.userID,
+	} {
+		ts.Run(name, func() {
+			status, body := ts.resetAgentPassword(id, "N3w-agent-pa55word!")
+
+			ts.Equal(http.StatusNotFound, status, body)
+			ts.Contains(body, "AGT-1004")
+		})
+	}
+}
+
 // Replacing a held password revokes that agent's tokens and no one else's. A first password revokes nothing.
 func (ts *AgentOAuthFlowsTestSuite) TestResetAgentPassword_RevokesTheAgentsTokens() {
 	const (

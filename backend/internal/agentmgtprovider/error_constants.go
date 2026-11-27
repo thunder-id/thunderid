@@ -37,4 +37,19 @@ var (
 			DefaultValue: "The deployment is not configured to provision agents from the runtime",
 		},
 	}
+
+	// ErrorAgentManagementDisabled is returned when the agent provider is disabled by configuration and an agent's
+	// credentials are changed from the runtime.
+	ErrorAgentManagementDisabled = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "AGP-1004",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.agentmgtprovider.agent_management_disabled",
+			DefaultValue: "Agent management is disabled",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.agentmgtprovider.agent_management_disabled_description",
+			DefaultValue: "The deployment is not configured to change agents from the runtime",
+		},
+	}
 )
