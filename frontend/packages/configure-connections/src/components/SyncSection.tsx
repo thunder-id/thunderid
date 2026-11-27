@@ -22,13 +22,13 @@ const MODE_HINTS: Record<keyof SyncConfiguration, Partial<Record<SyncMode, strin
       'Each sign-in updates the attributes in the attribute mappings when the provider sends them. Other attributes are kept.',
     no_sync: "The provider's attributes are stored when a sign-in creates the account, and are not updated after.",
     session_only:
-      "The account stores only the required attributes and the values the user enters. The provider's other attributes apply to the session.",
+      'The account stores only the required attributes and the values the user enters. The other attributes in the attribute mappings apply to the session.',
   },
   groupsAndRoles: {
     no_sync:
       'The groups and roles the authorization mapping resolves are assigned when a sign-in creates the account, and are not updated after.',
     override_all:
-      "Returning sign-ins match the account's direct groups and roles to the authorization mapping, removing unmapped ones of each type the mapping targets. Protected assignments are kept.",
+      "Returning sign-ins match the account's direct groups and roles to the authorization mapping, removing unmapped ones of each type the mapping targets. Group memberships and role assignments set by a control plane, group memberships set by a resource file, and roles a sharing policy mandates are kept.",
     session_only:
       'The groups and roles the authorization mapping resolves apply to the session and are not assigned to the account.',
   },

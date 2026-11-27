@@ -1211,3 +1211,30 @@ func (suite *OIDCAuthExecutorTestSuite) TestExecute_ClearsCodeAndState_OnceConsu
 	assert.NotContains(suite.T(), ctx.UserInputs, userInputState,
 		"the consumed state must not survive into the next federated node")
 }
+
+// What the provider's sync keeps to the session is written to runtime data, and never reaches the claim
+// record. The flow type travels to the provider in the metadata.
+func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_WritesSessionValues() {
+	assertWritesSessionValues(suite.T(), suite.mockAuthnProvider, suite.mockIDPService,
+		suite.executor.ProcessAuthFlowResponse)
+}
+
+// A failed sync at sign-in fails the step with the sync error.
+func (suite *OIDCAuthExecutorTestSuite) TestProcessAuthFlowResponse_SyncFailed() {
+	ctx := &providers.NodeContext{
+		ExecutionID:    "flow-123",
+		FlowType:       providers.FlowTypeAuthentication,
+		UserInputs:     map[string]string{"code": "auth_code_123"},
+		NodeProperties: map[string]interface{}{"idpId": "idp-123"},
+	}
+	execResp := &providers.ExecutorResponse{AdditionalData: map[string]string{}, RuntimeData: map[string]string{}}
+	suite.mockAuthnProvider.On("AuthenticateUser", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything).
+		Return(providers.AuthUser{}, providers.AuthenticatedClaims(nil), &authnprovidermgr.ErrorFederatedSyncFailed)
+
+	err := suite.executor.ProcessAuthFlowResponse(ctx, execResp)
+
+	suite.Require().NoError(err)
+	suite.Equal(providers.ExecFailure, execResp.Status)
+	suite.Equal(ErrFederatedUserSyncFailed.Code, execResp.Error.Code)
+}

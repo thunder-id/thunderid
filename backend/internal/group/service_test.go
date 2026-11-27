@@ -4546,7 +4546,7 @@ func (suite *GroupServiceTestSuite) TestAddMemberToExistingGroups_SkipsGroupsOut
 	entityMock := entitymock.NewEntityServiceInterfaceMock(suite.T())
 	entityMock.On("GetEntitiesByIDs", mock.Anything, []string{"user-1"}).
 		Return([]providers.Entity{{ID: "user-1", Category: providers.EntityCategoryUser, OUID: "ou-1"}}, nil).Once()
-	service := &groupService{groupStore: storeMock, entityService: entityMock}
+	service := &groupService{groupStore: storeMock, entityService: entityMock, logger: log.GetLogger()}
 
 	svcErr := service.AddMemberToExistingGroups(context.Background(),
 		Member{ID: "user-1", Type: MemberTypeUser}, []string{"other-ou-group"})
@@ -4562,7 +4562,7 @@ func (suite *GroupServiceTestSuite) TestAddMemberToExistingGroups_MemberLookupEr
 	entityMock := entitymock.NewEntityServiceInterfaceMock(suite.T())
 	entityMock.On("GetEntitiesByIDs", mock.Anything, []string{"user-1"}).
 		Return(nil, errors.New("db down")).Once()
-	service := &groupService{groupStore: storeMock, entityService: entityMock}
+	service := &groupService{groupStore: storeMock, entityService: entityMock, logger: log.GetLogger()}
 
 	svcErr := service.AddMemberToExistingGroups(context.Background(),
 		Member{ID: "user-1", Type: MemberTypeUser}, []string{"group-1"})
@@ -4615,7 +4615,7 @@ func (suite *GroupServiceTestSuite) TestGroupService_GetMemberGroupIDs() {
 		storeMock := newGroupStoreInterfaceMock(suite.T())
 		storeMock.On("GetMemberGroupIDs", mock.Anything, string(memberTypeEntity), "user-1").
 			Return(nil, errors.New("db error")).Once()
-		service := &groupService{groupStore: storeMock}
+		service := &groupService{groupStore: storeMock, logger: log.GetLogger()}
 
 		_, svcErr := service.GetMemberGroupIDs(context.Background(), member)
 

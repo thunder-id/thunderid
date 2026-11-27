@@ -747,7 +747,7 @@ func (p *provisioningExecutor) buildMissingInputs(
 			continue
 		}
 		nodeInp, inNodeInputs := nodeInputMap[attr.Attribute]
-		effectiveRequired := isEffectivelyRequired(attr, ctx.NodeInputs)
+		effectiveRequired := p.isEffectivelyRequired(attr, ctx.NodeInputs)
 		// An optional attribute the entity type hides on create is asked for only when the node
 		// declares it.
 		if !effectiveRequired && attr.HiddenOnCreate && !inNodeInputs {
@@ -883,7 +883,8 @@ func (p *provisioningExecutor) getMaxDynamicInputs(ctx *providers.NodeContext) i
 
 // isEffectivelyRequired reports whether attr must have a value: the entity type requires it, or a node
 // input raises it to required. A node input cannot lower a required attribute to optional.
-func isEffectivelyRequired(attr entitytype.AttributeInfo, nodeInputs []providers.Input) bool {
+func (p *provisioningExecutor) isEffectivelyRequired(attr entitytype.AttributeInfo,
+	nodeInputs []providers.Input) bool {
 	return attr.Required || slices.ContainsFunc(nodeInputs, func(inp providers.Input) bool {
 		return inp.Identifier == attr.Attribute && inp.Required
 	})
@@ -948,7 +949,7 @@ func (p *provisioningExecutor) getAttributesForProvisioning(
 			} else if runtimeValue, exists := ctx.RuntimeData[a.Attribute]; exists && runtimeValue != "" {
 				identifyingAttrs[a.Attribute] = convertToSchemaType(runtimeValue, a.Type)
 			} else if extIdentity != nil && (extIdentity.AttributesSync != providers.SyncModeSessionOnly ||
-				isEffectivelyRequired(a, ctx.NodeInputs)) {
+				p.isEffectivelyRequired(a, ctx.NodeInputs)) {
 				// A connection that keeps the attributes to the session stores only the required ones.
 				value, ok := entitytypemodel.ConvertReceivedValue(extIdentity.Claims[a.Attribute], a.Type)
 				if !ok {

@@ -848,6 +848,8 @@ var defaultMessages = map[string]string{
 	"error.exportservice.no_resources_found": "No resources found",
 	"error.exportservice.no_resources_found_description": "No valid resources found for the provided identifiers",
 	"error.exportservice.no_valid_resources_for_export_description": "No valid resources found for export",
+	"error.federatedsyncservice.federated_sync_failed": "Federated sync failed",
+	"error.federatedsyncservice.federated_sync_failed_description": "The account could not be updated with the identity provider's data",
 	"error.flow.core.executor_prerequisite_not_met": "A prerequisite for the executor was not met",
 	"error.flow.core.executor_prerequisite_not_met_description": "One or more prerequisites required for the executor were not satisfied. Please check the inputs and try again.",
 	"error.flow.core.prompt_invalid_action": "Invalid action provided",

@@ -15,6 +15,7 @@ import (
 
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/authnprovider/defaultprovider"
+	"github.com/thunder-id/thunderid/internal/authnprovider/federatedsync"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -31,14 +32,14 @@ type authnProviderManager struct {
 	logger                *log.Logger
 	credToProviderMapping map[string]string
 	bus                   eventbus.EventBusInterface
-	sync                  FederatedSyncDependencies
+	federatedSync         federatedsync.FederatedSyncServiceInterface
 }
 
 // newAuthnProviderManager creates a new authnProviderManager from the default provider
 // and the optional custom providers.
 func newAuthnProviderManager(defaultProvider providers.AuthnProviderInterface,
 	customProviders map[string]providers.CustomAuthnProvider, bus eventbus.EventBusInterface,
-	syncDeps FederatedSyncDependencies) (providers.AuthnProviderManager, error) {
+	federatedSync federatedsync.FederatedSyncServiceInterface) (providers.AuthnProviderManager, error) {
 	if defaultProvider == nil {
 		return nil, fmt.Errorf("authn provider manager: default provider must not be nil")
 	}
@@ -67,7 +68,7 @@ func newAuthnProviderManager(defaultProvider providers.AuthnProviderInterface,
 		logger:                logger,
 		credToProviderMapping: credMap,
 		bus:                   bus,
-		sync:                  syncDeps,
+		federatedSync:         federatedSync,
 	}, nil
 }
 
@@ -169,6 +170,44 @@ func (m *authnProviderManager) AuthenticateUser(ctx context.Context, identifiers
 		return authUser, withSessionValues(authResult.AuthenticatedClaims, values), nil
 	}
 	return authUser, authResult.AuthenticatedClaims, nil
+}
+
+// settleFederatedSync syncs the federated sign-in the provider just verified to the one account holding its
+// link, unless the caller defers it, or runs the deferred sync of the identity pending on any provider in
+// authUser when an authentication by entity ID signs in the account holding its link. A synced identity is
+// cleared from the provider state that held it. It returns what the sign-in keeps to the session, or nil
+// when nothing was synced.
+func (m *authnProviderManager) settleFederatedSync(ctx context.Context, credentials map[string]interface{},
+	metadata *providers.AuthnMetadata, authResult *providers.AuthnResult, authUser *providers.AuthUser,
+	providerName string) (*authnprovidercm.SessionValues, *tidcommon.ServiceError) {
+	owner, identity := providerName, authResult.FederatedIdentity
+	created := false
+	if identity != nil {
+		if metadata != nil && metadata.DeferSync {
+			return nil, nil
+		}
+	} else if _, provisioned := credentials[authnprovidercm.CredentialTypeProvisionedEntityID]; provisioned {
+		owner, identity = findPendingIdentity(*authUser)
+		created = metadata != nil && metadata.Created
+	}
+	if identity == nil || authResult.EntityReference == nil || m.federatedSync == nil {
+		return nil, nil
+	}
+
+	values, synced, svcErr := m.federatedSync.SyncAccount(ctx, *authResult.EntityReference, identity, created)
+	if svcErr != nil {
+		if svcErr.Type == tidcommon.ClientErrorType {
+			return nil, &ErrorFederatedSyncFailed
+		}
+		return nil, &tidcommon.InternalServerError
+	}
+	if !synced {
+		return nil, nil
+	}
+	state, _ := authUser.StateFor(owner)
+	state.PendingIdentity = nil
+	authUser.SetStateFor(owner, state)
+	return values, nil
 }
 
 // GetEntityReference resolves a single entity reference across all providers

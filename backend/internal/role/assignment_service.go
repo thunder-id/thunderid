@@ -86,6 +86,9 @@ type RoleAssignmentServiceInterface interface {
 	// GetDirectRoleIDs returns the IDs of the roles assigned directly to the assignee in the organization
 	// unit. It performs no authorization check of its own.
 	GetDirectRoleIDs(ctx context.Context, assigneeID, ouID string) ([]string, *tidcommon.ServiceError)
+	// IsDeclarativeOnly reports whether roles are kept only in declarative files, which hold no writable
+	// assignments.
+	IsDeclarativeOnly() bool
 	GetResourceDependencies(
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
 	CascadeDeleteDependencies(ctx context.Context, resourceType, id string) (int, error)
@@ -754,6 +757,12 @@ func (as *roleAssignmentService) GetDirectRoleIDs(
 		return nil, &tidcommon.InternalServerError
 	}
 	return roleIDs, nil
+}
+
+// IsDeclarativeOnly reports whether roles are kept only in declarative files, which hold no writable
+// assignments.
+func (as *roleAssignmentService) IsDeclarativeOnly() bool {
+	return isDeclarativeModeEnabled()
 }
 
 // prepareAssignments validates and normalizes assignments before a mutation, placing each in ouID,

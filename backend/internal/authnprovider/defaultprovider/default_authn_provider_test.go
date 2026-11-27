@@ -391,6 +391,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Provisioning_Succes
 	suite.Nil(result.Attributes)
 	suite.Equal(map[string]interface{}{authnprovidercm.UserAttributeUserID: "provisioned-user-123"},
 		result.AttributeToken)
+	suite.mockVerification.AssertNotCalled(suite.T(), "GetVerifiedAttributes", mock.Anything, mock.Anything)
 }
 
 func (suite *DefaultAuthnProviderTestSuite) TestAuthenticate_Provisioning_InvalidPayload() {
@@ -1898,6 +1899,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestFederatedSignIn_ReportsIdentityA
 	suite.Nil(result.Attributes)
 	suite.Equal(map[string]interface{}{authnprovidercm.UserAttributeUserID: "user123"}, result.AttributeToken)
 	suite.mockService.AssertNotCalled(suite.T(), "UpdateAttributes", mock.Anything, mock.Anything, mock.Anything)
+	suite.mockVerification.AssertNotCalled(suite.T(), "GetVerifiedAttributes", mock.Anything, mock.Anything)
 }
 
 // A recorded link is the only thing that authenticates a federated sign-in here. With none, the
@@ -1999,7 +2001,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestBuildAuthnResult_UnlinkedFederat
 		Return([]string{}, nil)
 
 	result, svcErr := suite.provider.(*defaultAuthnProvider).buildAuthnResult(context.Background(),
-		&authncommon.AuthnResult{Token: token, AuthenticatedClaims: claims})
+		&authncommon.AuthnResult{Token: token, AuthenticatedClaims: claims}, true)
 
 	assert.Nil(suite.T(), svcErr)
 	assert.Nil(suite.T(), result.EntityReference)
@@ -2019,7 +2021,7 @@ func (suite *DefaultAuthnProviderTestSuite) TestBuildAuthnResult_LinkHitStillAut
 		Return(&providers.Entity{ID: "user-1", Type: "person", OUID: "ou-1"}, nil)
 
 	result, svcErr := suite.provider.(*defaultAuthnProvider).buildAuthnResult(context.Background(),
-		&authncommon.AuthnResult{Token: token})
+		&authncommon.AuthnResult{Token: token}, true)
 
 	assert.Nil(suite.T(), svcErr)
 	if assert.NotNil(suite.T(), result.EntityReference) {

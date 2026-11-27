@@ -24,6 +24,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/core"
 	"github.com/thunder-id/thunderid/internal/idp"
+	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -41,7 +42,7 @@ import (
 func setExternalIdentity(execResp *providers.ExecutorResponse, connection *providers.IDPDTO, sub string,
 	claims map[string]interface{}) error {
 	claims = maps.Clone(claims)
-	for _, key := range tokenMetadataClaims {
+	for _, key := range oauth2const.TokenMetadataClaims {
 		delete(claims, key)
 	}
 	if sub != "" {

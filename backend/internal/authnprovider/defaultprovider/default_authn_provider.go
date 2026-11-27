@@ -90,30 +90,29 @@ func (p *defaultAuthnProvider) Authenticate(
 	if svcErr != nil {
 		return nil, p.handleAuthenticationFailure(ctx, method, failure, svcErr)
 	}
-	result, svcErr := p.buildAuthnResult(ctx, res)
+	_, federated := credentials[authnprovidercm.CredentialTypeFederated]
+	_, provisioned := credentials[authnprovidercm.CredentialTypeProvisionedEntityID]
+	result, svcErr := p.buildAuthnResult(ctx, res, !federated && !provisioned)
 	if svcErr != nil {
 		return nil, svcErr
 	}
 	if svcErr := p.checkAuthenticationAccess(ctx, method, result); svcErr != nil {
 		return nil, svcErr
 	}
-	return withVerifiedSignIn(credentials, res, result), nil
+	return withVerifiedSignIn(federated, provisioned, res, result), nil
 }
 
 // withVerifiedSignIn reports the federated sign-in a federated credential verified. A federated sign-in, or an
 // authentication by entity ID that may run a deferred sync, returns an attribute token rather than loaded
 // attributes, so they load after the authn provider manager syncs the account.
-func withVerifiedSignIn(credentials map[string]interface{}, res *authncommon.AuthnResult,
+func withVerifiedSignIn(federated, provisioned bool, res *authncommon.AuthnResult,
 	result *providers.AuthnResult) *providers.AuthnResult {
-	_, federated := credentials[authnprovidercm.CredentialTypeFederated]
-	_, provisioned := credentials[authnprovidercm.CredentialTypeProvisionedEntityID]
 	if federated && authnprovidercm.IsFederatedToken(res.Token) {
 		idpID, _ := res.Token[authnprovidercm.UserAttributeFederatedIdpID].(string)
 		sub, _ := res.Token[authnprovidercm.UserAttributeSub].(string)
 		result.FederatedIdentity = &providers.FederatedIdentity{IdpID: idpID, Sub: sub, Claims: res.ReceivedClaims}
 	}
 	if (federated || provisioned) && result.EntityReference != nil {
-		result.Attributes = nil
 		result.AttributeToken = map[string]interface{}{
 			authnprovidercm.UserAttributeUserID: result.EntityReference.EntityID}
 	}
@@ -245,7 +244,7 @@ func (p *defaultAuthnProvider) Enroll(
 	if svcErr != nil {
 		return nil, svcErr
 	}
-	return p.buildAuthnResult(ctx, res)
+	return p.buildAuthnResult(ctx, res, true)
 }
 
 // StoreAccountLink records a linked account against the entity the caller-supplied token
@@ -381,7 +380,7 @@ func (p *defaultAuthnProvider) resolveLinkedEntities(ctx context.Context,
 }
 
 func (p *defaultAuthnProvider) buildAuthnResult(
-	ctx context.Context, authnResult *authncommon.AuthnResult,
+	ctx context.Context, authnResult *authncommon.AuthnResult, withAttributes bool,
 ) (*providers.AuthnResult, *tidcommon.ServiceError) {
 	result := &providers.AuthnResult{
 		AuthenticatedClaims: authnResult.AuthenticatedClaims,
@@ -421,7 +420,7 @@ func (p *defaultAuthnProvider) buildAuthnResult(
 		entityID = *identifiedEntityID
 	}
 
-	res, svcErr := p.buildEntityAuthnResult(ctx, entityID)
+	res, svcErr := p.buildEntityAuthnResult(ctx, entityID, withAttributes)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -429,10 +428,10 @@ func (p *defaultAuthnProvider) buildAuthnResult(
 	return res, nil
 }
 
-// buildEntityAuthnResult builds a resolved AuthnResult (entity reference and attributes) for an entity
-// that is known to exist.
+// buildEntityAuthnResult builds a resolved AuthnResult (entity reference, and attributes when withAttributes
+// is set) for an entity that is known to exist.
 func (p *defaultAuthnProvider) buildEntityAuthnResult(
-	ctx context.Context, entityID string,
+	ctx context.Context, entityID string, withAttributes bool,
 ) (*providers.AuthnResult, *tidcommon.ServiceError) {
 	entityResult, getErr := p.entitySvc.GetEntityProfile(ctx, entityID)
 	if getErr != nil {
@@ -446,6 +445,9 @@ func (p *defaultAuthnProvider) buildEntityAuthnResult(
 			EntityType:     entityResult.Type,
 			OUID:           entityResult.OUID,
 		},
+	}
+	if !withAttributes {
+		return result, nil
 	}
 	attributes := make(map[string]interface{})
 	if len(entityResult.Attributes) > 0 {

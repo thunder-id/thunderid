@@ -278,6 +278,11 @@ const (
 	ClaimCnf      string = "cnf"
 )
 
+// TokenMetadataClaims are the claims that describe a token rather than its subject.
+var TokenMetadataClaims = []string{
+	ClaimAud, ClaimExp, ClaimIat, ClaimNbf, ClaimIss, ClaimJTI, ClaimAtHash, ClaimCHash, ClaimAzp, ClaimNonce,
+}
+
 // ID-JAG claim names (draft-ietf-oauth-identity-assertion-authz-grant Section 3.1) not defined above.
 const (
 	ClaimResource  string = "resource"
