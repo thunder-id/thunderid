@@ -497,7 +497,7 @@ paths:
         A version refers to variables and secrets by name rather than carrying their values, and the
         gateway holds the values. Before anything is sent, the gateway's store is asked for every
         name the version refers to. A dry run lists any it lacks in `missing`; an apply is refused
-        with `409` until the gateway holds them all.
+        with `409`, naming them in `description.params.missing`, until the gateway holds them all.
       requestBody:
         required: false
         content:
@@ -1013,6 +1013,11 @@ components:
                 message:
                   key: "error.gatewayservice.missing_values"
                   defaultValue: "The gateway does not hold every value this version refers to"
+                description:
+                  key: "error.gatewayservice.missing_values.description"
+                  defaultValue: "The gateway lacks variable APP_CLIENT_ID; secret APP_SECRET. Set them on the gateway, then apply again."
+                  params:
+                    missing: "variable APP_CLIENT_ID; secret APP_SECRET"
             versionRemoved:
               summary: The version was removed while it was applied
               value:

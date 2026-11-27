@@ -170,7 +170,7 @@ func (s *versionService) syncProject(ctx context.Context, projectID, firstGatewa
 	if svcErr != nil {
 		run.Error = &AutoSyncFail{Code: svcErr.Code, Message: svcErr.Error.DefaultValue}
 		if svcErr.ErrorDescription.DefaultValue != "" {
-			run.Error.Message = svcErr.ErrorDescription.DefaultValue
+			run.Error.Message = svcErr.ErrorDescription.String()
 		}
 		s.logger.Warn(ctx, "Failed to sync a project to its first gateway", log.String("projectId", projectID),
 			log.String("gatewayId", gatewayID), log.String("code", svcErr.Code))

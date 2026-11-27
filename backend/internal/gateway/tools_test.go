@@ -15,7 +15,6 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/variablestore"
-	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 )
 
 // The version and store services the tools call are generated mocks, each test setting what it expects.
@@ -186,15 +185,16 @@ func (s *GatewayToolsTestSuite) TestCurrentCaptureAndFilteredValuesPassThrough()
 }
 
 func (s *GatewayToolsTestSuite) TestAServiceErrorIsReportedWithItsCode() {
-	s.versions.EXPECT().Apply(mock.Anything, "prod", ApplyRequest{}).Return(nil, &tidcommon.ServiceError{
-		Code: "GTW-1010", Error: tidcommon.I18nMessage{DefaultValue: "Values missing"}})
+	s.versions.EXPECT().Apply(mock.Anything, "prod", ApplyRequest{}).Return(nil,
+		ErrorMissingValues.WithParams(map[string]string{"missing": "secret APP_SECRET"}))
 
 	result := s.result("deploy_version", map[string]any{"gatewayId": "prod"})
 
 	s.True(result.IsError)
 	raw, err := json.Marshal(result.Content)
 	s.Require().NoError(err)
-	s.Contains(string(raw), "GTW-1010")
+	s.Contains(string(raw), ErrorMissingValues.Code)
+	s.Contains(string(raw), "The gateway lacks secret APP_SECRET.", "the error did not name the missing value")
 }
 
 // A promotion is the version service's, asked for as the tool was called.
