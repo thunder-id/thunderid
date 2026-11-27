@@ -313,6 +313,132 @@ func (s *ConnectionAPITestSuite) TestBlockedConnectionDeleteKeepsItsSharingPolic
 	flowDeleted = true
 }
 
+// connectionVariableFlowOwnedBy creates an authentication flow with two connection variables, shares it with every
+// organization unit beneath its owner and lets them set both. It returns the flow's ID and removes the flow when the
+// test ends.
+func (s *ConnectionAPITestSuite) connectionVariableFlowOwnedBy(handle string) string {
+	s.T().Helper()
+	connectionVariable := func(identifier string) map[string]interface{} {
+		return map[string]interface{}{
+			"identifier": identifier, "type": "CONNECTION_SELECT", "label": identifier, "defaultValue": "",
+			"category": "IDENTITY_PROVIDER", "connectionTypes": []string{"google"},
+		}
+	}
+	flowID, err := testutils.CreateFlow(testutils.Flow{
+		Name: "Connection unshare " + handle, FlowType: "AUTHENTICATION", Handle: handle, OUID: s.ouID,
+		Nodes: []map[string]interface{}{
+			{"id": "start", "type": "START", "onSuccess": "resolve_ou"},
+			{"id": "resolve_ou", "type": "TASK_EXECUTION", "onSuccess": "vars",
+				"executor":   map[string]interface{}{"name": "OUResolverExecutor"},
+				"properties": map[string]interface{}{"resolveFrom": "prompt", "parentOuId": s.ouID}},
+			{"id": "vars", "type": "VARIABLES", "onSuccess": "auth_assert",
+				"inputs": []map[string]interface{}{connectionVariable("social"), connectionVariable("backup")}},
+			{"id": "auth_assert", "type": "TASK_EXECUTION",
+				"executor": map[string]interface{}{"name": "AuthAssertExecutor"}, "onSuccess": "end"},
+			{"id": "end", "type": "END"},
+		},
+	})
+	s.Require().NoError(err)
+	s.T().Cleanup(func() { _ = testutils.DeleteFlow(flowID) })
+
+	status, policy := s.sharingRequest(http.MethodPost, "/flows/"+flowID+"/sharing-policies", map[string]interface{}{
+		"childUnits": map[string]interface{}{
+			"mode": "all",
+			"overlayRules": map[string]interface{}{
+				"variables.social": map[string]interface{}{"editable": true},
+				"variables.backup": map[string]interface{}{"editable": true},
+			},
+		},
+	})
+	s.Require().Equal(http.StatusCreated, status, "share the flow: %v", policy)
+	return flowID
+}
+
+// setUnitConnections sets the connections an organization unit chooses for the flow's two variables.
+func (s *ConnectionAPITestSuite) setUnitConnections(flowID, ouID, social, backup string) {
+	s.T().Helper()
+	res, err := doRequest(http.MethodPut, "/flows/"+flowID+"/variables", map[string]interface{}{
+		"ouId": ouID, "values": map[string]interface{}{"social": social, "backup": backup},
+	})
+	s.Require().NoError(err)
+	s.Require().Equal(http.StatusOK, res.status, string(res.body))
+}
+
+// unitConnections reads the values an organization unit holds for the flow's variables.
+func (s *ConnectionAPITestSuite) unitConnections(flowID, ouID string) map[string]interface{} {
+	s.T().Helper()
+	status, body := s.sharingRequest(http.MethodGet, "/flows/"+flowID+"/variables?ouId="+url.QueryEscape(ouID), nil)
+	s.Require().Equal(http.StatusOK, status, "body: %v", body)
+	values, _ := body["values"].(map[string]interface{})
+	return values
+}
+
+// A unit that loses a connection loses the value it set for a flow variable that names it, and keeps the values
+// that name connections it still sees. The variable falls back to what the flow's policy or the owner sets.
+func (s *ConnectionAPITestSuite) TestUnsharingAConnectionRemovesTheValuesUnitsSetToIt() {
+	childOUID := s.createChildOU("conn-unshare-values-child")
+	seen := s.createConnection("google", googleRequestIn("Unshare Seen", ""))
+	s.T().Cleanup(func() { s.deleteConnection("google", seen.ID) })
+	lost := s.createConnection("google", googleRequestIn("Unshare Lost", ""))
+	s.T().Cleanup(func() { s.deleteConnection("google", lost.ID) })
+	// The flow is removed first, as its values keep the connections in use.
+	flowID := s.connectionVariableFlowOwnedBy("connection-unshare-values-flow")
+
+	reach := map[string]interface{}{"childUnits": selectedChildUnitsSection(childUnitReach(childOUID, "unit"))}
+	status, seenPolicy := s.sharingRequest(http.MethodPost, "/connections/google/"+seen.ID+"/sharing-policies", reach)
+	s.Require().Equal(http.StatusCreated, status, "body: %v", seenPolicy)
+	status, lostPolicy := s.sharingRequest(http.MethodPost, "/connections/google/"+lost.ID+"/sharing-policies", reach)
+	s.Require().Equal(http.StatusCreated, status, "body: %v", lostPolicy)
+
+	s.setUnitConnections(flowID, childOUID, lost.ID, seen.ID)
+	s.Equal(map[string]interface{}{"social": lost.ID, "backup": seen.ID}, s.unitConnections(flowID, childOUID))
+
+	status, _ = s.sharingRequest(http.MethodDelete,
+		"/connections/google/"+lost.ID+"/sharing-policies/"+lostPolicy["id"].(string), nil)
+	s.Require().Equal(http.StatusNoContent, status)
+
+	s.Equal(map[string]interface{}{"backup": seen.ID}, s.unitConnections(flowID, childOUID),
+		"the value naming the connection the unit lost is removed, and the one naming a connection it still sees is kept")
+}
+
+// Narrowing a policy so that one unit loses a connection removes the values only that unit set to it. A unit the
+// policy still reaches keeps its own.
+func (s *ConnectionAPITestSuite) TestNarrowingAConnectionPolicyRemovesOnlyTheLosingUnitsValues() {
+	losingOU := s.createChildOU("conn-narrow-values-losing")
+	keepingOU := s.createChildOU("conn-narrow-values-keeping")
+	shared := s.createConnection("google", googleRequestIn("Narrow Shared", ""))
+	s.T().Cleanup(func() { s.deleteConnection("google", shared.ID) })
+	other := s.createConnection("google", googleRequestIn("Narrow Other", ""))
+	s.T().Cleanup(func() { s.deleteConnection("google", other.ID) })
+	// The flow is removed first, as its values keep the connections in use.
+	flowID := s.connectionVariableFlowOwnedBy("connection-narrow-values-flow")
+
+	base := "/connections/google/" + shared.ID + "/sharing-policies"
+	status, policy := s.sharingRequest(http.MethodPost, base, map[string]interface{}{
+		"childUnits": selectedChildUnitsSection(childUnitReach(losingOU, "unit"), childUnitReach(keepingOU, "unit")),
+	})
+	s.Require().Equal(http.StatusCreated, status, "body: %v", policy)
+	otherBase := "/connections/google/" + other.ID + "/sharing-policies"
+	status, otherPolicy := s.sharingRequest(http.MethodPost, otherBase, map[string]interface{}{
+		"childUnits": allChildUnitsSection(),
+	})
+	s.Require().Equal(http.StatusCreated, status, "body: %v", otherPolicy)
+
+	s.setUnitConnections(flowID, losingOU, shared.ID, other.ID)
+	s.setUnitConnections(flowID, keepingOU, shared.ID, other.ID)
+
+	status, updated := s.sharingRequest(http.MethodPut, base+"/"+policy["id"].(string), map[string]interface{}{
+		"version":    1,
+		"childUnits": selectedChildUnitsSection(childUnitReach(keepingOU, "unit")),
+	})
+	s.Require().Equal(http.StatusOK, status, "body: %v", updated)
+
+	s.Equal(map[string]interface{}{"backup": other.ID}, s.unitConnections(flowID, losingOU),
+		"the unit that lost the connection loses the value naming it and keeps the other one")
+	s.Equal(map[string]interface{}{"social": shared.ID, "backup": other.ID}, s.unitConnections(flowID, keepingOU),
+		"a unit the policy still reaches keeps both values")
+}
+
 // Deleting a connection takes its sharing policies with it. A policy left behind would still count as issued by
 // the owning organization unit, which would then refuse to be deleted.
 func (s *ConnectionAPITestSuite) TestDeletingAConnectionRemovesItsSharingPolicies() {

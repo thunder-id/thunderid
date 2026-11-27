@@ -6525,3 +6525,91 @@ func (s *ServiceTestSuite) TestShareIntoChildOU_OwnerLookupFailures() {
 		})
 	}
 }
+
+// holderType is a resource type whose per-organization-unit values name a resource of another type.
+const holderType = ResourceType("holder")
+
+// holderDeclaration is a resource type that implements ReferenceHolder: each organization unit holds one value for
+// the field "refs" of holder-1 that may name a resource of the test type.
+type holderDeclaration struct {
+	asked []lostVisibilityCall
+	fail  error
+}
+
+func (d *holderDeclaration) ResourceType() ResourceType { return holderType }
+
+func (d *holderDeclaration) Fields() []FieldDeclaration { return nil }
+
+func (d *holderDeclaration) OwningOUID(_ context.Context, _ string) (string, *tidcommon.ServiceError) {
+	return ownerOU, nil
+}
+
+// OverlayValuesNaming reports the one field a unit holds, when the lost resource is the one it names.
+func (d *holderDeclaration) OverlayValuesNaming(
+	_ context.Context, rt ResourceType, resourceID, ouID string,
+) ([]OverlayValueRef, error) {
+	d.asked = append(d.asked, lostVisibilityCall{resourceID, ouID})
+	if d.fail != nil {
+		return nil, d.fail
+	}
+	if rt != testType {
+		return nil, nil
+	}
+	return []OverlayValueRef{{ResourceType: holderType, ResourceID: "holder-1", FieldKey: "refs"}}, nil
+}
+
+// holdValue records a value a unit holds for holder-1 that names the resource.
+func (s *ServiceTestSuite) holdValue(ouID string, value []string) {
+	s.Require().Nil(s.svc.(*sharingService).store.SetOverlayValue(
+		context.Background(), holderType, "holder-1", ouID, "refs", value))
+}
+
+// A unit that loses a resource outright cannot keep using it, so the values it holds in other resources that name it
+// are deleted. A unit that still sees the resource keeps its own.
+func (s *ServiceTestSuite) TestVisibilityLossDropsValuesNamingTheLostResource() {
+	holder := &holderDeclaration{}
+	s.svc.RegisterResourceType(holder)
+	first := s.share(map[string]OverlayRule{"assignments": {Editable: true}})
+	_, svcErr := s.svc.CreatePolicy(context.Background(), testType, testResource, ownerOU, PolicyRequest{
+		InitiatingOUID: rootOU,
+		ChildUnits:     children(unit(childOU)),
+	})
+	s.Require().Nil(svcErr)
+	s.holdValue(childOU, []string{testResource})
+	s.holdValue(otherOU, []string{testResource})
+
+	s.Require().Nil(s.svc.DeletePolicy(context.Background(), first.ID))
+
+	s.Empty(s.store.values[string(holderType)+"holder-1"+childOU],
+		"a unit that lost the resource no longer holds a value naming it")
+	s.Equal([]string{testResource}, s.store.values[string(holderType)+"holder-1"+otherOU]["refs"],
+		"a unit the change did not reach keeps its value")
+}
+
+// Losing a resource asks every holder type about the unit that lost it, whichever type the resource is.
+func (s *ServiceTestSuite) TestVisibilityLossAsksEveryReferenceHolder() {
+	holder := &holderDeclaration{}
+	s.svc.RegisterResourceType(holder)
+	first := s.share(map[string]OverlayRule{"assignments": {Editable: true}})
+
+	s.Require().Nil(s.svc.DeletePolicy(context.Background(), first.ID))
+
+	asked := make([]string, 0, len(holder.asked))
+	for _, c := range holder.asked {
+		asked = append(asked, c.ouID)
+		s.Equal(testResource, c.resourceID)
+	}
+	s.Contains(asked, rootOU)
+}
+
+// A holder that cannot say what a unit holds fails the change, which the real transaction then rolls back, so a unit
+// is never left holding a value it should have lost.
+func (s *ServiceTestSuite) TestVisibilityLossFailsWhenAHolderFails() {
+	s.svc.RegisterResourceType(&holderDeclaration{fail: errors.New("store down")})
+	first := s.share(map[string]OverlayRule{"assignments": {Editable: true}})
+
+	svcErr := s.svc.DeletePolicy(context.Background(), first.ID)
+
+	s.Require().NotNil(svcErr)
+	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+}

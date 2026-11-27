@@ -4194,6 +4194,65 @@ func (s *SharingVariablesTestSuite) TestOnlyConnectionVariablesAreCheckedForVisi
 	s.Nil(decl.ValidateMembers(context.Background(), flowIDVar, "variables.gone", "child-ou", []string{"x"}))
 }
 
+func (s *SharingVariablesTestSuite) TestAUnitLosingAConnectionLosesItsValuesNamingIt() {
+	decl := newFlowSharingDeclaration(s.store, s.sharing)
+	noConnection := &providers.CompleteFlowDefinition{ID: "f-plain", Nodes: []providers.NodeDefinition{
+		{ID: "start", Type: "START", OnSuccess: "end"}, {ID: "end", Type: "END"}}}
+	s.store.EXPECT().ListActiveFlowsWithNodes(mock.Anything).
+		Return([]*providers.CompleteFlowDefinition{s.flow, noConnection}, nil)
+	s.sharing.EXPECT().ListOverlayValues(mock.Anything, FlowSharingType, flowIDVar).
+		Return(map[string]map[string][]string{
+			"child-ou": {
+				"variables.social":       {"c-lost"},
+				"variables.supportEmail": {"c-lost"},
+			},
+			"other-ou": {"variables.social": {"c-lost"}},
+		}, nil)
+
+	refs, err := decl.OverlayValuesNaming(context.Background(), connection.ConnectionSharingType, "c-lost", "child-ou")
+
+	s.Require().NoError(err)
+	s.Equal([]sharing.OverlayValueRef{
+		{ResourceType: FlowSharingType, ResourceID: flowIDVar, FieldKey: "variables.social"},
+	}, refs, "only the unit's own value of a connection variable that names the connection")
+}
+
+func (s *SharingVariablesTestSuite) TestAValueNamingAnotherConnectionIsKept() {
+	decl := newFlowSharingDeclaration(s.store, s.sharing)
+	s.store.EXPECT().ListActiveFlowsWithNodes(mock.Anything).
+		Return([]*providers.CompleteFlowDefinition{s.flow}, nil)
+	s.sharing.EXPECT().ListOverlayValues(mock.Anything, FlowSharingType, flowIDVar).
+		Return(map[string]map[string][]string{"child-ou": {"variables.social": {"c-kept"}}}, nil)
+
+	refs, err := decl.OverlayValuesNaming(context.Background(), connection.ConnectionSharingType, "c-lost", "child-ou")
+
+	s.Require().NoError(err)
+	s.Empty(refs)
+}
+
+func (s *SharingVariablesTestSuite) TestOnlyTheLossOfAConnectionIsLookedFor() {
+	decl := newFlowSharingDeclaration(s.store, s.sharing)
+
+	refs, err := decl.OverlayValuesNaming(context.Background(), applicationSharingType, "app-1", "child-ou")
+
+	s.Require().NoError(err)
+	s.Empty(refs, "a flow has no value that names an application, so no flow is read")
+}
+
+func (s *SharingVariablesTestSuite) TestAFailureToReadValuesIsReturned() {
+	decl := newFlowSharingDeclaration(s.store, s.sharing)
+	s.store.EXPECT().ListActiveFlowsWithNodes(mock.Anything).Return(nil, errors.New("store down")).Once()
+	_, err := decl.OverlayValuesNaming(context.Background(), connection.ConnectionSharingType, "c-lost", "child-ou")
+	s.Require().Error(err)
+
+	s.store.EXPECT().ListActiveFlowsWithNodes(mock.Anything).
+		Return([]*providers.CompleteFlowDefinition{s.flow}, nil).Once()
+	s.sharing.EXPECT().ListOverlayValues(mock.Anything, FlowSharingType, flowIDVar).
+		Return(nil, &tidcommon.InternalServerError)
+	_, err = decl.OverlayValuesNaming(context.Background(), connection.ConnectionSharingType, "c-lost", "child-ou")
+	s.Require().Error(err)
+}
+
 func (s *SharingVariablesTestSuite) TestVisibilityCheckFailuresAreNotRefusals() {
 	decl := newFlowSharingDeclaration(s.store, s.sharing)
 	s.sharing.EXPECT().IsVisible(mock.Anything, connection.ConnectionSharingType, "c1", "child-ou").

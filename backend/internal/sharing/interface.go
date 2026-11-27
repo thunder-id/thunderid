@@ -128,6 +128,28 @@ type UnshareFlow struct {
 	EveryUnit bool
 }
 
+// OverlayValueRef names one value an organization unit holds for a field of a shared resource.
+type OverlayValueRef struct {
+	// ResourceType is the type of the resource the value is held for.
+	ResourceType ResourceType
+	// ResourceID is the resource the value is held for.
+	ResourceID string
+	// FieldKey is the field the value is held for.
+	FieldKey string
+}
+
+// ReferenceHolder is an optional capability for a resource type whose per-organization-unit values can name a
+// resource of another type, such as a flow variable that a unit sets to a connection.
+//
+// When a unit loses a resource outright, the framework asks every type that implements it for the values the unit
+// holds that name the lost resource, and deletes them. A unit cannot keep using what it can no longer see, and the
+// resource that was lost cannot know where else it was used.
+type ReferenceHolder interface {
+	// OverlayValuesNaming lists the values ouID holds for resources of this type that name resourceID of the
+	// resource type rt. A type that holds none for rt returns nothing.
+	OverlayValuesNaming(ctx context.Context, rt ResourceType, resourceID, ouID string) ([]OverlayValueRef, error)
+}
+
 // MemberValidator is an optional capability letting a resource type reject members the initiating
 // organization unit cannot itself see. Only the resource type knows what a member id denotes.
 type MemberValidator interface {
