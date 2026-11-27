@@ -1,0 +1,17 @@
+# Spec
+
+### MCP exposure
+
+Decision: required
+
+| Operation | Tool | Tier |
+|---|---|---|
+| list connections | thunderid_list_connections | read |
+| GET /connections/{id} | getConnection | read |
+| POST /connections | thunderid_create_connection | admin |
+| DELETE /connections/{id} | deferred soon | destructive |
+| PUT /connections/{id} | deferred #7 | |
+| POST /connections/{id}/test | not exposed: runs a live request | sometimes |
+| POST /connections/{id}/rotate | not exposed | |
+| POST /connections/{id}/disable | not exposed: | |
+| PATCH /connections/{id} | thunderid_patch_connection |

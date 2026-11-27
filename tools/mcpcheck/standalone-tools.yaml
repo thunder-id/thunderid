@@ -1,0 +1,7 @@
+# Copyright 2026 The ThunderID Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# MCP tools that no API operation backs, each with the one-line reason it exists.
+thunderid_integrate_react_sdk: Returns React SDK integration guidance written into the tool; there is no API behind it.
+thunderid_integrate_nextjs_sdk: Returns Next.js SDK integration guidance written into the tool; there is no API behind it.
+thunderid_get_application_templates: Returns application templates built into the tool; no API operation serves templates.
