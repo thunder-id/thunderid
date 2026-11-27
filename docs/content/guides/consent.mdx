@@ -175,6 +175,16 @@ A client that builds its own consent screen reads `promptConsentValidity` and `m
 - It treats a `validityPeriod` of `1` without `oneTime` as a period like any other, so a user who types 1 second is not marked as having chosen not to remember.
 - It ignores `validityPeriod` and `oneTime` when the option is off, and when the user denies the consent.
 
+### Ask for consent on every authorization
+
+To ask for consent on every authorization, even when the user granted the same consent before, set `alwaysPrompt` to `true` in the `loginConsent` section of the application:
+
+```json
+"loginConsent": {
+    "alwaysPrompt": true
+}
+```
+
 ## Authorization Details Consent
 
 When a client requests [intents](./intents.mdx) through the RFC 9396 `authorization_details` parameter, the **User Consent** step asks the user to approve each requested detail. See [Rich Authorization Requests](./protocols/oauth-oidc/rich-authorization-requests.mdx) for the request.
