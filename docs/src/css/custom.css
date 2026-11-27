@@ -1288,9 +1288,15 @@ aside.theme-doc-sidebar-container {
 /* ------------------------------ API Doc Adjustments ---------------------- */
 
 [data-theme="dark"] .dark-mode {
-    --scalar-background-1: var(--oxygen-palette-background-paper);
+    --scalar-background-1: var(--oxygen-palette-background-default);
     --scalar-background-2: var(--oxygen-palette-background-paper);
     --scalar-background-3: var(--oxygen-palette-background-paper);
+}
+
+/* background-paper is translucent; give Scalar's modal panel
+   an opaque background in dark mode. */
+html[data-theme="dark"] .scalar-modal {
+  --scalar-background-1: var(--oxygen-palette-background-default);
 }
 
 [data-theme="light"] .dark-mode {
