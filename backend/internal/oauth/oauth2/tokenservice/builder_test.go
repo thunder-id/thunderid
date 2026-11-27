@@ -4002,7 +4002,7 @@ func (suite *TokenBuilderTestSuite) TestAdmitAndCap_MemoizesDecisionsPerRequest(
 	ctx := WithIssuanceDecisions(suite.T().Context())
 
 	for range 3 {
-		_, err := tb.admitAndCap(ctx, lifespanValidity, lifespanAgentClientID, lifespanUserID)
+		_, _, err := tb.admitAndCap(ctx, lifespanValidity, lifespanAgentClientID, lifespanUserID)
 		suite.Require().NoError(err)
 	}
 }
@@ -4017,11 +4017,11 @@ func (suite *TokenBuilderTestSuite) TestAdmitAndCap_AsksAgainWithoutMemoOrAfterF
 	tb, _ := newLifespanBuilder(suite.T(), governance)
 	memoized := WithIssuanceDecisions(suite.T().Context())
 
-	_, err := tb.admitAndCap(memoized, lifespanValidity, lifespanAgentClientID)
+	_, _, err := tb.admitAndCap(memoized, lifespanValidity, lifespanAgentClientID)
 	suite.Require().Error(err)
-	_, err = tb.admitAndCap(memoized, lifespanValidity, lifespanAgentClientID)
+	_, _, err = tb.admitAndCap(memoized, lifespanValidity, lifespanAgentClientID)
 	suite.Require().NoError(err)
-	_, err = tb.admitAndCap(suite.T().Context(), lifespanValidity, lifespanAgentClientID)
+	_, _, err = tb.admitAndCap(suite.T().Context(), lifespanValidity, lifespanAgentClientID)
 	suite.Require().NoError(err)
 }
 
@@ -4072,4 +4072,73 @@ func (suite *TokenBuilderTestSuite) TestBuildAccessToken_ChecksOnlyLocallyRecord
 	})
 
 	suite.Require().NoError(err)
+}
+
+// The acting agent's lifespan end rides in the act claim, in Unix seconds, so a resource server that
+// sees only an on-behalf-of token can tell when the agent stops acting.
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_ActClaimCarriesActorSubValidUntil() {
+	actorEnd := time.Now().Add(time.Hour).Truncate(time.Second)
+	tests := []struct {
+		name     string
+		actor    *SubjectTokenClaims
+		oauthApp *providers.OAuthClient
+		decision map[string]providers.AccessDecision
+		want     bool
+	}{
+		{
+			name:     "actor token agent with a bounded lifespan",
+			actor:    &SubjectTokenClaims{Sub: "actor@example.com", EntityID: "actor-entity"},
+			oauthApp: &providers.OAuthClient{ID: "app-1", ClientID: "app-1"},
+			decision: map[string]providers.AccessDecision{
+				"app-1": admitted(time.Time{}), "actor-entity": admitted(actorEnd),
+			},
+			want: true,
+		},
+		{
+			name:     "client acting as the actor",
+			actor:    &SubjectTokenClaims{Sub: lifespanAgentClientID},
+			oauthApp: agentClientApp(),
+			decision: map[string]providers.AccessDecision{lifespanAgentClientID: admitted(actorEnd)},
+			want:     true,
+		},
+		{
+			name:     "unbounded actor",
+			actor:    &SubjectTokenClaims{Sub: "actor@example.com", EntityID: "actor-entity"},
+			oauthApp: &providers.OAuthClient{ID: "app-1", ClientID: "app-1"},
+			decision: map[string]providers.AccessDecision{
+				"app-1": admitted(time.Time{}), "actor-entity": admitted(time.Time{}),
+			},
+		},
+		{
+			name:     "actor with no local identity",
+			actor:    &SubjectTokenClaims{Sub: "external-actor"},
+			oauthApp: &providers.OAuthClient{ID: "app-1", ClientID: "app-1"},
+			decision: map[string]providers.AccessDecision{"app-1": admitted(time.Time{})},
+		},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			tb, jwtService := newLifespanBuilder(suite.T(), issuanceAuthority(suite.T(), tc.decision))
+			var claims map[string]interface{}
+			jwtService.On("GenerateJWT", mock.Anything, lifespanUserID, lifespanIssuer, mock.Anything,
+				mock.Anything, jwt.TokenTypeAccessToken, "").
+				Run(func(args mock.Arguments) { claims = args.Get(4).(map[string]interface{}) }).
+				Return(testAccessToken, time.Now().Unix(), nil)
+
+			_, err := tb.BuildAccessToken(suite.T().Context(), &AccessTokenBuildContext{
+				Subject: lifespanUserID, Audiences: []string{"rs"}, OAuthApp: tc.oauthApp,
+				ValidityPeriod: lifespanValidity, ActorClaims: tc.actor,
+			})
+
+			suite.Require().NoError(err)
+			act, _ := claims["act"].(map[string]interface{})
+			suite.Require().NotNil(act)
+			if tc.want {
+				suite.Equal(actorEnd.Unix(), act[constants.ClaimSubValidUntil])
+			} else {
+				suite.NotContains(act, constants.ClaimSubValidUntil)
+			}
+			suite.NotContains(claims, constants.ClaimSubValidUntil)
+		})
+	}
 }
