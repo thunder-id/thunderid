@@ -80,6 +80,7 @@ module.exports = function pluginMarkdownExport(context) {
         const cleaned = await processMarkdownFile(source, {}, path.dirname(fullPath), {
           docUrlPath,
           siteUrl,
+          isCurrentVersion: version.versionName === 'current',
         });
 
         fs.mkdirSync(path.dirname(outputPath), {recursive: true});

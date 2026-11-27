@@ -22,6 +22,7 @@ import SkillsLogo from '../icons/SkillsLogo';
 import WindowsLogo from '../icons/WindowsLogo';
 import type {DocusaurusProductConfig} from '@site/docusaurus.product.config';
 import {useDocsUrl} from '@site/src/hooks/useDocsUrl';
+import {useNpxCommand} from '@site/src/hooks/useNpxCommand';
 
 const INSTALL_TABS = [
   {id: 'cli', label: 'npx', icon: CliLogo, command: 'npx thunderid', enabled: true},
@@ -133,7 +134,10 @@ export default function HeroSection(): JSX.Element {
       .catch(() => {});
   }, [withBaseUrl, setDownloadAssets]);
 
-  const activeCommand = INSTALL_TABS.find((t) => t.id === activeTab)?.command ?? '';
+  // The npx command follows the docs version the reader is browsing; see useNpxCommand.
+  const npxCommand = useNpxCommand();
+  const activeCommand =
+    activeTab === 'cli' ? npxCommand : (INSTALL_TABS.find((t) => t.id === activeTab)?.command ?? '');
 
   const cmdSpaceIdx = activeCommand.indexOf(' ');
   const cmdFirst = cmdSpaceIdx !== -1 ? activeCommand.slice(0, cmdSpaceIdx) : activeCommand;

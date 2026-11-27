@@ -11,6 +11,16 @@ interface Options {
    * (e.g. `{{ConsoleUrl}}`) replaced with the corresponding value.
    */
   replacements?: Record<string, string>;
+  /**
+   * Substitutions that differ between the current (Next) docs and the versioned docs, picked by
+   * whether the page lives under `versioned_docs/`. Each set is keyed like `replacements`.
+   */
+  perVersion?: {current: Record<string, string>; versioned: Record<string, string>};
+}
+
+/** Reports whether a page is part of a cut docs version rather than the current (Next) docs. */
+function isVersionedDoc(filePath: string | undefined): boolean {
+  return typeof filePath === 'string' && /[\\/]versioned_docs[\\/]/.test(filePath);
 }
 
 interface HastNode {
@@ -56,15 +66,20 @@ function replaceInCodeNodes(node: HastNode, replacements: Record<string, string>
 }
 
 const rehypeProductName: Plugin<[Options]> = function (options: Options) {
-  const {productName, productSlug, replacements: extra = {}} = options;
+  const {productName, productSlug, replacements: extra = {}, perVersion} = options;
   const replacements: Record<string, string> = {
     '{{ProductName}}': productName,
     '{{productSlug}}': productSlug,
     ...extra,
   };
 
-  return (tree: unknown) => {
-    replaceInCodeNodes(tree as HastNode, replacements);
+  return (tree: unknown, file: {path?: string}) => {
+    const versionReplacements = perVersion
+      ? isVersionedDoc(file?.path)
+        ? perVersion.versioned
+        : perVersion.current
+      : {};
+    replaceInCodeNodes(tree as HastNode, {...replacements, ...versionReplacements});
   };
 };
 
