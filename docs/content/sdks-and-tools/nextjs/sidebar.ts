@@ -36,6 +36,11 @@ const sidebar: SidebarsConfig = {
         },
         {
           type: 'doc',
+          id: 'sdks-and-tools/nextjs/apis/bff',
+          label: 'Backend for Frontend',
+        },
+        {
+          type: 'doc',
           id: 'sdks-and-tools/nextjs/apis/configuration',
           label: 'Configuration',
         },

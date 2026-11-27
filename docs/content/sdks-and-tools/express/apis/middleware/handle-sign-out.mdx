@@ -54,7 +54,7 @@ app.get('/logout', handleSignOut());
 The handler supports two sign-out stages:
 
 1. Normal sign-out request:
-   - reads the session ID from `req.cookies[SESSION_COOKIE_NAME]`
+   - reads the session ID from the session cookie (`req.cookies[client.getSessionCookieName()]`)
    - requests the sign-out URL from the SDK
    - clears the session cookie
    - redirects the browser to the identity provider's end-session endpoint

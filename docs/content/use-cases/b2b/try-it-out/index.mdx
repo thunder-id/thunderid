@@ -123,7 +123,7 @@ cp .env.example .env.local
 ```
 
 The other defaults match the import. In `.env.local`, set `THUNDERID_CLIENT_SECRET` and
-`WAYFINDER_BACKEND_CLIENT_SECRET` to the client secrets you set in `thunderid.env`, and `THUNDERID_SECRET` to a long
+`WAYFINDER_BACKEND_CLIENT_SECRET` to the client secrets you set in `thunderid.env`, and `THUNDERID_SESSION_SECRET` to a long
 random string; the SDK encrypts the session cookie with it. Generate one with:
 
 ```bash

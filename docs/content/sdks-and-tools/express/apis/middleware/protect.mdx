@@ -59,7 +59,7 @@ app.get(
 For each request, the middleware:
 
 1. reads `req.thunderIDAuth`
-2. reads the session ID from `req.cookies[SESSION_COOKIE_NAME]`
+2. reads the session ID from the session cookie (`req.cookies[client.getSessionCookieName()]`)
 3. calls `client.isSignedIn(sessionId)`
 4. either continues to the next handler or rejects the request
 

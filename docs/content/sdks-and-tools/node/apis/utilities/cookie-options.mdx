@@ -26,7 +26,7 @@ interface CookieOptions {
 | :--- | :--- | :--- | :--- |
 | `httpOnly` | `boolean` | `true` | When `true`, the browser blocks JavaScript access to the cookie. Recommended to prevent cross-site scripting (XSS) attacks. |
 | `maxAge` | `number` | `3600` | The lifetime of the cookie in seconds. |
-| `sameSite` | `boolean \| 'lax' \| 'strict' \| 'none'` | `'lax'` | Controls how the cookie behaves in cross-origin requests. Use `'strict'` for maximum security or `'none'` (with `secure: true`) for cross-origin use cases. |
+| `sameSite` | `boolean \| 'lax' \| 'strict' \| 'none'` | `'strict'` | Controls how the cookie behaves in cross-origin requests. `'strict'` is what RFC 10017 recommends for a session cookie. Use `'strict'` for maximum security or `'none'` (with `secure: true`) for cross-origin use cases. |
 | `secure` | `boolean` | `true` | When `true`, the browser only sends the cookie over HTTPS connections. |
 
 ## Example

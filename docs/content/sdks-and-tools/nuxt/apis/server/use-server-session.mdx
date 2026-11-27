@@ -56,7 +56,7 @@ export default defineEventHandler(async (event) => {
 
 Returns a `Promise<ThunderIDSessionPayload | null>`. Returns `null` when:
 - No session cookie is present on the request
-- The session cookie cannot be verified (invalid signature or expired)
+- The session cookie cannot be decrypted (altered, or encrypted with another secret) or has expired
 
 ### `ThunderIDSessionPayload`
 

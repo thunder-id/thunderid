@@ -31,7 +31,7 @@ Returns the initialized `ExpressClientConfig` value or `undefined` if the client
 
 ### `getUserFromRequest(req)`
 
-Reads the session ID from `req.cookies[SESSION_COOKIE_NAME]` and returns the current user for that session.
+Reads the session ID from the session cookie (`req.cookies[client.getSessionCookieName()]`) and returns the current user for that session.
 
 ```ts
 getUserFromRequest(req: express.Request): Promise<User | undefined>
@@ -46,7 +46,7 @@ app.get('/me', async (req, res) => {
 
 ### `updateUserCredentialsFromRequest(req, payload)`
 
-Reads the session ID from `req.cookies[SESSION_COOKIE_NAME]` and updates that session's credentials, for example `password`, or any other attribute the user type schema declares `credential: true`.
+Reads the session ID from the session cookie (`req.cookies[client.getSessionCookieName()]`) and updates that session's credentials, for example `password`, or any other attribute the user type schema declares `credential: true`.
 
 ```ts
 updateUserCredentialsFromRequest(req: express.Request, payload: Record<string, string>): Promise<void>

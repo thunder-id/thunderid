@@ -39,8 +39,8 @@ Secret values should be provided through environment variables rather than hardc
 | :--- | :--- |
 | `NUXT_PUBLIC_THUNDERID_BASE_URL` | `baseUrl` |
 | `NUXT_PUBLIC_THUNDERID_CLIENT_ID` | `clientId` |
-| `NUXT_THUNDERID_CLIENT_SECRET` | `clientSecret` |
-| `NUXT_THUNDERID_SESSION_SECRET` | `sessionSecret` |
+| `THUNDERID_CLIENT_SECRET` or `NUXT_THUNDERID_CLIENT_SECRET` | `clientSecret` |
+| `THUNDERID_SESSION_SECRET` or `NUXT_THUNDERID_SESSION_SECRET` | `sessionSecret` |
 
 :::note
 `clientSecret` and `sessionSecret` are placed in the Nuxt private runtime config and are never exposed to the browser.
@@ -53,7 +53,7 @@ Secret values should be provided through environment variables rather than hardc
 | `baseUrl` | `string` | ✅ | The base URL of the <ProductName /> instance (e.g., `https://localhost:8090`) |
 | `clientId` | `string` | ✅ | Client ID of your application |
 | `clientSecret` | `string` | ✅ | Client secret of your application |
-| `sessionSecret` | `string` | ✅ | Secret used to sign session cookies. Must be at least 32 characters |
+| `sessionSecret` | `string` | ✅ | Secret that encrypts the session cookies. Must be at least 32 bytes. In production, the application refuses to run when it is missing or shorter. In development, the module uses a fixed fallback and logs a warning |
 | `afterSignInUrl` | `string` | ❌ | URL to redirect to after a successful sign-in. Defaults to `'/'` |
 | `afterSignOutUrl` | `string` | ❌ | URL to redirect to after sign-out. Defaults to `'/'` |
 | `signInUrl` | `string` | ❌ | Custom sign-in page URL. Defaults to `'/api/auth/signin'` |
@@ -137,6 +137,27 @@ export default defineNuxtConfig({
 
 :::note
 The logout token is addressed to the client id, so back-channel logout works with the redirect-based flow (`clientId` set). An access token already handed to the browser or to another API stays valid until it expires. An encrypted logout token, sent to a client configured for ID token encryption, is not supported.
+:::
+
+## Session Cookies
+
+The module keeps the session in an `HttpOnly`, `SameSite=Strict` cookie on `Path=/`. The cookie is a JSON Web Encryption (JWE) value encrypted with `A256GCM`, using a key derived from `sessionSecret`, so the browser cannot read the tokens in it. A cookie that cannot be decrypted, for example after the secret changes, counts as no session.
+
+| Cookie | Name in production | Name in development | `SameSite` | Lifetime | Purpose |
+|--------|--------------------|---------------------|------------|----------|---------|
+| Session cookie | `__Host-thunderid-session` | `thunderid-session` | `Strict`, or `Lax` with `THUNDERID_SESSION_COOKIE_SAME_SITE` | The session | Holds the encrypted tokens and the user's claims |
+| Sign-in cookie | `__Host-thunderid-session-state` | `thunderid-session-state` | `Lax` | 15 minutes, deleted when sign-in completes | Holds the sign-in in progress and the page to return to, so the callback can check its `state` |
+
+In production, `NODE_ENV` is `production`, and the cookies are also `Secure`, which the `__Host-` prefix requires.
+
+The sign-in cookie is `SameSite=Lax`, so it comes back on the redirect to `/api/auth/callback`. Because the session cookie is `Strict`, the callback ends with a page that moves the browser on to where sign-in began, instead of a redirect, so the browser sends the new cookie.
+
+:::warning
+Set `THUNDERID_SESSION_COOKIE_SAME_SITE=lax` to make the session cookie `SameSite=Lax`. This deviates from RFC 10017. The browser then also sends the session cookie when the user follows a link to your app from another site. RFC 10017 recommends `strict` for a Backend for Frontend (BFF), so choose `lax` only when such links must land signed in, and the SDK logs a warning when you do. Cross-site request forgery is still refused by the SDK's request checks.
+:::
+
+:::note
+Earlier versions signed the session cookie instead of encrypting it. After the upgrade, each user signs in again once.
 :::
 
 ## Advanced Configuration

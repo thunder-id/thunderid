@@ -50,6 +50,11 @@ const sidebar: SidebarsConfig = {
               id: 'sdks-and-tools/express/apis/middleware/handle-backchannel-logout',
               label: 'handleBackchannelLogout()',
             },
+            {
+              type: 'doc',
+              id: 'sdks-and-tools/express/apis/middleware/thunderid-bff',
+              label: 'thunderIDBff()',
+            },
           ],
         },
         {

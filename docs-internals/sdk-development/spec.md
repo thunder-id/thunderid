@@ -1,7 +1,7 @@
 # SDK Development Specification
 
 - **Status:** Draft
-- **Version:** 0.11
+- **Version:** 0.12
 - **Related documents:**
   [threat-model.md](threat-model.md),
   [#5305](https://github.com/thunder-id/thunderid/issues/5305),
@@ -15,7 +15,9 @@
   [RFC 9396](https://datatracker.ietf.org/doc/html/rfc9396),
   [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html),
   [OpenID Connect Back-Channel Logout 1.0](https://openid.net/specs/openid-connect-backchannel-1_0.html),
-  [back-channel logout specification](../back-channel-logout/spec.md)
+  [back-channel logout specification](../back-channel-logout/spec.md),
+  [BFF contract specification](../bff/spec.md),
+  [RFC 10017](https://www.rfc-editor.org/rfc/rfc10017.html)
 
 ## Summary
 
@@ -343,6 +345,7 @@ this table already covers.
 | `allowedExternalUrls` | List | No | Empty | Origins the SDK may attach an access token to when tokens are held in isolated storage. Every entry MUST use HTTPS. See [Token attachment](#token-attachment) for how entries are matched. |
 | `session` | Object | No | Disabled | Browser SDKs only. Behaviour around the server's SSO session. `silentSignIn.beforeRedirect` (default `false`) makes `signIn` try a silent `prompt=none` sign-in first and continue with the redirect when it fails; it MUST be skipped when the caller sets its own `prompt`. `silentSignIn.timeout` (milliseconds, default `10000`) bounds how long a silent sign-in waits before reporting the user as signed out, including from `signInSilently`. Silent sign-in only finds the session when the browser sends the server's session cookie to the iframe, which needs the application on the same site as the server. |
 | `backchannelLogout` | Object | No | Disabled | Server-side SDKs only. For an SDK that mounts the back-channel logout handler itself, turns on [back-channel logout handling](#back-channel-logout-handling): `enabled`, the `path` of the handler, and the `store` that records ended sessions. An SDK that exposes the handler for the application to mount takes the store on the handler instead and does not read this key. An SDK that cannot receive the request MUST document the key as unsupported. |
+| `sessionSecret` | String | No | None | Server-side SDKs only. Encrypts a session kept in a cookie, in the [BFF contract](../bff/spec.md#the-encrypted-session-cookie) format. Read from `THUNDERID_SESSION_SECRET` when not configured. MUST be at least 32 bytes; in production a missing or shorter secret MUST stop the SDK from handling sessions. |
 | `organizationHandle` | String | No | None | Organization identifier, required when a custom domain is configured. |
 | `organizationChain` | Object | No | None | Chained authentication across organization contexts. |
 
@@ -561,6 +564,29 @@ Requirements:
    document this.
 8. An SDK that cannot decrypt an encrypted logout token MUST document that back-channel logout
    is unsupported for a client configured for ID token encryption.
+
+#### Backend for Frontend
+
+RFC 10017 recommends, for business applications and applications that handle personal data, that
+a browser-based application keep no token in the browser and leave OAuth to a Backend for
+Frontend (BFF) on its own origin. The [BFF contract specification](../bff/spec.md) defines what
+that server serves. An SDK takes one of two roles in it:
+
+- **Client.** A Platform SDK that runs in a browser or a mobile application, and the Framework
+  Specific SDKs on it, MAY offer a `backend` mode, configured with `endpoints.backend`. In that
+  mode the SDK calls the BFF's endpoints and never ThunderID, holds no token, and sends
+  `X-Requested-With: XMLHttpRequest` on every call it makes to the BFF. An operation that would
+  return a token rejects with a documented error, unless the application configured requests
+  that skip the BFF's proxy.
+- **Server.** A Framework Specific SDK with a server runtime MAY serve the contract. One that
+  does MUST serve every endpoint, response shape, status code, request rule and cookie rule of the
+  BFF contract specification, and an SDK that keeps the session in a cookie MUST encrypt it in the
+  contract's format, so that implementations read each other's cookies. In the JavaScript
+  ecosystem the Node Platform SDK owns the contract (`handleBffRequest`, `SessionCookie`), and
+  each Framework Specific SDK supplies only its own sign-in and session operations.
+
+A server that is not a BFF, such as a service that calls APIs with `client_credentials` or an API
+that only verifies bearer tokens, has no browser session, and this section does not apply to it.
 
 #### Authorization details
 
@@ -811,6 +837,14 @@ with stored tokens updated atomically, concurrent refreshes are deduplicated to 
 in-flight request, and sign-out revokes server-side before clearing local state. An SDK that
 handles back-channel logout binds each session to the `sid` of its ID token, so the session can
 be found when the server reports that `sid` ended.
+
+**Session cookies.** A server-side SDK that keeps a browser session in a cookie encrypts it, never
+only signs it, so the tokens in it cannot be read by whoever holds the cookie. The cookie is
+`HttpOnly`, `SameSite=Strict` unless the application chooses `Lax`, and `Path=/` with no `Domain`,
+and in production `Secure` and named with the `__Host-` prefix. A sign-in in progress travels in a
+separate `Lax` cookie, so it survives the redirect back to the callback. A deletion repeats the attributes the cookie was set with, since a
+browser ignores the deletion of a `__Host-` cookie otherwise. An endpoint that acts on the session
+for a browser follows the request rules of the [BFF contract](../bff/spec.md#request-rules).
 
 Threats, trust boundaries, and residual risks are analysed in
 [threat-model.md](threat-model.md).
@@ -1244,6 +1278,25 @@ server recorded and nothing else.
 - **AC10.6:** Given a changed email address or mobile number, when the profile saves it, then
   it shows the stored value and its reported status and waits for Verify before starting a flow.
 
+### R11. A BFF that any client SDK can use
+
+**Requirement:** As a developer running a browser-based application on a ThunderID server SDK, I
+want that SDK to act as the application's Backend for Frontend as RFC 10017 recommends, so no
+token reaches the browser and any client SDK in `backend` mode works with it.
+
+**Acceptance criteria:**
+
+- **AC11.1:** Given a server-side SDK that serves the BFF contract, when the contract's
+  conformance checks run against it, then it meets every requirement of the
+  [BFF contract specification](../bff/spec.md#requirements).
+- **AC11.2:** Given a server-side SDK that keeps the session in a cookie, when the cookie is read
+  without the session secret, then none of the tokens in it can be recovered.
+- **AC11.3:** Given two server-side SDKs configured with the same session secret, when one reads a
+  session cookie the other wrote, then it reads the same session.
+- **AC11.4:** Given a client SDK in `backend` mode, when it makes any call to the BFF, then the call
+  carries `X-Requested-With: XMLHttpRequest`, and the SDK holds no token afterwards unless the
+  application configured requests that skip the BFF's proxy.
+
 ## Change log
 
 | Version | Date | Change |
@@ -1259,3 +1312,4 @@ server recorded and nothing else.
 | 0.9 | 2026-11-03 | Self user attribute verification added as an optional capability (R10). |
 | 0.10 | 2026-11-10 | The built-in profile waits for Verify after a contact save instead of starting verification by itself (AC10.6). |
 | 0.11 | 2026-11-22 | Consent rendering keeps the limits an authorization details row carries (minimum, maximum, exclusive limits, step, fewest and most list items) and shows the row's description. |
+| 0.12 | 2026-11-27 | Backend for Frontend roles, the `sessionSecret` key, encrypted session cookies in the security floor, and R11, following the [BFF contract specification](../bff/spec.md) (#7095). |

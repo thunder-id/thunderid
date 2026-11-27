@@ -31,7 +31,7 @@ getSessionCookieOptions(options: Partial<CookieOptions>): CookieOptions
 | :--- | :--- |
 | `httpOnly` | `true` |
 | `maxAge` | `3600` seconds (1 hour) |
-| `sameSite` | `'lax'` |
+| `sameSite` | `'strict'` |
 | `secure` | `true` |
 
 ## Usage
@@ -60,25 +60,24 @@ const options = getSessionCookieOptions({
 ### Apply to a Response Cookie
 
 ```ts title="src/routes/callback.ts" showLineNumbers
-import { CookieConfig, getSessionCookieOptions } from '@thunderid/node'
+import { CookieConfig, getSessionCookieOptions, renderSignInContinuePage } from '@thunderid/node'
+
+// The sign-in in progress travels in a Lax cookie set when sign-in started, because the Strict session cookie
+// does not come back on the redirect from the identity provider.
+const SIGN_IN_COOKIE = CookieConfig.getTempSessionCookieName() // thunderid-session-state
+const SESSION_COOKIE = CookieConfig.getSessionCookieName() // thunderid-session
 
 app.get('/callback', async (req, res) => {
-  const sessionId = req.cookies[CookieConfig.SESSION_COOKIE_NAME]
+  const sessionId = req.cookies[SIGN_IN_COOKIE]
 
-  await auth.signIn(
-    (authUrl) => res.redirect(authUrl),
-    sessionId,
-    req.query.code as string,
-    req.query.state as string,
-  )
+  await auth.signIn(() => {}, sessionId, req.query.code as string, req.query.state as string)
 
-  res.cookie(
-    CookieConfig.SESSION_COOKIE_NAME,
-    sessionId,
-    getSessionCookieOptions({ maxAge: 3600 }),
-  )
+  res.cookie(SESSION_COOKIE, sessionId, { ...getSessionCookieOptions({}), maxAge: 3600 * 1000, path: '/' })
+  res.clearCookie(SIGN_IN_COOKIE, { path: '/' })
 
-  res.redirect('/dashboard')
+  // A redirect here would still belong to the identity provider's cross-site chain, so the browser would leave out
+  // the Strict cookie just set. This page moves on from the app's own site instead.
+  res.type('html').send(renderSignInContinuePage('/dashboard'))
 })
 ```
 

@@ -1,0 +1,108 @@
+---
+displayed_sidebar: null
+title: thunderIDBff()
+docType: reference
+description: Serve the Backend for Frontend (BFF) endpoints a React or Vue app in backend mode calls, from Express, with the thunderIDBff() middleware.
+---
+
+# `thunderIDBff()`
+
+The `thunderIDBff()` function returns Express middleware that serves the Backend for Frontend (BFF) endpoints under `/api/auth`, following the BFF pattern of RFC 10017 (OAuth 2.0 for Browser-Based Applications). A React or Vue app in `backend` mode calls these endpoints instead of <ProductName />. The tokens stay in the SDK's session store, and the browser holds only an `HttpOnly` cookie with the session ID.
+
+Requests outside the prefix go on to the next handler.
+
+## Signature
+
+```ts
+thunderIDBff(options?: ThunderIDBffOptions): express.RequestHandler
+```
+
+## Import
+
+```js
+const {thunderIDBff} = require('@thunderid/express');
+```
+
+## Prerequisites
+
+- Mount `cookie-parser` and [`thunderID()`](../thunderid) before this middleware
+- Set `afterSignInUrl` to `<app origin>/api/auth/callback`, and register that URL as a redirect URI of the application in <ProductName />. The middleware logs a warning when the path is not the `callback` endpoint
+- Serve the BFF on the same origin as the browser app, for example behind one reverse proxy, so the session cookie is first party
+
+## Usage
+
+```js title="index.js" showLineNumbers
+const express = require('express');
+const cookieParser = require('cookie-parser');
+const {thunderID, thunderIDBff} = require('@thunderid/express');
+
+const app = express();
+
+app.use(cookieParser());
+app.use(
+  thunderID({
+    baseUrl: 'https://localhost:8090',
+    clientId: '<your-client-id>',
+    clientSecret: '<your-client-secret>',
+    afterSignInUrl: 'https://app.example.com/api/auth/callback',
+    afterSignOutUrl: 'https://app.example.com',
+  }),
+);
+app.use(thunderIDBff());
+```
+
+## Options
+
+| Option | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `prefix` | `string` | `'/api/auth'` | Path the endpoints are served under |
+| `apiBaseUrl` | `string` | The <ProductName /> `baseUrl` | API that the proxy forwards to. A request to `<prefix>/proxy/<path>` goes to `<apiBaseUrl>/<path>` |
+| `allowedOrigins` | `string[]` | The origin of `afterSignInUrl` | Origins a state-changing request may come from, checked against its `Origin` header |
+| `exposeAccessToken` | `boolean` | `false` | Serves `POST <prefix>/token`, which returns the access token to the browser |
+
+## Endpoints
+
+| Method and path | Description | Success response |
+| :--- | :--- | :--- |
+| `GET /signin?returnTo=&ouId=` | Starts sign-in. `returnTo` is kept only when it is a path on the app. `ouId` signs in to an organization unit | `302` to <ProductName />, or to `returnTo` when already signed in |
+| `GET /callback` | Checks the `state` against the sign-in cookie, exchanges the authorization code, writes the session, and returns to `returnTo` | `200` with a page that moves on to `returnTo`, so the browser sends the `Strict` session cookie. `302` when the cookie is `Lax` |
+| `GET /session` | The signed-in user. Refreshes an expired access token when it can | `200 {isSignedIn: true, user, expiresAt, scope}` or `200 {isSignedIn: false}` |
+| `GET /checksession` | Whether the session is still live, without refreshing it | `200 {isSignedIn}` |
+| `POST /refresh` | Refreshes the session's tokens | `204`, or `401 login_required` when the session is over |
+| `POST /signout` | Ends the session and returns where the browser ends it at <ProductName /> | `200 {redirectUrl}` |
+| `POST /switch?ouId=` | Switches the session to another organization unit without a redirect. Also reads `ouId` from a JSON body | `200 {}` |
+| `POST /backchannel-logout` | Receives a logout token from <ProductName />, as [`handleBackchannelLogout()`](../handle-backchannel-logout) does | `200` |
+| `ANY /proxy/<path>` | Forwards the request to `<apiBaseUrl>/<path>` with `Authorization: Bearer <access token>` | The API's response |
+| `POST /token` | Served only with `exposeAccessToken: true` | `200 {access_token, token_type, expires_in, scope}` |
+
+The `user` in the session response is the ID token's claims, without `acr`, `amr`, `at_hash`, `aud`, `azp`, `c_hash`, `iss`, `jti`, `nbf`, `nonce`, and `sid`. `expiresAt` is when the access token expires, in seconds since the epoch.
+
+## Request Rules
+
+Every endpoint except `signin`, `callback`, `backchannel-logout`, and `GET /proxy/flow/meta` refuses a request with `403 forbidden` when:
+
+- it lacks the `X-Requested-With: XMLHttpRequest` header, which the browser SDKs send on every call
+- its `Sec-Fetch-Site` header is anything other than `same-origin` or `none`
+- it changes state (any method except `GET`, `HEAD`, and `OPTIONS`) and its `Origin` is not in `allowedOrigins`
+
+A request without `Sec-Fetch-Site` or `Origin` is not refused for that reason. Browsers can leave them out, for example `Sec-Fetch-Site` on a plain-HTTP origin, and clients that are not browsers, such as a mobile SDK in `backend` mode, never send them. Such a request still has to send `X-Requested-With`, which a page on another site cannot add.
+
+## Responses
+
+- Every response carries `Cache-Control: no-store`.
+- No response carries an access, refresh, or ID token, except `POST /token` when `exposeAccessToken` is `true`. That endpoint never returns the refresh token.
+- An error body is JSON with an `error` code, such as `forbidden`, `invalid_path`, `invalid_request`, `login_required`, `not_found`, `server_error`, or `bad_gateway`. Any other path under the prefix answers `404 not_found`.
+- Only `login_required` from the BFF means the session is over. A `401` from the API passes through the proxy unchanged.
+- The proxy forwards only the `accept`, `accept-language`, `content-type`, `if-match`, and `if-none-match` request headers, and never the browser's cookies. It refuses a path that would leave `apiBaseUrl` with `400 invalid_path`, and answers `502 bad_gateway` when the API cannot be reached.
+
+## Notes
+
+- The session cookie is `Secure` by default when `NODE_ENV` is `production`, and is then named with the `__Host-` prefix, so serve the app over HTTPS. See [Session Cookie Configuration](../../configuration/express-client-config#session-cookie-configuration).
+- Sessions live in memory by default. A deployment with more than one instance needs a shared `storage` adapter.
+
+## Related APIs
+
+- [`thunderID()`](../thunderid)
+- [`handleBackchannelLogout()`](../handle-backchannel-logout)
+- [`ExpressClientConfig`](../../configuration/express-client-config)
+- [Using a Backend for Frontend (BFF)](/sdks-and-tools/react/guides/backend-for-frontend)

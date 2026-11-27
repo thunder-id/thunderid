@@ -139,6 +139,28 @@ sections:
         app.get('/protected', protect(), (_req, res) => {
           res.send('Protected content');
         });
+    - group: Middleware
+      kind: middleware
+      name: thunderIDBff()
+      description: The `thunderIDBff()` function returns Express middleware that serves the Backend for Frontend (BFF)
+        endpoints under `/api/auth`, so a React or Vue app in `backend` mode can use the Express server as its BFF.
+      example: |-
+        const express = require('express');
+        const cookieParser = require('cookie-parser');
+        const {thunderID, thunderIDBff} = require('@thunderid/express');
+
+        const app = express();
+
+        app.use(cookieParser());
+        app.use(
+          thunderID({
+            baseUrl: 'https://localhost:8090',
+            clientId: '<your-client-id>',
+            clientSecret: '<your-client-secret>',
+            afterSignInUrl: 'https://app.example.com/api/auth/callback',
+          }),
+        );
+        app.use(thunderIDBff());
     - group: Client
       kind: class
       name: ThunderIDExpressClient
@@ -162,21 +184,20 @@ sections:
             sessionCookie: {
               expiryTime: 28800,
               httpOnly: true,
-              sameSite: 'lax',
-              secure: false,
             },
           }),
         );
     - group: Constants
       kind: export
       name: CookieConfig
-      description: The Express SDK exports `CookieConfig` and `SESSION_COOKIE_NAME` for the session cookie behavior
-        used by the SDK.
+      description: The Express SDK exports `CookieConfig` with the default session cookie values. Read the session
+        cookie name from the client, because it depends on the environment and configuration.
       example: |-
-        const {SESSION_COOKIE_NAME} = require('@thunderid/express');
+        // Reports whether the request is signed in. The cookie's value is a credential, so it is never returned.
+        app.get('/signed-in', async (req, res) => {
+          const sessionId = req.cookies?.[req.thunderIDAuth.getSessionCookieName()];
 
-        app.get('/session-id', (req, res) => {
-          res.json({sessionId: req.cookies?.[SESSION_COOKIE_NAME] ?? null});
+          res.json({isSignedIn: Boolean(sessionId && (await req.thunderIDAuth.isSignedIn(sessionId)))});
         });
 
   - type: quickstart

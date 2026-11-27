@@ -152,7 +152,7 @@ Create a `.env` file in your project root with the following:
 :::warning Configuration
 Replace `<your-application-id>` and `<your-client-secret>` with the values from your <ProductName /> application.
 
-Generate a random string for `THUNDERID_SESSION_SECRET` (at least 32 characters):
+Generate a random string for `THUNDERID_SESSION_SECRET` (at least 32 bytes):
 
 ```bash
 openssl rand -base64 32
@@ -165,7 +165,7 @@ NUXT_PUBLIC_THUNDERID_APPLICATION_ID=<your-application-id>
 NUXT_PUBLIC_THUNDERID_SIGN_IN_URL=/signin
 NUXT_PUBLIC_THUNDERID_SIGN_UP_URL=/signup
 THUNDERID_CLIENT_SECRET=<your-client-secret>
-THUNDERID_SESSION_SECRET=<a-random-secret-for-session-signing>
+THUNDERID_SESSION_SECRET=<a-random-secret-for-session-encryption>
 # DANGER: Disables ALL TLS verification. Only for local development with self-signed certs. NEVER use in production.
 NODE_TLS_REJECT_UNAUTHORIZED=0
 ```
@@ -276,7 +276,7 @@ The [Nuxt sample](https://github.com/thunder-id/samples/tree/main/quickstarts/qu
    NUXT_PUBLIC_THUNDERID_BASE_URL=https://localhost:8090
    NUXT_PUBLIC_THUNDERID_APPLICATION_ID=<your-application-id>
    THUNDERID_FLOW_SECRET=<your-flow-secret>
-   THUNDERID_SESSION_SECRET=<a-random-secret-for-session-signing>
+   THUNDERID_SESSION_SECRET=<a-random-secret-for-session-encryption>
    NUXT_PUBLIC_THUNDERID_SIGN_IN_URL=/signin
    NUXT_PUBLIC_THUNDERID_SIGN_UP_URL=/signup
    # DANGER: Disables ALL TLS verification. Only for local development with self-signed certs. NEVER use in production.

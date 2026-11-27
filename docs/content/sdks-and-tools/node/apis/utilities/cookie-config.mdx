@@ -14,12 +14,15 @@ description: Session cookie name constants and defaults for the Node.js SDK's co
 ```ts title="src/routes/callback.ts" showLineNumbers
 import { CookieConfig } from '@thunderid/node'
 
-// Use the default session cookie name
-res.cookie(CookieConfig.SESSION_COOKIE_NAME, sessionId, {
+const secure = process.env.NODE_ENV === 'production'
+
+// The default session cookie name, with the __Host- prefix when the cookie is Secure
+res.cookie(CookieConfig.withHostPrefix(CookieConfig.getSessionCookieName(), secure), sessionId, {
   httpOnly: CookieConfig.DEFAULT_HTTP_ONLY,
   maxAge: CookieConfig.DEFAULT_MAX_AGE * 1000, // convert to milliseconds
+  path: '/',
   sameSite: CookieConfig.DEFAULT_SAME_SITE,
-  secure: CookieConfig.DEFAULT_SECURE,
+  secure,
 })
 ```
 
@@ -27,12 +30,21 @@ res.cookie(CookieConfig.SESSION_COOKIE_NAME, sessionId, {
 
 | Constant | Type | Value | Description |
 | :--- | :--- | :--- | :--- |
-| `SESSION_COOKIE_NAME` | `string` | `__<vendor>__session` | The name of the session cookie. The vendor prefix is injected automatically. |
-| `TEMP_SESSION_COOKIE_NAME` | `string` | `__<vendor>__temp.session` | The name of the temporary session cookie used during the authorization flow. |
+| `HOST_PREFIX` | `string` | `'__Host-'` | The cookie name prefix `withHostPrefix()` adds. |
 | `DEFAULT_MAX_AGE` | `number` | `3600` | Default cookie lifetime in seconds (1 hour). |
 | `DEFAULT_HTTP_ONLY` | `boolean` | `true` | Whether the cookie is inaccessible to JavaScript. |
-| `DEFAULT_SAME_SITE` | `'lax' \| 'strict' \| 'none'` | `'lax'` | Default `SameSite` attribute for cross-origin request behavior. |
+| `DEFAULT_SAME_SITE` | `'lax' \| 'strict' \| 'none'` | `'strict'` | Default `SameSite` attribute for cross-origin request behavior. |
 | `DEFAULT_SECURE` | `boolean` | `true` | Whether the cookie requires an HTTPS connection. |
+
+## Methods
+
+| Method | Returns | Description |
+| :--- | :--- | :--- |
+| `getSessionCookieName(vendor?)` | `string` | The session cookie name, `<vendor>-session`. `vendor` defaults to `thunderid`. |
+| `getTempSessionCookieName(vendor?)` | `string` | The name of the cookie that carries a sign-in in progress, `<vendor>-session-state`. |
+| `resolveSessionCookieName(vendor?, overrideName?)` | `string` | `overrideName` when set, otherwise `getSessionCookieName(vendor)`. |
+| `resolveTempSessionCookieName(vendor?, overrideName?)` | `string` | `overrideName` when set, otherwise `getTempSessionCookieName(vendor)`. |
+| `withHostPrefix(name, secure)` | `string` | Adds the `__Host-` prefix to `name` when `secure` is `true` and the name does not already start with it. A browser accepts a `__Host-` cookie only when it is `Secure`, has `Path=/`, and has no `Domain`, so a subdomain cannot set or overwrite it. Without `Secure`, as on a plain-HTTP development server, the name is returned as it is, because the browser would drop the prefixed cookie. |
 
 ## Related
 
