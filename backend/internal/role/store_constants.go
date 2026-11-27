@@ -29,7 +29,7 @@ var (
 	queryGetRoleList = dbmodel.DBQuery{
 		ID: "RLQ-ROLE_MGT-03",
 		Query: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION FROM "ROLE" ` +
-			`WHERE DEPLOYMENT_ID = $3 ORDER BY CREATED_AT DESC LIMIT $1 OFFSET $2`,
+			`WHERE DEPLOYMENT_ID = $3 ORDER BY CREATED_AT DESC, ID DESC LIMIT $1 OFFSET $2`,
 	}
 
 	// queryGetRoleListCount retrieves the total count of roles.
@@ -62,7 +62,7 @@ var (
 	queryGetRolePermissions = dbmodel.DBQuery{
 		ID: "RLQ-ROLE_MGT-08",
 		Query: `SELECT RESOURCE_SERVER_ID, PERMISSION FROM "ROLE_PERMISSION" WHERE ` +
-			`ROLE_ID = $1 AND DEPLOYMENT_ID = $2 ORDER BY CREATED_AT`,
+			`ROLE_ID = $1 AND DEPLOYMENT_ID = $2 ORDER BY CREATED_AT, RESOURCE_SERVER_ID, PERMISSION`,
 	}
 
 	// queryDeleteRolePermissions deletes all permissions for a role.
@@ -101,7 +101,9 @@ var (
 	queryGetRoleAssignments = dbmodel.DBQuery{
 		ID: "RLQ-ROLE_MGT-11",
 		Query: `SELECT ASSIGNEE_ID, ASSIGNEE_TYPE, ASSIGNMENT_OU_ID, SHARING_POLICY_ID FROM "ROLE_ASSIGNMENT"
-			WHERE ROLE_ID = $1 AND DEPLOYMENT_ID = $4 ORDER BY CREATED_AT LIMIT $2 OFFSET $3`,
+			WHERE ROLE_ID = $1 AND DEPLOYMENT_ID = $4
+			ORDER BY CREATED_AT, ASSIGNMENT_OU_ID, ASSIGNEE_TYPE, ASSIGNEE_ID, SHARING_POLICY_ID
+			LIMIT $2 OFFSET $3`,
 	}
 
 	// queryGetRoleAssignmentsCount retrieves the total count of assignments for a role.
@@ -157,7 +159,9 @@ var (
 	queryGetRoleAssignmentsByType = dbmodel.DBQuery{
 		ID: "RLQ-ROLE_MGT-17",
 		Query: `SELECT ASSIGNEE_ID, ASSIGNEE_TYPE, ASSIGNMENT_OU_ID, SHARING_POLICY_ID FROM "ROLE_ASSIGNMENT"
-			WHERE ROLE_ID = $1 AND ASSIGNEE_TYPE = $5 AND DEPLOYMENT_ID = $4 ORDER BY CREATED_AT LIMIT $2 OFFSET $3`,
+			WHERE ROLE_ID = $1 AND ASSIGNEE_TYPE = $5 AND DEPLOYMENT_ID = $4
+			ORDER BY CREATED_AT, ASSIGNMENT_OU_ID, ASSIGNEE_TYPE, ASSIGNEE_ID, SHARING_POLICY_ID
+			LIMIT $2 OFFSET $3`,
 	}
 
 	// queryGetRoleAssignmentsCountByType retrieves the total count of assignments for a role filtered by type.
@@ -171,7 +175,7 @@ var (
 	queryGetRoleListByOUID = dbmodel.DBQuery{
 		ID: "RLQ-ROLE_MGT-23",
 		Query: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION FROM "ROLE" ` +
-			`WHERE OU_ID = $1 AND DEPLOYMENT_ID = $4 ORDER BY CREATED_AT DESC LIMIT $2 OFFSET $3`,
+			`WHERE OU_ID = $1 AND DEPLOYMENT_ID = $4 ORDER BY CREATED_AT DESC, ID DESC LIMIT $2 OFFSET $3`,
 	}
 
 	// queryGetRoleListCountByOUID retrieves the total count of roles belonging to an organization unit.
@@ -215,7 +219,8 @@ var (
 		ID: "RLQ-ROLE_MGT-30",
 		Query: `SELECT ASSIGNEE_ID, ASSIGNEE_TYPE, ASSIGNMENT_OU_ID, SHARING_POLICY_ID FROM "ROLE_ASSIGNMENT"
 			WHERE ROLE_ID = $1 AND ASSIGNMENT_OU_ID = $2 AND DEPLOYMENT_ID = $5
-			ORDER BY CREATED_AT LIMIT $3 OFFSET $4`,
+			ORDER BY CREATED_AT, ASSIGNMENT_OU_ID, ASSIGNEE_TYPE, ASSIGNEE_ID, SHARING_POLICY_ID
+			LIMIT $3 OFFSET $4`,
 	}
 
 	// queryGetRoleAssignmentsCountInOU counts the assignments made in one organization unit for a role.
@@ -231,7 +236,8 @@ var (
 		ID: "RLQ-ROLE_MGT-32",
 		Query: `SELECT ASSIGNEE_ID, ASSIGNEE_TYPE, ASSIGNMENT_OU_ID, SHARING_POLICY_ID FROM "ROLE_ASSIGNMENT"
 			WHERE ROLE_ID = $1 AND ASSIGNEE_TYPE = $2 AND ASSIGNMENT_OU_ID = $3 AND DEPLOYMENT_ID = $6
-			ORDER BY CREATED_AT LIMIT $4 OFFSET $5`,
+			ORDER BY CREATED_AT, ASSIGNMENT_OU_ID, ASSIGNEE_TYPE, ASSIGNEE_ID, SHARING_POLICY_ID
+			LIMIT $4 OFFSET $5`,
 	}
 
 	// queryGetRoleAssignmentsCountByTypeInOU counts the assignments of one assignee type made in one

@@ -1477,13 +1477,11 @@ func GetDBType() string {
 	return dbType
 }
 
-// QueryConfigDB executes a SQL query against the configdb SQLite database and returns
-// the trimmed output produced by the sqlite3 CLI. Returns an error if the database
-// type is not SQLite or if the sqlite3 CLI is unavailable.
+// QueryConfigDB runs a SQL statement against the configuration database and returns the trimmed CLI output.
 func QueryConfigDB(sqlQuery string) (string, error) {
 	ensureInitialized()
-	if dbType != "sqlite" {
-		return "", fmt.Errorf("QueryConfigDB is only supported for sqlite, current db type: %s", dbType)
+	if dbType == "postgres" {
+		return queryPostgresDB("config", sqlQuery)
 	}
 	return querySQLiteDB("configdb.db", sqlQuery)
 }

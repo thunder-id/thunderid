@@ -56,6 +56,19 @@ func (s *FlowStoreTestSuite) SetupTest() {
 
 // ListFlows Tests
 
+func (s *FlowStoreTestSuite) TestFlowListOrdering() {
+	const order = " ORDER BY CREATED_AT DESC, ID DESC LIMIT "
+
+	for _, query := range []string{
+		queryListFlows.Query,
+		queryListFlowsWithType.Query,
+		queryListFlowsByOU.Query,
+		queryListFlowsByOUWithType.Query,
+	} {
+		s.Contains(query, order)
+	}
+}
+
 func (s *FlowStoreTestSuite) TestListFlowsDBClientError() {
 	s.mockDBProvider.EXPECT().GetConfigDBClient().Return(nil, errors.New("connection error"))
 
@@ -1711,7 +1724,7 @@ func (s *FlowStoreTestSuite) TestBuildListFlowsByProjectQueries() {
 	s.Equal(`SELECT COUNT(*) AS count FROM "FLOW" WHERE PROJECT_ID = $1 AND DEPLOYMENT_ID = $2`, countQuery.Query)
 	s.Equal([]interface{}{"p", "dep"}, countArgs)
 	s.Contains(listQuery.Query,
-		`WHERE PROJECT_ID = $1 AND DEPLOYMENT_ID = $2 ORDER BY CREATED_AT DESC LIMIT $3 OFFSET $4`)
+		`WHERE PROJECT_ID = $1 AND DEPLOYMENT_ID = $2 ORDER BY CREATED_AT DESC, ID DESC LIMIT $3 OFFSET $4`)
 	s.Equal([]interface{}{"p", "dep", 10, 5}, listArgs)
 
 	listQuery, listArgs, countQuery, countArgs = buildListFlowsByProjectQueries(
@@ -1719,7 +1732,7 @@ func (s *FlowStoreTestSuite) TestBuildListFlowsByProjectQueries() {
 	s.Equal(`SELECT COUNT(*) AS count FROM "FLOW" `+
 		`WHERE PROJECT_ID = $1 AND OU_ID = $2 AND FLOW_TYPE = $3 AND DEPLOYMENT_ID = $4`, countQuery.Query)
 	s.Equal([]interface{}{"p", "ou", "AUTHENTICATION", "dep"}, countArgs)
-	s.Contains(listQuery.Query, `AND DEPLOYMENT_ID = $4 ORDER BY CREATED_AT DESC LIMIT $5 OFFSET $6`)
+	s.Contains(listQuery.Query, `AND DEPLOYMENT_ID = $4 ORDER BY CREATED_AT DESC, ID DESC LIMIT $5 OFFSET $6`)
 	s.Equal([]interface{}{"p", "ou", "AUTHENTICATION", "dep", 10, 0}, listArgs)
 }
 

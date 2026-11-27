@@ -43,7 +43,7 @@ var (
 	queryListFlows = model.DBQuery{
 		ID: "FLQ-FLOW_MGT-05",
 		Query: `SELECT ID, HANDLE, NAME, FLOW_TYPE, ACTIVE_VERSION, OU_ID, PROJECT_ID, CREATED_AT, UPDATED_AT ` +
-			`FROM "FLOW" WHERE DEPLOYMENT_ID = $1 ORDER BY CREATED_AT DESC LIMIT $2 OFFSET $3`,
+			`FROM "FLOW" WHERE DEPLOYMENT_ID = $1 ORDER BY CREATED_AT DESC, ID DESC LIMIT $2 OFFSET $3`,
 	}
 
 	// queryListActiveFlowsWithNodes retrieves every flow's active version including its nodes, in a
@@ -62,7 +62,7 @@ var (
 		ID: "FLQ-FLOW_MGT-06",
 		Query: `SELECT ID, HANDLE, NAME, FLOW_TYPE, ACTIVE_VERSION, OU_ID, PROJECT_ID, CREATED_AT, UPDATED_AT ` +
 			`FROM "FLOW" ` +
-			`WHERE FLOW_TYPE = $1 AND DEPLOYMENT_ID = $2 ORDER BY CREATED_AT DESC LIMIT $3 OFFSET $4`,
+			`WHERE FLOW_TYPE = $1 AND DEPLOYMENT_ID = $2 ORDER BY CREATED_AT DESC, ID DESC LIMIT $3 OFFSET $4`,
 	}
 
 	// queryCountFlows is the query to count total flow definitions.
@@ -149,7 +149,7 @@ var (
 		ID: "FLQ-FLOW_MGT-20",
 		Query: `SELECT ID, HANDLE, NAME, FLOW_TYPE, ACTIVE_VERSION, OU_ID, PROJECT_ID, CREATED_AT, UPDATED_AT ` +
 			`FROM "FLOW" ` +
-			`WHERE OU_ID = $1 AND DEPLOYMENT_ID = $2 ORDER BY CREATED_AT DESC LIMIT $3 OFFSET $4`,
+			`WHERE OU_ID = $1 AND DEPLOYMENT_ID = $2 ORDER BY CREATED_AT DESC, ID DESC LIMIT $3 OFFSET $4`,
 	}
 
 	// queryListFlowsByOUWithType lists the flow definitions of one type an organization unit owns.
@@ -158,7 +158,7 @@ var (
 		Query: `SELECT ID, HANDLE, NAME, FLOW_TYPE, ACTIVE_VERSION, OU_ID, PROJECT_ID, CREATED_AT, UPDATED_AT ` +
 			`FROM "FLOW" ` +
 			`WHERE OU_ID = $1 AND FLOW_TYPE = $2 AND DEPLOYMENT_ID = $3 ` +
-			`ORDER BY CREATED_AT DESC LIMIT $4 OFFSET $5`,
+			`ORDER BY CREATED_AT DESC, ID DESC LIMIT $4 OFFSET $5`,
 	}
 
 	// queryCountFlowsByOU counts the flow definitions an organization unit owns.
@@ -232,7 +232,7 @@ func buildListFlowsByProjectQueries(projectID, ouID, flowType, deploymentID stri
 	listQuery = model.DBQuery{
 		ID: "FLQ-FLOW_MGT-26",
 		Query: `SELECT ID, HANDLE, NAME, FLOW_TYPE, ACTIVE_VERSION, OU_ID, PROJECT_ID, CREATED_AT, UPDATED_AT ` +
-			`FROM "FLOW" ` + where + fmt.Sprintf(" ORDER BY CREATED_AT DESC LIMIT $%d OFFSET $%d",
+			`FROM "FLOW" ` + where + fmt.Sprintf(" ORDER BY CREATED_AT DESC, ID DESC LIMIT $%d OFFSET $%d",
 			len(listArgs)-1, len(listArgs)),
 	}
 	return listQuery, listArgs, countQuery, countArgs

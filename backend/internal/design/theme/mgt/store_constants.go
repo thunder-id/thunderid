@@ -24,7 +24,7 @@ var (
 	queryGetThemeList = dbmodel.DBQuery{
 		ID: "THQ-THEME_MGT-03",
 		Query: `SELECT ID, HANDLE, DISPLAY_NAME, DESCRIPTION, PROJECT_ID, THEME, CREATED_AT, UPDATED_AT ` +
-			`FROM "THEME" WHERE DEPLOYMENT_ID = $3 ORDER BY CREATED_AT DESC LIMIT $1 OFFSET $2`,
+			`FROM "THEME" WHERE DEPLOYMENT_ID = $3 ORDER BY CREATED_AT DESC, ID DESC LIMIT $1 OFFSET $2`,
 	}
 
 	// queryGetThemeListCount retrieves the total count of theme configurations.
@@ -66,7 +66,8 @@ var (
 	queryGetThemeListByProject = dbmodel.DBQuery{
 		ID: "THQ-THEME_MGT-10",
 		Query: `SELECT ID, HANDLE, DISPLAY_NAME, DESCRIPTION, PROJECT_ID, THEME, CREATED_AT, UPDATED_AT ` +
-			`FROM "THEME" WHERE PROJECT_ID = $3 AND DEPLOYMENT_ID = $4 ORDER BY CREATED_AT DESC LIMIT $1 OFFSET $2`,
+			`FROM "THEME" WHERE PROJECT_ID = $3 AND DEPLOYMENT_ID = $4 ` +
+			`ORDER BY CREATED_AT DESC, ID DESC LIMIT $1 OFFSET $2`,
 	}
 
 	// queryGetThemeListCountByProject retrieves the number of themes of a project.

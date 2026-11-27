@@ -47,6 +47,13 @@ func (suite *ThemeStoreTestSuite) SetupTest() {
 }
 
 // Test GetThemeListCount - Success
+func (suite *ThemeStoreTestSuite) TestThemeListOrdering() {
+	const order = " ORDER BY CREATED_AT DESC, ID DESC LIMIT "
+
+	suite.Contains(queryGetThemeList.Query, order)
+	suite.Contains(queryGetThemeListByProject.Query, order)
+}
+
 func (suite *ThemeStoreTestSuite) TestGetThemeListCount_Success() {
 	results := []map[string]interface{}{
 		{"total": int64(5)},

@@ -164,6 +164,10 @@ func TestBuildGetGroupListCountByOUIDsQuery(t *testing.T) {
 	}
 }
 
+func TestGroupListOrdering(t *testing.T) {
+	require.Contains(t, QueryGetGroupList.Query, " ORDER BY NAME, ID LIMIT ")
+}
+
 func TestBuildGetGroupListByOUIDsQuery(t *testing.T) {
 	limit, offset, deploymentID := 10, 5, "dep1"
 	testCases := []struct {
@@ -184,18 +188,18 @@ func TestBuildGetGroupListByOUIDsQuery(t *testing.T) {
 			name:  "Single item",
 			ouIDs: []string{"ou1"},
 			expectedPG: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION FROM "GROUP" ` +
-				`WHERE OU_ID IN ($1) AND DEPLOYMENT_ID = $2 ORDER BY NAME LIMIT $3 OFFSET $4`,
+				`WHERE OU_ID IN ($1) AND DEPLOYMENT_ID = $2 ORDER BY NAME, ID LIMIT $3 OFFSET $4`,
 			expectedSQLite: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION FROM "GROUP" ` +
-				`WHERE OU_ID IN (?) AND DEPLOYMENT_ID = ? ORDER BY NAME LIMIT ? OFFSET ?`,
+				`WHERE OU_ID IN (?) AND DEPLOYMENT_ID = ? ORDER BY NAME, ID LIMIT ? OFFSET ?`,
 			expectedArgs: []interface{}{"ou1", deploymentID, limit, offset},
 		},
 		{
 			name:  "Multiple items",
 			ouIDs: []string{"ou1", "ou2", "ou3"},
 			expectedPG: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION FROM "GROUP" ` +
-				`WHERE OU_ID IN ($1,$2,$3) AND DEPLOYMENT_ID = $4 ORDER BY NAME LIMIT $5 OFFSET $6`,
+				`WHERE OU_ID IN ($1,$2,$3) AND DEPLOYMENT_ID = $4 ORDER BY NAME, ID LIMIT $5 OFFSET $6`,
 			expectedSQLite: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION FROM "GROUP" ` +
-				`WHERE OU_ID IN (?,?,?) AND DEPLOYMENT_ID = ? ORDER BY NAME LIMIT ? OFFSET ?`,
+				`WHERE OU_ID IN (?,?,?) AND DEPLOYMENT_ID = ? ORDER BY NAME, ID LIMIT ? OFFSET ?`,
 			expectedArgs: []interface{}{"ou1", "ou2", "ou3", deploymentID, limit, offset},
 		},
 	}
@@ -222,9 +226,9 @@ func TestBuildGroupProjectQueries(t *testing.T) {
 
 	listQuery, listArgs := buildGetGroupsByProjectQuery("project-1", []string{"ou1", "ou2"}, 10, 20, deploymentID)
 	require.Equal(t, `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION FROM "GROUP" WHERE PROJECT_ID = $1 `+
-		`AND OU_ID IN ($2,$3) AND DEPLOYMENT_ID = $4 ORDER BY NAME LIMIT $5 OFFSET $6`, listQuery.PostgresQuery)
+		`AND OU_ID IN ($2,$3) AND DEPLOYMENT_ID = $4 ORDER BY NAME, ID LIMIT $5 OFFSET $6`, listQuery.PostgresQuery)
 	require.Equal(t, listQuery.PostgresQuery, listQuery.Query)
 	require.Equal(t, `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION FROM "GROUP" WHERE PROJECT_ID = ? `+
-		`AND OU_ID IN (?,?) AND DEPLOYMENT_ID = ? ORDER BY NAME LIMIT ? OFFSET ?`, listQuery.SQLiteQuery)
+		`AND OU_ID IN (?,?) AND DEPLOYMENT_ID = ? ORDER BY NAME, ID LIMIT ? OFFSET ?`, listQuery.SQLiteQuery)
 	require.Equal(t, []interface{}{"project-1", "ou1", "ou2", deploymentID, 10, 20}, listArgs)
 }

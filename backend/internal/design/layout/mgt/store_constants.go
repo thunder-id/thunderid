@@ -24,7 +24,7 @@ var (
 	queryGetLayoutList = dbmodel.DBQuery{
 		ID: "LAQ-LAYOUT_MGT-03",
 		Query: `SELECT ID, HANDLE, DISPLAY_NAME, DESCRIPTION, PROJECT_ID, CREATED_AT, UPDATED_AT FROM "LAYOUT" ` +
-			`WHERE DEPLOYMENT_ID = $3 ORDER BY CREATED_AT DESC LIMIT $1 OFFSET $2`,
+			`WHERE DEPLOYMENT_ID = $3 ORDER BY CREATED_AT DESC, ID DESC LIMIT $1 OFFSET $2`,
 	}
 
 	// queryGetLayoutListCount retrieves the total count of layout configurations.
@@ -66,7 +66,7 @@ var (
 	queryGetLayoutListByProject = dbmodel.DBQuery{
 		ID: "LAQ-LAYOUT_MGT-10",
 		Query: `SELECT ID, HANDLE, DISPLAY_NAME, DESCRIPTION, PROJECT_ID, CREATED_AT, UPDATED_AT FROM "LAYOUT" ` +
-			`WHERE PROJECT_ID = $1 AND DEPLOYMENT_ID = $4 ORDER BY CREATED_AT DESC LIMIT $2 OFFSET $3`,
+			`WHERE PROJECT_ID = $1 AND DEPLOYMENT_ID = $4 ORDER BY CREATED_AT DESC, ID DESC LIMIT $2 OFFSET $3`,
 	}
 
 	// queryGetLayoutListCountByProject retrieves the number of layouts of a project.

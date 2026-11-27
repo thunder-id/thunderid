@@ -6,6 +6,7 @@ package resource
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -17,6 +18,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
 
 	"github.com/thunder-id/thunderid/internal/system/config"
+	dbmodel "github.com/thunder-id/thunderid/internal/system/database/model"
 	engineconfig "github.com/thunder-id/thunderid/pkg/thunderidengine/config"
 )
 
@@ -324,6 +326,30 @@ func (suite *ResourceStoreTestSuite) TestGetResourceServersByIDs() {
 		suite.Error(err)
 		suite.Nil(servers)
 	})
+}
+
+func (suite *ResourceStoreTestSuite) TestResourceListOrdering() {
+	const resourceOrder = " ORDER BY r.CREATED_AT DESC, r.ID DESC LIMIT "
+	const actionOrder = " ORDER BY a.CREATED_AT DESC, a.ID DESC LIMIT "
+
+	for _, tc := range []struct {
+		query dbmodel.DBQuery
+		order string
+	}{
+		{queryGetResourceServerList, " ORDER BY CREATED_AT DESC, ID DESC LIMIT "},
+		{queryGetResourceList, resourceOrder},
+		{queryGetResourceListByParent, resourceOrder},
+		{queryGetResourceListByNullParent, resourceOrder},
+		{queryGetActionList, actionOrder},
+		{queryGetActionListByKind, actionOrder},
+	} {
+		suite.Run(tc.query.ID, func() {
+			for _, database := range []string{"postgres", "sqlite"} {
+				sql := strings.Join(strings.Fields(tc.query.GetQuery(database)), " ")
+				suite.Contains(sql, tc.order, database)
+			}
+		})
+	}
 }
 
 func (suite *ResourceStoreTestSuite) TestGetResourceServerList() {

@@ -21,7 +21,7 @@ var (
 	QueryGetGroupList = dbmodel.DBQuery{
 		ID: "GRQ-GROUP_MGT-02",
 		Query: `SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION FROM "GROUP" ` +
-			`WHERE DEPLOYMENT_ID = $3 ORDER BY NAME LIMIT $1 OFFSET $2`,
+			`WHERE DEPLOYMENT_ID = $3 ORDER BY NAME, ID LIMIT $1 OFFSET $2`,
 	}
 
 	// QueryGetTransitiveGroupsForMember retrieves all groups a member belongs to, including groups
@@ -164,11 +164,11 @@ func buildGetGroupsByOUIDsQuery(
 
 	postgresQuery := fmt.Sprintf(
 		`SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION FROM "GROUP" `+
-			`WHERE OU_ID IN (%s) AND DEPLOYMENT_ID = $%d ORDER BY NAME LIMIT $%d OFFSET $%d`,
+			`WHERE OU_ID IN (%s) AND DEPLOYMENT_ID = $%d ORDER BY NAME, ID LIMIT $%d OFFSET $%d`,
 		strings.Join(postgresPlaceholders, ","), deploymentIDIdx, limitIdx, offsetIdx)
 	sqliteQuery := fmt.Sprintf(
 		`SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION FROM "GROUP" `+
-			`WHERE OU_ID IN (%s) AND DEPLOYMENT_ID = ? ORDER BY NAME LIMIT ? OFFSET ?`,
+			`WHERE OU_ID IN (%s) AND DEPLOYMENT_ID = ? ORDER BY NAME, ID LIMIT ? OFFSET ?`,
 		strings.Join(sqlitePlaceholders, ","))
 
 	args := make([]interface{}, 0, len(ouIDs)+3)
@@ -374,7 +374,7 @@ func buildGetGroupsByProjectQuery(
 	projectID string, ouIDs []string, limit, offset int, deploymentID string,
 ) (dbmodel.DBQuery, []interface{}) {
 	query, args := buildGroupProjectQuery("GRQ-GROUP_MGT-28",
-		`SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION FROM "GROUP"`, " ORDER BY NAME",
+		`SELECT ID, OU_ID, PROJECT_ID, NAME, DESCRIPTION FROM "GROUP"`, " ORDER BY NAME, ID",
 		projectID, ouIDs, deploymentID)
 	next := len(args) + 1
 	query.PostgresQuery += fmt.Sprintf(" LIMIT $%d OFFSET $%d", next, next+1)

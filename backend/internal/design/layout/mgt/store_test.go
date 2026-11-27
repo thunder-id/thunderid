@@ -47,6 +47,13 @@ func (suite *LayoutStoreTestSuite) SetupTest() {
 }
 
 // Test GetLayoutListCount - Success
+func (suite *LayoutStoreTestSuite) TestLayoutListOrdering() {
+	const order = " ORDER BY CREATED_AT DESC, ID DESC LIMIT "
+
+	suite.Contains(queryGetLayoutList.Query, order)
+	suite.Contains(queryGetLayoutListByProject.Query, order)
+}
+
 func (suite *LayoutStoreTestSuite) TestGetLayoutListCount_Success() {
 	results := []map[string]interface{}{
 		{"total": int64(5)},
