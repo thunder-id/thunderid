@@ -349,7 +349,8 @@ resources (`GTW-1039`) or leaves out a required change (`GTW-1040`). An unknown 
 `404` (`GTW-1038`).
 
 `GET /gateways/{id}/project-status?project=<id>` reports where the project stands on the gateway: the
-versions its own resources there were deployed from, when they were last written and by whom, whether
+versions its own resources there were deployed from, when they were last written or removed and by
+whom (a removed resource stays the project's its last document named), whether
 it can be rolled back, and how many of its own, needed and shared changes a deploy scoped to it would
 send. Changes an earlier deploy left out, which the gateway holds back, are counted apart as
 `heldBack`: they are not pending, but a deploy that selects them brings them. With `from=<gateway id>`

@@ -206,6 +206,25 @@ func TestALaterDeployFollowsARollback(t *testing.T) {
 	assert.Empty(t, action)
 }
 
+// Removing one of the project's resources, of any type, is a write to the project: the removed entry keeps
+// the project its last document named. Removing a resource of no project is not.
+func TestARemovalOfAProjectsResourceIsItsLastWrite(t *testing.T) {
+	deployedAt := time.Date(2026, 11, 6, 9, 0, 0, 0, time.UTC)
+	master := &Master{Resources: projectApp("a", "shop", "ou", "f"), Entries: []MasterEntry{
+		{Key: "application/a", State: EntryDeployed, At: deployedAt},
+		{Key: "agent/ag-1", State: EntryRemoved, Project: "shop", At: deployedAt.Add(time.Hour),
+			By: &Actor{ID: "u-2"}},
+		{Key: "flow/f-other", State: EntryRemoved, At: deployedAt.Add(2 * time.Hour)},
+		{Key: "agent/ag-2", State: EntryRemoved, Project: "billing", At: deployedAt.Add(3 * time.Hour)},
+	}}
+
+	at, by, action := lastWriteOf("shop", master, nil)
+
+	assert.Equal(t, deployedAt.Add(time.Hour), *at)
+	assert.Equal(t, &Actor{ID: "u-2"}, by)
+	assert.Equal(t, actionDeployed, action)
+}
+
 // What the gateway holds back is counted apart from what is pending, section by section, so a project
 // whose changes an earlier deploy left out still has something to deploy; a shared change only another
 // project needs is counted for neither.
