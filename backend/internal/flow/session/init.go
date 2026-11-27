@@ -12,6 +12,7 @@ import (
 	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/internal/system/database/provider"
+	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/eventlistener"
 	"github.com/thunder-id/thunderid/internal/system/log"
 	"github.com/thunder-id/thunderid/internal/system/middleware"
@@ -23,11 +24,17 @@ import (
 // server-config section on every use, so a change applies without a restart. The entity and entity type
 // services resolve the display names of the users and agents shown with each session; the application
 // service, which is built later, is injected with SetApplicationProvider.
+//
+// bus is required: session audit events are published on it.
 func Initialize(mux *http.ServeMux, dbProvider provider.DBProviderInterface, deploymentID string,
 	serverConfig serverconfig.ServerConfigService, cfg flowconfig.Config,
 	criteriaRevoker CriteriaRevoker, ouEligibility OUEligibility,
-	entities entity.EntityServiceInterface, entityTypes entitytype.EntityTypeServiceInterface) (
-	Service, TerminationHook, error) {
+	entities entity.EntityServiceInterface, entityTypes entitytype.EntityTypeServiceInterface,
+	bus eventbus.EventBusInterface) (Service, TerminationHook, error) {
+	if bus == nil {
+		return nil, nil, errNilEventBus
+	}
+
 	transactioner, err := dbProvider.GetRuntimePersistentDBTransactioner()
 	if err != nil {
 		return nil, nil, fmt.Errorf(
@@ -42,6 +49,7 @@ func Initialize(mux *http.ServeMux, dbProvider provider.DBProviderInterface, dep
 		transactioner:    transactioner,
 		criteriaRevoker:  criteriaRevoker,
 		ouEligibility:    ouEligibility,
+		bus:              bus,
 		terminationTopic: eventlistener.NewTopic[TerminatedSession]("session.terminated"),
 		timeouts:         timeouts,
 		entities:         entities,

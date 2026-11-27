@@ -1253,6 +1253,58 @@ func (s *ModelTestSuite) TestBoundSubject_OmittedWhenUnset() {
 	s.NotContains(dbModel.Context, "boundSubject")
 }
 
+func (s *ModelTestSuite) TestFlowRef_RoundTrip() {
+	mockGraph := coremock.NewGraphInterfaceMock(s.T())
+	mockGraph.On("GetID").Return("auth-graph")
+	mockGraph.On("GetType").Return(providers.FlowTypeAuthentication)
+	ctx := EngineContext{
+		Context: context.Background(), ExecutionID: "exec-ref", FlowType: providers.FlowTypeAuthentication,
+		Graph: mockGraph, UserInputs: map[string]string{}, RuntimeData: map[string]string{},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{}, flowRef: "ref-1",
+	}
+
+	dbModel := &FlowContextDB{}
+	s.Require().NoError(dbModel.FromEngineContext(ctx))
+	s.Equal("ref-1", s.getContextContent(dbModel).FlowRef)
+	resultCtx, err := dbModel.ToEngineContext(context.Background(), mockGraph, nil)
+
+	s.Require().NoError(err)
+	s.Equal("ref-1", resultCtx.flowRef)
+}
+
+// A call frame holds no reference, so a sub-flow runs under the reference of the flow that called it
+// and the reference survives pausing and resuming inside it.
+func (s *ModelTestSuite) TestFlowRef_SharedByASubFlowAcrossAPause() {
+	callee := coremock.NewGraphInterfaceMock(s.T())
+	callee.On("GetID").Return("callee-graph-id")
+	callee.On("GetType").Return(providers.FlowTypeRegistration)
+	caller := coremock.NewGraphInterfaceMock(s.T())
+	caller.On("GetID").Return("caller-graph-id")
+	caller.On("GetType").Return(providers.FlowTypeAuthentication)
+	ctx := EngineContext{
+		Context: context.Background(), ExecutionID: "exec-call", FlowType: providers.FlowTypeAuthentication,
+		Graph: caller, UserInputs: map[string]string{}, RuntimeData: map[string]string{},
+		ExecutionHistory: map[string]*providers.NodeExecutionRecord{}, flowRef: "ref-root",
+	}
+	ctx.pushFrame("call-node-1")
+	ctx.Graph = callee
+	ctx.FlowType = providers.FlowTypeRegistration
+	s.Equal("ref-root", ctx.flowRef)
+
+	dbModel := &FlowContextDB{}
+	s.Require().NoError(dbModel.FromEngineContext(ctx))
+	resolver := graphResolverFunc(func(_ context.Context, _ string) (core.GraphInterface, error) {
+		return caller, nil
+	})
+	resumed, err := dbModel.ToEngineContext(context.Background(), callee, resolver)
+	s.Require().NoError(err)
+	s.Equal("ref-root", resumed.flowRef)
+
+	resumed.popFrame()
+	s.Equal("ref-root", resumed.flowRef)
+	s.Equal("exec-call", resumed.ExecutionID)
+}
+
 func (s *ModelTestSuite) TestToEngineContext_WithFrameStack_NilResolver_Empty() {
 	mockGraph := coremock.NewGraphInterfaceMock(s.T())
 	mockGraph.On("GetID").Return("callee-graph-id")

@@ -324,6 +324,25 @@ func (s *ContextTestSuite) TestGetClientWithWrongType() {
 	s.Empty(userAgent)
 }
 
+func (s *ContextTestSuite) TestFlowRefAndApplicationIDRoundTrip() {
+	ctx := WithApplicationID(WithFlowRef(context.Background(), "0192a-ref"), "app-1")
+
+	s.Equal("0192a-ref", GetFlowRef(ctx))
+	s.Equal("app-1", GetApplicationID(ctx))
+}
+
+func (s *ContextTestSuite) TestFlowRefAndApplicationIDWithoutOne() {
+	s.Empty(GetFlowRef(context.Background()))
+	s.Empty(GetApplicationID(context.Background()))
+}
+
+func (s *ContextTestSuite) TestFlowRefAndApplicationIDWithWrongType() {
+	ctx := context.WithValue(context.WithValue(context.Background(), FlowRefKey, 1), ApplicationIDKey, 2)
+
+	s.Empty(GetFlowRef(ctx))
+	s.Empty(GetApplicationID(ctx))
+}
+
 func (s *ContextTestSuite) TestRequestMetadataRoundTrips() {
 	md := RequestMetadata{ClientIP: "203.0.113.10", UserAgent: "Mozilla/5.0"}
 

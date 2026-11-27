@@ -16,6 +16,7 @@ import (
 	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
 	"github.com/thunder-id/thunderid/internal/serverconfig"
 	"github.com/thunder-id/thunderid/tests/mocks/database/providermock"
+	"github.com/thunder-id/thunderid/tests/mocks/eventbusmock"
 	"github.com/thunder-id/thunderid/tests/mocks/serverconfigmock"
 	"github.com/thunder-id/thunderid/tests/mocks/transactionmock"
 )
@@ -37,7 +38,8 @@ func (s *InitTestSuite) TestInitializeRegistersTheManagementRoutes() {
 	reader.EXPECT().GetMergedConfig(mock.Anything, string(serverconfig.ConfigNameSession)).Return(Config{}, nil)
 	mux := http.NewServeMux()
 
-	svc, hook, err := Initialize(mux, dbProvider, testDeploymentID, reader, flowconfig.Config{}, nil, nil, nil, nil)
+	svc, hook, err := Initialize(mux, dbProvider, testDeploymentID, reader, flowconfig.Config{}, nil, nil, nil, nil,
+		eventbusmock.NewEventBusInterfaceMock(s.T()))
 
 	s.Require().NoError(err)
 	s.NotNil(hook)
@@ -69,7 +71,16 @@ func (s *InitTestSuite) TestInitializeTransactionerError() {
 	dbProvider.EXPECT().GetRuntimePersistentDBTransactioner().Return(nil, errors.New("db down"))
 
 	_, _, err := Initialize(http.NewServeMux(), dbProvider, testDeploymentID, nil, flowconfig.Config{}, nil, nil,
-		nil, nil)
+		nil, nil, eventbusmock.NewEventBusInterfaceMock(s.T()))
 
 	s.ErrorContains(err, "failed to get runtime persistent DB transactioner")
+}
+
+func (s *InitTestSuite) TestInitialize_RefusesANilEventBus() {
+	svc, hook, err := Initialize(http.NewServeMux(), providermock.NewDBProviderInterfaceMock(s.T()), testDeploymentID,
+		nil, flowconfig.Config{}, nil, nil, nil, nil, nil)
+
+	s.ErrorIs(err, errNilEventBus)
+	s.Nil(svc)
+	s.Nil(hook)
 }
