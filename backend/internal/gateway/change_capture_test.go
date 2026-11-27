@@ -72,8 +72,8 @@ func answering(status int) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(status) })
 }
 
-// A successful write to a configuration API is captured once the configuration settles; a read, a
-// refused write, and a write elsewhere are not.
+// A successful write is captured once the configuration settles, wherever it is made; a read, a refused
+// write, and a write that changes no configuration are not.
 func TestAChangeToTheConfigurationIsCaptured(t *testing.T) {
 	c, count := changeCaptureFor(t, func(context.Context) error { return nil })
 
@@ -86,12 +86,17 @@ func TestAChangeToTheConfigurationIsCaptured(t *testing.T) {
 		{http.MethodPut, "/organization-units/ou-1", http.StatusOK, true},
 		{http.MethodDelete, "/design/themes/t-1", http.StatusNoContent, true},
 		{http.MethodPost, "/notification-templates/email/templates", http.StatusCreated, true},
+		{http.MethodPost, "/connections/http", http.StatusCreated, true},
+		{http.MethodPatch, "/projects/p-1", http.StatusOK, true},
+		{http.MethodPost, "/mcp", http.StatusOK, true},
 		{http.MethodGet, "/applications", http.StatusOK, false},
 		{http.MethodPost, "/applications", http.StatusBadRequest, false},
 		{http.MethodPost, "/gateways", http.StatusCreated, false},
+		{http.MethodPost, "/gateways/g-1/apply", http.StatusOK, false},
 		{http.MethodPost, "/configuration-versions", http.StatusCreated, false},
-		{http.MethodPost, "/oauth2/token", http.StatusOK, false},
-		{http.MethodPost, "/applicationsx", http.StatusCreated, false},
+		{http.MethodPost, "/export", http.StatusOK, false},
+		{http.MethodPost, "/cimd/preview", http.StatusOK, false},
+		{http.MethodPost, "/gatewaysx", http.StatusCreated, true},
 	}
 	for _, tc := range cases {
 		before := count.Load()
