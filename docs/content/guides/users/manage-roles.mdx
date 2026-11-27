@@ -13,7 +13,7 @@ A role in <ProductName /> is a named set of permissions that you assign to users
 Each role:
 
 - Belongs to an **Organization Unit (OU)**, which defines the organizational scope of the role.
-- Contains a set of **permissions** drawn from one or more resource servers.
+- Contains a set of **permissions** drawn from one or more resource servers that its organization unit owns or that are shared with it. See [Where Its Permissions Can Be Used](../../resource-servers#where-its-permissions-can-be-used).
 - Has zero or more **assignments**: the users, groups, applications, or agents that hold the role.
 
 ## Prerequisites
@@ -21,7 +21,7 @@ Each role:
 Before creating a role, you need:
 
 - An organization unit to scope the role. See [Organization Units](../../organization-units/manage-organization-units).
-- At least one resource server with defined permissions. See [Resource Servers](../../resource-servers).
+- At least one resource server with defined permissions, owned by the role's organization unit or shared with it. See [Resource Servers](../../resource-servers).
 
 ## Permission Requirements
 
@@ -34,6 +34,8 @@ You can perform the following operations only if you already hold every permissi
 | Create a role with permissions | You hold every permission in the new role. |
 | Update a role's permissions | You hold every permission in the updated set. |
 | Add or remove a role assignment | You hold every permission the role grants. |
+
+The permissions you hold count only the ones your roles grant in the organization units they are assigned in: a permission of a resource server an organization unit cannot use does not count from a role assigned there. A role you assign still counts every permission it holds, even in an organization unit that cannot use one of its resource servers, because an AuthZEN evaluation counts them. See [Where Its Permissions Can Be Used](../resource-servers.mdx#where-its-permissions-can-be-used).
 
 Permissions are compared per resource server. A permission you hold on one resource server does not satisfy a requirement on a different resource server, even when the two permission strings are identical.
 
@@ -97,7 +99,7 @@ The following exceptions apply:
 - The variables and secrets of a gateway require the root `system` permission, as the server's own variable store does.
 - The variable store, import, and export require the root `system` permission.
 
-The `ou`, `user`, `group`, `agent`, `usertype`, `agenttype`, `notificationtemplate`, `app`, `role`, `rs`, `connection`, `flow`, and `vc` permissions are confined to an organization unit. A caller with one of them acts only on the resources of the organization unit it holds the permission in. Its lists hold that unit's resources, followed by the ones shared into it, and it can read a shared resource but not change or delete it. See [Shared Resources in the Receiving Organization Unit](../../key-concepts/resource-sharing.mdx#shared-resources-in-the-receiving-organization-unit). Other calls are refused with `403`. A caller can also read the notification templates, credential configurations, presentation definitions, and resource servers of the organization units above its own, because its flows and roles use them.
+The `ou`, `user`, `group`, `agent`, `usertype`, `agenttype`, `notificationtemplate`, `app`, `role`, `rs`, `connection`, `flow`, and `vc` permissions are confined to an organization unit. A caller with one of them acts only on the resources of the organization unit it holds the permission in. Its lists hold that unit's resources, followed by the ones shared into it, and it can read a shared resource but not change or delete it. See [Shared Resources in the Receiving Organization Unit](../../key-concepts/resource-sharing.mdx#shared-resources-in-the-receiving-organization-unit). Other calls are refused with `403`. A caller can also read the notification templates, credential configurations, and presentation definitions of the organization units above its own, because its flows use them. It reads only the resource servers its organization unit owns or that are shared with it, the ones its roles can use.
 
 :::warning
 The `flow`, `role`, `rs`, `authzdetail`, and `app` permissions are high impact. A flow administrator controls how users sign in and register. A role administrator decides who holds which permissions, within the permissions they hold themselves. A resource server administrator defines the permissions that roles grant to applications and APIs. An authorization detail type administrator defines what users consent to. An application administrator controls which scopes an application can request and which flows its users sign in and register through. Grant them only to administrators you trust with the organization unit they hold them in. The `authzdetail` permission reaches every organization unit, so grant it only to administrators you trust with the whole deployment.
@@ -274,6 +276,8 @@ To share a role from the Console:
 2. Select the **Organization Access** tab.
 3. Select whether only the role's own organization unit can use the role, or the organization units you choose. For chosen organization units, grant child organization units of the role's organization unit, top organization units of other trees, or both.
 4. Click **Save changes**.
+
+A role shared into an organization unit confers there only the permissions of resource servers that organization unit can use. Share the role's resource servers with the same organization units, or its assignments there confer none of their permissions. Read in that organization unit, the role lists only the permissions it confers there. See [Where Its Permissions Can Be Used](../resource-servers.mdx#where-its-permissions-can-be-used).
 
 The Console cannot create a policy that reaches every organization unit in the deployment or the root of every other tree. Only a resource file or an import can set those. A policy that the role's resource file declares is read-only in the Console.
 

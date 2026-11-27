@@ -541,6 +541,7 @@ func (ts *OAuthAuthzScopeTestSuite) TestOAuthAuthzFlow_SharedRoleAssignedInChild
 		Name: "OAuth_SharedDocumentEditor", OUID: scopeTestOUID,
 		Permissions: []testutils.ResourcePermissions{
 			{ResourceServerID: scopeTestResourceServer, Permissions: []string{"read", "write"}},
+			{ResourceServerID: scopeTestResourceServerB, Permissions: []string{"read", "write"}},
 		},
 	})
 	ts.Require().NoError(err)
@@ -588,8 +589,59 @@ func (ts *OAuthAuthzScopeTestSuite) TestOAuthAuthzFlow_SharedRoleAssignedInChild
 
 	scopes, _ = ts.obtainScopesAndAudienceAs(childClientID, "oauth_shared_role_user",
 		scopeTestResourceServerIdentifier)
+	ts.NotContains(scopes, "read", "the role is assigned in the child, but the resource server is not shared there")
+
+	// The role confers the resource server's permissions in the child only once the child may use the server too.
+	defer ts.shareResourceServerWithUnit(scopeTestResourceServer, childOUID)()
+
+	scopes, _ = ts.obtainScopesAndAudienceAs(childClientID, "oauth_shared_role_user",
+		scopeTestResourceServerIdentifier)
 	ts.Contains(scopes, "read")
 	ts.Contains(scopes, "write")
+
+	// The role's other resource server is not shared with the child, so it confers none of that server's permissions.
+	scopes, aud := ts.obtainScopesAndAudienceAs(childClientID, "oauth_shared_role_user",
+		scopeTestResourceServerBIdentifier)
+	ts.Equal(scopeTestResourceServerBIdentifier, aud)
+	ts.NotContains(scopes, "read", "resource server B is not shared with the child")
+	ts.NotContains(scopes, "write", "resource server B is not shared with the child")
+
+	defer ts.shareResourceServerWithUnit(scopeTestResourceServerB, childOUID)()
+
+	scopes, _ = ts.obtainScopesAndAudienceAs(childClientID, "oauth_shared_role_user",
+		scopeTestResourceServerBIdentifier)
+	ts.Contains(scopes, "read", "resource server B is now shared with the child")
+	ts.Contains(scopes, "write", "resource server B is now shared with the child")
+}
+
+// shareResourceServerWithUnit shares a resource server of the suite's organization unit with one child unit, and
+// returns a function that removes the policy. A resource server has one policy of its owner, so each test removes
+// the one it adds.
+func (ts *OAuthAuthzScopeTestSuite) shareResourceServerWithUnit(resourceServerID, ouID string) func() {
+	ts.T().Helper()
+	path := "/resource-servers/" + resourceServerID + "/sharing-policies"
+	raw, err := json.Marshal(map[string]interface{}{"childUnits": map[string]interface{}{
+		"mode": "selected", "units": []map[string]string{{"ouId": ouID, "reach": "unit"}},
+	}})
+	ts.Require().NoError(err)
+	resp, err := ts.client.Post(testutils.TestServerURL+path, "application/json", bytes.NewReader(raw))
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	ts.Require().NoError(err)
+	ts.Require().Equal(http.StatusCreated, resp.StatusCode, "share resource server: %s", string(body))
+	var policy struct {
+		ID string `json:"id"`
+	}
+	ts.Require().NoError(json.Unmarshal(body, &policy))
+	return func() {
+		req, err := http.NewRequest(http.MethodDelete, testutils.TestServerURL+path+"/"+policy.ID, nil)
+		ts.Require().NoError(err)
+		resp, err := ts.client.Do(req)
+		ts.Require().NoError(err)
+		defer resp.Body.Close()
+		ts.Equal(http.StatusNoContent, resp.StatusCode, "remove the resource server policy")
+	}
 }
 
 // postJSON posts body to a management path and returns the status.

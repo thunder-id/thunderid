@@ -7,11 +7,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
 // compositeRoleStore implements a composite store that combines file-based (immutable) and
@@ -257,6 +259,17 @@ func (c *compositeRoleStore) GetRolesByIDs(ctx context.Context, ids []string) ([
 	}
 
 	return mergeRoles(dbRoles, fileRoles), nil
+}
+
+// IsResourceServerUsedInOU reports whether a role the organization unit owns in either store holds a permission of
+// the resource server.
+func (c *compositeRoleStore) IsResourceServerUsedInOU(
+	ctx context.Context, resourceServerID, ouID string,
+) (bool, error) {
+	return declarativeresource.CompositeBooleanCheckHelper(
+		func() (bool, error) { return c.fileStore.IsResourceServerUsedInOU(ctx, resourceServerID, ouID) },
+		func() (bool, error) { return c.dbStore.IsResourceServerUsedInOU(ctx, resourceServerID, ouID) },
+	)
 }
 
 // IsRoleExist checks if a role exists in either store.
@@ -716,9 +729,9 @@ func (c *compositeRoleStore) crossStoreAuthorizedPermissions(
 // assignment was added at runtime. The third case is why no single store can answer this.
 func (c *compositeRoleStore) GetAllPermissionsForAssignees(
 	ctx context.Context, entityID string, groupIDs []string,
-) ([]ResourcePermissions, error) {
+) (map[string][]ResourcePermissions, error) {
 	if entityID == "" && len(groupIDs) == 0 {
-		return []ResourcePermissions{}, nil
+		return map[string][]ResourcePermissions{}, nil
 	}
 
 	dbPerms, err := c.dbStore.GetAllPermissionsForAssignees(ctx, entityID, groupIDs)
@@ -736,7 +749,28 @@ func (c *compositeRoleStore) GetAllPermissionsForAssignees(
 		return nil, err
 	}
 
-	return mergeResourcePermissions(dbPerms, filePerms, crossStorePerms), nil
+	return mergePermissionsByOU(dbPerms, filePerms, crossStorePerms), nil
+}
+
+// GetEntityRoleAssignmentOUIDs returns, for each role assigned to the entity, the organization units it is assigned
+// in: the stored assignments, whichever store holds the role, and the ones declared in files.
+func (c *compositeRoleStore) GetEntityRoleAssignmentOUIDs(
+	ctx context.Context, entityID string, groupIDs []string,
+) (map[string][]string, error) {
+	dbOUIDs, err := c.dbStore.GetEntityRoleAssignmentOUIDs(ctx, entityID, groupIDs)
+	if err != nil {
+		return nil, err
+	}
+	fileOUIDs, err := c.fileStore.GetEntityRoleAssignmentOUIDs(ctx, entityID, groupIDs)
+	if err != nil {
+		return nil, err
+	}
+	merged := make(map[string][]string, len(dbOUIDs)+len(fileOUIDs))
+	maps.Copy(merged, dbOUIDs)
+	for roleID, ouIDs := range fileOUIDs {
+		merged[roleID] = utils.MergeUniqueStrings(merged[roleID], ouIDs)
+	}
+	return merged, nil
 }
 
 // crossStoreAllPermissions resolves declarative roles whose assignment rows live in the database.
@@ -745,17 +779,14 @@ func (c *compositeRoleStore) GetAllPermissionsForAssignees(
 // are unknown.
 func (c *compositeRoleStore) crossStoreAllPermissions(
 	ctx context.Context, entityID string, groupIDs []string,
-) ([]ResourcePermissions, error) {
-	roleIDs, err := c.dbStore.GetEntityRoleIDs(ctx, entityID, groupIDs, "")
+) (map[string][]ResourcePermissions, error) {
+	ouIDsByRole, err := c.dbStore.GetEntityRoleAssignmentOUIDs(ctx, entityID, groupIDs)
 	if err != nil {
 		return nil, err
 	}
-	if len(roleIDs) == 0 {
-		return []ResourcePermissions{}, nil
-	}
 
-	byResourceServer := make(map[string][]string)
-	for _, id := range roleIDs {
+	byOU := make(map[string]map[string][]string)
+	for _, id := range slices.Sorted(maps.Keys(ouIDsByRole)) {
 		exists, err := c.fileStore.IsRoleExist(ctx, id)
 		if err != nil {
 			return nil, err
@@ -774,13 +805,16 @@ func (c *compositeRoleStore) crossStoreAllPermissions(
 				log.String("roleID", id), log.Error(err))
 			return nil, fmt.Errorf("composite role store: load declarative role %q: %w", id, err)
 		}
-		for _, rp := range role.Permissions {
-			byResourceServer[rp.ResourceServerID] = append(
-				byResourceServer[rp.ResourceServerID], rp.Permissions...)
+		for _, ouID := range ouIDsByRole[id] {
+			for _, rp := range role.Permissions {
+				for _, permission := range rp.Permissions {
+					addPermission(byOU, ouID, rp.ResourceServerID, permission)
+				}
+			}
 		}
 	}
 
-	return resourcePermissionsFromMap(byResourceServer), nil
+	return permissionsByOUFromMap(byOU), nil
 }
 
 // GetEntityRoleIDs combines database and declared assignments in the requested organization unit.

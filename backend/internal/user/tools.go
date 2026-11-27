@@ -487,7 +487,7 @@ func (t *userTools) addUserDetails(ctx context.Context, details *userMCPDetails,
 	}
 
 	if slices.Contains(include, string(userDetailPermissions)) {
-		permissions, svcErr := t.roleService.GetAllPermissions(ctx, details.ID, groupIDs)
+		permissions, svcErr := t.roleService.GetUsablePermissions(ctx, details.ID, groupIDs)
 		if svcErr != nil {
 			return errors.New("their permissions could not be read")
 		}

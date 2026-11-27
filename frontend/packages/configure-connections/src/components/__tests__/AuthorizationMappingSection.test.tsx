@@ -261,6 +261,25 @@ describe('AuthorizationMappingSection', () => {
     expect(screen.getByText('Unavailable: rs-other-unit')).toBeInTheDocument();
   });
 
+  it('leaves out of the resource server picker the ones shared with the unit', () => {
+    useGetResourceServers.mockReturnValue({
+      data: {
+        totalResults: 2,
+        resourceServers: [
+          {id: 'rs-1', name: 'Orders API', isOwnedByOU: true},
+          {id: 'rs-shared', name: 'Billing API', isOwnedByOU: false},
+        ],
+      },
+    });
+    render(<AuthorizationMappingSection ouId="ou-1" onRuleChange={onRuleChange} onDirectChange={onDirectChange} />);
+    fireEvent.click(screen.getByRole('button', {name: ADD_MAPPING}));
+    selectOption(TARGET_TYPE, 'Permission');
+    fireEvent.mouseDown(screen.getByRole('combobox', {name: RESOURCE_SERVER}));
+
+    expect(screen.getByRole('option', {name: 'Orders API'})).toBeInTheDocument();
+    expect(screen.queryByRole('option', {name: 'Billing API'})).not.toBeInTheDocument();
+  });
+
   it('shows a stored resource server missing from a partial list by its id, without marking it unavailable', () => {
     useGetResourceServers.mockReturnValue({data: {...SERVERS_PAGE.data, totalResults: 250}});
     render(

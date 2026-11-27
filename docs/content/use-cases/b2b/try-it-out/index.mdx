@@ -77,13 +77,25 @@ The fastest way to create the resources the walkthroughs need. First, [get <Prod
 3. Choose **Import / Export**, then **Import**. Upload `thunderid-config/organization-unit.yaml` as the configuration
    file. It needs no environment file. Choose **Continue**, and once the import test passes, choose
    **Import configuration**.
-4. Choose **Import / Export**, then **Import** again. Upload `thunderid-config/thunderid-config.yaml` as the
+4. Share the System resource server with Wayfinder Enterprise and its companies, with the two policies in
+   [Share the System Resource Server](../journeys/delegated-administration.mdx#share-the-system-resource-server). Send
+   them to the Control Plane at `https://localhost:8095`, the same place you import the files. The second file's
+   backend role holds a System permission, so its import fails with `ROL-1047` without the share.
+5. Choose **Import / Export**, then **Import** again. Upload `thunderid-config/thunderid-config.yaml` as the
    configuration file and `thunderid-config/thunderid.env` as the environment variables file, to provide the variables
    the YAML references. Choose **Continue**, then **Import configuration**. A secret you left empty can be entered in
    the **Environment variables** editor before you import.
 
 The Console tests each import before it runs it, and that test only finds an organization unit that already exists. The
 second file places every resource in the organization unit the first one creates, so import the first one on its own.
+
+:::note Deploy to the Data Plane
+The Control Plane deploys the imported resources to the Data Plane. If **Auto deploy** is off, open the Default
+project's **Deployment pipeline** and choose **Deploy**. The System resource server belongs to no project and is
+already on the Data Plane, so the deploy brings its new sharing only when you tick **System**. The deploy lists it
+under **What they need** or **Shared resources**. Without it, the Data Plane refuses the backend role with `ROL-1047`
+and a token request for a company fails with `invalid_target`.
+:::
 
 ### What the Import Creates
 

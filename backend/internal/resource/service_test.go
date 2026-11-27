@@ -30,6 +30,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/resourcedependencymock"
 	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
@@ -714,6 +715,8 @@ func (suite *ResourceServiceTestSuite) TestGetResourceServer_Success() {
 	suite.NotNil(result)
 	suite.Equal("rs-123", result.ID)
 	suite.Equal("test-rs", result.Name)
+	suite.Require().NotNil(result.IsOwnedByOU, "a read in the owning unit says the unit owns it")
+	suite.True(*result.IsOwnedByOU)
 }
 
 func (suite *ResourceServiceTestSuite) TestGetResourceServer_MissingID() {
@@ -934,6 +937,70 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_OUNotFound() {
 	suite.Nil(result)
 	suite.NotNil(err)
 	suite.Equal(ErrorOrganizationUnitNotFound.Code, err.Code)
+}
+
+// Moving a resource server out of an organization unit whose roles still hold its permissions is refused: the unit
+// would no longer own it, and those roles would confer none of them.
+func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_MoveWhileUsedInTheOldOU() {
+	cases := map[string]struct {
+		used     bool
+		err      error
+		wantCode string
+	}{
+		"refused while the old unit's roles use it": {used: true, wantCode: errorResourceServerUsedInOU.Code},
+		"a failed check is a server error": {
+			err: errors.New("db down"), wantCode: tidcommon.InternalServerError.Code,
+		},
+		// Past the check, the move stops at the store.
+		"let through once nothing uses it": {wantCode: tidcommon.InternalServerError.Code},
+	}
+	for name, tc := range cases {
+		suite.Run(name, func() {
+			suite.SetupTest()
+			suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+			suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(providers.ResourceServer{
+				ID: "rs-123", Name: "test-rs", Identifier: "test-identifier", OUID: "ou-old"}, nil)
+			suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-new").
+				Return(oupkg.OrganizationUnit{ID: "ou-new"}, (*tidcommon.ServiceError)(nil))
+			suite.mockSharing.On("ListPolicies", mock.Anything, ResourceServerSharingType, "rs-123").
+				Return([]sharing.Policy{}, (*tidcommon.ServiceError)(nil)).Once()
+			registry := resourcedependencymock.NewRegistryMock(suite.T())
+			registry.EXPECT().HasDependenciesInOU(mock.Anything, resourcedependency.ResourceTypeResourceServer,
+				"rs-123", "ou-old").Return(tc.used, tc.err).Once()
+			suite.service.SetDependencyRegistry(registry)
+			suite.mockStore.On("UpdateResourceServer", mock.Anything, "rs-123", mock.Anything).
+				Return(errors.New("db down")).Maybe()
+
+			result, err := suite.service.UpdateResourceServer(context.Background(), "rs-123", providers.ResourceServer{
+				Name: "test-rs", Identifier: "test-identifier", OUID: "ou-new"})
+
+			suite.Nil(result)
+			suite.Require().NotNil(err)
+			suite.Equal(tc.wantCode, err.Code)
+		})
+	}
+}
+
+// A shared resource server cannot move at all, so that refusal comes before asking whether roles use it.
+func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_SharedMoveRefusedBeforeTheUseCheck() {
+	suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
+	suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(providers.ResourceServer{
+		ID: "rs-123", Name: "test-rs", Identifier: "test-identifier", OUID: "ou-old"}, nil)
+	suite.mockOU.On("GetOrganizationUnit", mock.Anything, "ou-new").
+		Return(oupkg.OrganizationUnit{ID: "ou-new"}, (*tidcommon.ServiceError)(nil))
+	suite.mockSharing.On("ListPolicies", mock.Anything, ResourceServerSharingType, "rs-123").
+		Return([]sharing.Policy{{ID: "policy-1"}}, (*tidcommon.ServiceError)(nil)).Once()
+	registry := resourcedependencymock.NewRegistryMock(suite.T())
+	suite.service.SetDependencyRegistry(registry)
+
+	result, err := suite.service.UpdateResourceServer(context.Background(), "rs-123", providers.ResourceServer{
+		Name: "test-rs", Identifier: "test-identifier", OUID: "ou-new"})
+
+	suite.Nil(result)
+	suite.Require().NotNil(err)
+	suite.Equal(ErrorSharedResourceServerCannotMove.Code, err.Code)
+	registry.AssertNotCalled(suite.T(), "HasDependenciesInOU", mock.Anything, mock.Anything, mock.Anything,
+		mock.Anything)
 }
 
 func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_OUServiceError() {
@@ -3428,20 +3495,87 @@ func (suite *ResourceServiceTestSuite) TestGetResourceServerListByOUID_Success()
 		{ID: "rs-2", OUID: "ou-1"},
 	}
 	suite.mockStore.On("GetResourceServerListCountByOUID", mock.Anything, "ou-1").Return(5, nil)
+	suite.mockSharing.On("ListVisibleResourceIDs", mock.Anything, ResourceServerSharingType, "ou-1").
+		Return([]string{"rs-shared"}, nil)
 	suite.mockStore.On("GetResourceServerListByOUID", mock.Anything, "ou-1", 2, 2).Return(resourceServers, nil)
 
 	result, err := suite.service.GetResourceServerListByOUID(context.Background(), "ou-1", 2, 2)
 
 	suite.Nil(err)
 	suite.Require().NotNil(result)
-	suite.Equal(5, result.TotalResults)
+	suite.Equal(6, result.TotalResults, "the owned ones and the shared one")
 	suite.Equal(2, result.Count)
 	suite.Equal(3, result.StartIndex)
 	suite.Equal(resourceServers, result.ResourceServers)
+	for _, server := range result.ResourceServers {
+		suite.Equal(new(true), server.IsOwnedByOU, server.ID)
+	}
 	suite.NotEmpty(result.Links)
 	for _, link := range result.Links {
 		suite.Contains(link.Href, "&filter=ouId+eq+%22ou-1%22")
 	}
+}
+
+// The resource servers shared with an organization unit follow the ones it owns, listed under the unit and read
+// only there.
+func (suite *ResourceServiceTestSuite) TestGetResourceServerListByOUID_ListsSharedAfterOwned() {
+	suite.mockStore.On("GetResourceServerListCountByOUID", mock.Anything, "ou-1").Return(1, nil)
+	suite.mockSharing.On("ListVisibleResourceIDs", mock.Anything, ResourceServerSharingType, "ou-1").
+		Return([]string{"rs-shared", "rs-gone"}, nil)
+	suite.mockStore.On("GetResourceServerListByOUID", mock.Anything, "ou-1", 1, 0).
+		Return([]providers.ResourceServer{{ID: "rs-own", OUID: "ou-1"}}, nil)
+	// One read for the shared page, which leaves out a resource server that no longer exists.
+	suite.mockStore.On("GetResourceServersByIDs", mock.Anything, []string{"rs-shared", "rs-gone"}).
+		Return([]providers.ResourceServer{{ID: "rs-shared", OUID: "ou-parent"}}, nil).Once()
+
+	result, err := suite.service.GetResourceServerListByOUID(context.Background(), "ou-1", 10, 0)
+
+	suite.Nil(err)
+	suite.Require().NotNil(result)
+	suite.Equal(3, result.TotalResults)
+	suite.Equal([]providers.ResourceServer{
+		{ID: "rs-own", OUID: "ou-1", IsOwnedByOU: new(true)},
+		{ID: "rs-shared", OUID: "ou-1", IsReadOnly: true, IsOwnedByOU: new(false)},
+	}, result.ResourceServers, "a resource server that no longer exists is left out")
+}
+
+func (suite *ResourceServiceTestSuite) TestGetResourceServerListByOUID_SharingLookup() {
+	suite.Run("an organization unit that does not exist has nothing shared with it", func() {
+		suite.SetupTest()
+		suite.mockStore.On("GetResourceServerListCountByOUID", mock.Anything, "ou-1").Return(0, nil)
+		suite.mockSharing.On("ListVisibleResourceIDs", mock.Anything, ResourceServerSharingType, "ou-1").
+			Return(nil, &oupkg.ErrorOrganizationUnitNotFound)
+
+		result, err := suite.service.GetResourceServerListByOUID(context.Background(), "ou-1", 10, 0)
+
+		suite.Nil(err)
+		suite.Require().NotNil(result)
+		suite.Empty(result.ResourceServers)
+	})
+	suite.Run("the lookup fails", func() {
+		suite.SetupTest()
+		suite.mockStore.On("GetResourceServerListCountByOUID", mock.Anything, "ou-1").Return(0, nil)
+		suite.mockSharing.On("ListVisibleResourceIDs", mock.Anything, ResourceServerSharingType, "ou-1").
+			Return(nil, &tidcommon.InternalServerError)
+
+		_, err := suite.service.GetResourceServerListByOUID(context.Background(), "ou-1", 10, 0)
+
+		suite.Require().NotNil(err)
+		suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+	})
+	suite.Run("a shared resource server cannot be read", func() {
+		suite.SetupTest()
+		suite.mockStore.On("GetResourceServerListCountByOUID", mock.Anything, "ou-1").Return(0, nil)
+		suite.mockSharing.On("ListVisibleResourceIDs", mock.Anything, ResourceServerSharingType, "ou-1").
+			Return([]string{"rs-shared"}, nil)
+		suite.mockStore.On("GetResourceServersByIDs", mock.Anything, []string{"rs-shared"}).
+			Return(nil, errors.New("database error"))
+
+		_, err := suite.service.GetResourceServerListByOUID(context.Background(), "ou-1", 10, 0)
+
+		suite.Require().NotNil(err)
+		suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+	})
 }
 
 func (suite *ResourceServiceTestSuite) TestGetResourceServerListByOUID_InvalidInput() {
@@ -3491,7 +3625,10 @@ func (suite *ResourceServiceTestSuite) TestGetResourceServerListByOUID_StoreErro
 			suite.SetupTest()
 			suite.mockStore.On("GetResourceServerListCountByOUID", mock.Anything, "ou-1").Return(2, tc.countErr)
 			if tc.countErr == nil {
-				suite.mockStore.On("GetResourceServerListByOUID", mock.Anything, "ou-1", 10, 0).
+				suite.mockSharing.On("ListVisibleResourceIDs", mock.Anything, ResourceServerSharingType, "ou-1").
+					Return(nil, nil)
+				// The page asks only for the owned ones it holds.
+				suite.mockStore.On("GetResourceServerListByOUID", mock.Anything, "ou-1", 2, 0).
 					Return(nil, tc.listErr)
 			}
 

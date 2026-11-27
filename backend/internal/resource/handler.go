@@ -833,6 +833,7 @@ func toResourceServerResponse(rs *providers.ResourceServer) *ResourceServerRespo
 		HierarchicalPermissions: rs.HierarchicalPermissions,
 		AuthorizationEngine:     rs.AuthorizationEngine,
 		IsReadOnly:              rs.IsReadOnly,
+		IsOwnedByOU:             rs.IsOwnedByOU,
 	}
 }
 

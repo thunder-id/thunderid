@@ -657,6 +657,27 @@ func (s *RoleToolsTestSuite) TestListResourceServers_InAProject() {
 	})
 }
 
+func (s *RoleToolsTestSuite) TestListResourceServers_InAnOrganizationUnit() {
+	s.resources.On("GetResourceServerListByOUID", mock.Anything, "ou-1", 30, 0).Return(
+		&resourcepkg.ResourceServerList{TotalResults: 2, ResourceServers: []providers.ResourceServer{
+			{Name: "Orders", Identifier: "https://api.example.com/orders", OUID: "ou-1",
+				Type: providers.ResourceServerTypeAPI, IsOwnedByOU: new(true)},
+			{Name: "Billing", Identifier: "https://api.example.com/billing", OUID: "ou-1",
+				Type: providers.ResourceServerTypeAPI, IsOwnedByOU: new(false)}}},
+		(*tidcommon.ServiceError)(nil)).Once()
+
+	var out resourceServerListMCPResponse
+	s.structured(s.call("list_resource_servers", map[string]any{"ouId": "ou-1"}), &out)
+
+	s.Equal(2, out.TotalResults)
+	s.Equal([]resourceServerMCPItem{
+		{ResourceServer: "https://api.example.com/orders", Name: "Orders", Type: "API", OUID: "ou-1"},
+		{ResourceServer: "https://api.example.com/billing", Name: "Billing", Type: "API", OUID: "ou-1",
+			Shared: true},
+	}, out.ResourceServers)
+	s.resources.AssertNotCalled(s.T(), "GetResourceServerList", mock.Anything, mock.Anything, mock.Anything)
+}
+
 // list_resource_servers pages through the resource service only where it can page, and
 // list_resource_server_permissions returns every permission.
 func (s *RoleToolsTestSuite) TestResourceServerListsPageOnlyThroughTheService() {

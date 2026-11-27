@@ -72,7 +72,7 @@ func Initialize(
 	// Step 3: Load declarative resources into store (if applicable)
 	if fileStore != nil {
 		// One document, read once per thing it carries: the role, then its sharing policies.
-		if err := loadDeclarativeResources(fileStore, dbStore, roleService); err != nil {
+		if err := loadDeclarativeResources(fileStore, dbStore, roleService, resourceService); err != nil {
 			return nil, nil, nil, nil, err
 		}
 		if err := sharingService.LoadDeclarativeResources(

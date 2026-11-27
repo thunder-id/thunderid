@@ -142,6 +142,7 @@ func (s *RoleServiceAuditTestSuite) SetupTest() {
 	s.mockGroupService = groupmock.NewGroupServiceInterfaceMock(s.T())
 	s.mockOUService = oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
 	s.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(s.T())
+	delegateOUValidation(s.mockResourceService)
 	s.mockEntityTypeService = entitytypemock.NewEntityTypeServiceInterfaceMock(s.T())
 	s.mockSharingService = sharingmock.NewSharingServiceInterfaceMock(s.T())
 	s.authz = allowOUAccess(sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T()))

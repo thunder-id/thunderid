@@ -15,10 +15,12 @@ import (
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/group"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	resourcepkg "github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/utils"
 )
 
@@ -201,15 +203,18 @@ func (e *roleExporter) ViewResourceParts(_ context.Context, document *yaml.Node)
 // loadDeclarativeResources loads immutable role resources from files.
 // The dbStore parameter is optional (can be nil) and is used for duplicate checking in composite mode.
 // The service parameter is optional (can be nil) and is used to resolve ou_handle to ou_id.
+// The resourceService parameter is optional (can be nil) and is used to check that a role's organization unit may
+// use the resource servers it holds permissions of.
 func loadDeclarativeResources(
 	fileStore *fileBasedStore, dbStore roleStoreInterface, service RoleServiceInterface,
+	resourceService resourcepkg.ResourceServiceInterface,
 ) error {
 	resourceConfig := declarativeresource.ResourceConfig{
 		ResourceType:  "Role",
 		DirectoryName: "roles",
 		Parser:        parseToRoleWrapper,
 		Validator: func(data interface{}) error {
-			return validateRoleWrapper(data, fileStore, dbStore, service)
+			return validateRoleWrapper(data, fileStore, dbStore, service, resourceService)
 		},
 		IDExtractor: func(data interface{}) string {
 			// Use safe type assertion to prevent panic
@@ -447,6 +452,7 @@ func parseToRole(data []byte) (*RoleWithPermissionsAndAssignments, error) {
 // When a service is provided, OU handles are resolved before validation runs.
 func validateRoleWrapper(
 	data interface{}, fileStore *fileBasedStore, dbStore roleStoreInterface, service RoleServiceInterface,
+	resourceService resourcepkg.ResourceServiceInterface,
 ) error {
 	role, ok := data.(*RoleWithPermissionsAndAssignments)
 	if !ok {
@@ -482,6 +488,9 @@ func validateRoleWrapper(
 		if resourcePerms.ResourceServerID == "" {
 			return fmt.Errorf("resource server ID is required")
 		}
+		if err := requireResourceServerAvailable(resourceService, role, resourcePerms); err != nil {
+			return err
+		}
 	}
 
 	if fileStore != nil {
@@ -502,6 +511,26 @@ func validateRoleWrapper(
 	}
 
 	return nil
+}
+
+// requireResourceServerAvailable refuses a declared role holding permissions of a resource server its organization
+// unit neither owns nor has shared with it. Resource servers and their declared sharing load before roles.
+func requireResourceServerAvailable(resourceService resourcepkg.ResourceServiceInterface,
+	role *RoleWithPermissionsAndAssignments, resourcePerms ResourcePermissions) error {
+	if resourceService == nil || len(resourcePerms.Permissions) == 0 {
+		return nil
+	}
+	_, svcErr := resourceService.ValidatePermissionsInOU(security.WithRuntimeContext(context.Background()),
+		resourcePerms.ResourceServerID, role.OUID, resourcePerms.Permissions)
+	if svcErr == nil {
+		return nil
+	}
+	if svcErr.Code == resourcepkg.ErrorResourceServerNotSharedToOU.Code {
+		return fmt.Errorf("role '%s' holds permissions of resource server '%s', which organization unit '%s' "+
+			"neither owns nor has shared with it", role.Name, resourcePerms.ResourceServerID, role.OUID)
+	}
+	return fmt.Errorf("failed to check the resource server '%s' of role '%s': %s",
+		resourcePerms.ResourceServerID, role.Name, svcErr.Error.DefaultValue)
 }
 
 func (e *roleExporter) getAllRoleAssignments(

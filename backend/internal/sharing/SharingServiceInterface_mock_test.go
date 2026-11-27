@@ -725,6 +725,86 @@ func (_c *SharingServiceInterfaceMock_GetResourceDependencies_Call) RunAndReturn
 	return _c
 }
 
+// IsSharedWith provides a mock function for the type SharingServiceInterfaceMock
+func (_mock *SharingServiceInterfaceMock) IsSharedWith(ctx context.Context, rt ResourceType, resourceID string, ouID string) (bool, *common.ServiceError) {
+	ret := _mock.Called(ctx, rt, resourceID, ouID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsSharedWith")
+	}
+
+	var r0 bool
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ResourceType, string, string) (bool, *common.ServiceError)); ok {
+		return returnFunc(ctx, rt, resourceID, ouID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, ResourceType, string, string) bool); ok {
+		r0 = returnFunc(ctx, rt, resourceID, ouID)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, ResourceType, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, rt, resourceID, ouID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// SharingServiceInterfaceMock_IsSharedWith_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsSharedWith'
+type SharingServiceInterfaceMock_IsSharedWith_Call struct {
+	*mock.Call
+}
+
+// IsSharedWith is a helper method to define mock.On call
+//   - ctx context.Context
+//   - rt ResourceType
+//   - resourceID string
+//   - ouID string
+func (_e *SharingServiceInterfaceMock_Expecter) IsSharedWith(ctx any, rt any, resourceID any, ouID any) *SharingServiceInterfaceMock_IsSharedWith_Call {
+	return &SharingServiceInterfaceMock_IsSharedWith_Call{Call: _e.mock.On("IsSharedWith", ctx, rt, resourceID, ouID)}
+}
+
+func (_c *SharingServiceInterfaceMock_IsSharedWith_Call) Run(run func(ctx context.Context, rt ResourceType, resourceID string, ouID string)) *SharingServiceInterfaceMock_IsSharedWith_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 ResourceType
+		if args[1] != nil {
+			arg1 = args[1].(ResourceType)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *SharingServiceInterfaceMock_IsSharedWith_Call) Return(b bool, serviceError *common.ServiceError) *SharingServiceInterfaceMock_IsSharedWith_Call {
+	_c.Call.Return(b, serviceError)
+	return _c
+}
+
+func (_c *SharingServiceInterfaceMock_IsSharedWith_Call) RunAndReturn(run func(ctx context.Context, rt ResourceType, resourceID string, ouID string) (bool, *common.ServiceError)) *SharingServiceInterfaceMock_IsSharedWith_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // IsVisible provides a mock function for the type SharingServiceInterfaceMock
 func (_mock *SharingServiceInterfaceMock) IsVisible(ctx context.Context, rt ResourceType, resourceID string, ouID string) (bool, *common.ServiceError) {
 	ret := _mock.Called(ctx, rt, resourceID, ouID)

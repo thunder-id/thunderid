@@ -415,6 +415,9 @@ export default function RoleEditPage(): JSX.Element {
             permissions={editedRole.permissions ?? serverPermissions}
             onPermissionsChange={handlePermissionsChange}
             isReadOnly={isReadOnly}
+            // A role can hold permissions only of the resource servers its organization unit owns or is shared. A
+            // role shared in, or otherwise read only, lists every server the admin can see, so its permissions show.
+            ouId={isReadOnly ? undefined : role.ouId}
           />
         </TabPanel>
 

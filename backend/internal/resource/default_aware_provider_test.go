@@ -62,6 +62,21 @@ func (suite *DefaultAwareProviderTestSuite) TestExplicitIdentifier_PropagatesBas
 	assert.Same(suite.T(), svcErr, err)
 }
 
+// Whether an organization unit may use a resource server is the wrapped service's answer.
+func (suite *DefaultAwareProviderTestSuite) TestIsResourceServerAvailableInOU_DelegatesToTheService() {
+	suite.base.On("IsResourceServerAvailableInOU", mock.Anything, "rs-1", "ou-1").Return(true, nil)
+
+	checker, ok := suite.subject.(interface {
+		IsResourceServerAvailableInOU(ctx context.Context, resourceServerID, ouID string) (
+			bool, *tidcommon.ServiceError)
+	})
+	suite.Require().True(ok, "the runtime provider tells what an organization unit may use")
+	available, err := checker.IsResourceServerAvailableInOU(context.Background(), "rs-1", "ou-1")
+
+	assert.Nil(suite.T(), err)
+	assert.True(suite.T(), available)
+}
+
 // An empty identifier resolves the configured default resource server through the wrapped provider.
 func (suite *DefaultAwareProviderTestSuite) TestEmptyIdentifier_DefaultConfigured_Resolves() {
 	rs := providers.ResourceServer{ID: "rs-1", Identifier: "https://api.example.com"}

@@ -931,3 +931,17 @@ func (s *FileBasedResourceStoreTestSuite) TestGetDeclaredPermissionsIncludesNest
 	s.NoError(err)
 	s.Empty(missing)
 }
+
+// A read by IDs returns the declared resource servers with those IDs and leaves out an ID naming none.
+func (s *FileBasedResourceStoreTestSuite) TestGetResourceServersByIDs() {
+	fileStore, ok := s.store.(*fileBasedResourceStore)
+	s.Require().True(ok)
+	s.Require().NoError(fileStore.Create("rs-by-id", &providers.ResourceServer{
+		ID: "rs-by-id", Name: "By ID", OUID: "ou1", Delimiter: ":"}))
+
+	servers, err := s.store.GetResourceServersByIDs(s.ctx, []string{"rs-by-id", "rs-missing"})
+
+	s.Require().NoError(err)
+	s.Require().Len(servers, 1)
+	s.Equal("rs-by-id", servers[0].ID)
+}

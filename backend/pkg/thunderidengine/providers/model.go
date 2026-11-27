@@ -193,6 +193,9 @@ type ResourceServer struct {
 	IsReadOnly              bool                      `yaml:"-"                     json:"-"`
 	Actions                 []Action                  `yaml:"actions,omitempty"     json:"actions,omitempty"`
 	Resources               []Resource                `yaml:"resources,omitempty"   json:"resources,omitempty"`
+	// IsOwnedByOU says, on a read, whether the organization unit the resource server is read in owns it rather than
+	// having it shared with it. A list that is not narrowed to an organization unit leaves it unset.
+	IsOwnedByOU *bool `yaml:"-" json:"-"`
 }
 
 // AuthorizationEngineTypeAuthZENPDP identifies the AuthZEN PDP authorization engine.

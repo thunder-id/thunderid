@@ -897,7 +897,8 @@ func (suite *PermissionDependencyTestSuite) TestRoleWithDeclarativePermissionAcc
 	roleID, err := testutils.CreateRole(testutils.Role{
 		Name:        "Role With Declarative Permission",
 		Description: "Role referencing a permission from a declarative resource server",
-		OUID:        suite.ouID,
+		// The organization unit that owns the declarative resource server.
+		OUID: "decl-ou-1",
 		Permissions: []testutils.ResourcePermissions{{
 			ResourceServerID: declarativeResourceServerID,
 			Permissions:      []string{declarativeReadPermission},

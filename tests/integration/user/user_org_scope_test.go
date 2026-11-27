@@ -43,6 +43,7 @@ type UserOrgScopeTestSuite struct {
 	appID, roleID               string
 	clientID, clientSecret      string
 	rootClient                  *http.Client
+	unshareSystem               func() error
 }
 
 func TestUserOrgScopeTestSuite(t *testing.T) {
@@ -89,6 +90,11 @@ func (ts *UserOrgScopeTestSuite) SetupSuite() {
 	ts.appID = appID
 	ts.Require().NoError(testutils.ShareApplicationWithChildUnits(ts.appID))
 
+	// The System resource server is shared with no organization unit by default, so A, where the role lives, and the
+	// units beneath it, which tokens name, are shared it first.
+	ts.unshareSystem, err = testutils.ShareSystemResourceServerWith(ts.ouA)
+	ts.Require().NoError(err, "share the System resource server")
+
 	roleID, err := testutils.CreateRole(testutils.Role{
 		Name: "org-scope-service-role",
 		OUID: ts.ouA,
@@ -106,6 +112,9 @@ func (ts *UserOrgScopeTestSuite) SetupSuite() {
 func (ts *UserOrgScopeTestSuite) TearDownSuite() {
 	if ts.roleID != "" {
 		ts.NoError(testutils.DeleteRole(ts.roleID))
+	}
+	if ts.unshareSystem != nil {
+		ts.NoError(ts.unshareSystem())
 	}
 	if ts.appID != "" {
 		ts.NoError(testutils.DeleteApplication(ts.appID))

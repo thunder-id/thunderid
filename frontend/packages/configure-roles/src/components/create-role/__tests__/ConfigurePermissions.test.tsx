@@ -13,11 +13,13 @@ vi.mock('@thunderid/configure-resource-servers', async (importOriginal) => {
     PermissionCatalog: ({
       selected,
       onChange,
+      ouId = undefined,
     }: {
       selected: {resourceServerId: string; permissions: string[]}[];
       onChange: (s: {resourceServerId: string; permissions: string[]}[]) => void;
+      ouId?: string;
     }) => (
-      <div data-testid="permission-catalog" data-selected={JSON.stringify(selected)}>
+      <div data-testid="permission-catalog" data-selected={JSON.stringify(selected)} data-ou-id={ouId}>
         <button
           type="button"
           data-testid="fire-change"
@@ -45,6 +47,12 @@ describe('ConfigurePermissions', () => {
     expect(
       screen.getByText('Choose what this role grants. You can skip this step and add permissions later.'),
     ).toBeInTheDocument();
+  });
+
+  it("should offer the resource servers of the role's organization unit", () => {
+    render(<ConfigurePermissions permissions={[]} onPermissionsChange={vi.fn()} ouId="ou-1" />);
+
+    expect(screen.getByTestId('permission-catalog')).toHaveAttribute('data-ou-id', 'ou-1');
   });
 
   it('should render the PermissionCatalog stub', () => {

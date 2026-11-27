@@ -1,7 +1,7 @@
 # Machine-to-Machine Access Across Organization Units Specification
 
 - **Status:** Draft
-- **Version:** 0.9
+- **Version:** 0.10
 - **Related documents:** [Discussion #5461: Machine-to-Machine (M2M) service working across OUs](https://github.com/thunder-id/thunderid/discussions/5461), [Issue #4037: Allow trusted machine clients to obtain an access token scoped to a chosen Organization Unit (without a per-OU application)](https://github.com/thunder-id/thunderid/issues/4037)
 
 ## Summary
@@ -49,9 +49,9 @@ flowchart TD
 | Actor provider | Carries `IsOAuthClientAccessibleFromOU`, the one question the OAuth layer asks about organization units. The embeddable engine hosts no application management, so this is the seam rather than a new provider interface |
 | Inbound client service | Answers that question from the sharing framework, short-circuiting on the client's own organization unit |
 | Application sharing declaration | Registers applications as a sharing resource type. Declares no fields, resolves ownership, and implements nothing else |
-| Resource service | Downscopes requested scopes to the target resource server's permissions, and in the same pass drops the ones the accessing organization unit may not use. Reads the accessing unit from the request context rather than taking it as a parameter |
+| Resource service | Answers whether an organization unit may use a resource server (`IsResourceServerAvailableInOU`) and validates permissions in a named unit (`ValidatePermissionsInOU`), both taking the unit as a parameter. The resource indicator helpers read the accessing unit from the request context, ask it, and drop or refuse what that unit may not use while downscoping requested scopes to the target resource server's permissions |
 | Sharing framework | Owns policies, sections, exclusions, and visibility. |
-| Resource server sharing declaration | Registers resource servers as a sharing resource type. Declares one field, `permissions`, a hierarchy of the server's permission strings whose default rule is `editable: false` with no value, so a reached organization unit gets the whole server: every resource, sub-resource and action. Refuses a rule that names a `value` or `excludedValues` until a policy can grant or withhold part of the server |
+| Resource server sharing declaration | Registers resource servers as a sharing resource type. Declares one field, `permissions`, a hierarchy of the server's permission strings whose default rule is `editable: false` with no value, so a reached organization unit gets the whole server: every resource, sub-resource and action. Refuses a rule that names a `value` or `excludedValues` until a policy can grant or withhold part of the server, and refuses taking the server from a unit whose roles use it (`OverlayCleaner`) |
 | Token builder | Emits `ouId`, `ouName` and `ouHandle` for the accessing organization unit rather than the application's owner, where the application opted into those claims |
 
 ## Detailed design
@@ -195,21 +195,25 @@ The `groups` and `roles` claims follow the entitlement rule below: `groups` name
 
 ### Scopes available to the accessing organization unit
 
-A token issued for an organization unit must not carry permissions that unit may not use. The accessing unit travels on the request context, so the resource service reads it while downscoping rather than taking it as a parameter:
+A resource server is **available** in an organization unit that owns it or that one of its sharing policies reaches. A token issued for an organization unit must not carry permissions of a resource server that unit may not use.
 
-1. Requested scopes are downscoped to the permissions the target resource server defines.
-2. In the same pass, a permission the accessing organization unit may not use is treated as undefined and dropped.
+The public engine's `ResourceServerProvider` is unchanged. The resource indicator helpers declare an unexported `ouResourceServerAvailability` interface with one method, `IsResourceServerAvailableInOU`, which takes the organization unit explicitly. The server's own runtime provider implements it. The token code reads the accessing unit from the request context and, only when the request names one, asks a provider that implements it. A provider that does not implement it, such as an embedder's own, has no resource server sharing, so every resource server stays available as before:
+
+1. Resolving the target resource server, from `resource=` or the configured default, treats a resource server the accessing unit may not use as one that does not exist, and answers `invalid_target`.
+2. Downscoping drops every scope of a resource server the accessing unit may not use, as a second line of defence.
 3. The application's own entitlement is evaluated afterwards, from the role assignments made in the application's own organization unit, directly or through the groups that unit owns. Roles an organization unit the application is shared with assigned it, directly or through that unit's groups, are that unit's and do not count, at either endpoint.
 
-> **Not built yet.** Resource servers can be shared through the Console, the API, resource files, imports and a control plane deploy, as a whole: a policy reaches organization units but cannot grant or withhold part of the server. Step 2 above, the three cases below, and AC6.1, AC6.2 and AC6.6 are not enforced: no path yet consults a resource server's sharing when it resolves scopes or validates a role's permissions.
+A failure to answer refuses the request with `server_error` rather than letting the unit through. The same resolution runs at `/ou/{ouId}/oauth2/authorize`, where a resource server the accessing unit may not use is answered with `invalid_target` as an authorization error on the redirect to the client.
 
 What the accessing unit may use comes from the resource server's own sharing policy. A resource server declares one field, `permissions`, as a hierarchy over its permission strings, so naming a resource shares it together with everything beneath it. The field is pinned: the sharing organization unit decides what is shared, and a reached unit has nothing of its own to choose. A policy cannot name a `value` or `excludedValues` for it yet, so a reached unit may use every permission.
 
-Three cases decide a permission:
+Availability is strict. A resource server no policy names is available only in its owner, with no fallback to every unit. The bootstrap shares neither the System resource server nor the Control Plane resource server, so both are available only in the default organization unit. An operator shares the System resource server with the units whose roles need its permissions, such as the units whose admins hold `org`.
 
-- The accessing unit owns the resource server. Every permission is available.
-- The resource server carries no sharing policy at all. Every permission is available, as before sharing existed. Resource servers can now be shared through the API, so whether this case stays once the bound is enforced is still to be decided.
-- Otherwise the permission is available only where the unit's resolved rule grants it, and a unit the server never reached gets none.
+In this cut a policy shares the whole resource server, so an available resource server is available with every permission it defines. When a policy can name the permissions it shares, the check narrows to the permissions inside the unit's resolved `permissions` rule.
+
+### Roles and resource server availability
+
+The same bound applies to roles, confined reads of resource servers and delegated administration, so it is not specific to tokens. The resource server sharing specification (#7098) specifies it, including what a role confers where it is assigned and the refusals of a narrowing or move.
 
 ### Refusals
 
@@ -223,6 +227,8 @@ Every refusal on this path is in the vocabulary of the OAuth 2.0 token endpoint.
 | Grant other than `client_credentials` on the qualified route | 400 | `invalid_request` | `The grant type is not supported on the organization unit scoped token endpoint` |
 | Organization unit lookup failed | 500 | `server_error` | `Failed to resolve the organization unit` |
 | Sharing lookup failed | 500 | `server_error` | `Failed to resolve the organization unit access` |
+| The resource server the request binds to is not available in the organization unit | 400 | `invalid_target` | the same description as for a resource server that does not exist |
+| Resource server availability lookup failed | 500 | `server_error` | `Failed to resolve resource server` |
 
 The second and third rows are byte-identical on purpose, naming no organization unit at all. An authenticated client that could tell "does not exist" from "you may not act for it" could enumerate the deployment's organization units one request at a time.
 
@@ -397,9 +403,8 @@ inboundAuthConfig:
 
 **Acceptance criteria:**
 
-- **AC6.1:** Given a resource server the accessing organization unit reaches in part, when a token is requested for that unit naming a permission outside that part, then the permission is absent from the issued token.
 - **AC6.2:** Given a resource server carrying at least one sharing policy and an accessing organization unit it never reached, when a token is requested for that unit, then the token carries none of that resource server's permissions.
-- **AC6.3:** Given a resource server carrying no sharing policy at all, when a token is requested for any organization unit, then every permission the application is entitled to is carried, as before sharing existed.
+- **AC6.3:** Given a resource server carrying no sharing policy at all, when a token is requested for an organization unit other than its owner, then the resource server answers as one that does not exist, and the token carries none of its permissions.
 - **AC6.4:** Given the resource server's own owner as the accessing organization unit, when a token is requested, then every permission the application is entitled to is carried.
 - **AC6.5:** Given a permission the application is not entitled to, when any organization unit is named, then the permission is absent, so the accessing unit never widens.
 - **AC6.6:** Given a permission an organization unit may not use, when a role is created in that unit naming it, then the request is refused, so the bound is not specific to tokens.
@@ -429,3 +434,4 @@ inboundAuthConfig:
 | 0.7 | 2026-11-09 | The R2 requirement states that a sharee organization unit lists and reads a shared M2M application and cannot change it, as AC2.1 and AC2.2 do. |
 | 0.8 | 2026-11-26 | Taking an application away from an organization unit revokes its tokens there, a policy delete can be refused with `409` when the sharing changes during the revocation, and Change scope revokes in every unit the deleted policy reached. |
 | 0.9 | 2026-11-26 | Resource servers are shared as a whole through the API, resource files, imports and a control plane deploy, and a shared resource server cannot be moved (`RES-1037`). The resource server page gains the Organization Access tab. The accessing unit's bound on scopes and role permissions (AC6.1, AC6.2, AC6.6) is not enforced yet. A resource server declares a `permissions` field whose default shares every permission, fixed; a rule naming a value or excluded values is refused (`RES-1038`), and the overlay rules list every permission. |
+| 0.10 | 2026-11-27 | A resource server's availability is enforced for tokens: the target resource server must be available in the accessing organization unit (`invalid_target`, also at `/ou/{ouId}/oauth2/authorize`), and its scopes are dropped otherwise. Availability is strict, so AC6.3 now leaves out a resource server no policy names, and the bootstrap shares neither the System nor the Control Plane resource server. The public `ResourceServerProvider` is unchanged: the server's own provider implements an internal `IsResourceServerAvailableInOU`, and a provider without it is not bound. The bound on roles, confined reads and delegated administration moves to the resource server sharing specification. AC6.1, which needs a policy to share part of a resource server, moves to a future specification. |

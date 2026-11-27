@@ -330,10 +330,8 @@ func (suite *InitTestSuite) TestNewResourceService() {
 	suite.Implements((*ResourceServiceInterface)(nil), service)
 
 	// Verify dependencies are set correctly
-	resSvc, ok := service.(*resourceService)
-	suite.True(ok)
-	suite.Equal(mockStore, resSvc.resourceStore)
-	suite.Equal(suite.mockOUService, resSvc.ouService)
+	suite.Equal(mockStore, service.resourceStore)
+	suite.Equal(suite.mockOUService, service.ouService)
 }
 
 // TestNewResourceStore tests the newResourceStore constructor

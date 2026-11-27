@@ -338,6 +338,24 @@ describe('PermissionCatalog', () => {
     expect(useGetResourceServersModule.default).toHaveBeenCalledWith(expect.objectContaining({ouId: 'ou-1'}));
   });
 
+  it('marks a resource server shared with the unit', async () => {
+    vi.mocked(useGetResourceServersModule.default).mockReturnValue(
+      queryResult({
+        totalResults: 2,
+        startIndex: 1,
+        count: 2,
+        resourceServers: [
+          {...servers[0], isOwnedByOU: true},
+          {...servers[1], isOwnedByOU: false, isReadOnly: true},
+        ],
+      }),
+    );
+    renderCatalog({selected: [], ouId: 'ou-1'});
+
+    await screen.findAllByRole('checkbox');
+    expect(screen.getAllByText('Shared')).toHaveLength(1);
+  });
+
   it('marks a selected server missing from a unit-scoped list as unavailable rather than not found', async () => {
     const selected: ResourcePermissions[] = [{resourceServerId: 'rs-other-unit', permissions: ['x:read']}];
     renderCatalog({selected, ouId: 'ou-1'});

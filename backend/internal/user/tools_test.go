@@ -213,6 +213,39 @@ func (s *UserToolsTestSuite) TestGetUser() {
 	s.Equal([]string{"permissions"}, detailed.NotIncluded)
 }
 
+// The permissions get_user lists are the ones the user may use, grouped by resource server, sorted, and named by the
+// resource server's identifier.
+func (s *UserToolsTestSuite) TestGetUser_Permissions() {
+	s.users.On("GetUser", mock.Anything, toolUserID, true).Return(alice(), (*tidcommon.ServiceError)(nil))
+	s.entities.On("GetTransitiveEntityGroups", mock.Anything, toolUserID).Return([]providers.EntityGroup{
+		{ID: "g1", Name: "Support"}, {ID: "g2", Name: "Staff"}}, nil)
+
+	s.Run("lists what the user may use", func() {
+		s.roles.On("GetUsablePermissions", mock.Anything, toolUserID, []string{"g1", "g2"}).
+			Return(security.PermissionSet{"rs-1": {"orders:update", "orders:read"}},
+				(*tidcommon.ServiceError)(nil)).Once()
+		s.resources.On("GetResourceServer", mock.Anything, "rs-1").Return(&providers.ResourceServer{
+			Identifier: "https://api.example.com/orders", Name: "Orders"}, (*tidcommon.ServiceError)(nil)).Once()
+
+		var out userMCPDetails
+		s.structured(s.call("get_user", map[string]any{"userId": toolUserID, "include": []string{"permissions"}}),
+			&out)
+
+		s.Require().NotNil(out.Permissions)
+		s.Equal([]userPermissionMCPItem{{ResourceServer: "https://api.example.com/orders", Name: "Orders",
+			Permissions: []string{"orders:read", "orders:update"}}}, *out.Permissions)
+		s.NotContains(out.NotIncluded, "permissions")
+	})
+
+	s.Run("a failed read", func() {
+		s.roles.On("GetUsablePermissions", mock.Anything, toolUserID, []string{"g1", "g2"}).
+			Return(security.PermissionSet(nil), &tidcommon.InternalServerError).Once()
+
+		s.Contains(s.errorText(s.call("get_user", map[string]any{"userId": toolUserID,
+			"include": []string{"permissions"}})), "their permissions could not be read")
+	})
+}
+
 func (s *UserToolsTestSuite) TestUpdateUser() {
 	s.Run("merges, removes and keeps credentials out", func() {
 		s.users.On("GetUser", mock.Anything, toolUserID, false).Return(alice(), (*tidcommon.ServiceError)(nil)).Once()

@@ -137,6 +137,23 @@ describe('ResourceServersList', () => {
     expect(screen.getByText('MCP')).toBeInTheDocument();
   });
 
+  it('marks a resource server shared with the organization unit as shared, not as a system one', () => {
+    mockUseGetResourceServers.mockReturnValue({
+      data: {
+        ...twoRowsResponse,
+        resourceServers: [{...twoRowsResponse.resourceServers[0], isReadOnly: true, isOwnedByOU: false}],
+      },
+      isLoading: false,
+      error: null,
+      refetch: mockRefetch,
+    });
+
+    renderWithProviders(<ResourceServersList />);
+
+    expect(screen.getByText('Shared resource server')).toBeInTheDocument();
+    expect(screen.queryByText('System resource server')).not.toBeInTheDocument();
+  });
+
   it('shows Edit and Delete buttons for a normal row', () => {
     renderWithProviders(<ResourceServersList />);
 

@@ -9,6 +9,7 @@ import (
 
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
 	"github.com/thunder-id/thunderid/internal/system/declarative_resource/entity"
+	"github.com/thunder-id/thunderid/internal/system/log"
 
 	"github.com/stretchr/testify/suite"
 )
@@ -25,7 +26,7 @@ func TestRoleFileBasedStoreTestSuite(t *testing.T) {
 
 func (suite *RoleFileBasedStoreTestSuite) SetupTest() {
 	genericStore := declarativeresource.NewGenericFileBasedStoreForTest(entity.KeyTypeRole)
-	suite.store = &fileBasedStore{GenericFileBasedStore: genericStore}
+	suite.store = &fileBasedStore{GenericFileBasedStore: genericStore, logger: log.GetLogger()}
 }
 
 func (suite *RoleFileBasedStoreTestSuite) seedRole(role RoleWithPermissionsAndAssignments) {
@@ -389,6 +390,33 @@ func (suite *RoleFileBasedStoreTestSuite) TestGetEntityRoleIDs_DeclaredAssignmen
 	}
 }
 
+// A subject's declared assignments are made in the role's own organization unit when an assignment names none, and
+// the permissions are reported under the unit each assignment is made in.
+func (suite *RoleFileBasedStoreTestSuite) TestAssignmentOUIDsAndPermissionsByOU() {
+	suite.seedRole(RoleWithPermissionsAndAssignments{
+		ID: "r1", Name: "R1", OUID: "ou1",
+		Permissions: []ResourcePermissions{{ResourceServerID: "rs-1", Permissions: []string{"read"}}},
+		Assignments: []RoleAssignment{
+			{ID: "user-x", Type: assigneeTypeEntity},
+			{ID: "group-y", Type: AssigneeTypeGroup, OUID: "ou2"},
+		},
+	})
+
+	ouIDs, err := suite.store.GetEntityRoleAssignmentOUIDs(context.Background(), "user-x", []string{"group-y"})
+	suite.Require().NoError(err)
+	suite.Equal(map[string][]string{"r1": {"ou1", "ou2"}}, ouIDs)
+
+	ouIDs, err = suite.store.GetEntityRoleAssignmentOUIDs(context.Background(), "user-z", nil)
+	suite.Require().NoError(err)
+	suite.Empty(ouIDs)
+
+	byOU, err := suite.store.GetAllPermissionsForAssignees(context.Background(), "user-x", nil)
+	suite.Require().NoError(err)
+	suite.Equal(map[string][]ResourcePermissions{
+		"ou1": {{ResourceServerID: "rs-1", Permissions: []string{"read"}}},
+	}, byOU, "user-x's assignment is made in ou1")
+}
+
 // Declared assignments can't be removed, so the file store reports none as direct.
 func (suite *RoleFileBasedStoreTestSuite) TestGetDirectEntityRoleIDs_IgnoresDeclaredAssignments() {
 	suite.seedRole(RoleWithPermissionsAndAssignments{
@@ -452,8 +480,8 @@ func (suite *RoleFileBasedStoreTestSuite) TestGetAllPermissionsForAssignees_Enum
 	result, err := suite.store.GetAllPermissionsForAssignees(context.Background(), "user2", nil)
 
 	suite.NoError(err)
-	suite.Len(result, 1)
-	suite.Equal([]string{"system:user"}, result[0].Permissions)
+	suite.Len(result["ou1"], 1)
+	suite.Equal([]string{"system:user"}, result["ou1"][0].Permissions)
 }
 
 // Declarative role permissions are immutable, so the cascade hooks report nothing and remove
@@ -575,6 +603,34 @@ func (suite *RoleFileBasedStoreTestSuite) TestGetRolesByPermission() {
 	suite.NoError(err)
 	suite.Equal([]Role{{ID: "role1", Name: "Order Viewer", OUID: "ou1", IsReadOnly: true}}, roles,
 		"a declared role is read-only")
+}
+
+func (suite *RoleFileBasedStoreTestSuite) TestIsResourceServerUsedInOU() {
+	suite.seedRole(RoleWithPermissionsAndAssignments{
+		ID: "role1", Name: "Order Viewer", OUID: "ou1",
+		Permissions: []ResourcePermissions{{ResourceServerID: "rs1", Permissions: []string{"orders:read"}}},
+	})
+	suite.seedRole(RoleWithPermissionsAndAssignments{
+		ID: "role2", Name: "Empty", OUID: "ou2",
+		Permissions: []ResourcePermissions{{ResourceServerID: "rs1", Permissions: []string{}}},
+	})
+
+	for _, tc := range []struct {
+		name, resourceServerID, ouID string
+		want                         bool
+	}{
+		{name: "a role of the unit holds one", resourceServerID: "rs1", ouID: "ou1", want: true},
+		{name: "another server", resourceServerID: "rs2", ouID: "ou1"},
+		{name: "a role naming the server with no permission", resourceServerID: "rs1", ouID: "ou2"},
+		{name: "a unit with no role", resourceServerID: "rs1", ouID: "ou3"},
+	} {
+		suite.Run(tc.name, func() {
+			used, err := suite.store.IsResourceServerUsedInOU(context.Background(), tc.resourceServerID, tc.ouID)
+
+			suite.NoError(err)
+			suite.Equal(tc.want, used)
+		})
+	}
 }
 
 func (suite *RoleFileBasedStoreTestSuite) TestGetRoleListByProject() {

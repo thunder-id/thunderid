@@ -225,7 +225,12 @@ function DetailForm({selectedNode, resourceServer, onRefresh}: DetailFormProps):
 
       {resourceServer.isReadOnly && selectedNode.type === 'server' && (
         <Alert severity="info">
-          {t('resourceServers:detail.readOnlyWarning', 'This is a system resource server and cannot be modified.')}
+          {resourceServer.isOwnedByOU === false
+            ? t(
+                'resourceServers:detail.sharedReadOnlyWarning',
+                'This resource server is shared with this organization unit and cannot be modified here.',
+              )
+            : t('resourceServers:detail.readOnlyWarning', 'This is a system resource server and cannot be modified.')}
         </Alert>
       )}
 

@@ -954,6 +954,7 @@ func (ts *UserMandatedRolesTestSuite) TestMandatingARoleTheCallerCannotGrantIsRe
 	}, []testutils.Action{{Name: "Operate", Handle: "operate"}})
 	ts.Require().NoError(err)
 	ts.rsIDs = append(ts.rsIDs, privilegedRSID)
+	ts.Require().NoError(testutils.ShareResourceServerWithChildUnits(privilegedRSID))
 	privileged := ts.newRole("Mandate Privileged Role", ts.parentOUID,
 		testutils.ResourcePermissions{ResourceServerID: privilegedRSID, Permissions: []string{"operate"}})
 	harmless := ts.newRole("Mandate Harmless Role", ts.parentOUID)

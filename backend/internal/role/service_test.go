@@ -16,6 +16,7 @@ import (
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
 	"github.com/thunder-id/thunderid/internal/group"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
+	resourcepkg "github.com/thunder-id/thunderid/internal/resource"
 	"github.com/thunder-id/thunderid/internal/revocation"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
@@ -90,6 +91,7 @@ func (suite *RoleServiceTestSuite) SetupTest() {
 	suite.mockGroupService = groupmock.NewGroupServiceInterfaceMock(suite.T())
 	suite.mockOUService = oumock.NewOrganizationUnitServiceInterfaceMock(suite.T())
 	suite.mockResourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
+	delegateOUValidation(suite.mockResourceService)
 	suite.mockEntityTypeService = entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T())
 	suite.transactioner = &fakeTransactioner{}
 	suite.mockSharingService = sharingmock.NewSharingServiceInterfaceMock(suite.T())
@@ -105,6 +107,18 @@ func (suite *RoleServiceTestSuite) SetupTest() {
 		discardingBus{},
 		nil,
 	)
+}
+
+// delegateOUValidation lets every organization unit use every resource server, so a role write's permission check
+// answers what the test set on ValidatePermissions. A test about the organization unit replaces it.
+func delegateOUValidation(resources *resourcemock.ResourceServiceInterfaceMock) {
+	resources.EXPECT().IsResourceServerAvailableInOU(mock.Anything, mock.Anything, mock.Anything).
+		Return(true, nil).Maybe()
+	resources.EXPECT().ValidatePermissionsInOU(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		RunAndReturn(func(ctx context.Context, resourceServerID, _ string, permissions []string) (
+			[]string, *tidcommon.ServiceError) {
+			return resources.ValidatePermissions(ctx, resourceServerID, permissions)
+		}).Maybe()
 }
 
 // allowAnyCatalogCheck declares every permission an ancestor confers to be one the resource
@@ -319,6 +333,67 @@ func (suite *RoleServiceTestSuite) TestGetRoleInOU() {
 		suite.Equal("ou-child", role.OUID)
 		suite.Equal("child", role.OUHandle)
 		suite.False(role.IsOwnedByOU)
+	})
+	twoServers := RoleWithPermissions{ID: "role1", Name: "Auditor", OUID: "ou1", Permissions: []ResourcePermissions{
+		{ResourceServerID: "shared-api", Permissions: []string{"read"}},
+		{ResourceServerID: "owner-api", Permissions: []string{"write"}},
+	}}
+	readShared := func(available map[string]*tidcommon.ServiceError) (*RoleWithPermissions,
+		*tidcommon.ServiceError) {
+		suite.mockResourceService.ExpectedCalls = nil
+		for resourceServerID, svcErr := range available {
+			suite.mockResourceService.EXPECT().
+				IsResourceServerAvailableInOU(mock.Anything, resourceServerID, "ou-child").
+				Return(svcErr == nil && resourceServerID == "shared-api", svcErr)
+		}
+		suite.mockStore.On("GetRole", mock.Anything, "role1").Return(twoServers, nil)
+		suite.mockOUService.On("GetOrganizationUnit", mock.Anything, "ou1").
+			Return(oupkg.OrganizationUnit{ID: "ou1", Handle: "root"}, nil)
+		suite.mockOUService.On("GetOrganizationUnit", mock.Anything, "ou-child").
+			Return(oupkg.OrganizationUnit{ID: "ou-child", Handle: "child"}, nil).Maybe()
+		suite.mockSharingService.EXPECT().IsVisible(mock.Anything, RoleSharingType, "role1", "ou-child").
+			Return(true, nil)
+		return suite.service.GetRoleInOU(context.Background(), "role1", "ou-child")
+	}
+	suite.Run("a shared role shows only the permissions of resource servers the unit may use", func() {
+		suite.SetupTest()
+
+		role, err := readShared(map[string]*tidcommon.ServiceError{"shared-api": nil, "owner-api": nil})
+
+		suite.Require().Nil(err)
+		suite.Equal([]ResourcePermissions{{ResourceServerID: "shared-api", Permissions: []string{"read"}}},
+			role.Permissions)
+	})
+	suite.Run("a shared role leaves out a resource server that no longer exists", func() {
+		suite.SetupTest()
+
+		role, err := readShared(map[string]*tidcommon.ServiceError{"shared-api": nil,
+			"owner-api": &resourcepkg.ErrorResourceServerNotFound})
+
+		suite.Require().Nil(err)
+		suite.Equal([]ResourcePermissions{{ResourceServerID: "shared-api", Permissions: []string{"read"}}},
+			role.Permissions)
+	})
+	suite.Run("a failed availability check fails the shared read", func() {
+		suite.SetupTest()
+
+		_, err := readShared(map[string]*tidcommon.ServiceError{"shared-api": &tidcommon.InternalServerError})
+
+		suite.Require().NotNil(err)
+		suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+	})
+	suite.Run("the owner sees every permission", func() {
+		suite.SetupTest()
+		suite.mockStore.On("GetRole", mock.Anything, "role1").Return(twoServers, nil)
+		suite.mockOUService.On("GetOrganizationUnit", mock.Anything, "ou1").
+			Return(oupkg.OrganizationUnit{ID: "ou1", Handle: "root"}, nil)
+
+		role, err := suite.service.GetRoleInOU(context.Background(), "role1", "ou1")
+
+		suite.Require().Nil(err)
+		suite.Equal(twoServers.Permissions, role.Permissions)
+		suite.mockResourceService.AssertNotCalled(suite.T(), "IsResourceServerAvailableInOU",
+			mock.Anything, mock.Anything, mock.Anything)
 	})
 	suite.Run("a handle that cannot be read is left out rather than failing the read", func() {
 		suite.SetupTest()
@@ -1542,6 +1617,68 @@ func (suite *RoleServiceTestSuite) TestUpdateRole_PermissionValidationErrors() {
 	}
 }
 
+// A role holds permissions only of resource servers its organization unit owns or is shared, so every role write
+// validates them in the unit the role lives in after the write.
+func (suite *RoleServiceTestSuite) TestRoleWritesValidatePermissionsInTheRolesUnit() {
+	permissions := []ResourcePermissions{{ResourceServerID: "rs1", Permissions: []string{"perm1"}}}
+	answersInUnit := func(ouID string, svcErr *tidcommon.ServiceError) {
+		suite.mockResourceService.ExpectedCalls = nil
+		suite.mockResourceService.EXPECT().ValidatePermissionsInOU(mock.Anything, "rs1", ouID, []string{"perm1"}).
+			Return(nil, svcErr).Once()
+	}
+
+	suite.Run("create in a unit that may not use the resource server", func() {
+		suite.SetupTest()
+		answersInUnit("ou1", &resourcepkg.ErrorResourceServerNotSharedToOU)
+		suite.mockOUService.On("GetOrganizationUnit", mock.Anything, "ou1").
+			Return(oupkg.OrganizationUnit{ID: "ou1"}, nil).Once()
+
+		_, svcErr := suite.service.CreateRole(context.Background(),
+			RoleCreationDetail{Name: "Test Role", OUID: "ou1", Permissions: permissions})
+
+		suite.Require().NotNil(svcErr)
+		suite.Equal(errorResourceServerNotAvailableInOU.Code, svcErr.Code)
+	})
+	suite.Run("an update in a unit that may not use the resource server", func() {
+		suite.SetupTest()
+		answersInUnit("ou1", &resourcepkg.ErrorResourceServerNotSharedToOU)
+		suite.mockStore.On("GetRole", mock.Anything, "role1").
+			Return(RoleWithPermissions{ID: "role1", OUID: "ou1"}, nil).Maybe()
+
+		_, svcErr := suite.service.UpdateRoleWithPermissions(context.Background(), "role1",
+			RoleUpdateDetail{Name: "Updated Role", OUID: "ou1", Permissions: permissions})
+
+		suite.Require().NotNil(svcErr)
+		suite.Equal(errorResourceServerNotAvailableInOU.Code, svcErr.Code)
+	})
+	suite.Run("a move validates in the unit the role moves to", func() {
+		suite.SetupTest()
+		answersInUnit("ou2", &resourcepkg.ErrorResourceServerNotSharedToOU)
+		suite.mockStore.On("GetRole", mock.Anything, "role1").
+			Return(RoleWithPermissions{ID: "role1", OUID: "ou1"}, nil).Maybe()
+		suite.mockSharingService.EXPECT().IsVisible(mock.Anything, RoleSharingType, "role1", "ou2").
+			Return(false, nil).Maybe()
+
+		_, svcErr := suite.service.UpdateRoleWithPermissions(context.Background(), "role1",
+			RoleUpdateDetail{Name: "Updated Role", OUID: "ou2", Permissions: permissions})
+
+		suite.Require().NotNil(svcErr)
+		suite.Equal(errorResourceServerNotAvailableInOU.Code, svcErr.Code)
+	})
+	suite.Run("a failed check", func() {
+		suite.SetupTest()
+		answersInUnit("ou1", &tidcommon.InternalServerError)
+		suite.mockOUService.On("GetOrganizationUnit", mock.Anything, "ou1").
+			Return(oupkg.OrganizationUnit{ID: "ou1"}, nil).Once()
+
+		_, svcErr := suite.service.CreateRole(context.Background(),
+			RoleCreationDetail{Name: "Test Role", OUID: "ou1", Permissions: permissions})
+
+		suite.Require().NotNil(svcErr)
+		suite.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
+	})
+}
+
 // DeleteRole Tests
 func (suite *RoleServiceTestSuite) TestDeleteRole_Success() {
 	suite.mockStore.On("GetRole", mock.Anything,
@@ -2186,6 +2323,34 @@ permissions:
 
 // CascadeDeleteDependencies Tests
 
+func (suite *RoleServiceTestSuite) TestHasDependenciesInOU() {
+	suite.Run("a resource server a role of the unit uses", func() {
+		suite.mockStore.On("IsResourceServerUsedInOU", mock.Anything, "rs1", "ou1").Return(true, nil).Once()
+
+		used, err := suite.service.(*roleService).HasDependenciesInOU(context.Background(),
+			resourcedependency.ResourceTypeResourceServer, "rs1", "ou1")
+
+		suite.NoError(err)
+		suite.True(used)
+	})
+	suite.Run("the store fails", func() {
+		suite.mockStore.On("IsResourceServerUsedInOU", mock.Anything, "rs1", "ou2").
+			Return(false, errors.New("db down")).Once()
+
+		_, err := suite.service.(*roleService).HasDependenciesInOU(context.Background(),
+			resourcedependency.ResourceTypeResourceServer, "rs1", "ou2")
+
+		suite.ErrorContains(err, "db down")
+	})
+	suite.Run("another resource type is never used", func() {
+		used, err := suite.service.(*roleService).HasDependenciesInOU(context.Background(),
+			resourcedependency.ResourceTypeResource, "res1", "ou1")
+
+		suite.NoError(err)
+		suite.False(used)
+	})
+}
+
 func (suite *RoleServiceTestSuite) TestGetResourceDependencies_ReportsNoUsages() {
 	deps, err := suite.service.GetResourceDependencies(
 		context.Background(), resourcedependency.ResourceTypeResource, "res1")
@@ -2396,6 +2561,7 @@ func (s *RoleChangeValidationTestSuite) SetupTest() {
 	s.groups = groupmock.NewGroupServiceInterfaceMock(s.T())
 	s.ous = oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
 	s.resources = resourcemock.NewResourceServiceInterfaceMock(s.T())
+	delegateOUValidation(s.resources)
 	s.authz = allowOUAccess(sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T()))
 	s.authz.On("CanGrantMembership", mock.Anything, mock.Anything, mock.Anything).
 		Return((*tidcommon.ServiceError)(nil)).Maybe()
@@ -2439,8 +2605,11 @@ func (s *RoleChangeValidationTestSuite) mayChangePermissions(permissions securit
 // groupConveying stubs a group whose own and ancestor roles grant one Californian scope.
 func (s *RoleChangeValidationTestSuite) groupConveying(ancestors ...string) {
 	s.groups.On("GetTransitiveAncestorGroups", mock.Anything, targetGroupID).Return(ancestors, nil)
-	s.store.On("GetAllPermissionsForAssignees", mock.Anything, "", append([]string{targetGroupID}, ancestors...)).
-		Return([]ResourcePermissions{{ResourceServerID: californiaRSID, Permissions: []string{"license"}}}, nil)
+	groupIDs := append([]string{targetGroupID}, ancestors...)
+	s.store.On("GetAllPermissionsForAssignees", mock.Anything, "", groupIDs).
+		Return(map[string][]ResourcePermissions{
+			testOwnerOU: {{ResourceServerID: californiaRSID, Permissions: []string{"license"}}},
+		}, nil)
 	stubResourceServer(s.resources, californiaRSID, californiaAud)
 }
 
@@ -2741,6 +2910,20 @@ func (s *RoleChangeValidationTestSuite) TestValidateUpdateRolePermissions_Refuse
 	s.authz.AssertNotCalled(s.T(), "CanGrantPermissions", mock.Anything, mock.Anything)
 }
 
+func (s *RoleChangeValidationTestSuite) TestValidateUpdateRolePermissions_RefusesAServerTheRolesUnitMayNotUse() {
+	s.mutableRoleGranting(nil)
+	s.resources.ExpectedCalls = nil
+	s.resources.EXPECT().ValidatePermissionsInOU(mock.Anything, "rs-parent", "ou-1", []string{"license"}).
+		Return(nil, &resourcepkg.ErrorResourceServerNotSharedToOU)
+
+	_, svcErr := s.service.ValidateUpdateRolePermissions(context.Background(), targetRoleID,
+		[]ResourcePermissions{{ResourceServerID: "rs-parent", Permissions: []string{"license"}}})
+
+	s.Require().NotNil(svcErr)
+	s.Equal(errorResourceServerNotAvailableInOU.Code, svcErr.Code)
+	s.authz.AssertNotCalled(s.T(), "CanGrantPermissions", mock.Anything, mock.Anything)
+}
+
 func (s *RoleChangeValidationTestSuite) TestValidateUpdateRolePermissions_RefusesAnUngrantablePermission() {
 	s.mutableRoleGranting(nil)
 	s.resources.On("ValidatePermissions", mock.Anything, californiaRSID, []string{"license"}).Return([]string{}, nil)
@@ -2847,7 +3030,7 @@ func (s *RoleChangeValidationTestSuite) TestValidateGroupMembershipRemoval_Group
 	s.mayRemoveMember(departing)
 	s.groups.On("GetTransitiveAncestorGroups", mock.Anything, targetGroupID).Return([]string{}, nil).Once()
 	s.store.On("GetAllPermissionsForAssignees", mock.Anything, "", []string{targetGroupID}).
-		Return([]ResourcePermissions{}, nil).Once()
+		Return(map[string][]ResourcePermissions{}, nil).Once()
 
 	target, svcErr := s.service.ValidateGroupMembershipRemoval(context.Background(), targetGroupID, "child-group")
 
@@ -2922,7 +3105,9 @@ func (s *RoleChangeValidationTestSuite) TestValidateGroupDeletion_ScopeResolutio
 		"resource server lookup failure": func() {
 			s.groups.On("GetTransitiveAncestorGroups", mock.Anything, targetGroupID).Return([]string{}, nil)
 			s.store.On("GetAllPermissionsForAssignees", mock.Anything, "", []string{targetGroupID}).
-				Return([]ResourcePermissions{{ResourceServerID: californiaRSID, Permissions: []string{"license"}}}, nil)
+				Return(map[string][]ResourcePermissions{
+					testOwnerOU: {{ResourceServerID: californiaRSID, Permissions: []string{"license"}}},
+				}, nil)
 			s.resources.On("GetResourceServer", mock.Anything, californiaRSID).
 				Return(nil, &tidcommon.InternalServerError)
 		},
@@ -3992,6 +4177,65 @@ func (suite *RoleServiceTestSuite) stubHeldRoles(resourceServerID, assignmentOUI
 	}
 	suite.mockStore.On("GetHeldPermissionsByResourceServer", mock.Anything, testUserID1, []string{},
 		[]string(nil), assignmentOUID, resourceServerID).Return(held, nil).Once()
+}
+
+// A role confers a resource server's permissions only in an organization unit that may use the resource server. A
+// role shared into a unit the resource server is not shared with confers none of them there.
+func (suite *RoleServiceTestSuite) TestPermissionsConferredOnlyWhereTheResourceServerIsAvailable() {
+	const resourceServerID = "booking-api"
+	availableIn := func(available bool, svcErr *tidcommon.ServiceError) {
+		suite.mockResourceService.ExpectedCalls = nil
+		suite.mockResourceService.EXPECT().IsResourceServerAvailableInOU(mock.Anything, resourceServerID, "ou-child").
+			Return(available, svcErr)
+	}
+	authorized := func() ([]string, *tidcommon.ServiceError) {
+		return suite.service.GetAuthorizedPermissionsByResourceServer(context.Background(), testUserID1, nil, nil,
+			"ou-child", resourceServerID, []string{"reservations"})
+	}
+
+	suite.Run("a resource server the assignment unit may not use", func() {
+		suite.SetupTest()
+		availableIn(false, nil)
+
+		result, err := authorized()
+
+		suite.Nil(err)
+		suite.Empty(result)
+		suite.mockStore.AssertNotCalled(suite.T(), "GetAuthorizedPermissionsByResourceServer", mock.Anything,
+			mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	})
+	suite.Run("a resource server that no longer exists", func() {
+		suite.SetupTest()
+		availableIn(false, &resourcepkg.ErrorResourceServerNotFound)
+
+		result, err := authorized()
+
+		suite.Nil(err)
+		suite.Empty(result)
+	})
+	suite.Run("the check fails", func() {
+		suite.SetupTest()
+		availableIn(false, &tidcommon.InternalServerError)
+
+		_, err := authorized()
+
+		suite.Require().NotNil(err)
+		suite.Equal(tidcommon.InternalServerError.Code, err.Code)
+	})
+	suite.Run("held descendants are not offered either", func() {
+		suite.SetupTest()
+		availableIn(false, nil)
+		suite.mockResourceService.On("GetResourceServer", mock.Anything, resourceServerID).
+			Return(&providers.ResourceServer{ID: resourceServerID, Delimiter: ":", HierarchicalPermissions: true}, nil)
+
+		expanded, err := suite.service.ExpandHeldDescendants(context.Background(), testUserID1, []string{}, nil,
+			"ou-child", resourceServerID, []string{"reservations"})
+
+		suite.Nil(err)
+		suite.Empty(expanded)
+		suite.mockStore.AssertNotCalled(suite.T(), "GetHeldPermissionsByResourceServer", mock.Anything,
+			mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+	})
 }
 
 // A request for a resource the subject does not hold is answered with what it does hold beneath

@@ -268,7 +268,7 @@ sharingPolicies:
 
 ## Shared Resources in the Receiving Organization Unit
 
-An administrator whose token is confined to one organization unit, such as a Data Plane token that holds `org` or one of its child permissions, works with that organization unit only. The token names the organization unit in its `ouId` claim, and the Data Plane refuses such a token without one with `403 Forbidden`. For users, agents, applications, roles, connections, and flows, the organization unit sees both the resources it owns and the resources shared into it:
+An administrator whose token is confined to one organization unit, such as a Data Plane token that holds `org` or one of its child permissions, works with that organization unit only. The token names the organization unit in its `ouId` claim, and the Data Plane refuses such a token without one with `403 Forbidden`. For users, agents, applications, roles, connections, flows, and resource servers, the organization unit sees both the resources it owns and the resources shared into it:
 
 - **List**: a list request with no `ouId` filter returns the resources the organization unit owns, followed by the resources shared into it. Each item carries `isOwnedByOU`, which is `false` for a shared item. A shared item is listed under the receiving organization unit's `ouId`. For users and agents, a list narrowed by another filter returns owned resources only. A list filtered to any other organization unit's `ouId` is empty.
 - **Read**: `GET` on a resource's ID returns a resource shared into the organization unit, under the receiving organization unit's `ouId` and with `isOwnedByOU: false`. A resource the organization unit owns returns `isOwnedByOU: true`. A shared flow returns its name, handle, type, and variables, not the whole definition.
@@ -282,8 +282,9 @@ An administrator whose token is confined to one organization unit, such as a Dat
 | Role | `ROL-1045` | Assignments of the role in the organization unit, when the `assignments` overlay rule is editable. |
 | Connection | `CON-1041` | Nothing. |
 | Flow | `FLM-1039` | Flow variables through `PUT /flows/{id}/variables`, when the `variables` overlay rule allows it. |
+| Resource server | The general authorization code | Nothing. It reads the resource server's resources and actions too. |
 
-A resource neither owned by nor shared into the organization unit returns `403 Forbidden` with the general authorization code.
+A resource neither owned by nor shared into the organization unit returns `403 Forbidden` with the general authorization code. This includes the resource servers of the organization units above it: the organization unit uses only the resource servers it owns or that are shared with it, so it reads only those.
 
 In the Console, a resource shared into the organization unit opens read-only, with no delete action. To assign a shared role or set a shared flow's variables in the receiving organization unit, use the API.
 

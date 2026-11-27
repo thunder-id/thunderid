@@ -346,6 +346,8 @@ func (ts *RoleAssignmentRevocationTestSuite) TestRemoveAssignment_RemovesAnAssig
 			"mode": "selected", "units": []map[string]string{{"ouId": childOUID, "reach": "unit"}},
 		},
 	})
+	// The role confers the resource server's permissions in the child only once the child may use the server too.
+	ts.Require().NoError(testutils.ShareResourceServerWithChildUnits(ts.resourceServerID))
 	ts.postRoleJSON(roleID, "assignments/add", http.StatusNoContent, map[string]interface{}{
 		"ouId": childOUID, "assignments": []map[string]string{{"id": childAppID, "type": "app"}},
 	})

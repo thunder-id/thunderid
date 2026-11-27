@@ -147,3 +147,41 @@ func checkRoleAccess(ctx context.Context, authzService sysauthz.SystemAuthorizat
 	}
 	return nil
 }
+
+// permissionsUsableInOU keeps the permissions of the resource servers the organization unit may use. A role shared
+// into a unit confers nothing of the others there, so the unit does not see them. With no unit named, it keeps every
+// permission.
+func permissionsUsableInOU(ctx context.Context, resourceService resourcepkg.ResourceServiceInterface, ouID string,
+	permissions []ResourcePermissions) ([]ResourcePermissions, *tidcommon.ServiceError) {
+	usablePermissions := make([]ResourcePermissions, 0, len(permissions))
+	for _, granted := range permissions {
+		usable, svcErr := usableInOU(ctx, resourceService, ouID, granted.ResourceServerID)
+		if svcErr != nil {
+			return nil, svcErr
+		}
+		if usable {
+			usablePermissions = append(usablePermissions, granted)
+		}
+	}
+	return usablePermissions, nil
+}
+
+// usableInOU reports whether roles assigned in assignmentOUID may confer permissions of the resource server: the unit
+// owns it or has it shared with it. A role shared into a unit that cannot see one of its resource servers confers none
+// of that server's permissions there. With no assignment unit named, nothing is narrowed.
+func usableInOU(ctx context.Context, resourceService resourcepkg.ResourceServiceInterface,
+	assignmentOUID, resourceServerID string) (bool, *tidcommon.ServiceError) {
+	if assignmentOUID == "" || resourceServerID == "" {
+		return true, nil
+	}
+	// The resource service logs a failure to answer.
+	available, svcErr := resourceService.IsResourceServerAvailableInOU(ctx, resourceServerID, assignmentOUID)
+	if svcErr != nil {
+		// A resource server that does not exist confers nothing anywhere.
+		if svcErr.Code == resourcepkg.ErrorResourceServerNotFound.Code {
+			return false, nil
+		}
+		return false, &tidcommon.InternalServerError
+	}
+	return available, nil
+}

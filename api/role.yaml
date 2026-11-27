@@ -278,6 +278,16 @@ paths:
                     description:
                       key: "error.roleservice.invalid_permissions_description"
                       defaultValue: "One or more permissions do not exist in the resource management system"
+                resource-server-not-available:
+                  summary: A permission of a resource server the role's organization unit may not use
+                  value:
+                    code: "ROL-1047"
+                    message:
+                      key: "error.roleservice.resource_server_not_available_in_ou"
+                      defaultValue: "Resource server not available in the organization unit"
+                    description:
+                      key: "error.roleservice.resource_server_not_available_in_ou_description"
+                      defaultValue: "A role can hold permissions only of resource servers its organization unit owns or has shared with it"
                 declarative-mode:
                   summary: Role creation not allowed in declarative-only mode
                   value:
@@ -339,7 +349,9 @@ paths:
       description: |
         Returns role metadata with permissions list. With `ouId`, returns the role as that organization
         unit sees it: the role itself when the unit owns it, and the shared role, read under the unit,
-        when the role is shared with it. A role not shared with the unit is not found.
+        when the role is shared with it. A role not shared with the unit is not found. A shared role lists
+        only the permissions of resource servers the unit owns or has shared with it, since it confers no others
+        there.
 
         Without `ouId`, a caller confined to one organization unit reads the role as that unit sees it:
         a role the unit owns has `isOwnedByOU` set to true, and a role shared into the unit is read under
@@ -579,6 +591,16 @@ paths:
                     description:
                       key: "error.roleservice.invalid_permissions_description"
                       defaultValue: "One or more permissions do not exist in the resource management system"
+                resource-server-not-available:
+                  summary: A permission of a resource server the role's organization unit may not use
+                  value:
+                    code: "ROL-1047"
+                    message:
+                      key: "error.roleservice.resource_server_not_available_in_ou"
+                      defaultValue: "Resource server not available in the organization unit"
+                    description:
+                      key: "error.roleservice.resource_server_not_available_in_ou_description"
+                      defaultValue: "A role can hold permissions only of resource servers its organization unit owns or has shared with it"
                 immutable-role:
                   summary: Cannot modify declarative role
                   value:

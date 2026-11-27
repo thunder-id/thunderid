@@ -127,12 +127,21 @@ export default function ResourceServersList(): JSX.Element {
                 />
               )}
             </Box>
-            {params.row.isReadOnly && (
+            {params.row.isOwnedByOU === false ? (
               <Chip
-                label={t('resourceServers:listing.systemResourceServer', 'System resource server')}
+                label={t('resourceServers:listing.sharedResourceServer', 'Shared resource server')}
                 size="small"
+                variant="outlined"
                 sx={{mt: 0.25, height: 18, fontSize: '0.65rem', width: 'fit-content'}}
               />
+            ) : (
+              params.row.isReadOnly && (
+                <Chip
+                  label={t('resourceServers:listing.systemResourceServer', 'System resource server')}
+                  size="small"
+                  sx={{mt: 0.25, height: 18, fontSize: '0.65rem', width: 'fit-content'}}
+                />
+              )
             )}
           </Box>
         ),

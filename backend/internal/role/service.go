@@ -86,8 +86,14 @@ type RoleServiceInterface interface {
 		permissions []string,
 	) (map[string][]string, *tidcommon.ServiceError)
 	// GetAllPermissions returns every permission the entity and/or groups hold, keyed by resource
-	// server. Unlike GetAuthorizedPermissionsByResourceServer it enumerates rather than checks.
+	// server, wherever the roles are assigned. Unlike GetAuthorizedPermissionsByResourceServer it enumerates rather
+	// than checks.
 	GetAllPermissions(
+		ctx context.Context, entityID string, groupIDs []string,
+	) (security.PermissionSet, *tidcommon.ServiceError)
+	// GetUsablePermissions returns the permissions GetAllPermissions does, counting for each organization unit the
+	// roles are assigned in only those of the resource servers that unit may use.
+	GetUsablePermissions(
 		ctx context.Context, entityID string, groupIDs []string,
 	) (security.PermissionSet, *tidcommon.ServiceError)
 	// GetUserRoles returns the names of the roles assigned to the entity directly or through its
@@ -468,7 +474,7 @@ func (rs *roleService) createRole(
 	}
 
 	// Validate permissions exist in resource management system
-	if err := rs.validatePermissions(ctx, role.Permissions); err != nil {
+	if err := rs.validatePermissions(ctx, role.OUID, role.Permissions); err != nil {
 		return nil, err
 	}
 
@@ -625,7 +631,12 @@ func (rs *roleService) GetRoleInOU(ctx context.Context, id, ouID string) (
 	if !visible {
 		return nil, &ErrorRoleNotSharedToOU
 	}
+	permissions, svcErr := permissionsUsableInOU(ctx, rs.resourceService, ouID, role.Permissions)
+	if svcErr != nil {
+		return nil, svcErr
+	}
 
+	role.Permissions = permissions
 	role.OUID = ouID
 	role.OUHandle = ""
 	role.IsOwnedByOU = false
@@ -831,7 +842,7 @@ func (rs *roleService) updateRoleWithPermissions(
 	}
 
 	// Validate permissions exist in resource management system
-	if err := rs.validatePermissions(ctx, role.Permissions); err != nil {
+	if err := rs.validatePermissions(ctx, role.OUID, role.Permissions); err != nil {
 		return nil, err
 	}
 
@@ -1111,7 +1122,7 @@ func (rs *roleService) ValidateUpdateRolePermissions(ctx context.Context, id str
 	if svcErr := rs.authzService.CanGrantMembership(ctx, sysauthz.PrincipalTypeRole, id); svcErr != nil {
 		return nil, svcErr
 	}
-	if svcErr := rs.validatePermissions(ctx, permissions); svcErr != nil {
+	if svcErr := rs.validatePermissions(ctx, role.OUID, permissions); svcErr != nil {
 		return nil, svcErr
 	}
 	if svcErr := rs.authzService.CanGrantPermissions(ctx, toPermissionSet(permissions)); svcErr != nil {
@@ -1203,6 +1214,16 @@ func (rs *roleService) GetAuthorizedPermissionsByResourceServer(
 
 	// Return empty list if no permissions requested
 	if len(requestedPermissions) == 0 {
+		return []string{}, nil
+	}
+
+	usable, svcErr := usableInOU(ctx, rs.resourceService, assignmentOUID, resourceServerID)
+	if svcErr != nil {
+		return nil, svcErr
+	}
+	if !usable {
+		logger.Debug(ctx, "Resource server not available in the assignment organization unit",
+			log.String("resourceServerID", resourceServerID), log.String("assignmentOUID", assignmentOUID))
 		return []string{}, nil
 	}
 
@@ -1344,10 +1365,26 @@ func resolveCoveredPermissions(
 }
 
 // GetAllPermissions retrieves every permission the entity and/or groups hold through their assigned
-// roles, keyed by resource server. Unlike GetAuthorizedPermissionsByResourceServer, no entity and no
-// groups is not an error: callers legitimately ask what a set of groups confers.
+// roles, keyed by resource server, wherever the roles are assigned. Unlike
+// GetAuthorizedPermissionsByResourceServer, no entity and no groups is not an error: callers legitimately ask what a
+// set of groups confers.
 func (rs *roleService) GetAllPermissions(
 	ctx context.Context, entityID string, groupIDs []string,
+) (security.PermissionSet, *tidcommon.ServiceError) {
+	return rs.enumeratePermissions(ctx, entityID, groupIDs, false)
+}
+
+// GetUsablePermissions retrieves the permissions GetAllPermissions does, counting for each organization unit the
+// roles are assigned in only those of the resource servers that unit may use.
+func (rs *roleService) GetUsablePermissions(
+	ctx context.Context, entityID string, groupIDs []string,
+) (security.PermissionSet, *tidcommon.ServiceError) {
+	return rs.enumeratePermissions(ctx, entityID, groupIDs, true)
+}
+
+// enumeratePermissions answers GetAllPermissions, and GetUsablePermissions when usableOnly is set.
+func (rs *roleService) enumeratePermissions(
+	ctx context.Context, entityID string, groupIDs []string, usableOnly bool,
 ) (security.PermissionSet, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
@@ -1358,7 +1395,7 @@ func (rs *roleService) GetAllPermissions(
 		return security.PermissionSet{}, nil
 	}
 
-	resourcePermissions, err := rs.roleStore.GetAllPermissionsForAssignees(ctx, entityID, groupIDs)
+	byOU, err := rs.roleStore.GetAllPermissionsForAssignees(ctx, entityID, groupIDs)
 	if err != nil {
 		logger.Error(ctx, "Failed to enumerate permissions for assignees",
 			log.MaskedString(log.LoggerKeyUserID, entityID),
@@ -1367,9 +1404,23 @@ func (rs *roleService) GetAllPermissions(
 		return nil, &tidcommon.InternalServerError
 	}
 
-	permissionSet := make(security.PermissionSet, len(resourcePermissions))
-	for _, rp := range resourcePermissions {
-		permissionSet[rp.ResourceServerID] = rp.Permissions
+	permissionSet := security.PermissionSet{}
+	for _, ouID := range slices.Sorted(maps.Keys(byOU)) {
+		resourcePermissions := byOU[ouID]
+		if usableOnly {
+			var svcErr *tidcommon.ServiceError
+			resourcePermissions, svcErr = permissionsUsableInOU(ctx, rs.resourceService, ouID, resourcePermissions)
+			if svcErr != nil {
+				return nil, svcErr
+			}
+		}
+		for _, rp := range resourcePermissions {
+			permissionSet[rp.ResourceServerID] = utils.MergeUniqueStrings(
+				permissionSet[rp.ResourceServerID], rp.Permissions)
+		}
+	}
+	for _, permissions := range permissionSet {
+		slices.Sort(permissions)
 	}
 
 	logger.Debug(ctx, "Enumerated permissions for assignees",
@@ -1502,9 +1553,10 @@ func validatePaginationParams(limit, offset int) *tidcommon.ServiceError {
 	return nil
 }
 
-// validatePermissions validates that all permissions exist in the resource management system.
+// validatePermissions validates that all permissions exist in the resource management system, on resource servers
+// the role's organization unit may use: ones it owns or is shared.
 func (rs *roleService) validatePermissions(
-	ctx context.Context, permissions []ResourcePermissions,
+	ctx context.Context, ouID string, permissions []ResourcePermissions,
 ) *tidcommon.ServiceError {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
@@ -1523,14 +1575,19 @@ func (rs *roleService) validatePermissions(
 			continue
 		}
 
-		// Call resource service to validate permissions
-		invalidPerms, svcErr := rs.resourceService.ValidatePermissions(
+		invalidPerms, svcErr := rs.resourceService.ValidatePermissionsInOU(
 			ctx,
 			resPerm.ResourceServerID,
+			ouID,
 			resPerm.Permissions,
 		)
 
 		if svcErr != nil {
+			if svcErr.Code == resourcepkg.ErrorResourceServerNotSharedToOU.Code {
+				logger.Debug(ctx, "Resource server not available in the role's organization unit",
+					log.String("resourceServerID", resPerm.ResourceServerID), log.String("ouID", ouID))
+				return &errorResourceServerNotAvailableInOU
+			}
 			logger.Error(ctx, "Failed to validate permissions",
 				log.String("resourceServerID", resPerm.ResourceServerID),
 				log.String("error", svcErr.Error.DefaultValue))
@@ -1731,6 +1788,21 @@ func (rs *roleService) GetResourceDependencies(
 		})
 	}
 	return deps, nil
+}
+
+var _ resourcedependency.OUDependencyReporter = (*roleService)(nil)
+
+// HasDependenciesInOU implements resourcedependency.OUDependencyReporter: a role an organization unit owns depends on
+// a resource server while it holds one of the server's permissions.
+func (rs *roleService) HasDependenciesInOU(ctx context.Context, resourceType, id, ouID string) (bool, error) {
+	if resourceType != resourcedependency.ResourceTypeResourceServer {
+		return false, nil
+	}
+	used, err := rs.roleStore.IsResourceServerUsedInOU(ctx, id, ouID)
+	if err != nil {
+		return false, fmt.Errorf("failed to check whether roles of %s use resource server %s: %w", ouID, id, err)
+	}
+	return used, nil
 }
 
 // CascadeDeleteDependencies implements resourcedependency.CascadeDeleter. When a resource server,
@@ -2214,6 +2286,10 @@ func (rs *roleService) ExpandHeldDescendants(
 	delimiter := rs.delimiters.resolve(ctx, resourceServerID, "")
 	if delimiter == "" || len(permissions) == 0 {
 		return nil, nil
+	}
+	usable, svcErr := usableInOU(ctx, rs.resourceService, assignmentOUID, resourceServerID)
+	if svcErr != nil || !usable {
+		return nil, svcErr
 	}
 
 	held, err := rs.roleStore.GetHeldPermissionsByResourceServer(

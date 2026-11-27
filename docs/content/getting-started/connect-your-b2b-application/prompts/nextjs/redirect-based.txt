@@ -33,6 +33,7 @@ I have a Next.js application (App Router) for a business-to-business (B2B) produ
 1. Set up the application in {{productName}}: run `npx degit thunder-id/samples/quickstarts/quickstart-nextjs-b2b/thunderid-config thunderid-config` to copy its configuration (the application, user type, roles, and sign-up and sign-in flows). Then tell me to do these, and do not do them yourself:
    - Generate a client secret with `openssl rand -base64 32` and set it as NEXTJS_B2B_CLIENT_SECRET in `thunderid-config/thunderid.env`. The same value goes into THUNDERID_CLIENT_SECRET in `.env`
    - Import the resources in the Control Plane console: Import / Export, then Import, uploading `thunderid-config.yaml` and `thunderid.env`
+   - Share the System resource server with the companies, so the admin role grants `org` in a company: clear the project selection, choose Resource servers, open System, select the Organization Access tab, choose Default and chosen organization units, keep All child organization units, and choose Save
 2. Create the app: `npx create-next-app@latest nextjs-b2b` with the recommended defaults, then `cd nextjs-b2b`
 3. Install the SDK: `npm install @thunderid/nextjs`
 4. Create `.env`, and `.env.development` for the certificate setting

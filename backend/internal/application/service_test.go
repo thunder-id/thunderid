@@ -266,6 +266,10 @@ func (noopDepRegistry) ValidateReferenceUpdate(
 	return nil
 }
 
+func (noopDepRegistry) HasDependenciesInOU(context.Context, string, string, string) (bool, error) {
+	return false, nil
+}
+
 // recordingDepRegistry is a resourcedependency.Registry that records CascadeDelete invocations so
 // tests can assert dependents were removed. cascadeCalls is incremented on each CascadeDelete.
 type recordingDepRegistry struct{ cascadeCalls *int }
@@ -290,6 +294,10 @@ func (r recordingDepRegistry) SuspensionDependents(context.Context, string, stri
 func (recordingDepRegistry) ValidateReferenceUpdate(
 	context.Context, string, string) *tidcommon.ServiceError {
 	return nil
+}
+
+func (recordingDepRegistry) HasDependenciesInOU(context.Context, string, string, string) (bool, error) {
+	return false, nil
 }
 
 // resetIdentifyEntity removes broad IdentifyEntity expectations from the entity provider mock
@@ -5219,6 +5227,10 @@ func (blockingDepRegistry) ValidateReferenceUpdate(
 	return nil
 }
 
+func (blockingDepRegistry) HasDependenciesInOU(context.Context, string, string, string) (bool, error) {
+	return false, nil
+}
+
 // unknownDepRegistry reports that dependency data is unavailable, which a nil TotalResults denotes.
 type unknownDepRegistry struct{}
 
@@ -5240,6 +5252,10 @@ func (unknownDepRegistry) SuspensionDependents(context.Context, string, string) 
 func (unknownDepRegistry) ValidateReferenceUpdate(
 	context.Context, string, string) *tidcommon.ServiceError {
 	return nil
+}
+
+func (unknownDepRegistry) HasDependenciesInOU(context.Context, string, string, string) (bool, error) {
+	return false, nil
 }
 
 // A dependent that forbids deletion must be refused in validation, before the flow revokes anything.

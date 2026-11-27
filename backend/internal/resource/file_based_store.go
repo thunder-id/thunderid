@@ -54,6 +54,24 @@ func (f *fileBasedResourceStore) CreateResourceServer(
 	return errImmutableStore
 }
 
+// GetResourceServersByIDs retrieves the declared resource servers with the given IDs, leaving out an ID naming none.
+func (f *fileBasedResourceStore) GetResourceServersByIDs(
+	ctx context.Context, ids []string,
+) ([]providers.ResourceServer, error) {
+	resourceServers := make([]providers.ResourceServer, 0, len(ids))
+	for _, id := range ids {
+		rs, err := f.GetResourceServer(ctx, id)
+		if err != nil {
+			if errors.Is(err, errResourceServerNotFound) {
+				continue
+			}
+			return nil, err
+		}
+		resourceServers = append(resourceServers, rs)
+	}
+	return resourceServers, nil
+}
+
 func (f *fileBasedResourceStore) GetResourceServer(ctx context.Context, id string) (providers.ResourceServer, error) {
 	data, err := f.GenericFileBasedStore.Get(id)
 	if err != nil {

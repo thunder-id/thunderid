@@ -69,6 +69,9 @@ child.
     2. Upload `thunderid-config.yaml` as the configuration file.
     3. Upload `thunderid.env` as the environment variables file.
     4. Choose **Continue**, then **Import configuration**.
+5. Share the System resource server with the companies, so the admin role grants `org` in a company. Clear the
+   project selection, choose **Resource servers**, open **System**, and select the **Organization Access** tab. Choose
+   **Default and chosen organization units**, keep **All child organization units**, and choose **Save**.
 
 :::note
 If `NEXTJS_B2B_CLIENT_SECRET` is empty, the Console blocks the import. Enter the secret in its **Environment
@@ -77,7 +80,9 @@ variables** editor.
 
 :::note Deploy to the Data Plane
 The Control Plane deploys the imported resources to the Data Plane. If **Auto deploy** is off, open the Default
-project's **Deployment pipeline** and choose **Deploy**.
+project's **Deployment pipeline** and choose **Deploy**. The System resource server belongs to no project and is
+already on the Data Plane, so the deploy brings its new sharing only when you tick **System**. The deploy lists it
+under **What they need** or **Shared resources**.
 :::
 
 | Resource | Name | What it does |

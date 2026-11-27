@@ -47,9 +47,25 @@ func (r *EffectivePermissionResolver) ResolveDelimiters(
 	return r.delimiters.resolveAll(ctx, resourceServerIDs)
 }
 
-// ResolveForEntity returns every permission an entity holds, directly and through its groups.
+// ResolveForEntity returns the permissions an entity holds, directly and through its groups, that it may use: for
+// each organization unit its roles are assigned in, only those of the resource servers that unit may use.
 func (r *EffectivePermissionResolver) ResolveForEntity(
 	ctx context.Context, entityID string,
+) (security.PermissionSet, error) {
+	return r.resolveEntity(ctx, entityID, true)
+}
+
+// ResolveHeldByEntity returns every permission an entity's roles hold, directly and through its groups, wherever
+// they are assigned.
+func (r *EffectivePermissionResolver) ResolveHeldByEntity(
+	ctx context.Context, entityID string,
+) (security.PermissionSet, error) {
+	return r.resolveEntity(ctx, entityID, false)
+}
+
+// resolveEntity resolves the permissions of an entity and its groups, only those it may use when usableOnly is set.
+func (r *EffectivePermissionResolver) resolveEntity(
+	ctx context.Context, entityID string, usableOnly bool,
 ) (security.PermissionSet, error) {
 	if entityID == "" {
 		return security.PermissionSet{}, nil
@@ -65,7 +81,11 @@ func (r *EffectivePermissionResolver) ResolveForEntity(
 		groupIDs = append(groupIDs, entityGroup.ID)
 	}
 
-	permissions, svcErr := r.roleService.GetAllPermissions(ctx, entityID, groupIDs)
+	enumerate := r.roleService.GetAllPermissions
+	if usableOnly {
+		enumerate = r.roleService.GetUsablePermissions
+	}
+	permissions, svcErr := enumerate(ctx, entityID, groupIDs)
 	if svcErr != nil {
 		return nil, fmt.Errorf("failed to resolve permissions for entity: %s",
 			svcErr.Error.DefaultValue)

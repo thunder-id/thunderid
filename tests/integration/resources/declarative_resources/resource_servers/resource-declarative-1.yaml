@@ -5,6 +5,18 @@ description: A declarative test resource server
 identifier: https://localhost:8090/decl-rs-1
 ouId: decl-ou-1
 delimiter: ":"
+# The declared role decl-shared-role lives in decl-m2m-root, another tree, and is shared with that unit's children, so
+# the owner shares the resource server with decl-m2m-root, which reshares it with every unit beneath it.
+sharingPolicies:
+  - id: decl-rs-1-policy-owner
+    otherTreeRoots:
+      mode: selected
+      units:
+        - ouId: decl-m2m-root
+  - id: decl-rs-1-policy-m2m-root
+    initiatingOuId: decl-m2m-root
+    childUnits:
+      mode: all
 resources:
   - name: Test Resource
     handle: test-resource
