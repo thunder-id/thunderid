@@ -4,10 +4,18 @@
 import {render, screen} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {describe, it, expect, vi, beforeEach} from 'vitest';
+import FlowOrganizationUnitContext from '../../../../../context/FlowOrganizationUnitContext';
 import FlowTypeContext from '../../../../../context/FlowTypeContext';
 import type {FlowType} from '../../../../../models/flows';
 import type {Resource} from '../../../../../models/resources';
 import OUResolverProperties from '../OUResolverProperties';
+
+const mockProjectScope = vi.hoisted(() => vi.fn(() => ({projectId: 'project-1' as string | undefined})));
+
+vi.mock('@thunderid/contexts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/contexts')>()),
+  useProjectScope: () => mockProjectScope(),
+}));
 
 vi.mock('react-i18next', async (importOriginal) => ({
   ...(await importOriginal<typeof import('react-i18next')>()),
@@ -20,11 +28,49 @@ vi.mock('react-i18next', async (importOriginal) => ({
         'flows:core.executions.ouResolver.resolveFrom.prompt': 'Prompt',
         'flows:core.executions.ouResolver.resolveFrom.promptAll': 'Prompt all',
         'flows:core.executions.ouResolver.directChildrenOnly.label': 'Limit to direct children',
-        'flows:core.executions.ouResolver.parentOuId.label': 'Parent OU ID',
+        'flows:core.executions.ouResolver.parentOuId.label': 'Parent OU',
       };
       return translations[key] ?? key;
     },
   }),
+}));
+
+vi.mock('@thunderid/configure-organization-units', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/configure-organization-units')>()),
+  OrganizationUnitTreePicker: ({
+    id,
+    value,
+    onChange,
+    error,
+    helperText,
+    projectId,
+    withinOuId,
+    rootOuId,
+  }: {
+    id: string;
+    value: string;
+    onChange: (ouId: string) => void;
+    error: boolean;
+    helperText: string;
+    projectId: string;
+    withinOuId: string | undefined;
+    rootOuId: string | undefined;
+  }) => (
+    <div
+      data-testid="ou-picker"
+      id={id}
+      data-value={value}
+      data-error={String(Boolean(error))}
+      data-project={projectId}
+      data-within={withinOuId}
+      data-root={rootOuId}
+    >
+      <button type="button" onClick={() => onChange('ou-9')}>
+        Pick ou-9
+      </button>
+      <span>{helperText}</span>
+    </div>
+  ),
 }));
 
 describe('OUResolverProperties', () => {
@@ -32,6 +78,7 @@ describe('OUResolverProperties', () => {
 
   beforeEach(() => {
     mockOnChange.mockClear();
+    mockProjectScope.mockReturnValue({projectId: 'project-1'});
   });
 
   it('should render the description and resolve-from label', () => {
@@ -105,33 +152,64 @@ describe('OUResolverProperties', () => {
     expect(mockOnChange).toHaveBeenCalledWith('data.properties.directChildrenOnly', false, resource);
   });
 
-  const inFlow = (flowType: FlowType | undefined, resource: Resource) => (
+  const inFlow = (flowType: FlowType | undefined, resource: Resource, flowOuId?: string) => (
     <FlowTypeContext.Provider value={flowType}>
-      <OUResolverProperties resource={resource} onChange={mockOnChange} />
+      <FlowOrganizationUnitContext.Provider value={flowOuId}>
+        <OUResolverProperties resource={resource} onChange={mockOnChange} />
+      </FlowOrganizationUnitContext.Provider>
     </FlowTypeContext.Provider>
   );
 
-  it('should offer the parent organization unit only for the prompt strategy in an authentication flow', () => {
+  it("should limit the picker to the flow's organization unit and its descendants", () => {
+    const resource = {data: {properties: {resolveFrom: 'prompt'}}} as unknown as Resource;
+    const {rerender} = render(inFlow('AUTHENTICATION', resource, 'flow-ou'));
+
+    expect(screen.getByTestId('ou-picker')).toHaveAttribute('data-within', 'flow-ou');
+
+    rerender(inFlow('AUTHENTICATION', resource));
+
+    expect(screen.getByTestId('ou-picker')).not.toHaveAttribute('data-within');
+  });
+
+  it("should root the picker at the flow's organization unit only outside a project", () => {
+    const resource = {data: {properties: {resolveFrom: 'prompt'}}} as unknown as Resource;
+    const {rerender} = render(inFlow('AUTHENTICATION', resource, 'flow-ou'));
+
+    expect(screen.getByTestId('ou-picker')).not.toHaveAttribute('data-root');
+
+    mockProjectScope.mockReturnValue({projectId: undefined});
+    rerender(inFlow('AUTHENTICATION', resource, 'flow-ou'));
+
+    expect(screen.getByTestId('ou-picker')).toHaveAttribute('data-root', 'flow-ou');
+
+    rerender(inFlow('AUTHENTICATION', resource));
+
+    expect(screen.getByTestId('ou-picker')).not.toHaveAttribute('data-root');
+  });
+
+  it('should offer the parent organization unit picker only for the prompt strategy in an authentication flow', () => {
     const {rerender} = render(
       inFlow('AUTHENTICATION', {
         data: {properties: {resolveFrom: 'prompt', parentOuId: 'ou-1'}},
       } as unknown as Resource),
     );
 
-    expect(screen.getByLabelText(/Parent OU ID/)).toHaveValue('ou-1');
+    expect(screen.getByText('Parent OU')).toBeInTheDocument();
+    expect(screen.getByTestId('ou-picker')).toHaveAttribute('data-value', 'ou-1');
+    expect(screen.getByTestId('ou-picker')).toHaveAttribute('data-project', 'project-1');
 
     rerender(inFlow('AUTHENTICATION', {data: {properties: {resolveFrom: 'caller'}}} as unknown as Resource));
 
-    expect(screen.queryByLabelText(/Parent OU ID/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ou-picker')).not.toBeInTheDocument();
   });
 
-  it('should mark the parent organization unit as required and invalid while it is empty', () => {
+  it('should flag the parent organization unit as invalid while it is empty', () => {
     const {rerender} = render(
       inFlow('AUTHENTICATION', {data: {properties: {resolveFrom: 'prompt'}}} as unknown as Resource),
     );
 
-    expect(screen.getByLabelText(/Parent OU ID/)).toBeRequired();
-    expect(screen.getByLabelText(/Parent OU ID/)).toBeInvalid();
+    expect(screen.getByTestId('ou-picker')).toHaveAttribute('data-error', 'true');
+    expect(screen.getByText('flows:core.executions.ouResolver.parentOuId.required')).toBeInTheDocument();
 
     rerender(
       inFlow('AUTHENTICATION', {
@@ -139,7 +217,7 @@ describe('OUResolverProperties', () => {
       } as unknown as Resource),
     );
 
-    expect(screen.getByLabelText(/Parent OU ID/)).toBeValid();
+    expect(screen.getByTestId('ou-picker')).toHaveAttribute('data-error', 'false');
   });
 
   // A project flow is created with the placeholder until the console sets its system organization unit.
@@ -150,35 +228,34 @@ describe('OUResolverProperties', () => {
       } as unknown as Resource),
     );
 
-    expect(screen.getByLabelText(/Parent OU ID/)).toHaveValue('');
-    expect(screen.getByLabelText(/Parent OU ID/)).toBeInvalid();
+    expect(screen.getByTestId('ou-picker')).toHaveAttribute('data-value', '');
+    expect(screen.getByTestId('ou-picker')).toHaveAttribute('data-error', 'true');
   });
 
   it('should not offer the parent organization unit in other flow types, or outside the flow builder', () => {
     const resource = {data: {properties: {resolveFrom: 'prompt'}}} as unknown as Resource;
     const {rerender} = render(inFlow('REGISTRATION', resource));
 
-    expect(screen.queryByLabelText(/Parent OU ID/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ou-picker')).not.toBeInTheDocument();
 
     rerender(inFlow('USER_ONBOARDING', resource));
-    expect(screen.queryByLabelText(/Parent OU ID/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ou-picker')).not.toBeInTheDocument();
 
     rerender(inFlow(undefined, resource));
-    expect(screen.queryByLabelText(/Parent OU ID/)).not.toBeInTheDocument();
+    expect(screen.queryByTestId('ou-picker')).not.toBeInTheDocument();
   });
 
-  it('should write the trimmed parent organization unit when the field is committed', async () => {
+  it('should write the picked parent organization unit', async () => {
     const user = userEvent.setup();
     const resource = {data: {properties: {resolveFrom: 'prompt'}}} as unknown as Resource;
 
     render(inFlow('AUTHENTICATION', resource));
 
-    const field = screen.getByLabelText(/Parent OU ID/);
-    await user.type(field, '  ou-9  ');
-    await user.tab();
+    await user.click(screen.getByRole('button', {name: 'Pick ou-9'}));
 
     expect(mockOnChange).toHaveBeenCalledWith('data.properties.parentOuId', 'ou-9', resource);
   });
+
   describe('clearing properties the strategy no longer uses', () => {
     const chooseStrategy = async (user: ReturnType<typeof userEvent.setup>, name: string) => {
       await user.click(screen.getByRole('combobox'));

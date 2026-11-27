@@ -4859,8 +4859,8 @@ const translations = {
     'core.executions.ouResolver.resolveFrom.caller': 'Caller',
     'core.executions.ouResolver.resolveFrom.prompt': 'Prompt',
     'core.executions.ouResolver.resolveFrom.promptAll': 'Prompt all',
-    'core.executions.ouResolver.parentOuId.label': 'Parent OU ID',
-    'core.executions.ouResolver.parentOuId.placeholder': 'OU ID',
+    'core.executions.ouResolver.parentOuId.label': 'Parent OU',
+    'core.executions.ouResolver.parentOuId.required': 'Select the parent OU.',
     'core.executions.ouResolver.parentOuId.hint': 'Users select an OU below this one.',
     'core.executions.ouResolver.directChildrenOnly.label': 'Limit to direct children',
     'core.executions.ouResolver.directChildrenOnly.hint':
