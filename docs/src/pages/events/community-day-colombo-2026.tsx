@@ -35,6 +35,7 @@ const EVENT: CommunityDayEvent = {
   cost: 'Free',
   registrationUrl: 'https://luma.com/2lvipfap',
   heroPartner: LFDT,
+  heroSkyline: {src: '/assets/images/events/colombo-skyline.png', aspectRatio: 2920 / 760, landmarkX: 0.445},
   audience: [
     {
       icon: Bot,
@@ -146,7 +147,7 @@ const EVENT: CommunityDayEvent = {
   organizers: [{name: 'LFDT Sri Lanka Meetup Group', url: 'https://www.meetup.com/lfdt-sri-lanka/'}],
   partners: [
     LFDT,
-    // {name: 'Agentic AI Foundation (AAIF)'},
+    {name: 'Agentic AI Foundation', logo: 'aaif', logoWidth: 124, url: 'https://aaif.io/'},
     // {name: 'Partner 2 logo'},
   ],
   sponsors: [{name: 'Choreo Labs', logo: 'choreo-labs', logoWidth: 128, url: 'https://choreolabs.com/'}],

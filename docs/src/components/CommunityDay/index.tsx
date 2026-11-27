@@ -24,6 +24,7 @@ import {
 } from '@wso2/oxygen-ui-icons-react';
 import {useEffect, useId, useState, type ComponentType, type JSX, type ReactNode} from 'react';
 import type {DocusaurusProductConfig} from '@site/docusaurus.product.config';
+import HeroSkyline from '@site/src/components/CommunityDay/HeroSkyline';
 import {
   BADGE_GRADIENT,
   DOT_GRID,
@@ -72,6 +73,18 @@ export interface CommunityDayPartner {
   url?: string;
 }
 
+export interface CommunityDaySkyline {
+  /**
+   * Path under `static/` to a PNG of the skyline as a transparent line drawing: the lines opaque, everything else
+   * transparent. The theme supplies the line color.
+   */
+  src: string;
+  /** Width divided by height of the drawing. */
+  aspectRatio: number;
+  /** Horizontal center of the main landmark, as a fraction of the drawing's width. Placed beside the hero text. */
+  landmarkX: number;
+}
+
 export interface CommunityDayEvent {
   /** Page and hero title. `{{ProductName}}` is replaced with the product name. */
   title: string;
@@ -103,6 +116,8 @@ export interface CommunityDayEvent {
   registrationUrl?: string;
   /** Partner shown above the product logo in the hero. */
   heroPartner?: CommunityDayPartner;
+  /** Line drawing of the event city's skyline, drawn across the top of the hero. */
+  heroSkyline?: CommunityDaySkyline;
   /** Icon component, drawn both as the card badge and as the large corner art. */
   audience: {icon: ComponentType<{size?: number; strokeWidth?: number}>; title: string; description: string}[];
   takeaways: string[];
@@ -263,6 +278,7 @@ function Hero({event, title}: {event: CommunityDayEvent; title: string}): JSX.El
       }}
     >
       <Aurora />
+      {event.heroSkyline && <HeroSkyline skyline={event.heroSkyline} />}
       <Content>
         <Box
           component="nav"
@@ -1023,7 +1039,7 @@ function PartnerGroup({label, partners}: {label: string; partners: CommunityDayP
       <Typography component="h3" sx={{...MONO_LABEL_SX, mt: 0, mb: 1.75}}>
         {label}
       </Typography>
-      <Box sx={{display: 'flex', flexWrap: 'wrap', alignItems: 'center', columnGap: 3.5, rowGap: 1.5}}>
+      <Box sx={{display: 'flex', flexDirection: 'column', alignItems: 'flex-start', rowGap: 1.5}}>
         {partners.map((partner) => (
           <PartnerMark key={partner.name} partner={partner} />
         ))}
