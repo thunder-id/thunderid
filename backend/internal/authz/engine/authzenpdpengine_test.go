@@ -560,6 +560,55 @@ func (suite *AuthZENPDPEngineTestSuite) TestAuthZENPDPEvaluateAccessBatchEmpty()
 	require.Empty(t, response.Evaluations)
 }
 
+func (suite *AuthZENPDPEngineTestSuite) TestAuthZENPDPDeniesSubjectlessEvaluationWithoutCallingPDP() {
+	t := suite.T()
+	server := newAuthZENTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("PDP called for an evaluation with no subject: %s", r.URL.Path)
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	pdp := newLegacyAuthZENPDP(server.Client())
+	response, err := pdp.EvaluateAccess(context.Background(), authZENPDPConfig(server), AccessEvaluationRequest{
+		Subject:        Subject{GroupIDs: []string{"group-1"}, RoleIDs: []string{"role-1"}},
+		ResourceServer: ResourceServer{ID: "resource-1"},
+		Permission:     Permission{Name: "read"},
+	})
+
+	require.NoError(t, err)
+	require.False(t, response.Decision)
+}
+
+func (suite *AuthZENPDPEngineTestSuite) TestAuthZENPDPEvaluateAccessBatchSendsOnlyEvaluationsWithSubject() {
+	t := suite.T()
+	server := newAuthZENTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request authzen.AccessEvaluationsRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+		require.Len(t, request.Evaluations, 1)
+		require.Equal(t, "user-1", request.Evaluations[0].Subject.ID)
+		require.Equal(t, "cancel", request.Evaluations[0].Action.Name)
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"evaluations":[{"decision":true}]}`))
+	}))
+	defer server.Close()
+
+	pdp := newLegacyAuthZENPDP(server.Client())
+	response, err := pdp.EvaluateAccessBatch(context.Background(), authZENPDPConfig(server), AccessEvaluationsRequest{
+		Evaluations: []AccessEvaluationRequest{
+			{Subject: Subject{ID: " ", GroupIDs: []string{"group-1"}}, ResourceServer: ResourceServer{ID: "resource-1"},
+				Permission: Permission{Name: "read"}},
+			{Subject: Subject{ID: "user-1"}, ResourceServer: ResourceServer{ID: "resource-1"},
+				Permission: Permission{Name: "cancel"}},
+		},
+	})
+
+	require.NoError(t, err)
+	require.Len(t, response.Evaluations, 2)
+	require.False(t, response.Evaluations[0].Decision)
+	require.True(t, response.Evaluations[1].Decision)
+}
+
 func (suite *AuthZENPDPEngineTestSuite) TestAuthZENPDPEvaluateAccessBatchRejectsMismatchedResponse() {
 	t := suite.T()
 	server := newAuthZENTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1055,7 +1104,9 @@ func (suite *AuthZENPDPEngineTestSuite) TestAuthZENPDPRejectsPDPError() {
 	settings := AuthZENPDPConfig{Endpoint: evaluationEndpoint(server)}
 	engine := newLegacyAuthZENPDP(server.Client())
 
-	_, err := engine.EvaluateAccess(context.Background(), settings, AccessEvaluationRequest{})
+	_, err := engine.EvaluateAccess(context.Background(), settings, AccessEvaluationRequest{
+		Subject: Subject{ID: "user-1"},
+	})
 	require.ErrorContains(t, err, "HTTP 503")
 }
 

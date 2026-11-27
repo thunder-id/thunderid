@@ -578,12 +578,18 @@ func TestAuthorizationServiceEvaluateAccessBatchResolvesEnginesAndPreservesOrder
 
 	response, err := service.evaluateWithResolvedEngines(ctx, engine.AccessEvaluationsRequest{
 		Evaluations: []engine.AccessEvaluationRequest{
-			{ResourceServer: engine.ResourceServer{ID: "rs-2"}, Permission: engine.Permission{Name: "read"}},
 			{
+				Subject:        engine.Subject{ID: "user-1"},
+				ResourceServer: engine.ResourceServer{ID: "rs-2"},
+				Permission:     engine.Permission{Name: "read"},
+			},
+			{
+				Subject:        engine.Subject{ID: "user-1"},
 				ResourceServer: engine.ResourceServer{ID: "local-rs"},
 				Permission:     engine.Permission{Name: "read"},
 			},
 			{
+				Subject: engine.Subject{ID: "user-1"},
 				ResourceServer: engine.ResourceServer{
 					ID: "rs-1",
 					Properties: map[string]interface{}{
@@ -593,10 +599,12 @@ func TestAuthorizationServiceEvaluateAccessBatchResolvesEnginesAndPreservesOrder
 				Permission: engine.Permission{Name: "read"},
 			},
 			{
+				Subject:        engine.Subject{ID: "user-1"},
 				ResourceServer: engine.ResourceServer{ID: "local-rs"},
 				Permission:     engine.Permission{Name: "write"},
 			},
 			{
+				Subject: engine.Subject{ID: "user-1"},
 				ResourceServer: engine.ResourceServer{
 					ID: "rs-1",
 					Properties: map[string]interface{}{
