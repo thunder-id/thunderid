@@ -3,6 +3,8 @@
 
 import userEvent from '@testing-library/user-event';
 import {
+  AdministrationModes,
+  AdministrationProvider,
   RuntimeEnvironmentsContext,
   type EnvironmentValue,
   type RuntimeEnvironment,
@@ -477,6 +479,33 @@ describe('AgentOverview', () => {
       renderWithEnvironments([development, production]);
 
       expect(await screen.findByText('No client ID is set in Development yet.')).toBeInTheDocument();
+    });
+  });
+
+  describe('owner verification', () => {
+    const emailOwner = {id: 'jane@example.com', idType: 'email', isLocal: false, verified: false} as const;
+
+    it('shows whether an external owner is verified, and when, in plain sight', () => {
+      const {rerender} = render(<AgentOverview agent={{...baseAgent, owner: emailOwner}} />);
+      expect(screen.getByTestId('agent-owner-not-verified')).toHaveTextContent('Not verified');
+
+      rerender(<AgentOverview agent={{...baseAgent, owner: {...emailOwner, verifiedAt: '2026-11-09T10:12:00Z'}}} />);
+      // The date and the time are in the chip itself, not in a tooltip only a pointer can open.
+      expect(screen.getByTestId('agent-owner-verified')).toHaveTextContent(
+        `Verified on ${new Date('2026-11-09T10:12:00Z').toLocaleString(undefined, {dateStyle: 'medium', timeStyle: 'short'})}`,
+      );
+    });
+
+    it('shows no verification for a local owner or where agent administration does not run through flows', () => {
+      const {rerender} = render(<AgentOverview agent={baseAgent} />);
+      expect(screen.queryByTestId('agent-owner-not-verified')).not.toBeInTheDocument();
+
+      rerender(
+        <AdministrationProvider administration={{mode: AdministrationModes.NATIVE}}>
+          <AgentOverview agent={{...baseAgent, owner: emailOwner}} />
+        </AdministrationProvider>,
+      );
+      expect(screen.queryByTestId('agent-owner-not-verified')).not.toBeInTheDocument();
     });
   });
 });

@@ -43,8 +43,11 @@ func (s *agentService) captureValues(ctx context.Context, agent *model.AgentComp
 		Kind:              agent.Kind,
 		InboundAuthConfig: agent.InboundAuthConfig,
 	}
-	if ownerSet {
-		resource.Owner = agent.Owner
+	if ownerSet && agent.Owner != nil {
+		// A deployment's verification of the owner is no value a gateway is given.
+		owner := *agent.Owner
+		owner.Verified, owner.VerifiedAt = nil, ""
+		resource.Owner = &owner
 	}
 	s.capture(ctx, resource, agent.Attributes, credentials)
 }

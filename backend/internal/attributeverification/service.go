@@ -69,7 +69,7 @@ func (s *attributeVerificationService) PrepareAttributeVerification(ctx context.
 			request.Value)
 	}
 
-	contact, svcErr := s.readStoredContact(ctx, request.EntityID, request.Attribute)
+	contact, _, svcErr := s.readStoredContact(ctx, request.EntityID, request.Attribute)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -78,7 +78,8 @@ func (s *attributeVerificationService) PrepareAttributeVerification(ctx context.
 	if actor == "" {
 		actor = contact.pin.Subject
 	}
-	s.publishEvent(ctx, event.EventTypeAttributeVerificationRequested, contact.pin, actor, providers.StatusSuccess)
+	s.publishEvent(ctx, event.EventTypeAttributeVerificationRequested, contact.category, contact.pin, actor,
+		providers.StatusSuccess)
 	return &contact.pin, nil
 }
 
@@ -86,14 +87,16 @@ func (s *attributeVerificationService) PrepareAttributeVerification(ctx context.
 // contact that changed or is no longer eligible, is refused.
 func (s *attributeVerificationService) RecordAttributeVerification(ctx context.Context,
 	pin providers.AttributeVerificationPin) *tidcommon.ServiceError {
-	contact, svcErr := s.readStoredContact(ctx, pin.Subject, pin.Attribute)
+	contact, category, svcErr := s.readStoredContact(ctx, pin.Subject, pin.Attribute)
 	if svcErr == nil && contact.pin != pin {
 		svcErr = &ErrorAttributeNotVerifiable
 	}
 
 	if svcErr != nil {
 		if svcErr.Type == tidcommon.ClientErrorType {
-			s.publishEvent(ctx, event.EventTypeAttributeVerificationRefused, pin, pin.Subject, providers.StatusFailure)
+			subjectCategory := s.refusedSubjectCategory(category, pin)
+			s.publishEvent(ctx, event.EventTypeAttributeVerificationRefused, subjectCategory, pin,
+				s.proofActor(subjectCategory, pin), providers.StatusFailure)
 		}
 
 		return svcErr
@@ -108,11 +111,13 @@ func (s *attributeVerificationService) RecordAttributeVerification(ctx context.C
 	}
 
 	if !applied {
-		s.publishEvent(ctx, event.EventTypeAttributeVerificationRefused, pin, pin.Subject, providers.StatusFailure)
+		s.publishEvent(ctx, event.EventTypeAttributeVerificationRefused, contact.category, pin,
+			s.proofActor(contact.category, pin), providers.StatusFailure)
 		return &ErrorAttributeNotVerifiable
 	}
 
-	s.publishEvent(ctx, event.EventTypeAttributeVerificationVerified, pin, pin.Subject, providers.StatusSuccess)
+	s.publishEvent(ctx, event.EventTypeAttributeVerificationVerified, contact.category, pin,
+		s.proofActor(contact.category, pin), providers.StatusSuccess)
 	return nil
 }
 
@@ -135,55 +140,75 @@ func (s *attributeVerificationService) GetVerifiedAttributes(ctx context.Context
 	return entries
 }
 
-// readStoredContact reads the stored contact of a user and pins its canonical value. An unknown entity,
-// an entity that is not a user, a declarative user, a user the caller may not update and an attribute that
-// is not a non-empty email or mobile contact of the user's type are refused.
+// readStoredContact reads the stored contact of a user, or the owner of an agent, and pins its canonical
+// value. An unknown entity, a declarative entity, an entity the caller may not update, an agent attribute
+// other than the owner and a user attribute that is not a non-empty email or mobile contact of the user's
+// type are refused. It also returns the category of the entity read, empty when none was, so a refusal names
+// its subject.
 func (s *attributeVerificationService) readStoredContact(ctx context.Context, entityID, attribute string) (
-	*storedContact, *tidcommon.ServiceError) {
+	*storedContact, providers.EntityCategory, *tidcommon.ServiceError) {
 	profile, err := s.entityService.GetEntityProfile(ctx, entityID)
 	if errors.Is(err, entity.ErrEntityNotFound) {
-		return nil, &ErrorAttributeNotVerifiable
+		return nil, "", &ErrorAttributeNotVerifiable
 	}
 
 	if err != nil {
-		return nil, s.serverError(ctx, "Failed to read the contact for attribute verification", entityID, err)
+		return nil, "", s.serverError(ctx, "Failed to read the contact for attribute verification", entityID, err)
 	}
 
-	if profile.Category != providers.EntityCategoryUser || profile.IsReadOnly {
-		return nil, &ErrorAttributeNotVerifiable
+	if profile.IsReadOnly {
+		return nil, profile.Category, &ErrorAttributeNotVerifiable
+	}
+
+	isAgentOwner := profile.Category == providers.EntityCategoryAgent &&
+		attribute == entity.AgentOwnerVerificationAttribute
+	if profile.Category != providers.EntityCategoryUser && !isAgentOwner {
+		return nil, profile.Category, &ErrorAttributeNotVerifiable
 	}
 
 	if svcErr := s.authorize(ctx, profile); svcErr != nil {
-		return nil, svcErr
+		return nil, profile.Category, svcErr
+	}
+
+	if isAgentOwner {
+		contact, svcErr := s.agentOwnerContact(profile)
+		return contact, profile.Category, svcErr
 	}
 
 	var values map[string]json.RawMessage
 	if len(profile.Attributes) > 0 {
 		if err := json.Unmarshal(profile.Attributes, &values); err != nil {
-			return nil, s.serverError(ctx, "Failed to read the contact for attribute verification", entityID, err)
+			return nil, profile.Category, s.serverError(ctx, "Failed to read the contact for attribute verification",
+				entityID, err)
 		}
 	}
 
 	var value string
 	if err := json.Unmarshal(values[attribute], &value); err != nil {
-		return nil, &ErrorAttributeNotVerifiable
+		return nil, profile.Category, &ErrorAttributeNotVerifiable
 	}
 
 	pin, svcErr := s.prepareContact(ctx, profile.Category, profile.Type, attribute, value)
 	if svcErr != nil {
-		return nil, svcErr
+		return nil, profile.Category, svcErr
 	}
 
 	pin.Subject = entityID
-	return &storedContact{pin: *pin, category: profile.Category, entityType: profile.Type}, nil
+	return &storedContact{pin: *pin, category: profile.Category, entityType: profile.Type}, profile.Category, nil
 }
 
-// authorize requires the caller to be allowed to update the user in the user's organization unit. A runtime
-// caller, such as a flow acting for whoever drives it, is allowed by the authorizer.
+// authorize requires the caller to be allowed to update the user, or the agent whose owner is verified, in
+// its organization unit. A runtime caller, such as a flow acting for whoever drives it, is allowed by the
+// authorizer.
 func (s *attributeVerificationService) authorize(ctx context.Context,
 	profile *providers.Entity) *tidcommon.ServiceError {
-	allowed, svcErr := s.authorizer.IsActionAllowed(ctx, security.ActionUpdateUser, &sysauthz.ActionContext{
-		ResourceType: security.ResourceTypeUser, OUID: profile.OUID, ResourceID: profile.ID,
+	action, resourceType := security.ActionUpdateUser, security.ResourceTypeUser
+	if profile.Category == providers.EntityCategoryAgent {
+		action, resourceType = security.ActionUpdateAgent, security.ResourceTypeAgent
+	}
+
+	allowed, svcErr := s.authorizer.IsActionAllowed(ctx, action, &sysauthz.ActionContext{
+		ResourceType: resourceType, OUID: profile.OUID, ResourceID: profile.ID,
 	})
 	if svcErr != nil {
 		s.logger.Error(ctx, "Failed to authorize attribute verification",
@@ -196,6 +221,21 @@ func (s *attributeVerificationService) authorize(ctx context.Context,
 	}
 
 	return nil
+}
+
+// agentOwnerContact pins an agent's owner when the owner is managed in another identity system and named by
+// an email address or a mobile number. Any other owner, or no owner, is refused.
+func (s *attributeVerificationService) agentOwnerContact(
+	profile *providers.Entity) (*storedContact, *tidcommon.ServiceError) {
+	value, contactType := entity.AgentOwnerContact(profile.SystemAttributes)
+	if value == "" {
+		return nil, &ErrorAttributeNotVerifiable
+	}
+
+	return &storedContact{pin: providers.AttributeVerificationPin{Subject: profile.ID,
+		Attribute: entity.AgentOwnerVerificationAttribute, Value: value,
+		Channel: entitytypemodel.ContactChannel(contactType)},
+		category: profile.Category, entityType: profile.Type}, nil
 }
 
 // prepareContact checks the entity type's schema and pins a canonical contact value without writing.
@@ -234,20 +274,50 @@ func (s *attributeVerificationService) prepareContact(ctx context.Context, categ
 	return nil, &ErrorAttributeNotVerifiable
 }
 
+// proofActor is the actor a verified or refused recording names: the user, who completes the proof. An agent's
+// owner completes it without an account here, and the agent itself takes no action, so none is named for it.
+func (s *attributeVerificationService) proofActor(category providers.EntityCategory,
+	pin providers.AttributeVerificationPin) string {
+	if category == providers.EntityCategoryAgent {
+		return ""
+	}
+	return pin.Subject
+}
+
+// refusedSubjectCategory is the category of the subject a refused record names: the entity's, or for an entity no
+// longer there, an agent when the pin is an agent owner's and a user otherwise.
+func (s *attributeVerificationService) refusedSubjectCategory(category providers.EntityCategory,
+	pin providers.AttributeVerificationPin) providers.EntityCategory {
+	if category != "" {
+		return category
+	}
+	if pin.Attribute == entity.AgentOwnerVerificationAttribute {
+		return providers.EntityCategoryAgent
+	}
+	return providers.EntityCategoryUser
+}
+
 // publishEvent publishes an attribute verification event about the pinned contact, naming the actor.
-// It names the attribute, never its value.
+// It names the attribute, never its value. The subject is an agent when the category is an agent's, and a
+// user otherwise.
 func (s *attributeVerificationService) publishEvent(ctx context.Context, eventType providers.EventType,
-	pin providers.AttributeVerificationPin, actor, status string) {
+	category providers.EntityCategory, pin providers.AttributeVerificationPin, actor, status string) {
 	if s.observability == nil || !s.observability.IsEnabled() {
 		return
 	}
 
+	subjectType := event.PrincipalTypeUser
+	if category == providers.EntityCategoryAgent {
+		subjectType = event.PrincipalTypeAgent
+	}
 	evt := event.NewEvent(syscontext.GetTraceID(ctx), string(eventType), event.ComponentAttributeVerification).
 		WithStatus(status).
 		WithData(event.DataKey.Subject, pin.Subject).
-		WithData(event.DataKey.SubjectType, event.PrincipalTypeUser).
-		WithData(event.DataKey.Attribute, pin.Attribute).
-		WithData(event.DataKey.ActorSub, actor)
+		WithData(event.DataKey.SubjectType, subjectType).
+		WithData(event.DataKey.Attribute, pin.Attribute)
+	if actor != "" {
+		evt = evt.WithData(event.DataKey.ActorSub, actor)
+	}
 	s.observability.PublishEvent(ctx, evt)
 }
 

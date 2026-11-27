@@ -114,6 +114,36 @@ describe('AgentAccessTokenSection', () => {
     );
   });
 
+  it('adds owner_verified to clientConfig when its chip is clicked', async () => {
+    const user = userEvent.setup();
+    render(
+      <AgentAccessTokenSection
+        agent={{...baseAgent, inboundAuthConfig: baseInboundAuthConfig}}
+        editedAgent={{}}
+        oauth2Config={{grantTypes: ['client_credentials'], responseTypes: []}}
+        onFieldChange={mockOnFieldChange}
+      />,
+    );
+
+    await user.click(screen.getByText('owner_verified'));
+
+    expect(mockOnFieldChange).toHaveBeenCalledWith(
+      'inboundAuthConfig',
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'oauth2',
+          config: expect.objectContaining({
+            token: expect.objectContaining({
+              accessToken: expect.objectContaining({
+                clientConfig: expect.objectContaining({attributes: ['owner_verified']}) as Record<string, unknown>,
+              }) as Record<string, unknown>,
+            }) as Record<string, unknown>,
+          }) as Record<string, unknown>,
+        }),
+      ]),
+    );
+  });
+
   it('lists the OU attributes as selectable chips', () => {
     render(
       <AgentAccessTokenSection

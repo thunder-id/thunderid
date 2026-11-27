@@ -62,3 +62,31 @@ func (s *UtilsTestSuite) TestReadRecordedAttributeVerificationsWithoutMetadata()
 		s.Empty(entries, raw)
 	}
 }
+
+// Only an owner managed in another identity system and named by an email address or a mobile number has a
+// contact, compared in its canonical form.
+func (s *UtilsTestSuite) TestAgentOwnerContact() {
+	for name, tc := range map[string]struct {
+		systemAttributes, value, contactType string
+	}{
+		"email": {`{"owner":{"id":" a@EXAMPLE.com ","idType":"email","isLocal":false}}`,
+			"a@example.com", "email"},
+		"mobile": {`{"owner":{"id":"+94771234567","idType":"mobile","isLocal":false}}`,
+			"+94771234567", "mobile"},
+		"local owner":      {`{"owner":{"id":"user-1","idType":"uuid","isLocal":true}}`, "", ""},
+		"owner by default": {`{"owner":{"id":"user-1"}}`, "", ""},
+		"external subject": {`{"owner":{"id":"auth0|1","idType":"uuid","isLocal":false}}`, "", ""},
+		"blank id":         {`{"owner":{"id":"  ","idType":"email","isLocal":false}}`, "", ""},
+		"legacy string":    {`{"owner":"user-1"}`, "", ""},
+		"no owner":         {`{"clientId":"c"}`, "", ""},
+		"empty":            {``, "", ""},
+		"not json":         {`{`, "", ""},
+	} {
+		s.Run(name, func() {
+			value, contactType := AgentOwnerContact(json.RawMessage(tc.systemAttributes))
+
+			s.Equal(tc.value, value)
+			s.Equal(tc.contactType, contactType)
+		})
+	}
+}

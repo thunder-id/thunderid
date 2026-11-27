@@ -26,6 +26,7 @@ const TokenConstants = {
    */
   ADDITIONAL_AGENT_ATTRIBUTES: [
     'owner',
+    'owner_verified',
     'ouHandle',
     'ouId',
     'ouName',

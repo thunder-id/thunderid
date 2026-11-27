@@ -224,13 +224,15 @@ Every agent has an **Agent ID**, its identity in <ProductName />, and an **Owner
 - **Console:** the **Overview** tab shows the Agent ID and owner under **Agent details**, and the **Advanced** tab is where the owner is changed.
 - **API:** `GET /agents/<AGENT_ID>` returns both. Add `?include=display` to get the label resolved from the schema's display attribute. The label falls back to the agent ID if no display value is available.
 
-The owner is an object with three fields:
+The owner is an object with three fields, and reads add two read-only fields for an external owner named by an email address or mobile number:
 
 | Field | Description |
 |---|---|
 | `id` | The owner's ID, up to 256 characters. Required. |
 | `idType` | What the ID holds: `uuid` (the default), `email` (a bare email address), or `mobile` (an E.164 number such as `+94771234567`). |
 | `isLocal` | Whether the owner is an entity of this deployment. Defaults to `true`. |
+| `verified` | Read only. Whether the owner proved control of the email address or mobile number. See [Verify an external owner](#verify-an-external-owner). |
+| `verifiedAt` | Read only. When the owner did. |
 
 A local owner is a user, application, or agent of this deployment, identified by its `uuid`, and must exist when it is set. A user who owns agents cannot be deleted until those agents are deleted or given another owner.
 
@@ -245,6 +247,28 @@ An owner managed in another identity system is set with `"isLocal": false`. <Pro
 ```
 
 When no owner is given, the caller becomes the owner. The caller is a local owner when it is a user, application, or agent of this deployment, and an external owner otherwise, for example when it signed in through the [trusted issuer](../../trusted-issuer). An agent created with the management API key and no owner, such as one imported into a data plane, has no owner.
+
+#### Verify an external owner
+
+An external owner named by an email address or a mobile number can prove that the address or number is theirs, without an account in <ProductName />. The agent's `owner` then reports `verified: true` and `verifiedAt`, the time the owner confirmed. Until then it reports `verified: false`.
+
+- **Console:** on the agent's **Advanced** tab, click **Send verification link** under **Owner**. The owner receives the link by email or text message, opens it, and selects **Confirm ownership**. The **Overview** and **Advanced** tabs then show the owner as verified. Save a new owner before you send the link. A suspended agent, or one whose lifespan has ended, cannot be sent one. The Console starts the flow that `adminAgentOwnerVerificationFlow` names in the `flow` server configuration section, the shipped flow by default, and offers the link only when you can read the server configuration and a flow is set there. See [Flow Defaults](../../../deployment/configuration#flow-defaults). A Control Plane console does not offer it, because a Control Plane runs no flows: send it from the deployment the agent is applied to. An agent the Control Plane deployed is read only there, and its owner can still be verified.
+- **API:** start the shipped `default-agent-owner-verification-flow` with the agent's ID and an access token carrying the `system:agent:update` or `org:agent:update` permission, or a broader one such as `system`:
+
+  ```bash
+  curl -kL -X POST https://localhost:8090/flow/execute \
+    -H "Authorization: Bearer $ADMIN_ACCESS_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{ "flowType": "ADMIN_INITIATED", "handle": "default-agent-owner-verification-flow", "inputs": { "subject": "<agent-id>" }, "verbose": true }'
+  ```
+
+Start the flow with `"verbose": true`: the owner finishes it on the sign-in pages, which draw each step from the details a verbose flow returns, and a flow keeps the verbosity it starts with. The flow sends nothing until you select your providers on its nodes: an email provider on **Send Email** (`send_link`) and an SMS provider on **Send SMS** (`send_sms_link`), the same way as for the user verification flow. See [Build an administrator attribute verification flow](../../flows/build-a-flow#go-further). Both messages use the `agent-owner-verification` template.
+
+To let the APIs an agent calls see it, select `owner_verified` on the agent's **Tokens** tab: its own tokens then carry `owner_verified: true` or `false`. See [Agent Token](../authentication/agent-own-token).
+
+Changing the owner removes the verification, and an update that keeps the owner keeps it, including a redeploy from the Control Plane. `verified` and `verifiedAt` are set only by the flow: they are ignored in requests, imports and declarative files, and left out of exports. A local owner and an external owner named by a user ID cannot be verified this way, and neither can an owner that still holds a variable reference. Nor can the owner of a declarative agent, as a declarative user's email address and mobile number cannot: reads and tokens state no verification for it, and the Console offers none.
+
+New deployments ship the owner verification flow and its `agent-owner-verification` email and SMS templates. A deployment upgraded from an earlier release imports the `default-agent-owner-verification-flow` flow and both templates from `bootstrap/01-default-resources.yaml` with the [import API](../../declarative-configurations/import-resources), and sets `adminAgentOwnerVerificationFlow.defaultHandle` to that flow, as described in [Flow Defaults](../../../deployment/configuration#flow-defaults). It also adds their text from that file's `en-US` translations, the `agentOwner` keys of the `verification` namespace and the `agentOwnerVerification` keys of the `notification` namespace, on the [Translations](../../i18n/manage-translations#update-translations) page: importing the translation document instead replaces every custom translation of that language.
 
 ### Attribute values
 

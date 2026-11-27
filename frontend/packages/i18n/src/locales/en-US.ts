@@ -1451,6 +1451,33 @@ const translations = {
     'owner.errors.tooLong': 'Use at most 256 characters.',
     'owner.errors.email': 'Enter an email address, such as jane@example.com.',
     'owner.errors.mobile': 'Enter the number in international format: a + followed by the country code and number.',
+    'owner.verification.verified': 'Verified on {{date}}',
+    'owner.verification.notVerified': 'Not verified',
+    'owner.verification.send': 'Send verification link',
+    'owner.verification.resend': 'Send a new verification link',
+    'owner.verification.resendLink': 'Resend link',
+    'owner.verification.saveFirst': 'Save the new owner before you send a verification link.',
+    'owner.verification.sendFailed': 'The verification link could not be sent. Please try again.',
+    'owner.verification.sendSuspended': 'Unsuspend the agent to send its owner a verification link.',
+    'owner.verification.sendExpired':
+      "This agent's lifespan has ended, so its owner cannot be sent a verification link.",
+    'owner.verification.settingUnreadable':
+      'A verification link cannot be sent from here, because the server configuration could not be read.',
+    'owner.verification.title': 'Ownership verification',
+    'owner.verification.descriptionEmail':
+      'Ask {{owner}} to confirm that they are accountable for this agent. They get a link by email and are verified once they confirm. They do not need an account.',
+    'owner.verification.descriptionMobile':
+      'Ask {{owner}} to confirm that they are accountable for this agent. They get a link by text message and are verified once they confirm. They do not need an account.',
+    'owner.verification.verifiedDescription':
+      '{{owner}} confirmed that they are accountable for this agent. Changing the owner removes the verification.',
+    'owner.verification.sending': 'Sending the verification link',
+    'owner.verification.pending': 'Link sent to the owner.',
+    'owner.verification.pendingTo': 'Link sent to {{destination}}.',
+    'owner.verification.pendingWaiting':
+      'Waiting for the owner to open it and confirm. This page updates when they do.',
+    'owner.verification.pendingStopped': 'The owner has not confirmed yet. Check again later, or resend the link.',
+    'owner.verification.checkNow': 'Check now',
+    'owner.verification.confirmedToast': 'The owner confirmed ownership of this agent',
     'edit.attributes.lifespan.title': 'Lifespan',
     'edit.attributes.lifespan.description':
       'When this agent stops being able to authenticate. Tokens issued to it expire no later than this.',
@@ -1668,6 +1695,13 @@ const translations = {
     'edit.tokens.agent.validity.error': 'Enter a validity period of at least 1 second.',
 
     // Backend error code translations (per agent service error envelope).
+    // Raised by a flow the agent pages start, such as owner verification; scoped here so other features keep
+    // their own copy.
+    'errors.FET-1038':
+      'The flow has no usable email provider on its Send Email step. Select one in the flow, then try again.',
+    'errors.FET-1042':
+      'The flow has no usable notification sender on its Send SMS step. Select one in the flow, then try again.',
+    'errors.FET-1114': 'This agent is suspended. Unsuspend the agent and try again.',
     'errors.AGT-1001': 'The request body is malformed or contains invalid data.',
     'errors.AGT-1002': 'One or more redirect URIs are not valid.',
     'errors.AGT-1003': 'One or more grant types are not supported.',

@@ -570,3 +570,206 @@ func (s *ServiceTestSuite) TestPrepareAndRecordAuthorizeTheCallerForTheUsersUnit
 		})
 	}
 }
+
+// ownerAgent is agent-1, whose system attributes hold the given owner.
+func ownerAgent(owner string) *providers.Entity {
+	return &providers.Entity{ID: "agent-1", Category: providers.EntityCategoryAgent, Type: "default",
+		SystemAttributes: json.RawMessage(`{"owner":` + owner + `}`)}
+}
+
+// readOnlyOwnerAgent is agent-1 with an external email owner, declared in a file.
+func readOnlyOwnerAgent() *providers.Entity {
+	agent := ownerAgent(externalEmailOwner)
+	agent.IsReadOnly = true
+	return agent
+}
+
+// externalEmailOwner is an owner managed in another identity system, named by the test contact.
+const externalEmailOwner = `{"id":"` + testContactValue + `","idType":"email","isLocal":false}`
+
+// ownerPin is the pin of agent-1's external email owner.
+func ownerPin() providers.AttributeVerificationPin {
+	return providers.AttributeVerificationPin{Subject: "agent-1", Attribute: entity.AgentOwnerVerificationAttribute,
+		Value: testContactValue, Channel: providers.VerificationChannelEmail}
+}
+
+// An agent's owner managed in another identity system is pinned by its canonical email address or mobile
+// number, and the request names the agent as its subject.
+func (s *ServiceTestSuite) TestPreparePinsAnAgentsExternalOwner() {
+	for name, tc := range map[string]struct {
+		owner string
+		want  providers.AttributeVerificationPin
+	}{
+		"email": {`{"id":"Private.Contact@EXAMPLE.com","idType":"email","isLocal":false}`, ownerPin()},
+		"mobile": {`{"id":"+94771234567","idType":"mobile","isLocal":false}`, providers.AttributeVerificationPin{
+			Subject: "agent-1", Attribute: "owner", Value: "+94771234567",
+			Channel: providers.VerificationChannelSMS}},
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			s.entities.On("GetEntityProfile", mock.Anything, "agent-1").Return(ownerAgent(tc.owner), nil).Once()
+
+			pin, svcErr := s.svc.PrepareAttributeVerification(s.ctx,
+				providers.AttributeVerificationRequest{EntityID: "agent-1", Attribute: "owner"})
+
+			s.Require().Nil(svcErr)
+			s.Equal(tc.want, *pin)
+			s.Require().Len(*s.published, 1)
+			evt := (*s.published)[0]
+			s.Equal(string(event.EventTypeAttributeVerificationRequested), evt.Type)
+			s.Equal("agent-1", evt.Data[event.DataKey.Subject])
+			s.Equal(event.PrincipalTypeAgent, evt.Data[event.DataKey.SubjectType])
+			s.Equal("owner", evt.Data[event.DataKey.Attribute])
+			s.requireNoContactValue()
+		})
+	}
+}
+
+// Only an owner managed in another identity system and named by an email address or a mobile number can
+// be verified, and only on an agent that is not declared in a file.
+func (s *ServiceTestSuite) TestPrepareRefusesAnAgentOwnerThatCannotBeVerified() {
+	for name, tc := range map[string]struct {
+		entity    *providers.Entity
+		attribute string
+	}{
+		"no owner":         {&providers.Entity{ID: "agent-1", Category: providers.EntityCategoryAgent}, "owner"},
+		"local owner":      {ownerAgent(`{"id":"user-9","idType":"uuid","isLocal":true}`), "owner"},
+		"owner by default": {ownerAgent(`{"id":"user-9"}`), "owner"},
+		"external subject": {ownerAgent(`{"id":"auth0|123","idType":"uuid","isLocal":false}`), "owner"},
+		"legacy string":    {ownerAgent(`"user-9"`), "owner"},
+		"read only":        {readOnlyOwnerAgent(), "owner"},
+		"other attribute":  {ownerAgent(externalEmailOwner), "workEmail"},
+		"user owner attr":  {storedUser(`{"owner":"a@example.com"}`), "owner"},
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			s.entities.On("GetEntityProfile", mock.Anything, tc.entity.ID).Return(tc.entity, nil).Once()
+
+			pin, svcErr := s.svc.PrepareAttributeVerification(s.ctx,
+				providers.AttributeVerificationRequest{EntityID: tc.entity.ID, Attribute: tc.attribute})
+
+			s.Nil(pin)
+			s.requireServiceError(svcErr, ErrorAttributeNotVerifiable)
+			s.Empty(*s.published)
+		})
+	}
+}
+
+// Recording an agent owner writes the agent's verification and publishes it with the agent as subject.
+func (s *ServiceTestSuite) TestRecordAnAgentsOwner() {
+	s.entities.On("GetEntityProfile", mock.Anything, "agent-1").Return(ownerAgent(externalEmailOwner), nil).Once()
+	s.entities.On("RecordAttributeVerification", mock.Anything, mock.MatchedBy(
+		func(record entity.AttributeVerificationRecord) bool {
+			return record.EntityID == "agent-1" && record.EntityCategory == providers.EntityCategoryAgent &&
+				record.EntityType == "default" && record.Attribute == "owner" &&
+				record.Value == testContactValue && !record.VerifiedAt.IsZero()
+		})).Return(true, nil).Once()
+
+	s.Require().Nil(s.svc.RecordAttributeVerification(s.ctx, ownerPin()))
+
+	s.Require().Len(*s.published, 1)
+	evt := (*s.published)[0]
+	s.Equal(string(event.EventTypeAttributeVerificationVerified), evt.Type)
+	s.Equal(event.PrincipalTypeAgent, evt.Data[event.DataKey.SubjectType])
+	s.NotContains(evt.Data, event.DataKey.ActorSub, "the agent took no action, and its owner has no account here")
+	s.requireNoContactValue()
+}
+
+// An owner changed since the pin is refused before anything is written.
+func (s *ServiceTestSuite) TestRecordRefusesAnAgentWhoseOwnerChanged() {
+	s.entities.On("GetEntityProfile", mock.Anything, "agent-1").
+		Return(ownerAgent(`{"id":"other@example.com","idType":"email","isLocal":false}`), nil).Once()
+
+	s.requireServiceError(s.svc.RecordAttributeVerification(s.ctx, ownerPin()), ErrorAttributeNotVerifiable)
+
+	s.entities.AssertNotCalled(s.T(), "RecordAttributeVerification", mock.Anything, mock.Anything)
+	s.Equal([]string{string(event.EventTypeAttributeVerificationRefused)}, s.publishedTypes(providers.StatusFailure))
+	s.Equal(event.PrincipalTypeAgent, (*s.published)[0].Data[event.DataKey.SubjectType])
+}
+
+// A refused record names the agent as its subject even when no owner contact could be read: an owner no
+// longer verifiable is read from the agent, and an agent deleted since the pin is told by the pinned attribute.
+func (s *ServiceTestSuite) TestARefusedRecordNamesTheAgentAsSubject() {
+	for name, profile := range map[string]*providers.Entity{
+		"local owner since": ownerAgent(`{"id":"user-9","idType":"uuid","isLocal":true}`),
+		"agent deleted":     nil,
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			if profile == nil {
+				s.entities.On("GetEntityProfile", mock.Anything, "agent-1").
+					Return(nil, entity.ErrEntityNotFound).Once()
+			} else {
+				s.entities.On("GetEntityProfile", mock.Anything, "agent-1").Return(profile, nil).Once()
+			}
+
+			s.requireServiceError(s.svc.RecordAttributeVerification(s.ctx, ownerPin()), ErrorAttributeNotVerifiable)
+
+			s.Require().Len(*s.published, 1)
+			s.Equal(event.PrincipalTypeAgent, (*s.published)[0].Data[event.DataKey.SubjectType])
+			s.NotContains((*s.published)[0].Data, event.DataKey.ActorSub)
+		})
+	}
+}
+
+// agentUpdateIn is the authorizer's check that the caller may update agent-1 in ou-1.
+var agentUpdateIn = &sysauthz.ActionContext{ResourceType: security.ResourceTypeAgent, OUID: "ou-1",
+	ResourceID: "agent-1"}
+
+// Prepare and record of an agent's owner confine the caller to agents it may update in the agent's
+// organization unit, and a refused caller learns nothing about the owner.
+func (s *ServiceTestSuite) TestPrepareAndRecordAuthorizeTheCallerForTheAgentsUnit() {
+	for name, test := range map[string]struct {
+		allowed bool
+		want    *tidcommon.ServiceError
+	}{
+		"allowed":     {allowed: true},
+		"not allowed": {want: &tidcommon.ErrorUnauthorized},
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			authorizer := sysauthzmock.NewSystemAuthorizationServiceInterfaceMock(s.T())
+			authorizer.EXPECT().IsActionAllowed(mock.Anything, security.ActionUpdateAgent, agentUpdateIn).
+				Return(test.allowed, nil).Twice()
+			s.svc.authorizer = authorizer
+			agent := ownerAgent(externalEmailOwner)
+			agent.OUID = "ou-1"
+			s.entities.On("GetEntityProfile", mock.Anything, "agent-1").Return(agent, nil).Twice()
+			if test.want == nil {
+				s.entities.On("RecordAttributeVerification", mock.Anything, mock.Anything).Return(true, nil).Once()
+			}
+
+			pin, prepareErr := s.svc.PrepareAttributeVerification(s.ctx,
+				providers.AttributeVerificationRequest{EntityID: "agent-1",
+					Attribute: entity.AgentOwnerVerificationAttribute})
+			recordErr := s.svc.RecordAttributeVerification(s.ctx, ownerPin())
+
+			s.Equal(test.want, prepareErr)
+			s.Equal(test.want, recordErr)
+			if test.want != nil {
+				s.Nil(pin)
+				s.entities.AssertNotCalled(s.T(), "RecordAttributeVerification", mock.Anything, mock.Anything)
+			}
+		})
+	}
+}
+
+// An agent's owner that still holds a reference names no contact, so it is not pinned.
+func (s *ServiceTestSuite) TestPrepareRefusesAnAgentOwnerHoldingAReference() {
+	for name, owner := range map[string]string{
+		"referenced id":       `{"id":"var:OWNER_ID","idType":"email","isLocal":false}`,
+		"referenced locality": `{"id":"` + testContactValue + `","idType":"email","isLocal":"var:OWNER_LOCAL"}`,
+		"referenced id type":  `{"id":"` + testContactValue + `","idType":"var:OWNER_ID_TYPE","isLocal":false}`,
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			s.entities.On("GetEntityProfile", mock.Anything, "agent-1").Return(ownerAgent(owner), nil).Once()
+
+			pin, svcErr := s.svc.PrepareAttributeVerification(s.ctx, providers.AttributeVerificationRequest{
+				EntityID: "agent-1", Attribute: entity.AgentOwnerVerificationAttribute})
+
+			s.Nil(pin)
+			s.Equal(&ErrorAttributeNotVerifiable, svcErr)
+		})
+	}
+}

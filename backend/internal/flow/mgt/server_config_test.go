@@ -142,8 +142,8 @@ func (s *FlowConfigHandlerTestSuite) TestValidate_HandleValidatorRejectsUnknown(
 	s.Error(err)
 }
 
-// The attribute verification and credential reset entries name administrator-initiated flows, so their
-// handles are checked against that type, not ADMINISTRATION.
+// The attribute verification, credential reset and agent owner verification entries name administrator-initiated
+// flows, so their handles are checked against that type, not ADMINISTRATION.
 func (s *FlowConfigHandlerTestSuite) TestValidate_AdminInitiatedEntriesAreAdminInitiated() {
 	for _, test := range []struct {
 		key    string
@@ -156,6 +156,9 @@ func (s *FlowConfigHandlerTestSuite) TestValidate_AdminInitiatedEntriesAreAdminI
 		{"adminUserCredentialResetFlow", "default-admin-user-credential-reset-flow",
 			flowconfig.FlowSectionConfig{AdminUserCredentialResetFlow: flowconfig.FlowTypeConfig{
 				DefaultHandle: "default-admin-user-credential-reset-flow"}}},
+		{"adminAgentOwnerVerificationFlow", "default-agent-owner-verification-flow",
+			flowconfig.FlowSectionConfig{AdminAgentOwnerVerificationFlow: flowconfig.FlowTypeConfig{
+				DefaultHandle: "default-agent-owner-verification-flow"}}},
 	} {
 		s.Run(test.key, func() {
 			var gotHandle string
@@ -330,16 +333,17 @@ func everyAdministrationFlow(prefix string) flowconfig.FlowSectionConfig {
 		return flowconfig.FlowTypeConfig{DefaultHandle: prefix + "-" + name}
 	}
 	return flowconfig.FlowSectionConfig{
-		AdminAttributeVerificationFlow: handle("admin-attribute-verification"),
-		AdminUserCredentialResetFlow:   handle("admin-user-credential-reset"),
-		UserUnlockFlow:                 handle("user-unlock"),
-		UserSuspendFlow:                handle("user-suspend"),
-		UserUnsuspendFlow:              handle("user-unsuspend"),
-		AgentUnlockFlow:                handle("agent-unlock"),
-		AgentSuspendFlow:               handle("agent-suspend"),
-		AgentUnsuspendFlow:             handle("agent-unsuspend"),
-		ApplicationSuspendFlow:         handle("application-suspend"),
-		ApplicationUnsuspendFlow:       handle("application-unsuspend"),
+		AdminAttributeVerificationFlow:  handle("admin-attribute-verification"),
+		AdminUserCredentialResetFlow:    handle("admin-user-credential-reset"),
+		AdminAgentOwnerVerificationFlow: handle("agent-owner-verification"),
+		UserUnlockFlow:                  handle("user-unlock"),
+		UserSuspendFlow:                 handle("user-suspend"),
+		UserUnsuspendFlow:               handle("user-unsuspend"),
+		AgentUnlockFlow:                 handle("agent-unlock"),
+		AgentSuspendFlow:                handle("agent-suspend"),
+		AgentUnsuspendFlow:              handle("agent-unsuspend"),
+		ApplicationSuspendFlow:          handle("application-suspend"),
+		ApplicationUnsuspendFlow:        handle("application-unsuspend"),
 	}
 }
 

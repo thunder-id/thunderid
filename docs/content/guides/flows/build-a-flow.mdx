@@ -369,6 +369,8 @@ For properties, input types, and node examples, see [Advanced Configurations](..
 
   The flow prepares the user's stored email address, sends it the `admin-initiated-email-verification` email, and answers the administrator that the link was sent. The administrator never receives the link, even when the email cannot be sent. The user opens the link, confirms, and the flow records the verification. The start binds the flow to the user it names, so no later request can change that user. The flow verifies `email` unless the start names another email attribute in the `attribute` input, such as `"attribute": "workEmail"`. It sends the link by email, so name only an email attribute.
 
+  <ProductName /> also ships `default-agent-owner-verification-flow`, which sends an agent's external owner a link, by email or SMS, to confirm their email address or mobile number. Its `subject` is the agent's ID, and it needs no `attribute` input. See [Verify an external owner](../../agents/manage-agents#verify-an-external-owner).
+
   Build a flow of your own:
 
   1. In the Console, go to **Flows** → **+ Create New Flow**.

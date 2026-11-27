@@ -82,4 +82,9 @@ export const UIMessages = {
       unsuspendBody: "This action will remove the suspension and restore the application's access.",
     },
   },
+  /** The owner verification panel on an agent's Advanced tab and the status on its Overview. */
+  agentOwnerVerification: {
+    notVerified: "Not verified",
+    noEmailProvider: "The flow has no usable email provider on its Send Email step",
+  },
 } as const;

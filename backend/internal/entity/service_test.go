@@ -4840,6 +4840,64 @@ func (s *ServiceTestSuite) TestUpdateAttributes_ACredentialWriteMovesTheMarker()
 	}
 }
 
+// ownerAgentEntity is agent-1 of the default agent type, whose owner is the given JSON.
+func ownerAgentEntity(owner, systemAttributes string) providers.Entity {
+	raw := `{"owner":` + owner
+	if systemAttributes != "" {
+		raw += `,` + systemAttributes
+	}
+	return providers.Entity{ID: "agent-1", OUID: "ou1", Category: providers.EntityCategoryAgent, Type: "default",
+		SystemAttributes: json.RawMessage(raw + `}`)}
+}
+
+const (
+	externalOwnerA   = `{"id":"a@example.com","idType":"email","isLocal":false}`
+	ownerVerifiedRaw = `"attributeVerification":{"owner":{"verifiedAt":"2026-11-09T00:00:00Z"}}`
+)
+
+// recordAgentOwner records agent-1's owner at a@example.com.
+func recordAgentOwner(svc *entityService) (bool, error) {
+	return svc.RecordAttributeVerification(context.Background(), AttributeVerificationRecord{EntityID: "agent-1",
+		EntityCategory: providers.EntityCategoryAgent, EntityType: "default",
+		Attribute: AgentOwnerVerificationAttribute,
+		Value:     "a@example.com", VerifiedAt: time.Now()})
+}
+
+// An agent's owner is recorded against the owner in its system attributes, compared in canonical form.
+func (s *ServiceTestSuite) TestRecordAnAgentsExternalOwner() {
+	svc, store := s.lockedUser(ownerAgentEntity(`{"id":"a@EXAMPLE.com","idType":"email","isLocal":false}`, ""))
+	store.On("UpdateSystemAttributes", mock.Anything, "agent-1", mock.MatchedBy(func(raw json.RawMessage) bool {
+		entries, err := ReadRecordedAttributeVerifications(raw)
+		value, _ := AgentOwnerContact(raw)
+		return err == nil && entries[AgentOwnerVerificationAttribute].VerifiedAt != "" && value == "a@example.com"
+	})).Return(nil).Once()
+
+	applied, err := recordAgentOwner(svc)
+
+	s.NoError(err)
+	s.True(applied)
+}
+
+// An owner that changed under the lock, or that can no longer be verified, is not recorded.
+func (s *ServiceTestSuite) TestRecordRefusesAnAgentOwnerThatChanged() {
+	for name, current := range map[string]providers.Entity{
+		"other owner":      ownerAgentEntity(`{"id":"b@example.com","idType":"email","isLocal":false}`, ""),
+		"local owner":      ownerAgentEntity(`{"id":"user-1","idType":"uuid","isLocal":true}`, ""),
+		"external subject": ownerAgentEntity(`{"id":"a@example.com","idType":"uuid","isLocal":false}`, ""),
+		"no owner": {ID: "agent-1", Category: providers.EntityCategoryAgent, Type: "default",
+			SystemAttributes: json.RawMessage(`{}`)},
+	} {
+		s.Run(name, func() {
+			svc, _ := s.lockedUser(current)
+
+			applied, err := recordAgentOwner(svc)
+
+			s.NoError(err)
+			s.False(applied)
+		})
+	}
+}
+
 // A credential written through an entity update moves the credential marker in the same transaction.
 func (s *ServiceTestSuite) TestUpdateEntity_ACredentialWriteMovesTheMarker() {
 	store := newEntityStoreInterfaceMock(s.T())
@@ -4860,4 +4918,85 @@ func (s *ServiceTestSuite) TestUpdateEntity_ACredentialWriteMovesTheMarker() {
 	_, err := svc.UpdateEntity(context.Background(), current.ID, &next)
 
 	s.NoError(err)
+}
+
+// A write that changes or removes an agent's owner removes the owner's verification; one that keeps the
+// owner keeps it, and a caller cannot forge it.
+func (s *ServiceTestSuite) TestUpdateSystemAttributesInvalidatesAChangedAgentOwner() {
+	for name, tc := range map[string]struct {
+		next string
+		kept bool
+	}{
+		"same owner":         {`{"owner":` + externalOwnerA + `,"clientId":"c"}`, true},
+		"same canonical":     {`{"owner":{"id":"a@EXAMPLE.com","idType":"email","isLocal":false}}`, true},
+		"forged unchanged":   {`{"owner":` + externalOwnerA + `,` + `"attributeVerification":{}}`, true},
+		"other owner":        {`{"owner":{"id":"b@example.com","idType":"email","isLocal":false}}`, false},
+		"local owner":        {`{"owner":{"id":"user-1","idType":"uuid","isLocal":true}}`, false},
+		"owner removed":      {`{"clientId":"c"}`, false},
+		"same id other type": {`{"owner":{"id":"a@example.com","idType":"uuid","isLocal":false}}`, false},
+	} {
+		s.Run(name, func() {
+			s.SetupTest()
+			current := ownerAgentEntity(externalOwnerA, ownerVerifiedRaw)
+			s.store.On("LockEntity", mock.Anything, "agent-1").Return(current, nil).Once()
+			keptAsExpected := func(raw json.RawMessage) bool {
+				entries, err := ReadRecordedAttributeVerifications(raw)
+				_, recorded := entries[AgentOwnerVerificationAttribute]
+				return err == nil && recorded == tc.kept
+			}
+			s.store.On("UpdateSystemAttributes", mock.Anything, "agent-1", mock.MatchedBy(keptAsExpected)).
+				Return(nil).Once()
+			obs, published := s.captureEvents()
+			s.impl().observability = obs
+
+			s.NoError(s.svc.UpdateSystemAttributes(s.ctx, "agent-1", json.RawMessage(tc.next)))
+
+			if tc.kept {
+				s.Empty(*published, "a kept verification publishes nothing")
+				return
+			}
+			s.Require().Len(*published, 1, "a cleared verification is published once")
+			evt := (*published)[0]
+			s.Equal(string(event.EventTypeAttributeVerificationInvalidated), evt.Type)
+			s.Equal(event.PrincipalTypeAgent, evt.Data[event.DataKey.SubjectType])
+			s.Equal(AgentOwnerVerificationAttribute, evt.Data[event.DataKey.Attribute])
+		})
+	}
+}
+
+// The agent write path through UpdateEntity removes the owner's verification the same way.
+func (s *ServiceTestSuite) TestInvalidateVerificationClearsAChangedAgentOwner() {
+	current := ownerAgentEntity(externalOwnerA, ownerVerifiedRaw)
+	next := json.RawMessage(`{"owner":{"id":"b@example.com","idType":"email","isLocal":false},` +
+		ownerVerifiedRaw + `}`)
+
+	invalidated, cleared, err := s.impl().invalidateVerification(current, current.Type, nil, nil, next)
+
+	s.Require().NoError(err)
+	s.Equal([]clearedVerification{{attribute: AgentOwnerVerificationAttribute, reason: verificationValueChanged,
+		isAgent: true}}, cleared)
+	entries, err := ReadRecordedAttributeVerifications(invalidated)
+	s.Require().NoError(err)
+	s.Empty(entries)
+
+	removed := json.RawMessage(`{` + ownerVerifiedRaw + `}`)
+	_, cleared, err = s.impl().invalidateVerification(current, current.Type, nil, nil, removed)
+	s.Require().NoError(err)
+	s.Equal(verificationValueRemoved, cleared[0].reason)
+
+	kept := json.RawMessage(`{"owner":` + externalOwnerA + `,` + ownerVerifiedRaw + `}`)
+	unchanged, cleared, err := s.impl().invalidateVerification(current, current.Type, nil, nil, kept)
+	s.Require().NoError(err)
+	s.Empty(cleared)
+	s.JSONEq(string(kept), string(unchanged))
+}
+
+// A cleared agent owner verification is reported with the agent as its subject.
+func (s *ServiceTestSuite) TestVerificationInvalidatedEventNamesAnAgent() {
+	evt := s.impl().newVerificationInvalidatedEvent(context.Background(), "agent-1",
+		clearedVerification{attribute: AgentOwnerVerificationAttribute, reason: verificationValueRemoved,
+			isAgent: true})
+
+	s.Equal(event.PrincipalTypeAgent, evt.Data[event.DataKey.SubjectType])
+	s.Equal("owner", evt.Data[event.DataKey.Attribute])
 }

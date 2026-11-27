@@ -188,6 +188,40 @@ type: service-agent
 	assert.Equal(s.T(), "ou-1", e.OUID)
 }
 
+// A declarative file cannot verify an agent's owner: the owner's verified and verifiedAt, and a verification record
+// among the agent's fields, are not read, so the declared agent holds no verification.
+func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_IgnoresAnOwnerVerification() {
+	yamlData := []byte(`
+id: owned-agent
+ouId: ou-1
+type: service-agent
+owner:
+  id: jane@example.com
+  idType: email
+  isLocal: false
+  verified: true
+  verifiedAt: "2026-11-17T06:19:41Z"
+attributeVerification:
+  owner:
+    verifiedAt: "2026-11-17T06:19:41Z"
+`)
+	mockSvc := agentmock.NewAgentServiceInterfaceMock(s.T())
+	mockSvc.EXPECT().ValidateAgent(mock.Anything, mock.MatchedBy(func(a *providers.Agent) bool {
+		return a.Owner != nil && a.Owner.Verified == nil && a.Owner.VerifiedAt == ""
+	}), "owned-agent").Return("", "", inboundmodel.InboundClient{}, nil).Once()
+
+	e, _, _, err := makeAgentEntityParser(mockSvc)(yamlData)
+
+	s.Require().NoError(err)
+	var stored map[string]interface{}
+	s.Require().NoError(json.Unmarshal(e.SystemAttributes, &stored))
+	s.NotContains(stored, "attributeVerification")
+	owner, _ := stored["owner"].(map[string]interface{})
+	s.Equal("jane@example.com", owner["id"])
+	s.NotContains(owner, "verified")
+	s.NotContains(owner, "verifiedAt")
+}
+
 func (s *MakeAgentEntityParserTestSuite) TestMakeAgentEntityParser_WithOAuthPublicClient() {
 	yamlData := []byte(`
 id: public-agent

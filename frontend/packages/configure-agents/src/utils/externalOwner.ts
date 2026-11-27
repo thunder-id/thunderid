@@ -32,3 +32,12 @@ export function getExternalOwnerIdError(
 export function isInvalidExternalOwner(owner?: AgentOwner): boolean {
   return owner?.isLocal === false && getExternalOwnerIdError(owner.id, owner.idType ?? 'uuid') !== undefined;
 }
+
+/**
+ * Whether an owner can prove control of its contact here. The server states `verified` only for an external owner
+ * named by an email address or mobile number, and not on a control plane or for a declarative agent, whose owner
+ * cannot be verified.
+ */
+export function isVerifiableOwner(owner?: AgentOwner): boolean {
+  return owner?.verified !== undefined;
+}
