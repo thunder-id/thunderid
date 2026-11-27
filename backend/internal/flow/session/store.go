@@ -59,6 +59,11 @@ func (st *store) GetByHandle(ctx context.Context, handleID string) (*Session, er
 	return st.getSingle(ctx, queryGetSessionByHandle, handleID)
 }
 
+// GetBySessionID fetches a session by its ID, SSO or direct.
+func (st *store) GetBySessionID(ctx context.Context, sessionID string) (*Session, error) {
+	return st.getSingle(ctx, queryGetSessionBySessionID, sessionID)
+}
+
 // GetByExecutionID fetches the session established by the given flow execution.
 func (st *store) GetByExecutionID(ctx context.Context, flowExecutionID string) (*Session, error) {
 	return st.getSingle(ctx, queryGetSessionByExecutionID, flowExecutionID)
@@ -428,6 +433,27 @@ func (st *store) ListLiveBySubject(ctx context.Context, subjectID string, ouID *
 		return st.listLive(ctx, queryListLiveSessionsBySubjectInOU, now, limit, offset, subjectID, *ouID)
 	}
 	return st.listLive(ctx, queryListLiveSessionsBySubject, now, limit, offset, subjectID)
+}
+
+// ListAllLiveBySubject returns every live session of the subject within the bounds, SSO and direct.
+func (st *store) ListAllLiveBySubject(ctx context.Context, subjectID string, bounds liveBounds) ([]Session, error) {
+	result := make([]Session, 0)
+	err := withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
+		rows, err := dbClient.QueryContext(ctx, queryListAllLiveSessionsBySubject, subjectID, bounds.now,
+			bounds.activeAfter, bounds.createdAfter, st.deploymentID)
+		if err != nil {
+			return fmt.Errorf("failed to list live sessions by subject: %w", err)
+		}
+		for _, row := range rows {
+			sess, buildErr := buildSessionFromRow(row)
+			if buildErr != nil {
+				return buildErr
+			}
+			result = append(result, *sess)
+		}
+		return nil
+	})
+	return result, err
 }
 
 // CountLiveBySubject counts the subject's live sessions.

@@ -42,9 +42,16 @@ const (
 	// nativeClientID is an app-native application on a flow without a session step.
 	nativeClientID = "session_api_native_client"
 
+	// ouRevokeClientID is an application shared into a child organization unit, for the revocation tests.
+	ouRevokeClientID = "session_api_ou_revoke_client"
+
+	// delegateClientID is an application that exchanges a user's token for a delegated one.
+	delegateClientID = "session_api_delegate_client"
+
 	deviceSSOScope     = "openid device_sso"
 	tokenExchangeGrant = "urn:ietf:params:oauth:grant-type:token-exchange"
 	jwtTokenType       = "urn:ietf:params:oauth:token-type:jwt"
+	accessTokenType    = "urn:ietf:params:oauth:token-type:access_token"
 )
 
 var (
@@ -470,7 +477,7 @@ func (ts *SessionAPITestSuite) TestRegularUserCannotListOthers() {
 // application listed once by application. The user's token in each unit sees only the participants of the unit
 // its own sign-in was recorded under, which the server reads from the participant holding the token's family,
 // not from the token's claims. Another user's direct sign-in under the child is listed for the child's
-// administrator by application too.
+// administrator by application too. Revoking the session from the child ends it in both units.
 func (ts *SessionAPITestSuite) TestOrgAdminSeesOnlyItsOU() {
 	const (
 		listedUser = "session_api_ou_user"
@@ -601,6 +608,14 @@ func (ts *SessionAPITestSuite) TestOrgAdminSeesOnlyItsOU() {
 		ts.Require().NotNil(own.Sessions[0].IsCurrent)
 		ts.True(*own.Sessions[0].IsCurrent, "the %s token's session is the current one", tc.name)
 	}
+	// Revoking from one unit ends the whole session, signing the user out of the other unit too.
+	status, raw = ts.deleteSessions(testutils.GetHTTPClientWithToken(childToken),
+		"/users/me/sessions/"+url.PathEscape(all.Sessions[0].ID))
+	ts.Require().Equal(http.StatusNoContent, status, raw)
+	var after testutils.SessionListView
+	status, raw = ts.getSessions(testutils.GetHTTPClient(), "/sessions?userId="+url.QueryEscape(userID), &after)
+	ts.Require().Equal(http.StatusOK, status, raw)
+	ts.Zero(after.TotalResults, raw)
 }
 
 // Both listings need an access token.

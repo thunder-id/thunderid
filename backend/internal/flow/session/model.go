@@ -41,6 +41,8 @@ const (
 	TerminationReasonSignOut TerminationReason = "sign_out"
 	// TerminationReasonSubjectRevocation is an administrative termination of all the subject's sessions.
 	TerminationReasonSubjectRevocation TerminationReason = "subject_revocation"
+	// TerminationReasonSessionRevocation is a revocation of sessions through the session management API.
+	TerminationReasonSessionRevocation TerminationReason = "session_revocation"
 )
 
 // TerminatedSession describes a session the service has ended. Participants is captured before the
@@ -120,6 +122,14 @@ type idleSlide struct {
 	refreshedBefore time.Time
 	// activeAfter and createdAfter keep the idle and absolute timeouts in effect now: a session last
 	// active, or created, before them has ended.
+	activeAfter  time.Time
+	createdAfter time.Time
+}
+
+// liveBounds are the bounds a live session is within at now: neither stored deadline reached, and last
+// active after activeAfter and created after createdAfter, which keep the idle and absolute timeouts in effect.
+type liveBounds struct {
+	now          time.Time
 	activeAfter  time.Time
 	createdAfter time.Time
 }

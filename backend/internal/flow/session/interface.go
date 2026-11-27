@@ -21,6 +21,8 @@ type sessionStore interface {
 	// GetByHandle fetches a session by its opaque handle ID. It returns (nil, nil) when no
 	// session matches; liveness checks are the resolver's responsibility.
 	GetByHandle(ctx context.Context, handleID string) (*Session, error)
+	// GetBySessionID fetches a session by its ID, SSO or direct. It returns (nil, nil) when no session matches.
+	GetBySessionID(ctx context.Context, sessionID string) (*Session, error)
 	// GetByExecutionID fetches the session established by the given flow execution, or (nil, nil)
 	// when that execution has not established one.
 	GetByExecutionID(ctx context.Context, flowExecutionID string) (*Session, error)
@@ -30,6 +32,8 @@ type sessionStore interface {
 	// active first. A non-nil ouID keeps only the sessions with an application signed in under it.
 	ListLiveBySubject(ctx context.Context, subjectID string, ouID *string, now time.Time, limit, offset int) (
 		[]Session, error)
+	// ListAllLiveBySubject returns every live session of the subject within the bounds, SSO and direct, unpaged.
+	ListAllLiveBySubject(ctx context.Context, subjectID string, bounds liveBounds) ([]Session, error)
 	// CountLiveBySubject counts the subject's live sessions at now, under ouID when it is not nil.
 	CountLiveBySubject(ctx context.Context, subjectID string, ouID *string, now time.Time) (int, error)
 	// ListLiveByApp returns one page of the live sessions at now that the application has joined, SSO and

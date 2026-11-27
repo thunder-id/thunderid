@@ -1,7 +1,7 @@
 # OIDC Back-Channel Logout Specification
 
 - **Status:** Final
-- **Version:** 0.6
+- **Version:** 0.7
 - **Related documents:** [threat-model.md](threat-model.md), [#5233](https://github.com/thunder-id/thunderid/issues/5233), [#5258](https://github.com/thunder-id/thunderid/discussions/5258), [OpenID Connect Back-Channel Logout 1.0](https://openid.net/specs/openid-connect-backchannel-1_0.html), [OpenID Connect RP-Initiated Logout 1.0](https://openid.net/specs/openid-connect-rpinitiated-1_0.html), [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html), [OpenID Connect Discovery 1.0](https://openid.net/specs/openid-connect-discovery-1_0.html)
 
 ## Summary
@@ -64,8 +64,10 @@ flowchart TB
         ES["end session endpoint"] --> SOF["sign-out flow"]
         FA["Flow API sign-out"] --> SOF
         ADM["administration flow<br/>subject revocation"]
+        SMA["session management API<br/>session revocation"]
         SOF --> SS["terminate one session"]
         ADM --> SBS["terminate a subject's sessions"]
+        SMA --> RVS["revoke one session, or<br/>a user's sessions"]
     end
 
     subgraph New["New"]
@@ -78,6 +80,7 @@ flowchart TB
 
     SS --> TL
     SBS --> TL
+    RVS --> TL
     TL --> Q --> MINT --> POST --> RP["RP back-channel logout URI"]
     POST --> AUD
 ```
@@ -113,7 +116,7 @@ The mechanics of announcing a state change to listeners are generic and live in 
 
 | Aspect | Contract |
 |---|---|
-| Payload | The session identifier, the subject id, the participant list, and the termination reason, which is either sign-out or subject revocation |
+| Payload | The session identifier, the subject id, the participant list, and the termination reason, which is sign-out, subject revocation, or session revocation |
 | When called | After the terminating transaction has committed, never inside it |
 | Context | Carries the terminating request's values, such as the trace id, but is never cancelled, so a listener may hand it to work that outlives the request |
 | Obligation | Return promptly and perform no I/O |
@@ -126,10 +129,12 @@ Calling after commit means a notification problem can never fail or delay a logo
 
 More than one listener is allowed because the moment a session ends is of interest beyond back-channel logout: a Shared Signals session-revoked emitter or an audit record would observe the same event. The back-channel dispatcher is the first listener, not the only possible one. The generic package is deliberately small: it does not queue, spawn goroutines, or persist. A fuller domain-event layer with after-commit hooks in the transaction layer and sealed registration is a separate design; this package is shaped so that it can grow into one without renaming.
 
-Behaviour on the two termination paths:
+Behaviour on the termination paths:
 
 - **Single session sign-out** already reads the participant list inside its transaction in order to revoke token families. The read happens whenever a criteria revoker or at least one listener is present, and the list is retained and handed to the listeners after commit, so this path performs no additional read. When neither is present the read is skipped. If the read fails and only listeners need it, the session is still terminated and the listeners are not called for it; if the revoker needs it, the failure ends the termination as it does today.
 - **Subject-wide revocation** already reads the subject's session list before its transaction. It gains one further read inside the transaction, before the deletes, as the single-session path does: a single participant query across all of those sessions, grouped by session in memory. Under read committed, a participant that commits between that read and the delete is still deleted without notification; the window is narrow and closing it would need a locking read. The cost is one round trip however many sessions the subject holds, which matters because no per-subject session cap exists. The listener is then called once per terminated session. This path revokes no token families, because a subject criterion already covers the tokens, but no token revocation touches a relying party's local session, so it MUST still notify.
+
+- **Session revocation** through the session management API shares the single-session path, for one session or several in one transaction. It reads the participants of every session it ends in one query inside the transaction, revokes their token families, and notifies with the reason `session_revocation` for each session it removed. It ends only live sessions, so an expired one is not notified again, and a session kept with `exceptCurrent=true` is not notified.
 
 The sign-out and revocation steps of the flow engine are unchanged. Application-native sign-out through the Flow API reaches the same step and is covered without further work.
 
@@ -143,7 +148,7 @@ The dispatcher is the one new runtime component. It turns a terminated session i
 
 | Part | Role |
 |---|---|
-| Termination event | What the listener receives: session id, subject id, participant list, and the reason (`sign_out` or `subject_revocation`). Copied, never referenced, so the caller's data is not shared with a goroutine |
+| Termination event | What the listener receives: session id, subject id, participant list, and the reason (`sign_out`, `subject_revocation`, or `session_revocation`). Copied, never referenced, so the caller's data is not shared with a goroutine |
 | Intake queue | A bounded channel of termination events, sized by `queue_size`. The listener offers to it without blocking |
 | Worker pool | A fixed set of goroutines that take events off the queue, expand each into jobs, and run deliveries |
 | Job | One participating application of one event: application id, session id, subject id, the attempt number, and the time the next attempt is due. The attempt number starts at 1 and goes up with each retry; once it reaches `max_attempts` the job is not retried again, and it is recorded on every outcome as `attempt_number`. The dispatcher's unit of work |
@@ -430,6 +435,7 @@ With the defaults, a delivery is settled within two waits, 2 and 4 seconds, plus
 - **AC1.8:** Given back-channel logout is disabled in configuration, when a session is terminated, then no notification is sent and no delivery event is recorded.
 - **AC1.9:** Given an agent that is an OAuth client whose login flow has a session step, when a person signs in through it and the session is later terminated, then the agent is a participant of that session and is notified at its registered back-channel logout URI like any application.
 - **AC1.10:** Given two nodes that terminate the same session at the same moment, when the terminations commit, then each participant is notified once, by the node whose delete removed the session.
+- **AC1.11:** Given a session revoked through the session management API, when the revocation commits, then every participant of the revoked session is notified, and the participants of a session kept with `exceptCurrent=true` are not.
 
 ### R2. A standards-compliant logout token
 
@@ -542,3 +548,4 @@ With the defaults, a delivery is settled within two waits, 2 and 4 seconds, plus
 | 0.4 | 2026-10-26 | A 2xx other than 200 and 204 is classified as rejected, matching the dispatcher, as reviewed in #5777. |
 | 0.5 | 2026-10-31 | Participants are recorded per application and organization unit; the dispatcher notifies each application once. |
 | 0.6 | 2026-11-25 | `oauth.logout.backchannel.reject_private_addresses` is replaced by the server-wide `server.allow_private_addresses`, and the guard also refuses shared, multicast, reserved and NAT64 or 6to4 addresses. |
+| 0.7 | 2026-11-26 | Added the `session_revocation` reason and termination path, for sessions revoked through the session management API in #6152, with AC1.11. |

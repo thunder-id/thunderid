@@ -93,6 +93,14 @@ func (ts *SessionAPITestSuite) getSessions(client *http.Client, path string, out
 	return status, raw
 }
 
+// deleteSessions sends a DELETE to the session management API with client and returns the status and body.
+func (ts *SessionAPITestSuite) deleteSessions(client *http.Client, path string) (int, string) {
+	ts.T().Helper()
+	status, raw, err := testutils.DeleteSessions(client, path)
+	ts.Require().NoError(err)
+	return status, raw
+}
+
 // authorize starts an authorization code flow as the client and returns the authId and executionId.
 func (ts *SessionAPITestSuite) authorize(client *http.Client, cID, scope, state string) (string, string) {
 	params := url.Values{}
@@ -365,4 +373,82 @@ func (ts *SessionAPITestSuite) participantOUs(sessionID string) map[string]strin
 		}
 	}
 	return ous
+}
+
+// listOwnSessions returns the caller's sessions from GET /users/me/sessions.
+func (ts *SessionAPITestSuite) listOwnSessions(accessToken string) testutils.SessionListView {
+	ts.T().Helper()
+
+	var list testutils.SessionListView
+	status, raw := ts.getSessions(testutils.GetHTTPClientWithToken(accessToken), "/users/me/sessions", &list)
+	ts.Require().Equal(http.StatusOK, status, raw)
+	return list
+}
+
+// currentSessionID returns the ID of the session that issued the access token.
+func (ts *SessionAPITestSuite) currentSessionID(accessToken string) string {
+	ts.T().Helper()
+
+	for _, s := range ts.listOwnSessions(accessToken).Sessions {
+		if s.IsCurrent != nil && *s.IsCurrent {
+			return s.ID
+		}
+	}
+	ts.FailNow("no session is marked as current")
+	return ""
+}
+
+// introspectActive reports whether the access token is still active.
+func (ts *SessionAPITestSuite) introspectActive(accessToken string) bool {
+	ts.T().Helper()
+
+	active, err := testutils.IntrospectToken(accessToken, clientID, clientSecret)
+	ts.Require().NoError(err, "introspection request failed")
+	return active
+}
+
+// createSessionResourceServer creates a resource server in the organization unit that reproduces the Data
+// Plane's session permissions, org:session:view and org:session:delete.
+func (ts *SessionAPITestSuite) createSessionResourceServer(ouID, identifier string) string {
+	rsID, err := testutils.CreateResourceServerWithActions(testutils.ResourceServer{
+		Name: "Session API Revoke RS", Identifier: identifier, OUID: ouID,
+	}, nil)
+	ts.Require().NoError(err, "create the resource server")
+	ts.T().Cleanup(func() { ts.logCleanup("resource server", rsID, testutils.DeleteResourceServerWithChildren) })
+	_, err = testutils.CreateResource(rsID, "System", "system", "")
+	ts.Require().NoError(err, "create the system resource")
+	orgID, err := testutils.CreateResource(rsID, "Organization", "org", "")
+	ts.Require().NoError(err, "create the org resource")
+	sessionID, err := testutils.CreateResource(rsID, "session", "session", orgID)
+	ts.Require().NoError(err, "create the session resource")
+	for _, action := range []testutils.Action{{Name: "View", Handle: "view"}, {Name: "Delete", Handle: "delete"}} {
+		_, err = testutils.CreateResourceAction(rsID, sessionID, action)
+		ts.Require().NoError(err, "create the %s action", action.Handle)
+	}
+	return rsID
+}
+
+// orgSessionToken signs a new user in to the organization unit, holding only permission there, and returns their
+// access token, which names the unit. A user of the suite's unit is shared into any other unit first.
+func (ts *SessionAPITestSuite) orgSessionToken(signInApps *testutils.OUSignInApps, ouID, rsID, identifier,
+	username, permission string) string {
+	userID := ts.createUser(username)
+	if ouID != testOUID {
+		ts.shareUserInto(userID, ouID)
+	}
+	roleID, err := testutils.CreateRole(testutils.Role{
+		Name: "SessionAPI_" + username,
+		OUID: ouID,
+		Permissions: []testutils.ResourcePermissions{
+			{ResourceServerID: rsID, Permissions: []string{permission}},
+		},
+		Assignments: []testutils.Assignment{{ID: userID, Type: "user"}},
+	})
+	ts.Require().NoError(err, "create the %s role", permission)
+	ts.T().Cleanup(func() { ts.logCleanup("role", roleID, testutils.DeleteRole) })
+
+	token, err := signInApps.ObtainAccessToken(ouID, permission, username, testPassword, identifier)
+	ts.Require().NoError(err, "obtain the %s token", permission)
+	ts.Require().Equal(ouID, ts.tokenClaim(token.AccessToken, "ouId"), "the token names the unit")
+	return token.AccessToken
 }

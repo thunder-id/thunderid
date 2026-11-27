@@ -77,3 +77,23 @@ func GetSessions(client *http.Client, path string, out interface{}) (int, string
 	}
 	return resp.StatusCode, string(body), nil
 }
+
+// DeleteSessions sends a DELETE for path to the session management API with client, and returns the status code
+// and the raw body.
+func DeleteSessions(client *http.Client, path string) (int, string, error) {
+	req, err := http.NewRequest(http.MethodDelete, TestServerURL+path, nil)
+	if err != nil {
+		return 0, "", fmt.Errorf("failed to build the session API request: %w", err)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, "", fmt.Errorf("session API request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, "", fmt.Errorf("failed to read the session API response: %w", err)
+	}
+	return resp.StatusCode, string(body), nil
+}

@@ -36,7 +36,8 @@ func (s *HandlerTestSuite) SetupSuite() {
 func (s *HandlerTestSuite) SetupTest() {
 	s.store = newSessionStoreMock(s.T())
 	s.mux = http.NewServeMux()
-	registerRoutes(s.mux, newSessionMgtHandler(&service{store: s.store, logger: log.GetLogger()}))
+	registerRoutes(s.mux, newSessionMgtHandler(&service{store: s.store, timeouts: defaultTimeouts(s.T()),
+		logger: log.GetLogger()}))
 }
 
 func (s *HandlerTestSuite) serve(r *http.Request) *httptest.ResponseRecorder {
@@ -159,8 +160,99 @@ func (s *HandlerTestSuite) TestSelfList_Errors() {
 }
 
 func (s *HandlerTestSuite) TestPreflight() {
-	for _, path := range []string{"/sessions", "/users/me/sessions"} {
+	for _, path := range []string{"/sessions", "/users/me/sessions", "/sessions/sess-1", "/users/me/sessions/sess-1"} {
 		w := s.serve(httptest.NewRequest(http.MethodOptions, path, nil))
 		s.Equal(http.StatusNoContent, w.Code, path)
 	}
+}
+
+// deleteRequest is r with the DELETE method.
+func deleteRequest(r *http.Request) *http.Request {
+	r.Method = http.MethodDelete
+	return r
+}
+
+func (s *HandlerTestSuite) TestRevoke_ByID() {
+	s.Run("already gone is a 204", func() {
+		s.store.EXPECT().GetBySessionID(mock.Anything, "sess-gone").Return(nil, nil).Once()
+		w := s.serve(deleteRequest(adminRequest("/sessions/sess-gone")))
+		s.Equal(http.StatusNoContent, w.Code)
+	})
+	s.Run("unauthorized", func() {
+		w := s.serve(deleteRequest(userRequest("/sessions/sess-1")))
+		s.Equal(http.StatusForbidden, w.Code)
+	})
+	s.Run("server error", func() {
+		s.store.EXPECT().GetBySessionID(mock.Anything, "sess-1").Return(nil, errors.New("db down")).Once()
+		w := s.serve(deleteRequest(adminRequest("/sessions/sess-1")))
+		s.Equal(http.StatusInternalServerError, w.Code)
+	})
+}
+
+func (s *HandlerTestSuite) TestRevoke_ByUser() {
+	s.Run("revoked", func() {
+		s.store.EXPECT().ListAllLiveBySubject(mock.Anything, "user-1", mock.Anything).Return([]Session{}, nil).Once()
+		w := s.serve(deleteRequest(adminRequest("/sessions?userId=user-1")))
+		s.Equal(http.StatusNoContent, w.Code)
+	})
+	s.Run("missing userId", func() {
+		w := s.serve(deleteRequest(adminRequest("/sessions?userId=%20")))
+		s.Equal(http.StatusBadRequest, w.Code)
+		s.Contains(w.Body.String(), ErrorMissingUserID.Code)
+	})
+}
+
+func (s *HandlerTestSuite) TestRevokeSelf_ByID() {
+	s.Run("no such session is a 204", func() {
+		s.store.EXPECT().GetSubjectParticipantByTokenFamily(mock.Anything, "user-1", "tfid-1").
+			Return(nil, nil).Once()
+		w := s.serve(deleteRequest(selfRequest("/users/me/sessions/sess-1")))
+		s.Equal(http.StatusNoContent, w.Code)
+	})
+	s.Run("server error", func() {
+		s.store.EXPECT().GetSubjectParticipantByTokenFamily(mock.Anything, "user-1", "tfid-1").
+			Return(nil, errors.New("db down")).Once()
+		w := s.serve(deleteRequest(selfRequest("/users/me/sessions/sess-1")))
+		s.Equal(http.StatusInternalServerError, w.Code)
+	})
+	s.Run("no subject", func() {
+		w := s.serve(httptest.NewRequest(http.MethodDelete, "/users/me/sessions/sess-1", nil))
+		s.Equal(http.StatusUnauthorized, w.Code)
+	})
+}
+
+// A delegated token, issued to a client acting for the user, can't revoke the user's sessions.
+func (s *HandlerTestSuite) TestRevokeSelf_RefusesADelegatedToken() {
+	ctx := security.WithSecurityContextTest(context.Background(), security.NewSecurityContextForTest("user-1", "",
+		"", nil, map[string]interface{}{"tfid": "tfid-1", "act": map[string]interface{}{"sub": "client-1"}}))
+	for _, path := range []string{"/users/me/sessions", "/users/me/sessions/sess-1"} {
+		w := s.serve(httptest.NewRequest(http.MethodDelete, path, nil).WithContext(ctx))
+		s.Equal(http.StatusForbidden, w.Code, path)
+		s.Contains(w.Body.String(), ErrorDelegatedTokenNotAllowed.Code, path)
+	}
+}
+
+func (s *HandlerTestSuite) TestRevokeSelf_All() {
+	s.Run("revoked", func() {
+		s.store.EXPECT().GetSubjectParticipantByTokenFamily(mock.Anything, "user-1", "tfid-1").
+			Return(nil, nil).Once()
+		w := s.serve(deleteRequest(selfRequest("/users/me/sessions?exceptCurrent=false")))
+		s.Equal(http.StatusNoContent, w.Code)
+	})
+	s.Run("current session unknown", func() {
+		w := s.serve(deleteRequest(userRequest("/users/me/sessions?exceptCurrent=true")))
+		s.Equal(http.StatusBadRequest, w.Code)
+		s.Contains(w.Body.String(), ErrorCurrentSessionUnknown.Code)
+	})
+	for _, value := range []string{"maybe", "1", "TRUE"} {
+		s.Run("invalid exceptCurrent "+value, func() {
+			w := s.serve(deleteRequest(selfRequest("/users/me/sessions?exceptCurrent=" + value)))
+			s.Equal(http.StatusBadRequest, w.Code)
+			s.Contains(w.Body.String(), ErrorInvalidExceptCurrent.Code)
+		})
+	}
+	s.Run("no subject", func() {
+		w := s.serve(httptest.NewRequest(http.MethodDelete, "/users/me/sessions", nil))
+		s.Equal(http.StatusUnauthorized, w.Code)
+	})
 }

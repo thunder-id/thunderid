@@ -218,6 +218,8 @@ resources:
     actions:
       - name: View
         handle: view
+      - name: Delete
+        handle: delete
 ---
 resource_type: flow
 id: 01900000-0000-7000-8000-000000000061
