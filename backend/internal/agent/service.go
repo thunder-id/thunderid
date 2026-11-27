@@ -2698,6 +2698,7 @@ func validateAgentKey(certificate *providers.Certificate) *tidcommon.ServiceErro
 var personalAgentGrantTypes = []providers.GrantType{
 	providers.GrantTypeAuthorizationCode,
 	providers.GrantTypeCIBA,
+	providers.GrantTypeDeviceCode,
 	providers.GrantTypeRefreshToken,
 }
 

@@ -716,7 +716,7 @@ paths:
                       defaultValue: "Grant type not allowed"
                     description:
                       key: "error.agentservice.grant_type_not_allowed_for_personal_agent_description"
-                      defaultValue: "A personal agent can only use the authorization code, CIBA, and refresh token grants"
+                      defaultValue: "A personal agent can only use the authorization code, CIBA, device code, and refresh token grants"
                 invalid-kind:
                   summary: The kind is not a known agent kind
                   value:
@@ -2635,10 +2635,11 @@ components:
             Optional agent kind, fixed once the agent is created. Omit it, or send an empty string, for an
             ordinary agent; any other value than the listed ones is refused. `personal-assistant` registers a
             personal agent for the user named in `owner`, which is then required and must be a local user; the
-            agent may use only the authorization code (the default), CIBA and refresh token grants. Its OAuth
-            client gets response type `code` and PKCE with the authorization code grant, `private_key_jwt` when a
-            key is given and a client secret otherwise, and the personal agent login flow when no `authFlowId` is
-            given. `delegated` does not apply to a personal agent.
+            agent may use only the authorization code (the default), CIBA, device code and refresh token grants.
+            Its OAuth client gets response type `code` and PKCE with the authorization code grant, `private_key_jwt`
+            when a key is given and a client secret otherwise, and the personal agent login flow when no
+            `authFlowId` is given. With the device code grant it needs a `deviceGrantFlowId` whose flow calls its
+            login flow. `delegated` does not apply to a personal agent.
         attributes:
           type: object
           additionalProperties: true

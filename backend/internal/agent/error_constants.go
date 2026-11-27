@@ -689,8 +689,9 @@ var (
 			DefaultValue: "Grant type not allowed",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.agentservice.grant_type_not_allowed_for_personal_agent_description",
-			DefaultValue: "A personal agent can only use the authorization code, CIBA, and refresh token grants",
+			Key: "error.agentservice.grant_type_not_allowed_for_personal_agent_description",
+			DefaultValue: "A personal agent can only use the authorization code, CIBA, device code, " +
+				"and refresh token grants",
 		},
 	}
 
