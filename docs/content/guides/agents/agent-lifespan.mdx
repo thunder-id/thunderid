@@ -135,11 +135,20 @@ A change applies to the agent's next request. It does not change tokens already 
 
 Any caller who may update the agent may change its lifespan; there is no separate permission. That includes the agent itself: an agent that holds `system:agent` for its own organization unit, or acts for a user who holds it, can extend or remove its own lifespan. Agents do not hold this permission by default. Grant it only to agents that manage other agents.
 
+A personal agent is the exception: an administrator cannot update it, so its owner changes its lifespan by sending `validUntil` in `PUT /users/me/agents/<agent-id>`, with the same rules as the table above. The owner needs no `system:agent` permission. That request replaces the description, attributes, grant types and redirect URIs as well, so read the agent first with `GET /users/me/agents/<agent-id>` and send them back.
+
+```bash
+curl -X PUT https://localhost:8090/users/me/agents/<agent-id> \
+  -H "Authorization: Bearer $OWNER_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"description":"<description>","attributes":{"name":"<agent-name>"},"grantTypes":["authorization_code"],"redirectUris":["<redirect-uri>"],"validUntil":"<future-date-time>"}'
+```
+
 An agent defined in a declarative resource file is read only, so its lifespan changes only through the file. See [Declarative agents](#declarative-agents).
 
 ## Bring back an expired agent
 
-Set a `validUntil` in the future, in the Console or with `PUT /agents/<agent-id>`. Nothing about the agent has to be recreated: its credentials, groups, roles, and settings are as they were, and its next request is admitted.
+Set a `validUntil` in the future, in the Console or with `PUT /agents/<agent-id>`. For a personal agent, its owner sets it with `PUT /users/me/agents/<agent-id>`. Nothing about the agent has to be recreated: its credentials, groups, roles, and settings are as they were, and its next request is admitted.
 
 Bringing an agent back does not release a suspension or a lock. A suspended agent stays suspended until it is unsuspended, and a lock stays until it ends or is unlocked.
 

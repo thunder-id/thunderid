@@ -20,6 +20,7 @@ const {
   mockUseGetAllAgentTypes,
   mockUseGetAgentType,
   mockUseLocation,
+  mockUseGetFlows,
   stagingCallbackIdentities,
   advancedSettings,
 } = vi.hoisted(() => ({
@@ -34,6 +35,7 @@ const {
   mockMutateAsync: vi.fn(),
   mockUseGetAllAgentTypes: vi.fn(),
   mockUseGetAgentType: vi.fn(),
+  mockUseGetFlows: vi.fn(),
   mockUseLocation: vi.fn(
     (): {
       state: {justCreatedSecret: {agentName: string; clientId?: string; clientSecret: string}} | null;
@@ -127,6 +129,11 @@ vi.mock('@thunderid/components', async (importOriginal) => {
     ),
   };
 });
+
+vi.mock('@thunderid/configure-flows', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@thunderid/configure-flows')>()),
+  useGetFlows: (params: unknown) => mockUseGetFlows(params),
+}));
 
 vi.mock('../../api/useGetAgent', () => ({
   default: (id: string) => mockUseGetAgent(id),
@@ -333,6 +340,7 @@ describe('AgentEditPage', () => {
       isError: false,
       refetch: mockRefetch,
     });
+    mockUseGetFlows.mockReturnValue({data: undefined, isLoading: false, error: null, refetch: vi.fn()});
     // A fresh object per call, like useMutation. A stable stand-in hides identity churn.
     mockUseUpdateAgent.mockImplementation(() => ({
       mutateAsync: mockMutateAsync,
@@ -406,6 +414,72 @@ describe('AgentEditPage', () => {
       render(<AgentEditPage />);
 
       expect(screen.getByText('Personal')).toBeInTheDocument();
+    });
+
+    it('shows a personal agent read-only and keeps its lifecycle action', () => {
+      mockUseGetAgent.mockReturnValue({
+        data: {...baseAgent, kind: 'personal-assistant', owner: {id: 'user-1'}},
+        isLoading: false,
+        error: null,
+        isError: false,
+        refetch: mockRefetch,
+      });
+
+      render(<AgentEditPage />);
+
+      expect(
+        screen.getByText('Only the owner can change a personal agent. You can still suspend or delete it.'),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole('button', {name: 'Update logo'})).not.toBeInTheDocument();
+      expect(screen.getByTestId('account-status-action')).toBeInTheDocument();
+    });
+
+    describe('Device Grant flow default', () => {
+      const withDeviceGrant = (extra: Record<string, unknown> = {}): void => {
+        mockUseGetAgent.mockReturnValue({
+          data: {
+            ...baseAgent,
+            ...extra,
+            inboundAuthConfig: [
+              {type: 'oauth2', config: {grantTypes: ['urn:ietf:params:oauth:grant-type:device_code']}},
+            ],
+          },
+          isLoading: false,
+          error: null,
+          isError: false,
+          refetch: mockRefetch,
+        });
+        mockUseGetFlows.mockReturnValue({
+          data: {flows: [{id: 'device-flow-1', handle: 'default-device-grant-flow'}]},
+          isLoading: false,
+          error: null,
+          refetch: vi.fn(),
+        });
+      };
+
+      it('stages the default Device Grant flow for an ordinary agent', () => {
+        withDeviceGrant();
+
+        render(<AgentEditPage />);
+
+        expect(screen.getByText('You have unsaved changes')).toBeInTheDocument();
+      });
+
+      it('stages no Device Grant flow for a personal agent, which an administrator cannot update', () => {
+        withDeviceGrant({kind: 'personal-assistant', owner: {id: 'user-1'}});
+
+        render(<AgentEditPage />);
+
+        expect(screen.queryByText('You have unsaved changes')).not.toBeInTheDocument();
+      });
+    });
+
+    it('shows an ordinary agent without the personal agent notice', () => {
+      render(<AgentEditPage />);
+
+      expect(
+        screen.queryByText('Only the owner can change a personal agent. You can still suspend or delete it.'),
+      ).not.toBeInTheDocument();
     });
 
     it('does not label an ordinary agent', () => {

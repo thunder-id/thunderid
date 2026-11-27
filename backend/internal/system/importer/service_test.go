@@ -8119,22 +8119,24 @@ func TestImportAgent_DryRunRefusesAPersonalAgentsCredentials(t *testing.T) {
 	}
 }
 
-// A dry run of a personal agent that carries no credential still succeeds, for a new agent and an existing one.
-func TestImportAgent_DryRunAcceptsAPersonalAgentWithoutCredentials(t *testing.T) {
+// A dry run of a personal agent that carries no credential succeeds for a new agent, and for an existing one only in
+// the managed import: only its owner changes an existing personal agent, so the dry run refuses what the import does.
+func TestImportAgent_DryRunOfAPersonalAgentWithoutCredentials(t *testing.T) {
 	personal := "owner:\n  id: user-1\nkind: " + string(providers.AgentKindPersonalAssistant) + "\n"
 	typeSvc := &fakeEntityTypeService{byHandle: map[string]*entitytype.EntityType{
 		"default": {Handle: "default", Schema: json.RawMessage(`{"name":{"type":"string"}}`)},
 	}}
+	existingPersonal := map[string]*agentmodel.AgentGetResponse{
+		"agent-1": {ID: "agent-1", Kind: providers.AgentKindPersonalAssistant}}
 	cases := map[string]struct {
 		existing  map[string]*agentmodel.AgentGetResponse
+		managed   bool
 		operation string
+		code      string
 	}{
-		"create": {existing: map[string]*agentmodel.AgentGetResponse{}, operation: operationCreate},
-		"update": {
-			existing: map[string]*agentmodel.AgentGetResponse{
-				"agent-1": {ID: "agent-1", Kind: providers.AgentKindPersonalAssistant}},
-			operation: operationUpdate,
-		},
+		"create":                {existing: map[string]*agentmodel.AgentGetResponse{}, operation: operationCreate},
+		"update":                {existing: existingPersonal, operation: operationUpdate, code: "AGT-1070"},
+		"managed import update": {existing: existingPersonal, managed: true, operation: operationUpdate},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -8146,13 +8148,51 @@ func TestImportAgent_DryRunAcceptsAPersonalAgentWithoutCredentials(t *testing.T)
 			resp, svcErr := svc.ImportResources(context.Background(), &ImportRequest{
 				Content: agentYAML + personal,
 				DryRun:  true,
+				Managed: tc.managed,
 				Options: &ImportOptions{Upsert: boolPtr(true)},
 			})
 
 			require.Nil(t, svcErr)
 			require.Len(t, resp.Results, 1)
-			assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
 			assert.Equal(t, tc.operation, resp.Results[0].Operation)
+			if tc.code == "" {
+				assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+				return
+			}
+			assert.Equal(t, statusFailed, resp.Results[0].Status)
+			assert.Equal(t, tc.code, resp.Results[0].Code)
+		})
+	}
+}
+
+// Only its owner changes a personal agent, so an import that updates an existing one is refused before the profile
+// is written, unless it is the managed import.
+func TestImportAgent_UpdateOfAPersonalAgent(t *testing.T) {
+	content := "resource_type: agent\nid: agent-1\ntype: default\nouId: root\nattributes:\n  name: agent-1\n"
+	for name, managed := range map[string]bool{"import": false, "managed import": true} {
+		t.Run(name, func(t *testing.T) {
+			agentSvc := &fakeAgentService{existing: map[string]*agentmodel.AgentGetResponse{
+				"agent-1": {ID: "agent-1", Kind: providers.AgentKindPersonalAssistant}}}
+			svc := newImportService(
+				nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, agentSvc, nil, nil, nil, nil,
+				nil, discardingBus{})
+
+			resp, svcErr := svc.ImportResources(context.Background(), &ImportRequest{
+				Content: content,
+				Managed: managed,
+				Options: &ImportOptions{Upsert: boolPtr(true)},
+			})
+
+			require.Nil(t, svcErr)
+			require.Len(t, resp.Results, 1)
+			if managed {
+				assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+				assert.Len(t, agentSvc.updated, 1)
+				return
+			}
+			assert.Equal(t, statusFailed, resp.Results[0].Status)
+			assert.Equal(t, agent.ErrorPersonalAgentNotUpdatable.Code, resp.Results[0].Code)
+			assert.Empty(t, agentSvc.updated, "the profile was written before the update was refused")
 		})
 	}
 }

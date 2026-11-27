@@ -32,6 +32,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/jose/jwt"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/managedresource"
 	"github.com/thunder-id/thunderid/internal/system/observability/event"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
@@ -50,6 +51,7 @@ import (
 	"github.com/thunder-id/thunderid/tests/mocks/rolemock"
 	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
+	"github.com/thunder-id/thunderid/tests/mocks/transactionmock"
 )
 
 const (
@@ -2229,7 +2231,25 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_CarriesKindForward() {
 	assert.Equal(suite.T(), providers.AgentKind("future-kind"), resp.Kind)
 }
 
-// An update naming any other owner for a personal agent is refused before anything else is read or written.
+// An administrator's update of a personal agent is refused before anything is written, whatever it changes.
+func (suite *AgentServiceTestSuite) TestUpdateAgent_PersonalAgentRefused() {
+	svc, mockEntity, mockInbound, _, _ := suite.setupService()
+	clearMockCalls(mockEntity, "GetEntityProfile")
+	mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(withKind(
+		buildAgentEntityFixture(testAgentName, "", "owner-1", ""), providers.AgentKindPersonalAssistant), nil)
+
+	resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+		Type: testAgentType, Description: "changed",
+	})
+	assert.Nil(suite.T(), resp)
+	suite.Require().NotNil(svcErr)
+	assert.Equal(suite.T(), ErrorPersonalAgentNotUpdatable.Code, svcErr.Code)
+	mockInbound.AssertNotCalled(suite.T(), "GetOAuthProfileByEntityID", mock.Anything, mock.Anything)
+	mockEntity.AssertNotCalled(suite.T(), "UpdateEntity", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// The managed import naming any other owner for a personal agent is refused before anything else is read or
+// written.
 func (suite *AgentServiceTestSuite) TestUpdateAgent_PersonalAgentOwnerCannotChange() {
 	for name, owner := range map[string]*providers.AgentOwner{
 		"another local user": localOwner("user-2"),
@@ -2242,7 +2262,8 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_PersonalAgentOwnerCannotChan
 			mockEntity.On("GetEntityProfile", mock.Anything, testAgentID).Return(withKind(
 				buildAgentEntityFixture(testAgentName, "", "owner-1", ""), providers.AgentKindPersonalAssistant), nil)
 
-			resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+			ctx := managedresource.WithManagedImport(context.Background())
+			resp, svcErr := svc.UpdateAgent(ctx, testAgentID, &model.UpdateAgentRequest{
 				Type: testAgentType, Owner: owner,
 			})
 			assert.Nil(suite.T(), resp)
@@ -2255,7 +2276,7 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_PersonalAgentOwnerCannotChan
 	}
 }
 
-// An update that leaves the owner out, or sends the current owner, keeps the personal agent's owner.
+// The managed import, leaving the owner out or sending the current owner, keeps the personal agent's owner.
 func (suite *AgentServiceTestSuite) TestUpdateAgent_PersonalAgentKeepsItsOwner() {
 	for name, owner := range map[string]*providers.AgentOwner{
 		"owner left out": nil,
@@ -2273,7 +2294,8 @@ func (suite *AgentServiceTestSuite) TestUpdateAgent_PersonalAgentKeepsItsOwner()
 				return true
 			})).Return(&providers.Entity{}, nil)
 
-			resp, svcErr := svc.UpdateAgent(context.Background(), testAgentID, &model.UpdateAgentRequest{
+			ctx := managedresource.WithManagedImport(context.Background())
+			resp, svcErr := svc.UpdateAgent(ctx, testAgentID, &model.UpdateAgentRequest{
 				Type: testAgentType, Owner: owner,
 			})
 			suite.Require().Nil(svcErr)
@@ -5671,6 +5693,199 @@ func (suite *AgentServiceTestSuite) TestUpdateOwnedAgent_ReplacesTheEditablePart
 	assert.Equal(suite.T(), model.AgentSystemAttributes{
 		Description: "new", Owner: localOwner("alice"), ClientID: "cid-123", Kind: providers.AgentKindPersonalAssistant,
 	}, readSystemAttributes(sysAttrs))
+}
+
+// setupOwnedLifespanUpdate returns a service with alice's personal agent stored with the given lifespan end, the
+// update's writes accepted, and the published lifespan events.
+func (suite *AgentServiceTestSuite) setupOwnedLifespanUpdate(stored string) (
+	*agentService, *entitymock.EntityServiceInterfaceMock, *inboundclientmock.InboundClientServiceInterfaceMock,
+	*[]string) {
+	svc, mockEntity, mockInbound := suite.setupOwnedAgentUpdate(nil)
+	owned := withKind(buildAgentEntityFixture(testAgentName, "desc", "alice", "cid-123"),
+		providers.AgentKindPersonalAssistant)
+	sysAttrs := map[string]interface{}{}
+	_ = json.Unmarshal(owned.SystemAttributes, &sysAttrs)
+	sysAttrs[authnprovidercm.SystemAttrValidUntil] = stored
+	owned.SystemAttributes, _ = json.Marshal(sysAttrs)
+	clearMockCalls(mockEntity, "GetEntity")
+	mockEntity.On("GetEntity", mock.Anything, testAgentID).Maybe().Return(owned, nil)
+	mockEntity.On("GetEntityProfile", mock.Anything, mock.Anything).
+		Maybe().Return((*providers.Entity)(nil), entity.ErrEntityNotFound)
+	mockEntity.On("UpdateAttributes", mock.Anything, testAgentID, mock.Anything).Maybe().Return(nil)
+	mockEntity.On("UpdateSystemAttributes", mock.Anything, testAgentID, mock.Anything).Maybe().Return(nil)
+	clearMockCalls(mockInbound, "UpdateInboundClient")
+	mockInbound.On("UpdateInboundClient", mock.Anything, mock.Anything, mock.Anything, false, "cid-123").
+		Maybe().Return(nil)
+	return svc, mockEntity, mockInbound, suite.withLifespanEvents(svc)
+}
+
+// ownedLifespanUpdate returns a valid owner update requesting the given validUntil.
+func ownedLifespanUpdate(validUntil string) *model.UpdateOwnedAgentRequest {
+	req := ownedAgentUpdate([]providers.GrantType{providers.GrantTypeAuthorizationCode},
+		[]string{"https://a.example.com/cb"})
+	req.ValidUntil = json.RawMessage(validUntil)
+	return req
+}
+
+// The owner changes the lifespan through their update, and the change is published as an administrator's is.
+func (suite *AgentServiceTestSuite) TestUpdateOwnedAgent_LifespanChanges() {
+	cases := []struct {
+		name       string
+		stored     string
+		requested  string
+		wantStored string
+		wantEvents []string
+	}{
+		{name: "extension", stored: "2098-01-01T00:00:00Z", requested: `"2099-01-01T00:00:00Z"`,
+			wantStored: "2099-01-01T00:00:00Z",
+			wantEvents: []string{string(event.EventTypeAgentLifespanExtended)}},
+		{name: "bounded to unbounded", stored: testFutureValidUntil, requested: `null`,
+			wantStored: authnprovidercm.UnboundedValidUntil,
+			wantEvents: []string{string(event.EventTypeAgentLifespanExtended)}},
+		{name: "reactivation", stored: testPastValidUntil, requested: `"` + testFutureValidUntil + `"`,
+			wantStored: testFutureValidUntil,
+			wantEvents: []string{
+				string(event.EventTypeAgentLifespanExtended), string(event.EventTypeAgentReactivated),
+			}},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			svc, mockEntity, _, published := suite.setupOwnedLifespanUpdate(tc.stored)
+			mockEntity.On("SetValidUntil", mock.Anything, testAgentID, tc.wantStored).Return(nil).Once()
+
+			resp, svcErr := svc.UpdateOwnedAgent(ownerContext(testOUID), "alice", testAgentID,
+				providers.AgentKindPersonalAssistant, ownedLifespanUpdate(tc.requested))
+
+			suite.Require().Nil(svcErr)
+			suite.NotNil(resp)
+			suite.Equal(tc.wantEvents, *published)
+		})
+	}
+}
+
+// A validUntil left out, or equal to the stored value, leaves the lifespan as it is and publishes nothing.
+func (suite *AgentServiceTestSuite) TestUpdateOwnedAgent_LifespanUnchanged() {
+	for name, requested := range map[string]string{"absent": "", "equal": `"` + testPastValidUntil + `"`} {
+		suite.Run(name, func() {
+			svc, mockEntity, _, published := suite.setupOwnedLifespanUpdate(testPastValidUntil)
+
+			_, svcErr := svc.UpdateOwnedAgent(ownerContext(testOUID), "alice", testAgentID,
+				providers.AgentKindPersonalAssistant, ownedLifespanUpdate(requested))
+
+			suite.Require().Nil(svcErr)
+			mockEntity.AssertNotCalled(suite.T(), "SetValidUntil", mock.Anything, mock.Anything, mock.Anything)
+			suite.Empty(*published)
+		})
+	}
+}
+
+// A past or malformed validUntil is refused before anything is written.
+func (suite *AgentServiceTestSuite) TestUpdateOwnedAgent_LifespanRefused() {
+	cases := []struct {
+		name      string
+		requested string
+		wantErr   string
+	}{
+		{name: "past value", requested: `"` + testPastValidUntil + `"`, wantErr: ErrorLifespanNotInFuture.Code},
+		{name: "malformed value", requested: `"2099-01-01"`, wantErr: ErrorInvalidLifespan.Code},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			svc, mockEntity, mockInbound, published := suite.setupOwnedLifespanUpdate("2098-01-01T00:00:00Z")
+
+			resp, svcErr := svc.UpdateOwnedAgent(ownerContext(testOUID), "alice", testAgentID,
+				providers.AgentKindPersonalAssistant, ownedLifespanUpdate(tc.requested))
+
+			suite.Nil(resp)
+			suite.Require().NotNil(svcErr)
+			suite.Equal(tc.wantErr, svcErr.Code)
+			suite.Equal([]string{string(event.EventTypeAgentLifespanUpdateFailed)}, *published)
+			mockEntity.AssertNotCalled(suite.T(), "UpdateAttributes", mock.Anything, mock.Anything, mock.Anything)
+			mockEntity.AssertNotCalled(suite.T(), "SetValidUntil", mock.Anything, mock.Anything, mock.Anything)
+			mockInbound.AssertNotCalled(suite.T(), "UpdateInboundClient",
+				mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+// ownedUpdateTxKey marks the context the transactioner hands to the owner update's writes.
+type ownedUpdateTxKey struct{}
+
+// The attributes, the description and the lifespan change are written in one entity-database transaction.
+func (suite *AgentServiceTestSuite) TestUpdateOwnedAgent_WritesInOneTransaction() {
+	svc, mockEntity, mockInbound, _ := suite.setupOwnedLifespanUpdate("2098-01-01T00:00:00Z")
+	transactioner := transactionmock.NewTransactionerMock(suite.T())
+	transactioner.On("Transact", mock.Anything, mock.Anything).Return(
+		func(ctx context.Context, txFunc func(context.Context) error) error {
+			return txFunc(context.WithValue(ctx, ownedUpdateTxKey{}, true))
+		}).Once()
+	svc.transactioner = transactioner
+	inTx := mock.MatchedBy(func(ctx context.Context) bool { return ctx.Value(ownedUpdateTxKey{}) != nil })
+	clearMockCalls(mockEntity, "UpdateAttributes")
+	mockEntity.On("UpdateAttributes", inTx, testAgentID, mock.Anything).Return(nil).Once()
+	clearMockCalls(mockEntity, "UpdateSystemAttributes")
+	mockEntity.On("UpdateSystemAttributes", inTx, testAgentID, mock.Anything).Return(nil).Once()
+	mockEntity.On("SetValidUntil", inTx, testAgentID, testFutureValidUntil).Return(nil).Once()
+	clearMockCalls(mockInbound, "UpdateInboundClient")
+	mockInbound.On("UpdateInboundClient", inTx, mock.Anything, mock.Anything, false, "cid-123").Return(nil).Once()
+
+	_, svcErr := svc.UpdateOwnedAgent(ownerContext(testOUID), "alice", testAgentID,
+		providers.AgentKindPersonalAssistant, ownedLifespanUpdate(`"`+testFutureValidUntil+`"`))
+
+	suite.Require().Nil(svcErr)
+	mockEntity.AssertExpectations(suite.T())
+	mockInbound.AssertExpectations(suite.T())
+}
+
+// A failed write publishes the requested lifespan change as failed.
+func (suite *AgentServiceTestSuite) TestUpdateOwnedAgent_LifespanFailsWithTheUpdate() {
+	cases := []struct {
+		name  string
+		setup func(*entitymock.EntityServiceInterfaceMock, *inboundclientmock.InboundClientServiceInterfaceMock)
+	}{
+		{name: "the OAuth validation", setup: func(_ *entitymock.EntityServiceInterfaceMock,
+			mockInbound *inboundclientmock.InboundClientServiceInterfaceMock) {
+			clearMockCalls(mockInbound, "Validate")
+			mockInbound.On("Validate", mock.Anything, mock.Anything, mock.Anything, mock.Anything,
+				mock.Anything).Return(inboundclient.ErrOAuthAuthCodeRequiresRedirectURIs).Once()
+		}},
+		{name: "the attributes", setup: func(mockEntity *entitymock.EntityServiceInterfaceMock,
+			_ *inboundclientmock.InboundClientServiceInterfaceMock) {
+			clearMockCalls(mockEntity, "UpdateAttributes")
+			mockEntity.On("UpdateAttributes", mock.Anything, testAgentID, mock.Anything).
+				Return(errors.New("store down")).Once()
+		}},
+		{name: "the inbound client", setup: func(_ *entitymock.EntityServiceInterfaceMock,
+			mockInbound *inboundclientmock.InboundClientServiceInterfaceMock) {
+			clearMockCalls(mockInbound, "UpdateInboundClient")
+			mockInbound.On("UpdateInboundClient", mock.Anything, mock.Anything, mock.Anything, false, "cid-123").
+				Return(errors.New("store down")).Once()
+		}},
+		{name: "the description", setup: func(mockEntity *entitymock.EntityServiceInterfaceMock,
+			_ *inboundclientmock.InboundClientServiceInterfaceMock) {
+			clearMockCalls(mockEntity, "UpdateSystemAttributes")
+			mockEntity.On("UpdateSystemAttributes", mock.Anything, testAgentID, mock.Anything).
+				Return(errors.New("store down")).Once()
+		}},
+		{name: "the lifespan", setup: func(mockEntity *entitymock.EntityServiceInterfaceMock,
+			_ *inboundclientmock.InboundClientServiceInterfaceMock) {
+			mockEntity.On("SetValidUntil", mock.Anything, testAgentID, testFutureValidUntil).
+				Return(errors.New("store down")).Once()
+		}},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			svc, mockEntity, mockInbound, published := suite.setupOwnedLifespanUpdate("2098-01-01T00:00:00Z")
+			tc.setup(mockEntity, mockInbound)
+
+			resp, svcErr := svc.UpdateOwnedAgent(ownerContext(testOUID), "alice", testAgentID,
+				providers.AgentKindPersonalAssistant, ownedLifespanUpdate(`"`+testFutureValidUntil+`"`))
+
+			suite.Nil(resp)
+			suite.Require().NotNil(svcErr)
+			suite.Equal([]string{string(event.EventTypeAgentLifespanUpdateFailed)}, *published)
+		})
+	}
 }
 
 // The authorization code grant comes with response type code and PKCE, and a description left out is cleared.

@@ -935,8 +935,8 @@ paths:
         to view the agent type (`system:agenttype:view`), and an agent type that does not exist, or that the
         caller cannot read, is rejected with `AGT-1054`.
 
-        A personal agent keeps the owner it was registered for. Leave `owner` out, or send the current owner;
-        a different owner is rejected with `AGT-1064`.
+        A personal agent is changed only by its owner, through `PUT /users/me/agents/{id}`, so an update of one
+        is rejected with `AGT-1070`. An administrator suspends, unsuspends or deletes it.
 
         An update that sends a client secret other than the stored one replaces it, as a regeneration does.
         When token revocation is on (`oauth.token_revocation.enabled`, the default), the tokens issued
@@ -1424,16 +1424,16 @@ paths:
                     description:
                       key: "error.agentservice.invalid_user_attribute_description"
                       defaultValue: "One or more user attributes are not valid for the configured allowed user types"
-                personal-agent-owner-immutable:
-                  summary: The update names a different owner for a personal agent
+                personal-agent-not-updatable:
+                  summary: The agent is a personal agent, which only its owner changes
                   value:
-                    code: "AGT-1064"
+                    code: "AGT-1070"
                     message:
-                      key: "error.agentservice.personal_agent_owner_immutable"
-                      defaultValue: "Owner cannot be changed"
+                      key: "error.agentservice.personal_agent_not_updatable"
+                      defaultValue: "Agent cannot be updated"
                     description:
-                      key: "error.agentservice.personal_agent_owner_immutable_description"
-                      defaultValue: "A personal agent keeps the owner it was registered for"
+                      key: "error.agentservice.personal_agent_not_updatable_description"
+                      defaultValue: "A personal agent can only be updated by its owner"
 
         "403":
           description: >

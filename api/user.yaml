@@ -2353,9 +2353,10 @@ paths:
       summary: Update one of the caller's personal agents
       description: |
         Replaces the part of a personal agent its owner may change, in the organization unit the access token
-        names: the description, the schema attributes (including the name), the grant types and the redirect
-        URIs. `attributes`, `grantTypes` and
-        `redirectUris` are required; a `description` left out is cleared. Any other field is refused, so no flow
+        names: the description, the schema attributes (including the name), the grant types, the redirect
+        URIs and the lifespan. `attributes`, `grantTypes` and
+        `redirectUris` are required; a `description` left out is cleared, and a `validUntil` left out keeps the
+        stored lifespan. Any other field is refused, so no flow
         setting, owner or OAuth client credential can be changed here. An attribute the agent's type
         marks as a credential is refused (`AGT-1068`); the owner sets one with
         `POST /users/me/agents/{id}/update-credentials`. Read the agent first and send these fields back with the
@@ -4597,6 +4598,16 @@ components:
           items:
             type: string
           description: At least one when `grantTypes` holds `authorization_code`.
+        validUntil:
+          type: string
+          format: date-time
+          nullable: true
+          description: |
+            RFC 3339 instant at which the agent's lifespan ends. Unlike the other fields, omitting
+            it leaves the stored lifespan unchanged; send `null` to remove the expiry. A value that
+            differs from the stored one must be later than the current time, so an owner can extend an
+            expired agent's lifespan to reactivate it.
+          example: "2027-03-31T00:00:00Z"
     OwnedAgentUpdateResponse:
       type: object
       description: |

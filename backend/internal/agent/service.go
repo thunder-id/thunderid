@@ -474,8 +474,9 @@ func (s *agentService) GetOwnedAgents(ctx context.Context, ownerID string, kind 
 }
 
 // UpdateOwnedAgent replaces the part of an agent its owner may change: the description, the schema attributes,
-// the grant types and the redirect URIs. The attributes, grant types and redirect URIs are required. The OAuth
-// change is validated before anything is written, so a refused grant or redirect URI changes nothing.
+// the grant types, the redirect URIs and the lifespan. The attributes, grant types and redirect URIs are required;
+// a validUntil left out keeps the lifespan. The OAuth and lifespan changes are validated before anything is
+// written, so a refused grant, redirect URI or lifespan changes nothing.
 func (s *agentService) UpdateOwnedAgent(ctx context.Context, ownerID, agentID string, kind providers.AgentKind,
 	req *model.UpdateOwnedAgentRequest) (*model.AgentCompleteResponse, *tidcommon.ServiceError) {
 	updated, svcErr := s.updateOwnedAgent(ctx, ownerID, agentID, kind, req)
@@ -507,29 +508,28 @@ func (s *agentService) updateOwnedAgent(ctx context.Context, ownerID, agentID st
 	if svcErr := s.refuseCredentialAttributes(ctx, e.Type, req.Attributes); svcErr != nil {
 		return nil, svcErr
 	}
-
-	client, oauthProfile, svcErr := s.ownedAgentOAuthUpdate(ctx, agentID, sysAttrs.ClientID, kind, req)
-	if svcErr != nil {
+	now := time.Now()
+	lifespan := newLifespanUpdate(e.SystemAttributes, req.ValidUntil)
+	if svcErr := s.checkLifespanUpdate(ctx, agentID, lifespan, now); svcErr != nil {
+		return nil, svcErr
+	}
+	// fail publishes a requested lifespan change as failed with the update.
+	fail := func(svcErr *tidcommon.ServiceError) (*model.AgentCompleteResponse, *tidcommon.ServiceError) {
+		s.failLifespanUpdate(ctx, agentID, lifespan, svcErr)
 		return nil, svcErr
 	}
 
-	if err := s.entityService.UpdateAttributes(ctx, agentID, req.Attributes); err != nil {
-		if mapped := mapEntityError(err); mapped != nil {
-			return nil, mapped
-		}
-		s.logger.Error(ctx, "Failed to update agent attributes", log.MaskedString("agentID", agentID), log.Error(err))
-		return nil, &tidcommon.InternalServerError
+	client, oauthProfile, svcErr := s.ownedAgentOAuthUpdate(ctx, agentID, sysAttrs.ClientID, kind, req)
+	if svcErr != nil {
+		return fail(svcErr)
 	}
-	if err := s.inboundClientService.UpdateInboundClient(
-		ctx, client, oauthProfile, false, sysAttrs.ClientID); err != nil {
-		return nil, s.inboundUpdateError(ctx, agentID, err)
-	}
+
 	sysAttrs.Description = req.Description
-	if err := s.entityService.UpdateSystemAttributes(
-		ctx, agentID, buildSystemAttributesJSON(sysAttrs, "")); err != nil {
-		s.logger.Error(ctx, "Failed to update agent description", log.MaskedString("agentID", agentID), log.Error(err))
-		return nil, &tidcommon.InternalServerError
+	if svcErr := s.writeOwnedAgentUpdate(ctx, agentID, req.Attributes, sysAttrs, client, oauthProfile,
+		lifespan); svcErr != nil {
+		return fail(svcErr)
 	}
+	s.completeLifespanUpdate(ctx, agentID, lifespan, now)
 
 	updated, err := s.entityService.GetEntity(ctx, agentID)
 	if err != nil {
@@ -560,6 +560,42 @@ func (s *agentService) updateOwnedAgent(ctx context.Context, ownerID, agentID st
 	s.populateOUHandleForComplete(ctx, resp)
 	s.captureValues(ctx, resp, req.Attributes, false)
 	return resp, nil
+}
+
+// writeOwnedAgentUpdate writes an owner's update. The attributes, the description and the lifespan change commit
+// together in one entity-database transaction. The inbound client is in the configuration database, so it is
+// written inside that transaction but commits on its own: a failure after it leaves the OAuth change written.
+func (s *agentService) writeOwnedAgentUpdate(ctx context.Context, agentID string, attributes json.RawMessage,
+	sysAttrs model.AgentSystemAttributes, client *inboundmodel.InboundClient, oauthProfile *providers.OAuthProfile,
+	lifespan lifespanUpdate) *tidcommon.ServiceError {
+	var svcErr *tidcommon.ServiceError
+	err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		if err := s.entityService.UpdateAttributes(txCtx, agentID, attributes); err != nil {
+			svcErr = mapEntityError(err)
+			return err
+		}
+		if err := s.inboundClientService.UpdateInboundClient(
+			txCtx, client, oauthProfile, false, sysAttrs.ClientID); err != nil {
+			svcErr = s.inboundUpdateError(ctx, agentID, err)
+			return err
+		}
+		if err := s.entityService.UpdateSystemAttributes(
+			txCtx, agentID, buildSystemAttributesJSON(sysAttrs, "")); err != nil {
+			return err
+		}
+		if !lifespan.changing {
+			return nil
+		}
+		return s.entityService.SetValidUntil(txCtx, agentID, lifespan.change.next.String())
+	})
+	if err == nil {
+		return nil
+	}
+	if svcErr != nil {
+		return svcErr
+	}
+	s.logger.Error(ctx, "Failed to update the agent", log.MaskedString("agentID", agentID), log.Error(err))
+	return &tidcommon.InternalServerError
 }
 
 // ownedAgentOAuthUpdate builds the agent's inbound client and OAuth profile with the requested grant types and
@@ -2978,13 +3014,22 @@ func (s *agentService) authorizeUpdate(ctx context.Context, existing *providers.
 	return s.refuseManaged(ctx, agentID)
 }
 
-// authorizeUpdateRequest checks the caller may update the agent and that the update names no credential.
+// authorizeUpdateRequest checks the caller may update the agent, that the update names no credential, and that
+// the agent is not a personal agent. Only the owner configures a personal agent, so an administrator manages it
+// through its lifecycle, and the managed import keeps what a control plane deployed in step with it.
 func (s *agentService) authorizeUpdateRequest(ctx context.Context, existing *providers.Entity, agentID string,
 	req *model.UpdateAgentRequest) *tidcommon.ServiceError {
 	if svcErr := s.authorizeUpdate(ctx, existing, agentID); svcErr != nil {
 		return svcErr
 	}
-	return s.refuseCredentialAttributes(ctx, req.Type, req.Attributes)
+	if svcErr := s.refuseCredentialAttributes(ctx, req.Type, req.Attributes); svcErr != nil {
+		return svcErr
+	}
+	if readSystemAttributes(existing.SystemAttributes).Kind == providers.AgentKindPersonalAssistant &&
+		!managedresource.IsManagedImport(ctx) {
+		return &ErrorPersonalAgentNotUpdatable
+	}
+	return nil
 }
 
 // refuseReadOnly refuses a change to an agent declared in a file.
