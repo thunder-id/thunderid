@@ -995,6 +995,8 @@ Cryptographic settings for encryption and signing.
 |---------|---------|-------------|
 | `crypto.password_hashing.sha256.salt_size` | `16` | Salt size in bytes |
 
+<ProductName /> stores the algorithm and parameters with each hashed credential. If you change the algorithm or its parameters, <ProductName /> uses the new settings only for credentials created or updated afterward. Existing credentials keep verifying with the settings they were hashed with.
+
 ### Signing Keys
 
 Signing keys are configured as an array. Each key has the following properties:
