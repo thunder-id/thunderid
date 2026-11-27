@@ -3,7 +3,7 @@
 
 import {getCspNonce, type ColorSchemeOption, type Stylesheet, type Theme} from '@thunderid/design';
 import type {EmbeddedFlowComponent} from '@thunderid/react';
-import {Box, CircularProgress, IconButton, Tooltip, Typography, useColorScheme} from '@wso2/oxygen-ui';
+import {Box, CircularProgress, IconButton, Paper, Tooltip, Typography, useColorScheme} from '@wso2/oxygen-ui';
 import {useCallback, useLayoutEffect, useRef, useState, type JSX, type ReactNode} from 'react';
 import {createPortal} from 'react-dom';
 import {useTranslation} from 'react-i18next';
@@ -211,6 +211,8 @@ export default function GatePreview({
   const resolvedPageBackground =
     pageBackground ?? (toolbarVariant === 'minimal' ? NEUTRAL_CANVAS_BACKGROUND[effectiveScheme] : undefined);
 
+  const isBrowserFrame = !frameless && frameStyle === 'browser';
+
   const zoomIdx = ZOOM_STEPS.indexOf(zoom);
 
   // Imperatively size & scale the iframe to fit the canvas — no React state, no re-renders.
@@ -326,7 +328,9 @@ export default function GatePreview({
           p: frameless ? 0 : 2,
         }}
       >
+        {/* A browser window is a Paper, like the console's cards, so it stays outlined on any background. */}
         <Box
+          component={isBrowserFrame ? Paper : 'div'}
           sx={{
             backgroundColor:
               !frameless && frameStyle === 'phone'
@@ -334,7 +338,9 @@ export default function GatePreview({
                 : toolbarVariant === 'minimal'
                   ? resolvedPageBackground
                   : 'background.paper',
-            borderRadius: frameless ? 0 : frameStyle === 'phone' ? '32px' : 1,
+            ...(isBrowserFrame
+              ? {overflow: 'hidden'}
+              : {borderRadius: frameless ? 0 : frameStyle === 'phone' ? '32px' : 1}),
             p: !frameless && frameStyle === 'phone' ? '10px' : 0,
             width: frameless ? '100%' : (viewport?.width ?? VIEWPORT_WIDTHS[viewportState]),
             height: frameless ? '100%' : (viewport?.height ?? VIEWPORT_HEIGHTS[viewportState]),
@@ -345,7 +351,7 @@ export default function GatePreview({
           }}
         >
           {/* Browser chrome */}
-          {!frameless && frameStyle === 'browser' && (
+          {isBrowserFrame && (
             <Box
               sx={{
                 px: 3,
