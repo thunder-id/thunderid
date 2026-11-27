@@ -95,18 +95,18 @@ var (
 		Query: `DELETE FROM "SSO_SESSION_CONTEXT" WHERE SESSION_ID = $1 AND DEPLOYMENT_ID = $2`,
 	}
 
-	// queryUpsertParticipant records an application as a participant of a session under an organization
-	// unit, refreshing LAST_ACTIVE_AT and the current-grant TFID (but preserving FIRST_JOINED_AT) when the
-	// application has already joined under that unit. TFID moves to the latest grant so logout revokes the
-	// most recent family; another unit is another row with its own family.
-	// The ON CONFLICT ... DO UPDATE form is valid in both PostgreSQL and SQLite.
+	// queryUpsertParticipant records an application as a participant of a session under an organization unit
+	// and returns its TFID. A rejoin refreshes LAST_ACTIVE_AT and keeps a non-empty TFID. The ON CONFLICT ...
+	// RETURNING form is valid in both PostgreSQL and SQLite.
 	queryUpsertParticipant = model.DBQuery{
 		ID: "SEQ-SESS-09",
 		Query: `INSERT INTO "SESSION_PARTICIPANT" ` +
 			`(SESSION_ID, DEPLOYMENT_ID, APP_ID, OU_ID, FIRST_JOINED_AT, LAST_ACTIVE_AT, TFID) ` +
 			`VALUES ($1, $2, $3, $4, $5, $6, $7) ` +
 			`ON CONFLICT (SESSION_ID, DEPLOYMENT_ID, APP_ID, OU_ID) DO UPDATE SET ` +
-			`LAST_ACTIVE_AT = excluded.LAST_ACTIVE_AT, TFID = excluded.TFID`,
+			`LAST_ACTIVE_AT = excluded.LAST_ACTIVE_AT, ` +
+			`TFID = COALESCE(NULLIF("SESSION_PARTICIPANT".TFID, ''), excluded.TFID) ` +
+			`RETURNING TFID`,
 	}
 
 	// queryListParticipantsBySessionID returns the applications that have joined a session, oldest
@@ -155,14 +155,149 @@ var (
 	}
 
 	// querySlideIdleDeadline refreshes a session's last-active timestamp and idle deadline. It matches
-	// only an active, unexpired session whose last refresh is older than the throttle cutoff, so it
-	// neither revives an expired session nor writes on every call.
+	// only an active session whose last refresh is older than the throttle cutoff and that is within
+	// both its stored deadlines and the timeouts in effect now, so it neither revives an expired
+	// session nor writes on every call.
 	querySlideIdleDeadline = model.DBQuery{
 		ID: "SEQ-SESS-18",
 		Query: `UPDATE "SESSION" SET LAST_ACTIVE_AT = $1, IDLE_EXPIRES_AT = $2, ` +
 			`VERSION = VERSION + 1, UPDATED_AT = CURRENT_TIMESTAMP ` +
 			`WHERE SESSION_ID = $3 AND STATE = $4 AND LAST_ACTIVE_AT <= $5 ` +
-			`AND IDLE_EXPIRES_AT > $1 AND ABSOLUTE_EXPIRES_AT > $1 AND DEPLOYMENT_ID = $6`,
+			`AND IDLE_EXPIRES_AT > $1 AND ABSOLUTE_EXPIRES_AT > $1 ` +
+			`AND LAST_ACTIVE_AT > $6 AND CREATED_AT > $7 AND DEPLOYMENT_ID = $8`,
+	}
+
+	// The live-session queries below list SSO and direct sessions alike, and apply the resolver's liveness
+	// rule in SQL, since expired rows stay in the table until cleanup removes them: STATE is ACTIVE and
+	// neither deadline has been reached at the caller-supplied time. A NULL deadline never expires.
+
+	// queryListLiveSessionsBySubject returns one page of a subject's live sessions, most recently
+	// active first. Backed by idx_session_subject.
+	queryListLiveSessionsBySubject = model.DBQuery{
+		ID: "SEQ-SESS-19",
+		Query: `SELECT SESSION_ID, TYPE, SUBJECT_ID, FLOW_ID, FLOW_VERSION, FLOW_EXECUTION_ID, HANDLE_ID, ` +
+			`AUTHENTICATED_AT, CREATED_AT, LAST_ACTIVE_AT, IDLE_EXPIRES_AT, ABSOLUTE_EXPIRES_AT, ` +
+			`PROPERTIES, STATE, VERSION ` +
+			`FROM "SESSION" WHERE SUBJECT_ID = $1 AND STATE = 'ACTIVE' ` +
+			`AND IDLE_EXPIRES_AT > $2 AND ABSOLUTE_EXPIRES_AT > $2 ` +
+			`AND DEPLOYMENT_ID = $5 ` +
+			`ORDER BY LAST_ACTIVE_AT DESC, SESSION_ID DESC LIMIT $3 OFFSET $4`,
+	}
+
+	// queryCountLiveSessionsBySubject counts a subject's live sessions.
+	queryCountLiveSessionsBySubject = model.DBQuery{
+		ID: "SEQ-SESS-20",
+		Query: `SELECT COUNT(*) AS total FROM "SESSION" WHERE SUBJECT_ID = $1 AND STATE = 'ACTIVE' ` +
+			`AND IDLE_EXPIRES_AT > $2 AND ABSOLUTE_EXPIRES_AT > $2 ` +
+			`AND DEPLOYMENT_ID = $3`,
+	}
+
+	// queryListLiveSessionsByApp returns one page of the live sessions an application has joined,
+	// most recently active first. An application signed in under several organization units has a
+	// participant row per unit, so the sessions are matched through a subquery, which returns each one
+	// once. Backed by idx_session_participant_app.
+	queryListLiveSessionsByApp = model.DBQuery{
+		ID: "SEQ-SESS-21",
+		Query: `SELECT S.SESSION_ID, S.TYPE, S.SUBJECT_ID, S.FLOW_ID, S.FLOW_VERSION, S.FLOW_EXECUTION_ID, ` +
+			`S.HANDLE_ID, S.AUTHENTICATED_AT, S.CREATED_AT, S.LAST_ACTIVE_AT, S.IDLE_EXPIRES_AT, ` +
+			`S.ABSOLUTE_EXPIRES_AT, S.PROPERTIES, S.STATE, S.VERSION ` +
+			`FROM "SESSION" S ` +
+			`WHERE S.SESSION_ID IN (SELECT P.SESSION_ID FROM "SESSION_PARTICIPANT" P ` +
+			`WHERE P.APP_ID = $1 AND P.DEPLOYMENT_ID = $5) ` +
+			`AND S.STATE = 'ACTIVE' ` +
+			`AND S.IDLE_EXPIRES_AT > $2 AND S.ABSOLUTE_EXPIRES_AT > $2 ` +
+			`AND S.DEPLOYMENT_ID = $5 ` +
+			`ORDER BY S.LAST_ACTIVE_AT DESC, S.SESSION_ID DESC LIMIT $3 OFFSET $4`,
+	}
+
+	// queryCountLiveSessionsByApp counts the live sessions an application has joined, each once however
+	// many organization units it signed in under.
+	queryCountLiveSessionsByApp = model.DBQuery{
+		ID: "SEQ-SESS-22",
+		Query: `SELECT COUNT(*) AS total FROM "SESSION" S ` +
+			`WHERE S.SESSION_ID IN (SELECT P.SESSION_ID FROM "SESSION_PARTICIPANT" P ` +
+			`WHERE P.APP_ID = $1 AND P.DEPLOYMENT_ID = $3) ` +
+			`AND S.STATE = 'ACTIVE' ` +
+			`AND S.IDLE_EXPIRES_AT > $2 AND S.ABSOLUTE_EXPIRES_AT > $2 ` +
+			`AND S.DEPLOYMENT_ID = $3`,
+	}
+
+	// The InOU variants below keep only the sessions with an application signed in under one organization
+	// unit, for a caller confined to it.
+
+	// queryListLiveSessionsBySubjectInOU returns one page of a subject's live sessions with an application
+	// signed in under the organization unit, most recently active first. Backed by idx_session_subject, and
+	// the participant check by the participant table's primary key.
+	queryListLiveSessionsBySubjectInOU = model.DBQuery{
+		ID: "SEQ-SESS-23",
+		Query: `SELECT S.SESSION_ID, S.TYPE, S.SUBJECT_ID, S.FLOW_ID, S.FLOW_VERSION, S.FLOW_EXECUTION_ID, ` +
+			`S.HANDLE_ID, S.AUTHENTICATED_AT, S.CREATED_AT, S.LAST_ACTIVE_AT, S.IDLE_EXPIRES_AT, ` +
+			`S.ABSOLUTE_EXPIRES_AT, S.PROPERTIES, S.STATE, S.VERSION ` +
+			`FROM "SESSION" S WHERE S.SUBJECT_ID = $1 ` +
+			`AND EXISTS (SELECT 1 FROM "SESSION_PARTICIPANT" P WHERE P.SESSION_ID = S.SESSION_ID ` +
+			`AND P.DEPLOYMENT_ID = S.DEPLOYMENT_ID AND P.OU_ID = $2) ` +
+			`AND S.STATE = 'ACTIVE' ` +
+			`AND S.IDLE_EXPIRES_AT > $3 AND S.ABSOLUTE_EXPIRES_AT > $3 ` +
+			`AND S.DEPLOYMENT_ID = $6 ` +
+			`ORDER BY S.LAST_ACTIVE_AT DESC, S.SESSION_ID DESC LIMIT $4 OFFSET $5`,
+	}
+
+	// queryCountLiveSessionsBySubjectInOU counts a subject's live sessions with an application signed in
+	// under the organization unit.
+	queryCountLiveSessionsBySubjectInOU = model.DBQuery{
+		ID: "SEQ-SESS-24",
+		Query: `SELECT COUNT(*) AS total FROM "SESSION" S WHERE S.SUBJECT_ID = $1 ` +
+			`AND EXISTS (SELECT 1 FROM "SESSION_PARTICIPANT" P WHERE P.SESSION_ID = S.SESSION_ID ` +
+			`AND P.DEPLOYMENT_ID = S.DEPLOYMENT_ID AND P.OU_ID = $2) ` +
+			`AND S.STATE = 'ACTIVE' ` +
+			`AND S.IDLE_EXPIRES_AT > $3 AND S.ABSOLUTE_EXPIRES_AT > $3 ` +
+			`AND S.DEPLOYMENT_ID = $4`,
+	}
+
+	// queryListLiveSessionsByAppInOU returns one page of the live sessions the application has joined under
+	// the organization unit, most recently active first. Backed by idx_session_participant_app.
+	queryListLiveSessionsByAppInOU = model.DBQuery{
+		ID: "SEQ-SESS-25",
+		Query: `SELECT S.SESSION_ID, S.TYPE, S.SUBJECT_ID, S.FLOW_ID, S.FLOW_VERSION, S.FLOW_EXECUTION_ID, ` +
+			`S.HANDLE_ID, S.AUTHENTICATED_AT, S.CREATED_AT, S.LAST_ACTIVE_AT, S.IDLE_EXPIRES_AT, ` +
+			`S.ABSOLUTE_EXPIRES_AT, S.PROPERTIES, S.STATE, S.VERSION ` +
+			`FROM "SESSION" S ` +
+			`WHERE S.SESSION_ID IN (SELECT P.SESSION_ID FROM "SESSION_PARTICIPANT" P ` +
+			`WHERE P.APP_ID = $1 AND P.OU_ID = $2 AND P.DEPLOYMENT_ID = $6) ` +
+			`AND S.STATE = 'ACTIVE' ` +
+			`AND S.IDLE_EXPIRES_AT > $3 AND S.ABSOLUTE_EXPIRES_AT > $3 ` +
+			`AND S.DEPLOYMENT_ID = $6 ` +
+			`ORDER BY S.LAST_ACTIVE_AT DESC, S.SESSION_ID DESC LIMIT $4 OFFSET $5`,
+	}
+
+	// queryCountLiveSessionsByAppInOU counts the live sessions the application has joined under the
+	// organization unit.
+	queryCountLiveSessionsByAppInOU = model.DBQuery{
+		ID: "SEQ-SESS-26",
+		Query: `SELECT COUNT(*) AS total FROM "SESSION" S ` +
+			`WHERE S.SESSION_ID IN (SELECT P.SESSION_ID FROM "SESSION_PARTICIPANT" P ` +
+			`WHERE P.APP_ID = $1 AND P.OU_ID = $2 AND P.DEPLOYMENT_ID = $4) ` +
+			`AND S.STATE = 'ACTIVE' ` +
+			`AND S.IDLE_EXPIRES_AT > $3 AND S.ABSOLUTE_EXPIRES_AT > $3 ` +
+			`AND S.DEPLOYMENT_ID = $4`,
+	}
+
+	// queryGetSubjectParticipantByTokenFamily returns the participant of one of the subject's sessions, SSO or
+	// direct, that holds the token family. The subject's sessions bound the lookup through idx_session_subject.
+	queryGetSubjectParticipantByTokenFamily = model.DBQuery{
+		ID: "SEQ-SESS-27",
+		Query: `SELECT SESSION_ID, APP_ID, OU_ID, FIRST_JOINED_AT, LAST_ACTIVE_AT, TFID ` +
+			`FROM "SESSION_PARTICIPANT" WHERE TFID = $1 AND DEPLOYMENT_ID = $3 ` +
+			`AND SESSION_ID IN (SELECT SESSION_ID FROM "SESSION" ` +
+			`WHERE SUBJECT_ID = $2 AND DEPLOYMENT_ID = $3)`,
+	}
+
+	// queryReplaceParticipantTokenFamily moves a participant to a new TFID only while it holds the expected one,
+	// so concurrent joins converge, and returns the TFID it holds.
+	queryReplaceParticipantTokenFamily = model.DBQuery{
+		ID: "SEQ-SESS-28",
+		Query: `UPDATE "SESSION_PARTICIPANT" SET TFID = CASE WHEN TFID = $1 THEN $2 ELSE TFID END ` +
+			`WHERE SESSION_ID = $3 AND APP_ID = $4 AND OU_ID = $5 AND DEPLOYMENT_ID = $6 RETURNING TFID`,
 	}
 )
 

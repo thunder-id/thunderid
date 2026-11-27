@@ -4,6 +4,9 @@
 package flowexec
 
 import (
+	"context"
+	"time"
+
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 )
 
@@ -25,4 +28,27 @@ func actsForCaller(flowType providers.FlowType) bool {
 // admin's steps and the server's authority on the invitee's, and its role step records the admin itself.
 func recordsAuthority(flowType providers.FlowType) bool {
 	return actsForCaller(flowType) && flowType != providers.FlowTypeInvitation
+}
+
+// ssoHandleTTL is how long an SSO handle issued now stays usable: as long as the session it names can
+// last. It is zero without SSO sessions, where no handle is issued.
+func ssoHandleTTL(ctx context.Context, sessions sessionLifetime) time.Duration {
+	if sessions == nil {
+		return 0
+	}
+	return sessions.AbsoluteTimeout(ctx)
+}
+
+// requestedMaxAgeKey carries the maximum authentication age a flow start asked for.
+type requestedMaxAgeKey struct{}
+
+// withRequestedMaxAge returns a context carrying the maximum authentication age a flow start asked for.
+func withRequestedMaxAge(ctx context.Context, maxAge int64) context.Context {
+	return context.WithValue(ctx, requestedMaxAgeKey{}, maxAge)
+}
+
+// requestedMaxAge returns the maximum authentication age a flow start asked for, if any.
+func requestedMaxAge(ctx context.Context) (int64, bool) {
+	maxAge, ok := ctx.Value(requestedMaxAgeKey{}).(int64)
+	return maxAge, ok
 }

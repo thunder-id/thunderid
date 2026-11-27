@@ -116,6 +116,7 @@ func (tb *tokenBuilder) BuildAccessToken(
 		ClaimsLocales:        tokenCtx.ClaimsLocales,
 		TokenFamilyID:        tokenCtx.TokenFamilyID,
 		AuthorizationDetails: tokenCtx.AuthorizationDetails,
+		AuthTime:             tokenCtx.AuthTime,
 	}
 	if tokenCtx.ActorClaims != nil {
 		tokenDTO.Delegated = true
@@ -446,6 +447,10 @@ func (tb *tokenBuilder) buildAccessTokenClaims(
 		claims[constants.ClaimIDP] = ctx.SourceIDP
 	}
 
+	if ctx.AuthTime > 0 {
+		claims[constants.ClaimAuthTime] = ctx.AuthTime
+	}
+
 	if ctx.ActorClaims != nil {
 		actClaim := tb.buildActorClaim(ctx.ActorClaims)
 		claims["act"] = actClaim
@@ -649,6 +654,9 @@ func (tb *tokenBuilder) buildRefreshTokenClaims(ctx *RefreshTokenBuildContext) (
 	}
 	if ctx.OUID != "" {
 		claims[constants.ClaimAccessTokenOUID] = ctx.OUID
+	}
+	if ctx.AuthTime > 0 {
+		claims[constants.ClaimAuthTime] = ctx.AuthTime
 	}
 
 	return claims, nil

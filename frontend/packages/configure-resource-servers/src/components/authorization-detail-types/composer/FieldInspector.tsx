@@ -30,9 +30,13 @@ import PanelSection from './PanelSection';
 import useComposerLabels, {READING_ORDER} from './useComposerLabels';
 import type {FieldKind, ItemKind, Modification, SchemaField} from '../../../models/authorization-detail-type';
 import {
+  allowedValueKind,
   effectiveModification,
   modificationsFor,
+  supportsAllowedValues,
+  supportsFixedValue,
   supportsLimits,
+  trimSpace,
   type FieldIssue,
 } from '../../../utils/authorization-detail-schema';
 import {
@@ -53,12 +57,31 @@ const DATE_TIME_HINT = '2026-12-31T23:59:59Z';
 const LIMIT_ISSUES = [
   'limitInvalid',
   'limitOrder',
+  'limitPrecision',
+  'exclusiveLimitRequired',
+  'stepInvalid',
+  'stepPrecision',
+  'minLengthInvalid',
+  'minLengthTooLarge',
   'maxLengthInvalid',
   'maxLengthTooLarge',
+  'lengthOrder',
+  'patternUnsupported',
+  'patternIncomplete',
   'minItemsInvalid',
   'minItemsTooLarge',
+  'maxItemsInvalid',
+  'maxItemsTooLarge',
+  'itemsOrder',
 ];
-const ALLOWED_VALUE_ISSUES = ['allowedValuesInvalid', 'allowedValuesDuplicate', 'allowedValuesSpaces'];
+const FIXED_VALUE_ISSUES = ['fixedValueInvalid', 'fixedValuePrecision', 'fixedValueBoolean', 'typeValueExcluded'];
+const ALLOWED_VALUE_ISSUES = [
+  'allowedValuesInvalid',
+  'allowedValuesPrecision',
+  'allowedValuesDuplicate',
+  'allowedValuesSpaces',
+  'typeValueExcluded',
+];
 const POLICY_ISSUES = [
   'modifiableByRequired',
   'modifiableInSupplied',
@@ -117,9 +140,15 @@ export default function FieldInspector({
 
   const droppedLabels: Record<DroppedSetting, string> = {
     fields: t('authorizationDetailTypes:composer.kindChange.fields', 'the fields inside it'),
+    minLength: t('authorizationDetailTypes:composer.kindChange.minLength', 'the minimum length'),
     maxLength: t('authorizationDetailTypes:composer.kindChange.maxLength', 'the maximum length'),
+    pattern: t('authorizationDetailTypes:composer.kindChange.pattern', 'the pattern'),
     allowedValues: t('authorizationDetailTypes:composer.kindChange.allowedValues', 'the allowed values'),
+    fixedValue: t('authorizationDetailTypes:composer.kindChange.fixedValue', 'the fixed value'),
+    step: t('authorizationDetailTypes:composer.kindChange.step', 'the step'),
     minItems: t('authorizationDetailTypes:composer.kindChange.minItems', 'the minimum number of items'),
+    maxItems: t('authorizationDetailTypes:composer.kindChange.maxItems', 'the maximum number of items'),
+    uniqueItems: t('authorizationDetailTypes:composer.kindChange.uniqueItems', 'the rule that each item appears once'),
     limits: t('authorizationDetailTypes:composer.kindChange.limits', 'the minimum and maximum'),
     change: t('authorizationDetailTypes:composer.kindChange.change', 'the rule for changing it'),
   };
@@ -153,7 +182,7 @@ export default function FieldInspector({
 
   const hasIssue = (...keys: string[]): boolean =>
     issues.some((issue) => keys.some((key) => issue.messageKey.endsWith(key)));
-  const limitError = hasIssue('limitInvalid', 'limitOrder');
+  const limitError = hasIssue('limitInvalid', 'limitOrder', 'limitPrecision');
   const supplied = field.policy.suppliedBy === 'processor';
   const modification = effectiveModification(field);
   // Nothing inside an object the processor supplies can change, so the question is asked only to take
@@ -186,32 +215,127 @@ export default function FieldInspector({
 
   const limitsSummary = (): string => {
     const value = (limit?: number | string): string => (limit === undefined ? '' : String(limit).trim());
+    const none = t('authorizationDetailTypes:composer.limits.none', 'No limits');
+    const parts: string[] = [];
     if (field.kind === 'array') {
-      const count = value(field.minItems);
-      return count
-        ? t('authorizationDetailTypes:composer.limits.minItems', 'At least {{count}} items', {
-            count: Number(count),
+      const fewest = value(field.minItems);
+      const most = value(field.maxItems);
+      if (fewest && most) {
+        parts.push(
+          t('authorizationDetailTypes:composer.limits.itemRange', '{{min}} to {{max}} items', {
+            min: fewest,
+            max: most,
+            interpolation: {escapeValue: false},
+          }),
+        );
+      } else if (fewest) {
+        parts.push(
+          t('authorizationDetailTypes:composer.limits.minItems', 'At least {{count}} items', {
+            count: Number(fewest),
             defaultValue_one: 'At least {{count}} item',
-          })
-        : t('authorizationDetailTypes:composer.limits.none', 'No limits');
+          }),
+        );
+      } else if (most) {
+        parts.push(
+          t('authorizationDetailTypes:composer.limits.maxItems', 'Up to {{count}} items', {
+            count: Number(most),
+            defaultValue_one: 'Up to {{count}} item',
+          }),
+        );
+      }
+      if (field.uniqueItems) parts.push(t('authorizationDetailTypes:composer.limits.unique', 'Each item once'));
+      return parts.join(' · ') || none;
     }
     if (field.kind === 'string') {
+      const shortest = value(field.minLength);
       const length = value(field.maxLength);
-      return length
-        ? t('authorizationDetailTypes:composer.limits.length', 'Up to {{count}} characters', {
+      if (shortest && length) {
+        parts.push(
+          t('authorizationDetailTypes:composer.limits.lengthRange', '{{min}} to {{max}} characters', {
+            min: shortest,
+            max: length,
+            interpolation: {escapeValue: false},
+          }),
+        );
+      } else if (length) {
+        parts.push(
+          t('authorizationDetailTypes:composer.limits.length', 'Up to {{count}} characters', {
             count: Number(length),
             defaultValue_one: 'Up to {{count}} character',
-          })
-        : t('authorizationDetailTypes:composer.limits.none', 'No limits');
+          }),
+        );
+      } else if (shortest) {
+        parts.push(
+          t('authorizationDetailTypes:composer.limits.minLength', 'At least {{count}} characters', {
+            count: Number(shortest),
+            defaultValue_one: 'At least {{count}} character',
+          }),
+        );
+      }
+      if (value(field.pattern)) parts.push(t('authorizationDetailTypes:composer.limits.pattern', 'Pattern'));
+      return parts.join(' · ') || none;
     }
     const min = value(field.policy.minimum);
     const max = value(field.policy.maximum);
     const options = {min, max, interpolation: {escapeValue: false}};
-    if (min && max) return t('authorizationDetailTypes:composer.limits.range', '{{min}} to {{max}}', options);
-    if (max) return t('authorizationDetailTypes:composer.limits.max', 'Up to {{max}}', options);
-    if (min) return t('authorizationDetailTypes:composer.limits.min', 'From {{min}}', options);
-    return t('authorizationDetailTypes:composer.limits.none', 'No limits');
+    if (min && max && field.exclusiveMinimum && field.exclusiveMaximum) {
+      parts.push(t('authorizationDetailTypes:composer.limits.rangeBetween', 'Above {{min}}, below {{max}}', options));
+    } else if (min && max && field.exclusiveMinimum) {
+      parts.push(t('authorizationDetailTypes:composer.limits.rangeAbove', 'Above {{min}}, up to {{max}}', options));
+    } else if (min && max && field.exclusiveMaximum) {
+      parts.push(t('authorizationDetailTypes:composer.limits.rangeBelow', '{{min}} to below {{max}}', options));
+    } else if (min && max) {
+      parts.push(t('authorizationDetailTypes:composer.limits.range', '{{min}} to {{max}}', options));
+    } else if (max) {
+      parts.push(
+        field.exclusiveMaximum
+          ? t('authorizationDetailTypes:composer.limits.below', 'Below {{max}}', options)
+          : t('authorizationDetailTypes:composer.limits.max', 'Up to {{max}}', options),
+      );
+    } else if (min) {
+      parts.push(
+        field.exclusiveMinimum
+          ? t('authorizationDetailTypes:composer.limits.above', 'Above {{min}}', options)
+          : t('authorizationDetailTypes:composer.limits.min', 'From {{min}}', options),
+      );
+    }
+    const step = value(field.step);
+    if (field.kind === 'number' && step) {
+      parts.push(
+        step === '1'
+          ? t('authorizationDetailTypes:composer.limits.wholeNumbers', 'Whole numbers')
+          : t('authorizationDetailTypes:composer.limits.step', 'Steps of {{step}}', {
+              step,
+              interpolation: {escapeValue: false},
+            }),
+      );
+    }
+    return parts.join(' · ') || none;
   };
+
+  // A count such as a length or a number of items, with a hint under it.
+  const countInput = (
+    key: 'minLength' | 'maxLength' | 'minItems' | 'maxItems',
+    text: string,
+    placeholder: string,
+    errorKeys: string[],
+    hint?: string,
+  ): JSX.Element => (
+    <TextField
+      labelPlacement="top"
+      label={text}
+      fullWidth
+      id={`${field.key}-${key}`}
+      size="small"
+      error={hasIssue(...errorKeys)}
+      value={field[key] ?? ''}
+      disabled={readOnly}
+      placeholder={placeholder}
+      helperText={hint}
+      slotProps={{htmlInput: {inputMode: 'numeric'}}}
+      onChange={(e) => update({[key]: e.target.value})}
+    />
+  );
 
   const limitInput = (limit: 'minimum' | 'maximum'): JSX.Element => (
     <TextField
@@ -238,10 +362,75 @@ export default function FieldInspector({
           ? t('authorizationDetailTypes:fields.dateTimeHint', 'e.g., {{example}}', {example: DATE_TIME_HINT})
           : undefined
       }
-      slotProps={{htmlInput: {inputMode: field.kind === 'number' ? 'decimal' : undefined}}}
       onChange={(e) => updatePolicy({[limit]: e.target.value})}
     />
   );
+
+  // A number's limit, read as a comparison: at least or more than the minimum, at most or less than the
+  // maximum. The second choice excludes the limit itself, written as exclusiveMinimum or exclusiveMaximum.
+  const boundInput = (limit: 'minimum' | 'maximum'): JSX.Element => {
+    const isMinimum = limit === 'minimum';
+    const exclusive = isMinimum ? field.exclusiveMinimum : field.exclusiveMaximum;
+    const inputId = `${field.key}-${limit}`;
+    return (
+      <FormControl fullWidth error={limitError || hasIssue('exclusiveLimitRequired')}>
+        <FormLabel htmlFor={inputId}>
+          {isMinimum
+            ? t('authorizationDetailTypes:fields.minimum', 'Minimum')
+            : t('authorizationDetailTypes:fields.maximum', 'Maximum')}
+        </FormLabel>
+        <Stack direction="row" spacing={1}>
+          <TextField
+            select
+            size="small"
+            value={exclusive ? 'exclusive' : 'inclusive'}
+            disabled={readOnly}
+            slotProps={{
+              htmlInput: {
+                'aria-label': isMinimum
+                  ? t('authorizationDetailTypes:fields.minimumComparison', 'Minimum comparison')
+                  : t('authorizationDetailTypes:fields.maximumComparison', 'Maximum comparison'),
+              },
+            }}
+            onChange={(e) =>
+              update({
+                [isMinimum ? 'exclusiveMinimum' : 'exclusiveMaximum']: e.target.value === 'exclusive' || undefined,
+              })
+            }
+            sx={{flex: '0 0 auto', minWidth: 132}}
+          >
+            <MenuItem value="inclusive">
+              {isMinimum
+                ? t('authorizationDetailTypes:fields.atLeast', 'At least')
+                : t('authorizationDetailTypes:fields.atMost', 'At most')}
+            </MenuItem>
+            <MenuItem value="exclusive">
+              {isMinimum
+                ? t('authorizationDetailTypes:fields.moreThan', 'More than')
+                : t('authorizationDetailTypes:fields.lessThan', 'Less than')}
+            </MenuItem>
+          </TextField>
+          <TextField
+            fullWidth
+            id={inputId}
+            size="small"
+            error={limitError || (Boolean(exclusive) && hasIssue('exclusiveLimitRequired'))}
+            value={field.policy[limit] ?? ''}
+            disabled={readOnly}
+            placeholder={
+              isMinimum
+                ? t('authorizationDetailTypes:fields.noMinimum', 'No minimum')
+                : t('authorizationDetailTypes:fields.noMaximum', 'No maximum')
+            }
+            slotProps={{htmlInput: {inputMode: 'decimal'}}}
+            onChange={(e) => updatePolicy({[limit]: e.target.value})}
+            // Padded as a small select is, so the value is as tall as the comparison beside it.
+            sx={{'& .MuiInputBase-input': {py: 1.25}}}
+          />
+        </Stack>
+      </FormControl>
+    );
+  };
 
   const title = (
     <Stack direction="row" spacing={1} alignItems="center" component="span">
@@ -351,7 +540,7 @@ export default function FieldInspector({
               id={`${field.key}-name`}
               size="small"
               inputRef={nameRef}
-              error={hasIssue('nameRequired', 'nameSpaces', 'nameDot', 'nameInnerSpace', 'nameDuplicate')}
+              error={hasIssue('nameRequired', 'nameSpaces', 'nameDot', 'nameDuplicate')}
               value={field.name}
               disabled={readOnly}
               placeholder={t('authorizationDetailTypes:fields.namePlaceholder', 'e.g., amount')}
@@ -368,6 +557,23 @@ export default function FieldInspector({
               placeholder={t('authorizationDetailTypes:fields.titlePlaceholder', 'e.g., Amount')}
               helperText={t('authorizationDetailTypes:fields.titleHint', 'Shown to the user on the consent screen.')}
               onChange={(e) => update({title: e.target.value})}
+            />
+            <TextField
+              labelPlacement="top"
+              label={t('authorizationDetailTypes:fields.description', 'Description')}
+              fullWidth
+              multiline
+              minRows={2}
+              id={`${field.key}-description`}
+              size="small"
+              value={field.description ?? ''}
+              disabled={readOnly}
+              placeholder={t('authorizationDetailTypes:fields.descriptionPlaceholder', 'Optional')}
+              helperText={t(
+                'authorizationDetailTypes:fields.descriptionHint',
+                'Shown under the display name on the consent screen.',
+              )}
+              onChange={(e) => update({description: e.target.value})}
             />
             <Stack direction="row" spacing={2}>
               <FormControl fullWidth>
@@ -409,6 +615,50 @@ export default function FieldInspector({
                 </FormControl>
               )}
             </Stack>
+            {supportsFixedValue(field) &&
+              (field.kind === 'boolean' ? (
+                <FormControl fullWidth error={hasIssue(...FIXED_VALUE_ISSUES)}>
+                  <FormLabel id={`${field.key}-fixed-label`}>
+                    {t('authorizationDetailTypes:fields.fixedValue', 'Fixed value')}
+                  </FormLabel>
+                  <Select
+                    size="small"
+                    labelId={`${field.key}-fixed-label`}
+                    value={field.fixedValue ?? ''}
+                    disabled={readOnly}
+                    displayEmpty
+                    onChange={(e) => update({fixedValue: e.target.value || undefined})}
+                  >
+                    <MenuItem value="">{t('authorizationDetailTypes:fields.noFixedValue', 'None')}</MenuItem>
+                    <MenuItem value="true">{t('authorizationDetailTypes:fields.fixedTrue', 'Always true')}</MenuItem>
+                    <MenuItem value="false">{t('authorizationDetailTypes:fields.fixedFalse', 'Always false')}</MenuItem>
+                  </Select>
+                  <FormHelperText>
+                    {t(
+                      'authorizationDetailTypes:fields.fixedValueHint',
+                      'Every request must carry exactly this value.',
+                    )}
+                  </FormHelperText>
+                </FormControl>
+              ) : (
+                <TextField
+                  labelPlacement="top"
+                  label={t('authorizationDetailTypes:fields.fixedValue', 'Fixed value')}
+                  fullWidth
+                  id={`${field.key}-fixed-value`}
+                  size="small"
+                  error={hasIssue(...FIXED_VALUE_ISSUES)}
+                  value={field.fixedValue ?? ''}
+                  disabled={readOnly}
+                  placeholder={t('authorizationDetailTypes:fields.noFixedValue', 'None')}
+                  helperText={t(
+                    'authorizationDetailTypes:fields.fixedValueHint',
+                    'Every request must carry exactly this value.',
+                  )}
+                  slotProps={{htmlInput: {inputMode: field.kind === 'number' ? 'decimal' : undefined}}}
+                  onChange={(e) => update({fixedValue: e.target.value})}
+                />
+              ))}
             <FormControlLabel
               control={
                 <Checkbox
@@ -431,54 +681,110 @@ export default function FieldInspector({
             summary={limitsSummary()}
             defaultExpanded={hasIssue(...LIMIT_ISSUES)}
           >
-            {supportsLimits(field) && (
-              <Stack direction="row" spacing={2}>
-                {limitInput('minimum')}
-                {limitInput('maximum')}
-              </Stack>
-            )}
-            {field.kind === 'array' && (
-              <TextField
-                labelPlacement="top"
-                label={t('authorizationDetailTypes:fields.minItems', 'Minimum number of items')}
-                fullWidth
-                id={`${field.key}-min-items`}
-                size="small"
-                error={hasIssue('minItemsInvalid', 'minItemsTooLarge')}
-                value={field.minItems ?? ''}
-                disabled={readOnly}
-                placeholder={t('authorizationDetailTypes:fields.noMinItems', 'No minimum')}
-                helperText={t(
-                  'authorizationDetailTypes:fields.minItemsHint',
-                  'A request must list at least this many items.',
-                )}
-                slotProps={{htmlInput: {inputMode: 'numeric'}}}
-                onChange={(e) => update({minItems: e.target.value})}
-              />
-            )}
-            {field.kind === 'string' && (
-              <TextField
-                labelPlacement="top"
-                label={t('authorizationDetailTypes:fields.maxLength', 'Maximum length')}
-                fullWidth
-                id={`${field.key}-max-length`}
-                size="small"
-                error={hasIssue('maxLengthInvalid', 'maxLengthTooLarge')}
-                value={field.maxLength ?? ''}
-                disabled={readOnly}
-                placeholder={t('authorizationDetailTypes:fields.noMaxLength', 'No limit')}
-                helperText={t(
-                  'authorizationDetailTypes:fields.maxLengthHint',
-                  'Values are shown to the user on the consent screen, so keep free text short.',
-                )}
-                slotProps={{htmlInput: {inputMode: 'numeric'}}}
-                onChange={(e) => update({maxLength: e.target.value})}
-              />
-            )}
+            {/* Spaced as the basics are, by gap, so the checkbox keeps its inset. */}
+            <Stack spacing={2.5} useFlexGap>
+              {field.kind === 'number' && (
+                <>
+                  {boundInput('minimum')}
+                  {boundInput('maximum')}
+                  <TextField
+                    labelPlacement="top"
+                    label={t('authorizationDetailTypes:fields.step', 'Step')}
+                    fullWidth
+                    id={`${field.key}-step`}
+                    size="small"
+                    error={hasIssue('stepInvalid', 'stepPrecision')}
+                    value={field.step ?? ''}
+                    disabled={readOnly}
+                    placeholder={t('authorizationDetailTypes:fields.noStep', 'Any number')}
+                    helperText={t(
+                      'authorizationDetailTypes:fields.stepHint',
+                      'For example, 1 for whole numbers or 0.01 for cents.',
+                    )}
+                    slotProps={{htmlInput: {inputMode: 'decimal'}}}
+                    onChange={(e) => update({step: e.target.value})}
+                  />
+                </>
+              )}
+              {supportsLimits(field) && field.kind !== 'number' && (
+                <Stack direction="row" spacing={2}>
+                  {limitInput('minimum')}
+                  {limitInput('maximum')}
+                </Stack>
+              )}
+              {field.kind === 'array' && (
+                <>
+                  <Stack direction="row" spacing={2}>
+                    {countInput(
+                      'minItems',
+                      t('authorizationDetailTypes:fields.minItems', 'Minimum number of items'),
+                      t('authorizationDetailTypes:fields.noMinItems', 'No minimum'),
+                      ['minItemsInvalid', 'minItemsTooLarge', 'itemsOrder'],
+                    )}
+                    {countInput(
+                      'maxItems',
+                      t('authorizationDetailTypes:fields.maxItems', 'Maximum number of items'),
+                      t('authorizationDetailTypes:fields.noMaxItems', 'No maximum'),
+                      ['maxItemsInvalid', 'maxItemsTooLarge', 'itemsOrder'],
+                    )}
+                  </Stack>
+                  {/* A yes or no setting, drawn as Required is in the basics. */}
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={Boolean(field.uniqueItems)}
+                        disabled={readOnly}
+                        onChange={(e) => update({uniqueItems: e.target.checked || undefined})}
+                      />
+                    }
+                    label={t('authorizationDetailTypes:fields.uniqueItems', 'Each item can appear only once')}
+                  />
+                </>
+              )}
+              {field.kind === 'string' && (
+                <>
+                  <Stack direction="row" spacing={2}>
+                    {countInput(
+                      'minLength',
+                      t('authorizationDetailTypes:fields.minLength', 'Minimum length'),
+                      t('authorizationDetailTypes:fields.noMinLength', 'No minimum'),
+                      ['minLengthInvalid', 'minLengthTooLarge', 'lengthOrder'],
+                    )}
+                    {countInput(
+                      'maxLength',
+                      t('authorizationDetailTypes:fields.maxLength', 'Maximum length'),
+                      t('authorizationDetailTypes:fields.noMaxLength', 'No limit'),
+                      ['maxLengthInvalid', 'maxLengthTooLarge', 'lengthOrder'],
+                      t(
+                        'authorizationDetailTypes:fields.maxLengthHint',
+                        'Values are shown to the user on the consent screen, so keep free text short.',
+                      ),
+                    )}
+                  </Stack>
+                  <TextField
+                    labelPlacement="top"
+                    label={t('authorizationDetailTypes:fields.pattern', 'Pattern')}
+                    fullWidth
+                    id={`${field.key}-pattern`}
+                    size="small"
+                    error={hasIssue('patternUnsupported', 'patternIncomplete')}
+                    value={field.pattern ?? ''}
+                    disabled={readOnly}
+                    placeholder={t('authorizationDetailTypes:fields.noPattern', 'Any text')}
+                    helperText={t(
+                      'authorizationDetailTypes:fields.patternHint',
+                      'An RE2 regular expression, such as ^[A-Z]{3}$.',
+                    )}
+                    slotProps={{htmlInput: {spellCheck: false, sx: {fontFamily: 'monospace'}}}}
+                    onChange={(e) => update({pattern: e.target.value})}
+                  />
+                </>
+              )}
+            </Stack>
           </PanelSection>
         )}
 
-        {field.kind === 'array' && (
+        {supportsAllowedValues(field) && (
           <PanelSection
             title={t('authorizationDetailTypes:fields.allowedValues', 'Allowed values')}
             summary={
@@ -508,16 +814,16 @@ export default function FieldInspector({
               }}
               onKeyDown={(event: KeyboardEvent<HTMLDivElement> & {defaultMuiPrevented?: boolean}) => {
                 if (event.key !== 'Enter' || !allowedDraft) return;
-                // The value is trimmed, as the server refuses one with surrounding space, and a blank or
-                // repeated value is refused here rather than dropped.
+                // The value is trimmed of the white space the server trims, as it refuses a value with
+                // surrounding space, and a blank or repeated value is refused here rather than dropped.
                 event.defaultMuiPrevented = true;
                 event.preventDefault();
-                const value = allowedDraft.trim();
+                const value = trimSpace(allowedDraft);
                 const current = field.allowedValues ?? [];
                 const same = (other: string): boolean =>
-                  field.itemKind === 'number' && Number.isFinite(Number(value)) && other.trim() !== ''
+                  allowedValueKind(field) === 'number' && Number.isFinite(Number(value)) && trimSpace(other) !== ''
                     ? Number(other) === Number(value)
-                    : other.trim() === value;
+                    : trimSpace(other) === value;
                 // A refused value stays selected, so the next one typed replaces it rather than joining it.
                 if (!value || current.some(same)) (event.target as HTMLInputElement).select();
                 if (!value) {
@@ -552,10 +858,12 @@ export default function FieldInspector({
                   }
                   helperText={
                     allowedError ??
-                    t(
-                      'authorizationDetailTypes:fields.allowedValuesHint',
-                      'Each item must be one of these values. Leave empty to allow any value.',
-                    )
+                    (field.kind === 'array'
+                      ? t(
+                          'authorizationDetailTypes:fields.allowedValuesHint',
+                          'Each item must be one of these values. Leave empty to allow any value.',
+                        )
+                      : t('authorizationDetailTypes:fields.allowedValuesFieldHint', 'Leave empty to allow any value.'))
                   }
                 />
               )}

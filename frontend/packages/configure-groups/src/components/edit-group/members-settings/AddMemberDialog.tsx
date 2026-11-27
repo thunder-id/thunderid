@@ -27,7 +27,7 @@ import {useState, useMemo, useCallback, type JSX, type SyntheticEvent} from 'rea
 import {useTranslation} from 'react-i18next';
 import useGetAllCandidates from '../../../api/useGetAllCandidates';
 import useGetAllGroupMembers from '../../../api/useGetAllGroupMembers';
-import type {BasicAgent} from '../../../internal/agent';
+import {PERSONAL_AGENT_KIND, type BasicAgent} from '../../../internal/agent';
 import type {GroupBasic, Member} from '../../../models/group';
 
 interface AddMemberDialogProps {
@@ -161,7 +161,7 @@ export default function AddMemberDialog({
     [applications, existingMemberKeys],
   );
   const filteredAgents = useMemo(
-    () => agents.filter((agent) => !existingMemberKeys.has(`agent:${agent.id}`)),
+    () => agents.filter((agent) => agent.kind !== PERSONAL_AGENT_KIND && !existingMemberKeys.has(`agent:${agent.id}`)),
     [agents, existingMemberKeys],
   );
   const groups: GroupBasic[] = useMemo(

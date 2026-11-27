@@ -8,7 +8,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net/url"
+	"slices"
 	"strings"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -18,6 +20,7 @@ import (
 	flowcommon "github.com/thunder-id/thunderid/internal/flow/common"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/revocation"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	declarativeresource "github.com/thunder-id/thunderid/internal/system/declarative_resource"
@@ -125,6 +128,19 @@ type ResourceServiceInterface interface {
 		ctx context.Context, rs *providers.ResourceServer,
 	) *tidcommon.ServiceError
 
+	// Sharing policies decide which organization units a resource server is shared with.
+	CreateSharingPolicy(ctx context.Context, resourceServerID string, req sharing.PolicyRequest) (
+		sharing.Policy, *tidcommon.ServiceError)
+	GetSharingPolicy(ctx context.Context, resourceServerID, policyID string) (
+		sharing.Policy, *tidcommon.ServiceError)
+	ListSharingPolicies(ctx context.Context, resourceServerID string, limit, offset int) (
+		sharing.PolicyList, *tidcommon.ServiceError)
+	UpdateSharingPolicy(ctx context.Context, resourceServerID, policyID string, req sharing.PolicyRequest) (
+		sharing.Policy, *tidcommon.ServiceError)
+	DeleteSharingPolicy(ctx context.Context, resourceServerID, policyID string) *tidcommon.ServiceError
+	ResolveSharingOverlay(ctx context.Context, resourceServerID, ouID string) (
+		sharing.ResolvedOverlay, *tidcommon.ServiceError)
+
 	SetDependencyRegistry(r resourcedependency.Registry)
 	GetResourceDependencies(
 		ctx context.Context, resourceType, id string) ([]resourcedependency.ResourceDependency, error)
@@ -146,6 +162,7 @@ type resourceService struct {
 	keepsReferences bool
 	bus             eventbus.EventBusInterface
 	authzService    sysauthz.SystemAuthorizationServiceInterface
+	sharingService  sharing.SharingServiceInterface
 	// systemFlows is nil where system flows are off.
 	systemFlows systemFlowProvider
 	// managed says which resource servers a control plane deployed, which stay read only here with their
@@ -291,6 +308,7 @@ func newResourceService(
 	projectValidator projectOUValidator,
 	bus eventbus.EventBusInterface,
 	authzService sysauthz.SystemAuthorizationServiceInterface,
+	sharingService sharing.SharingServiceInterface,
 	options ...Option,
 ) (ResourceServiceInterface, error) {
 	// Load default delimiter from config
@@ -310,6 +328,7 @@ func newResourceService(
 		projectValidator:  projectValidator,
 		bus:               bus,
 		authzService:      authzService,
+		sharingService:    sharingService,
 	}
 	for _, option := range options {
 		option(service)
@@ -871,19 +890,12 @@ func (rs *resourceService) updateResourceServer(
 	}
 
 	// An update that names no organization unit keeps the resource server in its own, and one that names no
-	// project keeps it in its project. The project is checked only when the update changes the project or the
-	// organization unit, so a resource server whose project is gone can still be edited.
+	// project keeps it in its project.
 	if svcErr := rs.resolveUpdateOU(ctx, existingResServer.OUID, &resourceServer); svcErr != nil {
 		return nil, svcErr
 	}
-	if resourceServer.ProjectID == "" {
-		resourceServer.ProjectID = existingResServer.ProjectID
-	}
-	if resourceServer.ProjectID != "" && (resourceServer.ProjectID != existingResServer.ProjectID ||
-		resourceServer.OUID != existingResServer.OUID) {
-		if svcErr := rs.validateProjectOU(ctx, resourceServer.ProjectID, resourceServer.OUID); svcErr != nil {
-			return nil, svcErr
-		}
+	if svcErr := rs.resolveUpdateProject(ctx, &existingResServer, &resourceServer); svcErr != nil {
+		return nil, svcErr
 	}
 
 	// Delimiter is always preserved from the existing record
@@ -954,6 +966,10 @@ func (rs *resourceService) updateResourceServer(
 		if nameExists {
 			return nil, &ErrorNameConflict
 		}
+	}
+
+	if svcErr := rs.requireResourceServerMovable(ctx, id, &existingResServer, &resourceServer); svcErr != nil {
+		return nil, svcErr
 	}
 
 	var updatedRS *providers.ResourceServer
@@ -1033,13 +1049,24 @@ func (rs *resourceService) deleteResourceServer(ctx context.Context, id string) 
 	}
 
 	// Use transaction for write operation
+	var sharingErr *tidcommon.ServiceError
 	if err := rs.transactioner.Transact(ctx, func(txCtx context.Context) error {
 		if err := rs.resourceStore.DeleteResourceServer(txCtx, id); err != nil {
 			rs.logger.Error(ctx, "Failed to delete resource server", log.Error(err))
 			return err
 		}
+		// The sharing policies recorded against the resource server go with it, so one later created with
+		// the same id does not come back already shared.
+		if svcErr := rs.sharingService.DeletePoliciesForResource(
+			txCtx, ResourceServerSharingType, id); svcErr != nil {
+			sharingErr = svcErr
+			return errSharingPolicyRemovalRefused
+		}
 		return rs.cascadeDeleteDependents(txCtx, resourcedependency.ResourceTypeResourceServer, id)
 	}); err != nil {
+		if sharingErr != nil {
+			return translateSharingError(sharingErr)
+		}
 		return &tidcommon.InternalServerError
 	}
 
@@ -2307,6 +2334,23 @@ func (rs *resourceService) checkResourceServerAccess(ctx context.Context, action
 	return nil
 }
 
+// resolveUpdateProject keeps an updated resource server in its project when the update names none. The project is
+// checked only when the update changes the project or the organization unit, so a resource server whose project is
+// gone can still be edited.
+func (rs *resourceService) resolveUpdateProject(ctx context.Context, existing *providers.ResourceServer,
+	resourceServer *providers.ResourceServer) *tidcommon.ServiceError {
+	if resourceServer.ProjectID == "" {
+		resourceServer.ProjectID = existing.ProjectID
+	}
+	if resourceServer.ProjectID != "" && (resourceServer.ProjectID != existing.ProjectID ||
+		resourceServer.OUID != existing.OUID) {
+		if svcErr := rs.validateProjectOU(ctx, resourceServer.ProjectID, resourceServer.OUID); svcErr != nil {
+			return svcErr
+		}
+	}
+	return nil
+}
+
 // resolveUpdateOU keeps an updated resource server in its organization unit when the update names none.
 // Moving it places it in another organization unit, which the caller must be allowed to act for too.
 func (rs *resourceService) resolveUpdateOU(ctx context.Context, existingOUID string,
@@ -2319,4 +2363,337 @@ func (rs *resourceService) resolveUpdateOU(ctx context.Context, existingOUID str
 		return nil
 	}
 	return rs.checkResourceServerAccess(ctx, security.ActionUpdateResourceServer, resourceServer.OUID)
+}
+
+// translateSharingError maps a sharing framework error into this service's own codes, except the permissions rule
+// refusal this package's sharing hook raises.
+func translateSharingError(svcErr *tidcommon.ServiceError) *tidcommon.ServiceError {
+	if svcErr != nil && svcErr.Code == ErrorPermissionsRuleNotSupported.Code {
+		return svcErr
+	}
+	return sharingErrors.Translate(svcErr)
+}
+
+// CreateSharingPolicy records which organization units a resource server is shared with. A policy is the
+// initiating organization unit's decision, so that unit is the one the caller must be allowed to act for.
+func (rs *resourceService) CreateSharingPolicy(
+	ctx context.Context, resourceServerID string, req sharing.PolicyRequest,
+) (sharing.Policy, *tidcommon.ServiceError) {
+	policy, svcErr := rs.createSharingPolicy(ctx, resourceServerID, req)
+	var policyID string
+	if svcErr == nil {
+		policyID = policy.ID
+	}
+	rs.publishSharingPolicyEvent(ctx, audit.EventResourceServerSharingPolicyCreate, audit.ActionCreate,
+		resourceServerID, policyID, svcErr)
+	return policy, svcErr
+}
+
+// createSharingPolicy records a sharing policy of a resource server without publishing its audit event.
+func (rs *resourceService) createSharingPolicy(
+	ctx context.Context, resourceServerID string, req sharing.PolicyRequest,
+) (sharing.Policy, *tidcommon.ServiceError) {
+	owningOUID, svcErr := rs.requireSharing(ctx, resourceServerID)
+	if svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	initiatingOUID := req.InitiatingOUID
+	if initiatingOUID == "" {
+		initiatingOUID = owningOUID
+	}
+	if svcErr := rs.checkResourceServerAccess(ctx, security.ActionUpdateResourceServer,
+		initiatingOUID); svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	if svcErr := rs.refuseSharingWrite(ctx, resourceServerID, initiatingOUID == owningOUID); svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	policy, svcErr := rs.sharingService.CreatePolicy(ctx, ResourceServerSharingType, resourceServerID,
+		owningOUID, req)
+	return policy, translateSharingError(svcErr)
+}
+
+// GetSharingPolicy returns one of the resource server's sharing policies. The owner sees every decision about
+// its resource server; any other organization unit sees its own.
+func (rs *resourceService) GetSharingPolicy(
+	ctx context.Context, resourceServerID, policyID string,
+) (sharing.Policy, *tidcommon.ServiceError) {
+	owningOUID, policy, svcErr := rs.requireOwnPolicy(ctx, resourceServerID, policyID)
+	if svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	if svcErr := sysauthz.CheckActionInAnyOU(ctx, rs.authzService, &rs.logger, security.ActionReadResourceServer,
+		security.ResourceTypeResourceServer, owningOUID, policy.InitiatingOUID); svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	return policy, nil
+}
+
+// ListSharingPolicies returns one page of the resource server's sharing policies. A caller who may read
+// resource servers in the owning organization unit sees them all; any other caller sees the ones its own
+// organization units made.
+func (rs *resourceService) ListSharingPolicies(
+	ctx context.Context, resourceServerID string, limit, offset int,
+) (sharing.PolicyList, *tidcommon.ServiceError) {
+	owningOUID, svcErr := rs.requireSharing(ctx, resourceServerID)
+	if svcErr != nil {
+		return sharing.PolicyList{}, svcErr
+	}
+	return sharing.ListReadablePolicies(ctx, rs.sharingService, ResourceServerSharingType, resourceServerID,
+		owningOUID, limit, offset, func(ouID string) *tidcommon.ServiceError {
+			return rs.checkResourceServerAccess(ctx, security.ActionReadResourceServer, ouID)
+		}, translateSharingError)
+}
+
+// UpdateSharingPolicy replaces a sharing policy's contents. Only the organization unit whose decision it is
+// may change it.
+func (rs *resourceService) UpdateSharingPolicy(
+	ctx context.Context, resourceServerID, policyID string, req sharing.PolicyRequest,
+) (sharing.Policy, *tidcommon.ServiceError) {
+	updated, svcErr := rs.updateSharingPolicy(ctx, resourceServerID, policyID, req)
+	rs.publishSharingPolicyEvent(ctx, audit.EventResourceServerSharingPolicyUpdate, audit.ActionUpdate,
+		resourceServerID, policyID, svcErr)
+	return updated, svcErr
+}
+
+// updateSharingPolicy replaces a sharing policy of a resource server without publishing its audit event.
+func (rs *resourceService) updateSharingPolicy(
+	ctx context.Context, resourceServerID, policyID string, req sharing.PolicyRequest,
+) (sharing.Policy, *tidcommon.ServiceError) {
+	owningOUID, policy, svcErr := rs.requireOwnPolicy(ctx, resourceServerID, policyID)
+	if svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	if svcErr := rs.checkResourceServerAccess(ctx, security.ActionUpdateResourceServer,
+		policy.InitiatingOUID); svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	if svcErr := rs.refuseSharingWrite(
+		ctx, resourceServerID, policy.InitiatingOUID == owningOUID); svcErr != nil {
+		return sharing.Policy{}, svcErr
+	}
+	updated, svcErr := rs.sharingService.UpdatePolicy(ctx, policyID, req)
+	return updated, translateSharingError(svcErr)
+}
+
+// DeleteSharingPolicy removes a sharing policy and the reshares issued beneath it.
+func (rs *resourceService) DeleteSharingPolicy(
+	ctx context.Context, resourceServerID, policyID string,
+) *tidcommon.ServiceError {
+	svcErr := rs.deleteSharingPolicy(ctx, resourceServerID, policyID)
+	// A delete that found no policy of the resource server succeeds without an event, so no caller can record
+	// a deletion of an ID it made up.
+	if svcErr == errSharingPolicyNotFoundNoop {
+		return nil
+	}
+	rs.publishSharingPolicyEvent(ctx, audit.EventResourceServerSharingPolicyDelete, audit.ActionDelete,
+		resourceServerID, policyID, svcErr)
+	return svcErr
+}
+
+// deleteSharingPolicy removes a sharing policy of a resource server without publishing its audit event.
+func (rs *resourceService) deleteSharingPolicy(
+	ctx context.Context, resourceServerID, policyID string,
+) *tidcommon.ServiceError {
+	owningOUID, policy, svcErr := rs.requireOwnPolicy(ctx, resourceServerID, policyID)
+	if svcErr != nil {
+		if svcErr.Code == ErrorSharingPolicyNotFound.Code {
+			return errSharingPolicyNotFoundNoop
+		}
+		return svcErr
+	}
+	if svcErr := rs.checkResourceServerAccess(ctx, security.ActionUpdateResourceServer,
+		policy.InitiatingOUID); svcErr != nil {
+		return svcErr
+	}
+	if svcErr := rs.refuseSharingWrite(
+		ctx, resourceServerID, policy.InitiatingOUID == owningOUID); svcErr != nil {
+		return svcErr
+	}
+	if policy.Declared {
+		return &ErrorSharingPolicyDeclared
+	}
+	return translateSharingError(rs.sharingService.DeletePolicy(ctx, policyID))
+}
+
+// ResolveSharingOverlay answers whether one organization unit owns the resource server or is shared it, which
+// policies reached it, and the permissions it holds there. A permissions rule that names no value covers the whole
+// server, so its value lists every permission the server defines.
+func (rs *resourceService) ResolveSharingOverlay(
+	ctx context.Context, resourceServerID, ouID string,
+) (sharing.ResolvedOverlay, *tidcommon.ServiceError) {
+	resourceServer, svcErr := rs.getResourceServer(ctx, resourceServerID)
+	if svcErr != nil {
+		return sharing.ResolvedOverlay{}, svcErr
+	}
+	if ouID == "" {
+		return sharing.ResolvedOverlay{}, &ErrorMissingOUIDParameter
+	}
+	if svcErr := sysauthz.CheckActionInAnyOU(ctx, rs.authzService, &rs.logger, security.ActionReadResourceServer,
+		security.ResourceTypeResourceServer, resourceServer.OUID, ouID); svcErr != nil {
+		return sharing.ResolvedOverlay{}, svcErr
+	}
+	overlay, svcErr := rs.sharingService.ResolveOverlayRules(ctx, ResourceServerSharingType, resourceServerID,
+		ouID)
+	if svcErr != nil {
+		// An id naming no organization unit leaves nothing to resolve either, and answering it as a malformed
+		// policy would describe a mistake the caller did not make.
+		if svcErr.Code == oupkg.ErrorOrganizationUnitNotFound.Code {
+			return sharing.ResolvedOverlay{}, &ErrorResourceServerNotSharedToOU
+		}
+		return sharing.ResolvedOverlay{}, translateSharingError(svcErr)
+	}
+	if !overlay.Visible {
+		return sharing.ResolvedOverlay{}, &ErrorResourceServerNotSharedToOU
+	}
+	rule, ok := overlay.Rules[permissionsFieldKey]
+	if !ok || rule.Value != nil {
+		return overlay, nil
+	}
+	permissions, svcErr := rs.listResourceServerPermissions(ctx, resourceServer)
+	if svcErr != nil {
+		return sharing.ResolvedOverlay{}, svcErr
+	}
+	// The resolved overlay may be the framework's cached copy, so the filled rule goes into a map of its own.
+	rules := maps.Clone(overlay.Rules)
+	rule.Value = &permissions
+	rules[permissionsFieldKey] = rule
+	overlay.Rules = rules
+	return overlay, nil
+}
+
+// listResourceServerPermissions lists every permission a resource server defines: its own actions, its resources,
+// and the actions of each resource.
+func (rs *resourceService) listResourceServerPermissions(
+	ctx context.Context, resourceServer *providers.ResourceServer,
+) ([]string, *tidcommon.ServiceError) {
+	actionCount, err := rs.resourceStore.GetActionListCount(ctx, resourceServer.ID, nil, "")
+	if err != nil {
+		return nil, rs.permissionListingError(ctx, resourceServer.ID, err)
+	}
+	permissions := []string{}
+	if actionCount > 0 {
+		actions, err := rs.resourceStore.GetActionList(ctx, resourceServer.ID, nil, "", actionCount, 0)
+		if err != nil {
+			return nil, rs.permissionListingError(ctx, resourceServer.ID, err)
+		}
+		for _, action := range actions {
+			permissions = append(permissions, action.Permission)
+		}
+	}
+
+	rootCount, err := rs.resourceStore.GetResourceListCountByParent(ctx, resourceServer.ID, nil)
+	if err != nil {
+		return nil, rs.permissionListingError(ctx, resourceServer.ID, err)
+	}
+	if rootCount > 0 {
+		roots, err := rs.resourceStore.GetResourceListByParent(ctx, resourceServer.ID, nil, rootCount, 0)
+		if err != nil {
+			return nil, rs.permissionListingError(ctx, resourceServer.ID, err)
+		}
+		rootPermissions := make([]string, 0, len(roots))
+		for _, root := range roots {
+			rootPermissions = append(rootPermissions, root.Permission)
+		}
+		// The delimiter brings in every resource and action beneath each top-level resource.
+		covered, err := rs.resourceStore.GetDeclaredPermissions(
+			ctx, resourceServer.ID, rootPermissions, resourceServer.Delimiter)
+		if err != nil {
+			return nil, rs.permissionListingError(ctx, resourceServer.ID, err)
+		}
+		permissions = append(permissions, covered...)
+	}
+	slices.Sort(permissions)
+	return slices.Compact(permissions), nil
+}
+
+// permissionListingError answers a failure to list a resource server's permissions.
+func (rs *resourceService) permissionListingError(
+	ctx context.Context, resourceServerID string, err error,
+) *tidcommon.ServiceError {
+	if errors.Is(err, errResultLimitExceededInCompositeMode) {
+		return &ErrResultLimitExceededInCompositeMode
+	}
+	rs.logger.Error(ctx, "Failed to list the permissions of a resource server",
+		log.String("resourceServerID", resourceServerID), log.Error(err))
+	return &tidcommon.InternalServerError
+}
+
+// refuseSharingWrite refuses a sharing write the resource server's store mode or origin does not allow. When
+// resource servers load from files only, all their sharing is declared there. Otherwise the owner's own
+// policies of a declared resource server come from its file, and those of one a control plane deployed come
+// from the deploy; reshares by the units it reaches stay theirs to manage.
+func (rs *resourceService) refuseSharingWrite(
+	ctx context.Context, resourceServerID string, ownerIssued bool,
+) *tidcommon.ServiceError {
+	if getResourceStoreMode() == serverconst.StoreModeDeclarative {
+		return ErrorImmutableResourceServer.WithParams(map[string]string{"id": resourceServerID})
+	}
+	if !ownerIssued {
+		return nil
+	}
+	return rs.refuseImmutable(ctx, resourceServerID)
+}
+
+// requireSharing resolves the resource server a sharing call names and returns its owning organization unit,
+// so an unknown resource server answers as one rather than as a sharing failure. It reads the resource server
+// without the caller's authorization, because a sharing call is authorized against the organization unit
+// whose decision it concerns, which need not be the resource server's own.
+func (rs *resourceService) requireSharing(
+	ctx context.Context, resourceServerID string,
+) (string, *tidcommon.ServiceError) {
+	resourceServer, svcErr := rs.getResourceServer(ctx, resourceServerID)
+	if svcErr != nil {
+		return "", svcErr
+	}
+	return resourceServer.OUID, nil
+}
+
+// requireOwnPolicy fetches a policy and refuses one belonging to another resource. Without it a policy id
+// alone would reach any policy in the deployment through any resource server's path.
+func (rs *resourceService) requireOwnPolicy(
+	ctx context.Context, resourceServerID, policyID string,
+) (string, sharing.Policy, *tidcommon.ServiceError) {
+	owningOUID, svcErr := rs.requireSharing(ctx, resourceServerID)
+	if svcErr != nil {
+		return "", sharing.Policy{}, svcErr
+	}
+	policy, svcErr := rs.sharingService.GetPolicy(ctx, policyID)
+	if svcErr != nil {
+		return "", sharing.Policy{}, translateSharingError(svcErr)
+	}
+	if policy.ResourceType != ResourceServerSharingType || policy.ResourceID != resourceServerID {
+		return "", sharing.Policy{}, &ErrorSharingPolicyNotFound
+	}
+	return owningOUID, policy, nil
+}
+
+// requireResourceServerMovable refuses to move a shared resource server to another organization unit or
+// project: its policies were issued against that unit and project.
+func (rs *resourceService) requireResourceServerMovable(
+	ctx context.Context, resourceServerID string, from, to *providers.ResourceServer,
+) *tidcommon.ServiceError {
+	if from.OUID == to.OUID && from.ProjectID == to.ProjectID {
+		return nil
+	}
+	policies, svcErr := rs.sharingService.ListPolicies(ctx, ResourceServerSharingType, resourceServerID)
+	if svcErr != nil {
+		return translateSharingError(svcErr)
+	}
+	if len(policies) > 0 {
+		return &ErrorSharedResourceServerCannotMove
+	}
+	return nil
+}
+
+// publishSharingPolicyEvent publishes the audit event of an attempt on a resource server's sharing policy:
+// the policy is the target and the resource server the subject. Reshares the framework re-narrows or removes
+// beneath a changed policy write no event of their own.
+func (rs *resourceService) publishSharingPolicyEvent(ctx context.Context, name string, action audit.Action,
+	resourceServerID, policyID string, svcErr *tidcommon.ServiceError) {
+	// A failed attempt keeps the IDs the caller sent, as evidence of what was probed.
+	target := audit.Ref{Type: audit.TargetTypeResourceServerSharingPolicy, ID: policyID}
+	subject := audit.Ref{Type: audit.TargetTypeResourceServer, ID: resourceServerID}
+	eventbus.TryPublish(ctx, rs.bus, eventbus.NewEvent(ctx, name).With(
+		audit.ChangePayloadWithSubject(ctx, target, subject, action, svcErr)))
 }

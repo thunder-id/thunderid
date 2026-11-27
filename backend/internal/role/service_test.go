@@ -499,6 +499,25 @@ func (suite *RoleServiceTestSuite) TestCreateRole_Success() {
 		"rs1", []string{"perm1", "perm2"})
 }
 
+func (suite *RoleServiceTestSuite) TestCreateRole_UnassignableKind() {
+	agent := personalAgent("agent-1", "ou1")
+	request := RoleCreationDetail{
+		Name:        "Test Role",
+		OUID:        "ou1",
+		Assignments: []RoleAssignment{{ID: "agent-1", Type: AssigneeTypeAgent}},
+	}
+	suite.mockOUService.On("GetOrganizationUnit", mock.Anything, "ou1").
+		Return(oupkg.OrganizationUnit{ID: "ou1", Handle: "default"}, nil)
+	suite.mockEntityService.On("GetEntitiesByIDs", mock.Anything, []string{"agent-1"}).
+		Return([]providers.Entity{agent}, nil)
+
+	result, err := suite.service.CreateRole(context.Background(), request)
+
+	suite.Nil(result)
+	suite.Equal(&ErrorPersonalAgentNotAssignable, err)
+	suite.mockStore.AssertNotCalled(suite.T(), "CreateRole", mock.Anything, mock.Anything, mock.Anything)
+}
+
 func (suite *RoleServiceTestSuite) TestCreateRole_ValidationErrors() {
 	testCases := []struct {
 		name    string
@@ -2443,6 +2462,76 @@ func (s *RoleChangeValidationTestSuite) TestValidateDeleteRole_CoversEveryAssign
 	s.Equal([]revocation.AudienceScope{{Audience: californiaAud, Scope: "license"}}, target.Scopes)
 }
 
+// sharedRoleGranting stubs the role and its organization unit, which is all an unshare reads of it.
+func (s *RoleChangeValidationTestSuite) sharedRoleGranting(permissions []ResourcePermissions) {
+	s.store.On("GetRole", mock.Anything, targetRoleID).
+		Return(RoleWithPermissions{ID: targetRoleID, OUID: "ou-1", Permissions: permissions}, nil)
+	s.ous.On("GetOrganizationUnit", mock.Anything, "ou-1").Return(oupkg.OrganizationUnit{ID: "ou-1"}, nil)
+}
+
+func (s *RoleChangeValidationTestSuite) TestGetUnshareRevocationTarget_CoversOnlyTheUnitsHolders() {
+	s.sharedRoleGranting([]ResourcePermissions{
+		{ResourceServerID: californiaRSID, Permissions: []string{"license"}}})
+	stubResourceServer(s.resources, californiaRSID, californiaAud)
+	s.store.On("GetRoleAssignmentsCount", mock.Anything, targetRoleID, "ou-a").Return(2, nil)
+	s.store.On("GetRoleAssignments", mock.Anything, targetRoleID, "ou-a", serverconst.MaxPageSize, 0).
+		Return([]RoleAssignment{
+			{ID: targetUserID, Type: assigneeTypeEntity, OUID: "ou-a"},
+			{ID: targetGroupID, Type: AssigneeTypeGroup, OUID: "ou-a"},
+		}, nil)
+	stubGroupEntities(s.groups, targetGroupID, "member-1")
+
+	target, svcErr := s.service.GetUnshareRevocationTarget(context.Background(), targetRoleID, "ou-a")
+
+	s.Require().Nil(svcErr)
+	s.ElementsMatch([]string{targetUserID, "member-1"}, target.EntityIDs)
+	s.Equal([]revocation.AudienceScope{{Audience: californiaAud, Scope: "license"}}, target.Scopes)
+	s.authz.AssertNotCalled(s.T(), "CanGrantMembership", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *RoleChangeValidationTestSuite) TestGetUnshareRevocationTarget_RoleWithoutPermissionsSkipsTheHolders() {
+	s.sharedRoleGranting(nil)
+
+	target, svcErr := s.service.GetUnshareRevocationTarget(context.Background(), targetRoleID, "ou-a")
+
+	s.Require().Nil(svcErr)
+	s.Empty(target.Scopes)
+	s.store.AssertNotCalled(s.T(), "GetRoleAssignmentsCount", mock.Anything, mock.Anything, mock.Anything)
+}
+
+func (s *RoleChangeValidationTestSuite) TestGetUnshareRevocationTarget_Failures() {
+	s.Run("RoleNotFound", func() {
+		s.SetupTest()
+		s.store.On("GetRole", mock.Anything, targetRoleID).Return(RoleWithPermissions{}, ErrRoleNotFound)
+
+		_, svcErr := s.service.GetUnshareRevocationTarget(context.Background(), targetRoleID, "ou-a")
+
+		s.Equal(&ErrorRoleNotFound, svcErr)
+	})
+	s.Run("AssignmentsUnreadable", func() {
+		s.SetupTest()
+		s.sharedRoleGranting([]ResourcePermissions{
+			{ResourceServerID: californiaRSID, Permissions: []string{"license"}}})
+		stubResourceServer(s.resources, californiaRSID, californiaAud)
+		s.store.On("GetRoleAssignmentsCount", mock.Anything, targetRoleID, "ou-a").Return(0, errors.New("db down"))
+
+		_, svcErr := s.service.GetUnshareRevocationTarget(context.Background(), targetRoleID, "ou-a")
+
+		s.Equal(&tidcommon.InternalServerError, svcErr)
+	})
+	s.Run("ResourceServerUnreadable", func() {
+		s.SetupTest()
+		s.sharedRoleGranting([]ResourcePermissions{
+			{ResourceServerID: californiaRSID, Permissions: []string{"license"}}})
+		s.resources.On("GetResourceServer", mock.Anything, californiaRSID).
+			Return(nil, &tidcommon.InternalServerError)
+
+		_, svcErr := s.service.GetUnshareRevocationTarget(context.Background(), targetRoleID, "ou-a")
+
+		s.Equal(&tidcommon.InternalServerError, svcErr)
+	})
+}
+
 func (s *RoleChangeValidationTestSuite) TestValidateDeleteRole_DeduplicatesAssignees() {
 	s.mutableRoleGrantingLicense()
 	s.assignedTo(
@@ -3129,6 +3218,13 @@ func (suite *RoleServiceTestSuite) TestTranslateSharingError() {
 		{"a unit the issuer may not name", &sharing.ErrorInvalidTargetOU, ErrorInvalidSharingPolicy.Code},
 		{"a section changing kind", &sharing.ErrorScopeFamilyChange, ErrorInvalidSharingPolicy.Code},
 		{"a framework failure", &tidcommon.InternalServerError, tidcommon.InternalServerError.Code},
+		{"a sharing change during revocation", &sharing.ErrorSharingChangedDuringRevocation,
+			ErrorSharingPolicyVersionMismatch.Code},
+		// The revocation an unshare runs refuses as role deletion does, so its refusals keep their own codes.
+		{"too many revocation entries", &revocation.ErrorEntryLimitExceeded, revocation.ErrorEntryLimitExceeded.Code},
+		{"a group nested too deep", &group.ErrorGroupNestingTooDeep, group.ErrorGroupNestingTooDeep.Code},
+		{"too many assignments to read", &ResultLimitExceededInCompositeMode,
+			ResultLimitExceededInCompositeMode.Code},
 	} {
 		suite.Run(tc.name, func() {
 			translated := translateSharingError(tc.from)

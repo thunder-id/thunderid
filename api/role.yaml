@@ -218,6 +218,16 @@ paths:
                     description:
                       key: "error.roleservice.invalid_request_format_description"
                       defaultValue: "The request body is malformed or contains invalid data"
+                personal-agent-not-assignable:
+                  summary: Personal agent cannot be assigned roles
+                  value:
+                    code: "ROL-1046"
+                    message:
+                      key: "error.roleservice.personal_agent_not_assignable"
+                      defaultValue: "Personal agent cannot be assigned roles"
+                    description:
+                      key: "error.roleservice.personal_agent_not_assignable_description"
+                      defaultValue: "A personal agent acts only on behalf of its owner, so it cannot be assigned roles"
                 invalid-assignment-id:
                   summary: Invalid assignment ID
                   value:
@@ -1019,6 +1029,16 @@ paths:
                     description:
                       key: "error.roleservice.invalid_request_format_description"
                       defaultValue: "The request body is malformed or contains invalid data"
+                personal-agent-not-assignable:
+                  summary: Personal agent cannot be assigned roles
+                  value:
+                    code: "ROL-1046"
+                    message:
+                      key: "error.roleservice.personal_agent_not_assignable"
+                      defaultValue: "Personal agent cannot be assigned roles"
+                    description:
+                      key: "error.roleservice.personal_agent_not_assignable_description"
+                      defaultValue: "A personal agent acts only on behalf of its owner, so it cannot be assigned roles"
                 invalid-assignment-id:
                   summary: Invalid assignment ID
                   value:
@@ -1460,6 +1480,12 @@ paths:
         change its `excludedOuIds`. A section naming units can add or drop them, but cannot become
         one that reaches a whole group.
 
+        An edit that takes the role away from an organization unit revokes, there, the role's
+        permissions from the tokens of those holding it through an assignment made in that unit.
+        If revoking before the change fails, the policy is left as it was. If revoking after it fails, the change is
+        saved but the request returns an error. The change is refused, and the policy kept, with `RVS-1001`, `GRP-1017` or `ROL-1017` when the
+        revocation cannot be planned, as a role deletion is.
+
         Refused for roles that load from resource files only.
       requestBody:
         required: true
@@ -1525,7 +1551,11 @@ paths:
         - Role Sharing
       summary: Delete a sharing policy
       description: |
-        Removes the policy and the policies its sharees issued beneath it.
+        Removes the policy and the policies its sharees issued beneath it. In each organization unit
+        that loses the role, the tokens carrying the role's permissions that were issued to those
+        holding it through an assignment made there are revoked. If revoking before the change fails, the policy is left as it was. If revoking after it fails, the change is
+        saved but the request returns an error. The change is refused, and the policy kept, with `RVS-1001`, `GRP-1017` or `ROL-1017` when the
+        revocation cannot be planned, as a role deletion is.
 
         A declared policy cannot be deleted here. Its existence belongs to the resource file that
         declares it, so it goes away by being removed from that file. Where roles load from
@@ -2050,7 +2080,9 @@ components:
                   defaultValue: "The change would stop sharing the role with an organization unit where a user sharing policy mandates it. Remove the role from that policy first"
 
     RoleSharingPolicyDeleteConflict:
-      description: The delete would unshare the role from a unit where a user share mandates it.
+      description: |
+        The delete would unshare the role from a unit where a user share mandates it, or the role's
+        sharing changed while its holders' tokens were being revoked.
       content:
         application/json:
           schema:
@@ -2066,6 +2098,16 @@ components:
                 description:
                   key: "error.roleservice.role_mandated_in_ou_description"
                   defaultValue: "The change would stop sharing the role with an organization unit where a user sharing policy mandates it. Remove the role from that policy first"
+            sharingChangedDuringRevocation:
+              summary: The role's sharing changed while its holders' tokens were being revoked
+              value:
+                code: "ROL-1024"
+                message:
+                  key: "error.roleservice.sharing_policy_version_mismatch"
+                  defaultValue: "Sharing policy version mismatch"
+                description:
+                  key: "error.sharingservice.sharing_changed_during_revocation_description"
+                  defaultValue: "The resource's sharing changed while access was being revoked; retry the change"
 
     RoleSharingServerError:
       description: Internal server error

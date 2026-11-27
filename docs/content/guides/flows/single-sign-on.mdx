@@ -85,21 +85,38 @@ A sign-in lands in one organization unit (OU) where both the user and the applic
 Two timeouts bound every flow SSO session:
 
 - **Idle timeout**: the maximum inactivity period. The idle deadline moves forward on each use of the session, so an active session stays alive. A sign-in that reuses the session counts as use, and so does a `refresh_token` grant for tokens issued under the session, so an application that keeps a user signed in by refreshing tokens keeps the session alive for other applications too. To limit database writes, the deadline moves at most once per activity-refresh interval, which is 1 minute by default. The default idle timeout is 2 hours.
-- **Absolute timeout**: the maximum total lifetime, fixed when the session is created and never extended. The default is 8 hours.
+- **Absolute timeout**: the maximum total lifetime, fixed when the session is created and never extended. The default is 24 hours.
 
 A session expires when it passes either deadline. After expiry, **Check SSO Session** takes the **Authenticate** path and the user signs in again.
 
-Set the timeouts in the `session` server-config resource. In a source checkout, use `backend/cmd/server/config/resources/server_configs/session.yaml`; in a packaged distribution, use `<THUNDERID_HOME>/config/resources/server_configs/session.yaml`. Durations are in seconds. A value of `0` uses the default.
+The timeouts are the `session` server-config section. A change applies without a restart: at once on the node that receives it, and on other nodes once their cached copy of the section expires, after 30 seconds by default (see [Cache Property Overrides](../../deployment/configuration.mdx#cache-property-overrides)). A shorter timeout also ends existing sessions that have gone past it, while a longer absolute timeout applies to sessions that start after the change. Durations are in seconds, and a field you leave out takes its default.
 
-```yaml
-name: session
-value:
-  idleTimeoutSeconds: 7200              # 2 hours
-  absoluteTimeoutSeconds: 28800         # 8 hours
-  activityRefreshIntervalSeconds: 60    # 1 minute
-```
+Set the section in any of these ways:
 
-The idle timeout must not exceed the absolute timeout, and the activity-refresh interval must be less than the idle timeout.
+- **Console** - in the control plane Console, open the **Sign-in session** tab under **Organization** > **Configurations**. Each timeout shows whether it is the default or a value set here, and **Reset to default** returns a set value to its default. A gateway's Admin Console manages only users, agents, groups, roles and organization units, so it does not show these settings.
+- **Runtime** - send the new value to `PUT /server-config/session` on the control plane. The request replaces the stored value:
+  ```http
+  PUT /server-config/session
+  Authorization: Bearer <admin-access-token>
+  Content-Type: application/json
+
+  {
+    "idleTimeoutSeconds": 3600,
+    "absoluteTimeoutSeconds": 28800
+  }
+  ```
+  A deploy carries it to the gateways. A gateway refuses this request from any token, so on a gateway without a control plane, import the section with the management API key instead (see [Resources Imported Only With the Management API Key](../declarative-configurations/import-resources.mdx#resources-imported-only-with-the-management-api-key)).
+- **Declarative** - create the `session` server-config resource, then restart. In a source checkout, use `backend/cmd/server/config/resources/server_configs/session.yaml`; in a packaged distribution, use `<THUNDERID_HOME>/config/resources/server_configs/session.yaml`. A resource that sets either timeout locks the section: runtime writes are rejected with `SCF-1007` until you remove it. With `server_config.store: declarative`, the section is read-only whether or not the resource sets a timeout.
+  ```yaml
+  name: session
+  value:
+    idleTimeoutSeconds: 7200       # 2 hours
+    absoluteTimeoutSeconds: 86400  # 24 hours
+  ```
+
+An idle timeout must not exceed the absolute timeout in effect: the one set with it, or the 24-hour default. The idle timeout in effect never outlasts the absolute timeout, so an absolute timeout shorter than the idle timeout also shortens the idle timeout. That idle timeout must be longer than the activity-refresh interval. The deployment also caps each timeout, at 30 days idle and 365 days absolute unless `session.max_idle_timeout_seconds` and `session.max_absolute_timeout_seconds` in `deployment.yaml` set other maximums (see [Session Configuration](../../deployment/configuration.mdx#session-configuration)). A value that breaks one of these rules, or that has a field the section does not have, is rejected with `SCF-1003`, and a declarative resource that breaks one stops the server from starting. A value stored before the operator raised the activity-refresh interval to or past it still applies, since a stored value is not checked again: the interval in effect is then cut to half the idle timeout until the section is changed.
+
+The activity-refresh interval limits database writes, so the operator sets it in `deployment.yaml` rather than in the section. See [Session Configuration](../../deployment/configuration.mdx#session-configuration).
 
 A token refresh keeps the session alive only if it arrives before the idle deadline; a later refresh does not revive an expired session. An application that refreshes when its access token expires therefore needs an idle timeout longer than the access token validity period. The default idle timeout of 2 hours leaves room for the default access token validity of 1 hour. A deployment that follows NIST SP 800-63B-4 at AAL2, which recommends an inactivity timeout of no more than 1 hour, should set the idle timeout to 3600 seconds or less and set the access token validity period of its applications below it.
 
@@ -128,7 +145,7 @@ When a step starts or reuses a session, the response includes it in the `session
     {
       "flowIdentifier": "f51bdb0f22d906bb",
       "sessionHandle": "<session_handle>",
-      "expiresIn": 28800
+      "expiresIn": 86400
     }
   ]
 }
@@ -154,6 +171,8 @@ To reuse a session, send every session the application holds in the `sessionData
   ]
 }
 ```
+
+To ask for a recent sign-in, add `maxAge`, in seconds, to the request that starts the flow. It works as the OpenID Connect `max_age` authorization parameter does for a browser sign-in: a session that signed the user in longer ago than `maxAge` is not reused, **Check SSO Session** takes the **Authenticate** path, and the assertion carries the new `auth_time`. `0` always asks for credentials. Use it to answer an `insufficient_user_authentication` challenge from a self-service API with the `max_age` the challenge names. See [Let Users Change Their Own Account](../../users/manage-users#let-users-change-their-own-account). `maxAge` on any other request, or a negative value, is refused with a `400` error.
 
 To sign the user out, send the same `sessionData` with a `SIGNOUT` flow. A sign-out acts on the application's sign-in flow, so <ProductName /> uses the entry whose `flowIdentifier` matches that flow and ends only that session. The response lists the session in `clearedSessions`, by `flowIdentifier`, so the application can delete it. The listing does not confirm the session was still active.
 

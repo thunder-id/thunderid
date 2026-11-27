@@ -101,7 +101,15 @@ function TabPanel({children = null, value, index, ...other}: TabPanelProps) {
   );
 }
 
-export default function ApplicationEditPage() {
+export interface ApplicationEditPageProps {
+  /**
+   * Renders the "Sessions" tab content. Only a host app whose server keeps SSO sessions supplies it, so
+   * the tab is omitted entirely when this is not provided.
+   */
+  renderSessions?: (applicationId: string) => React.ReactNode;
+}
+
+export default function ApplicationEditPage({renderSessions = undefined}: ApplicationEditPageProps) {
   const routes = useApplicationRoutes();
   const logger = useLogger('ApplicationEditPage');
   const {t} = useTranslation();
@@ -133,6 +141,8 @@ export default function ApplicationEditPage() {
     enabled: Boolean(applicationId),
     // The tab's sentences say what access means for an application: `applications:organizationAccess.*`.
     wordingNamespace: 'applications',
+    // Unsharing an application revokes its tokens in the units that lose it.
+    revokesOnUnshare: true,
   });
 
   // Resolves an error through the `applications` catalog. `t` defaults to the `common` namespace,
@@ -517,6 +527,12 @@ export default function ApplicationEditPage() {
             ),
           },
           {
+            key: 'sessions',
+            label: t('applications:edit.page.tabs.sessions', 'Sessions'),
+            panel: renderSessions?.(application.id),
+            hidden: !renderSessions,
+          },
+          {
             key: 'organizationAccess',
             label: t('applications:edit.page.tabs.organizationAccess', 'Organization Access'),
             panel: (
@@ -688,6 +704,15 @@ export default function ApplicationEditPage() {
             />
           ),
         },
+        ...(renderSessions
+          ? [
+              {
+                key: 'sessions',
+                label: t('applications:edit.page.tabs.sessions', 'Sessions'),
+                panel: renderSessions(application.id),
+              },
+            ]
+          : []),
         {
           key: 'organizationAccess',
           label: t('applications:edit.page.tabs.organizationAccess', 'Organization Access'),

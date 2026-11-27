@@ -1,7 +1,7 @@
 # Machine-to-Machine Access Across Organization Units Specification
 
 - **Status:** Draft
-- **Version:** 0.7
+- **Version:** 0.9
 - **Related documents:** [Discussion #5461: Machine-to-Machine (M2M) service working across OUs](https://github.com/thunder-id/thunderid/discussions/5461), [Issue #4037: Allow trusted machine clients to obtain an access token scoped to a chosen Organization Unit (without a per-OU application)](https://github.com/thunder-id/thunderid/issues/4037)
 
 ## Summary
@@ -51,7 +51,7 @@ flowchart TD
 | Application sharing declaration | Registers applications as a sharing resource type. Declares no fields, resolves ownership, and implements nothing else |
 | Resource service | Downscopes requested scopes to the target resource server's permissions, and in the same pass drops the ones the accessing organization unit may not use. Reads the accessing unit from the request context rather than taking it as a parameter |
 | Sharing framework | Owns policies, sections, exclusions, and visibility. |
-| Resource server sharing declaration | Registers resource servers as a sharing resource type, declaring one field, `permissions`, as a hierarchy over the server's permission strings |
+| Resource server sharing declaration | Registers resource servers as a sharing resource type. Declares one field, `permissions`, a hierarchy of the server's permission strings whose default rule is `editable: false` with no value, so a reached organization unit gets the whole server: every resource, sub-resource and action. Refuses a rule that names a `value` or `excludedValues` until a policy can grant or withhold part of the server |
 | Token builder | Emits `ouId`, `ouName` and `ouHandle` for the accessing organization unit rather than the application's owner, where the application opted into those claims |
 
 ## Detailed design
@@ -162,6 +162,24 @@ Importing the document replays the policies against the stored ones:
 - An organization unit that issued a sharing policy cannot be deleted until the policy is withdrawn.
 - An application that has sharing policies cannot be moved to another organization unit, because its policies were issued against the unit that owns it. The update is refused until the policies are deleted.
 - A policy naming an organization unit that was deleted stays editable and deletable.
+- Taking the application away from an organization unit, by narrowing or deleting a policy or through an import, revokes the tokens issued to it, or through its OAuth client, in that unit. A token states its unit only when the application lists `ouId` in its client token attributes. See the token revocation guide's Unsharing section.
+
+### Resource server sharing
+
+Resource servers are a sharing resource type of their own, `resource_server`. A policy reaches organization units the same way an application's does, and a reached unit gets the whole resource server: every resource, sub-resource and action.
+
+The declaration has one field, `permissions`. Its members are the server's permission strings, compared as a hierarchy with the server's own delimiter, so `orders` covers `orders:read`. Its default rule is `editable: false` with no value: a policy that names no rule shares every permission, and the reached unit cannot choose its own, in the same way a role policy with no rule leaves assignments on. A `permissions` rule may only restate that default:
+
+- `value` and `excludedValues` are refused with `RES-1038`, from the declaration's `OnPolicyWritten` hook, so every write path refuses them: the API, resource files, imports and a control plane deploy. They are the shape that will grant or withhold part of the server.
+- `editable: true` and `allowedValues` are refused by the framework: a rule cannot be wider than the owner's fixed default (`SHR-1008`), and a fixed rule takes no menu (`SHR-1011`). The Management API answers both as `RES-1029`; a resource file or an import reports the framework's code.
+
+The overlay rules of a unit the server reaches, its owner included, answer `permissions` with `editable: false` and a `value` listing every permission the server defines: its own actions, its resources at every level, and their actions.
+
+- The management API mounts the same six operations under `/resource-servers/{id}`: `sharing-policies`, `sharing-policies/{policyId}`, and `overlay-rules?ouId={id}`. Creating, editing and deleting a policy needs the resource server update permission in the issuing organization unit. Reading one needs the read permission in the owning or the issuing organization unit. A create that reaches every organization unit, or the roots of every other tree, is refused with `RES-1036`; it comes from a resource file or an import.
+- A resource server file carries its owner's policies under `sharingPolicies`, and they load at startup as read-only. The owner's policy of a declared resource server, or of one a control plane deployed, is refused through the API (`RES-1018`, `RES-1028`); an organization unit it reaches can still reshare it. When resource servers load from files only, every API write is refused.
+- An export writes the policies into the resource server's document, and an import replays them once the resource server, its resources and its actions are written. A refused policy fails the item, and a resource server the import created is removed. The control plane lists `resource_server` among the types whose dropped policies it sends a data plane to remove.
+- Deleting a resource server deletes its policies in the same transaction. A resource server that has sharing policies cannot be moved to another organization unit or project; the update is refused with `RES-1037` until the policies are deleted.
+- The resource server page has the same **Organization Access** tab as the application page, just before Advanced, saved through the page's Save. It is read-only for a read-only resource server, and it offers no `permissions` rule.
 
 ### Claims naming the accessing organization unit
 
@@ -183,12 +201,14 @@ A token issued for an organization unit must not carry permissions that unit may
 2. In the same pass, a permission the accessing organization unit may not use is treated as undefined and dropped.
 3. The application's own entitlement is evaluated afterwards, from the role assignments made in the application's own organization unit, directly or through the groups that unit owns. Roles an organization unit the application is shared with assigned it, directly or through that unit's groups, are that unit's and do not count, at either endpoint.
 
-What the accessing unit may use comes from the resource server's own sharing policy. A resource server declares one field, `permissions`, as a hierarchy over its permission strings, so naming a resource shares it together with everything beneath it. The field is pinned: the sharing organization unit decides what is shared, and a reached unit has nothing of its own to choose.
+> **Not built yet.** Resource servers can be shared through the Console, the API, resource files, imports and a control plane deploy, as a whole: a policy reaches organization units but cannot grant or withhold part of the server. Step 2 above, the three cases below, and AC6.1, AC6.2 and AC6.6 are not enforced: no path yet consults a resource server's sharing when it resolves scopes or validates a role's permissions.
+
+What the accessing unit may use comes from the resource server's own sharing policy. A resource server declares one field, `permissions`, as a hierarchy over its permission strings, so naming a resource shares it together with everything beneath it. The field is pinned: the sharing organization unit decides what is shared, and a reached unit has nothing of its own to choose. A policy cannot name a `value` or `excludedValues` for it yet, so a reached unit may use every permission.
 
 Three cases decide a permission:
 
 - The accessing unit owns the resource server. Every permission is available.
-- The resource server carries no sharing policy at all. Every permission is available, as before sharing existed. This is temporary, until resource servers can be shared through the API and the Console.
+- The resource server carries no sharing policy at all. Every permission is available, as before sharing existed. Resource servers can now be shared through the API, so whether this case stays once the bound is enforced is still to be decided.
 - Otherwise the permission is available only where the unit's resolved rule grants it, and a unit the server never reached gets none.
 
 ### Refusals
@@ -268,7 +288,7 @@ Each section is one of the shapes below, chosen by its `mode` and expressed as a
 | 404 | No such application |
 | 404 | No such policy |
 | 409 | The organization unit already holds a policy for this application |
-| 409 | The policy changed since it was read |
+| 409 | The policy changed since it was read, or, for a delete, the application's sharing changed while its tokens were being revoked |
 
 A declared policy is visible through `GET` and refused by `PUT` and `DELETE`, because its existence belongs to the file that declares it. Deleting a policy the application does not hold answers `204`; deleting under an application that does not exist answers `404`.
 
@@ -284,7 +304,7 @@ The application page has an **Organization Access** tab, just before Advanced. I
 
 ![Imported application reaching every organization unit](assets/organization-access-every-unit-imported.png)
 
-**Change scope.** Change scope deletes the `allUnits` policy, and access then starts as all child units of the owner. The confirmation warns that once saved, every organization unit can't be chosen again.
+**Change scope.** Change scope deletes the `allUnits` policy, and access then starts as all child units of the owner. The confirmation warns that once saved, every organization unit can't be chosen again. Deleting the policy revokes the application's tokens in every organization unit it reached, including the ones the new policy reaches again.
 
 ![Change scope confirmation](assets/organization-access-change-scope.png)
 
@@ -407,3 +427,5 @@ inboundAuthConfig:
 | 0.5 | 2026-11-07 | The Organization Access tab shows for every application, not only those with the `client_credentials` grant, since a policy also decides which organization units' users can sign in. |
 | 0.6 | 2026-11-09 | A delegated administrator in a sharee organization unit lists and reads a shared application, marked as not owned, and an edit or delete is refused with `APP-1070` (AC2.1, AC2.2). |
 | 0.7 | 2026-11-09 | The R2 requirement states that a sharee organization unit lists and reads a shared M2M application and cannot change it, as AC2.1 and AC2.2 do. |
+| 0.8 | 2026-11-26 | Taking an application away from an organization unit revokes its tokens there, a policy delete can be refused with `409` when the sharing changes during the revocation, and Change scope revokes in every unit the deleted policy reached. |
+| 0.9 | 2026-11-26 | Resource servers are shared as a whole through the API, resource files, imports and a control plane deploy, and a shared resource server cannot be moved (`RES-1037`). The resource server page gains the Organization Access tab. The accessing unit's bound on scopes and role permissions (AC6.1, AC6.2, AC6.6) is not enforced yet. A resource server declares a `permissions` field whose default shares every permission, fixed; a rule naming a value or excluded values is refused (`RES-1038`), and the overlay rules list every permission. |

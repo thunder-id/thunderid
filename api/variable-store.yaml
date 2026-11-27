@@ -832,6 +832,11 @@ components:
           type: string
         defaultValue:
           type: string
+        params:
+          type: object
+          description: Values substituted for the `{{param(name)}}` placeholders in the message.
+          additionalProperties:
+            type: string
 
     Error:
       type: object

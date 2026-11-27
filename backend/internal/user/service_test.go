@@ -11,6 +11,7 @@ import (
 	"slices"
 	"sync"
 	"testing"
+	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
@@ -20,11 +21,13 @@ import (
 
 	entitypkg "github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
+	entitytypemodel "github.com/thunder-id/thunderid/internal/entitytype/model"
 	"github.com/thunder-id/thunderid/internal/identitygovernance"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
+	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/eventbus"
 	"github.com/thunder-id/thunderid/internal/system/eventbus/audit"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -5357,13 +5360,13 @@ func TestSetRoleAssignmentService_AppliesTheWaitingDeclaredMandates(t *testing.T
 	declared.Rules = []sharing.StoredRule{{FieldKey: RolesFieldKey,
 		Grant:     sharing.GrantRef{Section: sharing.SectionChildUnits, OUID: shareChildOU},
 		Requested: sharing.OverlayRule{Value: &roles}, Resolved: sharing.OverlayRule{Value: &roles}}}
-	require.Nil(t, service.sharingDeclaration.OnPolicyWritten(context.Background(), declared))
+	require.Nil(t, refusalOf(service.sharingDeclaration.OnPolicyWritten(context.Background(), declared)))
 
 	assignments := rolemock.NewRoleAssignmentServiceInterfaceMock(t)
 	sharingMock.EXPECT().IsVisible(mock.Anything, role.RoleSharingType, "role-a", shareOwnerOU).Return(true, nil).Once()
 	assignments.EXPECT().ApplyMandatedAssignments(mock.Anything, sharePolicyID,
 		role.RoleAssignment{ID: svcTestUserID1, Type: role.AssigneeTypeUser},
-		map[string][]string{shareChildOU: {"role-a"}}).Return(nil).Once()
+		map[string][]string{shareChildOU: {"role-a"}}).Return(nil, nil).Once()
 
 	require.NoError(t, service.SetRoleAssignmentService(context.Background(), assignments))
 }
@@ -5898,7 +5901,7 @@ func verificationUserService(t *testing.T, storeMock *entitymock.EntityServiceIn
 	schemaMock.On("GetEntityTypeByHandle", mock.Anything, mock.Anything, testUserType).
 		Return(&entitytype.EntityType{OUID: testOrgID}, (*tidcommon.ServiceError)(nil)).Maybe()
 	return &userService{bus: discardingBus{}, entityService: storeMock, entityTypeService: schemaMock,
-		ouService: ouServiceMock, authzService: newAllowAllAuthz(t), governance: governance,
+		ouService: ouServiceMock, authzService: newAllowAllAuthz(t), governance: governance, logger: log.GetLogger(),
 		verification: verification}
 }
 
@@ -6171,6 +6174,423 @@ func (s *UserServiceTestSuite) TestUpdateUserAttributes_ReportsOneStoredSnapshot
 			require.Equal(t, verifiedEmail(), user.VerifiedAttributes)
 		})
 	}
+}
+
+// withSelfServiceMaxAge sets the self-service maximum authentication age for one test.
+func withSelfServiceMaxAge(t *testing.T, maxAge int) {
+	config.ResetServerRuntime()
+	cfg := &config.Config{}
+	cfg.User.SelfService.MaxAuthenticationAgeSeconds = &maxAge
+	require.NoError(t, config.InitializeServerRuntime("", cfg))
+	t.Cleanup(config.ResetServerRuntime)
+}
+
+// selfContext is a request of the user themselves, signed in authAgo before now; a negative authAgo leaves
+// auth_time out.
+func selfContext(authAgo time.Duration) context.Context {
+	attributes := map[string]any{}
+	if authAgo >= 0 {
+		attributes["auth_time"] = float64(time.Now().Add(-authAgo).Unix())
+	}
+	return security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest(svcTestUserID1, testOrgID, "token", nil, attributes))
+}
+
+func (s *UserServiceTestSuite) TestUpdateSelfUserAttributes_ContactAttributeChange() {
+	withSelfServiceMaxAge(s.T(), 300)
+
+	tests := []struct {
+		name        string
+		authAgo     time.Duration
+		request     string
+		readsSchema bool
+		schemaErr   *tidcommon.ServiceError
+		wantErr     string
+		wantMaxAge  string
+		// validateErr is what the entity service's validation answers; by default the request is valid.
+		validateErr error
+		// management updates through UpdateUserAttributes, which checks no contact attribute.
+		management bool
+	}{
+		{
+			name:        "NameChangeNeedsNoRecentAuthentication",
+			authAgo:     time.Hour,
+			request:     `{"name":"Bob","email":"alice@example.com","mobile":"+94771234567"}`,
+			readsSchema: true,
+		},
+		{
+			name:        "EmailDomainCaseNeedsNoRecentAuthentication",
+			authAgo:     time.Hour,
+			request:     `{"name":"Alice","email":" alice@EXAMPLE.com ","mobile":"+94771234567"}`,
+			readsSchema: true,
+		},
+		{
+			name:        "EmailChangeWithRecentAuthenticationUpdates",
+			request:     `{"name":"Alice","email":"bob@example.com","mobile":"+94771234567"}`,
+			readsSchema: true,
+		},
+		{
+			name:        "EmailChangeWithOldAuthenticationIsChallenged",
+			authAgo:     time.Hour,
+			request:     `{"name":"Alice","email":"bob@example.com","mobile":"+94771234567"}`,
+			readsSchema: true,
+			wantErr:     apierror.ErrRecentAuthenticationRequired.Code,
+			wantMaxAge:  "300",
+		},
+		{
+			name:        "MobileRemovalWithoutAuthTimeIsChallenged",
+			authAgo:     -1,
+			request:     `{"name":"Alice","email":"alice@example.com"}`,
+			readsSchema: true,
+			wantErr:     apierror.ErrRecentAuthenticationRequired.Code,
+			wantMaxAge:  "300",
+		},
+		{
+			name:        "SchemaReadErrorIsReturned",
+			request:     `{"name":"Alice","email":"bob@example.com","mobile":"+94771234567"}`,
+			readsSchema: true,
+			schemaErr:   &tidcommon.InternalServerError,
+			wantErr:     tidcommon.InternalServerError.Code,
+		},
+		{
+			name:        "InvalidEmailIsRefusedBeforeTheSignInAge",
+			authAgo:     time.Hour,
+			request:     `{"name":"Alice","email":"not-an-email","mobile":"+94771234567"}`,
+			validateErr: entitypkg.ErrSchemaValidationFailed,
+			wantErr:     ErrorSchemaValidationFailed.Code,
+		},
+		{
+			name:        "ValidationServerErrorIsReturned",
+			request:     `{"name":"Alice","email":"bob@example.com","mobile":"+94771234567"}`,
+			validateErr: errors.New("db down"),
+			wantErr:     tidcommon.InternalServerError.Code,
+		},
+		{
+			name:       "ManagementUpdateOfOwnAccountIsNotChecked",
+			authAgo:    time.Hour,
+			request:    `{"name":"Alice","email":"bob@example.com","mobile":"+94771234567"}`,
+			management: true,
+		},
+	}
+
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			t := s.T()
+			existing := &providers.Entity{Category: providers.EntityCategoryUser, ID: svcTestUserID1,
+				Type: testUserType, OUID: testOrgID,
+				Attributes: json.RawMessage(`{"name":"Alice","email":"alice@example.com","mobile":"+94771234567"}`)}
+			storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+			storeMock.On("GetEntity", mock.Anything, svcTestUserID1).Return(existing, nil)
+			verification := attributeverificationmock.NewAttributeVerificationServiceInterfaceMock(t)
+			verification.On("GetVerifiedAttributes", mock.Anything, mock.Anything).
+				Return(map[string]providers.VerifiedAttribute{}).Maybe()
+			service := verificationUserService(t, storeMock, activeGovernance(t), verification)
+			if !tc.management {
+				storeMock.On("ValidateAttributes", mock.Anything, svcTestUserID1, json.RawMessage(tc.request)).
+					Return(tc.validateErr).Once()
+			}
+			if tc.readsSchema {
+				service.entityTypeService.(*entitytypemock.EntityTypeServiceInterfaceMock).
+					On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, testUserType,
+						entitytype.AttributeFilter{AllowNonCredential: true}).
+					Return([]entitytype.AttributeInfo{
+						{Attribute: "name", Type: entitytypemodel.TypeString},
+						{Attribute: "email", Type: entitytypemodel.TypeEmail},
+						{Attribute: "mobile", Type: entitytypemodel.TypeMobile},
+					}, tc.schemaErr).Once()
+			}
+			if tc.wantErr == "" {
+				storeMock.On("UpdateAttributes", mock.Anything, svcTestUserID1, json.RawMessage(tc.request)).
+					Return(nil).Once()
+			}
+			ctx := selfContext(tc.authAgo)
+
+			var user *providers.User
+			var err *tidcommon.ServiceError
+			if tc.management {
+				user, err = service.UpdateUserAttributes(ctx, svcTestUserID1, json.RawMessage(tc.request))
+			} else {
+				user, err = service.UpdateSelfUserAttributes(ctx, json.RawMessage(tc.request))
+			}
+
+			if tc.wantErr == "" {
+				s.Require().Nil(err)
+				s.Require().NotNil(user)
+				return
+			}
+			s.Require().Nil(user)
+			s.Require().NotNil(err)
+			s.Require().Equal(tc.wantErr, err.Code)
+			s.Require().Equal(tc.wantMaxAge, err.ErrorDescription.Params[apierror.ErrorParamMaxAge])
+			storeMock.AssertNotCalled(t, "UpdateAttributes", mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+// Stored attributes that cannot be read are a server error, and nothing is written.
+func (s *UserServiceTestSuite) TestUpdateSelfUserAttributes_UnreadableStoredAttributesAreAServerError() {
+	t := s.T()
+	existing := &providers.Entity{Category: providers.EntityCategoryUser, ID: svcTestUserID1, Type: testUserType,
+		OUID: testOrgID, Attributes: json.RawMessage(`["not an object"]`)}
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("GetEntity", mock.Anything, svcTestUserID1).Return(existing, nil).Once()
+	service := verificationUserService(t, storeMock, activeGovernance(t),
+		attributeverificationmock.NewAttributeVerificationServiceInterfaceMock(t))
+	service.entityTypeService.(*entitytypemock.EntityTypeServiceInterfaceMock).
+		On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, testUserType,
+			entitytype.AttributeFilter{AllowNonCredential: true}).
+		Return([]entitytype.AttributeInfo{{Attribute: "email", Type: entitytypemodel.TypeEmail}},
+			(*tidcommon.ServiceError)(nil)).Once()
+	storeMock.On("ValidateAttributes", mock.Anything, svcTestUserID1, json.RawMessage(`{"email":"b@example.com"}`)).
+		Return(nil).Once()
+
+	user, err := service.UpdateSelfUserAttributes(selfContext(0), json.RawMessage(`{"email":"b@example.com"}`))
+
+	s.Require().Nil(user)
+	s.Require().NotNil(err)
+	s.Require().Equal(tidcommon.InternalServerError.Code, err.Code)
+	storeMock.AssertNotCalled(t, "UpdateAttributes", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// A declared user is read only, so a contact change gets that refusal before any sign-in age check.
+func (s *UserServiceTestSuite) TestUpdateSelfUserAttributes_DeclaredUserIsRefusedBeforeTheContactCheck() {
+	t := s.T()
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("GetEntity", mock.Anything, svcTestUserID1).Return(verifiedUserEntity(), nil).Once()
+	storeMock.On("IsEntityDeclarative", mock.Anything, svcTestUserID1).Return(true, nil).Once()
+	service := verificationUserService(t, storeMock, activeGovernance(t),
+		attributeverificationmock.NewAttributeVerificationServiceInterfaceMock(t))
+
+	user, err := service.UpdateSelfUserAttributes(selfContext(time.Hour),
+		json.RawMessage(`{"email":"b@example.com"}`))
+
+	s.Require().Nil(user)
+	s.Require().NotNil(err)
+	s.Require().Equal(ErrorCannotModifyDeclarativeResource.Code, err.Code)
+}
+
+// selfCredentialService is a user service over mocks that expect nothing unless reads is set: then the user is
+// read once, is mutable, and has a type that declares password and pin, and held lists the credentials the user
+// holds, when it is not nil, after the new password n3wP@ssword! is validated. Its governance mock expects no
+// call, since account lockout is not consulted.
+func selfCredentialService(t *testing.T, reads bool, held []string) (*userService,
+	*entitymock.EntityServiceInterfaceMock) {
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	schemaMock := entitytypemock.NewEntityTypeServiceInterfaceMock(t)
+	if reads {
+		storeMock.On("GetEntityProfile", mock.Anything, svcTestUserID1).Return(&providers.Entity{
+			Category: providers.EntityCategoryUser, ID: svcTestUserID1, Type: testUserType, OUID: testOrgID,
+		}, nil).Once()
+		storeMock.On("IsEntityDeclarative", mock.Anything, svcTestUserID1).Return(false, nil).Once()
+		schemaMock.On("GetAttributes", mock.Anything, entitytype.TypeCategoryUser, testUserType,
+			entitytype.AttributeFilter{AllowCredential: true}).Return([]entitytype.AttributeInfo{
+			{Attribute: "password", Type: entitytypemodel.TypeString},
+			{Attribute: "pin", Type: entitytypemodel.TypeString},
+		}, (*tidcommon.ServiceError)(nil)).Once()
+	}
+	if held != nil {
+		expectValidNewPassword(storeMock)
+		storeMock.On("GetHeldCredentialTypes", mock.Anything, svcTestUserID1).Return(held, nil).Once()
+	}
+	governance := identitygovernancemock.NewIdentityGovernanceServiceInterfaceMock(t)
+	service := &userService{bus: discardingBus{}, entityService: storeMock, entityTypeService: schemaMock,
+		authzService: newAllowAllAuthz(t), governance: governance, logger: log.GetLogger()}
+	return service, storeMock
+}
+
+// A credential the user holds changes only with its current value. Account lockout is not consulted: the
+// governance mock expects no call.
+func (s *UserServiceTestSuite) TestUpdateSelfUserCredential_HeldCredentialNeedsItsCurrentValue() {
+	withSelfServiceMaxAge(s.T(), 300)
+	password := map[string]interface{}{"password": "0ldP@ssword!"}
+
+	tests := []struct {
+		name         string
+		currentValue string
+		authErr      error
+		mismatchedID string
+		wantErr      string
+		wantWrite    bool
+	}{
+		{name: "MatchingValueChangesTheCredential", currentValue: "0ldP@ssword!", wantWrite: true},
+		{name: "MissingValueIsRefused", wantErr: ErrorCurrentCredentialRequired.Code},
+		{name: "WrongValueIsRefused", currentValue: "0ldP@ssword!", authErr: entitypkg.ErrAuthenticationFailed,
+			mismatchedID: svcTestUserID1, wantErr: ErrorInvalidCurrentCredential.Code},
+		{name: "IndeterminateValueIsRefused", currentValue: "0ldP@ssword!",
+			authErr: entitypkg.ErrAuthenticationFailed, wantErr: ErrorInvalidCurrentCredential.Code},
+		{name: "VerificationErrorIsAServerError", currentValue: "0ldP@ssword!", authErr: errors.New("db down"),
+			wantErr: tidcommon.InternalServerError.Code},
+	}
+
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			t := s.T()
+			service, storeMock := selfCredentialService(t, true, []string{"password"})
+			if tc.currentValue != "" {
+				var result *entitypkg.AuthenticateResult
+				if tc.authErr == nil {
+					result = &entitypkg.AuthenticateResult{EntityID: svcTestUserID1}
+				}
+				storeMock.On("AuthenticateEntityByID", mock.Anything, svcTestUserID1, password).
+					Return(result, tc.mismatchedID, tc.authErr).Once()
+			}
+			if tc.wantWrite {
+				storeMock.On("UpdateCredentials", mock.Anything, svcTestUserID1,
+					json.RawMessage(`{"password":"n3wP@ssword!"}`)).Return(nil).Once()
+			}
+
+			// An old sign-in does not matter when the current value is given.
+			err := service.UpdateSelfUserCredential(selfContext(time.Hour), UpdateSelfUserCredentialRequest{
+				Name: "password", CurrentValue: tc.currentValue, NewValue: "n3wP@ssword!",
+			})
+
+			if tc.wantErr == "" {
+				s.Require().Nil(err)
+				return
+			}
+			s.Require().NotNil(err)
+			s.Require().Equal(tc.wantErr, err.Code)
+			storeMock.AssertNotCalled(t, "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func (s *UserServiceTestSuite) TestUpdateSelfUserCredential_CredentialNotHeldNeedsARecentSignIn() {
+	withSelfServiceMaxAge(s.T(), 300)
+
+	tests := []struct {
+		name         string
+		authAgo      time.Duration
+		currentValue string
+		wantErr      string
+	}{
+		{name: "RecentSignInSetsTheCredential"},
+		{name: "CurrentValueIsIgnored", currentValue: "anything"},
+		{name: "OldSignInIsChallenged", authAgo: time.Hour, wantErr: apierror.ErrRecentAuthenticationRequired.Code},
+		{name: "NoAuthTimeIsChallenged", authAgo: -1, wantErr: apierror.ErrRecentAuthenticationRequired.Code},
+	}
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			t := s.T()
+			service, storeMock := selfCredentialService(t, true, []string{"pin"})
+			if tc.wantErr == "" {
+				storeMock.On("UpdateCredentials", mock.Anything, svcTestUserID1,
+					json.RawMessage(`{"password":"n3wP@ssword!"}`)).Return(nil).Once()
+			}
+
+			err := service.UpdateSelfUserCredential(selfContext(tc.authAgo), UpdateSelfUserCredentialRequest{
+				Name: "password", CurrentValue: tc.currentValue, NewValue: "n3wP@ssword!",
+			})
+
+			if tc.wantErr == "" {
+				s.Require().Nil(err)
+				return
+			}
+			s.Require().NotNil(err)
+			s.Require().Equal(tc.wantErr, err.Code)
+			s.Require().Equal("300", err.ErrorDescription.Params[apierror.ErrorParamMaxAge])
+			storeMock.AssertNotCalled(t, "AuthenticateEntityByID", mock.Anything, mock.Anything, mock.Anything)
+			storeMock.AssertNotCalled(t, "UpdateCredentials", mock.Anything, mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func (s *UserServiceTestSuite) TestUpdateSelfUserCredential_RefusedBeforeAnyCheck() {
+	tests := []struct {
+		name    string
+		ctx     context.Context
+		request UpdateSelfUserCredentialRequest
+		wantErr string
+	}{
+		{name: "NoSubject", ctx: context.Background(),
+			request: UpdateSelfUserCredentialRequest{Name: "password", NewValue: "n"},
+			wantErr: ErrorAuthenticationFailed.Code},
+		{name: "NoName", ctx: selfContext(0), request: UpdateSelfUserCredentialRequest{NewValue: "n"},
+			wantErr: ErrorMissingCredentialChange.Code},
+		{name: "NoNewValue", ctx: selfContext(0), request: UpdateSelfUserCredentialRequest{Name: "password"},
+			wantErr: ErrorMissingCredentialChange.Code},
+		{name: "Passkey", ctx: selfContext(0),
+			request: UpdateSelfUserCredentialRequest{Name: "passkey", NewValue: "n"},
+			wantErr: ErrorInvalidCredential.Code},
+	}
+	for _, tc := range tests {
+		s.Run(tc.name, func() {
+			service, _ := selfCredentialService(s.T(), false, nil)
+
+			err := service.UpdateSelfUserCredential(tc.ctx, tc.request)
+
+			s.Require().NotNil(err)
+			s.Require().Equal(tc.wantErr, err.Code)
+		})
+	}
+}
+
+// A read-only user is refused before the current value is checked.
+func (s *UserServiceTestSuite) TestUpdateSelfUserCredential_DeclaredUserIsRefusedBeforeTheCurrentValue() {
+	t := s.T()
+	storeMock := entitymock.NewEntityServiceInterfaceMock(t)
+	storeMock.On("GetEntityProfile", mock.Anything, svcTestUserID1).Return(&providers.Entity{
+		Category: providers.EntityCategoryUser, ID: svcTestUserID1, Type: testUserType, OUID: testOrgID,
+	}, nil).Once()
+	storeMock.On("IsEntityDeclarative", mock.Anything, svcTestUserID1).Return(true, nil).Once()
+	service := &userService{bus: discardingBus{}, entityService: storeMock, authzService: newAllowAllAuthz(t),
+		logger: log.GetLogger()}
+
+	err := service.UpdateSelfUserCredential(selfContext(0), UpdateSelfUserCredentialRequest{
+		Name: "password", CurrentValue: "0ldP@ssword!", NewValue: "n3wP@ssword!",
+	})
+
+	s.Require().NotNil(err)
+	s.Require().Equal(ErrorCannotModifyDeclarativeResource.Code, err.Code)
+}
+
+// A credential the user type does not declare is refused before the current value or the sign-in age is checked.
+func (s *UserServiceTestSuite) TestUpdateSelfUserCredential_UndeclaredCredentialIsRefusedFirst() {
+	service, _ := selfCredentialService(s.T(), true, nil)
+
+	err := service.UpdateSelfUserCredential(selfContext(-1), UpdateSelfUserCredentialRequest{
+		Name: "nickname", NewValue: "n3wValue",
+	})
+
+	s.Require().NotNil(err)
+	s.Require().Equal(ErrorInvalidCredential.Code, err.Code)
+}
+
+// expectValidNewPassword expects the new password n3wP@ssword! to be validated and accepted.
+func expectValidNewPassword(storeMock *entitymock.EntityServiceInterfaceMock) {
+	storeMock.On("ValidateCredentials", mock.Anything, svcTestUserID1,
+		json.RawMessage(`{"password":"n3wP@ssword!"}`)).Return(nil).Once()
+}
+
+// A new value the type refuses is reported before the current value or the sign-in age is checked.
+func (s *UserServiceTestSuite) TestUpdateSelfUserCredential_InvalidNewValueIsRefusedFirst() {
+	t := s.T()
+	service, storeMock := selfCredentialService(t, true, nil)
+	storeMock.On("ValidateCredentials", mock.Anything, svcTestUserID1, json.RawMessage(`{"pin":"x"}`)).
+		Return(entitypkg.ErrSchemaValidationFailed).Once()
+
+	err := service.UpdateSelfUserCredential(selfContext(time.Hour), UpdateSelfUserCredentialRequest{
+		Name: "pin", NewValue: "x",
+	})
+
+	s.Require().NotNil(err)
+	s.Require().Equal(ErrorInvalidCredentialValue.Code, err.Code)
+	storeMock.AssertNotCalled(t, "GetHeldCredentialTypes", mock.Anything, mock.Anything)
+}
+
+func (s *UserServiceTestSuite) TestUpdateSelfUserCredential_HeldCredentialReadErrorIsAServerError() {
+	t := s.T()
+	service, storeMock := selfCredentialService(t, true, nil)
+	expectValidNewPassword(storeMock)
+	storeMock.On("GetHeldCredentialTypes", mock.Anything, svcTestUserID1).
+		Return(([]string)(nil), errors.New("db down")).Once()
+
+	err := service.UpdateSelfUserCredential(selfContext(0), UpdateSelfUserCredentialRequest{
+		Name: "password", CurrentValue: "0ldP@ssword!", NewValue: "n3wP@ssword!",
+	})
+
+	s.Require().NotNil(err)
+	s.Require().Equal(tidcommon.InternalServerError.Code, err.Code)
 }
 
 const svcTestAdminID = "admin-1"

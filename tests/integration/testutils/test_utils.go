@@ -1186,9 +1186,17 @@ func PatchDeploymentConfig(patch map[string]interface{}) error {
 // call it once the test is done, even when this function fails after writing the change. Later calls
 // of the returned function do nothing.
 func RestartWithOAuthConfig(edit func(oauth map[string]interface{})) (func() error, error) {
-	original, err := ReadDeploymentConfigKey("oauth")
+	return RestartWithConfigSection("oauth", edit)
+}
+
+// RestartWithConfigSection restarts the server with the key section of deployment.yaml changed by edit, and
+// re-obtains the admin token. It returns a function that does the same with the original section; call it
+// once the test is done, even when this function fails after writing the change. Later calls of the
+// returned function do nothing.
+func RestartWithConfigSection(key string, edit func(section map[string]interface{})) (func() error, error) {
+	original, err := ReadDeploymentConfigKey(key)
 	if err != nil {
-		return func() error { return nil }, fmt.Errorf("failed to read the oauth config: %w", err)
+		return func() error { return nil }, fmt.Errorf("failed to read the %s config: %w", key, err)
 	}
 
 	restored := false
@@ -1197,19 +1205,19 @@ func RestartWithOAuthConfig(edit func(oauth map[string]interface{})) (func() err
 			return nil
 		}
 		restored = true
-		return restartWithOAuthSection(copyConfigSection(original))
+		return restartWithConfigSection(key, copyConfigSection(original))
 	}
 
 	edited := copyConfigSection(original)
 	edit(edited)
-	return restore, restartWithOAuthSection(edited)
+	return restore, restartWithConfigSection(key, edited)
 }
 
-// restartWithOAuthSection writes the oauth section of deployment.yaml, restarts the server, and
-// re-obtains the admin token.
-func restartWithOAuthSection(section map[string]interface{}) error {
-	if err := PatchDeploymentConfig(map[string]interface{}{"oauth": section}); err != nil {
-		return fmt.Errorf("failed to write the oauth config: %w", err)
+// restartWithConfigSection writes the key section of deployment.yaml, restarts the server, and re-obtains
+// the admin token.
+func restartWithConfigSection(key string, section map[string]interface{}) error {
+	if err := PatchDeploymentConfig(map[string]interface{}{key: section}); err != nil {
+		return fmt.Errorf("failed to write the %s config: %w", key, err)
 	}
 	if err := RestartServer(); err != nil {
 		return err
@@ -1217,14 +1225,30 @@ func restartWithOAuthSection(section map[string]interface{}) error {
 	return ObtainAdminAccessToken()
 }
 
-// copyConfigSection returns a shallow copy of a deployment.yaml section, or an empty one when it is absent.
+// copyConfigSection returns a deep copy of a deployment.yaml section, or an empty one when it is absent.
 func copyConfigSection(section interface{}) map[string]interface{} {
 	source, _ := section.(map[string]interface{})
 	copied := make(map[string]interface{}, len(source)+1)
 	for key, value := range source {
-		copied[key] = value
+		copied[key] = copyConfigValue(value)
 	}
 	return copied
+}
+
+// copyConfigValue deep-copies the maps and lists a deployment.yaml section holds.
+func copyConfigValue(value interface{}) interface{} {
+	switch typed := value.(type) {
+	case map[string]interface{}:
+		return copyConfigSection(typed)
+	case []interface{}:
+		copied := make([]interface{}, len(typed))
+		for i, item := range typed {
+			copied[i] = copyConfigValue(item)
+		}
+		return copied
+	default:
+		return value
+	}
 }
 
 // PatchServerConfig sets one key of the server section in the live deployment.yaml, keeping the rest

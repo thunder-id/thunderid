@@ -22,18 +22,27 @@ type revokedCache struct {
 	entityScopes        map[string]revokedEntry
 	entityScopeSubtrees map[string]revokedEntry
 	scopes              map[string]revokedEntry
+	// The organization unit scoped dimensions are keyed by criterion digest.
+	subjectOUs            map[string]revokedEntry
+	appKeyOUs             map[string]revokedEntry
+	entityScopeOUs        map[string]revokedEntry
+	entityScopeSubtreeOUs map[string]revokedEntry
 }
 
 // newRevokedCache creates an empty cache. It holds nothing until the first snapshot is loaded.
 func newRevokedCache() *revokedCache {
 	return &revokedCache{
-		tokens:              make(map[string]time.Time),
-		families:            make(map[string]time.Time),
-		subjects:            make(map[string]revokedEntry),
-		appKeys:             make(map[string]revokedEntry),
-		entityScopes:        make(map[string]revokedEntry),
-		entityScopeSubtrees: make(map[string]revokedEntry),
-		scopes:              make(map[string]revokedEntry),
+		tokens:                make(map[string]time.Time),
+		families:              make(map[string]time.Time),
+		subjects:              make(map[string]revokedEntry),
+		appKeys:               make(map[string]revokedEntry),
+		entityScopes:          make(map[string]revokedEntry),
+		entityScopeSubtrees:   make(map[string]revokedEntry),
+		scopes:                make(map[string]revokedEntry),
+		subjectOUs:            make(map[string]revokedEntry),
+		appKeyOUs:             make(map[string]revokedEntry),
+		entityScopeOUs:        make(map[string]revokedEntry),
+		entityScopeSubtreeOUs: make(map[string]revokedEntry),
 	}
 }
 
@@ -47,6 +56,10 @@ func (c *revokedCache) replace(snapshot revokedSnapshot) {
 	entityScopes := indexEntriesByValue(snapshot.EntityScopes)
 	entityScopeSubtrees := indexEntriesByValue(snapshot.EntityScopeSubtrees)
 	scopes := indexEntriesByValue(snapshot.Scopes)
+	subjectOUs := indexEntriesByValue(snapshot.SubjectOUs)
+	appKeyOUs := indexEntriesByValue(snapshot.AppKeyOUs)
+	entityScopeOUs := indexEntriesByValue(snapshot.EntityScopeOUs)
+	entityScopeSubtreeOUs := indexEntriesByValue(snapshot.EntityScopeSubtreeOUs)
 	c.mu.Lock()
 	c.tokens = tokens
 	c.families = families
@@ -55,6 +68,10 @@ func (c *revokedCache) replace(snapshot revokedSnapshot) {
 	c.entityScopes = entityScopes
 	c.entityScopeSubtrees = entityScopeSubtrees
 	c.scopes = scopes
+	c.subjectOUs = subjectOUs
+	c.appKeyOUs = appKeyOUs
+	c.entityScopeOUs = entityScopeOUs
+	c.entityScopeSubtreeOUs = entityScopeSubtreeOUs
 	c.mu.Unlock()
 }
 
@@ -86,6 +103,39 @@ func (c *revokedCache) isEntityScopeRevoked(digest string, establishedAt time.Ti
 func (c *revokedCache) isScopeRevoked(digest string, establishedAt time.Time) bool {
 	c.mu.RLock()
 	entry, ok := c.scopes[digest]
+	c.mu.RUnlock()
+	return matchesEntry(entry, ok, establishedAt)
+}
+
+// isSubjectOURevoked reports whether the subject is revoked within one organization unit, honoring the cutoff.
+func (c *revokedCache) isSubjectOURevoked(digest string, establishedAt time.Time) bool {
+	c.mu.RLock()
+	entry, ok := c.subjectOUs[digest]
+	c.mu.RUnlock()
+	return matchesEntry(entry, ok, establishedAt)
+}
+
+// isAppKeyOURevoked reports whether the OAuth client is revoked within one organization unit, honoring the cutoff.
+func (c *revokedCache) isAppKeyOURevoked(digest string, establishedAt time.Time) bool {
+	c.mu.RLock()
+	entry, ok := c.appKeyOUs[digest]
+	c.mu.RUnlock()
+	return matchesEntry(entry, ok, establishedAt)
+}
+
+// isEntityScopeOURevoked reports whether the scope is revoked for one entity within one organization unit,
+// honoring the cutoff.
+func (c *revokedCache) isEntityScopeOURevoked(digest string, establishedAt time.Time) bool {
+	c.mu.RLock()
+	entry, ok := c.entityScopeOUs[digest]
+	c.mu.RUnlock()
+	return matchesEntry(entry, ok, establishedAt)
+}
+
+// isEntityScopeSubtreeOURevoked applies the subtree rule recorded within one organization unit.
+func (c *revokedCache) isEntityScopeSubtreeOURevoked(digest string, establishedAt time.Time) bool {
+	c.mu.RLock()
+	entry, ok := c.entityScopeSubtreeOUs[digest]
 	c.mu.RUnlock()
 	return matchesEntry(entry, ok, establishedAt)
 }

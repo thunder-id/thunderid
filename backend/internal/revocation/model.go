@@ -38,6 +38,7 @@ const (
 	ReasonClientSecretRotated          Reason = "client_secret_rotated" // #nosec G101 -- reason name, not a secret
 	ReasonIdentitySuspended            Reason = "identity_suspended"
 	ReasonCredentialUpdated            Reason = "credential_updated" // #nosec G101 -- reason name, not a secret
+	ReasonResourceUnshared             Reason = "resource_unshared"
 )
 
 // CriterionType identifies an artifact attribute used for revocation.
@@ -61,6 +62,15 @@ const (
 	CriterionTypeEntityScopeSubtree CriterionType = "entity.scope.subtree"
 	// CriterionTypeScope names the deployment-wide scope dimension.
 	CriterionTypeScope CriterionType = "scope"
+	// CriterionTypeSubjectOU names a subject within the organization unit a token was issued in.
+	CriterionTypeSubjectOU CriterionType = "subject.ou"
+	// CriterionTypeApplicationKeyOU names an OAuth client within the organization unit a token was issued in.
+	CriterionTypeApplicationKeyOU CriterionType = "app.key.ou"
+	// CriterionTypeEntityScopeOU names the per-principal scope dimension within one organization unit.
+	CriterionTypeEntityScopeOU CriterionType = "entity.scope.ou"
+	// CriterionTypeEntityScopeSubtreeOU revokes a frozen permission subtree for one principal within one
+	// organization unit.
+	CriterionTypeEntityScopeSubtreeOU CriterionType = "entity.scope.subtree.ou"
 	// CriterionTypeCredentialVersion names the credential-version dimension. The value is a version
 	// marker, not a credential.
 	CriterionTypeCredentialVersion CriterionType = "credential.version" // #nosec G101 -- dimension name, not a secret
@@ -122,6 +132,7 @@ var boundaryReasons = []Reason{
 	ReasonIdentityDeleted,
 	ReasonClientRemoved,
 	ReasonClientSecretRotated,
+	ReasonResourceUnshared,
 }
 
 // BoundaryReasons returns a copy of the boundary reasons, for callers that need the full set rather

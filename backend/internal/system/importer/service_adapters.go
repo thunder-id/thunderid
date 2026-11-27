@@ -87,6 +87,13 @@ type roleDeclarativeYAML struct {
 	Assignments     []role.RoleAssignment      `yaml:"assignments,omitempty"`
 }
 
+// resourceServerDeclarativeYAML is a resource server document: the resource server, and the sharing policies it
+// carries, which the importer replays once the resource server is written.
+type resourceServerDeclarativeYAML struct {
+	providers.ResourceServer `yaml:",inline"`
+	SharingPolicies          []sharing.PolicyRequest `yaml:"sharingPolicies,omitempty"`
+}
+
 type userDeclarativeYAML struct {
 	ID              string                  `yaml:"id"`
 	Type            string                  `yaml:"type"`
@@ -553,16 +560,17 @@ func (s *importService) linkRoleAssignments(
 }
 
 func (s *importService) importResourceServer(
-	ctx context.Context, doc parsedDocument, options *ImportOptions, dryRun bool,
+	ctx context.Context, doc parsedDocument, options *ImportOptions, dryRun bool, plan *removalPlan,
 ) ImportItemOutcome {
 	if s.resourceService == nil {
 		return unsupportedAdapterOutcome(resourceTypeResourceServer, "resource server")
 	}
 
-	var req providers.ResourceServer
-	if err := doc.Node.Decode(&req); err != nil {
-		return decodeErrorOutcome(resourceTypeResourceServer, req.ID, req.Name, err)
+	var document resourceServerDeclarativeYAML
+	if err := doc.Node.Decode(&document); err != nil {
+		return decodeErrorOutcome(resourceTypeResourceServer, document.ID, document.Name, err)
 	}
+	req := document.ResourceServer
 
 	resolvedOUID, svcErr := s.resolveImportOUHandle(
 		ctx, resourceTypeResourceServer, req.ID, req.Name, req.OUID, req.OUHandle)
@@ -591,14 +599,21 @@ func (s *importService) importResourceServer(
 		// preceded by an audited failed update.
 		_, svcErr := s.resourceService.GetResourceServer(ctx, req.ID)
 		if svcErr == nil {
-			var updated *providers.ResourceServer
-			if updated, svcErr = s.resourceService.UpdateResourceServer(ctx, req.ID, req); svcErr != nil {
-				return serviceErrorOutcome(resourceTypeResourceServer, req.ID, req.Name, operationUpdate, svcErr)
+			// The policies the document dropped go before the resource server is written. A shared resource server
+			// cannot move to another organization unit or project, and one the document drops would refuse the move.
+			var removed []RemovedSharingPolicy
+			if initiators := plan.initiators(resourceTypeResourceServer, req.ID); len(initiators) > 0 {
+				var failure *sharingRemovalFailure
+				if removed, failure = s.removeSharingOf(ctx, resourceTypeResourceServer, req.ID, initiators,
+					plan.stillNamed(resourceTypeResourceServer, req.ID)); failure != nil {
+					return ImportItemOutcome{ResourceType: resourceTypeResourceServer, ResourceID: req.ID,
+						ResourceName: req.Name, Operation: operationUpdate, Status: statusFailed, Code: failure.Code,
+						Message: failure.Message}
+				}
 			}
-			if err := s.importResourceServerChildren(ctx, updated.ID, req, true); err != nil {
-				return serviceErrorOutcome(resourceTypeResourceServer, updated.ID, updated.Name, operationUpdate, err)
-			}
-			return successOutcome(resourceTypeResourceServer, updated.ID, updated.Name, operationUpdate)
+			outcome := s.updateImportedResourceServer(ctx, req, document.SharingPolicies)
+			outcome.RemovedSharing = slices.Concat(removed, outcome.RemovedSharing)
+			return outcome
 		}
 
 		if !isNotFoundServiceError(svcErr) {
@@ -615,7 +630,37 @@ func (s *importService) importResourceServer(
 		return serviceErrorOutcome(resourceTypeResourceServer, created.ID, created.Name, operationCreate, err)
 	}
 
+	// A policy names the resource server it governs, so the policies are replayed once the resource server
+	// exists. A refusal undoes the create, so a retry does not meet a half-imported resource server.
+	if outcome := s.applySharingPolicies(ctx, resource.ResourceServerSharingType, resourceTypeResourceServer,
+		created.ID, created.Name, created.OUID, document.SharingPolicies, operationCreate); outcome != nil {
+		if delErr := s.deleteResourceServer(ctx, created.ID); delErr != nil {
+			log.GetLogger().With(log.String(log.LoggerKeyComponentName, "ImportService")).Error(ctx,
+				"Failed to remove a resource server whose sharing policies were refused",
+				log.String("resourceServerID", created.ID), log.String("code", delErr.Code))
+		}
+		return *outcome
+	}
 	return successOutcome(resourceTypeResourceServer, created.ID, created.Name, operationCreate)
+}
+
+// updateImportedResourceServer writes an existing resource server from its document, then its resources, actions and
+// sharing policies.
+func (s *importService) updateImportedResourceServer(
+	ctx context.Context, req providers.ResourceServer, policies []sharing.PolicyRequest,
+) ImportItemOutcome {
+	updated, svcErr := s.resourceService.UpdateResourceServer(ctx, req.ID, req)
+	if svcErr != nil {
+		return serviceErrorOutcome(resourceTypeResourceServer, req.ID, req.Name, operationUpdate, svcErr)
+	}
+	if err := s.importResourceServerChildren(ctx, updated.ID, req, true); err != nil {
+		return serviceErrorOutcome(resourceTypeResourceServer, updated.ID, updated.Name, operationUpdate, err)
+	}
+	if outcome := s.applySharingPolicies(ctx, resource.ResourceServerSharingType, resourceTypeResourceServer,
+		updated.ID, updated.Name, updated.OUID, policies, operationUpdate); outcome != nil {
+		return *outcome
+	}
+	return successOutcome(resourceTypeResourceServer, updated.ID, updated.Name, operationUpdate)
 }
 
 //nolint:dupl // Theme and layout imports share the same upsert pattern with type-specific services.
@@ -1701,11 +1746,14 @@ func (s *importService) applySharingPolicies(
 		return nil
 	}
 
-	// A document names its policies only by position, so the refusal says which one.
+	// A document names its policies only by position, so the refusal says which one, unless it refuses them all.
+	where := fmt.Sprintf("sharing policy %d (organization unit %s)", replayErr.Index+1, replayErr.InitiatingOUID)
+	if replayErr.Whole {
+		where = "sharing policies"
+	}
 	detail := tidcommon.CustomServiceError(*replayErr.Err, tidcommon.I18nMessage{
-		Key: replayErr.Err.ErrorDescription.Key,
-		DefaultValue: fmt.Sprintf("sharing policy %d (organization unit %s): %s",
-			replayErr.Index+1, replayErr.InitiatingOUID, replayErr.Err.ErrorDescription.DefaultValue),
+		Key:          replayErr.Err.ErrorDescription.Key,
+		DefaultValue: fmt.Sprintf("%s: %s", where, replayErr.Err.ErrorDescription.DefaultValue),
 	})
 	outcome := serviceErrorOutcome(resourceType, resourceID, resourceName, operation, detail)
 	// The title alone says what kind of refusal it was; the description is what names the entry.

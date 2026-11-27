@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strconv"
 	"time"
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
@@ -37,6 +38,11 @@ type flowVisibilityProvider interface {
 	IsFlowVisible(ctx context.Context, flowID, ouID string) (bool, *tidcommon.ServiceError)
 }
 
+// sessionLifetime says how long an SSO session started now lasts. The session service implements it.
+type sessionLifetime interface {
+	AbsoluteTimeout(ctx context.Context) time.Duration
+}
+
 // flowExecService is the implementation of FlowExecServiceInterface
 type flowExecService struct {
 	flowEngine          flowEngineInterface
@@ -55,8 +61,9 @@ type flowExecService struct {
 	flowVisibility      flowVisibilityProvider
 	permissionProvider  providers.PermissionProvider
 	cfg                 flowconfig.Config
-	// ssoHandleTTL is how long a handle returned in the response body stays usable.
-	ssoHandleTTL time.Duration
+	// sessions says how long a handle returned in the response body stays usable. It is nil where
+	// the deployment keeps no SSO sessions.
+	sessions sessionLifetime
 }
 
 // newFlowExecService creates a new instance of flowExecService with the provided dependencies.
@@ -75,7 +82,7 @@ func newFlowExecService(flowProvider providers.FlowProvider,
 	flowVisibility flowVisibilityProvider,
 	permissionProvider providers.PermissionProvider,
 	cfg flowconfig.Config,
-	ssoHandleTTL time.Duration) FlowExecServiceInterface {
+	sessions sessionLifetime) FlowExecServiceInterface {
 	return &flowExecService{
 		flowProvider:        flowProvider,
 		flowStore:           flowStore,
@@ -93,7 +100,7 @@ func newFlowExecService(flowProvider providers.FlowProvider,
 		flowVisibility:      flowVisibility,
 		permissionProvider:  permissionProvider,
 		cfg:                 cfg,
-		ssoHandleTTL:        ssoHandleTTL,
+		sessions:            sessions,
 	}
 }
 
@@ -214,7 +221,7 @@ func (s *flowExecService) execute(ctx context.Context, flowID, appID, executionI
 	}
 
 	// Return the SSO session this step started or ended in the response body too.
-	s.applyOutboundSSO(&flowStep)
+	s.applyOutboundSSO(ctx, &flowStep)
 
 	// Surface the OAuth callback type (grant type) from runtime data onto the terminal response so the
 	// Gate/SDK routes the completion or failure to the correct callback handler (e.g. CIBA).
@@ -478,14 +485,14 @@ func applyInboundSSO(engineCtx *EngineContext, ctx context.Context, sessionData 
 
 // applyOutboundSSO adds the SSO session this step started, reused or ended to the step, keyed by flow
 // identifier, for the response body to return to a caller that holds its handles itself.
-func (s *flowExecService) applyOutboundSSO(flowStep *FlowStep) {
+func (s *flowExecService) applyOutboundSSO(ctx context.Context, flowStep *FlowStep) {
 	if flowStep.SSOHandleOut != "" && flowStep.SSOFlowID != "" {
 		flowStep.SessionData = []IssuedSessionData{{
 			SessionData: SessionData{
 				FlowIdentifier: session.FlowIdentifier(flowStep.SSOFlowID),
 				SessionHandle:  flowStep.SSOHandleOut,
 			},
-			ExpiresIn: s.handleExpiresIn(flowStep.SSOHandleExpiresAt, time.Now()),
+			ExpiresIn: s.handleExpiresIn(flowStep.SSOHandleExpiresAt, time.Now(), ssoHandleTTL(ctx, s.sessions)),
 		}}
 	}
 	if flowStep.SSOClearFlowID != "" {
@@ -494,12 +501,12 @@ func (s *flowExecService) applyOutboundSSO(flowStep *FlowStep) {
 }
 
 // handleExpiresIn returns the seconds from now a returned handle stays usable: the time its session has left
-// when known, never more than the configured handle lifetime. Rounded up, so a session started in this
-// request reports the whole lifetime.
-func (s *flowExecService) handleExpiresIn(expiresAt, now time.Time) int64 {
-	remaining := s.ssoHandleTTL
+// when known, never more than the handle lifetime ttl. Rounded up, so a session started in this request
+// reports the whole lifetime.
+func (s *flowExecService) handleExpiresIn(expiresAt, now time.Time, ttl time.Duration) int64 {
+	remaining := ttl
 	if !expiresAt.IsZero() {
-		remaining = min(max(expiresAt.Sub(now), 0), s.ssoHandleTTL)
+		remaining = min(max(expiresAt.Sub(now), 0), ttl)
 	}
 	return int64(math.Ceil(remaining.Seconds()))
 }
@@ -594,6 +601,10 @@ func (s *flowExecService) loadNewContext(ctx context.Context, flowID, appID, flo
 	engineCtx.boundSubject = boundSubject
 
 	prepareContext(engineCtx, action, inputs)
+	if maxAge, ok := requestedMaxAge(ctx); ok && flowType == providers.FlowTypeAuthentication {
+		// The same key the authorize endpoint sets for max_age, so a session older than this is not reused.
+		engineCtx.mergeRuntimeData(map[string]string{common.RuntimeKeyMaxAge: strconv.FormatInt(maxAge, 10)})
+	}
 	if flowType == providers.FlowTypeInvitation {
 		// The flow acts for the caller's own unit and remembers who started it; an input cannot change either.
 		engineCtx.RuntimeData[common.RuntimeKeyOUID] = security.GetOUID(ctx)

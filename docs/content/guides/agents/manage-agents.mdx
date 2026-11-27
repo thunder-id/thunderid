@@ -102,6 +102,8 @@ Birthright permissions are the baseline access granted to an agent at creation t
 
 Provisioning creates the agent, then adds it to the configured groups and roles. These settings apply to both own-identity and OBO agents. Review the resulting assignments on the agent's **Access** tab.
 
+Leave both properties empty in a flow that registers personal agents. A personal agent cannot be added to a group or assigned a role, so provisioning fails with `FET-1022` after it creates the agent, and the agent remains.
+
 ### Make the flow active
 
 Any agent onboarding Administration flow, including a custom flow, can be the Console default. Set `agentOnboardingFlow.defaultHandle` in the server's `flow` configuration to its saved handle. Obtain an administrator access token with the `system` scope and set `TOKEN` to that value. Set `CA_CERT` to the certificate that curl should trust for the server. A local setup uses its self-signed `<THUNDERID_HOME>/config/certs/server.cert`.
@@ -263,6 +265,8 @@ The scopes an agent can hold, the permissions that travel in the token's `scope`
 - **API:** assign the agent to roles and groups through the roles and groups APIs. To read what an agent can already reach, call `GET /agents/<AGENT_ID>/roles` and `GET /agents/<AGENT_ID>/groups`. See the [Agents API Reference](../../../apis#tag/agents).
 
 Group membership is transitive: scopes inherited from a parent group are included.
+
+A personal agent acts only on behalf of its owner, so it has no groups or roles.
 
 ### Credentials
 

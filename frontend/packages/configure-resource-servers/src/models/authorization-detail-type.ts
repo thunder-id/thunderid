@@ -100,13 +100,34 @@ export interface SchemaField {
   required: boolean;
   /** The kind of each item of a list field. */
   itemKind: ItemKind;
-  /** The values each item of a list field must be one of, as typed; empty when any value is allowed. */
+  /**
+   * The values a text or number field, or each item of a list field, must be one of, as typed; empty
+   * when any value is allowed.
+   */
   allowedValues?: string[];
   policy: FieldPolicy;
+  /** The `description` of the field, as typed; empty or undefined when it has none. */
+  description?: string;
+  /** The `const` of a text, number or boolean field, as typed; empty or undefined when it has none. */
+  fixedValue?: string;
+  /** The `multipleOf` of a number field, as typed; empty or undefined when it has none. */
+  step?: string;
+  /** Whether a number field's minimum is exclusive, written as `exclusiveMinimum`. */
+  exclusiveMinimum?: boolean;
+  /** Whether a number field's maximum is exclusive, written as `exclusiveMaximum`. */
+  exclusiveMaximum?: boolean;
+  /** The `minLength` of a string field, as typed; empty or undefined when it has none. */
+  minLength?: string;
   /** The `maxLength` of a string field, as typed; empty or undefined when it has none. */
   maxLength?: string;
+  /** The `pattern` of a string field, as typed; empty or undefined when it has none. */
+  pattern?: string;
   /** The `minItems` of a list field, as typed; empty or undefined when it has none. */
   minItems?: string;
+  /** The `maxItems` of a list field, as typed; empty or undefined when it has none. */
+  maxItems?: string;
+  /** Whether each item of a list field can appear only once, written as `uniqueItems`. */
+  uniqueItems?: boolean;
   /** The properties of an object field. */
   children: SchemaField[];
 }

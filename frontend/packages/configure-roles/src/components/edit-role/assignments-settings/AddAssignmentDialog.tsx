@@ -28,7 +28,7 @@ import {AppWindow, Bot, UserRound, UsersRound} from '@wso2/oxygen-ui-icons-react
 import {useState, useMemo, useCallback, type JSX, type SyntheticEvent} from 'react';
 import {useTranslation} from 'react-i18next';
 import useGetRoleAssignments from '../../../api/useGetRoleAssignments';
-import type {BasicAgent} from '../../../internal/agent';
+import {PERSONAL_AGENT_KIND, type BasicAgent} from '../../../internal/agent';
 import useGetAgents from '../../../internal/useGetAgents';
 import type {RoleAssignment} from '../../../models/role';
 
@@ -197,7 +197,7 @@ export default function AddAssignmentDialog({
     [applicationsData, assignedAppIds],
   );
   const filteredAgents = useMemo(
-    () => (agentsData?.agents ?? []).filter((a) => !assignedAgentIds.has(a.id)),
+    () => (agentsData?.agents ?? []).filter((a) => a.kind !== PERSONAL_AGENT_KIND && !assignedAgentIds.has(a.id)),
     [agentsData, assignedAgentIds],
   );
 

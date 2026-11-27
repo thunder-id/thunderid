@@ -46,6 +46,9 @@ const (
 	// claimClientID names the OAuth client an access token was issued to.
 	claimClientID = "client_id"
 
+	// claimAuthTime is when the token's subject authenticated (RFC 9068).
+	claimAuthTime = "auth_time"
+
 	// claimSourceIDP names the external identity provider whose subject a self-issued access token was
 	// issued for. Its sub is that provider's identifier, not an account of this deployment. It mirrors
 	// the OAuth package's ClaimIDP.
@@ -167,6 +170,7 @@ func (h *jwtAuthenticator) authenticateToken(ctx context.Context, token string,
 			return nil, errInvalidToken
 		}
 		securityCtx.revocationAudiences = audiences
+		securityCtx.revocationOUID = revocation.TokenOUID(attributes)
 		if issuedAt, ok := attributes[claimIssuedAt].(float64); ok {
 			securityCtx.establishedAt = time.Unix(int64(issuedAt), 0).UTC()
 		}

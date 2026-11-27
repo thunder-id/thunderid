@@ -112,7 +112,8 @@ func (s *AccessChangeValidatorTestSuite) TestMetaDeclaresEveryModeAndNoDefault()
 	s.Empty(meta.DefaultMode)
 	s.Equal([]string{
 		ExecutorModeActionDeletion, ExecutorModeGroupDeletion, ExecutorModeGroupMembershipRemoval,
-		ExecutorModeRoleAssignmentRemoval, ExecutorModeRoleDeletion, ExecutorModeRolePermissionRemoval,
+		ExecutorModeMandateRemoval, ExecutorModeRoleAssignmentRemoval, ExecutorModeRoleDeletion,
+		ExecutorModeRolePermissionRemoval, ExecutorModeRoleUnshare,
 	}, meta.SupportedModes)
 	s.Equal([]providers.FlowType{providers.FlowTypeAdministration, providers.FlowTypeSystem}, meta.SupportedFlowTypes)
 }
@@ -137,6 +138,9 @@ func (s *AccessChangeValidatorTestSuite) TestHasRequiredInputsPerMode() {
 		ExecutorModeGroupDeletion:          {revocationInputGroup},
 		ExecutorModeGroupMembershipRemoval: {revocationInputGroup, revocationInputMember},
 		ExecutorModeActionDeletion:         {revocationInputResourceServer, revocationInputAction},
+		ExecutorModeRoleUnshare:            {revocationInputRole, revocationInputOU},
+		ExecutorModeMandateRemoval: {
+			revocationInputRole, revocationInputAssignee, revocationInputAssignmentOU},
 	}
 	s.Len(cases, len(accessChangesByMode), "every mode must be covered")
 	executor := s.validator()
@@ -607,8 +611,9 @@ func (s *AccessChangeValidatorTestSuite) TestEveryEmptyRequiredInputIsAClientRef
 					inputs[input.Identifier] = "value"
 				}
 				inputs[empty.Identifier] = ""
+				ctx := administrationNodeContext(mode, inputs)
 
-				resp, err := s.validator().Execute(administrationNodeContext(mode, inputs))
+				resp, err := s.validator().Execute(ctx)
 
 				s.Require().NoError(err)
 				s.Equal(providers.ExecFailure, resp.Status)
@@ -641,4 +646,118 @@ func (s *AccessChangeValidatorTestSuite) TestEveryModeReasonIsABoundaryReason() 
 	for mode, change := range accessChangesByMode {
 		s.True(revocation.IsBoundaryReason(change.reason), "%s must be bounded, not terminal", mode)
 	}
+}
+
+// testUnsharedOUID is the organization unit the role unshare tests take the role from.
+const testUnsharedOUID = "ou-a"
+
+// roleUnshareContext is a system flow's node unsharing role testRoleID from testUnsharedOUID.
+func roleUnshareContext() *providers.NodeContext {
+	ctx := administrationNodeContext(ExecutorModeRoleUnshare,
+		map[string]string{revocationInputRole: testRoleID, revocationInputOU: testUnsharedOUID})
+	ctx.FlowType = providers.FlowTypeSystem
+	return ctx
+}
+
+func (s *AccessChangeValidatorTestSuite) TestRoleUnshare_PlansCriteriaWithinTheUnit() {
+	s.roles.EXPECT().GetUnshareRevocationTarget(mock.Anything, testRoleID, "ou-a").Return(
+		&revocation.AccessRevocationTarget{
+			EntityIDs: []string{"user-1", "user-2"},
+			Scopes: []revocation.AudienceScope{
+				{Audience: testCaliforniaAud, Scope: testLicenceScope},
+				{Audience: testCaliforniaAud, Scope: "reports", SubtreeDelimiter: ":"},
+			},
+		}, nil)
+
+	resp, err := s.validator().Execute(roleUnshareContext())
+
+	s.Require().NoError(err)
+	plan := s.planFrom(resp)
+	s.Equal(revocation.ReasonResourceUnshared, plan.Reason)
+	s.Equal(testRoleID, plan.TargetID)
+	want := make([]revocation.Criterion, 0, 4)
+	for _, entityID := range []string{"user-1", "user-2"} {
+		want = append(want,
+			revocation.Criterion{Type: revocation.CriterionTypeEntityScopeOU,
+				Value: revocation.EntityScopeOUCriterionValue(entityID, testCaliforniaAud, testLicenceScope, "ou-a")},
+			revocation.Criterion{Type: revocation.CriterionTypeEntityScopeSubtreeOU,
+				Value: revocation.EntityScopeSubtreeOUCriterionValue(
+					entityID, testCaliforniaAud, "reports", ":", "ou-a")})
+	}
+	s.Equal(want, plan.Criteria)
+	s.Equal([]revocation.AudienceScope{
+		{Audience: testCaliforniaAud, Scope: testLicenceScope},
+		{Audience: testCaliforniaAud, Scope: "reports", SubtreeDelimiter: ":"},
+	}, plan.HolderScopes, "a holder assigned after the plan is revoked by the post flow")
+	s.Equal("ou-a", plan.OUID)
+}
+
+func (s *AccessChangeValidatorTestSuite) TestRoleUnshare_WithNoHolderRevokesNothing() {
+	s.roles.EXPECT().GetUnshareRevocationTarget(mock.Anything, testRoleID, "ou-a").Return(oneCaliforniaScope(), nil)
+
+	resp, err := s.validator().Execute(roleUnshareContext())
+
+	s.Require().NoError(err)
+	s.True(s.planFrom(resp).NothingToRevoke)
+}
+
+func (s *AccessChangeValidatorTestSuite) TestRoleUnshare_RefusalIsReported() {
+	refusal := tidcommon.ServiceError{Type: tidcommon.ClientErrorType, Code: "ROL-1003"}
+	s.roles.EXPECT().GetUnshareRevocationTarget(mock.Anything, testRoleID, "ou-a").Return(nil, &refusal)
+
+	resp, err := s.validator().Execute(roleUnshareContext())
+
+	s.Require().NoError(err)
+	s.Equal(providers.ExecFailure, resp.Status)
+	s.Equal(&refusal, resp.Error)
+}
+
+func (s *AccessChangeValidatorTestSuite) TestRoleUnshare_WithoutARoleServiceIsAnError() {
+	_, err := newAccessChangeValidator(s.factory, nil, s.assignments, s.resources).Execute(roleUnshareContext())
+
+	s.ErrorContains(err, "role service is not configured")
+}
+
+// mandateRemovalContext is a system flow's node revoking role testRoleID from testAssigneeID in testUnsharedOUID.
+func mandateRemovalContext() *providers.NodeContext {
+	ctx := administrationNodeContext(ExecutorModeMandateRemoval, map[string]string{
+		revocationInputRole: testRoleID, revocationInputAssignee: testAssigneeID,
+		revocationInputAssignmentOU: testUnsharedOUID,
+	})
+	ctx.FlowType = providers.FlowTypeSystem
+	return ctx
+}
+
+func (s *AccessChangeValidatorTestSuite) TestMandateRemoval_PlansTheAssigneesScopesWithinTheUnit() {
+	s.assignments.EXPECT().GetMandateRemovalRevocationTarget(mock.Anything, testRoleID, testUnsharedOUID,
+		testAssigneeID).Return(&revocation.AccessRevocationTarget{
+		EntityIDs: []string{testAssigneeID}, AssigneeType: "user",
+		Scopes: []revocation.AudienceScope{{Audience: testCaliforniaAud, Scope: testLicenceScope}},
+	}, nil)
+
+	resp, err := s.validator().Execute(mandateRemovalContext())
+
+	s.Require().NoError(err)
+	plan := s.planFrom(resp)
+	s.Equal(revocation.ReasonRoleAssignmentRemoved, plan.Reason)
+	s.Equal(testAssigneeID, plan.AssigneeID)
+	s.Equal([]revocation.Criterion{{Type: revocation.CriterionTypeEntityScopeOU,
+		Value: revocation.EntityScopeOUCriterionValue(testAssigneeID, testCaliforniaAud, testLicenceScope,
+			testUnsharedOUID)}}, plan.Criteria)
+}
+
+func (s *AccessChangeValidatorTestSuite) TestMandateRemoval_AnAssigneeKeepingTheRoleLosesNothing() {
+	s.assignments.EXPECT().GetMandateRemovalRevocationTarget(mock.Anything, testRoleID, testUnsharedOUID,
+		testAssigneeID).Return(&revocation.AccessRevocationTarget{}, nil)
+
+	resp, err := s.validator().Execute(mandateRemovalContext())
+
+	s.Require().NoError(err)
+	s.True(s.planFrom(resp).NothingToRevoke)
+}
+
+func (s *AccessChangeValidatorTestSuite) TestMandateRemoval_WithoutAnAssignmentServiceIsAnError() {
+	_, err := newAccessChangeValidator(s.factory, s.roles, nil, s.resources).Execute(mandateRemovalContext())
+
+	s.ErrorContains(err, "role assignment service is not configured")
 }

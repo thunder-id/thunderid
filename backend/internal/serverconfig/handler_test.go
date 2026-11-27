@@ -182,6 +182,24 @@ func (suite *HandlerTestSuite) TestHandleUpdateServerConfig_Unauthorized() {
 	assert.Equal(suite.T(), common.ErrorUnauthorized.Code, suite.decodeErrorCode(w.Body.Bytes()))
 }
 
+// A section the control plane deployed or declarative resources set can only be changed there, so a write
+// to it is forbidden rather than invalid.
+func (suite *HandlerTestSuite) TestHandleUpdateServerConfig_ASectionSetElsewhereIsForbidden() {
+	for _, svcErr := range []*common.ServiceError{&ErrorManagedConfig, &ErrorDeclarativeConfig} {
+		suite.Run(svcErr.Code, func() {
+			suite.mockService.EXPECT().SetConfig(mock.Anything, ConfigNameCORS, mock.Anything).Return(svcErr).Once()
+
+			req := httptest.NewRequest(http.MethodPut, "/server-config/cors", strings.NewReader(`["*"]`))
+			req.SetPathValue("name", string(ConfigNameCORS))
+			w := httptest.NewRecorder()
+			suite.handler.HandleUpdateServerConfig(w, req)
+
+			assert.Equal(suite.T(), http.StatusForbidden, w.Code)
+			assert.Equal(suite.T(), svcErr.Code, suite.decodeErrorCode(w.Body.Bytes()))
+		})
+	}
+}
+
 func (suite *HandlerTestSuite) TestHandleUpdateServerConfig_GetAfterSetError() {
 	suite.mockService.EXPECT().SetConfig(mock.Anything, ConfigNameCORS, mock.Anything).Return(nil)
 	suite.mockService.EXPECT().GetConfig(mock.Anything, ConfigNameCORS).

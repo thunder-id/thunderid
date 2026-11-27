@@ -97,7 +97,7 @@ func (s *ManagerAuditTestSuite) SetupSubTest() {
 
 // manager returns a manager over the suite's provider that publishes on bus.
 func (s *ManagerAuditTestSuite) manager(bus eventbus.EventBusInterface) providers.AuthnProviderManager {
-	mgr, err := Initialize(s.provider, nil, bus, FederatedSyncDependencies{})
+	mgr, err := Initialize(s.provider, nil, bus, nil)
 	s.Require().NoError(err)
 	return mgr
 }
@@ -269,7 +269,7 @@ func (s *ManagerAuditTestSuite) TestEnroll_SucceedsWhenTheBusRefusesTheEvent() {
 }
 
 func (s *ManagerAuditTestSuite) TestInitialize_RefusesANilEventBus() {
-	mgr, err := Initialize(s.provider, nil, nil, FederatedSyncDependencies{})
+	mgr, err := Initialize(s.provider, nil, nil, nil)
 
 	s.Nil(mgr)
 	s.ErrorIs(err, errNilEventBus)

@@ -415,6 +415,8 @@ type FlowRequest struct {
 	Inputs         map[string]string `json:"inputs"`
 	SessionData    []SessionData     `json:"sessionData,omitempty"`
 	OUID           string            `json:"ouId,omitempty"`
+	// MaxAge is the maximum age in seconds of a sign-in the flow may reuse, as OIDC max_age.
+	MaxAge *int64 `json:"maxAge,omitempty"`
 }
 
 // FlowInitContext represents the context for initiating a new flow with runtime data

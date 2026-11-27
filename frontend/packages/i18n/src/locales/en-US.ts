@@ -256,6 +256,8 @@ const translations = {
     'errors.SSE-4030': 'You do not have permission to perform this action in this organization unit.',
     'errors.DCR-1002': 'This resource is managed declaratively and cannot be modified.',
     'errors.DCR-1003': 'This resource is managed declaratively and cannot be deleted.',
+    'errors.SCF-1006': 'The control plane manages these settings, so they can only be changed there.',
+    'errors.SCF-1007': "Declarative resources set these settings, so they can't be changed here.",
     'errors.SAZ-4030':
       'You cannot grant permissions that you do not hold. Ask an administrator who holds them to make this change.',
     'errors.ROL-1035':
@@ -879,6 +881,9 @@ const translations = {
     'listing.error': 'Failed to load users',
     'manageUser.loadError': 'Failed to load user information',
     'manageUser.notFound': 'User not found',
+
+    // Sessions
+    'manageUser.tabs.sessions': 'Sessions',
 
     // Roles
     'manageUser.tabs.roles': 'Roles',
@@ -2012,6 +2017,10 @@ const translations = {
     'switch.losesAssignmentsOff':
       'Assignments are turned off for some organization units this drops. Any of them granted again can assign {{resource}}, and only a resource file or the API can turn assignments off again.',
     'switch.notYet': 'Nothing is removed until you save. Until then, Reset brings everything back.',
+    'switch.revokesEverywhere':
+      'When you save, the tokens issued for {{resource}} in every organization unit it reached are revoked.',
+    'switch.revokesOnReplace':
+      'Saving this replaces the sharing policy, so the tokens issued for {{resource}} in every organization unit it reached are revoked, including the ones this choice reaches again.',
     'switch.title': 'Switch to {{choice}}?',
     'switch.titleChangeScope': 'Change the scope?',
     'switch.titleOwner': 'Stop sharing {{resource}}?',
@@ -2696,12 +2705,12 @@ const translations = {
     'attributeMapping.sync.attributes.hint.no_sync':
       "The provider's attributes are stored when a sign-in creates the account, and are not updated after.",
     'attributeMapping.sync.attributes.hint.session_only':
-      "The account stores only the required attributes and the values the user enters. The provider's other attributes apply to the session.",
+      'The account stores only the required attributes and the values the user enters. The other attributes in the attribute mappings apply to the session.',
     'attributeMapping.sync.groupsAndRoles.label': 'Groups and roles sync',
     'attributeMapping.sync.groupsAndRoles.hint.no_sync':
       'The groups and roles the authorization mapping resolves are assigned when a sign-in creates the account, and are not updated after.',
     'attributeMapping.sync.groupsAndRoles.hint.override_all':
-      "Returning sign-ins match the account's direct groups and roles to the authorization mapping, removing unmapped ones of each type the mapping targets. Protected assignments are kept.",
+      "Returning sign-ins match the account's direct groups and roles to the authorization mapping, removing unmapped ones of each type the mapping targets. Group memberships and role assignments set by a control plane, group memberships set by a resource file, and roles a sharing policy mandates are kept.",
     'attributeMapping.sync.groupsAndRoles.hint.session_only':
       'The groups and roles the authorization mapping resolves apply to the session and are not assigned to the account.',
     'attributeMapping.sync.mode.no_sync': 'No sync',
@@ -3050,6 +3059,9 @@ const translations = {
     'authorizationDetails.invalidNumber': 'Enter a number.',
     'authorizationDetails.numberMax': 'Enter {{value}} or less.',
     'authorizationDetails.numberMin': 'Enter {{value}} or more.',
+    'authorizationDetails.numberAbove': 'Enter more than {{value}}.',
+    'authorizationDetails.numberBelow': 'Enter less than {{value}}.',
+    'authorizationDetails.numberMultiple': 'Enter a multiple of {{value}}.',
     'authorizationDetails.invalidDate': 'Enter a date.',
     'authorizationDetails.dateMax': 'Choose {{value}} or earlier.',
     'authorizationDetails.dateMin': 'Choose {{value}} or later.',
@@ -3684,6 +3696,7 @@ const translations = {
     'edit.page.tabs.flows': 'Flows',
     'edit.page.tabs.customization': 'Customization',
     'edit.page.tabs.token': 'Token',
+    'edit.page.tabs.sessions': 'Sessions',
     'edit.page.tabs.organizationAccess': 'Organization Access',
     'edit.organizationAccess.save.error': 'Failed to update organization access. Please try again.',
     'organizationAccess.title': 'Where {{resource}} is available',
@@ -4948,7 +4961,7 @@ const translations = {
     'core.executions.provisioning.assignRole.noneExist': 'No roles exist. Create one, then select it here.',
     'core.executions.provisioning.assignRole.loadError': 'Failed to load roles.',
     'core.executions.provisioning.federatedOverrideWarning':
-      "With Override all sync, a later federated sign-in removes groups assigned here that the connection's authorization mapping doesn't resolve when it has a group target, and roles when it has a role target.",
+      'A later sign-in through a connection set to Override all can remove the groups and roles assigned here.',
 
     // Session sign out executor
     'core.executions.sessionSignOut.description': 'Configure the session sign out executor settings.',
@@ -6484,7 +6497,9 @@ const translations = {
     'create.submit': 'Create resource server',
     'create.submitMcp': 'Create MCP server',
     'edit.tab.resources': 'Resources',
+    'edit.tab.organizationAccess': 'Organization Access',
     'edit.tab.advanced': 'Advanced',
+    'edit.organizationAccess.saveError': 'Failed to update organization access. Please try again.',
     'edit.defaultBadge': 'Default resource server',
     'edit.defaultBadgeManaged': 'Managed by server configuration.',
     'edit.back': 'Back to resource servers',
@@ -6596,6 +6611,28 @@ const translations = {
     'errors.RES-1023': 'A resource server with the specified ID already exists.',
     'errors.RES-1024':
       'An MCP server identifier must be an http or https URL with no fragment, such as https://mcp.example.com/mcp.',
+    'errors.RES-1028': 'This resource server was deployed by the control plane and can only be changed there.',
+    'errors.RES-1029':
+      'This organization access change is not allowed. An organization unit may have moved since you opened the resource server. Reset to load the latest, then try again.',
+    'errors.RES-1030':
+      'This organization access no longer exists. It may have been removed already. Reset to load the latest.',
+    'errors.RES-1031':
+      "This resource server's organization access was already set by a change made elsewhere. Reset to load it, then redo your change.",
+    'errors.RES-1032':
+      "Someone else changed this resource server's organization access while you were editing. Reset to load the latest, then redo your change.",
+    'errors.RES-1033': "This organization access is declared in a resource file and can't be changed here.",
+    'errors.RES-1036':
+      'Access for every organization unit, or for every other tree, can only be set in a resource file or by importing.',
+    'errors.RES-1037':
+      'This resource server is available in other organization units. Remove its organization access before moving it to another organization unit or project.',
+    'errors.RES-1038':
+      'Sharing only part of a resource server is not supported. Share the whole resource server instead.',
+
+    // Organization Access
+    'organizationAccess.title': 'Where {{resource}} is available',
+    'organizationAccess.description':
+      '{{resource}} and all of its permissions are available in the organization units selected here.',
+    'organizationAccess.ownerOnly': "{{resource}} isn't available in any other organization unit.",
   },
 
   // ============================================================================
@@ -6659,18 +6696,39 @@ const translations = {
     'composer.kindChange.allowedValues': 'the allowed values',
     'composer.kindChange.change': 'the rule for changing it',
     'composer.kindChange.fields': 'the fields inside it',
+    'composer.kindChange.fixedValue': 'the fixed value',
     'composer.kindChange.limits': 'the minimum and maximum',
+    'composer.kindChange.maxItems': 'the maximum number of items',
     'composer.kindChange.maxLength': 'the maximum length',
     'composer.kindChange.minItems': 'the minimum number of items',
+    'composer.kindChange.minLength': 'the minimum length',
     'composer.kindChange.notice': 'Changing the type removed {{settings}}, which the new type cannot keep.',
+    'composer.kindChange.pattern': 'the pattern',
+    'composer.kindChange.step': 'the step',
+    'composer.kindChange.uniqueItems': 'the rule that each item appears once',
+    'composer.limits.above': 'Above {{min}}',
+    'composer.limits.below': 'Below {{max}}',
+    'composer.limits.itemRange': '{{min}} to {{max}} items',
+    'composer.limits.lengthRange': '{{min}} to {{max}} characters',
     'composer.limits.length_one': 'Up to {{count}} character',
     'composer.limits.length_other': 'Up to {{count}} characters',
     'composer.limits.max': 'Up to {{max}}',
+    'composer.limits.maxItems_one': 'Up to {{count}} item',
+    'composer.limits.maxItems_other': 'Up to {{count}} items',
     'composer.limits.min': 'From {{min}}',
     'composer.limits.minItems_one': 'At least {{count}} item',
     'composer.limits.minItems_other': 'At least {{count}} items',
+    'composer.limits.minLength_one': 'At least {{count}} character',
+    'composer.limits.minLength_other': 'At least {{count}} characters',
     'composer.limits.none': 'No limits',
+    'composer.limits.pattern': 'Pattern',
     'composer.limits.range': '{{min}} to {{max}}',
+    'composer.limits.rangeAbove': 'Above {{min}}, up to {{max}}',
+    'composer.limits.rangeBelow': '{{min}} to below {{max}}',
+    'composer.limits.rangeBetween': 'Above {{min}}, below {{max}}',
+    'composer.limits.step': 'Steps of {{step}}',
+    'composer.limits.unique': 'Each item once',
+    'composer.limits.wholeNumbers': 'Whole numbers',
     'composer.move.down': 'Move down',
     'composer.move.indent': 'Move into the object above',
     'composer.move.outdent': 'Move out of this object',
@@ -6807,36 +6865,64 @@ const translations = {
     'fields.allowedValueBlank': 'Enter a value, not only spaces.',
     'fields.allowedValueRepeated': '{{value}} is already allowed.',
     'fields.allowedValues': 'Allowed values',
+    'fields.allowedValuesFieldHint': 'Leave empty to allow any value.',
+    'fields.atLeast': 'At least',
+    'fields.atMost': 'At most',
     'fields.allowedValuesHint': 'Each item must be one of these values. Leave empty to allow any value.',
     'fields.anyValue': 'Any value. Type a value and press Enter',
     'fields.dateTimeHint': 'e.g., {{example}}',
+    'fields.description': 'Description',
+    'fields.descriptionHint': 'Shown under the display name on the consent screen.',
+    'fields.descriptionPlaceholder': 'Optional',
     'fields.errors.allowedValuesDuplicate': 'Each allowed value can appear only once.',
     'fields.errors.allowedValuesSpaces': 'An allowed value cannot start or end with a space.',
     'fields.errors.allowedValuesInvalid': 'Enter each allowed value as a number.',
+    'fields.errors.allowedValuesPrecision': 'Enter each allowed value with at most 15 significant digits.',
     'fields.errors.dateTimeUser':
       'The consent screen cannot change a date and time, so only the client or the external processor can change it.',
+    'fields.errors.fixedValueBoolean': 'Choose true or false as the fixed value.',
+    'fields.errors.fixedValueInvalid': 'Enter the fixed value as a number.',
+    'fields.errors.fixedValuePrecision': 'Enter the fixed value with at most 15 significant digits.',
+    'fields.errors.exclusiveLimitRequired': 'Enter the limit that the value must be above or below.',
+    'fields.errors.itemsOrder': 'The minimum number of items cannot be greater than the maximum.',
+    'fields.errors.lengthOrder': 'The minimum length cannot be greater than the maximum length.',
     'fields.errors.limitInvalid': 'Enter the minimum and maximum as values of this type.',
     'fields.errors.limitOrder': 'The minimum cannot be greater than the maximum.',
+    'fields.errors.limitPrecision': 'Enter the minimum and maximum with at most 15 significant digits.',
+    'fields.errors.maxItemsInvalid': 'Enter the maximum number of items as a whole number.',
+    'fields.errors.maxItemsTooLarge': 'The maximum number of items can be at most 2147483647.',
     'fields.errors.maxLengthInvalid': 'Enter the maximum length as a whole number.',
     'fields.errors.maxLengthTooLarge': 'The maximum length can be at most 2147483647.',
     'fields.errors.minItemsInvalid': 'Enter the minimum number of items as a whole number.',
     'fields.errors.minItemsTooLarge': 'The minimum number of items can be at most 2147483647.',
+    'fields.errors.minLengthInvalid': 'Enter the minimum length as a whole number.',
+    'fields.errors.minLengthTooLarge': 'The minimum length can be at most 2147483647.',
     'fields.errors.modifiableByRequired': 'Choose who can change this field.',
     'fields.errors.modifiableInSupplied':
       'Your external processor fills in the object this field belongs to, so nobody can change it after the request.',
     'fields.errors.nameDot': 'A field name cannot contain a dot.',
-    'fields.errors.nameInnerSpace': 'A field name cannot contain a space.',
     'fields.errors.nameSpaces': 'A field name cannot start or end with a space.',
     'fields.errors.nameDuplicate': 'Another field at this level has the same name.',
     'fields.errors.nameRequired': 'Enter a field name.',
     'fields.errors.json.nameDuplicate':
       'Another field at this level has the same name. Rename it to edit the schema as JSON.',
     'fields.errors.json.nameRequired': 'Enter a field name to edit the schema as JSON.',
+    'fields.errors.patternIncomplete':
+      'The pattern is incomplete. Check that each group and character class is closed.',
+    'fields.errors.patternUnsupported': 'The pattern uses a lookaround or a backreference, which is not supported.',
     'fields.errors.policyRefused':
       "The server refused this field's rules. Check its type, limits and who can change it.",
     'fields.errors.processorMissing': 'The external processor sets or changes this field, but no processor is set.',
+    'fields.errors.stepInvalid': 'Enter the step as a number greater than 0.',
+    'fields.errors.stepPrecision': 'Enter the step with at most 15 significant digits.',
     'fields.errors.typeKind': 'The type identifies the request, so it must be plain text.',
+    'fields.errors.typeValueExcluded':
+      'The fixed value or allowed values of the type must include the type identifier.',
     'fields.errors.typeSupplied': 'The type identifies the request, so the external processor cannot set it.',
+    'fields.fixedFalse': 'Always false',
+    'fields.fixedTrue': 'Always true',
+    'fields.fixedValue': 'Fixed value',
+    'fields.fixedValueHint': 'Every request must carry exactly this value.',
     'fields.itemKind.label': 'Item type',
     'fields.itemKind.number': 'Number',
     'fields.itemKind.string': 'Text',
@@ -6848,24 +6934,40 @@ const translations = {
     'fields.kind.number': 'Number',
     'fields.kind.object': 'Object',
     'fields.kind.string': 'Text',
+    'fields.maxItems': 'Maximum number of items',
     'fields.maxLength': 'Maximum length',
     'fields.maxLengthHint': 'Values are shown to the user on the consent screen, so keep free text short.',
+    'fields.lessThan': 'Less than',
     'fields.maximum': 'Maximum',
+    'fields.maximumComparison': 'Maximum comparison',
     'fields.minItems': 'Minimum number of items',
     'fields.minItemsHint': 'A request must list at least this many items.',
+    'fields.minLength': 'Minimum length',
     'fields.minimum': 'Minimum',
+    'fields.minimumComparison': 'Minimum comparison',
+    'fields.moreThan': 'More than',
     'fields.name': 'Field name',
     'fields.namePlaceholder': 'e.g., amount',
     'fields.new': 'New field',
+    'fields.noFixedValue': 'None',
+    'fields.noMaxItems': 'No maximum',
     'fields.noMaxLength': 'No limit',
     'fields.noMaximum': 'No maximum',
     'fields.noMinItems': 'No minimum',
+    'fields.noMinLength': 'No minimum',
     'fields.noMinimum': 'No minimum',
+    'fields.noPattern': 'Any text',
+    'fields.noStep': 'Any number',
+    'fields.pattern': 'Pattern',
+    'fields.patternHint': 'An RE2 regular expression, such as ^[A-Z]{3}$.',
     'fields.remove': 'Remove field',
     'fields.requiredTooltip': 'Every request must include this field',
+    'fields.step': 'Step',
+    'fields.stepHint': 'For example, 1 for whole numbers or 0.01 for cents.',
     'fields.title': 'Display name',
     'fields.titleHint': 'Shown to the user on the consent screen.',
     'fields.titlePlaceholder': 'e.g., Amount',
+    'fields.uniqueItems': 'Each item can appear only once',
     'form.description': 'Description',
     'form.descriptionPlaceholder': 'e.g., A single payment from the user’s account',
     'form.name': 'Name',
@@ -6919,6 +7021,8 @@ const translations = {
     'save.error': 'Failed to save the intent. Please try again.',
     'schema.builderUnavailable':
       'This schema uses features the composer cannot show, so it can be edited only as JSON. It is checked when you save.',
+    'schema.builderUnavailableAt':
+      'The field {{path}} uses features the composer cannot show, such as a list of objects, so this schema can be edited only as JSON. It is checked when you save.',
     'schema.composerUnavailable': 'The composer cannot show this schema. Edit it as JSON.',
     'schema.composerUnavailableInvalid': 'Fix the JSON to open it in the composer.',
     'schema.description':
@@ -7405,6 +7509,39 @@ const translations = {
     'errors.VAR-1004': 'The gateway holds nothing by that name. It may have been deleted.',
     'errors.VAR-1008': 'A description can be at most 1000 characters.',
     'errors.VAR-1009': 'The gateway already holds something by that name.',
+  },
+
+  // ============================================================================
+  // Sessions namespace - SSO session management feature translations
+  // ============================================================================
+  sessions: {
+    'panel.title': 'Active sessions',
+    'panel.userDescription': 'Where this user is signed in.',
+    'panel.appDescription': 'Sessions that signed in to this application.',
+    'panel.loadError': 'Failed to load sessions',
+    'panel.empty': 'No active sessions',
+    'panel.loading': 'Loading sessions',
+    'panel.forbidden': "You don't have permission to view these sessions.",
+    'panel.rowsPerPage': 'Rows per page:',
+    'panel.displayedRows': '{{from}}–{{to}} of {{count}}',
+    'item.lastActive': 'Last active {{time}}',
+    'item.userLastActive': '{{user}}, last active {{time}}',
+    'device.browserOnOs': '{{browser}} on {{os}}',
+    'device.unknown': 'Unknown device',
+    'details.user': 'User',
+    'details.device': 'Device',
+    'details.osAndBrowser': 'OS and browser',
+    'details.applications': 'Active applications',
+    'details.noApplications': 'None',
+    'applications.scrollLeft': 'Scroll applications left',
+    'applications.scrollRight': 'Scroll applications right',
+    'details.signedIn': 'Signed in',
+    'details.lastAuthenticated': 'Last entered credentials {{time}}',
+    'details.lastActive': 'Last active',
+    'details.creationIp': 'Signed in from {{ip}}',
+    'details.lastActiveIp': 'IP address',
+    'details.sessionEnds': 'Session ends',
+    'details.notRecorded': 'Not recorded',
   },
 
   // ============================================================================
@@ -8001,10 +8138,40 @@ const translations = {
   settings: {
     'page.title': 'Configurations',
     'page.subtitle': 'Configurations that apply across your system.',
+    'page.load.error': 'Failed to load the configurations',
+    'page.refresh.error': 'Failed to refresh the configurations. The tabs show what was loaded before.',
     'tabs.ariaLabel': 'Settings sections',
+    'tabs.sessions': 'Sign-in session',
     'tabs.cors': 'CORS',
     'tabs.csp': 'Content security policy',
     'tabs.accountSecurity': 'Account security',
+
+    // Shared by the cards that edit a server-config section
+    'field.default': 'Default',
+    'field.custom': 'Custom',
+    'field.resetToDefault': 'Reset to default',
+    'lock.declarative':
+      "These values come from a declarative resource, so they can't be changed here. To change them, edit <code>{{file}}</code> and redeploy.",
+    'saveBar.unsavedChanges': 'You have unsaved changes',
+    'saveBar.save': 'Save changes',
+
+    // Session timeouts
+    'session.card.title': 'Session timeouts',
+    'session.card.description':
+      'How long a sign-in session lasts. A change applies without a restart, and a shorter timeout also ends existing sessions that have gone past it.',
+    'session.idleTimeout.label': 'Idle timeout',
+    'session.idleTimeout.hint': 'Signs the user out after this long without activity.',
+    'session.absoluteTimeout.label': 'Absolute timeout',
+    'session.absoluteTimeout.hint': "Signs the user out this long after they sign in, even if they're active.",
+    'session.validation.wholeNumber': 'Enter a whole number greater than zero.',
+    'session.validation.idleExceedsAbsolute': "The idle timeout can't be longer than the absolute timeout.",
+    'session.load.error': 'Failed to load the session settings.',
+    'session.refresh.error': 'Failed to refresh the session settings. The values shown are the ones loaded before.',
+    'session.save.success': 'Session settings updated.',
+    'session.save.error': 'Failed to update the session settings.',
+    'session.errors.SCF-1003':
+      "These session timeouts aren't valid. The idle timeout must be longer than the activity refresh interval (1 minute by default) and no longer than the absolute timeout, and neither may pass the deployment's maximum (30 days idle and 365 days absolute by default).",
+
     'cors.card.title': 'Allowed origins',
     'cors.card.description':
       'Manage which origins are allowed to access your APIs. Each entry is either an exact origin or a regular expression.',
@@ -8195,8 +8362,6 @@ const translations = {
     'accountLock.validation.ceiling':
       'Enter 0 for no limit, or at least the number of failed attempts that locks the account.',
 
-    'accountLock.readOnlyHint':
-      "These settings are read-only because they're managed declaratively. Change them in the declarative configuration.",
     'accountLock.unsavedChanges': 'You have unsaved changes',
     'accountLock.reset': 'Reset',
     'accountLock.save': 'Save changes',

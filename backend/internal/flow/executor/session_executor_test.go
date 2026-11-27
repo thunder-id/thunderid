@@ -464,14 +464,16 @@ func (suite *SessionExecutorTestSuite) TestSSOLoad_PassesClientInfo() {
 	sso := sessionmock.NewServiceMock(suite.T())
 	sso.EXPECT().LoadCheckpoint(mock.Anything, mock.MatchedBy(func(in session.LoadCheckpointInput) bool {
 		return in.ClientInfo == client
-	})).Return(
-		&session.Session{SessionID: "sess-1", SubjectID: "user-2", HandleID: "handle-abc"},
-		&session.SessionContext{
+	})).Return(session.LoadCheckpointResult{
+		Session: &session.Session{SessionID: "sess-1", SubjectID: "user-2", HandleID: "handle-abc"},
+		Context: &session.SessionContext{
 			SessionID: "sess-1",
 			AuthUser: json.RawMessage(
 				`{"default":{"entityReference":{"entityId":"user-2","ouId":"ou-9","type":"person"}}}`),
 			ContextVersion: 1,
-		}, nil)
+		},
+		TokenFamilyID: "tfid-1",
+	}, nil)
 	exec := suite.newExecutor(sso, managermock.NewAuthnProviderManagerMock(suite.T()))
 	ctx := ssoLoadCtx()
 	ctx.Context = sysContext.WithRequestMetadata(ctx.Context,
@@ -489,13 +491,13 @@ func (suite *SessionExecutorTestSuite) TestSSOLoad() {
 	sso := sessionmock.NewServiceMock(suite.T())
 	sso.EXPECT().LoadCheckpoint(mock.Anything, mock.MatchedBy(func(in session.LoadCheckpointInput) bool {
 		return in.Handle == "handle-abc" && in.Checkpoint == "session" && in.AppID == "app-456"
-	})).Return(
-		&session.Session{
+	})).Return(session.LoadCheckpointResult{
+		Session: &session.Session{
 			SessionID: "sess-1", SubjectID: "user-2", HandleID: "handle-abc",
 			AuthenticatedAt:   time.Unix(1700000000, 0).UTC(),
 			AbsoluteExpiresAt: time.Unix(1700028800, 0).UTC(),
 		},
-		&session.SessionContext{
+		Context: &session.SessionContext{
 			SessionID: "sess-1",
 			RuntimeData: map[string]string{
 				"email":      "bob@example.com",
@@ -505,7 +507,9 @@ func (suite *SessionExecutorTestSuite) TestSSOLoad() {
 			},
 			AuthUser:       json.RawMessage(snapAuthUser),
 			ContextVersion: 1,
-		}, nil)
+		},
+		TokenFamilyID: "tfid-1",
+	}, nil)
 	// The load path rehydrates the subject from the snapshot and never calls the provider.
 	exec := suite.newExecutor(sso, managermock.NewAuthnProviderManagerMock(suite.T()))
 
@@ -542,7 +546,11 @@ func (suite *SessionExecutorTestSuite) TestSSOLoad_PassesForwardedReadsToService
 	sso := sessionmock.NewServiceMock(suite.T())
 	sso.EXPECT().LoadCheckpoint(mock.Anything, mock.MatchedBy(func(in session.LoadCheckpointInput) bool {
 		return in.Session == forwardedSession && in.Context == forwardedContext
-	})).Return(forwardedSession, forwardedContext, nil)
+	})).Return(session.LoadCheckpointResult{
+		Session:       forwardedSession,
+		Context:       forwardedContext,
+		TokenFamilyID: "tfid-1",
+	}, nil)
 	exec := suite.newExecutor(sso, managermock.NewAuthnProviderManagerMock(suite.T()))
 
 	ctx := ssoLoadCtx()
@@ -562,10 +570,13 @@ func (suite *SessionExecutorTestSuite) TestSSOLoad_ForwardsNothingWhenAbsent() {
 	sso := sessionmock.NewServiceMock(suite.T())
 	sso.EXPECT().LoadCheckpoint(mock.Anything, mock.MatchedBy(func(in session.LoadCheckpointInput) bool {
 		return in.Session == nil && in.Context == nil
-	})).Return(
-		&session.Session{SessionID: "sess-1", HandleID: "handle-abc"},
-		&session.SessionContext{SessionID: "sess-1", CheckpointID: "session", AuthUser: json.RawMessage("{}")},
-		nil)
+	})).Return(session.LoadCheckpointResult{
+		Session: &session.Session{SessionID: "sess-1", HandleID: "handle-abc"},
+		Context: &session.SessionContext{
+			SessionID: "sess-1", CheckpointID: "session", AuthUser: json.RawMessage("{}"),
+		},
+		TokenFamilyID: "tfid-1",
+	}, nil)
 	exec := suite.newExecutor(sso, managermock.NewAuthnProviderManagerMock(suite.T()))
 
 	ctx := ssoLoadCtx()
@@ -581,7 +592,7 @@ func (suite *SessionExecutorTestSuite) TestSSOLoad_ForwardsNothingWhenAbsent() {
 func (suite *SessionExecutorTestSuite) TestSSOLoad_ErrorFailsFlow() {
 	sso := sessionmock.NewServiceMock(suite.T())
 	sso.EXPECT().LoadCheckpoint(mock.Anything, mock.Anything).
-		Return(nil, nil, errors.New("resolved session no longer exists"))
+		Return(session.LoadCheckpointResult{}, errors.New("resolved session no longer exists"))
 	exec := suite.newExecutor(sso, managermock.NewAuthnProviderManagerMock(suite.T()))
 
 	_, err := exec.Execute(ssoLoadCtx())
@@ -594,9 +605,11 @@ func (suite *SessionExecutorTestSuite) TestSSOLoad_ErrorFailsFlow() {
 // reconstruct the subject, so the flow fails.
 func (suite *SessionExecutorTestSuite) TestSSOLoad_RehydrateErrorFailsFlow() {
 	sso := sessionmock.NewServiceMock(suite.T())
-	sso.EXPECT().LoadCheckpoint(mock.Anything, mock.Anything).Return(
-		&session.Session{SessionID: "sess-1", HandleID: "handle-abc"},
-		&session.SessionContext{SessionID: "sess-1", AuthUser: json.RawMessage("not-json")}, nil)
+	sso.EXPECT().LoadCheckpoint(mock.Anything, mock.Anything).Return(session.LoadCheckpointResult{
+		Session:       &session.Session{SessionID: "sess-1", HandleID: "handle-abc"},
+		Context:       &session.SessionContext{SessionID: "sess-1", AuthUser: json.RawMessage("not-json")},
+		TokenFamilyID: "tfid-1",
+	}, nil)
 	exec := suite.newExecutor(sso, managermock.NewAuthnProviderManagerMock(suite.T()))
 
 	_, err := exec.Execute(ssoLoadCtx())
@@ -680,12 +693,12 @@ func (suite *SessionExecutorTestSuite) TestSSOLoad_PublishesSessionIDFromSession
 	snapAuthUser := `{"default":{"entityReference":{"entityId":"user-2","ouId":"ou-9","type":"person"},` +
 		`"attributes":{"attributes":{"email":{"value":"bob@example.com"}}}}}`
 	sso := sessionmock.NewServiceMock(suite.T())
-	sso.EXPECT().LoadCheckpoint(mock.Anything, mock.Anything).Return(
-		&session.Session{
+	sso.EXPECT().LoadCheckpoint(mock.Anything, mock.Anything).Return(session.LoadCheckpointResult{
+		Session: &session.Session{
 			SessionID: "sess-live", SubjectID: "user-2", HandleID: "handle-abc",
 			AuthenticatedAt: time.Unix(1700000000, 0).UTC(),
 		},
-		&session.SessionContext{
+		Context: &session.SessionContext{
 			SessionID: "sess-live",
 			RuntimeData: map[string]string{
 				"email":                       "bob@example.com",
@@ -693,7 +706,9 @@ func (suite *SessionExecutorTestSuite) TestSSOLoad_PublishesSessionIDFromSession
 			},
 			AuthUser:       json.RawMessage(snapAuthUser),
 			ContextVersion: 1,
-		}, nil)
+		},
+		TokenFamilyID: "tfid-1",
+	}, nil)
 	exec := suite.newExecutor(sso, managermock.NewAuthnProviderManagerMock(suite.T()))
 
 	resp, err := exec.Execute(ssoLoadCtx())
@@ -731,4 +746,73 @@ func (suite *SessionExecutorTestSuite) TestFreshSave_SkippedClearsCarriedSession
 	published, present := resp.RuntimeData[common.RuntimeKeySSOSessionID]
 	suite.True(present, "the key must be republished so the merge overwrites the carried value")
 	suite.Empty(published)
+}
+
+// TestFreshSave_TokenFamily covers the family each join offers and the one its grant carries.
+func (suite *SessionExecutorTestSuite) TestFreshSave_TokenFamily() {
+	held := session.SaveCheckpointResult{Handle: "handle-abc", TokenFamilyID: "tfid-held"}
+	saveErr := errors.New("db down")
+	cases := []struct {
+		name          string
+		earlierFamily string
+		result        session.SaveCheckpointResult
+		err           error
+		wantFamily    string
+		wantOffered   bool
+	}{
+		{name: "carries the held family", result: held, wantFamily: "tfid-held"},
+		{name: "failed save carries the offered family", err: saveErr, wantOffered: true},
+		{name: "later join carries the held family", earlierFamily: "tfid-earlier", result: held,
+			wantFamily: "tfid-held"},
+		{name: "later failed save keeps the earlier family", earlierFamily: "tfid-earlier", err: saveErr},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			sso := sessionmock.NewServiceMock(suite.T())
+			var in session.SaveCheckpointInput
+			sso.EXPECT().SaveCheckpoint(mock.Anything, mock.Anything).
+				Run(func(_ context.Context, saveIn session.SaveCheckpointInput) { in = saveIn }).
+				Return(tc.result, tc.err)
+			exec := suite.newExecutor(sso, suite.saveAuthnMock())
+			ctx := freshCtx()
+			ctx.RuntimeData[common.RuntimeKeyTokenFamilyID] = tc.earlierFamily
+
+			resp, err := exec.Execute(ctx)
+			suite.Require().NoError(err)
+
+			suite.NotEmpty(in.TokenFamilyID)
+			suite.NotEqual(tc.earlierFamily, in.TokenFamilyID, "each join offers a fresh family")
+			want := tc.wantFamily
+			if tc.wantOffered {
+				want = in.TokenFamilyID
+			}
+			// The engine merges by overwriting, so a join that publishes no family keeps the earlier one.
+			family, published := resp.RuntimeData[common.RuntimeKeyTokenFamilyID]
+			suite.Equal(want != "", published)
+			suite.Equal(want, family)
+		})
+	}
+}
+
+// TestSSOLoad_PublishesTheParticipantsTokenFamily covers a reuse: the grant carries the participant's family.
+func (suite *SessionExecutorTestSuite) TestSSOLoad_PublishesTheParticipantsTokenFamily() {
+	sso := sessionmock.NewServiceMock(suite.T())
+	sso.EXPECT().LoadCheckpoint(mock.Anything, mock.MatchedBy(func(in session.LoadCheckpointInput) bool {
+		return in.TokenFamilyID != ""
+	})).Return(session.LoadCheckpointResult{
+		Session: &session.Session{SessionID: "sess-1", SubjectID: "user-2", HandleID: "handle-abc"},
+		Context: &session.SessionContext{
+			SessionID:      "sess-1",
+			RuntimeData:    map[string]string{common.RuntimeKeyTokenFamilyID: "tfid-stale"},
+			AuthUser:       json.RawMessage("{}"),
+			ContextVersion: 1,
+		},
+		TokenFamilyID: "tfid-held",
+	}, nil)
+	exec := suite.newExecutor(sso, managermock.NewAuthnProviderManagerMock(suite.T()))
+
+	resp, err := exec.Execute(ssoLoadCtx())
+	suite.Require().NoError(err)
+
+	suite.Equal("tfid-held", resp.RuntimeData[common.RuntimeKeyTokenFamilyID])
 }

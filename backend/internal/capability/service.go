@@ -87,12 +87,13 @@ func (s *capabilityService) allowsAll(ctx context.Context, actions []security.Ac
 }
 
 // allowsAllRoutes reports whether the caller may call every one of routes, as the server's request
-// authorization decides it.
+// authorization decides it. A route the API permission map doesn't list, such as the session listing on the
+// Control Plane, isn't served there, so no caller may call it.
 func allowsAllRoutes(ctx context.Context, routes []string) bool {
 	permissions := security.GetPermissions(ctx)
 	for _, route := range routes {
-		required, _ := security.ResolveAPIPermission(route)
-		if !security.HasSufficientSystemPermission(permissions, required) {
+		required, listed := security.ResolveAPIPermission(route)
+		if !listed || !security.HasSufficientSystemPermission(permissions, required) {
 			return false
 		}
 	}

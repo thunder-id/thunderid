@@ -264,6 +264,23 @@ func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_Authenticated_IssuesToke
 	suite.Equal("id-token", resp.IDToken.Token)
 }
 
+func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_AccessTokenCarriesAuthTime() {
+	record := suite.pendingRecord()
+	record.State = ciba.CIBAStateAuthenticated
+	record.AuthTime = time.Now().Add(-time.Minute)
+	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(record, nil)
+	suite.mockTokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.AccessTokenBuildContext) bool { return ctx.AuthTime == record.AuthTime.Unix() })).
+		Return(&model.TokenDTO{Token: "access-token"}, nil)
+	suite.mockTokenBuilder.EXPECT().BuildIDToken(mock.Anything, mock.Anything).
+		Return(&model.TokenDTO{Token: "id-token"}, nil).Maybe()
+	suite.mockCIBAService.EXPECT().MarkConsumed(mock.Anything, "auth-req-1").Return(true, nil)
+
+	resp, errResp := suite.handler.HandleGrant(context.Background(), suite.tokenReq, suite.oauthApp)
+	suite.Require().Nil(errResp)
+	suite.Equal("access-token", resp.AccessToken.Token)
+}
+
 func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_DeniedCarriesTheReason() {
 	record := suite.pendingRecord()
 	record.State = ciba.CIBAStateDenied
@@ -813,6 +830,44 @@ func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_SubjectRevokedAfterAuthe
 	suite.mockCIBAService.AssertNotCalled(suite.T(), "MarkConsumed", mock.Anything, mock.Anything)
 }
 
+// pollIssuedIn polls an authenticated record whose sign-in recorded ouID against the given deny list.
+func (suite *CIBAGrantHandlerTestSuite) pollIssuedIn(ouID string,
+	rows ...revocation.CriteriaRevocation) (*model.TokenResponseDTO, *model.ErrorResponse) {
+	record := suite.boundAuthenticatedRecord(oidcReadWriteScopes)
+	record.AuthTime = time.Now().Add(-time.Minute)
+	record.AttributeCacheID = testGrantAttributeCacheID
+	suite.mockAttrCacheService.EXPECT().GetAttributeCache(mock.Anything, testGrantAttributeCacheID).Return(
+		&attributecache.AttributeCache{ID: testGrantAttributeCacheID, Attributes: map[string]interface{}{"ouId": ouID}},
+		nil)
+	return suite.pollAgainstDenyList(record, denyListLookup(rows...))
+}
+
+// unsharedFromOUA is the row an unshare of testGrantSubject from ou-a writes.
+func unsharedFromOUA() revocation.CriteriaRevocation {
+	return revocation.CriteriaRevocation{
+		Criterion: revocation.Criterion{Type: revocation.CriterionTypeSubjectOU,
+			Value: sharedrevocation.SubjectOUCriterionValue(testGrantSubject, "ou-a")},
+		Reason: revocation.RevocationReason("resource_unshared"),
+		Cutoff: time.Now(),
+	}
+}
+
+func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_UserUnsharedFromTheRequestsUnitIsRefused() {
+	resp, errResp := suite.pollIssuedIn("ou-a", unsharedFromOUA())
+
+	suite.Nil(resp)
+	suite.Require().NotNil(errResp)
+	suite.Equal(constants.ErrorInvalidGrant, errResp.Error)
+	suite.mockCIBAService.AssertNotCalled(suite.T(), "MarkConsumed", mock.Anything, mock.Anything)
+}
+
+func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_UnsharingFromAnotherUnitLeavesTheRequest() {
+	resp, errResp := suite.pollIssuedIn("ou-b", unsharedFromOUA())
+
+	suite.Require().Nil(errResp)
+	suite.Equal([]string{"openid", "read", "write"}, resp.AccessToken.Scopes)
+}
+
 func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_DenyListUnavailableIsRefused() {
 	record := suite.boundAuthenticatedRecord(oidcReadWriteScopes)
 	record.AuthTime = time.Now().Add(-time.Minute)
@@ -836,7 +891,7 @@ func (suite *CIBAGrantHandlerTestSuite) TestIssuedScopesCompactAfterSnapshotChec
 		Return([]string{}, nil)
 	record := suite.boundAuthenticatedRecord("openid reservations reservations:create")
 	_, scopes, errResp := suite.handler.(*cibaGrantHandler).resolveIssuedAudiencesAndScopes(
-		context.Background(), record, suite.oauthApp, record.AuthorizedScopes)
+		context.Background(), record, suite.oauthApp, record.AuthorizedScopes, "")
 	suite.Nil(errResp)
 	suite.Equal([]string{"openid", "reservations"}, scopes)
 	suite.Equal("openid reservations reservations:create", record.AuthorizedScopes)

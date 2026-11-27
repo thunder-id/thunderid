@@ -48,6 +48,8 @@ Use it when a resource server cannot or should not validate JWTs locally. For ex
 
 When the token is DPoP-bound, the response also includes the `cnf.jkt` claim. When an access token carries RFC 9396 authorization details, the response also includes them as `authorization_details`. The introspection of a refresh token does not include them (see [Rich Authorization Requests](../rich-authorization-requests#token-introspection)).
 
+When the access token was issued for a user's sign-in, the response also includes `auth_time`, the time the user signed in ([RFC 9470](https://datatracker.ietf.org/doc/html/rfc9470)). A resource server that requires a recent sign-in compares it with its own limit. See [`max_age` and `auth_time`](../openid-connect#max_age-and-auth_time).
+
 When the token is delegated, for example an agent acting on behalf of a user, the response also includes the `act` claim naming the actor. A delegation chain is returned with its nesting intact, so the outermost `act.sub` is the current actor and each nested `act` is an earlier one:
 
 ```json

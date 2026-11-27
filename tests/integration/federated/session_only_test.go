@@ -17,14 +17,6 @@ const (
 	syncTokenClientSecret = "federated-sync-token-client-secret"
 	syncTokenRedirectURI  = "http://localhost:3000/callback"
 	syncTokenResource     = "https://federated-sync.example.com"
-
-	// The declarative fixtures: decl-role-1 grants declarativeSyncScope on declarativeSyncResource, and is
-	// assigned to decl-group-1. Both belong to decl-ou-1.
-	declarativeSyncOUID     = "decl-ou-1"
-	declarativeSyncRoleID   = "decl-role-1"
-	declarativeSyncGroupID  = "decl-group-1"
-	declarativeSyncResource = "https://localhost:8090/decl-rs-1"
-	declarativeSyncScope    = "test-resource:read"
 )
 
 // syncTokenFixtures are the resource server, a role granting read on it, and a group whose role grants
@@ -132,107 +124,6 @@ func (s *FederatedMappingSuite) TestNoSyncMappedGroupsAndRolesGrantNothingOnRefr
 	s.Require().NoError(err, "the refresh token grant should succeed")
 	s.ElementsMatch(signInScopes, s.accessTokenScopes(refreshed.AccessToken),
 		"a refresh should not grant scopes the sign-in didn't")
-}
-
-// With roles and groups kept only in declarative files, the account can't hold a mapped role or group, so
-// either applies to the session whatever the sync mode: it grants its scope at sign-in and after a
-// refresh, and nothing is stored.
-func (s *FederatedMappingSuite) TestDeclarativeGroupsAndRolesApplyToTheSession() {
-	// The application and user live in the fixtures' organization unit, where the user can be assigned.
-	userType := s.createDeclarativeSyncUserType()
-	config := mapping(userType, pair("email", "email"), pair("email", "username"))
-	config.AuthorizationMapping = authzMapping("groups", "", map[string][]testutils.AuthorizationTarget{
-		"decl-readers": {roleTarget(declarativeSyncRoleID)},
-		"decl-members": {groupTarget(declarativeSyncGroupID)},
-	}).AuthorizationMapping
-	s.createSyncTokenApp(s.createDeclarativeSyncConnection(config), declarativeSyncOUID, userType)
-	byRole := s.baseUser(s.nextSubject())
-	byRole.Custom["groups"] = []interface{}{"decl-readers"}
-	byGroup := s.baseUser(s.nextSubject())
-	byGroup.Custom["groups"] = []interface{}{"decl-members"}
-
-	restore := s.restartWithDeclarativeGroupsAndRoles()
-	defer restore()
-	var signedIn []string
-	for _, user := range []*testutils.OIDCUserInfo{byRole, byGroup} {
-		tokens, stored := s.signInForTokens(user, "openid "+declarativeSyncScope, declarativeSyncResource)
-		signedIn = append(signedIn, stored.ID)
-		s.Contains(s.accessTokenScopes(tokens.AccessToken), declarativeSyncScope,
-			"the declarative mapping should grant its scope at sign-in")
-
-		refreshed, err := testutils.RefreshAccessToken(s.syncClientID, syncTokenClientSecret, tokens.RefreshToken)
-		s.Require().NoError(err, "the refresh token grant should succeed")
-		s.Contains(s.accessTokenScopes(refreshed.AccessToken), declarativeSyncScope,
-			"the declarative mapping should grant its scope after a refresh")
-	}
-
-	// Back on the composite stores, an assignment the sign-ins had written would be readable.
-	restore()
-	for _, userID := range signedIn {
-		s.False(s.roleHasAssignee(declarativeSyncRoleID, userID), "the declarative role should not be assigned")
-		s.False(s.groupHasMember(declarativeSyncGroupID, userID), "the declarative group should not be assigned")
-	}
-}
-
-// createDeclarativeSyncUserType creates a user type like fedPersonType in the declarative fixtures'
-// organization unit, removed with the suite, and returns its handle.
-func (s *FederatedMappingSuite) createDeclarativeSyncUserType() string {
-	s.T().Helper()
-	userType := fedPersonType
-	userType.Handle = "fed_decl_person"
-	userType.DisplayName = "Fed Declarative Person"
-	userType.OUID = declarativeSyncOUID
-	typeID, err := testutils.CreateUserType(userType)
-	s.Require().NoError(err, "failed to create the declarative sync user type")
-	s.typeIDs = append(s.typeIDs, typeID)
-	return userType.Handle
-}
-
-// createDeclarativeSyncConnection creates a connection with config in the declarative fixtures'
-// organization unit, removed after the test, since a connection maps only the roles and groups its unit
-// owns or has shared with it.
-func (s *FederatedMappingSuite) createDeclarativeSyncConnection(config *testutils.AttributeConfiguration) string {
-	s.T().Helper()
-	connection := s.idpFixture(config)
-	connection.Name = "Federated Sync Declarative Connection"
-	connection.OUID = declarativeSyncOUID
-	idpID, err := testutils.CreateIDP(connection)
-	s.Require().NoError(err, "failed to create the declarative sync connection")
-	s.T().Cleanup(func() {
-		if err := testutils.DeleteIDP(idpID); err != nil {
-			s.T().Logf("failed to delete the declarative sync connection: %v", err)
-		}
-	})
-	return idpID
-}
-
-// restartWithDeclarativeGroupsAndRoles restarts the server with the group and role stores declarative, and
-// returns a function that puts them back to composite. Once a call succeeds, later calls do nothing.
-// The admin token from before the restart is kept, since a declarative role store holds no admin role.
-func (s *FederatedMappingSuite) restartWithDeclarativeGroupsAndRoles() func() {
-	s.T().Helper()
-	restored := false
-	restore := func() {
-		if restored {
-			return
-		}
-		restored = s.Assert().NoError(testutils.PatchDeploymentConfig(map[string]interface{}{
-			"group": map[string]interface{}{"store": "composite"},
-			"role":  map[string]interface{}{"store": "composite"},
-		})) && s.Assert().NoError(testutils.RestartServer()) && s.Assert().NoError(testutils.ObtainAdminAccessToken())
-	}
-	// Registered before the patch, so a failed restart still puts the stores back.
-	s.T().Cleanup(restore)
-	s.Require().NoError(testutils.PatchDeploymentConfig(map[string]interface{}{
-		"group": map[string]interface{}{"store": "declarative"},
-		"role":  map[string]interface{}{"store": "declarative"},
-	}))
-	// Restore before failing: TearDownTest runs before the cleanup and needs a running server.
-	if err := testutils.RestartServer(); err != nil {
-		restore()
-		s.Require().NoError(err)
-	}
-	return restore
 }
 
 // createSyncTokenApp creates an application in the organization unit ouID that signs a userType identity

@@ -239,6 +239,21 @@ type UserConfig struct {
 	//   - If DeclarativeResources.Enabled = true: behaves as "declarative"
 	//   - If DeclarativeResources.Enabled = false: behaves as "mutable"
 	Store string `yaml:"store"              json:"store"`
+	// SelfService holds the rules for changes users make to their own accounts.
+	SelfService UserSelfServiceConfig `yaml:"self_service" json:"self_service"`
+}
+
+// UserSelfServiceConfig holds the rules for changes users make to their own accounts.
+type UserSelfServiceConfig struct {
+	// MaxAuthenticationAgeSeconds is how long after sign-in a user can make a change that needs a recent sign-in,
+	// such as setting a credential they don't hold yet.
+	MaxAuthenticationAgeSeconds *int `yaml:"max_authentication_age_seconds" json:"max_authentication_age_seconds"`
+}
+
+// MaxAuthenticationAge reports the self-service maximum authentication age in seconds, zero or less for no check.
+// Unset, it is 180 (an explicit default lives in default.json).
+func (c UserSelfServiceConfig) MaxAuthenticationAge() int {
+	return derefInt(c.MaxAuthenticationAgeSeconds, 180)
 }
 
 // PasskeyConfig holds the passkey configuration details.
@@ -984,8 +999,17 @@ type Config struct {
 	Session                    SessionConfig                     `yaml:"session"               json:"session"`
 }
 
-// SessionConfig holds the deployment's session settings.
+// SessionConfig holds the SSO session limits the operator sets. The session timeouts themselves are in
+// the session server-config section.
 type SessionConfig struct {
+	// ActivityRefreshIntervalSeconds is the shortest time between two writes of a session's activity. An
+	// idle timeout must be longer.
+	ActivityRefreshIntervalSeconds int64 `yaml:"activity_refresh_interval_seconds" json:"activity_refresh_interval_seconds"` //nolint:lll
+	// MaxIdleTimeoutSeconds is the longest idle timeout the session section may set.
+	MaxIdleTimeoutSeconds int64 `yaml:"max_idle_timeout_seconds" json:"max_idle_timeout_seconds"`
+	// MaxAbsoluteTimeoutSeconds is the longest absolute timeout the session section may set.
+	MaxAbsoluteTimeoutSeconds int64 `yaml:"max_absolute_timeout_seconds" json:"max_absolute_timeout_seconds"`
+	// Tracking controls whether a login through a flow without a Session node records a session.
 	Tracking SessionTrackingConfig `yaml:"tracking" json:"tracking"`
 }
 

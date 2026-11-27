@@ -695,6 +695,7 @@ export default function OrganizationAccessSettings({
         unitsById={unitsById}
         hasUnitSettings={hasUnitSettings}
         wordingNamespace={access.wordingNamespace}
+        revokesOnUnshare={access.revokesOnUnshare}
         onCancel={() => setPendingSwitch(null)}
         onConfirm={(accessSwitch) => {
           access.applySwitch(accessSwitch);

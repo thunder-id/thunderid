@@ -4756,6 +4756,172 @@ func TestImportResourceServer_OUHandleResolved(t *testing.T) {
 	assert.Equal(t, "ou-default", rsSvc.created[0].OUID)
 }
 
+// resourceServerDocWithPolicies is a resource server document that shares it with every unit beneath its owner.
+func resourceServerDocWithPolicies(id string) string {
+	return strings.Join([]string{
+		"resource_type: resource_server",
+		"id: " + id,
+		"name: Booking API",
+		"identifier: booking",
+		"ouId: owner-ou",
+		"sharingPolicies:",
+		"  - childUnits:",
+		"      mode: all",
+		"",
+	}, "\n")
+}
+
+// newResourceServerImportServiceWithSharing returns an import service over the given resource server and sharing
+// adapters.
+func newResourceServerImportServiceWithSharing(
+	rsSvc *fakeResourceServerService, sharingSvc *fakeSharingService,
+) ImportServiceInterface {
+	svc := newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, rsSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		discardingBus{})
+	svc.(*importService).sharingService = sharingSvc
+	return svc
+}
+
+func TestImportResourceServerReplaysItsSharingPolicies(t *testing.T) {
+	rsSvc := &fakeResourceServerService{}
+	sharingSvc := &fakeSharingService{}
+	svc := newResourceServerImportServiceWithSharing(rsSvc, sharingSvc)
+
+	resp, err := svc.ImportResources(context.Background(),
+		&ImportRequest{Content: resourceServerDocWithPolicies("rs-new")})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	require.Len(t, rsSvc.created, 1)
+	require.Len(t, sharingSvc.calls, 1)
+	assert.Equal(t, resource.ResourceServerSharingType, sharingSvc.calls[0].resourceType)
+	assert.Equal(t, "rs-new", sharingSvc.calls[0].resourceID)
+	assert.Equal(t, "owner-ou", sharingSvc.calls[0].owningOUID)
+	require.Len(t, sharingSvc.calls[0].policies, 1)
+	assert.Equal(t, sharing.ChildUnitsAll, sharingSvc.calls[0].policies[0].ChildUnits.Mode)
+}
+
+func TestImportResourceServerReplaysItsSharingPoliciesOnUpdate(t *testing.T) {
+	rsSvc := &fakeResourceServerService{servers: []string{"rs-existing"}}
+	sharingSvc := &fakeSharingService{}
+	svc := newResourceServerImportServiceWithSharing(rsSvc, sharingSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: resourceServerDocWithPolicies("rs-existing"),
+		Options: &ImportOptions{Upsert: boolPtr(true)},
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
+	require.Len(t, rsSvc.updated, 1)
+	require.Len(t, sharingSvc.calls, 1)
+	assert.Equal(t, "rs-existing", sharingSvc.calls[0].resourceID)
+}
+
+// A resource server's dropped policies are removed before it is written: a shared resource server cannot move to
+// another organization unit or project, so a policy the document drops would otherwise refuse the move on every retry.
+func TestImportResourceServerRemovesItsDroppedPoliciesBeforeWritingIt(t *testing.T) {
+	rsSvc := &fakeResourceServerService{servers: []string{"rs-existing"}}
+	sharingSvc := &fakeSharingService{removal: sharing.PolicyReplay{Removed: []sharing.RemovedPolicy{
+		{PolicyID: "p-1", InitiatingOUID: "owner-ou"}}}}
+	updatedWhenRemoved := -1
+	sharingSvc.onRemove = func() { updatedWhenRemoved = len(rsSvc.updated) }
+	svc := newResourceServerImportServiceWithSharing(rsSvc, sharingSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content:         resourceServerDocWithPolicies("rs-existing"),
+		Options:         &ImportOptions{Upsert: boolPtr(true)},
+		SharingRemovals: []SharingPolicyRemoval{{ResourceType: "resource_server", ID: "rs-existing"}},
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status)
+	assert.Equal(t, 0, updatedWhenRemoved, "the resource server had already been written when its policy was removed")
+	require.Len(t, rsSvc.updated, 1)
+	require.Len(t, sharingSvc.removed, 1, "removed once, not again after the write")
+	assert.Equal(t, resource.ResourceServerSharingType, sharingSvc.removed[0].resourceType)
+	assert.Equal(t, []string{""}, sharingSvc.removed[0].initiators)
+	assert.Equal(t, []RemovedSharingPolicy{{PolicyID: "p-1", InitiatingOUID: "owner-ou"}},
+		resp.Results[0].RemovedSharing)
+}
+
+// A refused removal stops the resource server from being written, and fails its outcome.
+func TestImportResourceServerIsNotWrittenWhenItsDroppedPolicyCannotBeRemoved(t *testing.T) {
+	rsSvc := &fakeResourceServerService{servers: []string{"rs-existing"}}
+	sharingSvc := &fakeSharingService{removalFailure: &sharing.PolicyReplayError{
+		Err: &tidcommon.InternalServerError}}
+	svc := newResourceServerImportServiceWithSharing(rsSvc, sharingSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content:         resourceServerDocWithPolicies("rs-existing"),
+		Options:         &ImportOptions{Upsert: boolPtr(true)},
+		SharingRemovals: []SharingPolicyRemoval{{ResourceType: "resource_server", ID: "rs-existing"}},
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
+	assert.Empty(t, rsSvc.updated, "the resource server was written although its policy could not be removed")
+}
+
+// A refused policy fails an update, and the resource server the import did not create is kept.
+func TestImportResourceServerUpdateFailsWhenPoliciesAreRefused(t *testing.T) {
+	rsSvc := &fakeResourceServerService{servers: []string{"rs-existing"}}
+	sharingSvc := &fakeSharingService{failure: &sharing.PolicyReplayError{
+		Index: 0, InitiatingOUID: "owner-ou", Err: &sharing.ErrorInvalidRequestFormat}}
+	svc := newResourceServerImportServiceWithSharing(rsSvc, sharingSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: resourceServerDocWithPolicies("rs-existing"),
+		Options: &ImportOptions{Upsert: boolPtr(true)},
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Equal(t, operationUpdate, resp.Results[0].Operation)
+	assert.Contains(t, resp.Results[0].Message, "sharing policy 1 (organization unit owner-ou)")
+	assert.Empty(t, rsSvc.deleted, "a resource server the import only updated is not removed")
+}
+
+// A refused policy undoes the create, so a retry does not meet a half-imported resource server.
+func TestImportResourceServerUndoesTheCreateWhenPoliciesAreRefused(t *testing.T) {
+	rsSvc := &fakeResourceServerService{}
+	sharingSvc := &fakeSharingService{failure: &sharing.PolicyReplayError{
+		Index: 0, InitiatingOUID: "owner-ou", Err: &sharing.ErrorInvalidRequestFormat}}
+	svc := newResourceServerImportServiceWithSharing(rsSvc, sharingSvc)
+
+	resp, err := svc.ImportResources(context.Background(),
+		&ImportRequest{Content: resourceServerDocWithPolicies("rs-new")})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Contains(t, resp.Results[0].Message, "sharing policy 1 (organization unit owner-ou)")
+	assert.Contains(t, rsSvc.deleted, "server:rs-new", "the resource server the refused document created was removed")
+}
+
+func TestImportResourceServerWithoutSharingAdapter(t *testing.T) {
+	rsSvc := &fakeResourceServerService{}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, rsSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		discardingBus{})
+
+	resp, err := svc.ImportResources(context.Background(),
+		&ImportRequest{Content: resourceServerDocWithPolicies("rs-new")})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.Contains(t, resp.Results[0].Message, "sharing adapter is not configured")
+}
+
 // TestParentsFirstEndsWithADuplicatePath verifies that two resources sharing a path are both ordered,
 // and that the ordering ends rather than waiting for the second to be placed.
 func TestParentsFirstEndsWithADuplicatePath(t *testing.T) {
@@ -5949,6 +6115,22 @@ func TestImportUserWithoutPoliciesAsksTheAdapterNothing(t *testing.T) {
 	require.Nil(t, err)
 	assert.Equal(t, statusSuccess, resp.Results[0].Status)
 	assert.Empty(t, sharingSvc.calls)
+}
+
+// A refusal of the change as a whole, such as its revocation, names no single policy of the document.
+func TestImportUserReportsAWholeChangeRefusalWithoutAPolicy(t *testing.T) {
+	sharingSvc := &fakeSharingService{failure: &sharing.PolicyReplayError{
+		Err: &sharing.ErrorSharingChangedDuringRevocation, Whole: true}}
+	svc := newTestUserImportWithSharing(&fakeUserService{}, sharingSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: userDocWithPolicies("user-5"), Options: &ImportOptions{Upsert: boolPtr(false)}})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusFailed, resp.Results[0].Status)
+	assert.True(t, strings.HasPrefix(resp.Results[0].Message, "sharing policies: "), resp.Results[0].Message)
+	assert.NotContains(t, resp.Results[0].Message, "organization unit )")
 }
 
 // A refused policy undoes the create, so a retry does not meet a half-imported user.
@@ -8195,6 +8377,22 @@ func (s *ImportSharingRemovalsTestSuite) TestImportARefusedSharingRemovalFailsTh
 	s.Equal(tidcommon.InternalServerError.Code, resp.Results[0].Code)
 	s.Equal(0, resp.Summary.Imported)
 	s.Equal(1, resp.Summary.Failed)
+}
+
+// A removal refused as a whole, such as by its revocation, names no single unit.
+func (s *ImportSharingRemovalsTestSuite) TestImportAWholeRemovalRefusalNamesNoUnit() {
+	sharingSvc := &fakeSharingService{removalFailure: &sharing.PolicyReplayError{
+		Err: &sharing.ErrorSharingChangedDuringRevocation, Whole: true}}
+	svc := newTestFlowImportWithSharing(existingFlowService(), sharingSvc)
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{Content: flowDocWithoutPolicies(),
+		SharingRemovals: []SharingPolicyRemoval{{ResourceType: "flow", ID: "flow-1", InitiatingOUID: "ou-2"}}})
+
+	s.Require().Nil(err)
+	s.Equal(statusFailed, resp.Results[0].Status)
+	s.Equal(sharing.ErrorSharingChangedDuringRevocation.Code, resp.Results[0].Code)
+	s.Contains(resp.Results[0].Message, "removing the sharing policies: ")
+	s.NotContains(resp.Results[0].Message, "organization unit")
 }
 
 // A dry run removes nothing, and a resource the request did not write is left alone.

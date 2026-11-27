@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
@@ -44,6 +45,51 @@ func (ts *SSOLogoutTestSuite) TestAppNativeFlow_ReusesSessionDataFromRequestBody
 
 	ts.Equal("COMPLETE", step.FlowStatus, "the held session should skip authentication via SSO")
 	ts.NotEmpty(step.Assertion, "the SSO-skipped flow should still yield an assertion")
+}
+
+// TestAppNativeFlow_MaxAgeAsksForAFreshSignIn verifies that an app-native sign-in start can ask for a recent
+// sign-in with maxAge: a held session older than that is not reused, and maxAge 0 never reuses one, so the flow
+// prompts for credentials and the assertion carries the new sign-in time. A session within maxAge is still reused.
+func (ts *SSOLogoutTestSuite) TestAppNativeFlow_MaxAgeAsksForAFreshSignIn() {
+	appID := ts.createAppNativeApp()
+	defer ts.deleteAppByID(appID)
+	held := ts.appNativeLogin(ts.newSessionClient(), appID)
+	sessionData := []testutils.FlowSessionData{*held}
+
+	reused := ts.appNativeExecute(ts.newSessionClient(), appID, map[string]interface{}{
+		"applicationId": appID,
+		"flowType":      "AUTHENTICATION",
+		"sessionData":   sessionData,
+		"maxAge":        3600,
+	})
+	ts.Require().Equal("COMPLETE", reused.FlowStatus, "a session within maxAge is reused")
+	reusedClaims, err := testutils.DecodeJWTPayloadMap(reused.Assertion)
+	ts.Require().NoError(err)
+	signedInAt, ok := reusedClaims["auth_time"].(float64)
+	ts.Require().True(ok, "the assertion carries auth_time")
+
+	client := ts.newSessionClient()
+	initial := ts.appNativeExecute(client, appID, map[string]interface{}{
+		"applicationId": appID,
+		"flowType":      "AUTHENTICATION",
+		"sessionData":   sessionData,
+		"maxAge":        0,
+	})
+	ts.Require().Equal("INCOMPLETE", initial.FlowStatus, "maxAge 0 asks for credentials even within the same second")
+
+	// The new sign-in is at least a second later, so its auth_time is newer.
+	time.Sleep(1100 * time.Millisecond)
+
+	step := ts.appNativeExecute(client, appID, map[string]interface{}{
+		"executionId":    initial.ExecutionID,
+		"inputs":         map[string]string{"username": ssoReuseUsername, "password": testPassword},
+		"action":         "action_001",
+		"challengeToken": initial.ChallengeToken,
+	})
+	ts.Require().Equal("COMPLETE", step.FlowStatus)
+	claims, err := testutils.DecodeJWTPayloadMap(step.Assertion)
+	ts.Require().NoError(err)
+	ts.Greater(claims["auth_time"], signedInAt, "the assertion carries the new sign-in time")
 }
 
 // TestAppNativeSignOut_ClearsSession verifies that an app-native sign-out with the held session ends it

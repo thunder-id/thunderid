@@ -4,6 +4,8 @@
 package sharing
 
 import (
+	"fmt"
+
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/system/cache"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
@@ -46,4 +48,16 @@ func Initialize(
 
 	return newSharingService(dbStore, fileStore, ouHierarchyResolver, ouEnumerator, transactioner,
 		visibilityCache, overlayRuleCache, allowChildOUCrossTreeSharing), nil
+}
+
+// SetSystemFlowProvider gives the sharing service the engine that runs the revocation flows around a change that
+// takes a resource from an organization unit. It is bound after the service, once the engine exists, and only on a
+// server that issues tokens.
+func SetSystemFlowProvider(service SharingServiceInterface, provider systemFlowProvider) error {
+	s, ok := service.(*sharingService)
+	if !ok {
+		return fmt.Errorf("sharing service does not support system flow provider injection")
+	}
+	s.systemFlows = provider
+	return nil
 }

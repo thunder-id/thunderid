@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/thunder-id/thunderid/internal/attributecache"
+	"github.com/thunder-id/thunderid/internal/flow/session"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/deviceauth"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
@@ -29,9 +30,10 @@ type deviceCodeGrantHandler struct {
 	attributeCache     attributecache.AttributeCacheServiceInterface
 	resourceService    providers.ResourceServerProvider
 	enforcementService revocation.EnforcementServiceInterface
-	// deviceSecretValidity is how long a device secret stays usable, as long as an SSO session can last.
-	deviceSecretValidity time.Duration
-	logger               *log.Logger
+	// ssoSession says how long a device secret stays usable: as long as an SSO session can last. It is
+	// nil when the deployment has no SSO session service, and then no device secret is returned.
+	ssoSession session.Service
+	logger     *log.Logger
 }
 
 // newDeviceCodeGrantHandler creates a Device Code grant handler with its token dependencies.
@@ -41,15 +43,15 @@ func newDeviceCodeGrantHandler(
 	attributeCache attributecache.AttributeCacheServiceInterface,
 	resourceService providers.ResourceServerProvider,
 	enforcementService revocation.EnforcementServiceInterface,
-	deviceSecretValidity time.Duration,
+	ssoSession session.Service,
 ) GrantHandlerInterface {
 	return &deviceCodeGrantHandler{
-		deviceService:        deviceService,
-		tokenBuilder:         tokenBuilder,
-		attributeCache:       attributeCache,
-		resourceService:      resourceService,
-		enforcementService:   enforcementService,
-		deviceSecretValidity: deviceSecretValidity,
+		deviceService:      deviceService,
+		tokenBuilder:       tokenBuilder,
+		attributeCache:     attributeCache,
+		resourceService:    resourceService,
+		enforcementService: enforcementService,
+		ssoSession:         ssoSession,
 		logger: log.GetLogger().With(
 			log.String(log.LoggerKeyComponentName, "DeviceCodeGrantHandler")),
 	}
@@ -180,18 +182,6 @@ func (h *deviceCodeGrantHandler) issueTokens(
 	if bindErr != nil {
 		return nil, bindErr
 	}
-	scopes, revocationErr := excludeRevokedScopes(ctx, h.enforcementService, revocation.RevocationIdentity{
-		EstablishedAt: record.AuthTime,
-		Criteria: []revocation.Criterion{
-			{Type: revocation.CriterionTypeSubject, Value: record.UserID},
-			{Type: revocation.CriterionTypeApplicationKey, Value: record.ClientID},
-		},
-	}, record.UserID, audiences, oidcScopes, permissionScopes)
-	if revocationErr != nil {
-		return nil, revocationErr
-	}
-	scopes = compactPermissionScopes(scopes, oidcScopes, targetRS)
-
 	attrs := make(map[string]interface{})
 	if record.AttributeCacheID != "" {
 		cacheEntry, cacheErr := h.attributeCache.GetAttributeCache(ctx, record.AttributeCacheID)
@@ -202,6 +192,17 @@ func (h *deviceCodeGrantHandler) issueTokens(
 		}
 		attrs = cacheEntry.Attributes
 	}
+	scopes, revocationErr := excludeRevokedScopes(ctx, h.enforcementService, revocation.RevocationIdentity{
+		EstablishedAt: record.AuthTime,
+		Criteria: []revocation.Criterion{
+			{Type: revocation.CriterionTypeSubject, Value: record.UserID},
+			{Type: revocation.CriterionTypeApplicationKey, Value: record.ClientID},
+		},
+	}, record.UserID, record.ClientID, issuedOUID(attrs), audiences, oidcScopes, permissionScopes)
+	if revocationErr != nil {
+		return nil, revocationErr
+	}
+	scopes = compactPermissionScopes(scopes, oidcScopes, targetRS)
 
 	userSubConfig := oauthApp.UserAccessTokenConfig()
 	accessTokenCtx := &tokenservice.AccessTokenBuildContext{
@@ -209,6 +210,7 @@ func (h *deviceCodeGrantHandler) issueTokens(
 		SubjectAttributes: tokenservice.FilterAttributesByAllowList(attrs, userSubConfig),
 		AttributeCacheID:  record.AttributeCacheID, GrantType: string(providers.GrantTypeDeviceCode),
 		OAuthApp: oauthApp, ValidityPeriod: userSubConfig.ValidityPeriodOrZero(), DPoPJkt: dpop.GetJkt(ctx),
+		AuthTime: record.AuthTime.Unix(),
 	}
 	if oauthApp.ShouldAppendActorClaim() {
 		accessTokenCtx.ActorClaims = &tokenservice.SubjectTokenClaims{Sub: oauthApp.ID}
@@ -244,8 +246,10 @@ func (h *deviceCodeGrantHandler) issueTokens(
 	if !consumed {
 		return nil, invalidDeviceCodeError()
 	}
-	tokenResponse.DeviceSecret = buildDeviceSecret(ctx, h.tokenBuilder, h.deviceSecretValidity, oauthApp,
-		record.SubjectID, record.SessionData, h.logger)
+	if h.ssoSession != nil && len(record.SessionData) > 0 {
+		tokenResponse.DeviceSecret = buildDeviceSecret(ctx, h.tokenBuilder, h.ssoSession.AbsoluteTimeout(ctx),
+			oauthApp, record.SubjectID, record.SessionData, h.logger)
+	}
 	return tokenResponse, nil
 }
 

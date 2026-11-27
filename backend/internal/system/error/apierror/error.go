@@ -1,4 +1,4 @@
-// Copyright 2025 The ThunderID Authors
+// Copyright 2025-2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
 // Package apierror defines the error structures for the API.
@@ -43,3 +43,23 @@ var (
 		},
 	}
 )
+
+// ErrorParamMaxAge is the ErrRecentAuthenticationRequired param that carries the maximum age in seconds.
+const ErrorParamMaxAge = "maxAge"
+
+// ErrRecentAuthenticationRequired refuses a self-service change when the sign-in is older than the maximum
+// authentication age (HTTP 401). It is a service error, since its description carries that age in the
+// ErrorParamMaxAge param.
+var ErrRecentAuthenticationRequired = tidcommon.ServiceError{
+	Type: tidcommon.ClientErrorType,
+	Code: "AUTH-4011",
+	Error: tidcommon.I18nMessage{
+		Key:          "error.security.recent_authentication_required",
+		DefaultValue: "Recent authentication required",
+	},
+	ErrorDescription: tidcommon.I18nMessage{
+		Key: "error.security.recent_authentication_required_description",
+		DefaultValue: "Authenticate again: this change needs an authentication within the last " +
+			"{{param(maxAge)}} seconds",
+	},
+}

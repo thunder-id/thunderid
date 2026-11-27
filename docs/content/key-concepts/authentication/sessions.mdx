@@ -25,7 +25,7 @@ On a fresh sign-in, the flow runs those steps and saves the checkpoint under the
 
 ## Sign-Ins Without SSO
 
-A flow without the session nodes still records a session for each sign-in, called a direct session, and the ID token names it in the `sid` claim. A direct session has no handle and no checkpoints, so no later sign-in reuses it. Every sign-in through the flow authenticates the user again and records a new direct session.
+A flow without the session nodes still records a session for each sign-in, called a direct session, and the ID token names it in the `sid` claim. A direct session has no handle and no checkpoints, so no later sign-in reuses it. Every sign-in through the flow authenticates the user again and records a new direct session. The session management API lists direct sessions alongside SSO sessions, each with its type.
 
 An administrator can turn direct sessions off by setting `session.tracking.enabled` to `false` in the deployment configuration. A sign-in through a flow without the session nodes then records no session, so it cannot be listed or ended, and its tokens carry no `sid` claim. A flow with the session nodes still records its SSO session, so SSO is not affected. The setting applies to new sign-ins: sessions recorded earlier keep working until they end. See [Session Configuration](../../../deployment/configuration#session-configuration).
 
@@ -36,7 +36,7 @@ Two independent timeouts bound every session:
 | Timeout | Behavior | Default |
 |---|---|---|
 | Idle | Moves forward on each use of the session, at most once per activity-refresh interval (60 seconds by default), so an active session stays alive. A sign-in that reuses the session and a token refresh for a grant issued under it both count as use. The session expires after this much inactivity. | 2 hours |
-| Absolute | Fixed when the session is created and never extended. The session expires this long after creation regardless of activity. | 8 hours |
+| Absolute | Fixed when the session is created and never extended. The session expires this long after creation regardless of activity. | 24 hours |
 
 A session expires when it passes either deadline. After expiry, the next sign-in through the flow authenticates the user again. An administrator configures both timeouts in the server configuration. A token refresh keeps the session alive only if it arrives before the idle deadline, so an application that refreshes when its access token expires needs an idle timeout longer than the access token validity period. See [Configure Session Lifetime](../../../guides/flows/single-sign-on#configure-session-lifetime).
 

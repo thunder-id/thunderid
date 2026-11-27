@@ -2147,7 +2147,8 @@ func PutWritableServerConfigWithStatus(section string, body []byte) (int, []byte
 // importServerConfig imports the section with the management API key. A section it writes is answered
 // with 200 and the section's layers. A refusal is answered with the status the server configuration API
 // gives it and an error body in the API's shape carrying the import's code and message: 403 for an
-// unauthorized caller, 500 for a server error and 400 for any other.
+// unauthorized caller or a section declarative resources set, 500 for a server error and 400 for any
+// other.
 func importServerConfig(section string, body []byte) (int, []byte, error) {
 	item, err := ImportResourceOutcome("server_config",
 		map[string]any{"name": section, "value": json.RawMessage(body)}, true)
@@ -2164,7 +2165,7 @@ func importServerConfig(section string, body []byte) (int, []byte, error) {
 
 	status := http.StatusBadRequest
 	switch item.Code {
-	case "SSE-4030":
+	case "SSE-4030", "SCF-1006", "SCF-1007":
 		status = http.StatusForbidden
 	case "SSE-5000":
 		status = http.StatusInternalServerError

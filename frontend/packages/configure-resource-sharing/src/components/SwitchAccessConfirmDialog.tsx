@@ -42,6 +42,11 @@ export interface SwitchAccessConfirmDialogProps {
    * The i18n namespace holding the resource's own wording for stopping sharing, e.g. `users`.
    */
   wordingNamespace?: string;
+  /**
+   * Whether unsharing the resource revokes what was issued for it, which a save replacing the policy does in every
+   * organization unit the policy reached.
+   */
+  revokesOnUnshare?: boolean;
   onCancel: () => void;
   onConfirm: (accessSwitch: AccessSwitch) => void;
 }
@@ -59,6 +64,7 @@ export default function SwitchAccessConfirmDialog({
   unitsById,
   hasUnitSettings = false,
   wordingNamespace = undefined,
+  revokesOnUnshare = false,
   onCancel,
   onConfirm,
 }: SwitchAccessConfirmDialogProps): JSX.Element {
@@ -177,6 +183,21 @@ export default function SwitchAccessConfirmDialog({
                 'Assignments are turned off for some organization units this drops. Any of them granted again can assign {{resource}}, and only a resource file or the API can turn assignments off again.',
                 {resource: resourceName},
               )}
+            </Alert>
+          )}
+          {revokesOnUnshare && accessSwitch?.replacesPolicy && (
+            <Alert severity="warning">
+              {stopsSharing
+                ? t(
+                    'resourceSharing:switch.revokesEverywhere',
+                    'When you save, the tokens issued for {{resource}} in every organization unit it reached are revoked.',
+                    {resource: resourceName},
+                  )
+                : t(
+                    'resourceSharing:switch.revokesOnReplace',
+                    'Saving this replaces the sharing policy, so the tokens issued for {{resource}} in every organization unit it reached are revoked, including the ones this choice reaches again.',
+                    {resource: resourceName},
+                  )}
             </Alert>
           )}
           {hasUnitSettings && (

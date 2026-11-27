@@ -330,7 +330,7 @@ function ProvisioningProperties({resource, onChange}: CommonResourcePropertiesPr
         <Alert severity="warning">
           {t(
             'flows:core.executions.provisioning.federatedOverrideWarning',
-            "With Override all sync, a later federated sign-in removes groups assigned here that the connection's authorization mapping doesn't resolve when it has a group target, and roles when it has a role target.",
+            'A later sign-in through a connection set to Override all can remove the groups and roles assigned here.',
           )}
         </Alert>
       )}

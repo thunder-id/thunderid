@@ -137,6 +137,56 @@ User API responses that include a user's attributes also include `verifiedAttrib
 
 Applications can receive the verification status in tokens and the UserInfo response as `<attribute>_verified`, for example `email_verified`, beside the attribute it describes. If the user type defines an attribute with that name, its stored value is released instead. See [Verified Contact Claims](../../protocols/oauth-oidc/claims-and-scopes#verified-contact-claims).
 
+## Let Users Change Their Own Account
+
+A signed-in user reads and changes their own account through the self-service APIs, with an access token issued to that user. Reading the account with `GET /users/me` and changing other attributes with `PUT /users/me` need only that token. An attribute counts as an email address or mobile number by its type in the user type, `email` or `mobile`, not by its name. Only top-level attributes are checked. The following changes also need proof that the user is the one at the keyboard:
+
+| Change | API | Proof |
+|--------|-----|-------|
+| Change a credential the user holds, such as their password | `POST /users/me/update-credentials` | The credential's current value |
+| Set a credential the user does not hold yet, such as a first PIN | `POST /users/me/update-credentials` | A recent sign-in |
+| Add, change, or remove an attribute of type `email` or `mobile` | `PUT /users/me` | A recent sign-in |
+| Set the credentials of a personal agent the user owns | `POST /users/me/agents/{id}/update-credentials` | A recent sign-in |
+
+### Change a Credential
+
+`POST /users/me/update-credentials` changes one credential the user type declares. Name it in `name`, and give the new value in `newValue`. When the user holds the credential, give its current value in `currentValue`:
+
+```json
+{
+  "name": "password",
+  "currentValue": "0ldP@ssword!",
+  "newValue": "n3wP@ssword!"
+}
+```
+
+A wrong `currentValue` is refused with `403` and the code `USR-1048`, and a missing one with `400` and the code `USR-1047`. The user is already signed in, so [account lockout](../../account-protection/configure-account-lockout) does not apply here: a wrong value is not counted toward a lock, and a lock on the account does not refuse the change, so a signed-in user can change their password while the account is locked. The change does not release the lock. Limit repeated attempts on this API with [rate limiting](../../../deployment/production-guidelines#configure-rate-limiting).
+
+When the user does not hold the credential yet, `currentValue` is not needed, and the request needs a recent sign-in instead. Passkeys have their own registration and are not changed through this API.
+
+Replacing a credential revokes the user's tokens and ends their sessions, including the token that made the request. See [Credential Update](../../protocols/oauth-oidc/token-revocation#credential-update).
+
+### Recent Sign-In
+
+A sign-in stays recent for `user.self_service.max_authentication_age_seconds`, 180 seconds by default. See [User Configuration](../../../deployment/configuration#user-configuration). The API compares that limit with the access token's `auth_time` claim, the time the user signed in. Access tokens issued by the authorization code, CIBA, and device authorization grants carry `auth_time`, and so do tokens from a token exchange of the assertion a sign-in flow returns or of an access token <ProductName /> issued. A refreshed access token keeps the original `auth_time`, so refreshing a token does not make the sign-in recent again. See [`max_age` and `auth_time`](../../protocols/oauth-oidc/openid-connect#max_age-and-auth_time).
+
+When the sign-in is older than the limit, or the token has no `auth_time`, the API answers `401` with the code `AUTH-4011` and a challenge that follows [RFC 9470](https://datatracker.ietf.org/doc/html/rfc9470):
+
+```http
+HTTP/1.1 401 Unauthorized
+WWW-Authenticate: Bearer error="insufficient_user_authentication", error_description="A more recent authentication is required", max_age="180"
+```
+
+The `/users/me` APIs list `WWW-Authenticate` in `Access-Control-Expose-Headers`, so a browser application can read the challenge. To handle it:
+
+1. Read `max_age` from the `WWW-Authenticate` header.
+2. Sign the user in again and get a new access token:
+   - An app that uses the authorization code flow sends a new authorization request with `max_age` set to that value, or with `prompt=login`, and redeems the code.
+   - An app that signs users in through the flow API starts its sign-in flow again with `maxAge` set to that value in the first `POST /flow/execute` request, so a single sign-on session older than that is not reused. It exchanges the assertion the flow returns for an access token with the token exchange grant. See [Single Sign-On](../../flows/single-sign-on#app-native-sign-in).
+3. Retry the call with the new access token.
+
+A token that an agent got on the user's behalf through a token exchange keeps the user's `auth_time`. Within the limit, it can change the user's `email` or `mobile` attributes on `PUT /users/me`. The credential routes refuse such a token.
+
 ## Delete a User
 
 1. Open the user from the **Users** list.
@@ -200,7 +250,7 @@ Mandating roles needs only the permission to manage users (`system:user`), not t
 - A role export leaves mandated assignments out, because they follow the share and would import back as direct assignments.
 
 :::note
-Removing a mandate does not revoke tokens that are already issued. The roles disappear from newly issued tokens. Removing a direct assignment through the REST API, by contrast, revokes the tokens that carry the role's permissions. See [Token Revocation](../protocols/oauth-oidc/token-revocation.mdx#role-assignment-removal).
+Removing a mandate by editing the share, through the REST API, the Console, or an import, revokes the user's tokens issued in that organization unit that carry the role's permissions. While the user stays shared into the unit, a user who still holds the role there through a direct assignment, or through another share's mandate, loses nothing. Deleting the share, or taking the unit out of it, revokes every token issued to the user in that unit, whatever roles the user holds there. Only a token that states its organization unit is revoked this way. See [Unsharing](../protocols/oauth-oidc/token-revocation.mdx#unsharing).
 :::
 
 To import a user whose shares carry roles, put the user, the role, and the share in one import document. <ProductName /> replays the shares after the roles, so the document round-trips. See [Import Resources](../declarative-configurations/import-resources.mdx).

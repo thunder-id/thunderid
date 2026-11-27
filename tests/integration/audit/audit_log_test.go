@@ -22,6 +22,9 @@ import (
 	"github.com/thunder-id/thunderid/tests/integration/testutils"
 )
 
+// scopedManagerPassword is the password createScopedManager gives the manager it creates.
+const scopedManagerPassword = "AuditManager123!" // #nosec G101 -- test fixture
+
 const (
 	auditConfigKey = "audit"
 	logConfigKey   = "log"
@@ -673,7 +676,7 @@ func (ts *AuditLogTestSuite) createScopedManager(name string, handles, permissio
 	ownOU, ownType := ts.createUserType(name)
 
 	username := ts.prefix + name
-	password := "AuditManager123!"
+	password := scopedManagerPassword
 	managerID := ts.createUser(ownOU, ownType, username, password)
 
 	identifier := "https://" + ts.prefix + name + ".audit.example.com/user"

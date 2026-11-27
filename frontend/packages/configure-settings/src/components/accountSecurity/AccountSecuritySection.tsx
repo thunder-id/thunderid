@@ -4,8 +4,7 @@
 import {QueryErrorNotice, SettingsCard, UnsavedChangesBar} from '@thunderid/components';
 import {useCapabilitiesContext} from '@thunderid/contexts';
 import {getErrorMessage} from '@thunderid/utils';
-import {Box, Skeleton, Stack, Typography} from '@wso2/oxygen-ui';
-import {InfoIcon} from '@wso2/oxygen-ui-icons-react';
+import {Skeleton, Stack} from '@wso2/oxygen-ui';
 import type {JSX} from 'react';
 import {useCallback} from 'react';
 import {useTranslation} from 'react-i18next';
@@ -13,8 +12,10 @@ import AccountLockCard from './AccountLockCard';
 import AccountSuspensionSection from './AccountSuspensionSection';
 import useGetAccountAccessConfig from '../../api/useGetAccountAccessConfig';
 import useUpdateAccountAccessConfig from '../../api/useUpdateAccountAccessConfig';
+import SettingsQueryKeys from '../../constants/settings-query-keys';
 import useAccountLockDraft from '../../hooks/useAccountLockDraft';
 import {AccountLockCategories} from '../../models/accountAccess';
+import SectionLockNotice from '../common/SectionLockNotice';
 
 /**
  * The Account security tab: *Automatic account lock*, then *Lock and suspension flows*, so the card that
@@ -102,20 +103,6 @@ export default function AccountSecuritySection(): JSX.Element {
     return undefined;
   };
 
-  const readOnlyHint: JSX.Element | null = declarative ? (
-    <Stack direction="row" spacing={1} alignItems="flex-start" data-testid="account-lock-read-only-hint">
-      <Box aria-hidden sx={{flex: 'none', display: 'inline-flex', mt: '2px', color: 'text.secondary'}}>
-        <InfoIcon size={16} />
-      </Box>
-      <Typography variant="body2" color="text.secondary">
-        {t(
-          'settings:accountLock.readOnlyHint',
-          "These settings are read-only because they're managed declaratively. Change them in the declarative configuration.",
-        )}
-      </Typography>
-    </Stack>
-  ) : null;
-
   return (
     <>
       <Stack spacing={3}>
@@ -128,6 +115,7 @@ export default function AccountSecuritySection(): JSX.Element {
         >
           {pending() ?? (
             <Stack spacing={2}>
+              {declarative && <SectionLockNotice section={SettingsQueryKeys.ACCOUNT_ACCESS} />}
               {AccountLockCategories.map((category) => (
                 <AccountLockCard
                   key={category}
@@ -141,7 +129,6 @@ export default function AccountSecuritySection(): JSX.Element {
                   }}
                 />
               ))}
-              {readOnlyHint}
             </Stack>
           )}
         </SettingsCard>

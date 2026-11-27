@@ -103,7 +103,7 @@ func (suite *ServerConfigServiceAuditTestSuite) SetupSubTest() {
 func (suite *ServerConfigServiceAuditTestSuite) service(bus eventbus.EventBusInterface) ServerConfigService {
 	return newServerConfigService(suite.mockStore,
 		map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: suite.mockHandler}, nil, bus,
-		allowingAuthz(suite.T()))
+		allowingAuthz(suite.T()), false)
 }
 
 // expectWrite arranges a write of the suite value to the CORS section that reaches the store, which
@@ -112,6 +112,7 @@ func (suite *ServerConfigServiceAuditTestSuite) expectWrite(storeErr error) {
 	suite.mockHandler.EXPECT().Decode(suite.value).Return("incoming", nil).Once()
 	suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).Return(storeLayers{}, nil).Once()
 	suite.mockHandler.EXPECT().Decode(json.RawMessage(nil)).Return(nil, nil).Twice()
+	suite.mockHandler.EXPECT().IsReadOnly(nil).Return(false).Once()
 	suite.mockHandler.EXPECT().Validate(mock.Anything, "incoming", nil, nil).Return(nil).Once()
 	suite.mockStore.EXPECT().UpsertServerConfig(mock.Anything, ServerConfig{Name: ConfigNameCORS, Value: suite.value}).
 		Return(storeErr).Once()
@@ -178,6 +179,7 @@ func (suite *ServerConfigServiceAuditTestSuite) TestSetConfig_PublishesTheSameNa
 				suite.mockStore.EXPECT().GetServerConfig(mock.Anything, ConfigNameCORS).
 					Return(storeLayers{}, nil).Once()
 				suite.mockHandler.EXPECT().Decode(json.RawMessage(nil)).Return(nil, nil).Twice()
+				suite.mockHandler.EXPECT().IsReadOnly(nil).Return(false).Once()
 				suite.mockHandler.EXPECT().Validate(mock.Anything, "incoming", nil, nil).
 					Return(errors.New("an origin is not allowed")).Once()
 			},
@@ -262,8 +264,8 @@ func (suite *ServerConfigServiceAuditTestSuite) TestUpdateConfig_PublishesOneEve
 			}
 			bus, published := newRecordingBus(suite.T())
 			service := newServerConfigService(tc.store,
-				map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: mapHandler{}}, nil, bus,
-				allowingAuthz(suite.T()))
+				map[ConfigName]ServerConfigHandlerInterface{ConfigNameCORS: objectSection(suite.T(), nil)}, nil, bus,
+				allowingAuthz(suite.T()), false)
 
 			svcErr := service.UpdateConfig(adminContext(), tc.section, tc.updater)
 

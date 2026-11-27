@@ -83,11 +83,20 @@ func (ts *AuditLogTestSuite) TestEveryUserCredentialUpdateRecordsItsOutcome() {
 			status: http.StatusForbidden, actor: managerRef, target: siblingRef,
 			outcome: map[string]string{"result": "denied", "reason": "forbidden"}, subject: true,
 		},
+		{
+			name: "a user gives a wrong current password", client: managerClient,
+			path: "/users/me/update-credentials",
+			body: fmt.Sprintf(`{"name":"password","currentValue":%q,"newValue":%q}`,
+				scopedManagerPassword+"x", credentialMarker+"Self1!"),
+			status: http.StatusForbidden, actor: managerRef, target: managerRef,
+			outcome: map[string]string{"result": "failed", "reason": "usr_1048"},
+		},
 		// Last, since replacing a password the caller holds revokes the token the caller sends.
 		{
 			name: "a user sets their own password", client: managerClient,
-			path:   "/users/me/update-credentials",
-			body:   fmt.Sprintf(`{"attributes":{"password":%q}}`, credentialMarker+"Self1!"),
+			path: "/users/me/update-credentials",
+			body: fmt.Sprintf(`{"name":"password","currentValue":%q,"newValue":%q}`,
+				scopedManagerPassword, credentialMarker+"Self1!"),
 			status: http.StatusNoContent, actor: managerRef, target: managerRef,
 			outcome: map[string]string{"result": "succeeded"}, subject: true,
 		},

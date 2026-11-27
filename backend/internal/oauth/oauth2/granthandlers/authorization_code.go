@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/thunder-id/thunderid/internal/attributecache"
+	"github.com/thunder-id/thunderid/internal/flow/session"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/authz"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 	"github.com/thunder-id/thunderid/internal/oauth/oauth2/dpop"
@@ -31,10 +32,10 @@ type authorizationCodeGrantHandler struct {
 	attributeCache     attributecache.AttributeCacheServiceInterface
 	resourceService    providers.ResourceServerProvider
 	enforcementService revocation.EnforcementServiceInterface
-	// deviceSecretValidity is how long a device secret stays usable, as long as an SSO session can last.
-	// It is zero when the deployment has no SSO session service, and then no device secret is returned.
-	deviceSecretValidity time.Duration
-	authzDetails         providers.AuthorizationDetailProvider
+	// ssoSession says how long a device secret stays usable: as long as an SSO session can last. It is
+	// nil when the deployment has no SSO session service, and then no device secret is returned.
+	ssoSession   session.Service
+	authzDetails providers.AuthorizationDetailProvider
 }
 
 // newAuthorizationCodeGrantHandler creates a new instance of AuthorizationCodeGrantHandler.
@@ -44,17 +45,17 @@ func newAuthorizationCodeGrantHandler(
 	attributeCache attributecache.AttributeCacheServiceInterface,
 	resourceService providers.ResourceServerProvider,
 	enforcementService revocation.EnforcementServiceInterface,
-	deviceSecretValidity time.Duration,
+	ssoSession session.Service,
 	authzDetails providers.AuthorizationDetailProvider,
 ) *authorizationCodeGrantHandler {
 	return &authorizationCodeGrantHandler{
-		authzService:         authzService,
-		tokenBuilder:         tokenBuilder,
-		attributeCache:       attributeCache,
-		resourceService:      resourceService,
-		enforcementService:   enforcementService,
-		deviceSecretValidity: deviceSecretValidity,
-		authzDetails:         authzDetails,
+		authzService:       authzService,
+		tokenBuilder:       tokenBuilder,
+		attributeCache:     attributeCache,
+		resourceService:    resourceService,
+		enforcementService: enforcementService,
+		ssoSession:         ssoSession,
+		authzDetails:       authzDetails,
 	}
 }
 
@@ -205,7 +206,8 @@ func (h *authorizationCodeGrantHandler) issueTokens(ctx context.Context, tokenRe
 			{Type: revocation.CriterionTypeSubject, Value: authCode.AuthorizedUserID},
 			{Type: revocation.CriterionTypeApplicationKey, Value: authCode.ClientID},
 		},
-	}, authCode.AuthorizedUserID, accessTokenAudiences, oidcScopes, permissionScopes)
+	}, authCode.AuthorizedUserID, authCode.ClientID, issuedOUID(attrs), accessTokenAudiences, oidcScopes,
+		permissionScopes)
 	if errResp != nil {
 		return nil, errResp
 	}
@@ -237,6 +239,7 @@ func (h *authorizationCodeGrantHandler) issueTokens(ctx context.Context, tokenRe
 		SubjectEntityID:      authCode.SubjectID,
 		SubjectCategory:      authCode.SubjectCategory,
 		AuthorizationDetails: authorizationDetails,
+		AuthTime:             resolveAuthTime(authCode),
 	}
 	if oauthApp.ShouldAppendActorClaim() {
 		accessTokenCtx.ActorClaims = &tokenservice.SubjectTokenClaims{Sub: oauthApp.ID}
@@ -288,11 +291,15 @@ func (h *authorizationCodeGrantHandler) issueTokens(ctx context.Context, tokenRe
 }
 
 // deviceSecret returns the device secret carrying the SSO sessions kept with the code, lasting until the last
-// of them ends, or none when every one has ended.
+// of them ends, or none when every one has ended or the deployment has no SSO session service.
 func (h *authorizationCodeGrantHandler) deviceSecret(ctx context.Context, authCode *authz.AuthorizationCode,
 	oauthApp *providers.OAuthClient, logger *log.Logger) model.TokenDTO {
+	if h.ssoSession == nil || len(authCode.SessionData) == 0 {
+		return model.TokenDTO{}
+	}
 	// The sessions were posted in the request that minted the code.
-	validity, alive := h.deviceSecretLifetime(authCode.SessionData, authCode.TimeCreated, time.Now())
+	validity, alive := h.deviceSecretLifetime(authCode.SessionData, authCode.TimeCreated, time.Now(),
+		h.ssoSession.AbsoluteTimeout(ctx))
 	if !alive {
 		return model.TokenDTO{}
 	}
@@ -344,23 +351,24 @@ func (h *authorizationCodeGrantHandler) retrieveAndValidateAuthCode(
 
 // deviceSecretLifetime returns how long from now a device secret carrying sessions posted at postedAt lasts:
 // until the last of them ends, as each one's expiresIn said, and never longer than the device secret
-// validity. A session that did not say, or an unknown postedAt, gives the full validity; a session that
-// said zero or less has ended. It reports false when every session has ended.
+// validity, as long as an SSO session can last. A session that did not say, or an unknown postedAt, gives
+// the full validity; a session that said zero or less has ended. It reports false when every session has
+// ended.
 func (h *authorizationCodeGrantHandler) deviceSecretLifetime(sessionData []model.SessionData,
-	postedAt, now time.Time) (time.Duration, bool) {
+	postedAt, now time.Time, validity time.Duration) (time.Duration, bool) {
 	if postedAt.IsZero() {
-		return h.deviceSecretValidity, true
+		return validity, true
 	}
 	var lastEnd time.Time
 	for _, entry := range sessionData {
 		if entry.ExpiresIn == nil {
-			return h.deviceSecretValidity, true
+			return validity, true
 		}
 		if *entry.ExpiresIn <= 0 {
 			continue
 		}
 		// Clamped to the validity before it becomes a duration, so no posted value can overflow it.
-		left := time.Duration(min(*entry.ExpiresIn, int64(h.deviceSecretValidity/time.Second))) * time.Second
+		left := time.Duration(min(*entry.ExpiresIn, int64(validity/time.Second))) * time.Second
 		if end := postedAt.Add(left); end.After(lastEnd) {
 			lastEnd = end
 		}
@@ -369,7 +377,7 @@ func (h *authorizationCodeGrantHandler) deviceSecretLifetime(sessionData []model
 	if lastEnd.IsZero() || remaining <= 0 {
 		return 0, false
 	}
-	return min(remaining, h.deviceSecretValidity), true
+	return min(remaining, validity), true
 }
 
 // validateAuthorizationCode validates the authorization code against the token request.

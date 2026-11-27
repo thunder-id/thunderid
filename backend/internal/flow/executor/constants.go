@@ -9,16 +9,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/flow/executormeta"
-	oauth2const "github.com/thunder-id/thunderid/internal/oauth/oauth2/constants"
 )
-
-// tokenMetadataClaims are token fields that describe the token rather than the user, so they are never
-// kept as claims.
-var tokenMetadataClaims = []string{
-	oauth2const.ClaimAud, oauth2const.ClaimExp, oauth2const.ClaimIat, oauth2const.ClaimNbf,
-	oauth2const.ClaimIss, oauth2const.ClaimJTI, oauth2const.ClaimAtHash, oauth2const.ClaimCHash,
-	oauth2const.ClaimAzp, oauth2const.ClaimNonce,
-}
 
 // Executor name constants. The values live in executormeta, which carries no runtime dependency,
 // so flow validation can name an executor without linking the executor itself. These aliases keep
@@ -97,6 +88,9 @@ const (
 	ExecutorModeClientRemoval        = executormeta.ExecutorModeClientRemoval
 	ExecutorModeClientSecretRotation = executormeta.ExecutorModeClientSecretRotation
 	ExecutorModeCredentialUpdate     = executormeta.ExecutorModeCredentialUpdate
+	ExecutorModeEntityUnshare        = executormeta.ExecutorModeEntityUnshare
+	ExecutorModeRoleUnshare          = executormeta.ExecutorModeRoleUnshare
+	ExecutorModeMandateRemoval       = executormeta.ExecutorModeMandateRemoval
 
 	ExecutorModeUnlock    = executormeta.ExecutorModeUnlock
 	ExecutorModeSuspend   = executormeta.ExecutorModeSuspend
@@ -157,6 +151,10 @@ const (
 	revocationInputResourceServer = "targetResourceServerId"
 	revocationInputResource       = "targetResourceId"
 	revocationInputAction         = "targetActionId"
+	// revocationInputOU names the organization unit a resource was unshared from.
+	revocationInputOU = "targetOuId"
+	// revocationInputOUs lists, as a JSON array, the organization units an entity was unshared from.
+	revocationInputOUs = "targetOuIds"
 	// revocationInputRemovedHolders lists, as a JSON array, the entities whose access the committed change
 	// removed. Only a system post flow reads it.
 	revocationInputRemovedHolders = "removedHolderIds"

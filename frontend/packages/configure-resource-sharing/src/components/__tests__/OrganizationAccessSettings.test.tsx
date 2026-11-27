@@ -79,6 +79,7 @@ function accessWith(
         losesEveryUnit: false,
         losesEveryTree: false,
         losesAssignmentsOff: false,
+        replacesPolicy: false,
       }),
     ),
     applySwitch: vi.fn(),
@@ -86,6 +87,7 @@ function accessWith(
     save: vi.fn(),
     isSaving: false,
     saveError: null,
+    revokesOnUnshare: false,
     ...overrides,
   };
 }
@@ -275,6 +277,7 @@ describe('OrganizationAccessSettings', () => {
       losesEveryUnit: false,
       losesEveryTree: false,
       losesAssignmentsOff: true,
+      replacesPolicy: false,
     }));
     renderSettings(access);
 

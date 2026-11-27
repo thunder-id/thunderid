@@ -530,6 +530,13 @@ func requestToken(clientID, clientSecret, code, redirectURI, grantType string, t
 
 // RequestClientCredentialsToken requests a client_credentials token for the scope and RFC 8707 resource.
 func RequestClientCredentialsToken(clientID, clientSecret, scope, resource string) (*TokenHTTPResult, error) {
+	return RequestOUClientCredentialsToken("", clientID, clientSecret, scope, resource)
+}
+
+// RequestOUClientCredentialsToken requests a client_credentials token at ouID's token endpoint, or at the
+// deployment's when ouID is empty.
+func RequestOUClientCredentialsToken(ouID, clientID, clientSecret, scope, resource string) (*TokenHTTPResult,
+	error) {
 	tokenData := url.Values{}
 	tokenData.Set("grant_type", "client_credentials")
 	if scope != "" {
@@ -539,7 +546,11 @@ func RequestClientCredentialsToken(clientID, clientSecret, scope, resource strin
 		tokenData.Set("resource", resource)
 	}
 
-	req, err := http.NewRequest("POST", TestServerURL+"/oauth2/token", bytes.NewBufferString(tokenData.Encode()))
+	endpoint := TestServerURL + "/oauth2/token"
+	if ouID != "" {
+		endpoint = TestServerURL + "/ou/" + ouID + "/oauth2/token"
+	}
+	req, err := http.NewRequest("POST", endpoint, bytes.NewBufferString(tokenData.Encode()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create token request: %w", err)
 	}

@@ -14,11 +14,17 @@ import (
 	"github.com/stretchr/testify/suite"
 
 	authnprovidercm "github.com/thunder-id/thunderid/internal/authnprovider/common"
+	"github.com/thunder-id/thunderid/internal/entitytype"
 	"github.com/thunder-id/thunderid/internal/flow/common"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	"github.com/thunder-id/thunderid/internal/system/eventlistener"
 	"github.com/thunder-id/thunderid/internal/system/log"
+	"github.com/thunder-id/thunderid/internal/system/security"
+	sysutils "github.com/thunder-id/thunderid/internal/system/utils"
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
+	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
+	"github.com/thunder-id/thunderid/tests/mocks/entitymock"
+	"github.com/thunder-id/thunderid/tests/mocks/entitytypemock"
 	"github.com/thunder-id/thunderid/tests/mocks/transactionmock"
 )
 
@@ -29,12 +35,22 @@ const testOtherFlowID = "other-flow"
 // testHandle is the session handle the suite's fixtures are keyed by.
 const testHandle = "handle-abc"
 
+// testTokenFamilyID is the token family the baseline load input offers for its grant.
+const testTokenFamilyID = "tfid-1"
+
+// testNewTokenFamilyID is the token family a save offers for a grant joining an existing session.
+const testNewTokenFamilyID = "tfid-new"
+
 type ServiceTestSuite struct {
 	suite.Suite
 }
 
 func TestServiceTestSuite(t *testing.T) {
 	suite.Run(t, new(ServiceTestSuite))
+}
+
+func (suite *ServiceTestSuite) SetupSuite() {
+	security.InitDataPlanePermissions("")
 }
 
 func (suite *ServiceTestSuite) SetupTest() {
@@ -45,28 +61,52 @@ func (suite *ServiceTestSuite) TearDownTest() {
 	config.ResetServerRuntime()
 }
 
-// serviceMocks bundles the generated store/transaction mocks a service test wires together. The one
+// serviceMocks bundles the generated mocks a service test wires together. The one
 // store mock backs every persistence operation (sessions, contexts, participants) since the service
 // depends on the single sessionStore interface.
 type serviceMocks struct {
-	store *sessionStoreMock
-	tx    *transactionmock.TransactionerMock
+	store       *sessionStoreMock
+	tx          *transactionmock.TransactionerMock
+	entities    *entitymock.EntityServiceInterfaceMock
+	entityTypes *entitytypemock.EntityTypeServiceInterfaceMock
+	apps        *applicationProviderMock
 }
 
 func (suite *ServiceTestSuite) newService() (*service, *serviceMocks) {
 	m := &serviceMocks{
-		store: newSessionStoreMock(suite.T()),
-		tx:    transactionmock.NewTransactionerMock(suite.T()),
+		store:       newSessionStoreMock(suite.T()),
+		tx:          transactionmock.NewTransactionerMock(suite.T()),
+		entities:    entitymock.NewEntityServiceInterfaceMock(suite.T()),
+		entityTypes: entitytypemock.NewEntityTypeServiceInterfaceMock(suite.T()),
+		apps:        newApplicationProviderMock(suite.T()),
 	}
 	svc := &service{
 		store:            m.store,
-		resolver:         newResolver(m.store),
+		resolver:         newResolver(m.store, defaultTimeouts(suite.T())),
 		transactioner:    m.tx,
 		terminationTopic: eventlistener.NewTopic[TerminatedSession]("test"),
-		timeouts:         DefaultTimeouts(),
+		timeouts:         defaultTimeouts(suite.T()),
+		entities:         m.entities,
+		entityTypes:      m.entityTypes,
+		apps:             m.apps,
 		logger:           log.GetLogger(),
 	}
 	return svc, m
+}
+
+// defaultTimeouts returns a timeouts source that reads the built-in defaults. Most cases never reach
+// the timeouts, so it need not be read; a case about them uses readTimeouts.
+func defaultTimeouts(t *testing.T) timeoutsSource {
+	source := newTimeoutsSourceMock(t)
+	source.EXPECT().current(mock.Anything).Return(newTimeouts(Config{}, deploymentLimits{})).Maybe()
+	return source
+}
+
+// readTimeouts returns a timeouts source with the built-in defaults that the case must read once.
+func readTimeouts(t *testing.T) timeoutsSource {
+	source := newTimeoutsSourceMock(t)
+	source.EXPECT().current(mock.Anything).Return(newTimeouts(Config{}, deploymentLimits{})).Once()
+	return source
 }
 
 // runTx makes the transaction mock execute the callback it is handed (commit-on-success semantics).
@@ -84,8 +124,9 @@ func liveStoreSession() *Session {
 
 func (suite *ServiceTestSuite) TestAbsoluteTimeout() {
 	svc, _ := suite.newService()
+	svc.timeouts = readTimeouts(suite.T())
 
-	suite.Equal(DefaultTimeouts().Absolute, svc.AbsoluteTimeout())
+	suite.Equal(newTimeouts(Config{}, deploymentLimits{}).Absolute, svc.AbsoluteTimeout(context.Background()))
 }
 
 // --- Resolve ---
@@ -210,7 +251,7 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_Establishes() {
 		func(_ context.Context, s Session) error { created = &s; return nil })
 	runTx(m)
 	m.store.EXPECT().CreateContext(mock.Anything, mock.Anything).Return(nil)
-	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return("", nil)
 
 	res, err := svc.SaveCheckpoint(context.Background(), saveInput())
 	suite.Require().NoError(err)
@@ -242,7 +283,7 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_AttachesToExisting() {
 	var savedCtx SessionContext
 	m.store.EXPECT().CreateContext(mock.Anything, mock.Anything).RunAndReturn(
 		func(_ context.Context, c SessionContext) error { savedCtx = c; return nil })
-	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return("", nil)
 	// Saving a checkpoint into an existing session means the subject just authenticated again, so the
 	// session's authentication time moves forward with it.
 	var touchedAt, touchedIdle time.Time
@@ -287,7 +328,7 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_RecordsTheParticipantUnderItsO
 			m.store.EXPECT().CreateContext(mock.Anything, mock.Anything).Return(nil)
 			var recorded Participant
 			m.store.EXPECT().Record(mock.Anything, mock.Anything).RunAndReturn(
-				func(_ context.Context, p Participant) error { recorded = p; return nil })
+				func(_ context.Context, p Participant) (string, error) { recorded = p; return p.TokenFamilyID, nil })
 			in := saveInput()
 			in.HandleHint = testHandle
 			in.TokenFamilyID = "tfid-1"
@@ -320,7 +361,7 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_RecordsARefusedSignInUnderNoOU
 	m.store.EXPECT().CreateContext(mock.Anything, mock.Anything).Return(nil)
 	var recorded Participant
 	m.store.EXPECT().Record(mock.Anything, mock.Anything).RunAndReturn(
-		func(_ context.Context, p Participant) error { recorded = p; return nil })
+		func(_ context.Context, p Participant) (string, error) { recorded = p; return p.TokenFamilyID, nil })
 	in := saveInput()
 	in.HandleHint = testHandle
 	in.TokenFamilyID = "tfid-1"
@@ -342,7 +383,7 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_RefusedInAnOUItsSubjectCannotS
 		Return(&SessionContext{SessionID: "sess-1"}, nil)
 	m.store.EXPECT().Update(mock.Anything, mock.Anything).Return(nil).Maybe()
 
-	_, _, err := svc.LoadCheckpoint(boundaryContext("ou-x"), loadInput())
+	_, err := svc.LoadCheckpoint(boundaryContext("ou-x"), loadInput())
 
 	suite.Require().Error(err)
 	m.store.AssertNotCalled(suite.T(), "Record", mock.Anything, mock.Anything)
@@ -359,7 +400,7 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_SnapshotDropsTheOrganizationUn
 	var savedCtx SessionContext
 	m.store.EXPECT().CreateContext(mock.Anything, mock.Anything).RunAndReturn(
 		func(_ context.Context, c SessionContext) error { savedCtx = c; return nil })
-	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return("", nil)
 	in := saveInput()
 	in.HandleHint = testHandle
 	in.RuntimeData = map[string]string{
@@ -380,7 +421,7 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_ReauthRefreshFailureStillSaves
 	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(liveStoreSession(), nil)
 	runTx(m)
 	m.store.EXPECT().CreateContext(mock.Anything, mock.Anything).Return(nil)
-	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return("", nil)
 	m.store.EXPECT().TouchAuthenticatedAt(mock.Anything, "sess-1", mock.Anything, mock.Anything, mock.Anything).
 		Return(errors.New("db down"))
 
@@ -406,7 +447,7 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_NewSessionDoesNotTouch() {
 		func(_ context.Context, s Session) error { created = &s; return nil })
 	runTx(m)
 	m.store.EXPECT().CreateContext(mock.Anything, mock.Anything).Return(nil)
-	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return("", nil)
 
 	res, err := svc.SaveCheckpoint(context.Background(), saveInput())
 	suite.Require().NoError(err)
@@ -456,13 +497,106 @@ func (suite *ServiceTestSuite) TestSaveCheckpoint_ContextWriteError() {
 	suite.Require().Error(err)
 }
 
+// saveIntoExistingSession saves a grant offering testNewTokenFamilyID into sess-1, whose participant holds held.
+func (suite *ServiceTestSuite) saveIntoExistingSession(svc *service, m *serviceMocks, held string) (
+	SaveCheckpointResult, error) {
+	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(liveStoreSession(), nil)
+	m.store.EXPECT().TouchAuthenticatedAt(mock.Anything, "sess-1", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil)
+	runTx(m)
+	m.store.EXPECT().CreateContext(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.MatchedBy(func(p Participant) bool {
+		return p.TokenFamilyID == testNewTokenFamilyID
+	})).Return(held, nil)
+	in := saveInput()
+	in.HandleHint = testHandle
+	in.TokenFamilyID = testNewTokenFamilyID
+	return svc.SaveCheckpoint(context.Background(), in)
+}
+
+// A save's grant carries the held family unless it is revoked; a failed check or replacement keeps it.
+func (suite *ServiceTestSuite) TestSaveCheckpoint_ReturnsTheParticipantsTokenFamily() {
+	cases := []struct {
+		name       string
+		held       string
+		revoked    bool
+		checkErr   error
+		replaceErr error
+		want       string
+	}{
+		{name: "first join", held: testNewTokenFamilyID, want: testNewTokenFamilyID},
+		{name: "rejoin keeps a live family", held: "tfid-existing", want: "tfid-existing"},
+		{name: "rejoin replaces a revoked family", held: "tfid-existing", revoked: true, want: testNewTokenFamilyID},
+		{name: "an unreadable deny list keeps the family", held: "tfid-existing", checkErr: errors.New("db down"),
+			want: "tfid-existing"},
+		{name: "a failed replacement keeps the revoked family", held: "tfid-existing", revoked: true,
+			replaceErr: errors.New("db down"), want: "tfid-existing"},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			svc, m := suite.newService()
+			revoker := NewCriteriaRevokerMock(suite.T())
+			svc.criteriaRevoker = revoker
+			if tc.held != testNewTokenFamilyID {
+				revoker.EXPECT().IsTokenFamilyRevoked(mock.Anything, tc.held).Return(tc.revoked, tc.checkErr)
+			}
+			if tc.revoked {
+				m.store.EXPECT().ReplaceTokenFamily(mock.Anything, mock.Anything, tc.held).
+					Return(testNewTokenFamilyID, tc.replaceErr)
+			}
+
+			res, err := suite.saveIntoExistingSession(svc, m, tc.held)
+
+			suite.Require().NoError(err)
+			suite.Equal(tc.want, res.TokenFamilyID)
+		})
+	}
+}
+
+// txContextKey marks the context the transaction mock hands its callback.
+type txContextKey struct{}
+
+// The family is settled after the commit, since a failed read would abort a PostgreSQL transaction.
+func (suite *ServiceTestSuite) TestSaveCheckpoint_SettlesTheTokenFamilyAfterTheCommit() {
+	svc, m := suite.newService()
+	committed := false
+	m.tx.EXPECT().Transact(mock.Anything, mock.Anything).RunAndReturn(
+		func(ctx context.Context, fn func(context.Context) error) error {
+			err := fn(context.WithValue(ctx, txContextKey{}, true))
+			committed = err == nil
+			return err
+		})
+	insideTx := mock.MatchedBy(func(ctx context.Context) bool { return ctx.Value(txContextKey{}) != nil })
+	afterCommit := mock.MatchedBy(func(ctx context.Context) bool {
+		return committed && ctx.Value(txContextKey{}) == nil
+	})
+	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(liveStoreSession(), nil)
+	m.store.EXPECT().TouchAuthenticatedAt(mock.Anything, "sess-1", mock.Anything, mock.Anything, mock.Anything).
+		Return(nil)
+	m.store.EXPECT().CreateContext(insideTx, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(insideTx, mock.Anything).Return("tfid-existing", nil)
+	revoker := NewCriteriaRevokerMock(suite.T())
+	revoker.EXPECT().IsTokenFamilyRevoked(afterCommit, "tfid-existing").Return(true, nil)
+	svc.criteriaRevoker = revoker
+	m.store.EXPECT().ReplaceTokenFamily(afterCommit, mock.Anything, "tfid-existing").
+		Return(testNewTokenFamilyID, nil)
+	in := saveInput()
+	in.HandleHint = testHandle
+	in.TokenFamilyID = testNewTokenFamilyID
+
+	res, err := svc.SaveCheckpoint(context.Background(), in)
+
+	suite.Require().NoError(err)
+	suite.Equal(testNewTokenFamilyID, res.TokenFamilyID)
+}
+
 // --- LoadCheckpoint ---
 
 // loadInput is the baseline load input: a handle to resolve and nothing forwarded, so the service
 // reads both rows itself. Tests override the fields they are exercising.
 func loadInput() LoadCheckpointInput {
 	return LoadCheckpointInput{
-		Handle: "handle-abc", Checkpoint: "session", AppID: "app-456", TokenFamilyID: "tfid-1",
+		Handle: "handle-abc", Checkpoint: "session", AppID: "app-456", TokenFamilyID: testTokenFamilyID,
 	}
 }
 
@@ -488,9 +622,10 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_Success() {
 		func(_ context.Context, s *Session) error { updated = s; return nil })
 	var recorded Participant
 	m.store.EXPECT().Record(mock.Anything, mock.Anything).RunAndReturn(
-		func(_ context.Context, p Participant) error { recorded = p; return nil })
+		func(_ context.Context, p Participant) (string, error) { recorded = p; return p.TokenFamilyID, nil })
 
-	sess, sc, err := svc.LoadCheckpoint(context.Background(), loadInput())
+	loaded, err := svc.LoadCheckpoint(context.Background(), loadInput())
+	sess, sc := loaded.Session, loaded.Context
 	suite.Require().NoError(err)
 
 	suite.Require().NotNil(sess)
@@ -515,12 +650,15 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_RecordsEachOUOfAnApplication()
 	m.store.EXPECT().Update(mock.Anything, mock.Anything).Return(nil).Maybe()
 	var recorded []Participant
 	m.store.EXPECT().Record(mock.Anything, mock.Anything).RunAndReturn(
-		func(_ context.Context, p Participant) error { recorded = append(recorded, p); return nil })
+		func(_ context.Context, p Participant) (string, error) {
+			recorded = append(recorded, p)
+			return p.TokenFamilyID, nil
+		})
 
 	for ouID, tfid := range map[string]string{"ou-x": "tfid-x", "ou-y": "tfid-y"} {
 		in := loadInput()
 		in.TokenFamilyID = tfid
-		_, _, err := svc.LoadCheckpoint(boundaryContext(ouID), in)
+		_, err := svc.LoadCheckpoint(boundaryContext(ouID), in)
 		suite.Require().NoError(err)
 	}
 
@@ -539,13 +677,14 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_RecordsEachOUOfAnApplication()
 func (suite *ServiceTestSuite) TestLoadCheckpoint_UsesForwardedReads() {
 	svc, m := suite.newService()
 	m.store.EXPECT().Update(mock.Anything, mock.Anything).Return(nil)
-	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(testTokenFamilyID, nil)
 
 	in := loadInput()
 	in.Session = liveStoreSession()
 	in.Context = &SessionContext{SessionID: "sess-1", CheckpointID: "session"}
 
-	sess, sc, err := svc.LoadCheckpoint(context.Background(), in)
+	loaded, err := svc.LoadCheckpoint(context.Background(), in)
+	sess, sc := loaded.Session, loaded.Context
 
 	suite.Require().NoError(err)
 	suite.Same(in.Session, sess)
@@ -562,14 +701,15 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_ReadsWhenForwardedSessionIsAno
 	m.store.EXPECT().GetByCheckpoint(mock.Anything, "sess-2", "session").
 		Return(&SessionContext{SessionID: "sess-2", CheckpointID: "session"}, nil)
 	m.store.EXPECT().Update(mock.Anything, mock.Anything).Return(nil)
-	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(testTokenFamilyID, nil)
 
 	in := loadInput()
 	in.Handle = "handle-xyz"
 	in.Session = liveStoreSession() // handle-abc, not the handle being loaded
 	in.Context = &SessionContext{SessionID: "sess-1", CheckpointID: "session"}
 
-	sess, sc, err := svc.LoadCheckpoint(context.Background(), in)
+	loaded, err := svc.LoadCheckpoint(context.Background(), in)
+	sess, sc := loaded.Session, loaded.Context
 
 	suite.Require().NoError(err)
 	suite.Equal("sess-2", sess.SessionID)
@@ -583,14 +723,15 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_ReadsWhenForwardedContextIsAno
 	m.store.EXPECT().GetByCheckpoint(mock.Anything, "sess-1", "step_up").
 		Return(&SessionContext{SessionID: "sess-1", CheckpointID: "step_up"}, nil)
 	m.store.EXPECT().Update(mock.Anything, mock.Anything).Return(nil)
-	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(testTokenFamilyID, nil)
 
 	in := loadInput()
 	in.Checkpoint = "step_up"
 	in.Session = liveStoreSession()
 	in.Context = &SessionContext{SessionID: "sess-1", CheckpointID: "session"}
 
-	_, sc, err := svc.LoadCheckpoint(context.Background(), in)
+	loaded, err := svc.LoadCheckpoint(context.Background(), in)
+	sc := loaded.Context
 
 	suite.Require().NoError(err)
 	suite.Equal("step_up", sc.CheckpointID)
@@ -599,7 +740,8 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_ReadsWhenForwardedContextIsAno
 func (suite *ServiceTestSuite) TestLoadCheckpoint_NoHandle() {
 	svc, _ := suite.newService()
 
-	_, _, err := svc.LoadCheckpoint(context.Background(), LoadCheckpointInput{Checkpoint: "session", AppID: "app-456"})
+	_, err := svc.LoadCheckpoint(context.Background(),
+		LoadCheckpointInput{Checkpoint: "session", AppID: "app-456"})
 
 	suite.Require().Error(err)
 	suite.Contains(err.Error(), "no resolved session handle")
@@ -609,7 +751,7 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_MissingSession() {
 	svc, m := suite.newService()
 	m.store.EXPECT().GetByHandle(mock.Anything, mock.Anything).Return(nil, nil)
 
-	_, _, err := svc.LoadCheckpoint(context.Background(), loadInput())
+	_, err := svc.LoadCheckpoint(context.Background(), loadInput())
 
 	suite.Require().Error(err)
 	suite.Contains(err.Error(), "resolved session no longer exists")
@@ -621,7 +763,7 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_MissingContext() {
 		Return(&Session{SessionID: "sess-1", HandleID: "handle-abc", State: StateActive}, nil)
 	m.store.EXPECT().GetByCheckpoint(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil)
 
-	_, _, err := svc.LoadCheckpoint(context.Background(), loadInput())
+	_, err := svc.LoadCheckpoint(context.Background(), loadInput())
 
 	suite.Require().Error(err)
 	suite.Contains(err.Error(), "session context for checkpoint")
@@ -634,9 +776,10 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_ParticipantErrorWithTokenFamil
 	m.store.EXPECT().GetByCheckpoint(mock.Anything, mock.Anything, mock.Anything).
 		Return(&SessionContext{SessionID: "sess-1"}, nil)
 	m.store.EXPECT().Update(mock.Anything, mock.Anything).Return(nil)
-	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(errors.New("db down"))
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return("", errors.New("db down"))
 
-	sess, sc, err := svc.LoadCheckpoint(context.Background(), loadInput())
+	loaded, err := svc.LoadCheckpoint(context.Background(), loadInput())
+	sess, sc := loaded.Session, loaded.Context
 
 	suite.Require().Error(err, "issuing a token family whose mapping cannot persist must fail the load")
 	suite.Contains(err.Error(), "token family")
@@ -651,13 +794,93 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_ParticipantErrorWithoutTokenFa
 	m.store.EXPECT().GetByCheckpoint(mock.Anything, mock.Anything, mock.Anything).
 		Return(&SessionContext{SessionID: "sess-1"}, nil)
 	m.store.EXPECT().Update(mock.Anything, mock.Anything).Return(nil)
-	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(errors.New("db down"))
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return("", errors.New("db down"))
 
-	sess, sc, err := svc.LoadCheckpoint(context.Background(), noTFIDLoadInput())
+	loaded, err := svc.LoadCheckpoint(context.Background(), noTFIDLoadInput())
+	sess, sc := loaded.Session, loaded.Context
 
 	suite.Require().NoError(err, "with no token family there is nothing to revoke, so the load survives")
 	suite.NotNil(sess)
 	suite.NotNil(sc)
+}
+
+// loadWithParticipant loads sess-1 for a grant offering testTokenFamilyID, whose participant holds held.
+func (suite *ServiceTestSuite) loadWithParticipant(svc *service, m *serviceMocks, held string) (string, error) {
+	m.store.EXPECT().Update(mock.Anything, mock.Anything).Return(nil).Maybe()
+	m.store.EXPECT().Record(mock.Anything, mock.MatchedBy(func(p Participant) bool {
+		return p.TokenFamilyID == testTokenFamilyID
+	})).Return(held, nil)
+	in := loadInput()
+	in.Session = liveStoreSession()
+	in.Context = &SessionContext{SessionID: "sess-1", CheckpointID: "session"}
+	loaded, err := svc.LoadCheckpoint(context.Background(), in)
+	tokenFamilyID := loaded.TokenFamilyID
+	return tokenFamilyID, err
+}
+
+// A load's grant carries the held family unless it is revoked; a failed check or replacement keeps it.
+func (suite *ServiceTestSuite) TestLoadCheckpoint_ReturnsTheParticipantsTokenFamily() {
+	cases := []struct {
+		name       string
+		held       string
+		noRevoker  bool
+		revoked    bool
+		checkErr   error
+		replaced   string
+		replaceErr error
+		want       string
+	}{
+		{name: "first join", held: testTokenFamilyID, want: testTokenFamilyID},
+		{name: "rejoin keeps a live family", held: "tfid-existing", want: "tfid-existing"},
+		{name: "rejoin replaces a revoked family", held: "tfid-existing", revoked: true, replaced: testTokenFamilyID,
+			want: testTokenFamilyID},
+		{name: "a concurrent replacement wins", held: "tfid-existing", revoked: true, replaced: "tfid-other",
+			want: "tfid-other"},
+		{name: "an unreadable deny list keeps the family", held: "tfid-existing", checkErr: errors.New("db down"),
+			want: "tfid-existing"},
+		{name: "a failed replacement keeps the revoked family", held: "tfid-existing", revoked: true,
+			replaceErr: errors.New("participant gone"), want: "tfid-existing"},
+		{name: "no revoker keeps the family", held: "tfid-existing", noRevoker: true, want: "tfid-existing"},
+	}
+	for _, tc := range cases {
+		suite.Run(tc.name, func() {
+			svc, m := suite.newService()
+			if !tc.noRevoker {
+				revoker := NewCriteriaRevokerMock(suite.T())
+				svc.criteriaRevoker = revoker
+				if tc.held != testTokenFamilyID {
+					revoker.EXPECT().IsTokenFamilyRevoked(mock.Anything, tc.held).Return(tc.revoked, tc.checkErr)
+				}
+			}
+			if tc.revoked {
+				m.store.EXPECT().ReplaceTokenFamily(mock.Anything, mock.MatchedBy(func(p Participant) bool {
+					return p.SessionID == "sess-1" && p.AppID == "app-456" && p.TokenFamilyID == testTokenFamilyID
+				}), tc.held).Return(tc.replaced, tc.replaceErr)
+			}
+
+			tokenFamilyID, err := suite.loadWithParticipant(svc, m, tc.held)
+
+			suite.Require().NoError(err)
+			suite.Equal(tc.want, tokenFamilyID)
+		})
+	}
+}
+
+// Without an application id nothing is recorded, and the grant keeps the family it was given.
+func (suite *ServiceTestSuite) TestLoadCheckpoint_WithoutAnApplicationKeepsTheGivenFamily() {
+	svc, m := suite.newService()
+	m.store.EXPECT().Update(mock.Anything, mock.Anything).Return(nil).Maybe()
+	in := loadInput()
+	in.AppID = ""
+	in.Session = liveStoreSession()
+	in.Context = &SessionContext{SessionID: "sess-1", CheckpointID: "session"}
+
+	loaded, err := svc.LoadCheckpoint(context.Background(), in)
+	tokenFamilyID := loaded.TokenFamilyID
+
+	suite.Require().NoError(err)
+	suite.Equal(testTokenFamilyID, tokenFamilyID)
+	m.store.AssertNotCalled(suite.T(), "Record", mock.Anything, mock.Anything)
 }
 
 func (suite *ServiceTestSuite) TestLoadCheckpoint_ThrottledRefreshSkipsUpdate() {
@@ -671,9 +894,10 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_ThrottledRefreshSkipsUpdate() 
 	}, nil)
 	m.store.EXPECT().GetByCheckpoint(mock.Anything, "sess-1", "session").
 		Return(&SessionContext{SessionID: "sess-1"}, nil)
-	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return("", nil)
 
-	sess, sc, err := svc.LoadCheckpoint(context.Background(), noTFIDLoadInput())
+	loaded, err := svc.LoadCheckpoint(context.Background(), noTFIDLoadInput())
+	sess, sc := loaded.Session, loaded.Context
 	suite.Require().NoError(err)
 
 	suite.Require().NotNil(sess)
@@ -695,9 +919,9 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_WritesAfterRefreshWindow() {
 	var updated *Session
 	m.store.EXPECT().Update(mock.Anything, mock.Anything).RunAndReturn(
 		func(_ context.Context, s *Session) error { updated = s; return nil })
-	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return("", nil)
 
-	_, _, err := svc.LoadCheckpoint(context.Background(), noTFIDLoadInput())
+	_, err := svc.LoadCheckpoint(context.Background(), noTFIDLoadInput())
 	suite.Require().NoError(err)
 
 	suite.Require().NotNil(updated, "an activity refresh past the throttle window must persist")
@@ -721,11 +945,11 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_RefreshRecordsClientIP() {
 	var updated *Session
 	m.store.EXPECT().Update(mock.Anything, mock.Anything).RunAndReturn(
 		func(_ context.Context, s *Session) error { updated = s; return nil })
-	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return("", nil)
 
 	in := noTFIDLoadInput()
 	in.ClientInfo = ClientInfo{IP: "198.51.100.7", UserAgent: "Mozilla/5.0 (iPhone) Safari/17.0"}
-	_, _, err := svc.LoadCheckpoint(context.Background(), in)
+	_, err := svc.LoadCheckpoint(context.Background(), in)
 	suite.Require().NoError(err)
 
 	suite.Require().NotNil(updated)
@@ -747,9 +971,9 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_RefreshKeepsKnownIPWhenClientH
 	var updated *Session
 	m.store.EXPECT().Update(mock.Anything, mock.Anything).RunAndReturn(
 		func(_ context.Context, s *Session) error { updated = s; return nil })
-	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(nil)
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return("", nil)
 
-	_, _, err := svc.LoadCheckpoint(context.Background(), noTFIDLoadInput())
+	_, err := svc.LoadCheckpoint(context.Background(), noTFIDLoadInput())
 	suite.Require().NoError(err)
 
 	suite.Require().NotNil(updated)
@@ -761,17 +985,25 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_RefreshKeepsKnownIPWhenClientH
 
 func (suite *ServiceTestSuite) TestRecordActivity_SlidesIdleUnderThrottle() {
 	svc, m := suite.newService()
-	var now, idleAt, cutoff time.Time
-	m.store.EXPECT().SlideIdleDeadline(mock.Anything, "sess-1", mock.Anything, mock.Anything, mock.Anything).
-		RunAndReturn(func(_ context.Context, _ string, n, i, c time.Time) error {
-			now, idleAt, cutoff = n, i, c
+	svc.timeouts = readTimeouts(suite.T())
+	var slide idleSlide
+	m.store.EXPECT().SlideIdleDeadline(mock.Anything, "sess-1", mock.Anything).
+		RunAndReturn(func(_ context.Context, _ string, s idleSlide) error {
+			slide = s
 			return nil
 		})
 
 	suite.Require().NoError(svc.RecordActivity(context.Background(), "sess-1"))
 
-	suite.Equal(now.Add(svc.timeouts.Idle), idleAt, "idle deadline moves a full idle window past now")
-	suite.Equal(now.Add(-svc.timeouts.ActivityRefresh), cutoff, "writes are throttled by the refresh window")
+	now := slide.now
+	suite.Equal(now.Add(newTimeouts(Config{}, deploymentLimits{}).Idle), slide.idleExpiresAt,
+		"idle deadline moves a full idle window past now")
+	suite.Equal(now.Add(-newTimeouts(Config{}, deploymentLimits{}).ActivityRefresh), slide.refreshedBefore,
+		"writes are throttled by the refresh window")
+	suite.Equal(now.Add(-newTimeouts(Config{}, deploymentLimits{}).Idle), slide.activeAfter,
+		"a session idle past the timeout in effect is not slid")
+	suite.Equal(now.Add(-newTimeouts(Config{}, deploymentLimits{}).Absolute), slide.createdAfter,
+		"a session older than the absolute timeout in effect is not slid")
 }
 
 func (suite *ServiceTestSuite) TestRecordActivity_EmptySessionIDIsNoop() {
@@ -782,7 +1014,7 @@ func (suite *ServiceTestSuite) TestRecordActivity_EmptySessionIDIsNoop() {
 
 func (suite *ServiceTestSuite) TestRecordActivity_StoreError() {
 	svc, m := suite.newService()
-	m.store.EXPECT().SlideIdleDeadline(mock.Anything, "sess-1", mock.Anything, mock.Anything, mock.Anything).
+	m.store.EXPECT().SlideIdleDeadline(mock.Anything, "sess-1", mock.Anything).
 		Return(errors.New("db down"))
 
 	suite.Error(svc.RecordActivity(context.Background(), "sess-1"))
@@ -813,10 +1045,10 @@ func (suite *ServiceTestSuite) TestTerminate_RevokesParticipantFamilies() {
 	revoker := NewCriteriaRevokerMock(suite.T())
 	svc := &service{
 		store:           m.store,
-		resolver:        newResolver(m.store),
+		resolver:        newResolver(m.store, defaultTimeouts(suite.T())),
 		transactioner:   m.tx,
 		criteriaRevoker: revoker,
-		timeouts:        DefaultTimeouts(),
+		timeouts:        defaultTimeouts(suite.T()),
 		logger:          log.GetLogger(),
 	}
 
@@ -871,10 +1103,10 @@ func (suite *ServiceTestSuite) TestTerminateBySubject_DeletesAllSessionsInOneTra
 	revoker := NewCriteriaRevokerMock(suite.T())
 	svc := &service{
 		store:           m.store,
-		resolver:        newResolver(m.store),
+		resolver:        newResolver(m.store, defaultTimeouts(suite.T())),
 		transactioner:   m.tx,
 		criteriaRevoker: revoker,
-		timeouts:        DefaultTimeouts(),
+		timeouts:        defaultTimeouts(suite.T()),
 		logger:          log.GetLogger(),
 	}
 
@@ -907,9 +1139,9 @@ func (suite *ServiceTestSuite) TestTerminateBySubject_DeleteFailureRollsBackBatc
 	}
 	svc := &service{
 		store:         m.store,
-		resolver:      newResolver(m.store),
+		resolver:      newResolver(m.store, defaultTimeouts(suite.T())),
 		transactioner: m.tx,
-		timeouts:      DefaultTimeouts(),
+		timeouts:      defaultTimeouts(suite.T()),
 		logger:        log.GetLogger(),
 	}
 
@@ -934,10 +1166,10 @@ func (suite *ServiceTestSuite) TestTerminateBySubject_NoSessionsIsNoOp() {
 	revoker := NewCriteriaRevokerMock(suite.T())
 	svc := &service{
 		store:           m.store,
-		resolver:        newResolver(m.store),
+		resolver:        newResolver(m.store, defaultTimeouts(suite.T())),
 		transactioner:   m.tx,
 		criteriaRevoker: revoker,
-		timeouts:        DefaultTimeouts(),
+		timeouts:        defaultTimeouts(suite.T()),
 		logger:          log.GetLogger(),
 	}
 
@@ -1217,9 +1449,10 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_FollowsTheLastUsedOU() {
 	svc.ouEligibility = suite.eligibilityAsked(true, nil)
 	var recorded Participant
 	m.store.EXPECT().Record(mock.Anything, mock.Anything).RunAndReturn(
-		func(_ context.Context, p Participant) error { recorded = p; return nil })
+		func(_ context.Context, p Participant) (string, error) { recorded = p; return p.TokenFamilyID, nil })
 
-	_, sc, err := svc.LoadCheckpoint(reuseCtx(""), loadInput())
+	loaded, err := svc.LoadCheckpoint(reuseCtx(""), loadInput())
+	sc := loaded.Context
 
 	suite.Require().NoError(err)
 	suite.Equal(map[string]string{"k": "v", common.RuntimeKeyOUID: "ou-last"}, sc.RuntimeData)
@@ -1238,7 +1471,7 @@ func (suite *ServiceTestSuite) TestLoadCheckpoint_RefusesASignInThatCanNoLongerR
 	withLastUsedOU(m)
 	svc.ouEligibility = suite.eligibilityAsked(false, nil)
 
-	_, _, err := svc.LoadCheckpoint(reuseCtx(""), loadInput())
+	_, err := svc.LoadCheckpoint(reuseCtx(""), loadInput())
 
 	suite.Require().Error(err)
 	m.store.AssertNotCalled(suite.T(), "Record", mock.Anything, mock.Anything)
@@ -1252,10 +1485,10 @@ func (suite *ServiceTestSuite) newServiceWithRevoker() (*service, *serviceMocks,
 	revoker := NewCriteriaRevokerMock(suite.T())
 	svc := &service{
 		store:           m.store,
-		resolver:        newResolver(m.store),
+		resolver:        newResolver(m.store, defaultTimeouts(suite.T())),
 		transactioner:   m.tx,
 		criteriaRevoker: revoker,
-		timeouts:        DefaultTimeouts(),
+		timeouts:        defaultTimeouts(suite.T()),
 		logger:          log.GetLogger(),
 	}
 	return svc, m, revoker
@@ -1644,10 +1877,13 @@ func (suite *ServiceTestSuite) TestTerminateBySubject_NotifiesOnlyForLiveSession
 		{SessionID: "live", IdleExpiresAt: now.Add(time.Hour), AbsoluteExpiresAt: now.Add(2 * time.Hour)},
 		{SessionID: "idle", IdleExpiresAt: now.Add(-time.Minute), AbsoluteExpiresAt: now.Add(time.Hour)},
 		{SessionID: "ended", IdleExpiresAt: now.Add(time.Hour), AbsoluteExpiresAt: now.Add(-time.Minute)},
+		// Within its stored deadlines, but idle longer than the timeout in effect allows.
+		{SessionID: "shortened", LastActiveAt: now.Add(-31 * 24 * time.Hour), IdleExpiresAt: now.Add(time.Hour),
+			AbsoluteExpiresAt: now.Add(2 * time.Hour)},
 	}, nil)
-	m.store.EXPECT().ListBySessionIDs(mock.Anything, []string{"live", "idle", "ended"}).Return(nil, nil)
+	m.store.EXPECT().ListBySessionIDs(mock.Anything, []string{"live", "idle", "ended", "shortened"}).Return(nil, nil)
 	runTx(m)
-	for _, sessionID := range []string{"live", "idle", "ended"} {
+	for _, sessionID := range []string{"live", "idle", "ended", "shortened"} {
 		m.store.EXPECT().DeleteSession(mock.Anything, sessionID).Return(true, nil)
 		m.store.EXPECT().Delete(mock.Anything, sessionID).Return(nil)
 		m.store.EXPECT().DeleteBySessionID(mock.Anything, sessionID).Return(nil)
@@ -1673,13 +1909,14 @@ func directInput() CreateDirectInput {
 
 func (suite *ServiceTestSuite) TestCreateDirect_RecordsTheSessionAndItsParticipant() {
 	svc, m := suite.newService()
+	svc.timeouts = readTimeouts(suite.T())
 	runTx(m)
 	var created Session
 	m.store.EXPECT().Create(mock.Anything, mock.Anything).RunAndReturn(
 		func(_ context.Context, s Session) error { created = s; return nil })
 	var recorded Participant
 	m.store.EXPECT().Record(mock.Anything, mock.Anything).RunAndReturn(
-		func(_ context.Context, p Participant) error { recorded = p; return nil })
+		func(_ context.Context, p Participant) (string, error) { recorded = p; return p.TokenFamilyID, nil })
 
 	err := svc.CreateDirect(context.Background(), directInput())
 
@@ -1692,8 +1929,9 @@ func (suite *ServiceTestSuite) TestCreateDirect_RecordsTheSessionAndItsParticipa
 	suite.Empty(created.FlowExecutionID, "a direct session records no flow execution")
 	suite.Empty(created.HandleID, "a direct session has no handle to resume it by")
 	suite.Equal(StateActive, created.State)
-	suite.Equal(created.CreatedAt.Add(svc.timeouts.Idle), created.IdleExpiresAt)
-	suite.Equal(created.CreatedAt.Add(svc.timeouts.Absolute), created.AbsoluteExpiresAt)
+	defaults := newTimeouts(Config{}, deploymentLimits{})
+	suite.Equal(created.CreatedAt.Add(defaults.Idle), created.IdleExpiresAt)
+	suite.Equal(created.CreatedAt.Add(defaults.Absolute), created.AbsoluteExpiresAt)
 	suite.Equal("Mozilla/5.0 (Macintosh) Chrome/140.0", created.Properties.UserAgent)
 	suite.Equal("203.0.113.10", created.Properties.CreationIP)
 	suite.Equal("203.0.113.10", created.Properties.LastActiveIP)
@@ -1708,7 +1946,7 @@ func (suite *ServiceTestSuite) TestCreateDirect_RecordsTheParticipantUnderItsOU(
 	m.store.EXPECT().Create(mock.Anything, mock.Anything).Return(nil)
 	var recorded Participant
 	m.store.EXPECT().Record(mock.Anything, mock.Anything).RunAndReturn(
-		func(_ context.Context, p Participant) error { recorded = p; return nil })
+		func(_ context.Context, p Participant) (string, error) { recorded = p; return p.TokenFamilyID, nil })
 
 	err := svc.CreateDirect(boundaryContext("ou-x"), directInput())
 
@@ -1744,9 +1982,454 @@ func (suite *ServiceTestSuite) TestCreateDirect_FailsWhenTheParticipantCannotBeW
 	svc, m := suite.newService()
 	runTx(m)
 	m.store.EXPECT().Create(mock.Anything, mock.Anything).Return(nil)
-	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return(errors.New("db down"))
+	m.store.EXPECT().Record(mock.Anything, mock.Anything).Return("", errors.New("db down"))
 
 	err := svc.CreateDirect(context.Background(), directInput())
 
 	suite.Error(err)
+}
+
+// noOU is the organization unit scope of a listing that reaches every unit.
+var noOU *string
+
+// listNow is the time the listing tests read live sessions at.
+var listNow = time.Date(2026, 6, 16, 10, 0, 0, 0, time.UTC)
+
+func liveListedSession(id string) Session {
+	return Session{
+		SessionID:         id,
+		SubjectID:         "user-1",
+		State:             StateActive,
+		IdleExpiresAt:     listNow.Add(time.Minute),
+		AbsoluteExpiresAt: listNow.Add(time.Hour),
+	}
+}
+
+func (suite *ServiceTestSuite) TestListLiveBySubject_GroupsParticipantsBySession() {
+	svc, m := suite.newService()
+	ctx := context.Background()
+	m.store.EXPECT().CountLiveBySubject(ctx, "user-1", noOU, listNow).Return(5, nil)
+	m.store.EXPECT().ListLiveBySubject(ctx, "user-1", noOU, listNow, 2, 2).
+		Return([]Session{liveListedSession("sess-2"), liveListedSession("sess-1")}, nil)
+	m.store.EXPECT().ListBySessionIDs(ctx, []string{"sess-2", "sess-1"}).Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-a"},
+		{SessionID: "sess-2", AppID: "app-b"},
+		{SessionID: "sess-1", AppID: "app-c"},
+	}, nil)
+
+	page, err := svc.listLiveBySubject(ctx, "user-1", noOU, listNow, 2, 2)
+
+	suite.NoError(err)
+	suite.Equal(5, page.TotalResults)
+	suite.Require().Len(page.Sessions, 2)
+	suite.Equal("sess-2", page.Sessions[0].SessionID, "the store's order is kept")
+	suite.Equal([]Participant{{SessionID: "sess-2", AppID: "app-b"}}, page.Sessions[0].Participants)
+	suite.Equal([]Participant{{SessionID: "sess-1", AppID: "app-a"}, {SessionID: "sess-1", AppID: "app-c"}},
+		page.Sessions[1].Participants)
+}
+
+// Under an organization unit, only the sessions and participants of that unit are listed.
+func (suite *ServiceTestSuite) TestListLiveByApp_KeepsOnlyTheOUsParticipants() {
+	svc, m := suite.newService()
+	ctx := context.Background()
+	m.store.EXPECT().CountLiveByApp(ctx, "app-2", new("ou-1"), listNow).Return(6, nil)
+	m.store.EXPECT().ListLiveByApp(ctx, "app-2", new("ou-1"), listNow, 10, 5).
+		Return([]Session{liveListedSession("sess-1")}, nil)
+	m.store.EXPECT().ListBySessionIDs(ctx, []string{"sess-1"}).Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-2", OUID: "ou-1"},
+		{SessionID: "sess-1", AppID: "app-2", OUID: "ou-2"},
+		{SessionID: "sess-1", AppID: "app-1"},
+	}, nil)
+
+	page, err := svc.listLiveByApp(ctx, "app-2", new("ou-1"), listNow, 10, 5)
+
+	suite.NoError(err)
+	suite.Equal(6, page.TotalResults)
+	suite.Require().Len(page.Sessions, 1)
+	suite.Equal([]Participant{{SessionID: "sess-1", AppID: "app-2", OUID: "ou-1"}},
+		page.Sessions[0].Participants)
+}
+
+// A scope of no organization unit keeps only the participants recorded under none.
+func (suite *ServiceTestSuite) TestListLiveBySubject_NoOUScopeKeepsOnlyNoOUParticipants() {
+	svc, m := suite.newService()
+	ctx := context.Background()
+	m.store.EXPECT().CountLiveBySubject(ctx, "user-2", new(""), listNow).Return(1, nil)
+	m.store.EXPECT().ListLiveBySubject(ctx, "user-2", new(""), listNow, 30, 0).
+		Return([]Session{liveListedSession("sess-1")}, nil)
+	m.store.EXPECT().ListBySessionIDs(ctx, []string{"sess-1"}).Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-1"},
+		{SessionID: "sess-1", AppID: "app-1", OUID: "ou-1"},
+	}, nil)
+
+	page, err := svc.listLiveBySubject(ctx, "user-2", new(""), listNow, 30, 0)
+
+	suite.NoError(err)
+	suite.Require().Len(page.Sessions, 1)
+	suite.Equal([]Participant{{SessionID: "sess-1", AppID: "app-1"}}, page.Sessions[0].Participants)
+}
+
+// An offset at or past the total reads no page, so a deep offset costs only the count.
+func (suite *ServiceTestSuite) TestListLive_OffsetPastTotalSkipsTheListing() {
+	svc, m := suite.newService()
+	ctx := context.Background()
+	m.store.EXPECT().CountLiveByApp(ctx, "app-1", noOU, listNow).Return(0, nil)
+	m.store.EXPECT().CountLiveBySubject(ctx, "user-1", noOU, listNow).Return(3, nil)
+
+	empty, err := svc.listLiveByApp(ctx, "app-1", noOU, listNow, 30, 0)
+	suite.NoError(err)
+	suite.Zero(empty.TotalResults)
+	suite.NotNil(empty.Sessions)
+	suite.Empty(empty.Sessions)
+
+	past, err := svc.listLiveBySubject(ctx, "user-1", noOU, listNow, 30, 1000000)
+	suite.NoError(err)
+	suite.Equal(3, past.TotalResults, "the total is still reported")
+	suite.NotNil(past.Sessions)
+	suite.Empty(past.Sessions)
+}
+
+func (suite *ServiceTestSuite) TestListLive_StoreErrors() {
+	ctx := context.Background()
+	storeErr := errors.New("db down")
+
+	suite.Run("count by subject", func() {
+		svc, m := suite.newService()
+		m.store.EXPECT().CountLiveBySubject(ctx, "user-1", noOU, listNow).Return(0, storeErr)
+		_, err := svc.listLiveBySubject(ctx, "user-1", noOU, listNow, 30, 0)
+		suite.ErrorIs(err, storeErr)
+	})
+	suite.Run("list by subject", func() {
+		svc, m := suite.newService()
+		m.store.EXPECT().CountLiveBySubject(ctx, "user-1", noOU, listNow).Return(1, nil)
+		m.store.EXPECT().ListLiveBySubject(ctx, "user-1", noOU, listNow, 30, 0).Return(nil, storeErr)
+		_, err := svc.listLiveBySubject(ctx, "user-1", noOU, listNow, 30, 0)
+		suite.ErrorIs(err, storeErr)
+	})
+	suite.Run("count by app", func() {
+		svc, m := suite.newService()
+		m.store.EXPECT().CountLiveByApp(ctx, "app-1", noOU, listNow).Return(0, storeErr)
+		_, err := svc.listLiveByApp(ctx, "app-1", noOU, listNow, 30, 0)
+		suite.ErrorIs(err, storeErr)
+	})
+	suite.Run("list by app", func() {
+		svc, m := suite.newService()
+		m.store.EXPECT().CountLiveByApp(ctx, "app-1", noOU, listNow).Return(1, nil)
+		m.store.EXPECT().ListLiveByApp(ctx, "app-1", noOU, listNow, 30, 0).Return(nil, storeErr)
+		_, err := svc.listLiveByApp(ctx, "app-1", noOU, listNow, 30, 0)
+		suite.ErrorIs(err, storeErr)
+	})
+	suite.Run("participants", func() {
+		svc, m := suite.newService()
+		m.store.EXPECT().CountLiveByApp(ctx, "app-1", noOU, listNow).Return(1, nil)
+		m.store.EXPECT().ListLiveByApp(ctx, "app-1", noOU, listNow, 30, 0).
+			Return([]Session{liveListedSession("sess-1")}, nil)
+		m.store.EXPECT().ListBySessionIDs(ctx, []string{"sess-1"}).Return(nil, storeErr)
+		_, err := svc.listLiveByApp(ctx, "app-1", noOU, listNow, 30, 0)
+		suite.ErrorIs(err, storeErr)
+	})
+}
+
+func (suite *ServiceTestSuite) TestGetSubjectParticipantByTokenFamily() {
+	svc, m := suite.newService()
+	ctx := context.Background()
+	want := &Participant{SessionID: "sess-1", AppID: "app-1", OUID: "ou-1", TokenFamilyID: "tfid-1"}
+	m.store.EXPECT().GetSubjectParticipantByTokenFamily(ctx, "user-1", "tfid-1").Return(want, nil)
+	m.store.EXPECT().GetSubjectParticipantByTokenFamily(ctx, "user-1", "tfid-2").Return(nil, errors.New("db down"))
+
+	got, err := svc.getSubjectParticipantByTokenFamily(ctx, "user-1", "tfid-1")
+	suite.NoError(err)
+	suite.Equal(want, got)
+
+	_, err = svc.getSubjectParticipantByTokenFamily(ctx, "user-1", "tfid-2")
+	suite.ErrorContains(err, "failed to get participant by token family")
+}
+
+// listedSession is a live session of user-1, with every recorded property, that the store returns.
+func listedSession(id string) Session {
+	base := time.Date(2026, 6, 16, 10, 0, 0, 0, time.UTC)
+	return Session{
+		SessionID:         id,
+		Type:              TypeSSO,
+		SubjectID:         "user-1",
+		FlowID:            "flow-1",
+		HandleID:          "handle-secret",
+		AuthenticatedAt:   base,
+		CreatedAt:         base,
+		LastActiveAt:      base.Add(time.Minute),
+		IdleExpiresAt:     base.Add(31 * time.Minute),
+		AbsoluteExpiresAt: base.Add(8 * time.Hour),
+		Properties: SessionProperties{
+			UserAgent:    "Mozilla/5.0",
+			CreationIP:   "198.51.100.7",
+			LastActiveIP: "203.0.113.10",
+		},
+		State: StateActive,
+	}
+}
+
+// expectLivePage makes the store answer one page of live sessions, listed by subject or, when byApp is set,
+// by application: the total, the sessions, and the participants read for them.
+func expectLivePage(m *serviceMocks, byApp bool, key string, ouID *string, limit, offset, total int,
+	sessions []Session, participants ...Participant) {
+	sessionIDs := make([]string, 0, len(sessions))
+	for _, sess := range sessions {
+		sessionIDs = append(sessionIDs, sess.SessionID)
+	}
+	if byApp {
+		m.store.EXPECT().CountLiveByApp(mock.Anything, key, ouID, mock.Anything).Return(total, nil)
+		m.store.EXPECT().ListLiveByApp(mock.Anything, key, ouID, mock.Anything, limit, offset).Return(sessions, nil)
+	} else {
+		m.store.EXPECT().CountLiveBySubject(mock.Anything, key, ouID, mock.Anything).Return(total, nil)
+		m.store.EXPECT().ListLiveBySubject(mock.Anything, key, ouID, mock.Anything, limit, offset).
+			Return(sessions, nil)
+	}
+	m.store.EXPECT().ListBySessionIDs(mock.Anything, sessionIDs).Return(participants, nil)
+}
+
+// adminContext is an administrator holding the given permissions, under ouID when not empty.
+func adminContext(ouID string, permissions ...string) context.Context {
+	return security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest("admin-1", ouID, "", permissions, nil))
+}
+
+// selfContext is the user user-1 whose token holds the token family tfid, when not empty.
+func selfContext(tfid string) context.Context {
+	attributes := map[string]interface{}{}
+	if tfid != "" {
+		attributes["tfid"] = tfid
+	}
+	return security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest("user-1", "", "", nil, attributes))
+}
+
+func expectUserDisplay(m *serviceMocks, display string) {
+	m.entities.EXPECT().GetEntitiesByIDs(mock.Anything, []string{"user-1"}).Return([]providers.Entity{{
+		ID: "user-1", Category: providers.EntityCategoryUser, Type: "employee",
+		Attributes: json.RawMessage(`{"name":"` + display + `"}`),
+	}}, nil).Once()
+	m.entityTypes.EXPECT().GetDisplayAttributesByHandles(mock.Anything, entitytype.TypeCategoryUser,
+		[]string{"employee"}).Return(map[string]string{"employee": "name"}, nil).Once()
+}
+
+// expectApp makes the application read as the runtime return the application with the name.
+func expectApp(m *serviceMocks, appID, name string) {
+	m.apps.EXPECT().GetApplication(mock.MatchedBy(security.IsRuntimeContext), appID).
+		Return(&providers.Application{Name: name}, nil).Once()
+}
+
+func (suite *ServiceTestSuite) TestListSessions_ByUser() {
+	svc, m := suite.newService()
+	expectLivePage(m, false, "user-1", noOU, 30, 0, 1, []Session{listedSession("sess-1")},
+		Participant{SessionID: "sess-1", AppID: "app-a", TokenFamilyID: "tfid-secret"},
+		Participant{SessionID: "sess-1", AppID: "app-b"})
+	expectUserDisplay(m, "Alice")
+	// The caller may hold only the session permission, so applications are read as the runtime.
+	m.apps.EXPECT().GetApplication(mock.MatchedBy(security.IsRuntimeContext), "app-a").
+		Return(&providers.Application{Name: "App A", LogoURL: "https://example.com/app-a.png"}, nil).Once()
+	m.apps.EXPECT().GetApplication(mock.MatchedBy(security.IsRuntimeContext), "app-b").
+		Return(nil, &tidcommon.InternalServerError).Once()
+
+	resp, svcErr := svc.ListSessions(adminContext("", "system"), " user-1 ", "", 30, 0)
+
+	suite.Require().Nil(svcErr)
+	suite.Equal(1, resp.TotalResults)
+	suite.Equal(1, resp.StartIndex)
+	suite.Equal(1, resp.Count)
+	suite.Require().Len(resp.Sessions, 1)
+	got := resp.Sessions[0]
+	suite.Equal("sess-1", got.ID)
+	suite.Equal(TypeSSO, got.Type)
+	suite.Equal("user-1", got.UserID)
+	suite.Equal("Alice", got.UserDisplayName)
+	suite.Equal("Mozilla/5.0", got.UserAgent)
+	suite.Equal("198.51.100.7", got.CreationIP)
+	suite.Equal("203.0.113.10", got.LastActiveIP)
+	suite.Equal("2026-06-16T10:01:00Z", got.LastActiveAt)
+	suite.Equal("2026-06-16T18:00:00Z", got.AbsoluteExpiresAt)
+	suite.Nil(got.IsCurrent, "admin listings don't mark a current session")
+	suite.Equal([]participantResponse{
+		{AppID: "app-a", AppName: "App A", AppLogoURL: "https://example.com/app-a.png"},
+		{AppID: "app-b"},
+	}, got.Participants)
+}
+
+// A user's direct sessions are listed with their SSO sessions, each with its type.
+func (suite *ServiceTestSuite) TestListSessions_ListsDirectSessions() {
+	svc, m := suite.newService()
+	direct := listedSession("sess-2")
+	direct.Type = TypeDirect
+	expectLivePage(m, false, "user-1", noOU, 30, 0, 2, []Session{listedSession("sess-1"), direct},
+		Participant{SessionID: "sess-1", AppID: "app-a"}, Participant{SessionID: "sess-2", AppID: "app-b"})
+	expectUserDisplay(m, "Alice")
+	expectApp(m, "app-a", "App A")
+	expectApp(m, "app-b", "App B")
+
+	resp, svcErr := svc.ListSessions(adminContext("", "system"), "user-1", "", 30, 0)
+
+	suite.Require().Nil(svcErr)
+	suite.Equal(2, resp.TotalResults)
+	suite.Require().Len(resp.Sessions, 2)
+	suite.Equal(TypeSSO, resp.Sessions[0].Type)
+	suite.Equal(TypeDirect, resp.Sessions[1].Type)
+	suite.Equal([]participantResponse{{AppID: "app-b", AppName: "App B"}}, resp.Sessions[1].Participants)
+}
+
+func (suite *ServiceTestSuite) TestListSessions_ByAppResolvesEachNameOnce() {
+	svc, m := suite.newService()
+	expectLivePage(m, true, "app-a", noOU, 20, 20, 45,
+		[]Session{listedSession("sess-1"), listedSession("sess-2")},
+		Participant{SessionID: "sess-1", AppID: "app-a"}, Participant{SessionID: "sess-2", AppID: "app-a"})
+	m.entities.EXPECT().GetEntitiesByIDs(mock.Anything, []string{"user-1"}).Return(nil, errors.New("db down")).Once()
+	expectApp(m, "app-a", "App A")
+
+	resp, svcErr := svc.ListSessions(adminContext("", "system"), "", "app-a", 20, 20)
+
+	suite.Require().Nil(svcErr)
+	suite.Equal(45, resp.TotalResults)
+	suite.Equal(21, resp.StartIndex)
+	suite.Equal(2, resp.Count)
+	suite.Contains(resp.Links, sysutils.Link{Href: "/sessions?offset=40&limit=20&appId=app-a", Rel: "next"})
+	suite.Empty(resp.Sessions[0].UserDisplayName, "a failed read leaves the name out")
+}
+
+// An administrator holding only the org permission sees the sessions and applications of the organization
+// unit its token names, each application with the unit it signed in under.
+func (suite *ServiceTestSuite) TestListSessions_OrgAdminSeesItsOwnOU() {
+	svc, m := suite.newService()
+	expectLivePage(m, false, "user-1", new("ou-1"), 30, 0, 1, []Session{listedSession("sess-1")},
+		Participant{SessionID: "sess-1", AppID: "app-a", OUID: "ou-1"},
+		Participant{SessionID: "sess-1", AppID: "app-b", OUID: "ou-2"})
+	m.entities.EXPECT().GetEntitiesByIDs(mock.Anything, []string{"user-1"}).Return([]providers.Entity{}, nil).Once()
+	expectApp(m, "app-a", "App A")
+
+	resp, svcErr := svc.ListSessions(adminContext("ou-1", "org:session:view"), "user-1", "", 30, 0)
+
+	suite.Require().Nil(svcErr)
+	suite.Require().Len(resp.Sessions, 1)
+	suite.Empty(resp.Sessions[0].UserDisplayName, "a subject that can't be found gets no name")
+	suite.Equal([]participantResponse{{AppID: "app-a", OUID: "ou-1", AppName: "App A"}},
+		resp.Sessions[0].Participants)
+}
+
+// The system permission reaches every organization unit, whichever unit the token names.
+func (suite *ServiceTestSuite) TestListSessions_SystemPermissionSeesEveryOU() {
+	svc, m := suite.newService()
+	m.store.EXPECT().CountLiveByApp(mock.Anything, "app-a", noOU, mock.Anything).Return(0, nil)
+
+	resp, svcErr := svc.ListSessions(adminContext("ou-1", "system"), "", "app-a", 30, 0)
+
+	suite.Require().Nil(svcErr)
+	suite.Empty(resp.Sessions)
+}
+
+// The middleware refuses an org permission without a unit; the service refuses it too rather than reading
+// the sessions of every unit.
+func (suite *ServiceTestSuite) TestListSessions_OrgAdminWithoutAUnitIsRefused() {
+	svc, _ := suite.newService()
+
+	_, svcErr := svc.ListSessions(adminContext("", "org:session:view"), "user-1", "", 30, 0)
+
+	suite.Equal(&tidcommon.ErrorUnauthorized, svcErr)
+}
+
+func (suite *ServiceTestSuite) TestListSessions_NeedsExactlyOneFilter() {
+	svc, _ := suite.newService()
+	for name, filter := range map[string][2]string{
+		"no filter": {"", ""}, "blank filter": {" ", ""}, "both filters": {"u", "a"},
+	} {
+		suite.Run(name, func() {
+			_, svcErr := svc.ListSessions(adminContext("", "system"), filter[0], filter[1], 30, 0)
+			suite.Equal(&ErrorInvalidListFilter, svcErr)
+		})
+	}
+}
+
+func (suite *ServiceTestSuite) TestListSessions_StoreError() {
+	svc, m := suite.newService()
+	m.store.EXPECT().CountLiveBySubject(mock.Anything, "user-1", noOU, mock.Anything).
+		Return(0, errors.New("db down"))
+
+	_, svcErr := svc.ListSessions(adminContext("", "system"), "user-1", "", 30, 0)
+
+	suite.Equal(&tidcommon.InternalServerError, svcErr)
+}
+
+// The caller sees the sessions of the organization unit its own participant was recorded under, whatever its
+// token's claims say, and the session that holds its token family is marked as current. Here that is a direct
+// session, listed with the caller's SSO session.
+func (suite *ServiceTestSuite) TestListOwnSessions_ScopedByTheTokensParticipant() {
+	svc, m := suite.newService()
+	m.store.EXPECT().GetSubjectParticipantByTokenFamily(mock.Anything, "user-1", "tfid-mine").
+		Return(&Participant{SessionID: "sess-2", AppID: "app-a", OUID: "ou-1"}, nil)
+	direct := listedSession("sess-2")
+	direct.Type = TypeDirect
+	expectLivePage(m, false, "user-1", new("ou-1"), 30, 0, 2,
+		[]Session{listedSession("sess-1"), direct},
+		Participant{SessionID: "sess-1", AppID: "app-a", OUID: "ou-1", TokenFamilyID: "tfid-other"},
+		Participant{SessionID: "sess-2", AppID: "app-a", OUID: "ou-1", TokenFamilyID: "tfid-mine"})
+	expectApp(m, "app-a", "App A")
+
+	resp, svcErr := svc.ListOwnSessions(selfContext("tfid-mine"), 30, 0)
+
+	suite.Require().Nil(svcErr)
+	suite.Require().Len(resp.Sessions, 2)
+	suite.Equal(TypeSSO, resp.Sessions[0].Type)
+	suite.Require().NotNil(resp.Sessions[0].IsCurrent)
+	suite.False(*resp.Sessions[0].IsCurrent)
+	suite.Equal(TypeDirect, resp.Sessions[1].Type)
+	suite.Require().NotNil(resp.Sessions[1].IsCurrent)
+	suite.True(*resp.Sessions[1].IsCurrent)
+	suite.Empty(resp.Sessions[1].UserDisplayName, "own sessions don't resolve the user's name")
+	suite.Equal("App A", resp.Sessions[1].Participants[0].AppName)
+	suite.Empty(resp.Links)
+}
+
+// A participant recorded under no organization unit sees only the sessions with a participant under none.
+func (suite *ServiceTestSuite) TestListOwnSessions_NoOUParticipant() {
+	svc, m := suite.newService()
+	m.store.EXPECT().GetSubjectParticipantByTokenFamily(mock.Anything, "user-1", "tfid-mine").
+		Return(&Participant{SessionID: "sess-1", AppID: "app-a"}, nil)
+	m.store.EXPECT().CountLiveBySubject(mock.Anything, "user-1", new(""), mock.Anything).Return(0, nil)
+
+	resp, svcErr := svc.ListOwnSessions(selfContext("tfid-mine"), 30, 0)
+
+	suite.Require().Nil(svcErr)
+	suite.Empty(resp.Sessions)
+}
+
+// A token without a family, or one no participant holds, sees no session.
+func (suite *ServiceTestSuite) TestListOwnSessions_TokenWithoutAParticipantSeesNothing() {
+	svc, m := suite.newService()
+
+	resp, svcErr := svc.ListOwnSessions(selfContext(""), 30, 0)
+	suite.Require().Nil(svcErr)
+	suite.Zero(resp.TotalResults)
+	suite.NotNil(resp.Sessions)
+	suite.Empty(resp.Sessions)
+
+	m.store.EXPECT().GetSubjectParticipantByTokenFamily(mock.Anything, "user-1", "tfid-gone").Return(nil, nil)
+	resp, svcErr = svc.ListOwnSessions(selfContext("tfid-gone"), 30, 0)
+	suite.Require().Nil(svcErr)
+	suite.Zero(resp.TotalResults)
+	suite.Empty(resp.Sessions)
+}
+
+func (suite *ServiceTestSuite) TestListOwnSessions_Errors() {
+	suite.Run("participant", func() {
+		svc, m := suite.newService()
+		m.store.EXPECT().GetSubjectParticipantByTokenFamily(mock.Anything, "user-1", "tfid-mine").
+			Return(nil, errors.New("db down"))
+		_, svcErr := svc.ListOwnSessions(selfContext("tfid-mine"), 30, 0)
+		suite.Equal(&tidcommon.InternalServerError, svcErr)
+	})
+	suite.Run("listing", func() {
+		svc, m := suite.newService()
+		m.store.EXPECT().GetSubjectParticipantByTokenFamily(mock.Anything, "user-1", "tfid-mine").
+			Return(&Participant{OUID: "ou-1"}, nil)
+		m.store.EXPECT().CountLiveBySubject(mock.Anything, "user-1", new("ou-1"), mock.Anything).
+			Return(0, errors.New("db down"))
+		_, svcErr := svc.ListOwnSessions(selfContext("tfid-mine"), 30, 0)
+		suite.Equal(&tidcommon.InternalServerError, svcErr)
+	})
 }

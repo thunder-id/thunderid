@@ -23,6 +23,7 @@ import (
 
 	"github.com/thunder-id/thunderid/internal/agent/model"
 	inboundmodel "github.com/thunder-id/thunderid/internal/inboundclient/model"
+	"github.com/thunder-id/thunderid/internal/system/error/apierror"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/utils"
@@ -365,6 +366,39 @@ func TestHandleAgentPostRequest_InvalidJSONFormat(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+func TestHandleAgentPostRequest_OwnerOfTheWrongType(t *testing.T) {
+	bodies := map[string]string{
+		"owner is a string":      `{"ouId":"ou-123","attributes":{"name":"Agent"},"owner":"user-1"}`,
+		"owner id is a number":   `{"ouId":"ou-123","attributes":{"name":"Agent"},"owner":{"id":1}}`,
+		"owner idType is a list": `{"ouId":"ou-123","attributes":{"name":"Agent"},"owner":{"id":"user-1","idType":[]}}`,
+		"isLocal is a number":    `{"ouId":"ou-123","attributes":{"name":"Agent"},"owner":{"id":"user-1","isLocal":1}}`,
+	}
+	for name, body := range bodies {
+		t.Run(name, func(t *testing.T) {
+			handler := newAgentHandler(agentmock.NewAgentServiceInterfaceMock(t))
+			req := httptest.NewRequest(http.MethodPost, "/agents", bytes.NewBufferString(body))
+			w := httptest.NewRecorder()
+
+			handler.HandleAgentPostRequest(w, req)
+
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+			assert.Contains(t, w.Body.String(), ErrorInvalidOwner.Code)
+		})
+	}
+}
+
+func TestHandleAgentPostRequest_OtherFieldOfTheWrongType(t *testing.T) {
+	handler := newAgentHandler(agentmock.NewAgentServiceInterfaceMock(t))
+	body := `{"ouId":"ou-123","attributes":{"name":"Agent"},"delegated":"yes"}`
+	req := httptest.NewRequest(http.MethodPost, "/agents", bytes.NewBufferString(body))
+	w := httptest.NewRecorder()
+
+	handler.HandleAgentPostRequest(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), ErrorInvalidRequestFormat.Code)
+}
+
 func TestHandleAgentPutRequest_Success(t *testing.T) {
 	stubService := &InlineStubAgentService{}
 	handler := newAgentHandler(stubService)
@@ -448,6 +482,19 @@ func TestHandleAgentPutRequest_InvalidJSONFormat(t *testing.T) {
 
 	handler.HandleAgentPutRequest(w, req)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestHandleAgentPutRequest_OwnerOfTheWrongType(t *testing.T) {
+	handler := newAgentHandler(agentmock.NewAgentServiceInterfaceMock(t))
+	body := `{"attributes":{"name":"Agent"},"owner":"user-1"}`
+	req := httptest.NewRequest(http.MethodPut, "/agents/agent-123", bytes.NewBufferString(body))
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+
+	handler.HandleAgentPutRequest(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), ErrorInvalidOwner.Code)
 }
 
 // The handler forwards the kind as given; the agent service refuses an unknown kind and applies the rules
@@ -708,6 +755,24 @@ func TestHandleOwnedAgentCredentialUpdateRequest_InvalidBody(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), ErrorInvalidRequestFormat.Code)
+}
+
+// A refusal for an old sign-in is answered 401 with the RFC 9470 challenge.
+func TestHandleOwnedAgentCredentialUpdateRequest_RecentAuthenticationRequired(t *testing.T) {
+	service := agentmock.NewAgentServiceInterfaceMock(t)
+	service.EXPECT().UpdateOwnedAgentCredentials(mock.Anything, "user-1", "agent-123",
+		providers.AgentKindPersonalAssistant, mock.Anything).Return(apierror.ErrRecentAuthenticationRequired.
+		WithParams(map[string]string{apierror.ErrorParamMaxAge: "300"})).Once()
+	req := ownerRequestWithBody(http.MethodPost, "/users/me/agents/agent-123/update-credentials",
+		`{"attributes":{"password":"s3cret"}}`, "user-1", false)
+	req.SetPathValue("id", "agent-123")
+	w := httptest.NewRecorder()
+
+	newAgentHandler(service).HandleOwnedAgentCredentialUpdateRequest(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	assert.Contains(t, w.Header().Get("WWW-Authenticate"), `max_age="300"`)
+	assert.Contains(t, w.Body.String(), apierror.ErrRecentAuthenticationRequired.Code)
 }
 
 // No token is 401 and a delegated token is 403, and neither reaches the service.

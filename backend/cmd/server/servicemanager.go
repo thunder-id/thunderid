@@ -34,6 +34,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/authn/otp"
 	"github.com/thunder-id/thunderid/internal/authn/passkey"
 	"github.com/thunder-id/thunderid/internal/authnprovider/defaultprovider"
+	"github.com/thunder-id/thunderid/internal/authnprovider/federatedsync"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	"github.com/thunder-id/thunderid/internal/authnprovider/restprovider"
 	"github.com/thunder-id/thunderid/internal/authz"
@@ -261,7 +262,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to initialize AuthZENPDPService")
 
 	resourceService, resourceExporter, err := resource.Initialize(mux, ouService, authZENPDPService, nil, nil,
-		auditBus, ouAuthzService)
+		auditBus, ouAuthzService, sharingService)
 	fatalOnError(ctx, logger, err, "Failed to initialize Resource Service")
 	exporters = append(exporters, resourceExporter)
 
@@ -269,13 +270,14 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	// initialized. The handle-existence validator is injected in a second phase after flowMgtService
 	// is available.
 	flowConfigHandler := flowmgt.NewFlowConfigHandler()
+	flowConfig := flowconfig.FromServerRuntime()
 
 	// Initialize server-wide configuration after its handler dependencies and before the services that
 	// read it.
 	serverConfigHandlers := map[serverconfig.ConfigName]serverconfig.ServerConfigHandlerInterface{
 		serverconfig.ConfigNameCORS:                  cors.OriginHandler{},
 		serverconfig.ConfigNameDefaultResourceServer: resource.NewDefaultResourceServerConfigHandler(resourceService),
-		serverconfig.ConfigNameSession:               flowsession.ConfigHandler{},
+		serverconfig.ConfigNameSession:               flowsession.InitializeConfigHandler(flowConfig),
 		serverconfig.ConfigNameFlow:                  flowConfigHandler,
 		serverconfig.ConfigNameCSP:                   csp.PolicyHandler{},
 		serverconfig.ConfigNameAccountAccess:         identitygovernance.NewAccountAccessHandler(governanceCfg),
@@ -369,7 +371,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	ouAuthzService.SetPermissionResolver(permissionResolver)
 
 	authZService := authz.Initialize(
-		roleService, resourceService, entityService, authZENPDPService, outboundClients)
+		roleService, groupService, resourceService, entityService, authZENPDPService, outboundClients)
 
 	idpService, err := idp.Initialize(
 		cacheManager, entityTypeService, roleService, groupService, resourceService, ouService, auditBus)
@@ -436,14 +438,9 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 			Creds:    restCfg.CredentialTypes,
 		}
 	}
-	authnProvider, err := authnprovidermgr.Initialize(defaultProvider, customProviders, auditBus,
-		authnprovidermgr.FederatedSyncDependencies{
-			EntityProvider:        entityProvider,
-			EntityTypeService:     entityTypeService,
-			GroupService:          groupService,
-			RoleAssignmentService: roleAssignmentService,
-			IDPProvider:           idpService,
-		})
+	federatedSync := federatedsync.Initialize(idpService, entityProvider, entityTypeService, groupService,
+		roleAssignmentService)
+	authnProvider, err := authnprovidermgr.Initialize(defaultProvider, customProviders, auditBus, federatedSync)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize authn provider manager", log.Error(err))
 	}
@@ -464,15 +461,13 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	attributeCacheService := attributecache.Initialize(runtimeStoreProvider, runtimeCryptoSvc,
 		runtime.Config.AttributeCache.Encryption.Enabled)
 
-	flowConfig := flowconfig.FromServerRuntime()
 	revocationEnforcer, revocationSvc, err := revocation.Initialize(oauthCfg, jwtService, observabilitySvc)
 	fatalOnError(ctx, logger, err, "Failed to initialize revocation service")
 	sessionRevoker := sessionCriteriaRevoker{revoker: revocationSvc}
 	// The termination hook is kept for the back-channel logout dispatcher, which OAuth builds and which
 	// is added to the hook once OAuth is initialized.
-	sessionService, terminationHook, sessionCfg := initSessionService(ctx, serverConfigService,
-		runtime.Config.Server.Identifier, sessionRevoker, ouProvider, logger)
-	flowConfig.Session = sessionCfg
+	sessionService, terminationHook := initSessionService(ctx, mux, serverConfigService, flowConfig,
+		runtime.Config.Server.Identifier, sessionRevoker, ouProvider, entityService, entityTypeService, logger)
 	flowFactory, execRegistry, interceptorRegistry, graphBuilder := initializeFlowCoreAndExecutor(ctx, logger,
 		cacheManager, executor.ExecutorDependencies{
 			OUService:              ouProvider,
@@ -561,6 +556,11 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, executor.SetApplicationProvider(execRegistry, applicationService),
 		"Failed to inject the application provider into the flow executors")
 	exporters = append(exporters, applicationExporter)
+
+	// Two-phase initialization: the session management API resolves application names through the
+	// application service, which is built after the session service.
+	fatalOnError(ctx, logger, flowsession.SetApplicationProvider(sessionService, applicationService),
+		"Failed to inject the application provider into the session service")
 
 	agentService, agentExporter, err := agent.Initialize(mux, mcpServer, entityService, sharingService,
 		inboundClientService, ouService, roleService, resourceService, flowMgtService, ouAuthzService,
@@ -680,7 +680,7 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	flowExecService, err := flowexec.Initialize(mux, mcpServer, flowMgtService, actorProvider, ouProvider,
 		execRegistry, interceptorRegistry, observabilitySvc, runtimeCryptoSvc, attestationProvider,
 		graphBuilder, jwtService, runtimeStoreProvider, transactioner, serverConfigService, ssoTransport,
-		governanceProvider, flowMgtService, flowMgtService, permissionResolver, flowConfig)
+		sessionService, governanceProvider, flowMgtService, flowMgtService, permissionResolver, flowConfig)
 	fatalOnError(ctx, logger, err, "Failed to initialize flow execution service")
 	err = entity.SetSystemFlowProvider(entityService, flowExecService)
 	fatalOnError(ctx, logger, err, "Failed to inject the system flow provider into the entity service")
@@ -696,6 +696,8 @@ func registerServices(mux *http.ServeMux, cacheManager cache.CacheManagerInterfa
 	fatalOnError(ctx, logger, err, "Failed to inject the system flow provider into the role assignment service")
 	err = resource.SetSystemFlowProvider(resourceService, flowExecService)
 	fatalOnError(ctx, logger, err, "Failed to inject the system flow provider into the resource service")
+	err = sharing.SetSystemFlowProvider(sharingService, flowExecService)
+	fatalOnError(ctx, logger, err, "Failed to inject the system flow provider into the sharing service")
 
 	// Initialize OAuth services.
 	tokenValidator, dispatcher, err := oauth.Initialize(mux, actorProvider, authnProvider, jwtService, jweService,
@@ -786,18 +788,18 @@ func unregisterServices() {
 	observabilitySvc.Shutdown()
 }
 
-// initSessionService reads the effective SSO session configuration from the server-config section and
-// builds the session service, returning the service, its termination hook, and the config so the caller
-// can thread the config into flowexec too.
-func initSessionService(ctx context.Context, svc serverconfig.ServerConfigService, deploymentID string,
-	criteriaRevoker flowsession.CriteriaRevoker, ouEligibility flowsession.OUEligibility, logger *log.Logger,
-) (flowsession.Service, flowsession.TerminationHook, flowsession.Config) {
-	cfg := readSessionConfig(ctx, svc, logger)
-	sessionService, terminationHook, err := flowsession.Initialize(dbprovider.GetDBProvider(), deploymentID,
-		flowsession.NewTimeouts(cfg.IdleTimeoutSeconds, cfg.AbsoluteTimeoutSeconds,
-			cfg.ActivityRefreshIntervalSeconds), criteriaRevoker, ouEligibility)
+// initSessionService builds the SSO session service, which reads its timeouts from the "session"
+// server-config section on every use, registers its management routes, and returns it with its
+// termination hook.
+func initSessionService(ctx context.Context, mux *http.ServeMux, svc serverconfig.ServerConfigService,
+	flowConfig flowconfig.Config, deploymentID string, criteriaRevoker flowsession.CriteriaRevoker,
+	ouEligibility flowsession.OUEligibility, entities entity.EntityServiceInterface,
+	entityTypes entitytype.EntityTypeServiceInterface, logger *log.Logger,
+) (flowsession.Service, flowsession.TerminationHook) {
+	sessionService, terminationHook, err := flowsession.Initialize(mux, dbprovider.GetDBProvider(), deploymentID,
+		svc, flowConfig, criteriaRevoker, ouEligibility, entities, entityTypes)
 	fatalOnError(ctx, logger, err, "Failed to initialize SSO session service")
-	return sessionService, terminationHook, cfg
+	return sessionService, terminationHook
 }
 
 // sessionCriteriaRevoker fixes the reason used when the session service revokes a token family.
@@ -810,19 +812,9 @@ func (a sessionCriteriaRevoker) RevokeTokenFamily(ctx context.Context, tokenFami
 	return a.revoker.RevokeTokenFamily(ctx, tokenFamilyID, revocation.RevocationReasonSessionLogout)
 }
 
-// readSessionConfig reads the effective SSO session lifetime configuration from the server-config
-// "session" section. An unset section resolves to the zero Config, which NewTimeouts turns into the
-// built-in defaults; a read error is non-fatal for the same reason, so it logs and falls back.
-func readSessionConfig(ctx context.Context, svc serverconfig.ServerConfigService,
-	logger *log.Logger) flowsession.Config {
-	merged, svcErr := svc.GetMergedConfig(ctx, string(serverconfig.ConfigNameSession))
-	if svcErr != nil {
-		logger.Warn(ctx, "Failed to read session server config; using default timeouts",
-			log.String("code", svcErr.Code))
-		return flowsession.Config{}
-	}
-	cfg, _ := merged.(flowsession.Config)
-	return cfg
+// IsTokenFamilyRevoked reports whether the given token family is revoked.
+func (a sessionCriteriaRevoker) IsTokenFamilyRevoked(ctx context.Context, tokenFamilyID string) (bool, error) {
+	return a.revoker.IsTokenFamilyRevoked(ctx, tokenFamilyID)
 }
 
 // initConsentService initializes the consent service backed by the inbound client service, which

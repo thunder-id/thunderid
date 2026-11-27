@@ -576,8 +576,9 @@ var (
 		},
 	}
 
-	// ErrorInvalidOwner is returned when an agent's owner has no ID, an ID that is too long or does not
-	// match its ID type, an unknown ID type, or is local but not identified by its entity ID.
+	// ErrorInvalidOwner is returned when an agent's owner is not an object, has a field of the wrong type, has no
+	// ID, an ID that is too long or does not match its ID type, an unknown ID type, or is local but not identified
+	// by its entity ID.
 	ErrorInvalidOwner = tidcommon.ServiceError{
 		Type: tidcommon.ClientErrorType,
 		Code: "AGT-1049",
@@ -586,8 +587,9 @@ var (
 			DefaultValue: "Invalid owner",
 		},
 		ErrorDescription: tidcommon.I18nMessage{
-			Key:          "error.agentservice.invalid_owner_description",
-			DefaultValue: "An owner needs an id of at most 256 characters matching its type, and a local owner a uuid",
+			Key: "error.agentservice.invalid_owner_description",
+			DefaultValue: "The owner must be an object whose id is at most 256 characters and matches its idType, " +
+				"with a uuid for a local owner",
 		},
 	}
 

@@ -10,6 +10,7 @@ import (
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
+	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/role"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -58,6 +59,18 @@ func (d *userSharingDeclaration) ResourceType() sharing.ResourceType {
 	return UserSharingType
 }
 
+// Unsharing a user revokes, so the declaration must keep implementing it.
+var _ sharing.UnshareRevoker = (*userSharingDeclaration)(nil)
+
+// The write hooks return the revocations a dropped mandate needs, so the declaration must keep implementing them.
+var _ sharing.PolicyWriteHooks = (*userSharingDeclaration)(nil)
+
+// UnshareRevocationFlow revokes, in a unit that loses the user, what was issued to it or through its OAuth client.
+func (d *userSharingDeclaration) UnshareRevocationFlow() sharing.UnshareFlow {
+	return sharing.UnshareFlow{Handle: entity.SystemFlowEntityUnsharePre, ResourceInput: entity.SystemFlowInputEntity,
+		EveryUnit: true}
+}
+
 // Fields declares the roles a share mandates for the user in each child unit it names.
 func (d *userSharingDeclaration) Fields() []sharing.FieldDeclaration {
 	return []sharing.FieldDeclaration{{Key: RolesFieldKey, Kind: sharing.FieldReferenceSet}}
@@ -84,30 +97,33 @@ func (d *userSharingDeclaration) ValidateMembers(
 	return d.requireRolesVisible(ctx, initiatingOUID, members)
 }
 
-// OnPolicyWritten refuses a roles rule other than a fixed one on a named child unit, then applies the mandates.
-func (d *userSharingDeclaration) OnPolicyWritten(ctx context.Context, p sharing.Policy) *tidcommon.ServiceError {
+// OnPolicyWritten refuses a roles rule other than a fixed one on a named child unit, then applies the mandates, and
+// returns the revocations of the roles it dropped.
+func (d *userSharingDeclaration) OnPolicyWritten(ctx context.Context, p sharing.Policy) (
+	[]sharing.Revocation, *tidcommon.ServiceError) {
 	if svcErr := requireFixedRolesOnNamedUnits(p); svcErr != nil {
-		return svcErr
+		return nil, svcErr
 	}
 	if d.roleAssignments == nil {
 		if p.Declared {
 			d.pendingDeclared = append(d.pendingDeclared, p)
-			return nil
+			return nil, nil
 		}
 		if len(mandatedRoles(p)) > 0 {
 			log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)).Error(ctx,
 				"No role assignment service to apply the roles a sharing policy mandates", log.String("policyID", p.ID))
-			return &tidcommon.InternalServerError
+			return nil, &tidcommon.InternalServerError
 		}
-		return nil
+		return nil, nil
 	}
 	return d.applyMandatedRoles(ctx, p)
 }
 
-// OnPolicyRemoved removes the assignments the policy mandated.
-func (d *userSharingDeclaration) OnPolicyRemoved(ctx context.Context, p sharing.Policy) *tidcommon.ServiceError {
+// OnPolicyRemoved removes the assignments the policy mandated, and returns the revocations of the roles it dropped.
+func (d *userSharingDeclaration) OnPolicyRemoved(ctx context.Context, p sharing.Policy) (
+	[]sharing.Revocation, *tidcommon.ServiceError) {
 	if d.roleAssignments == nil {
-		return nil
+		return nil, nil
 	}
 	return d.roleAssignments.RemoveMandatedAssignments(ctx, p.ID)
 }
@@ -131,7 +147,8 @@ func (d *userSharingDeclaration) setRoleAssignments(
 		}
 		svcErr := d.requireRolesVisible(ctx, p.InitiatingOUID, utils.UniqueStrings(named))
 		if svcErr == nil {
-			svcErr = d.applyMandatedRoles(ctx, p)
+			// A declaration is applied outside a sharing change, so it revokes nothing.
+			_, svcErr = d.applyMandatedRoles(ctx, p)
 		}
 		if svcErr != nil {
 			return fmt.Errorf("failed to apply the roles declared sharing policy %q of user %q mandates: %s: %s",
@@ -158,7 +175,8 @@ func (d *userSharingDeclaration) requireRolesVisible(
 }
 
 // applyMandatedRoles makes the user's assignments the policy mandates match the roles its named units' rules pin.
-func (d *userSharingDeclaration) applyMandatedRoles(ctx context.Context, p sharing.Policy) *tidcommon.ServiceError {
+func (d *userSharingDeclaration) applyMandatedRoles(ctx context.Context, p sharing.Policy) (
+	[]sharing.Revocation, *tidcommon.ServiceError) {
 	return d.roleAssignments.ApplyMandatedAssignments(ctx, p.ID,
 		role.RoleAssignment{ID: p.ResourceID, Type: role.AssigneeTypeUser}, mandatedRoles(p))
 }

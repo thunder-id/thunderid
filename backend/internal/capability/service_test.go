@@ -98,6 +98,7 @@ func (s *ServiceTestSuite) TestEvaluatesEachActionOnce() {
 }
 
 func (s *ServiceTestSuite) TestRoutesFollowTheAPIPermissionMap() {
+	security.InitDataPlanePermissions("")
 	s.allow()
 	s.authz.On("GetBoundary", mock.Anything).Return(sysauthz.Boundary{Type: sysauthz.BoundaryTypeDeployment})
 	ctx := security.WithSecurityContextTest(context.Background(),
@@ -112,6 +113,35 @@ func (s *ServiceTestSuite) TestRoutesFollowTheAPIPermissionMap() {
 		}
 	}
 	s.Equal(capabilityScope{Type: sysauthz.BoundaryTypeDeployment}, resp.Scope)
+}
+
+// On the Data Plane, an administrator holding org:session:view in the organization unit its token names may
+// view sessions, as the API permission map decides for GET /sessions.
+func (s *ServiceTestSuite) TestOrgSessionViewOnTheDataPlane() {
+	security.InitDataPlanePermissions("")
+	s.allow()
+	s.authz.On("GetBoundary", mock.Anything).Return(sysauthz.Boundary{Type: sysauthz.BoundaryTypeOU, OUID: "ou-1"})
+	ctx := security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest("admin", "ou-1", "token", []string{"org:session:view"}, nil))
+
+	resp, svcErr := newCapabilityService(s.authz).GetCapabilities(ctx)
+
+	s.Require().Nil(svcErr)
+	s.True(resp.Resources[security.ResourceTypeSession]["view"])
+}
+
+// The Control Plane serves no sessions, so not even the root permission may view them there.
+func (s *ServiceTestSuite) TestSessionsAreNotServedOnTheControlPlane() {
+	s.allow()
+	s.authz.On("GetBoundary", mock.Anything).Return(sysauthz.Boundary{Type: sysauthz.BoundaryTypeDeployment})
+	ctx := security.WithSecurityContextTest(context.Background(),
+		security.NewSecurityContextForTest("admin", "", "token", []string{"system"}, nil))
+
+	resp, svcErr := newCapabilityService(s.authz).GetCapabilities(ctx)
+
+	s.Require().Nil(svcErr)
+	s.False(resp.Resources[security.ResourceTypeSession]["view"])
+	s.True(resp.Resources[resourceVariable]["view"], "a route the Control Plane serves is still allowed")
 }
 
 func (s *ServiceTestSuite) TestATokenNamingNoUnitMayDoNothingOnTheDataPlane() {

@@ -318,4 +318,17 @@ var (
 			DefaultValue: "The member was deployed to the group by the control plane and can only be removed there",
 		},
 	}
+	// ErrorPersonalAgentNotAssignable is the error returned when a personal agent is added to a group.
+	ErrorPersonalAgentNotAssignable = tidcommon.ServiceError{
+		Type: tidcommon.ClientErrorType,
+		Code: "GRP-1025",
+		Error: tidcommon.I18nMessage{
+			Key:          "error.groupservice.personal_agent_not_assignable",
+			DefaultValue: "Personal agent cannot be added to groups",
+		},
+		ErrorDescription: tidcommon.I18nMessage{
+			Key:          "error.groupservice.personal_agent_not_assignable_description",
+			DefaultValue: "A personal agent acts only on behalf of its owner, so it cannot be a member of a group",
+		},
+	}
 )

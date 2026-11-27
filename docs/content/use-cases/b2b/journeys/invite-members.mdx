@@ -165,12 +165,15 @@ An OU keeps one sharing policy per user. When the account already has one, for e
 into the company, the `POST` fails with `409` and `USR-1031`. Read the policy with `GET /users/<user-id>/sharing-policies`,
 then replace it with `PUT /users/<user-id>/sharing-policies/<policy-id>`: send its current `version`, and list every unit
 the account keeps along with the new ones. The `PUT` replaces the whole policy, so send each unit with its
-`overlayRules`. A unit sent without them loses the roles they mandate.
+`overlayRules`. A unit sent without them loses the roles they mandate, and the person's tokens issued in that company
+lose those roles' permissions. A unit left out of the `PUT` takes the account out of that company, which revokes every
+token the person was issued there. See [Unsharing](../../../guides/protocols/oauth-oidc/token-revocation.mdx#unsharing).
 
 A section that reaches a whole group, such as `childUnits` with `mode: all`, cannot become a list of units, and a `PUT`
 that tries fails with `400` and `USR-1029`. Keep the section, and remove the company from its `excludedOuIds` if it is
 withheld there. A whole-group section cannot mandate roles, so to mandate them, delete the policy and create one that
-lists the units.
+lists the units. Deleting the policy revokes the person's tokens in every company it reached, including the ones the new
+policy lists again, so the person signs in again there.
 
 A roles rule is accepted only on a unit listed under `childUnits` in `selected` mode with `reach: unit`. See [Mandate Roles on a Shared User](../../../guides/users/manage-users.mdx#mandate-roles-on-a-shared-user) for every rule and error.
 

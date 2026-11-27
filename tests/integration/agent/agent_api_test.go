@@ -526,6 +526,28 @@ func (ts *AgentAPITestSuite) TestCreateAgent_OwnerValuesAreChecked() {
 	}
 }
 
+func (ts *AgentAPITestSuite) TestOwnerGivenAsAStringIsRejectedAsAnInvalidOwner() {
+	body := map[string]interface{}{
+		"ouId": testOUID, "type": "default", "owner": "0199a1b2-7c3d-7e4f-9a8b-123456789abc",
+		"attributes": agentAttrs("owner-as-string", nil),
+	}
+	resp, err := doPost(testServerURL+agentBasePath, body)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	ts.Equal(http.StatusBadRequest, resp.StatusCode)
+	ts.Equal("AGT-1049", errorCode(resp))
+
+	created, _ := ts.createAgentWithStatus(Agent{
+		OUID: testOUID, Type: "default", Attributes: agentAttrs("owner-as-string-update", nil),
+	}, http.StatusCreated)
+	body["attributes"] = agentAttrs("owner-as-string-update", nil)
+	putResp, err := putAgentRaw(created.ID, body)
+	ts.Require().NoError(err)
+	defer putResp.Body.Close()
+	ts.Equal(http.StatusBadRequest, putResp.StatusCode)
+	ts.Equal("AGT-1049", errorCode(putResp))
+}
+
 // An external owner names a person in another identity system, so it is stored as given and never looked
 // up, even when its ID is also an entity of this deployment.
 func (ts *AgentAPITestSuite) TestExternalOwnerIsNotLookedUp() {

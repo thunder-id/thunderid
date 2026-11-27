@@ -211,12 +211,6 @@ func (h *cibaGrantHandler) issueTokens(ctx context.Context, tokenRequest *model.
 		scopeStr = record.StandardScopes
 	}
 
-	accessTokenAudiences, accessTokenScopes, bindErr := h.resolveIssuedAudiencesAndScopes(
-		ctx, record, oauthApp, scopeStr)
-	if bindErr != nil {
-		return nil, bindErr
-	}
-
 	attrs := make(map[string]interface{})
 	if record.AttributeCacheID != "" {
 		cacheEntry, cacheErr := h.attributeCache.GetAttributeCache(ctx, record.AttributeCacheID)
@@ -229,6 +223,12 @@ func (h *cibaGrantHandler) issueTokens(ctx context.Context, tokenRequest *model.
 			}
 		}
 		attrs = cacheEntry.Attributes
+	}
+
+	accessTokenAudiences, accessTokenScopes, bindErr := h.resolveIssuedAudiencesAndScopes(
+		ctx, record, oauthApp, scopeStr, issuedOUID(attrs))
+	if bindErr != nil {
+		return nil, bindErr
 	}
 
 	authorizationDetails, errResp := modifyGrantedAuthorizationDetails(ctx, h.authzDetails,
@@ -257,6 +257,7 @@ func (h *cibaGrantHandler) issueTokens(ctx context.Context, tokenRequest *model.
 		ValidityPeriod:       userSubConfig.ValidityPeriodOrZero(),
 		DPoPJkt:              dpop.GetJkt(ctx),
 		AuthorizationDetails: authorizationDetails,
+		AuthTime:             record.AuthTime.Unix(),
 	}
 	if oauthApp.ShouldAppendActorClaim() {
 		accessTokenCtx.ActorClaims = &tokenservice.SubjectTokenClaims{Sub: oauthApp.ID}
@@ -318,7 +319,7 @@ func (h *cibaGrantHandler) issueTokens(ctx context.Context, tokenRequest *model.
 // audience, falling back to the client_id; an unbound record that unexpectedly carries permission
 // scopes is rejected with invalid_grant.
 func (h *cibaGrantHandler) resolveIssuedAudiencesAndScopes(ctx context.Context,
-	record *ciba.CIBAAuthRequest, oauthApp *providers.OAuthClient, scopeStr string,
+	record *ciba.CIBAAuthRequest, oauthApp *providers.OAuthClient, scopeStr, ouID string,
 ) ([]string, []string, *model.ErrorResponse) {
 	oidcScopes, permissionScopes := oauth2utils.SeparateOIDCAndNonOIDCScopes(scopeStr, oauthApp.ScopeClaims)
 
@@ -366,7 +367,7 @@ func (h *cibaGrantHandler) resolveIssuedAudiencesAndScopes(ctx context.Context,
 			{Type: revocation.CriterionTypeSubject, Value: record.UserID},
 			{Type: revocation.CriterionTypeApplicationKey, Value: record.ClientID},
 		},
-	}, record.UserID, audiences, oidcScopes, permissionScopes)
+	}, record.UserID, record.ClientID, ouID, audiences, oidcScopes, permissionScopes)
 	if errResp != nil {
 		return nil, nil, errResp
 	}

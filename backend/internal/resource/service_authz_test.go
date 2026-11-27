@@ -18,6 +18,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
@@ -65,7 +66,8 @@ func (s *ResourceAuthzTestSuite) SetupTest() {
 	s.store = newResourceStoreInterfaceMock(s.T())
 	var err error
 	s.service, err = newResourceService(new(oumock.OrganizationUnitServiceInterfaceMock), s.store,
-		&fakeTransactioner{}, nil, nil, nil, discardingBus{}, s.authz)
+		&fakeTransactioner{}, nil, nil, nil, discardingBus{}, s.authz,
+		sharingmock.NewSharingServiceInterfaceMock(s.T()))
 	s.Require().NoError(err)
 }
 

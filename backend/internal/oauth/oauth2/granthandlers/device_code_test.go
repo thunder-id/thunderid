@@ -23,6 +23,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/attributecachemock"
+	"github.com/thunder-id/thunderid/tests/mocks/flow/sessionmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/deviceauthmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/revocationmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oauth/oauth2/tokenservicemock"
@@ -52,7 +53,7 @@ func (suite *DeviceCodeGrantHandlerTestSuite) SetupTest() {
 	suite.attributeCache = attributecachemock.NewAttributeCacheServiceInterfaceMock(suite.T())
 	suite.resourceService = resourcemock.NewResourceServiceInterfaceMock(suite.T())
 	suite.handler = newDeviceCodeGrantHandler(
-		suite.deviceService, suite.tokenBuilder, suite.attributeCache, suite.resourceService, nil, time.Hour)
+		suite.deviceService, suite.tokenBuilder, suite.attributeCache, suite.resourceService, nil, nil)
 	suite.oauthApp = &providers.OAuthClient{
 		ClientID: testGrantClientID,
 		ScopeClaims: map[string][]string{
@@ -176,6 +177,10 @@ func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_ApprovedReturnsThe
 	record.AuthTime = time.Now()
 	record.SubjectID = testGrantSubjectID
 	record.SessionData = sessions
+	ssoSessions := sessionmock.NewServiceMock(suite.T())
+	ssoSessions.EXPECT().AbsoluteTimeout(mock.Anything).Return(time.Hour)
+	suite.handler = newDeviceCodeGrantHandler(
+		suite.deviceService, suite.tokenBuilder, suite.attributeCache, suite.resourceService, nil, ssoSessions)
 	suite.deviceService.EXPECT().GetByDeviceCode(mock.Anything, "device-code-1").Return(record, nil)
 	suite.tokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.Anything).
 		Return(&model.TokenDTO{Token: "access-token", TokenType: "Bearer", ExpiresIn: 3600}, nil)
@@ -192,6 +197,28 @@ func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_ApprovedReturnsThe
 
 	suite.Nil(errResp)
 	suite.Equal("device-secret", response.DeviceSecret.Token)
+}
+
+// A handler built without a session service, as an embedded engine may build it, issues the tokens and
+// no device secret.
+func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_NoDeviceSecretWithoutASessionService() {
+	record := suite.request(deviceauth.DeviceStateApproved)
+	record.AuthTime = time.Now()
+	record.SubjectID = testGrantSubjectID
+	record.SessionData = []model.SessionData{{FlowIdentifier: "77e0937879f72858", SessionHandle: "handle-1"}}
+	suite.deviceService.EXPECT().GetByDeviceCode(mock.Anything, "device-code-1").Return(record, nil)
+	suite.tokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.Anything).
+		Return(&model.TokenDTO{Token: "access-token", TokenType: "Bearer", ExpiresIn: 3600}, nil)
+	suite.tokenBuilder.EXPECT().BuildIDToken(mock.Anything, mock.Anything).
+		Return(&model.TokenDTO{Token: "id-token"}, nil)
+	suite.deviceService.EXPECT().MarkConsumed(mock.Anything, "device-request-1").Return(true, nil)
+
+	response, errResp := suite.handler.HandleGrant(context.Background(), suite.tokenRequest, suite.oauthApp)
+
+	suite.Nil(errResp)
+	suite.Equal("access-token", response.AccessToken.Token)
+	suite.Empty(response.DeviceSecret.Token)
+	suite.tokenBuilder.AssertNotCalled(suite.T(), "BuildDeviceSecret", mock.Anything, mock.Anything)
 }
 
 func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_NoDeviceSecretWhenTheRequestIsNotConsumed() {
@@ -488,6 +515,22 @@ func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrantApprovedWithoutOpen
 	suite.Empty(response.IDToken.Token)
 }
 
+func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_AccessTokenCarriesAuthTime() {
+	record := suite.request(deviceauth.DeviceStateApproved)
+	record.AuthTime = time.Now().Add(-time.Minute)
+	suite.deviceService.EXPECT().GetByDeviceCode(mock.Anything, "device-code-1").Return(record, nil)
+	suite.tokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.AccessTokenBuildContext) bool { return ctx.AuthTime == record.AuthTime.Unix() })).
+		Return(&model.TokenDTO{Token: "access-token"}, nil)
+	suite.tokenBuilder.EXPECT().BuildIDToken(mock.Anything, mock.Anything).
+		Return(&model.TokenDTO{Token: "id-token"}, nil)
+	suite.deviceService.EXPECT().MarkConsumed(mock.Anything, "device-request-1").Return(true, nil)
+
+	response, errResp := suite.handler.HandleGrant(context.Background(), suite.tokenRequest, suite.oauthApp)
+	suite.Nil(errResp)
+	suite.Equal("access-token", response.AccessToken.Token)
+}
+
 func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_CompactsOnlyHierarchicalPermissions() {
 	for _, test := range []struct {
 		name, scopes, delimiter string
@@ -542,6 +585,44 @@ func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_CompactsOnlyHierar
 	}
 }
 
+// redeemIssuedIn redeems an approved request whose sign-in recorded ouID against the given deny list.
+func (suite *DeviceCodeGrantHandlerTestSuite) redeemIssuedIn(ouID string,
+	rows ...revocation.CriteriaRevocation) (*model.TokenResponseDTO, *model.ErrorResponse) {
+	record := suite.request(deviceauth.DeviceStateApproved)
+	record.AuthTime = time.Now().Add(-time.Minute)
+	record.AttributeCacheID = testGrantAttributeCacheID
+	enforcement := revocationmock.NewEnforcementServiceInterfaceMock(suite.T())
+	suite.handler = newDeviceCodeGrantHandler(suite.deviceService, suite.tokenBuilder,
+		suite.attributeCache, suite.resourceService, enforcement, nil)
+	suite.deviceService.EXPECT().GetByDeviceCode(mock.Anything, "device-code-1").Return(record, nil).Once()
+	suite.attributeCache.EXPECT().GetAttributeCache(mock.Anything, testGrantAttributeCacheID).Return(
+		&attributecache.AttributeCache{ID: testGrantAttributeCacheID, Attributes: map[string]interface{}{"ouId": ouID}},
+		nil)
+	enforcement.EXPECT().EnsureNotRevoked(mock.Anything, mock.Anything).RunAndReturn(denyListLookup(rows...))
+	suite.tokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.Anything).
+		Return(&model.TokenDTO{Token: "access-token"}, nil).Maybe()
+	suite.tokenBuilder.EXPECT().BuildIDToken(mock.Anything, mock.Anything).
+		Return(&model.TokenDTO{Token: "id-token"}, nil).Maybe()
+	suite.deviceService.EXPECT().MarkConsumed(mock.Anything, "device-request-1").Return(true, nil).Maybe()
+	return suite.handler.HandleGrant(context.Background(), suite.tokenRequest, suite.oauthApp)
+}
+
+func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_UserUnsharedFromTheRequestsUnitIsRefused() {
+	response, errResp := suite.redeemIssuedIn("ou-a", unsharedFromOUA())
+
+	suite.Nil(response)
+	suite.Require().NotNil(errResp)
+	suite.Equal(constants.ErrorInvalidGrant, errResp.Error)
+	suite.deviceService.AssertNotCalled(suite.T(), "MarkConsumed", mock.Anything, mock.Anything)
+}
+
+func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_UnsharingFromAnotherUnitLeavesTheRequest() {
+	response, errResp := suite.redeemIssuedIn("ou-b", unsharedFromOUA())
+
+	suite.Require().Nil(errResp)
+	suite.Require().NotNil(response)
+}
+
 func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_CompactsAfterRevocationChecks() {
 	record := suite.request(deviceauth.DeviceStateApproved)
 	record.AuthTime = time.Now().Add(-time.Minute)
@@ -549,7 +630,7 @@ func (suite *DeviceCodeGrantHandlerTestSuite) TestHandleGrant_CompactsAfterRevoc
 	record.Resources = []string{testGrantAudience}
 	enforcement := revocationmock.NewEnforcementServiceInterfaceMock(suite.T())
 	suite.handler = newDeviceCodeGrantHandler(suite.deviceService, suite.tokenBuilder,
-		suite.attributeCache, suite.resourceService, enforcement, time.Hour)
+		suite.attributeCache, suite.resourceService, enforcement, nil)
 	suite.deviceService.EXPECT().GetByDeviceCode(mock.Anything, "device-code-1").Return(record, nil).Once()
 	suite.resourceService.EXPECT().GetResourceServerByIdentifier(mock.Anything, testGrantAudience).
 		Return(&providers.ResourceServer{ID: "resource-1", Identifier: testGrantAudience,

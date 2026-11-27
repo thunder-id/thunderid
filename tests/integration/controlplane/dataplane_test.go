@@ -287,3 +287,81 @@ func (ts *ControlPlaneTestSuite) TestADataPlaneHoldsAResourceServerUnderItsOwnId
 	outcome = probe(cpIdentifier)
 	ts.Equal(0, outcome.Summary.Failed, "the data plane holds the control plane's identifier: %+v", outcome.Results)
 }
+
+// A resource server the Control Plane shares carries its sharing policies to the Data Plane: the export holds them,
+// and the Data Plane records them when it imports the export. A shared resource server stays in its organization unit,
+// so an import moving it shows the Data Plane holds the policy.
+func (ts *ControlPlaneTestSuite) TestADataPlaneRecordsTheSharingOfAResourceServer() {
+	ownerID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: unique("dp-rs-share-ou"), Name: "Data Plane shared resource server owner", ProjectID: defaultProjectID,
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(ownerID) }()
+	childID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: unique("dp-rs-share-child"), Name: "Data Plane shared resource server child", Parent: &ownerID,
+		ProjectID: defaultProjectID,
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(childID) }()
+	otherID, err := testutils.CreateOrganizationUnit(testutils.OrganizationUnit{
+		Handle: unique("dp-rs-share-other"), Name: "Data Plane shared resource server other", ProjectID: defaultProjectID,
+	})
+	ts.Require().NoError(err)
+	defer func() { _ = testutils.DeleteOrganizationUnit(otherID) }()
+
+	name := unique("DP Shared Orders")
+	var created struct {
+		ID string `json:"id"`
+	}
+	status, raw := ts.call(http.MethodPost, "/resource-servers", map[string]any{
+		"name":       name,
+		"identifier": "https://" + unique("cp-shared-orders") + ".example.com",
+		"ouId":       ownerID,
+	}, &created)
+	ts.Require().Equal(http.StatusCreated, status, string(raw))
+	defer func() { _ = testutils.DeleteResourceServerWithChildren(created.ID) }()
+
+	var policy struct {
+		ID string `json:"id"`
+	}
+	status, raw = ts.call(http.MethodPost, "/resource-servers/"+created.ID+"/sharing-policies", map[string]any{
+		"childUnits": map[string]any{"mode": "selected", "units": []map[string]any{
+			{"ouId": childID, "reach": "unit"},
+		}},
+	}, &policy)
+	ts.Require().Equal(http.StatusCreated, status, string(raw))
+	defer func() {
+		_, _ = ts.call(http.MethodDelete, "/resource-servers/"+created.ID+"/sharing-policies/"+policy.ID, nil, nil)
+	}()
+
+	var exported struct {
+		Resources string `json:"resources"`
+	}
+	status, raw = ts.call(http.MethodPost, "/export", map[string]any{
+		"organizationUnits": []string{ownerID, childID, otherID},
+		"resourceServers":   []string{created.ID},
+	}, &exported)
+	ts.Require().Equal(http.StatusOK, status, string(raw))
+	ts.Require().Contains(exported.Resources, "sharingPolicies:", "the export carries the sharing")
+	ts.Contains(exported.Resources, childID)
+
+	variable := variableName("RESOURCE_SERVER", created.ID, "IDENTIFIER")
+	status, raw = ts.toDataPlane(http.MethodPut, "/variables/"+variable, map[string]any{
+		"value": "https://" + unique("dp-shared-orders") + ".example.com",
+	})
+	ts.Require().Less(status, http.StatusBadRequest, string(raw))
+
+	outcome := ts.importToDataPlane(exported.Resources)
+	ts.Require().Equal(0, outcome.Summary.Failed, "%+v", outcome.Results)
+
+	moved := strings.Replace(exported.Resources, "ouId: "+ownerID, "ouId: "+otherID, 1)
+	ts.Require().NotEqual(exported.Resources, moved)
+	outcome = ts.importToDataPlane(moved)
+	var codes []string
+	for _, result := range outcome.Results {
+		if result.ResourceType == "resource_server" {
+			codes = append(codes, result.Code)
+		}
+	}
+	ts.Equal([]string{"RES-1037"}, codes, "the data plane holds the policy, so the shared resource server stays")
+}

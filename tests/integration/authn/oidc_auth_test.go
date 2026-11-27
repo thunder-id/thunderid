@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/suite"
@@ -652,6 +653,67 @@ func (suite *OIDCAuthTestSuite) TestOIDCAuthWithSkipAssertion() {
 	suite.Require().NoError(err)
 
 	suite.Empty(authResponse.Assertion, "Response should not contain assertion token when skipAssertion is true")
+}
+
+// The API syncs a returning user's sign-in: under override received, a mapped attribute the provider
+// sends replaces the stored value.
+func (suite *OIDCAuthTestSuite) TestOIDCAuthSyncsReceivedMappedAttributes() {
+	connection, err := testutils.GetIDP("oidc", suite.idpID)
+	suite.Require().NoError(err)
+	// The read-back masks the secret, so it is left out and the stored one kept.
+	connection.Properties = slices.DeleteFunc(connection.Properties,
+		func(p testutils.IDPProperty) bool { return p.Name == "client_secret" })
+	original := connection.AttributeConfiguration
+	suite.Require().NotNil(original)
+	connection.AttributeConfiguration = &testutils.AttributeConfiguration{
+		UserTypeResolution: &testutils.UserTypeResolution{Default: oidcEntityType.Handle},
+		UserTypeAttributeMappings: []testutils.UserTypeAttributeMapping{{
+			UserType: oidcEntityType.Handle,
+			Attributes: []testutils.AttributeMapping{
+				{ExternalAttribute: "email", LocalAttribute: "email"},
+				{ExternalAttribute: "name", LocalAttribute: "givenName"},
+			},
+		}},
+		AccountLinking: original.AccountLinking,
+		Sync:           &testutils.SyncConfiguration{Attributes: "override_received"},
+	}
+	suite.Require().NoError(testutils.UpdateIDP(suite.idpID, *connection))
+	t := suite.T()
+	t.Cleanup(func() {
+		connection.AttributeConfiguration = original
+		if err := testutils.UpdateIDP(suite.idpID, *connection); err != nil {
+			t.Logf("Failed to restore the connection's attribute configuration: %v", err)
+		}
+	})
+
+	startRequestJSON, err := json.Marshal(map[string]interface{}{"idpId": suite.idpID})
+	suite.Require().NoError(err)
+	client := testutils.GetHTTPClient()
+	resp, err := client.Post(testServerURL+oidcAuthStart, "application/json", bytes.NewReader(startRequestJSON))
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+	var startResponse map[string]interface{}
+	suite.Require().NoError(json.NewDecoder(resp.Body).Decode(&startResponse))
+
+	finishRequestJSON, err := json.Marshal(map[string]interface{}{
+		"sessionToken": startResponse["sessionToken"],
+		"code":         suite.simulateOIDCAuthorization(startResponse["redirectUrl"].(string)),
+	})
+	suite.Require().NoError(err)
+	resp, err = client.Post(testServerURL+oidcAuthFinish, "application/json", bytes.NewReader(finishRequestJSON))
+	suite.Require().NoError(err)
+	defer resp.Body.Close()
+	suite.Require().Equal(http.StatusOK, resp.StatusCode)
+	var authResponse testutils.AuthenticationResponse
+	suite.Require().NoError(json.NewDecoder(resp.Body).Decode(&authResponse))
+	suite.Require().Equal(suite.userID, authResponse.ID, "the identity should resolve to the linked user")
+
+	user, err := testutils.GetUserFromAssertion(authResponse.Assertion)
+	suite.Require().NoError(err)
+	attributes, err := testutils.GetUserAttributes(*user)
+	suite.Require().NoError(err)
+	suite.Equal("OIDC Test User", attributes["givenName"], "the received mapped attribute should be stored")
 }
 
 // simulateOIDCAuthorization simulates user authorization and returns authorization code

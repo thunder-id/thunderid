@@ -80,24 +80,16 @@ func (suite *DefaultResourceServerConfigHandlerTestSuite) TestValidateInternalEr
 	assert.ErrorIs(suite.T(), err, errDefaultResourceServerLookupFailed)
 }
 
-func (suite *DefaultResourceServerConfigHandlerTestSuite) TestValidateRejectsWriteWhenDeclarativeSet() {
-	h := NewDefaultResourceServerConfigHandler(NewResourceServiceInterfaceMock(suite.T()))
-	err := h.Validate(context.Background(),
-		DefaultResourceServerConfig{ResourceServerID: "rs-2"},
-		DefaultResourceServerConfig{ResourceServerID: "rs-1"},
-		DefaultResourceServerConfig{},
-	)
-	assert.Error(suite.T(), err)
+// A declarative default locks the section, so the service refuses every write to it.
+func (suite *DefaultResourceServerConfigHandlerTestSuite) TestIsReadOnlyWhenDeclarativeSet() {
+	h := suite.handler()
+	assert.True(suite.T(), h.IsReadOnly(DefaultResourceServerConfig{ResourceServerID: "rs-1"}))
+	assert.False(suite.T(), h.IsReadOnly(DefaultResourceServerConfig{}))
+	assert.False(suite.T(), h.IsReadOnly(nil))
 }
 
-func (suite *DefaultResourceServerConfigHandlerTestSuite) TestValidateRejectsClearWhenDeclarativeSet() {
-	h := NewDefaultResourceServerConfigHandler(NewResourceServiceInterfaceMock(suite.T()))
-	err := h.Validate(context.Background(),
-		DefaultResourceServerConfig{},
-		DefaultResourceServerConfig{ResourceServerID: "rs-1"},
-		DefaultResourceServerConfig{},
-	)
-	assert.Error(suite.T(), err)
+func (suite *DefaultResourceServerConfigHandlerTestSuite) TestDefaultIsNil() {
+	assert.Nil(suite.T(), suite.handler().Default())
 }
 
 func (suite *DefaultResourceServerConfigHandlerTestSuite) TestMergeReadOnlyWins() {

@@ -268,6 +268,54 @@ func (ts *PersonalAgentTestSuite) TestAdminCannotChangeTheOwner() {
 	ts.Equal(testutils.LocalAgentOwner(ts.ownerID), read.Owner)
 }
 
+// A personal agent is never assigned a role or added to a group, whichever request asks for it. Taking it
+// off a role or group it does not hold still succeeds.
+func (ts *PersonalAgentTestSuite) TestRolesAndGroupsRefuseThePersonalAgent() {
+	ouID := ts.seededPersonType().OUID
+	assignment := testutils.Assignment{ID: ts.agentID, Type: "agent"}
+	member := testutils.Member{Id: ts.agentID, Type: "agent"}
+	groupID, err := testutils.CreateGroup(testutils.Group{Name: "pa_suite_group", OUID: ouID})
+	ts.Require().NoError(err)
+	defer func() {
+		if err := testutils.DeleteGroup(groupID); err != nil {
+			ts.T().Logf("failed to delete group %s: %v", groupID, err)
+		}
+	}()
+
+	for name, tc := range map[string]struct {
+		path string
+		body interface{}
+		code string
+	}{
+		"AssignRole": {path: "/roles/" + ts.roleID + "/assignments/add", code: "ROL-1046",
+			body: map[string]interface{}{"assignments": []testutils.Assignment{assignment}}},
+		"CreateRoleWithAgent": {path: "/roles", code: "ROL-1046", body: testutils.Role{Name: "pa_suite_agent_role", OUID: ouID,
+			Assignments: []testutils.Assignment{assignment}}},
+		"AddToGroup": {path: "/groups/" + groupID + "/members/add", code: "GRP-1025",
+			body: map[string]interface{}{"members": []testutils.Member{member}}},
+		"CreateGroupWithAgent": {path: "/groups", code: "GRP-1025", body: testutils.Group{Name: "pa_suite_agent_group", OUID: ouID,
+			Members: []testutils.Member{member}}},
+	} {
+		ts.Run(name, func() {
+			resp, err := doPost(testServerURL+tc.path, tc.body)
+			ts.Require().NoError(err)
+			defer resp.Body.Close()
+			body := readBody(resp)
+			ts.Equal(http.StatusBadRequest, resp.StatusCode, body)
+			ts.Contains(body, tc.code)
+		})
+	}
+
+	ts.Run("RemovalSucceeds", func() {
+		ts.Require().NoError(testutils.RemoveRoleAssignments(ts.roleID, []testutils.Assignment{assignment}))
+		resp, err := doPost(testServerURL+"/groups/"+groupID+"/members/remove",
+			map[string]interface{}{"members": []testutils.Member{member}})
+		ts.Require().NoError(err)
+		defer resp.Body.Close()
+		ts.Equal(http.StatusOK, resp.StatusCode, readBody(resp))
+	})
+}
+
 // An owner lists and reads their personal agents with their own token, reading the same agent object an
 // administrator reads. Another user, the agent's own delegated token, and a request without a token get nothing.
 // The owner also reads an ordinary agent they own, which the list holds only when it is not narrowed to a kind.
@@ -526,6 +574,44 @@ func (ts *PersonalAgentTestSuite) TestOwnerResetsTheirAgentsPassword() {
 	adminResetBody := readBody(adminReset)
 	ts.Equal(http.StatusBadRequest, adminReset.StatusCode, adminResetBody)
 	ts.Contains(adminResetBody, "AGT-1069")
+}
+
+// With a sign-in older than the maximum authentication age, the owner's reset gets 401 with an RFC 9470
+// challenge that a browser application can read. The server restarts with a one-second age.
+func (ts *PersonalAgentTestSuite) TestOwnerResetNeedsARecentSignIn() {
+	t := ts.T()
+	agent := ts.createOwnedAgent("authorization_code")
+	defer func() { _ = deleteAgent(agent.id) }()
+	restore, err := testutils.RestartWithConfigSection("user", func(section map[string]interface{}) {
+		section["self_service"] = map[string]interface{}{"max_authentication_age_seconds": 1}
+	})
+	t.Cleanup(func() {
+		if err := restore(); err != nil {
+			t.Errorf("failed to restore the user config: %v", err)
+		}
+	})
+	ts.Require().NoError(err)
+
+	ownerToken := ts.userToken(ts.ownerUsername)
+	time.Sleep(2 * time.Second)
+	req, err := http.NewRequest(http.MethodPost, testServerURL+"/users/me/agents/"+agent.id+"/update-credentials",
+		strings.NewReader(`{"attributes":{"password":"Agent@Pass1234"}}`))
+	ts.Require().NoError(err)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+ownerToken)
+	// The origin the integration deployment's declarative CORS configuration allows.
+	req.Header.Set("Origin", "https://declarative.example.com")
+	resp, err := testutils.GetRawHTTPClient().Do(req)
+	ts.Require().NoError(err)
+	defer resp.Body.Close()
+	body := readBody(resp)
+
+	ts.Require().Equal(http.StatusUnauthorized, resp.StatusCode, body)
+	ts.Contains(body, "AUTH-4011")
+	challenge := resp.Header.Get("WWW-Authenticate")
+	ts.Contains(challenge, `error="insufficient_user_authentication"`)
+	ts.Contains(challenge, `max_age="1"`)
+	ts.Contains(resp.Header.Get("Access-Control-Expose-Headers"), "WWW-Authenticate")
 }
 
 // An administrator resets an ordinary agent's password. An update that names it is refused.

@@ -9,7 +9,9 @@ package providers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"reflect"
 	"regexp"
 	"slices"
 	"sort"
@@ -905,7 +907,7 @@ func (l AgentOwnerLocality) MarshalJSON() ([]byte, error) {
 }
 
 // UnmarshalJSON reads a boolean, or text, which is how a reference arrives. A null leaves the
-// locality unstated.
+// locality unstated. Any other value is a type error that names this type.
 func (l *AgentOwnerLocality) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		return nil
@@ -917,6 +919,10 @@ func (l *AgentOwnerLocality) UnmarshalJSON(data []byte) error {
 	}
 	var text string
 	if err := json.Unmarshal(data, &text); err != nil {
+		var typeErr *json.UnmarshalTypeError
+		if errors.As(err, &typeErr) {
+			return &json.UnmarshalTypeError{Value: typeErr.Value, Type: reflect.TypeFor[AgentOwnerLocality]()}
+		}
 		return err
 	}
 	*l = AgentOwnerLocality(text)
@@ -1417,6 +1423,21 @@ type ConsentDetailRow struct {
 	Origin string `json:"origin,omitempty"`
 	// Options lists the values the user may add to a list field, when the schema restricts them.
 	Options json.RawMessage `json:"options,omitempty"`
+	// Description is the description the type declares for the field, if any.
+	Description string `json:"description,omitempty"`
+	// Minimum and Maximum are the inclusive limits of a number or a date the user may change: the schema's
+	// own for a number, the field policy's for a date.
+	Minimum json.RawMessage `json:"minimum,omitempty"`
+	Maximum json.RawMessage `json:"maximum,omitempty"`
+	// ExclusiveMinimum and ExclusiveMaximum are the exclusive limits of a number the user may change.
+	ExclusiveMinimum json.RawMessage `json:"exclusiveMinimum,omitempty"`
+	ExclusiveMaximum json.RawMessage `json:"exclusiveMaximum,omitempty"`
+	// MultipleOf is the step a number the user may change must be a multiple of.
+	MultipleOf json.RawMessage `json:"multipleOf,omitempty"`
+	// MinItems is the fewest items the user may keep in a list whose items they may remove.
+	MinItems json.RawMessage `json:"minItems,omitempty"`
+	// MaxItems is the most items a list whose items the user may add may hold.
+	MaxItems json.RawMessage `json:"maxItems,omitempty"`
 }
 
 // AuthorizationDetailType is a registered RFC 9396 authorization details type.

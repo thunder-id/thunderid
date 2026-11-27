@@ -49,7 +49,7 @@ type RefreshTokenRevokerInterface interface {
 	RevokeRefreshToken(ctx context.Context, jti string, expiryTime time.Time) error
 }
 
-// CriteriaRevokerInterface is the narrow write seam for criteria-based (many-token) revocation: it
+// CriteriaRevokerInterface is the narrow seam for criteria-based (many-token) revocation: it
 // records a revocation criterion so every token matching it is rejected. The only criterion today is
 // token_family, which revokes a whole authorization grant by its token family id (tfid); the seam is
 // shaped so future criteria (e.g. by subject or client) reuse the same writer and store. It is
@@ -63,6 +63,10 @@ type CriteriaRevokerInterface interface {
 	// every access and refresh token carrying that tfid is rejected. An empty tokenFamilyID is a
 	// no-op. The write is idempotent.
 	RevokeTokenFamily(ctx context.Context, tokenFamilyID string, reason RevocationReason) error
+
+	// IsTokenFamilyRevoked reports whether the token family is revoked. It is false without a deny-list read
+	// when token revocation is disabled or tokenFamilyID is empty.
+	IsTokenFamilyRevoked(ctx context.Context, tokenFamilyID string) (bool, error)
 }
 
 // defaultTokenFamilyRevocationTTL bounds a family revocation entry when no refresh-token lifetime is
@@ -78,6 +82,7 @@ type revocationService struct {
 	// validationLeeway is how long past exp a token is still accepted, so every row outlives it by that much.
 	validationLeeway  time.Duration
 	revokeTokenFamily bool
+	denyListEnforced  bool
 	observabilitySvc  providers.ObservabilityProvider
 	// maxEntriesPerChange bounds one RevokeCriteriaBatch call.
 	maxEntriesPerChange int
@@ -91,12 +96,14 @@ type revocationService struct {
 // the whole family (so a login's access tokens drop with its refresh token). tokenFamilyLifetime bounds
 // each token-family deny-list entry (revoked_at + tokenFamilyLifetime); a non-positive value falls back
 // to defaultTokenFamilyRevocationTTL. validationLeeway extends every deny-list row by the JWT leeway.
+// denyListEnforced reports whether OAuth enforces the deny list, which it does while token revocation is enabled.
 func newRevocationService(
 	jwtService jwt.JWTServiceInterface,
 	store revocationStoreInterface,
 	tokenFamilyLifetime time.Duration,
 	validationLeeway time.Duration,
 	revokeTokenFamily bool,
+	denyListEnforced bool,
 	observabilitySvc providers.ObservabilityProvider,
 	maxEntriesPerChange int,
 ) RevocationServiceInterface {
@@ -109,6 +116,7 @@ func newRevocationService(
 		tokenFamilyLifetime: tokenFamilyLifetime,
 		validationLeeway:    max(validationLeeway, 0),
 		revokeTokenFamily:   revokeTokenFamily,
+		denyListEnforced:    denyListEnforced,
 		observabilitySvc:    observabilitySvc,
 		maxEntriesPerChange: maxEntriesPerChange,
 		logger:              log.GetLogger().With(log.String(log.LoggerKeyComponentName, "RevocationService")),
@@ -235,6 +243,15 @@ func (s *revocationService) RevokeTokenFamily(ctx context.Context, tokenFamilyID
 	return nil
 }
 
+// IsTokenFamilyRevoked implements CriteriaRevokerInterface.
+func (s *revocationService) IsTokenFamilyRevoked(ctx context.Context, tokenFamilyID string) (bool, error) {
+	if !s.denyListEnforced || tokenFamilyID == "" {
+		return false, nil
+	}
+	return s.store.areCriteriaRevoked(ctx,
+		[]Criterion{{Type: CriterionTypeTokenFamily, Value: tokenFamilyID}}, time.Now().UTC())
+}
+
 // RevokeCriteriaBatch validates every revocation before writing any of them; a repeated criterion counts once.
 func (s *revocationService) RevokeCriteriaBatch(ctx context.Context,
 	revocations []CriteriaRevocation) *tidcommon.ServiceError {
@@ -350,7 +367,9 @@ func isSupportedCriterionType(criterionType CriterionType) bool {
 	case CriterionTypeTokenFamily, CriterionTypeSubject, CriterionTypeApplicationID,
 		CriterionTypeApplicationKey, CriterionTypeOrganizationUnit, CriterionTypeRole,
 		CriterionTypeGroup, CriterionTypeConsent, CriterionTypeCredentialVersion,
-		CriterionTypeEntityScope, CriterionTypeEntityScopeSubtree, CriterionTypeScope:
+		CriterionTypeEntityScope, CriterionTypeEntityScopeSubtree, CriterionTypeScope,
+		CriterionTypeSubjectOU, CriterionTypeApplicationKeyOU, CriterionTypeEntityScopeOU,
+		CriterionTypeEntityScopeSubtreeOU:
 		return true
 	default:
 		return false

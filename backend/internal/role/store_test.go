@@ -2296,24 +2296,32 @@ func (suite *RoleStoreTestSuite) TestDeleteAssignmentsByRoleID() {
 }
 
 func (suite *RoleStoreTestSuite) TestDeleteAssignmentsInOU() {
-	suite.Run("success", func() {
+	suite.Run("success returns what was removed", func() {
 		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
-		suite.mockDBClient.On("ExecuteContext", mock.Anything, queryDeleteRoleAssignmentsInOU,
-			"role1", "ou-child", testDeploymentID).Return(int64(2), nil).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryDeleteRoleAssignmentsInOU,
+			"role1", "ou-child", testDeploymentID).Return([]map[string]interface{}{
+			{"assignee_id": "user-1", "assignee_type": "user", "assignment_ou_id": "ou-child", "sharing_policy_id": ""},
+		}, nil).Once()
 
-		suite.NoError(suite.store.DeleteAssignmentsInOU(context.Background(), "role1", "ou-child"))
+		removed, err := suite.store.DeleteAssignmentsInOU(context.Background(), "role1", "ou-child")
+
+		suite.Require().NoError(err)
+		suite.Require().Len(removed, 1)
+		suite.Equal("user-1", removed[0].ID)
 	})
 	suite.Run("db error is propagated", func() {
 		suite.mockDBProvider.On("GetConfigDBClient").Return(suite.mockDBClient, nil).Once()
-		suite.mockDBClient.On("ExecuteContext", mock.Anything, queryDeleteRoleAssignmentsInOU,
-			"role1", "ou-child", testDeploymentID).Return(int64(0), errors.New("db error")).Once()
+		suite.mockDBClient.On("QueryContext", mock.Anything, queryDeleteRoleAssignmentsInOU,
+			"role1", "ou-child", testDeploymentID).Return(nil, errors.New("db error")).Once()
 
-		suite.Error(suite.store.DeleteAssignmentsInOU(context.Background(), "role1", "ou-child"))
+		_, err := suite.store.DeleteAssignmentsInOU(context.Background(), "role1", "ou-child")
+		suite.Error(err)
 	})
 	suite.Run("db client error is propagated", func() {
 		suite.mockDBProvider.On("GetConfigDBClient").Return(nil, errors.New("no client")).Once()
 
-		suite.Error(suite.store.DeleteAssignmentsInOU(context.Background(), "role1", "ou-child"))
+		_, err := suite.store.DeleteAssignmentsInOU(context.Background(), "role1", "ou-child")
+		suite.Error(err)
 	})
 }
 

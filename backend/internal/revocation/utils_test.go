@@ -183,3 +183,76 @@ func (s *RevocationUtilsTestSuite) TestScopeCriteria_IncludesFrozenSubtreeKeysFo
 		}
 	}
 }
+
+func (s *RevocationUtilsTestSuite) TestOUValues_UnitSeparatesTheSameGrant() {
+	s.NotEqual(SubjectOUCriterionValue("user-1", "ou-a"), SubjectOUCriterionValue("user-1", "ou-b"))
+	s.NotEqual(ApplicationKeyOUCriterionValue("client-1", "ou-a"), ApplicationKeyOUCriterionValue("client-1", "ou-b"))
+	s.NotEqual(EntityScopeOUCriterionValue("user-1", "aud", "read", "ou-a"),
+		EntityScopeOUCriterionValue("user-1", "aud", "read", "ou-b"))
+	s.NotEqual(EntityScopeSubtreeOUCriterionValue("user-1", "aud", "reports", ":", "ou-a"),
+		EntityScopeSubtreeOUCriterionValue("user-1", "aud", "reports", ":", "ou-b"))
+}
+
+func (s *RevocationUtilsTestSuite) TestOUValues_DoNotCollideWithTheirUnscopedValues() {
+	s.NotEqual(EntityScopeCriterionValue("user-1", "aud", "read"),
+		EntityScopeOUCriterionValue("user-1", "aud", "read", ""))
+	s.NotEqual(EntityScopeSubtreeCriterionValue("user-1", "aud", "reports", ":"),
+		EntityScopeSubtreeOUCriterionValue("user-1", "aud", "reports", ":", ""))
+}
+
+func (s *RevocationUtilsTestSuite) TestTokenOUID_ReadsTheUnitTheTokenWasIssuedIn() {
+	s.Equal("ou-a", TokenOUID(map[string]interface{}{"sub": "user-1", "ouId": "ou-a"}))
+	s.Equal("ou-a", TokenOUID(map[string]interface{}{
+		"sub": "client-1", "access_token_sub": "user-1", "access_token_ou_id": "ou-a", "ouId": "ou-b",
+	}), "a refresh token states the unit its access tokens are issued in")
+	s.Empty(TokenOUID(map[string]interface{}{"sub": "user-1"}))
+	s.Empty(TokenOUID(map[string]interface{}{"sub": "client-1", "access_token_sub": "user-1", "ouId": "ou-b"}),
+		"a refresh token's own ouId is not its access tokens' unit")
+	s.Empty(TokenOUID(map[string]interface{}{"ouId": 7}))
+}
+
+func (s *RevocationUtilsTestSuite) TestOUCriteria_CoversSubjectClientAndEveryScopeWithinTheUnit() {
+	const subject, client, ouID, audience = "user-1", "client-1", "ou-a", "https://api.example.com"
+	criteria := OUCriteria(subject, client, ouID, []string{audience}, []string{"reports:view"})
+
+	s.Contains(criteria, Criterion{Type: CriterionTypeSubjectOU, Value: SubjectOUCriterionValue(subject, ouID)})
+	s.Contains(criteria, Criterion{Type: CriterionTypeApplicationKeyOU,
+		Value: ApplicationKeyOUCriterionValue(client, ouID)})
+	s.Contains(criteria, Criterion{Type: CriterionTypeEntityScopeOU,
+		Value: EntityScopeOUCriterionValue(subject, audience, "reports:view", ouID)})
+	for _, root := range []string{"reports", "reports:view"} {
+		s.Contains(criteria, Criterion{Type: CriterionTypeEntityScopeSubtreeOU,
+			Value: EntityScopeSubtreeOUCriterionValue(subject, audience, root, ":", ouID)})
+	}
+	for _, criterion := range criteria {
+		s.NotContains([]CriterionType{CriterionTypeSubject, CriterionTypeApplicationKey, CriterionTypeEntityScope,
+			CriterionTypeEntityScopeSubtree, CriterionTypeScope}, criterion.Type, "only unit-scoped criteria")
+	}
+}
+
+func (s *RevocationUtilsTestSuite) TestOUCriteria_ATokenStatingNoUnitHasNone() {
+	s.Nil(OUCriteria("user-1", "client-1", "", []string{"aud"}, []string{"read"}))
+	s.Nil(OUScopeCriteria("user-1", "", []string{"aud"}, []string{"read"}))
+}
+
+func (s *RevocationUtilsTestSuite) TestOUCriteria_WithoutASubjectOnlyTheClientIsChecked() {
+	criteria := OUCriteria("", "client-1", "ou-a", []string{"aud"}, []string{"read"})
+
+	s.Equal([]Criterion{{Type: CriterionTypeApplicationKeyOU,
+		Value: ApplicationKeyOUCriterionValue("client-1", "ou-a")}}, criteria)
+}
+
+func (s *RevocationUtilsTestSuite) TestOUScopeCriteria_ListsEachSubtreeKeyOnce() {
+	criteria := OUScopeCriteria("user-1", "ou-a", []string{"aud"}, []string{"reports", "reports"})
+
+	seen := map[Criterion]int{}
+	for _, criterion := range criteria {
+		if criterion.Type == CriterionTypeEntityScopeSubtreeOU {
+			seen[criterion]++
+		}
+	}
+	s.NotEmpty(seen)
+	for criterion, count := range seen {
+		s.Equal(1, count, "%v", criterion)
+	}
+}

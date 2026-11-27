@@ -27,6 +27,7 @@ import (
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 	"github.com/thunder-id/thunderid/tests/mocks/eventbusmock"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 )
 
 const (
@@ -93,6 +94,7 @@ type ResourceServiceAuditTestSuite struct {
 	store   *resourceStoreInterfaceMock
 	ou      *oumock.OrganizationUnitServiceInterfaceMock
 	project *projectOUValidatorMock
+	sharing *sharingmock.SharingServiceInterfaceMock
 }
 
 func TestResourceServiceAuditTestSuite(t *testing.T) {
@@ -117,13 +119,14 @@ func (s *ResourceServiceAuditTestSuite) resetMocks() {
 	s.store = newResourceStoreInterfaceMock(s.T())
 	s.ou = oumock.NewOrganizationUnitServiceInterfaceMock(s.T())
 	s.project = newProjectOUValidatorMock(s.T())
+	s.sharing = sharingmock.NewSharingServiceInterfaceMock(s.T())
 	s.store.On("IsResourceServerDeclarative", mock.Anything).Return(false).Maybe()
 }
 
 // newService returns a resource service over the store mock that publishes on bus.
 func (s *ResourceServiceAuditTestSuite) newService(bus eventbus.EventBusInterface) ResourceServiceInterface {
 	service, err := newResourceService(s.ou, s.store, &fakeTransactioner{}, nil, nil, s.project, bus,
-		allowAllAuthz(s.T()))
+		allowAllAuthz(s.T()), s.sharing)
 	s.Require().NoError(err)
 	service.SetDependencyRegistry(resourcedependency.Initialize(service))
 	return service
@@ -344,6 +347,8 @@ func (s *ResourceServiceAuditTestSuite) TestDeleteResourceServer_PublishesOneEve
 				Return(tc.hasDependencies, nil)
 			if tc.outcome == audit.OutcomeSucceeded {
 				s.store.On("DeleteResourceServer", mock.Anything, testAuditServerID).Return(nil)
+				s.sharing.On("DeletePoliciesForResource", mock.Anything, ResourceServerSharingType,
+					testAuditServerID).Return(nil)
 			}
 
 			svcErr := service.DeleteResourceServer(adminContext(), testAuditServerID)
@@ -704,7 +709,7 @@ func (s *ResourceServiceAuditTestSuite) TestCreateResourceServer_SucceedsWhenThe
 }
 
 func (s *ResourceServiceAuditTestSuite) TestInitialize_RefusesANilEventBus() {
-	service, exporter, err := Initialize(http.NewServeMux(), s.ou, nil, nil, nil, nil, nil)
+	service, exporter, err := Initialize(http.NewServeMux(), s.ou, nil, nil, nil, nil, nil, nil)
 
 	s.ErrorIs(err, errNilEventBus)
 	s.Nil(service)

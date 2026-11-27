@@ -19,6 +19,7 @@ import (
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
 
+	agentcommon "github.com/thunder-id/thunderid/internal/agent/common"
 	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/entitytype"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
@@ -88,6 +89,9 @@ type GroupServiceInterface interface {
 	// GetMemberGroupIDs returns the IDs of the groups the member directly belongs to. It performs no
 	// authorization check of its own.
 	GetMemberGroupIDs(ctx context.Context, member Member) ([]string, *tidcommon.ServiceError)
+	// IsDeclarativeOnly reports whether groups are kept only in declarative files, which hold no
+	// writable memberships.
+	IsDeclarativeOnly() bool
 	AddMembersToGroups(ctx context.Context, members []Member,
 		groupIDs []string) *tidcommon.ServiceError
 	GetResourceDependencies(
@@ -121,6 +125,7 @@ type groupService struct {
 	// managed says which groups and members a control plane deployed, which stay read only here. Nil
 	// where nothing is deployed from one.
 	managed managedresource.StoreInterface
+	logger  *log.Logger
 }
 
 // newGroupServiceWithStore creates a new instance of GroupService with an externally provided store.
@@ -145,6 +150,7 @@ func newGroupServiceWithStore(
 		sharingService:    sharingService,
 		bus:               bus,
 		projectValidator:  projectValidator,
+		logger:            log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)),
 	}
 }
 
@@ -467,7 +473,7 @@ func (gs *groupService) createGroup(ctx context.Context, request CreateGroupRequ
 		return nil, err
 	}
 
-	if err := gs.validateEntityMembers(ctx, request.Members, request.OUID, true); err != nil {
+	if err := gs.validateEntityMembers(ctx, request.Members, request.OUID, true, true); err != nil {
 		return nil, err
 	}
 
@@ -1100,7 +1106,7 @@ func (gs *groupService) RemoveGroupMembers(
 // ValidateRemoveGroupMembers runs the checks RemoveGroupMembers runs before it changes anything.
 func (gs *groupService) ValidateRemoveGroupMembers(
 	ctx context.Context, groupID string, members []Member) *tidcommon.ServiceError {
-	if _, svcErr := gs.validateMembershipChange(ctx, groupID, members, false); svcErr != nil {
+	if _, svcErr := gs.validateMembershipChange(ctx, groupID, members, false, false); svcErr != nil {
 		return svcErr
 	}
 	if svcErr := gs.checkMembersRemovable(ctx, groupID, members); svcErr != nil {
@@ -1154,7 +1160,7 @@ func (gs *groupService) modifyGroupMembers(
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	isMemberOUCheckRequired := !removing
 
-	checkedOUID, svcErr := gs.validateMembershipChange(ctx, groupID, members, isMemberOUCheckRequired)
+	checkedOUID, svcErr := gs.validateMembershipChange(ctx, groupID, members, isMemberOUCheckRequired, !removing)
 	if svcErr != nil {
 		return nil, svcErr
 	}
@@ -1301,9 +1307,10 @@ func (gs *groupService) revokeRemovedMembers(ctx context.Context, groupID string
 
 // validateMembershipChange runs the checks shared by adding and removing group members, and returns
 // the organization unit the members were checked against. checkOU also refuses members the group's
-// organization unit neither owns nor has shared with it.
+// organization unit neither owns nor has shared with it, and isAddingOp members that cannot be added to groups.
 func (gs *groupService) validateMembershipChange(
-	ctx context.Context, groupID string, members []Member, checkOU bool) (string, *tidcommon.ServiceError) {
+	ctx context.Context, groupID string, members []Member, checkOU, isAddingOp bool,
+) (string, *tidcommon.ServiceError) {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
 	if groupID == "" {
@@ -1340,7 +1347,7 @@ func (gs *groupService) validateMembershipChange(
 		return "", svcErr
 	}
 
-	if svcErr := gs.validateEntityMembers(ctx, members, existingGroup.OUID, checkOU); svcErr != nil {
+	if svcErr := gs.validateEntityMembers(ctx, members, existingGroup.OUID, checkOU, isAddingOp); svcErr != nil {
 		return "", svcErr
 	}
 
@@ -1393,9 +1400,9 @@ func validateMemberTypes(members []Member) *tidcommon.ServiceError {
 
 // validateEntityMembers validates user, app and agent members before normalization. It checks that
 // each exists and that its claimed type matches its category. checkOU also refuses members the
-// group's organization unit neither owns nor has shared with it.
+// group's organization unit neither owns nor has shared with it, and isAddingOp members that cannot be added to groups.
 func (gs *groupService) validateEntityMembers(
-	ctx context.Context, members []Member, groupOUID string, checkOU bool,
+	ctx context.Context, members []Member, groupOUID string, checkOU, isAddingOp bool,
 ) *tidcommon.ServiceError {
 	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 
@@ -1434,6 +1441,9 @@ func (gs *groupService) validateEntityMembers(
 			logger.Debug(ctx, "Member type mismatch", log.String("id", entities[i].ID),
 				log.String("claimed", string(claimed)), log.String("actual", string(actual)))
 			return &ErrorInvalidMemberID
+		}
+		if isAddingOp && agentcommon.IsPersonalAgent(entities[i]) {
+			return &ErrorPersonalAgentNotAssignable
 		}
 	}
 
@@ -1929,17 +1939,16 @@ func (gs *groupService) AddMemberToExistingGroups(
 	if svcErr != nil {
 		return svcErr
 	}
-	logger := log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName))
 	entityIDs, memberGroupIDs := splitMemberIDs([]Member{member})
 	available := make([]string, 0, len(groups))
 	for _, id := range slices.Sorted(maps.Keys(groups)) {
 		unavailableIDs, err := gs.findMembersNotAvailableInOU(ctx, groups[id].OUID, entityIDs, memberGroupIDs)
 		if err != nil {
-			logger.Error(ctx, "Failed to check member organization units", log.Error(err))
+			gs.logger.Error(ctx, "Failed to check member organization units", log.Error(err))
 			return &tidcommon.InternalServerError
 		}
 		if len(unavailableIDs) > 0 {
-			logger.Debug(ctx, "Skipping group outside the member's organization units", log.String("groupID", id))
+			gs.logger.Debug(ctx, "Skipping group outside the member's organization units", log.String("groupID", id))
 			continue
 		}
 		available = append(available, id)
@@ -1958,11 +1967,17 @@ func (gs *groupService) GetMemberGroupIDs(ctx context.Context, member Member) ([
 	stored := normalizeMembers([]Member{member})[0]
 	groupIDs, err := gs.groupStore.GetMemberGroupIDs(ctx, string(stored.Type), stored.ID)
 	if err != nil {
-		log.GetLogger().With(log.String(log.LoggerKeyComponentName, loggerComponentName)).Error(ctx,
-			"Failed to get the member's groups", log.MaskedString("memberID", member.ID), log.Error(err))
+		gs.logger.Error(ctx, "Failed to get the member's groups", log.MaskedString("memberID", member.ID),
+			log.Error(err))
 		return nil, &tidcommon.InternalServerError
 	}
 	return groupIDs, nil
+}
+
+// IsDeclarativeOnly reports whether groups are kept only in declarative files, which hold no writable
+// memberships.
+func (gs *groupService) IsDeclarativeOnly() bool {
+	return isGroupDeclarativeModeEnabled()
 }
 
 // convertGroupDAOToGroup constructs a Group from a GroupDAO.

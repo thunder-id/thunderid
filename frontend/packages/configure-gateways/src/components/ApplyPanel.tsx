@@ -3,6 +3,7 @@
 
 import {QueryErrorNotice} from '@thunderid/components';
 import {useCapabilitiesContext, useHiddenResources} from '@thunderid/contexts';
+import {isForbidden} from '@thunderid/utils';
 import {
   Alert,
   AlertTitle,
@@ -42,7 +43,7 @@ import useGatewayErrorTranslator from '../hooks/useGatewayErrorTranslator';
 import useGatewayValueAccess from '../hooks/useGatewayValueAccess';
 import type {ApplyResult, Change, MasterEntry, Refusal, StoredValue, ValueReference, Version} from '../models/deploy';
 import type {Gateway} from '../models/gateway';
-import {errorCodeOf, failureText, isForbidden, REMOVALS_NEED_CONFIRMATION} from '../utils/apiError';
+import {errorCodeOf, failureText, REMOVALS_NEED_CONFIRMATION} from '../utils/apiError';
 import {carriedWithProject, projectNeeds, sharedByDefault, sharedMissing} from '../utils/changeSummary';
 import {humanize} from '../utils/groupByResource';
 import {fromListText, toListText} from '../utils/listValue';

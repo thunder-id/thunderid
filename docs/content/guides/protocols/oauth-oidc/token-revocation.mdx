@@ -7,7 +7,7 @@ description: RFC 7009 token revocation in {{ProductName}}, from revoking a singl
 
 # Token Revocation
 
-**Token Revocation** ([RFC 7009](https://datatracker.ietf.org/doc/html/rfc7009)) lets a client tell <ProductName /> that a token should stop working before it expires. <ProductName /> extends this with broader scopes, so an operational event such as a sign-out, a user deletion, an account suspension, an application deletion, a role deletion, a group deletion, a role assignment removal, a role permission removal, or an action deletion can invalidate many tokens at once.
+**Token Revocation** ([RFC 7009](https://datatracker.ietf.org/doc/html/rfc7009)) lets a client tell <ProductName /> that a token should stop working before it expires. <ProductName /> extends this with broader scopes, so an operational event such as a sign-out, a user deletion, an account suspension, an application deletion, a role deletion, a group deletion, a role assignment removal, a role permission removal, an action deletion, or taking a shared resource away from an organization unit can invalidate many tokens at once.
 
 Access tokens are self-contained JWTs, so a resource server that validates them locally has no way to know a token was revoked. <ProductName /> solves this with a denylist that both the authorization server and resource servers consult. The scopes below differ only in what goes on that list.
 
@@ -16,11 +16,12 @@ Access tokens are self-contained JWTs, so a resource server that validates them 
 | Scope | What it invalidates | Typical trigger |
 |---|---|---|
 | **Single token** | One token, by its `jti` | A client calls `/oauth2/revoke`; a refresh token is rotated |
-| **Grant** | Every token of one authorization grant, by its `tfid` | Sign-out, refresh-token replay, authorization-code replay |
+| **Grant** | Every token of one token family, by its `tfid`: one authorization grant, or an application's grants in one SSO session and organization unit | Sign-out, refresh-token replay, authorization-code replay |
 | **Subject** | Every token issued to one user, agent, or application, by its `sub` | A user, agent, or application is deleted, or suspended; a user's or agent's credential is replaced |
 | **Client** | Every token issued through one OAuth client, by its client ID | An application or agent is deleted, suspended, or has its client secret replaced |
 | **Subject and permission** | Every token issued to one user, agent, or application that carries one of the given permissions for its audience | A group whose roles grant those permissions is deleted, for each of its members, or a member is removed from it; a role stops granting a permission, for each of its holders |
 | **Permission** | Every token carrying one permission for one resource server's audience, whoever holds it | An action is deleted |
+| **Organization unit** | Every token issued in one organization unit to one user or application, through one OAuth client, or to one holder carrying one of the given permissions | A user, application, or role is unshared from the unit |
 
 A token is rejected if **any** of these matches.
 
@@ -60,13 +61,13 @@ RFC 7009 §2.1 requires the server to verify that the token was issued to the au
 
 Revoking one token of a grant usually should not leave its siblings working. Five refreshes produce a chain of access and refresh tokens that all descend from the same authorization, and revoking the newest refresh token alone would leave live access tokens behind.
 
-<ProductName /> groups these into a **token family**, identified by a `tfid` claim carried on every token of the grant. By default, revoking any token of a family revokes the family in both directions: revoking a refresh token invalidates the access tokens issued alongside it, and revoking an access token invalidates the refresh token that would mint replacements. [What Revokes a Family](#what-revokes-a-family) below lists the setting that controls this, along with the other triggers.
+<ProductName /> groups these into a **token family**, identified by a `tfid` claim carried on every token of the grant. When an application signs in more than once in the same SSO session and organization unit, those grants share one family, as [Where `tfid` Comes From](#where-tfid-comes-from) describes. By default, revoking any token of a family revokes the family in both directions: revoking a refresh token invalidates the access tokens issued alongside it, and revoking an access token invalidates the refresh token that would mint replacements. [What Revokes a Family](#what-revokes-a-family) below lists the setting that controls this, along with the other triggers.
 
 ### Where `tfid` Comes From
 
 | Flow | Behavior |
 |---|---|
-| Authorization code with SSO | Minted when the session is established and stored against the session participant, which is what makes sign-out revocation possible |
+| Authorization code with SSO | Generated when the application first joins the session and stored against its session participant, which is what makes sign-out revocation possible. Later sign-ins by the same application in that session and organization unit, such as from a second tab or a silent `prompt=none` request, reuse the family. Sign-out revokes all of them, and so does any trigger in [What Revokes a Family](#what-revokes-a-family) that fires for one of them, such as revoking one of their tokens or replaying a refresh token or authorization code. If the family has been revoked, the next sign-in gets a new one |
 | Authorization code without SSO | Minted when the authorization code is created, so the grant is still revocable |
 | Refresh | Copied to the new tokens, so a family survives rotation |
 | Token exchange | Copied from a subject token issued by this server, with or without an `actor_token`. Revoking the grant the subject token came from also revokes the exchanged token. A subject token with no `tfid`, or one issued by another server, gives an exchanged token with none |
@@ -214,6 +215,44 @@ Deleting an action revokes every token that carries the action's permission for 
 The revocation runs as two system flows, as for [client deletion](#client-deletion-and-secret-regeneration): one before the action is removed and one after. A failure before the write leaves the action as it was. Once the removal is committed, the second flow moves the cutoff to the time it runs, so a token issued while the action was being removed is revoked too. If that second flow fails, the failure is reported as an error, but the action is already removed: the tokens the first flow revoked stay revoked, and deleting the action again finds nothing to delete and revokes nothing more. No API reruns the second flow or revokes a permission on its own, so a token issued while the action was being removed stays valid until it expires, unless it is revoked through `/oauth2/revoke`.
 
 Action deletion has no administration flow. The `actionDeletionFlow` server configuration entry, its `default-action-deletion-flow` default, and the **Delete Action** executor (`ActionDeletionExecutor`) are removed, so a custom flow that used them no longer runs. Drop any `actionDeletionFlow` entry from the `flow` server configuration, delete the stored `default-action-deletion-flow` from a deployment bootstrapped before this change (`DELETE /flows/{id}`, or from the Console's flows page), remove the executor from custom flows, and delete actions from the Console or through the API above.
+
+## Unsharing
+
+Taking a shared user, application, or role away from an organization unit revokes what was issued for it in that unit. A sharing policy takes a resource away from a unit when an edit stops naming the unit or excludes it, when the policy is deleted, or when an import changes or removes the policy. A unit also loses the resource when the reshare that reached it goes with the policy above it. This happens whichever way the policy changes: from the Console, through the `sharing-policies` API of the user, application, or role, or through the import API.
+
+| Resource | What is revoked in the unit that loses it |
+|---|---|
+| **User** | Every token issued to the user in that unit |
+| **Application** | Every token issued to it, or through its OAuth client, in that unit |
+| **Role** | Every token issued in that unit to someone who held the role through an assignment made there, directly or through a group, when the token carries one of the role's permissions. That includes a holder assigned the role there after the revocation was planned: the change records every assignment it takes away in the unit, and that holder's tokens are revoked with the rest. |
+
+A user's tokens and a role holder's tokens match by their `sub` claim, as for [subject-scoped revocation](#subject-scoped-revocation). A user's tokens from an application that maps the subject to another attribute (`subjectAttribute`) are not revoked when the user or a role is unshared, and stay valid until they expire. Unsharing that application still revokes them through its client ID.
+
+A user share that stops mandating a role in a unit, while the user stays shared there, revokes the role's permissions in that unit: every token issued there to the user that carries one of them. A user who still holds the role in that unit through a direct assignment, or through another share's mandate, keeps it, and nothing is revoked. A user who holds it there only through a group has those tokens revoked anyway, as for [role assignment removal](#role-assignment-removal); a new token gets the permissions again. A change that drops several mandates of the role for the user revokes once the last of them goes.
+
+Tokens issued in a unit that keeps the resource, and in the unit that owns it, stay valid. A change that takes the resource away from no unit, such as sharing it with more units or changing only what a unit may do with it, revokes nothing. Deleting the resource itself revokes everywhere, as described in [Deletion](#deletion) and [Role Deletion](#role-deletion).
+
+When the Console changes how a policy reaches its units, for example from named units to all child units or the other way round, it deletes the policy and creates a new one. Tokens issued in every unit the old policy reached are revoked, including the units the new policy reaches too.
+
+The revocation runs as two system flows, as for [client deletion](#client-deletion-and-secret-regeneration): for a user or an application, once for all the units it loses; for a role, once for each unit, so the entry limit below holds for each unit. The first runs before the policy is changed and revokes the tokens issued up to that point. The second runs after the change is written and moves the cutoff to that moment, so a token issued while the change was being written is revoked too. A change that takes the resource away from no unit runs no flow and is written once.
+
+A change the API refuses before any flow runs, such as one based on a stale policy version, revokes nothing. If a first flow fails, or the change is refused after the first flows ran, the policy is left as it was, but what the earlier first flows revoked stays revoked, as for [role assignment removal](#role-assignment-removal). Retry the change to complete it. If a second flow fails, the request returns an error even though the change is already saved, and the other second flows still run. Retrying does not revoke more: a retried delete finds no policy, and a retried edit is refused on its version. A token issued in the units that flow covers while the change was being written stays valid until it expires.
+
+The change is refused, and the policy kept, when the revocation cannot cover it:
+
+| Error | Refused when | What to do |
+|---|---|---|
+| `USR-1032`, `APP-1054`, or `ROL-1024` from the API; `SHR-1032` from an import | The resource's sharing changed while its revocation ran, so the change would take the resource away from a unit the revocation did not cover. | Retry the change. |
+| `RVS-1001` | Unsharing a role needs more entries in one unit than `oauth.revocation.criteria.max_entries_per_change` allows (`10000` by default). It records about one entry for each holder in the unit and each scope the role grants. | Remove some of the role's assignments in that unit first, then change the policy. Or raise the limit. |
+| `GRP-1017` | A holder reaches the role in that unit through a group nested too deep to walk. | Flatten the group hierarchy so that every member is within the supported depth. |
+| `ROL-1017` | The server reads roles from both files and the database, and the role has more assignments than it can read in that mode. | Remove some of the role's assignments first, then change the policy. |
+
+Unsharing does not revoke in these cases:
+
+- **A token that states no unit.** Only a token that states the unit it was issued in can be revoked this way. A user's access token states it in its `ouId` claim when the application lists `ouId` in its access token's user attributes, and an application's own token when the application lists it in the client attributes. A refresh token takes its unit from the access token it was issued with. A token issued by token exchange, a device secret exchange included, states its unit under the same rule. A token that states no unit stays valid until it expires, so list `ouId` in both attribute lists of every application used across organization units.
+- **A declared policy.** A policy declared in a resource file changes only when the file does, so editing it and restarting takes the resource away without revoking anything.
+- **A moved organization unit.** Moving a unit under another parent can take a resource away from it, and revokes nothing.
+- **A control plane.** A control plane issues no tokens. A sharing change made there revokes on each data plane once it applies the configuration version that carries the change.
 
 ## Where Revocation Is Enforced
 

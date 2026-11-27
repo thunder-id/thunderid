@@ -31,6 +31,37 @@ func ScopeCriterionValue(audience, scope string) string {
 	return digest(audience, scope)
 }
 
+// SubjectOUCriterionValue returns the value denying one subject within one organization unit.
+func SubjectOUCriterionValue(subject, ouID string) string {
+	return digest(subject, ouID)
+}
+
+// ApplicationKeyOUCriterionValue returns the value denying one OAuth client within one organization unit.
+func ApplicationKeyOUCriterionValue(clientKey, ouID string) string {
+	return digest(clientKey, ouID)
+}
+
+// EntityScopeOUCriterionValue returns the value denying one scope for one principal within one organization unit.
+func EntityScopeOUCriterionValue(entityID, audience, scope, ouID string) string {
+	return digest(entityID, audience, scope, ouID)
+}
+
+// EntityScopeSubtreeOUCriterionValue binds a subtree to its principal, audience, delimiter and organization unit.
+func EntityScopeSubtreeOUCriterionValue(entityID, audience, root, delimiter, ouID string) string {
+	return digest(entityID, audience, root, delimiter, ouID)
+}
+
+// TokenOUID returns the organization unit a token was issued in: access_token_ou_id on a refresh token, ouId
+// otherwise. Empty when the token states none.
+func TokenOUID(claims map[string]interface{}) string {
+	claim := constants.ClaimOUID
+	if accessTokenSubject, _ := claims[constants.ClaimAccessTokenSubject].(string); accessTokenSubject != "" {
+		claim = constants.ClaimAccessTokenOUID
+	}
+	ouID, _ := claims[claim].(string)
+	return ouID
+}
+
 // TokenAudiences reads the audiences of a token carrying scopes, failing closed when the claim is malformed.
 func TokenAudiences(claims map[string]interface{}, scopes []string) ([]string, error) {
 	if len(scopes) == 0 {
@@ -94,28 +125,80 @@ func SubtreeScopeCriteria(subject string, audiences, scopes []string) []Criterio
 	seen := map[Criterion]bool{}
 	for _, audience := range audiences {
 		for _, scope := range scopes {
-			for _, separator := range serverconst.ValidPermissionDelimiters {
-				delimiter := string(separator)
-				root := scope
-				for root != "" {
-					criterion := Criterion{
-						Type:  CriterionTypeEntityScopeSubtree,
-						Value: EntityScopeSubtreeCriterionValue(subject, audience, root, delimiter),
-					}
-					if !seen[criterion] {
-						seen[criterion] = true
-						criteria = append(criteria, criterion)
-					}
-					index := strings.LastIndex(root, delimiter)
-					if index < 0 {
-						break
-					}
-					root = root[:index]
+			forEachSubtreeRoot(scope, func(root, delimiter string) {
+				criterion := Criterion{
+					Type:  CriterionTypeEntityScopeSubtree,
+					Value: EntityScopeSubtreeCriterionValue(subject, audience, root, delimiter),
 				}
-			}
+				if !seen[criterion] {
+					seen[criterion] = true
+					criteria = append(criteria, criterion)
+				}
+			})
 		}
 	}
 	return criteria
+}
+
+// OUCriteria returns the criteria a token issued in ouID is checked against within that unit: its subject, its
+// OAuth client, and each scope it carries for its subject. A token stating no unit has none.
+func OUCriteria(subject, clientKey, ouID string, audiences, scopes []string) []Criterion {
+	if ouID == "" {
+		return nil
+	}
+	criteria := []Criterion{}
+	if subject != "" {
+		criteria = append(criteria, Criterion{
+			Type: CriterionTypeSubjectOU, Value: SubjectOUCriterionValue(subject, ouID)})
+	}
+	if clientKey != "" {
+		criteria = append(criteria, Criterion{
+			Type: CriterionTypeApplicationKeyOU, Value: ApplicationKeyOUCriterionValue(clientKey, ouID)})
+	}
+	return append(criteria, OUScopeCriteria(subject, ouID, audiences, scopes)...)
+}
+
+// OUScopeCriteria returns the criteria revoking each scope on each audience for one principal within ouID, the
+// subtrees above each scope included.
+func OUScopeCriteria(subject, ouID string, audiences, scopes []string) []Criterion {
+	if subject == "" || ouID == "" {
+		return nil
+	}
+	criteria := []Criterion{}
+	seen := map[Criterion]bool{}
+	for _, audience := range audiences {
+		for _, scope := range scopes {
+			criteria = append(criteria, Criterion{
+				Type: CriterionTypeEntityScopeOU, Value: EntityScopeOUCriterionValue(subject, audience, scope, ouID)})
+			forEachSubtreeRoot(scope, func(root, delimiter string) {
+				criterion := Criterion{
+					Type:  CriterionTypeEntityScopeSubtreeOU,
+					Value: EntityScopeSubtreeOUCriterionValue(subject, audience, root, delimiter, ouID),
+				}
+				if !seen[criterion] {
+					seen[criterion] = true
+					criteria = append(criteria, criterion)
+				}
+			})
+		}
+	}
+	return criteria
+}
+
+// forEachSubtreeRoot calls fn with every prefix of scope, the scope included, under each valid delimiter.
+func forEachSubtreeRoot(scope string, fn func(root, delimiter string)) {
+	for _, separator := range serverconst.ValidPermissionDelimiters {
+		delimiter := string(separator)
+		root := scope
+		for root != "" {
+			fn(root, delimiter)
+			index := strings.LastIndex(root, delimiter)
+			if index < 0 {
+				break
+			}
+			root = root[:index]
+		}
+	}
 }
 
 // digest returns the hex SHA-256 of the length-prefixed parts, so differently split parts never collide.

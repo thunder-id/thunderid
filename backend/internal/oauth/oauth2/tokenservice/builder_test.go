@@ -3042,6 +3042,94 @@ func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_CarriesTheIssuingOU() 
 	}
 }
 
+func (suite *TokenBuilderTestSuite) TestBuildAccessToken_CarriesAuthTime() {
+	const authTime = int64(1700000000)
+	tests := []struct {
+		name       string
+		authTime   int64
+		attributes map[string]interface{}
+	}{
+		{"auth time set", authTime, map[string]interface{}{}},
+		{"no auth time", 0, map[string]interface{}{}},
+		{"attribute does not set auth time", authTime,
+			map[string]interface{}{constants.ClaimAuthTime: "attribute-value"}},
+		{"attribute does not add auth time", 0, map[string]interface{}{constants.ClaimAuthTime: "attribute-value"}},
+	}
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			suite.SetupTest()
+			buildCtx := &AccessTokenBuildContext{
+				Subject:           "user123",
+				Audiences:         []string{testAppID},
+				ClientID:          "test-client",
+				Scopes:            []string{"read"},
+				GrantType:         string(providers.GrantTypeAuthorizationCode),
+				OAuthApp:          suite.oauthApp,
+				SubjectAttributes: tt.attributes,
+				AuthTime:          tt.authTime,
+			}
+
+			suite.mockJWTService.On("GenerateJWT",
+				mock.Anything, "user123", "https://example.com", mock.Anything,
+				mock.MatchedBy(func(claims map[string]interface{}) bool {
+					value, stamped := claims[constants.ClaimAuthTime]
+					if tt.authTime == 0 {
+						return !stamped
+					}
+					return value == tt.authTime
+				}), mock.Anything, mock.Anything,
+			).Return(testAccessToken, time.Now().Unix(), nil)
+
+			result, err := suite.builder.BuildAccessToken(context.Background(), buildCtx)
+
+			assert.NoError(suite.T(), err)
+			assert.Equal(suite.T(), tt.authTime, result.AuthTime)
+			suite.mockJWTService.AssertExpectations(suite.T())
+		})
+	}
+}
+
+func (suite *TokenBuilderTestSuite) TestBuildRefreshToken_CarriesAuthTime() {
+	tests := []struct {
+		name     string
+		authTime int64
+	}{
+		{"auth time set", 1700000000},
+		{"no auth time", 0},
+	}
+	for _, tt := range tests {
+		suite.Run(tt.name, func() {
+			suite.SetupTest()
+			ctx := &RefreshTokenBuildContext{
+				ClientID:             "test-client",
+				Scopes:               []string{"openid"},
+				GrantType:            string(providers.GrantTypeAuthorizationCode),
+				AccessTokenSubject:   "user123",
+				AccessTokenAudiences: []string{testAppID},
+				OAuthApp:             suite.oauthApp,
+				AuthTime:             tt.authTime,
+			}
+
+			suite.mockJWTService.On("GenerateJWT",
+				mock.Anything, "test-client", "https://example.com", mock.Anything,
+				mock.MatchedBy(func(claims map[string]interface{}) bool {
+					value, stamped := claims[constants.ClaimAuthTime]
+					if tt.authTime == 0 {
+						return !stamped
+					}
+					return value == tt.authTime
+				}), mock.Anything, mock.Anything,
+			).Return(testRefreshToken, time.Now().Unix(), nil)
+
+			result, err := suite.builder.BuildRefreshToken(context.Background(), ctx)
+
+			assert.NoError(suite.T(), err)
+			assert.Equal(suite.T(), testRefreshToken, result.Token)
+			suite.mockJWTService.AssertExpectations(suite.T())
+		})
+	}
+}
+
 func (suite *TokenBuilderTestSuite) TestBuildAccessToken_CarriesAuthorizationDetails() {
 	details := json.RawMessage(`[{"type":"payment_initiation","id":"d1"}]`)
 	buildCtx := &AccessTokenBuildContext{

@@ -16,6 +16,7 @@ import (
 
 const (
 	columnNameJTI            = "jti"
+	columnNameCriterionType  = "criterion_type"
 	columnNameCriterionValue = "criterion_value"
 	columnNameExpiryTime     = "expiry_time"
 	columnNameRevokedAt      = "revoked_at"
@@ -27,7 +28,19 @@ const (
 	criterionTypeEntityScope        = string(revocation.CriterionTypeEntityScope)
 	criterionTypeEntityScopeSubtree = string(revocation.CriterionTypeEntityScopeSubtree)
 	criterionTypeScope              = string(revocation.CriterionTypeScope)
+	// The organization unit scoped criterion types.
+	criterionTypeSubjectOU            = string(revocation.CriterionTypeSubjectOU)
+	criterionTypeAppKeyOU             = string(revocation.CriterionTypeApplicationKeyOU)
+	criterionTypeEntityScopeOU        = string(revocation.CriterionTypeEntityScopeOU)
+	criterionTypeEntityScopeSubtreeOU = string(revocation.CriterionTypeEntityScopeSubtreeOU)
 )
+
+// boundedCriterionTypes are the criterion types read with their reason and cutoff, all in one query.
+var boundedCriterionTypes = []string{
+	criterionTypeSubject, criterionTypeAppKey, criterionTypeEntityScope, criterionTypeEntityScopeSubtree,
+	criterionTypeScope, criterionTypeSubjectOU, criterionTypeAppKeyOU, criterionTypeEntityScopeOU,
+	criterionTypeEntityScopeSubtreeOU,
+}
 
 // dbSource reads the deny-list snapshot from the runtime persistent database. It is the only source today; it
 // issues a single read-only bulk query per sync and never writes.
@@ -72,59 +85,43 @@ func (s *dbSource) Snapshot(ctx context.Context) (revokedSnapshot, error) {
 		return revokedSnapshot{}, err
 	}
 
-	subjectRows, err := dbClient.QueryContext(ctx, querySnapshotBoundedCriteria,
-		criterionTypeSubject, now, s.deploymentID)
-	if err != nil {
-		return revokedSnapshot{}, fmt.Errorf("error reading revoked subject snapshot: %w", err)
-	}
-	subjects, err := parseBoundedEntries(subjectRows)
-	if err != nil {
-		return revokedSnapshot{}, err
-	}
-
-	appKeyRows, err := dbClient.QueryContext(ctx, querySnapshotBoundedCriteria,
-		criterionTypeAppKey, now, s.deploymentID)
-	if err != nil {
-		return revokedSnapshot{}, fmt.Errorf("error reading revoked application snapshot: %w", err)
-	}
-	appKeys, err := parseBoundedEntries(appKeyRows)
-	if err != nil {
-		return revokedSnapshot{}, err
-	}
-
-	entityScopeRows, err := dbClient.QueryContext(ctx, querySnapshotBoundedCriteria,
-		criterionTypeEntityScope, now, s.deploymentID)
-	if err != nil {
-		return revokedSnapshot{}, fmt.Errorf("error reading revoked entity scope snapshot: %w", err)
-	}
-	entityScopes, err := parseBoundedEntries(entityScopeRows)
-	if err != nil {
-		return revokedSnapshot{}, err
-	}
-
-	scopeRows, err := dbClient.QueryContext(ctx, querySnapshotBoundedCriteria,
-		criterionTypeScope, now, s.deploymentID)
-	if err != nil {
-		return revokedSnapshot{}, fmt.Errorf("error reading revoked scope snapshot: %w", err)
-	}
-	scopes, err := parseBoundedEntries(scopeRows)
-	if err != nil {
-		return revokedSnapshot{}, err
-	}
-
-	subtreeRows, err := dbClient.QueryContext(ctx, querySnapshotBoundedCriteria,
-		criterionTypeEntityScopeSubtree, now, s.deploymentID)
-	if err != nil {
-		return revokedSnapshot{}, fmt.Errorf("error reading revoked subtree snapshot: %w", err)
-	}
-	subtrees, err := parseBoundedEntries(subtreeRows)
+	bounded, err := s.boundedSnapshot(ctx, dbClient, now)
 	if err != nil {
 		return revokedSnapshot{}, err
 	}
 	return revokedSnapshot{
-		Tokens: tokens, Families: families, Subjects: subjects, AppKeys: appKeys,
-		EntityScopes: entityScopes, EntityScopeSubtrees: subtrees, Scopes: scopes,
+		Tokens: tokens, Families: families,
+		Subjects: bounded[criterionTypeSubject], AppKeys: bounded[criterionTypeAppKey],
+		EntityScopes: bounded[criterionTypeEntityScope], EntityScopeSubtrees: bounded[criterionTypeEntityScopeSubtree],
+		Scopes: bounded[criterionTypeScope], SubjectOUs: bounded[criterionTypeSubjectOU],
+		AppKeyOUs: bounded[criterionTypeAppKeyOU], EntityScopeOUs: bounded[criterionTypeEntityScopeOU],
+		EntityScopeSubtreeOUs: bounded[criterionTypeEntityScopeSubtreeOU],
 	}, nil
+}
+
+// boundedSnapshot reads every bounded criterion type in one query and returns their entries by type.
+func (s *dbSource) boundedSnapshot(ctx context.Context, dbClient provider.DBClientInterface, now time.Time) (
+	map[string][]revokedEntry, error) {
+	args := make([]interface{}, 0, len(boundedCriterionTypes)+2)
+	for _, criterionType := range boundedCriterionTypes {
+		args = append(args, criterionType)
+	}
+	rows, err := dbClient.QueryContext(ctx, querySnapshotBoundedCriteria, append(args, now, s.deploymentID)...)
+	if err != nil {
+		return nil, fmt.Errorf("error reading revoked criteria snapshot: %w", err)
+	}
+	rowsByType := make(map[string][]map[string]interface{}, len(boundedCriterionTypes))
+	for _, row := range rows {
+		criterionType, _ := row[columnNameCriterionType].(string)
+		rowsByType[criterionType] = append(rowsByType[criterionType], row)
+	}
+	bounded := make(map[string][]revokedEntry, len(boundedCriterionTypes))
+	for _, criterionType := range boundedCriterionTypes {
+		if bounded[criterionType], err = parseBoundedEntries(rowsByType[criterionType]); err != nil {
+			return nil, err
+		}
+	}
+	return bounded, nil
 }
 
 // parseBoundedEntries maps criteria of one dimension and retains their establishment cutoff, so a

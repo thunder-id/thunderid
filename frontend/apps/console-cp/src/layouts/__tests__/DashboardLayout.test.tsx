@@ -218,6 +218,20 @@ describe('DashboardLayout', () => {
     expect(screen.getByTestId('outlet')).toHaveTextContent('Outlet Content');
   });
 
+  it('lets a page grow with its content, so it scrolls together with the banner', () => {
+    render(<DashboardLayout />);
+
+    expect(getComputedStyle(screen.getByTestId('outlet')).flexShrink).toBe('0');
+  });
+
+  it('fits a builder page to the space below the banner, so its panels scroll on their own', () => {
+    render(<DashboardLayout fitPage />);
+
+    const page = getComputedStyle(screen.getByTestId('outlet'));
+    expect(page.flexShrink).toBe('1');
+    expect(parseFloat(page.minHeight)).toBe(0);
+  });
+
   it('offers no project selector while there are no projects', () => {
     render(<DashboardLayout />);
 

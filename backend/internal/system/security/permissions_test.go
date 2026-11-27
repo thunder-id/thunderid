@@ -623,6 +623,24 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 			name:   "DELETE action updates the resource server",
 			method: http.MethodDelete, path: "/resource-servers/rs-1/actions/a-1", wantPerm: p.ResourceServerUpdate,
 		},
+		{
+			name:   "POST resource server sharing policy updates the resource server",
+			method: http.MethodPost, path: "/resource-servers/rs-1/sharing-policies", wantPerm: p.ResourceServerUpdate,
+		},
+		{
+			name:   "PUT resource server sharing policy updates the resource server",
+			method: http.MethodPut, path: "/resource-servers/rs-1/sharing-policies/p-1",
+			wantPerm: p.ResourceServerUpdate,
+		},
+		{
+			name:   "DELETE resource server sharing policy updates the resource server",
+			method: http.MethodDelete, path: "/resource-servers/rs-1/sharing-policies/p-1",
+			wantPerm: p.ResourceServerUpdate,
+		},
+		{
+			name:   "GET resource server overlay rules reads the resource server",
+			method: http.MethodGet, path: "/resource-servers/rs-1/overlay-rules", wantPerm: p.ResourceServerView,
+		},
 
 		// ---- Connection APIs ----
 		{name: "GET /connections", method: http.MethodGet, path: "/connections", wantPerm: p.ConnectionView},
@@ -959,6 +977,11 @@ func TestGetRequiredPermissionForAPI(t *testing.T) {
 			name:   "GET /users/me/profile wins over /users/ prefix",
 			method: http.MethodGet, path: "/users/me/profile", wantPerm: "",
 		},
+
+		// ---- Session management paths ----
+		{name: "GET /sessions falls back to system on the control plane", method: http.MethodGet, path: "/sessions",
+			wantPerm: p.Root},
+		{name: "GET /users/me/sessions self-service", method: http.MethodGet, path: "/users/me/sessions", wantPerm: ""},
 
 		// ---- OU tree paths ----
 		{
@@ -1309,6 +1332,21 @@ func TestControlPlaneCatalogMatchesResourceServer(t *testing.T) {
 	delimiter, declared := declaredPermissions(t, controlPlaneResourceServerPath, rsControlPlane)
 	assert.Equal(t, ":", delimiter)
 	assert.ElementsMatch(t, GetSystemPermissions().Catalog, declared)
+}
+
+// TestControlPlaneDeclaresNoSessionPermission verifies that the Control Plane, which serves no sessions,
+// declares no session permission, so the session routes fall back to the system root.
+func TestControlPlaneDeclaresNoSessionPermission(t *testing.T) {
+	InitControlPlanePermissions("")
+	p := GetSystemPermissions()
+	assert.Empty(t, p.SessionView)
+	for _, perm := range p.Catalog {
+		assert.NotContains(t, perm, ":"+string(ResourceTypeSession))
+	}
+
+	svc, err := newSecurityService(nil, nil, []string{}, apiPermissionEntries)
+	require.NoError(t, err)
+	assert.Equal(t, p.Root, svc.getRequiredPermissionForAPI(http.MethodGet, "/sessions"))
 }
 
 // TestSystemCatalogKeepsExistingPermissions verifies that the catalog holds every permission

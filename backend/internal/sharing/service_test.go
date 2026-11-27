@@ -393,13 +393,19 @@ type cleanerDeclaration struct {
 	answer  func(ouID string) error
 }
 
+// The test cleaner and write hooks must keep implementing their interfaces, which are only found by type assertion.
+var (
+	_ OverlayCleaner   = (*cleanerDeclaration)(nil)
+	_ PolicyWriteHooks = (*writeHookDeclaration)(nil)
+)
+
 // DeleteOverlayValues makes the declaration an OverlayCleaner.
-func (d *cleanerDeclaration) DeleteOverlayValues(_ context.Context, _, ouID string) error {
+func (d *cleanerDeclaration) DeleteOverlayValues(_ context.Context, _, ouID string) ([]string, error) {
 	d.cleaned = append(d.cleaned, ouID)
 	if d.answer == nil {
-		return nil
+		return nil, nil
 	}
-	return d.answer(ouID)
+	return nil, d.answer(ouID)
 }
 
 // unresolvedOwnerDeclaration resolves no owner until resolvable is set, which is the window the
@@ -5802,23 +5808,25 @@ type writeHookDeclaration struct {
 }
 
 // OnPolicyWritten records the policy written.
-func (d *writeHookDeclaration) OnPolicyWritten(ctx context.Context, p Policy) *tidcommon.ServiceError {
+func (d *writeHookDeclaration) OnPolicyWritten(ctx context.Context, p Policy) ([]Revocation,
+	*tidcommon.ServiceError) {
 	d.assert.NotNil(ctx.Value(txMarker{}), "the hook for %s is handed the transaction's context", p.ID)
 	d.written = append(d.written, p)
 	if d.answer == nil {
-		return nil
+		return nil, nil
 	}
-	return d.answer(p, false)
+	return nil, d.answer(p, false)
 }
 
 // OnPolicyRemoved records the policy removed.
-func (d *writeHookDeclaration) OnPolicyRemoved(ctx context.Context, p Policy) *tidcommon.ServiceError {
+func (d *writeHookDeclaration) OnPolicyRemoved(ctx context.Context, p Policy) ([]Revocation,
+	*tidcommon.ServiceError) {
 	d.assert.NotNil(ctx.Value(txMarker{}), "the hook for %s is handed the transaction's context", p.ID)
 	d.removed = append(d.removed, p)
 	if d.answer == nil {
-		return nil
+		return nil, nil
 	}
-	return d.answer(p, true)
+	return nil, d.answer(p, true)
 }
 
 // withWriteHooks rebuilds the suite's service over the same stores with a rolling-back transactioner, registering the

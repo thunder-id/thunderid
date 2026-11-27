@@ -14,6 +14,7 @@ groups:
       - openid4vp
       - usertype
       - inboundclient
+      - federateddeclarative
     suites:
       governance:
         - TestExistingAccessTestSuite
@@ -38,6 +39,7 @@ groups:
       - export
       - agenttype
       - flow/flowmeta
+      - session
       - oauth/discovery
       - managementapikey
       - healthcheck
@@ -50,6 +52,7 @@ groups:
       - oauth/introspect
       - authorizationdetail
       - role
+      - sharing
       - authzen
       - projects
       - design

@@ -8,6 +8,7 @@ import {
   SettingsCard,
   UnsavedChangesBar,
 } from '@thunderid/components';
+import {OrganizationAccessSettings, useOrganizationAccess} from '@thunderid/configure-resource-sharing';
 import {
   useCapabilitiesContext,
   useHiddenResources,
@@ -67,6 +68,8 @@ function TabPanel({children = undefined, value, index}: TabPanelProps): JSX.Elem
     <Box
       role="tabpanel"
       hidden={value !== index}
+      id={`resource-server-tabpanel-${index}`}
+      aria-labelledby={`resource-server-tab-${index}`}
       sx={{pt: 3, height: value === index ? 'auto' : 0, overflow: 'hidden'}}
     >
       {value === index && children}
@@ -75,10 +78,19 @@ function TabPanel({children = undefined, value, index}: TabPanelProps): JSX.Elem
 }
 
 const TAB_RESOURCES = 0;
-const TAB_ADVANCED = 1;
+const TAB_ORGANIZATION_ACCESS = 1;
+const TAB_ADVANCED = 2;
 
+/**
+ * A resource server's page. Its body is keyed by the resource server in the URL, so moving to another resource
+ * server starts it afresh: unsaved edits and an Organization Access draft belong to the server they were made for.
+ */
 export default function ResourceServerEditPage(): JSX.Element {
   const {resourceServerId} = useParams<{resourceServerId: string}>();
+  return <ResourceServerEdit key={resourceServerId} resourceServerId={resourceServerId} />;
+}
+
+function ResourceServerEdit({resourceServerId}: {resourceServerId: string | undefined}): JSX.Element {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const routes = useResourceServerRoutes();
@@ -112,6 +124,14 @@ export default function ResourceServerEditPage(): JSX.Element {
 
   const initialTab = searchParams.get('tab') === 'advanced' ? TAB_ADVANCED : TAB_RESOURCES;
   const [activeTab, setActiveTab] = useState(initialTab);
+  // The sharing policies load once the Organization Access tab is first opened, then stay loaded for the visit.
+  const [accessTabOpened, setAccessTabOpened] = useState(false);
+  // Held here rather than in its tab, because inactive tabs unmount and the draft must survive them.
+  const organizationAccess = useOrganizationAccess({
+    resourcePath: `resource-servers/${resourceServerId}`,
+    enabled: Boolean(resourceServerId) && accessTabOpened,
+    wordingNamespace: 'resourceServers',
+  });
 
   const [editedFields, setEditedFields] = useState<Partial<EditedFields>>({});
   const [isEditingName, setIsEditingName] = useState(false);
@@ -120,9 +140,13 @@ export default function ResourceServerEditPage(): JSX.Element {
   const [tempDescription, setTempDescription] = useState('');
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [defaultDialogOpen, setDefaultDialogOpen] = useState(false);
+  // One flag over the whole save (resource server update, then access save), so the Organization Access tab stays
+  // locked until the access draft is cleared: an edit made in between would be cleared without being saved.
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleTabChange = (_e: SyntheticEvent, newValue: number): void => {
     setActiveTab(newValue);
+    if (newValue === TAB_ORGANIZATION_ACCESS) setAccessTabOpened(true);
   };
 
   const handleFieldChange = <Field extends keyof EditedFields>(field: Field, value: EditedFields[Field]): void => {
@@ -134,7 +158,7 @@ export default function ResourceServerEditPage(): JSX.Element {
 
   // Compare each edited field against its saved value, ignoring empty/null differences and
   // surrounding whitespace, so typing a value back to its original clears the unsaved bar.
-  const hasChanges = useMemo(() => {
+  const hasFieldChanges = useMemo(() => {
     const norm = (v: unknown): unknown => (typeof v === 'string' ? v.trim() : v);
     const originalOf: Record<string, unknown> = {
       name: resourceServer?.name,
@@ -147,6 +171,7 @@ export default function ResourceServerEditPage(): JSX.Element {
       ([key, value]) => !isEqualIgnoringEmpty(norm(value), norm(originalOf[key])),
     );
   }, [editedFields, resourceServer]);
+  const hasChanges = hasFieldChanges || organizationAccess.hasChanges;
 
   // An MCP identifier must be an http or https URL. Like the backend, only check a value the user changed,
   // so a saved identifier from before the rule keeps the server editable.
@@ -157,8 +182,29 @@ export default function ResourceServerEditPage(): JSX.Element {
     editedIdentifier !== (resourceServer.identifier ?? '').trim() &&
     !isValidMcpServerIdentifier(editedIdentifier);
 
+  const saveOrganizationAccess = (): void => {
+    if (!organizationAccess.hasChanges) {
+      setIsSubmitting(false);
+      return;
+    }
+    organizationAccess
+      .save()
+      .catch((err: unknown) => {
+        logger.error("Failed to update the resource server's organization access", {error: err});
+      })
+      .finally(() => setIsSubmitting(false));
+  };
+
   const handleSave = (): void => {
-    if (!resourceServer) return;
+    if (!resourceServer || isSubmitting) return;
+
+    // The resource server is saved first, so a refused organization access change leaves its own settings saved
+    // and only the access draft waiting to be retried. A refused update stops the save before the access is touched.
+    if (!hasFieldChanges) {
+      setIsSubmitting(true);
+      saveOrganizationAccess();
+      return;
+    }
 
     const nextIdentifier =
       'identifier' in editedFields ? (editedFields.identifier ?? '').trim() : (resourceServer.identifier ?? '').trim();
@@ -174,6 +220,7 @@ export default function ResourceServerEditPage(): JSX.Element {
         ? editedFields.pdpConnectionId
         : resourceServer.authorizationEngine?.properties?.pdpConnectionId;
 
+    setIsSubmitting(true);
     updateRs.mutate(
       {
         id: resourceServer.id,
@@ -197,8 +244,10 @@ export default function ResourceServerEditPage(): JSX.Element {
         onSuccess: () => {
           setEditedFields({});
           void refetch();
+          saveOrganizationAccess();
         },
         onError: (err: Error) => {
+          setIsSubmitting(false);
           logger.error('Failed to update resource server', {error: err});
         },
       },
@@ -436,9 +485,15 @@ export default function ResourceServerEditPage(): JSX.Element {
           sx={{textTransform: 'none'}}
         />
         <Tab
-          label={t('resourceServers:edit.tab.advanced', 'Advanced')}
+          label={t('resourceServers:edit.tab.organizationAccess', 'Organization Access')}
           id="resource-server-tab-1"
           aria-controls="resource-server-tabpanel-1"
+          sx={{textTransform: 'none'}}
+        />
+        <Tab
+          label={t('resourceServers:edit.tab.advanced', 'Advanced')}
+          id="resource-server-tab-2"
+          aria-controls="resource-server-tabpanel-2"
           sx={{textTransform: 'none'}}
         />
       </Tabs>
@@ -452,6 +507,16 @@ export default function ResourceServerEditPage(): JSX.Element {
             }}
           />
         </Box>
+      </TabPanel>
+
+      <TabPanel value={activeTab} index={TAB_ORGANIZATION_ACCESS}>
+        <OrganizationAccessSettings
+          access={organizationAccess}
+          ownerOuId={resourceServer.ouId}
+          resourceName={resourceServer.name}
+          readOnly={isReadOnly || isSubmitting}
+          errorNamespace="resourceServers"
+        />
       </TabPanel>
 
       <TabPanel value={activeTab} index={TAB_ADVANCED}>
@@ -519,24 +584,34 @@ export default function ResourceServerEditPage(): JSX.Element {
         />
       </TabPanel>
 
-      {hasChanges && (
+      {(hasChanges || isSubmitting) && (
         <UnsavedChangesBar
           message={t('resourceServers:edit.unsavedChanges', 'You have unsaved changes.')}
           resetLabel={t('common:actions.reset', 'Reset')}
           saveLabel={t('common:save', 'Save')}
           savingLabel={t('common:saving', 'Saving…')}
-          isSaving={updateRs.isPending}
+          isSaving={isSubmitting || updateRs.isPending || organizationAccess.isSaving}
+          resetDisabled={isSubmitting || updateRs.isPending || organizationAccess.isSaving}
           saveDisabled={isReadOnly || isIdentifierInvalid}
           error={
-            updateRs.error
+            (updateRs.error
               ? getErrorMessage(updateRs.error, tForErrors, 'edit.saveError', 'Failed to save changes.')
-              : undefined
+              : undefined) ??
+            (organizationAccess.saveError
+              ? getErrorMessage(
+                  organizationAccess.saveError,
+                  tForErrors,
+                  'edit.organizationAccess.saveError',
+                  'Failed to update organization access. Please try again.',
+                )
+              : undefined)
           }
           onReset={() => {
             if (updateRs.isError) {
               updateRs.reset(); // a save error is stale once the form resets
             }
             setEditedFields({});
+            organizationAccess.reset();
           }}
           onSave={handleSave}
         />

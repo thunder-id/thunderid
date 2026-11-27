@@ -15,6 +15,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/agentmgtprovider"
 	"github.com/thunder-id/thunderid/internal/attributecache"
 	"github.com/thunder-id/thunderid/internal/authn/assert"
+	"github.com/thunder-id/thunderid/internal/authnprovider/federatedsync"
 	authnprovidermgr "github.com/thunder-id/thunderid/internal/authnprovider/manager"
 	authzdetailexec "github.com/thunder-id/thunderid/internal/authzdetail/exec"
 	flowconfig "github.com/thunder-id/thunderid/internal/flow/config"
@@ -148,9 +149,10 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	// unwritten, no worker starts and the bus needs no stopping.
 	auditBus, _, _ := eventbus.Initialize()
 
+	// The engine stores no accounts, so a federated sign-in's mapping goes to the session only.
 	authnProviderManager, err := authnprovidermgr.Initialize(
 		engineCtx.defaultAuthnProvider, engineCtx.customAuthnProviders, auditBus,
-		authnprovidermgr.FederatedSyncDependencies{})
+		federatedsync.Initialize(engineCtx.idpProvider, nil, nil, nil, nil))
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize authn provider manager", log.Error(err))
 	}
@@ -251,7 +253,7 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	engineCtx.flowExecService, err = flowexec.Initialize(mux, nil, engineCtx.flowProvider, engineCtx.actorProvider,
 		engineCtx.ouProvider, engineCtx.execRegistry, engineCtx.interceptorRegistry, engineCtx.observabilitySvc,
 		engineCtx.runtimeCryptoSvc, engineCtx.attestationProvider, engineCtx.graphBuilder,
-		engineCtx.jwtService, engineCtx.runtimeStoreProvider, engineCtx.transactioner, nil, nil,
+		engineCtx.jwtService, engineCtx.runtimeStoreProvider, engineCtx.transactioner, nil, nil, nil,
 		engineCtx.identityGovernance, nil, nil, engineCtx.permissionProvider, flowConfig)
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize flow execution service", log.Error(err))

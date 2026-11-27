@@ -104,7 +104,7 @@ describe('AutoApplySwitch', () => {
         autoSync: {enabled: false, inherited: true},
       },
       'PUT /projects/p-shop/auto-sync': Object.assign(new Error('Request failed'), {
-        response: {status: 400, data: {code: 'SCF-1003'}},
+        response: {status: 403, data: {code: 'SCF-1007'}},
       }),
     });
     render(

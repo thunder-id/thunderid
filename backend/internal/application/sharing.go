@@ -8,6 +8,7 @@ import (
 
 	tidcommon "github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 
+	"github.com/thunder-id/thunderid/internal/entity"
 	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/security"
 )
@@ -32,6 +33,16 @@ func newApplicationSharingDeclaration(service ApplicationServiceInterface) *appl
 // ResourceType identifies applications to the sharing framework.
 func (d *applicationSharingDeclaration) ResourceType() sharing.ResourceType {
 	return ApplicationSharingType
+}
+
+// Unsharing an application revokes, so the declaration must keep implementing it.
+var _ sharing.UnshareRevoker = (*applicationSharingDeclaration)(nil)
+
+// UnshareRevocationFlow revokes, in a unit that loses the application, what was issued to it or through its OAuth
+// client.
+func (d *applicationSharingDeclaration) UnshareRevocationFlow() sharing.UnshareFlow {
+	return sharing.UnshareFlow{Handle: entity.SystemFlowEntityUnsharePre, ResourceInput: entity.SystemFlowInputEntity,
+		EveryUnit: true}
 }
 
 // Fields declares nothing: an application's configuration is global, not per-organization-unit

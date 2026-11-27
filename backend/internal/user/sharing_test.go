@@ -187,18 +187,18 @@ func (s *UserSharingTestSuite) TestWrittenPolicyAppliesItsMandates() {
 	p := policyNaming([]string{shareChildOU, shareOtherOU, "ou-plain"},
 		fixedRoles(shareChildOU, "role-a", "role-b"), fixedRoles(shareOtherOU, "role-c"))
 	f.assignments.EXPECT().ApplyMandatedAssignments(mock.Anything, sharePolicyID, mandatedAssignee,
-		map[string][]string{shareChildOU: {"role-a", "role-b"}, shareOtherOU: {"role-c"}}).Return(nil).Once()
+		map[string][]string{shareChildOU: {"role-a", "role-b"}, shareOtherOU: {"role-c"}}).Return(nil, nil).Once()
 
-	s.Nil(f.decl.OnPolicyWritten(context.Background(), p))
+	s.Nil(refusalOf(f.decl.OnPolicyWritten(context.Background(), p)))
 }
 
 // A policy naming no roles still syncs, so an update that drops every role removes its mandates.
 func (s *UserSharingTestSuite) TestPolicyWithoutRolesClearsItsMandates() {
 	f := s.newMandatesFixture()
 	f.assignments.EXPECT().ApplyMandatedAssignments(mock.Anything, sharePolicyID, mandatedAssignee,
-		map[string][]string{}).Return(nil).Once()
+		map[string][]string{}).Return(nil, nil).Once()
 
-	s.Nil(f.decl.OnPolicyWritten(context.Background(), policyNaming([]string{shareChildOU})))
+	s.Nil(refusalOf(f.decl.OnPolicyWritten(context.Background(), policyNaming([]string{shareChildOU}))))
 }
 
 // The same policy written twice applies the same mandates, which the role side makes idempotent.
@@ -206,18 +206,40 @@ func (s *UserSharingTestSuite) TestRewritingAPolicyAppliesTheSameMandates() {
 	f := s.newMandatesFixture()
 	p := policyNaming([]string{shareChildOU}, fixedRoles(shareChildOU, "role-a"))
 	f.assignments.EXPECT().ApplyMandatedAssignments(mock.Anything, sharePolicyID, mandatedAssignee,
-		map[string][]string{shareChildOU: {"role-a"}}).Return(nil).Twice()
+		map[string][]string{shareChildOU: {"role-a"}}).Return(nil, nil).Twice()
 
-	s.Nil(f.decl.OnPolicyWritten(context.Background(), p))
-	s.Nil(f.decl.OnPolicyWritten(context.Background(), p))
+	s.Nil(refusalOf(f.decl.OnPolicyWritten(context.Background(), p)))
+	s.Nil(refusalOf(f.decl.OnPolicyWritten(context.Background(), p)))
+}
+
+// refusalOf keeps the refusal of a write hook, for a test about the refusal rather than what it revokes.
+func refusalOf(_ []sharing.Revocation, svcErr *tidcommon.ServiceError) *tidcommon.ServiceError {
+	return svcErr
+}
+
+// The revocations the dropped mandates need come back from the hook, for the sharing change to run.
+func (s *UserSharingTestSuite) TestWriteHooksAnswerWithTheRevocationsTheirDroppedMandatesNeed() {
+	f := s.newMandatesFixture()
+	dropped := []sharing.Revocation{{PreFlow: "system-mandated-role-removal-pre",
+		Inputs: map[string]string{"targetRoleId": "role-a"}}}
+	f.assignments.EXPECT().ApplyMandatedAssignments(mock.Anything, sharePolicyID, mandatedAssignee,
+		map[string][]string{}).Return(dropped, nil).Once()
+	f.assignments.EXPECT().RemoveMandatedAssignments(mock.Anything, sharePolicyID).Return(dropped, nil).Once()
+
+	written, svcErr := f.decl.OnPolicyWritten(context.Background(), policyNaming([]string{shareChildOU}))
+	s.Require().Nil(svcErr)
+	s.Equal(dropped, written)
+	removed, svcErr := f.decl.OnPolicyRemoved(context.Background(), policyNaming([]string{shareChildOU}))
+	s.Require().Nil(svcErr)
+	s.Equal(dropped, removed)
 }
 
 // A deleted policy takes its mandates with it.
 func (s *UserSharingTestSuite) TestRemovedPolicyRemovesItsMandates() {
 	f := s.newMandatesFixture()
-	f.assignments.EXPECT().RemoveMandatedAssignments(mock.Anything, sharePolicyID).Return(nil).Once()
+	f.assignments.EXPECT().RemoveMandatedAssignments(mock.Anything, sharePolicyID).Return(nil, nil).Once()
 
-	s.Nil(f.decl.OnPolicyRemoved(context.Background(), policyNaming([]string{shareChildOU})))
+	s.Nil(refusalOf(f.decl.OnPolicyRemoved(context.Background(), policyNaming([]string{shareChildOU}))))
 }
 
 // The role side's refusal, a role not in the unit or one the caller may not grant, reaches the framework as given.
@@ -228,10 +250,10 @@ func (s *UserSharingTestSuite) TestRoleSideRefusalsPassThrough() {
 		s.Run(refusal.Code, func() {
 			f := s.newMandatesFixture()
 			f.assignments.EXPECT().ApplyMandatedAssignments(mock.Anything, sharePolicyID, mandatedAssignee,
-				mock.Anything).Return(&refusal).Once()
+				mock.Anything).Return(nil, &refusal).Once()
 
-			svcErr := f.decl.OnPolicyWritten(context.Background(),
-				policyNaming([]string{shareChildOU}, fixedRoles(shareChildOU, "role-a")))
+			svcErr := refusalOf(f.decl.OnPolicyWritten(context.Background(),
+				policyNaming([]string{shareChildOU}, fixedRoles(shareChildOU, "role-a"))))
 
 			s.Require().NotNil(svcErr)
 			s.Equal(refusal.Code, svcErr.Code)
@@ -256,7 +278,7 @@ func (s *UserSharingTestSuite) TestRolesOnlyOnNamedChildUnits() {
 			rule := fixedRoles("", "role-a")
 			rule.Grant = tc.grant
 
-			svcErr := f.decl.OnPolicyWritten(context.Background(), policyNaming(nil, rule))
+			svcErr := refusalOf(f.decl.OnPolicyWritten(context.Background(), policyNaming(nil, rule)))
 
 			s.Require().NotNil(svcErr)
 			s.Equal(ErrorRolesNotOnNamedUnit.Code, svcErr.Code)
@@ -274,10 +296,10 @@ func (s *UserSharingTestSuite) TestRolesNeedReachUnit() {
 			p.ChildUnits.Units[0].Reach = reach
 			if reach == sharing.ReachUnit {
 				f.assignments.EXPECT().ApplyMandatedAssignments(mock.Anything, sharePolicyID, mandatedAssignee,
-					map[string][]string{shareChildOU: {"role-a"}}).Return(nil).Once()
+					map[string][]string{shareChildOU: {"role-a"}}).Return(nil, nil).Once()
 			}
 
-			svcErr := f.decl.OnPolicyWritten(context.Background(), p)
+			svcErr := refusalOf(f.decl.OnPolicyWritten(context.Background(), p))
 
 			if reach == sharing.ReachUnit {
 				s.Nil(svcErr)
@@ -296,7 +318,7 @@ func (s *UserSharingTestSuite) TestDeclaredRolesNeedReachUnit() {
 	declared.ChildUnits.Units[0].Reach = sharing.ReachSubtree
 	declared.Declared = true
 
-	svcErr := f.decl.OnPolicyWritten(context.Background(), declared)
+	svcErr := refusalOf(f.decl.OnPolicyWritten(context.Background(), declared))
 
 	s.Require().NotNil(svcErr)
 	s.Equal(ErrorRolesNotOnNamedUnit.Code, svcErr.Code)
@@ -322,7 +344,8 @@ func (s *UserSharingTestSuite) TestRolesRuleMustBeFixed() {
 			rule := fixedRoles(shareChildOU)
 			rule.Requested = tc.rule
 
-			svcErr := f.decl.OnPolicyWritten(context.Background(), policyNaming([]string{shareChildOU}, rule))
+			svcErr := refusalOf(f.decl.OnPolicyWritten(context.Background(),
+				policyNaming([]string{shareChildOU}, rule)))
 
 			s.Require().NotNil(svcErr)
 			s.Equal(ErrorRolesRuleNotFixed.Code, svcErr.Code)
@@ -372,12 +395,13 @@ func (s *UserSharingTestSuite) TestWithoutRolesAPolicyWithRolesIsRefused() {
 	ctx := context.Background()
 
 	s.Nil(f.decl.ValidateMembers(ctx, svcTestUserID1, RolesFieldKey, shareOwnerOU, []string{"role-a"}))
-	svcErr := f.decl.OnPolicyWritten(ctx, policyNaming([]string{shareChildOU}, fixedRoles(shareChildOU, "role-a")))
+	svcErr := refusalOf(f.decl.OnPolicyWritten(ctx,
+		policyNaming([]string{shareChildOU}, fixedRoles(shareChildOU, "role-a"))))
 	s.Require().NotNil(svcErr)
 	s.Equal(tidcommon.InternalServerError.Code, svcErr.Code)
 
-	s.Nil(f.decl.OnPolicyWritten(ctx, policyNaming([]string{shareChildOU})))
-	s.Nil(f.decl.OnPolicyRemoved(ctx, policyNaming([]string{shareChildOU})))
+	s.Nil(refusalOf(f.decl.OnPolicyWritten(ctx, policyNaming([]string{shareChildOU}))))
+	s.Nil(refusalOf(f.decl.OnPolicyRemoved(ctx, policyNaming([]string{shareChildOU}))))
 }
 
 // A declared policy loads before roles. Its mandates wait for them, and are checked and applied once they are
@@ -388,20 +412,20 @@ func (s *UserSharingTestSuite) TestDeclaredMandatesWaitForRoles() {
 		fixedRoles(shareOtherOU, "role-a"))
 	declared.Declared = true
 
-	s.Nil(f.decl.OnPolicyWritten(context.Background(), declared))
+	s.Nil(refusalOf(f.decl.OnPolicyWritten(context.Background(), declared)))
 
 	runtimeCtx := mock.MatchedBy(security.IsRuntimeContext)
 	f.sharing.EXPECT().IsVisible(runtimeCtx, role.RoleSharingType, "role-a", shareOwnerOU).Return(true, nil).Once()
 	f.sharing.EXPECT().IsVisible(runtimeCtx, role.RoleSharingType, "role-b", shareOwnerOU).Return(true, nil).Once()
 	f.assignments.EXPECT().ApplyMandatedAssignments(runtimeCtx, sharePolicyID, mandatedAssignee,
-		map[string][]string{shareChildOU: {"role-a", "role-b"}, shareOtherOU: {"role-a"}}).Return(nil).Once()
+		map[string][]string{shareChildOU: {"role-a", "role-b"}, shareOtherOU: {"role-a"}}).Return(nil, nil).Once()
 
 	s.Require().NoError(f.decl.setRoleAssignments(context.Background(), f.assignments))
 	s.Empty(f.decl.pendingDeclared)
 
 	f.assignments.EXPECT().ApplyMandatedAssignments(mock.Anything, sharePolicyID, mandatedAssignee,
-		map[string][]string{shareChildOU: {"role-a", "role-b"}, shareOtherOU: {"role-a"}}).Return(nil).Once()
-	s.Nil(f.decl.OnPolicyWritten(context.Background(), declared))
+		map[string][]string{shareChildOU: {"role-a", "role-b"}, shareOtherOU: {"role-a"}}).Return(nil, nil).Once()
+	s.Nil(refusalOf(f.decl.OnPolicyWritten(context.Background(), declared)))
 }
 
 // A malformed roles rule in a declared policy is refused at load, without waiting for roles.
@@ -412,7 +436,7 @@ func (s *UserSharingTestSuite) TestDeclaredRolesRuleIsCheckedAtLoad() {
 	declared := policyNaming(nil, rule)
 	declared.Declared = true
 
-	svcErr := f.decl.OnPolicyWritten(context.Background(), declared)
+	svcErr := refusalOf(f.decl.OnPolicyWritten(context.Background(), declared))
 
 	s.Require().NotNil(svcErr)
 	s.Equal(ErrorRolesNotOnNamedUnit.Code, svcErr.Code)
@@ -434,7 +458,7 @@ func (s *UserSharingTestSuite) TestDeclaredMandatesThatFailStopStartup() {
 			f.sharing.EXPECT().IsVisible(mock.Anything, role.RoleSharingType, "role-a", shareOwnerOU).
 				Return(true, nil).Once()
 			f.assignments.EXPECT().ApplyMandatedAssignments(mock.Anything, sharePolicyID, mandatedAssignee,
-				mock.Anything).Return(&role.ErrorMandatedRoleNotInOU).Once()
+				mock.Anything).Return(nil, &role.ErrorMandatedRoleNotInOU).Once()
 		}, role.ErrorMandatedRoleNotInOU.Code},
 		{"UnknownUnit", func(f *mandatesFixture) {
 			f.sharing.EXPECT().IsVisible(mock.Anything, role.RoleSharingType, "role-a", shareOwnerOU).
@@ -446,7 +470,7 @@ func (s *UserSharingTestSuite) TestDeclaredMandatesThatFailStopStartup() {
 			f := s.newUnwiredMandatesFixture()
 			declared := policyNaming([]string{shareChildOU}, fixedRoles(shareChildOU, "role-a"))
 			declared.Declared = true
-			s.Require().Nil(f.decl.OnPolicyWritten(context.Background(), declared))
+			s.Require().Nil(refusalOf(f.decl.OnPolicyWritten(context.Background(), declared)))
 			tc.stub(f)
 
 			err := f.decl.setRoleAssignments(context.Background(), f.assignments)

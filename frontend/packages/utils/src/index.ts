@@ -26,6 +26,7 @@ export {default as formatRelativeTime} from './date/formatRelativeTime';
 
 // Error Utilities
 export {default as getErrorMessage} from './error/getErrorMessage';
+export {default as isForbidden} from './error/isForbidden';
 
 // Template Pattern Utilities
 export {default as isI18nTemplatePattern, I18N_PATTERN, I18N_KEY_PATTERN} from './template/isI18nTemplatePattern';

@@ -10,7 +10,7 @@ import {CanvasGap, CanvasGroup, CanvasRow, type CanvasActions} from './CanvasFie
 import elementChrome, {CANVAS_CONTAINER, CANVAS_SUMMARY_ID} from './elementChrome';
 import useComposerLabels from './useComposerLabels';
 import type {SchemaField} from '../../../models/authorization-detail-type';
-import {isConsentPreviewInvalid, type ConsentPreview} from '../../../utils/authorization-detail-schema';
+import {isConsentPreviewInvalid, trimSpace, type ConsentPreview} from '../../../utils/authorization-detail-schema';
 import {
   findField,
   moveAbilities,
@@ -130,7 +130,7 @@ const CanvasItem = memo(function CanvasItem({
   const {t} = useTranslation();
   const labels = useComposerLabels();
   const {selectedKey, tabKey, issueKeys, readOnly, abilities, actions} = shared;
-  const name = field.name.trim();
+  const name = trimSpace(field.name);
   const path = prefix ? `${prefix}.${name}` : name;
   const processorSupplied = inherited || field.policy.suppliedBy === 'processor';
   const common = {

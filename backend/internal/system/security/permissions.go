@@ -104,6 +104,8 @@ const (
 	ResourceTypeServerConfig ResourceType = "serverconfig"
 	// ResourceTypeConfigurationVersion identifies a configuration version resource.
 	ResourceTypeConfigurationVersion ResourceType = "configversion"
+	// ResourceTypeSession identifies an SSO session resource.
+	ResourceTypeSession ResourceType = "session"
 )
 
 // ---- Permission catalog ----
@@ -459,6 +461,7 @@ type SystemPermissions struct {
 	AppCreate                  string
 	AppUpdate                  string
 	AppDelete                  string
+	SessionView                string
 	// Catalog holds every permission the plane declares besides Root, in declaration order: each
 	// resource followed by its actions.
 	Catalog []string
@@ -735,10 +738,12 @@ func activatePermissions(p *SystemPermissions) {
 		{"PUT /roles/**", p.RoleUpdate},
 		{"DELETE /roles/**", p.RoleDelete},
 
-		// Resource server APIs. Resources and actions are part of the resource server they belong to, so
-		// changing one updates the resource server. These rules are listed before the "**" rules.
+		// Resource server APIs. Resources, actions and sharing policies are part of the resource server they
+		// belong to, so changing one updates the resource server. These rules are listed before the "**" rules.
 		{"GET /resource-servers", p.ResourceServerView},
 		{"POST /resource-servers", p.ResourceServerCreate},
+		{"POST /resource-servers/*/sharing-policies", p.ResourceServerUpdate},
+		{"DELETE /resource-servers/*/sharing-policies/**", p.ResourceServerUpdate},
 		{"POST /resource-servers/*/actions", p.ResourceServerUpdate},
 		{"POST /resource-servers/*/resources", p.ResourceServerUpdate},
 		{"POST /resource-servers/*/resources/*/actions", p.ResourceServerUpdate},
@@ -982,6 +987,14 @@ func activatePermissions(p *SystemPermissions) {
 			"create_project":    p.ProjectCreate,
 			"update_project":    p.ProjectUpdate,
 		})
+	}
+
+	// Only the Data Plane serves sessions. A plane that declares no session permission leaves the session
+	// APIs out, so they require the root permission.
+	if p.SessionView != "" {
+		apiPermissionEntries = append(apiPermissionEntries,
+			apiPermissionEntry{"GET /sessions", p.SessionView},
+		)
 	}
 
 	compiled, err := compileAPIPermissions(apiPermissionEntries)

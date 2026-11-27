@@ -9,6 +9,7 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 	"github.com/thunder-id/thunderid/internal/revocation"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/resourcedependency"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/common"
 	"github.com/thunder-id/thunderid/pkg/thunderidengine/providers"
@@ -278,6 +279,80 @@ func (_c *ResourceServiceInterfaceMock_CreateResourceServer_Call) RunAndReturn(r
 	return _c
 }
 
+// CreateSharingPolicy provides a mock function for the type ResourceServiceInterfaceMock
+func (_mock *ResourceServiceInterfaceMock) CreateSharingPolicy(ctx context.Context, resourceServerID string, req sharing.PolicyRequest) (sharing.Policy, *common.ServiceError) {
+	ret := _mock.Called(ctx, resourceServerID, req)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateSharingPolicy")
+	}
+
+	var r0 sharing.Policy
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, sharing.PolicyRequest) (sharing.Policy, *common.ServiceError)); ok {
+		return returnFunc(ctx, resourceServerID, req)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, sharing.PolicyRequest) sharing.Policy); ok {
+		r0 = returnFunc(ctx, resourceServerID, req)
+	} else {
+		r0 = ret.Get(0).(sharing.Policy)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, sharing.PolicyRequest) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, resourceServerID, req)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ResourceServiceInterfaceMock_CreateSharingPolicy_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateSharingPolicy'
+type ResourceServiceInterfaceMock_CreateSharingPolicy_Call struct {
+	*mock.Call
+}
+
+// CreateSharingPolicy is a helper method to define mock.On call
+//   - ctx context.Context
+//   - resourceServerID string
+//   - req sharing.PolicyRequest
+func (_e *ResourceServiceInterfaceMock_Expecter) CreateSharingPolicy(ctx any, resourceServerID any, req any) *ResourceServiceInterfaceMock_CreateSharingPolicy_Call {
+	return &ResourceServiceInterfaceMock_CreateSharingPolicy_Call{Call: _e.mock.On("CreateSharingPolicy", ctx, resourceServerID, req)}
+}
+
+func (_c *ResourceServiceInterfaceMock_CreateSharingPolicy_Call) Run(run func(ctx context.Context, resourceServerID string, req sharing.PolicyRequest)) *ResourceServiceInterfaceMock_CreateSharingPolicy_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 sharing.PolicyRequest
+		if args[2] != nil {
+			arg2 = args[2].(sharing.PolicyRequest)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *ResourceServiceInterfaceMock_CreateSharingPolicy_Call) Return(policy sharing.Policy, serviceError *common.ServiceError) *ResourceServiceInterfaceMock_CreateSharingPolicy_Call {
+	_c.Call.Return(policy, serviceError)
+	return _c
+}
+
+func (_c *ResourceServiceInterfaceMock_CreateSharingPolicy_Call) RunAndReturn(run func(ctx context.Context, resourceServerID string, req sharing.PolicyRequest) (sharing.Policy, *common.ServiceError)) *ResourceServiceInterfaceMock_CreateSharingPolicy_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // DeleteAction provides a mock function for the type ResourceServiceInterfaceMock
 func (_mock *ResourceServiceInterfaceMock) DeleteAction(ctx context.Context, resourceServerID string, resourceID *string, id string) *common.ServiceError {
 	ret := _mock.Called(ctx, resourceServerID, resourceID, id)
@@ -469,6 +544,71 @@ func (_c *ResourceServiceInterfaceMock_DeleteResourceServer_Call) Return(service
 }
 
 func (_c *ResourceServiceInterfaceMock_DeleteResourceServer_Call) RunAndReturn(run func(ctx context.Context, id string) *common.ServiceError) *ResourceServiceInterfaceMock_DeleteResourceServer_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// DeleteSharingPolicy provides a mock function for the type ResourceServiceInterfaceMock
+func (_mock *ResourceServiceInterfaceMock) DeleteSharingPolicy(ctx context.Context, resourceServerID string, policyID string) *common.ServiceError {
+	ret := _mock.Called(ctx, resourceServerID, policyID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for DeleteSharingPolicy")
+	}
+
+	var r0 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) *common.ServiceError); ok {
+		r0 = returnFunc(ctx, resourceServerID, policyID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*common.ServiceError)
+		}
+	}
+	return r0
+}
+
+// ResourceServiceInterfaceMock_DeleteSharingPolicy_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteSharingPolicy'
+type ResourceServiceInterfaceMock_DeleteSharingPolicy_Call struct {
+	*mock.Call
+}
+
+// DeleteSharingPolicy is a helper method to define mock.On call
+//   - ctx context.Context
+//   - resourceServerID string
+//   - policyID string
+func (_e *ResourceServiceInterfaceMock_Expecter) DeleteSharingPolicy(ctx any, resourceServerID any, policyID any) *ResourceServiceInterfaceMock_DeleteSharingPolicy_Call {
+	return &ResourceServiceInterfaceMock_DeleteSharingPolicy_Call{Call: _e.mock.On("DeleteSharingPolicy", ctx, resourceServerID, policyID)}
+}
+
+func (_c *ResourceServiceInterfaceMock_DeleteSharingPolicy_Call) Run(run func(ctx context.Context, resourceServerID string, policyID string)) *ResourceServiceInterfaceMock_DeleteSharingPolicy_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *ResourceServiceInterfaceMock_DeleteSharingPolicy_Call) Return(serviceError *common.ServiceError) *ResourceServiceInterfaceMock_DeleteSharingPolicy_Call {
+	_c.Call.Return(serviceError)
+	return _c
+}
+
+func (_c *ResourceServiceInterfaceMock_DeleteSharingPolicy_Call) RunAndReturn(run func(ctx context.Context, resourceServerID string, policyID string) *common.ServiceError) *ResourceServiceInterfaceMock_DeleteSharingPolicy_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -1419,6 +1559,80 @@ func (_c *ResourceServiceInterfaceMock_GetResourceServerListByProject_Call) RunA
 	return _c
 }
 
+// GetSharingPolicy provides a mock function for the type ResourceServiceInterfaceMock
+func (_mock *ResourceServiceInterfaceMock) GetSharingPolicy(ctx context.Context, resourceServerID string, policyID string) (sharing.Policy, *common.ServiceError) {
+	ret := _mock.Called(ctx, resourceServerID, policyID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetSharingPolicy")
+	}
+
+	var r0 sharing.Policy
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (sharing.Policy, *common.ServiceError)); ok {
+		return returnFunc(ctx, resourceServerID, policyID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) sharing.Policy); ok {
+		r0 = returnFunc(ctx, resourceServerID, policyID)
+	} else {
+		r0 = ret.Get(0).(sharing.Policy)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, resourceServerID, policyID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ResourceServiceInterfaceMock_GetSharingPolicy_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetSharingPolicy'
+type ResourceServiceInterfaceMock_GetSharingPolicy_Call struct {
+	*mock.Call
+}
+
+// GetSharingPolicy is a helper method to define mock.On call
+//   - ctx context.Context
+//   - resourceServerID string
+//   - policyID string
+func (_e *ResourceServiceInterfaceMock_Expecter) GetSharingPolicy(ctx any, resourceServerID any, policyID any) *ResourceServiceInterfaceMock_GetSharingPolicy_Call {
+	return &ResourceServiceInterfaceMock_GetSharingPolicy_Call{Call: _e.mock.On("GetSharingPolicy", ctx, resourceServerID, policyID)}
+}
+
+func (_c *ResourceServiceInterfaceMock_GetSharingPolicy_Call) Run(run func(ctx context.Context, resourceServerID string, policyID string)) *ResourceServiceInterfaceMock_GetSharingPolicy_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *ResourceServiceInterfaceMock_GetSharingPolicy_Call) Return(policy sharing.Policy, serviceError *common.ServiceError) *ResourceServiceInterfaceMock_GetSharingPolicy_Call {
+	_c.Call.Return(policy, serviceError)
+	return _c
+}
+
+func (_c *ResourceServiceInterfaceMock_GetSharingPolicy_Call) RunAndReturn(run func(ctx context.Context, resourceServerID string, policyID string) (sharing.Policy, *common.ServiceError)) *ResourceServiceInterfaceMock_GetSharingPolicy_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // IsResourceServerDeclarative provides a mock function for the type ResourceServiceInterfaceMock
 func (_mock *ResourceServiceInterfaceMock) IsResourceServerDeclarative(id string) bool {
 	ret := _mock.Called(id)
@@ -1466,6 +1680,86 @@ func (_c *ResourceServiceInterfaceMock_IsResourceServerDeclarative_Call) Return(
 }
 
 func (_c *ResourceServiceInterfaceMock_IsResourceServerDeclarative_Call) RunAndReturn(run func(id string) bool) *ResourceServiceInterfaceMock_IsResourceServerDeclarative_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListSharingPolicies provides a mock function for the type ResourceServiceInterfaceMock
+func (_mock *ResourceServiceInterfaceMock) ListSharingPolicies(ctx context.Context, resourceServerID string, limit int, offset int) (sharing.PolicyList, *common.ServiceError) {
+	ret := _mock.Called(ctx, resourceServerID, limit, offset)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListSharingPolicies")
+	}
+
+	var r0 sharing.PolicyList
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) (sharing.PolicyList, *common.ServiceError)); ok {
+		return returnFunc(ctx, resourceServerID, limit, offset)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int, int) sharing.PolicyList); ok {
+		r0 = returnFunc(ctx, resourceServerID, limit, offset)
+	} else {
+		r0 = ret.Get(0).(sharing.PolicyList)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int, int) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, resourceServerID, limit, offset)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ResourceServiceInterfaceMock_ListSharingPolicies_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListSharingPolicies'
+type ResourceServiceInterfaceMock_ListSharingPolicies_Call struct {
+	*mock.Call
+}
+
+// ListSharingPolicies is a helper method to define mock.On call
+//   - ctx context.Context
+//   - resourceServerID string
+//   - limit int
+//   - offset int
+func (_e *ResourceServiceInterfaceMock_Expecter) ListSharingPolicies(ctx any, resourceServerID any, limit any, offset any) *ResourceServiceInterfaceMock_ListSharingPolicies_Call {
+	return &ResourceServiceInterfaceMock_ListSharingPolicies_Call{Call: _e.mock.On("ListSharingPolicies", ctx, resourceServerID, limit, offset)}
+}
+
+func (_c *ResourceServiceInterfaceMock_ListSharingPolicies_Call) Run(run func(ctx context.Context, resourceServerID string, limit int, offset int)) *ResourceServiceInterfaceMock_ListSharingPolicies_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		var arg3 int
+		if args[3] != nil {
+			arg3 = args[3].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *ResourceServiceInterfaceMock_ListSharingPolicies_Call) Return(policyList sharing.PolicyList, serviceError *common.ServiceError) *ResourceServiceInterfaceMock_ListSharingPolicies_Call {
+	_c.Call.Return(policyList, serviceError)
+	return _c
+}
+
+func (_c *ResourceServiceInterfaceMock_ListSharingPolicies_Call) RunAndReturn(run func(ctx context.Context, resourceServerID string, limit int, offset int) (sharing.PolicyList, *common.ServiceError)) *ResourceServiceInterfaceMock_ListSharingPolicies_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -1593,6 +1887,80 @@ func (_c *ResourceServiceInterfaceMock_ResolveResourceServerOUHandle_Call) Retur
 }
 
 func (_c *ResourceServiceInterfaceMock_ResolveResourceServerOUHandle_Call) RunAndReturn(run func(ctx context.Context, rs *providers.ResourceServer) *common.ServiceError) *ResourceServiceInterfaceMock_ResolveResourceServerOUHandle_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ResolveSharingOverlay provides a mock function for the type ResourceServiceInterfaceMock
+func (_mock *ResourceServiceInterfaceMock) ResolveSharingOverlay(ctx context.Context, resourceServerID string, ouID string) (sharing.ResolvedOverlay, *common.ServiceError) {
+	ret := _mock.Called(ctx, resourceServerID, ouID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ResolveSharingOverlay")
+	}
+
+	var r0 sharing.ResolvedOverlay
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) (sharing.ResolvedOverlay, *common.ServiceError)); ok {
+		return returnFunc(ctx, resourceServerID, ouID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) sharing.ResolvedOverlay); ok {
+		r0 = returnFunc(ctx, resourceServerID, ouID)
+	} else {
+		r0 = ret.Get(0).(sharing.ResolvedOverlay)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, resourceServerID, ouID)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ResourceServiceInterfaceMock_ResolveSharingOverlay_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ResolveSharingOverlay'
+type ResourceServiceInterfaceMock_ResolveSharingOverlay_Call struct {
+	*mock.Call
+}
+
+// ResolveSharingOverlay is a helper method to define mock.On call
+//   - ctx context.Context
+//   - resourceServerID string
+//   - ouID string
+func (_e *ResourceServiceInterfaceMock_Expecter) ResolveSharingOverlay(ctx any, resourceServerID any, ouID any) *ResourceServiceInterfaceMock_ResolveSharingOverlay_Call {
+	return &ResourceServiceInterfaceMock_ResolveSharingOverlay_Call{Call: _e.mock.On("ResolveSharingOverlay", ctx, resourceServerID, ouID)}
+}
+
+func (_c *ResourceServiceInterfaceMock_ResolveSharingOverlay_Call) Run(run func(ctx context.Context, resourceServerID string, ouID string)) *ResourceServiceInterfaceMock_ResolveSharingOverlay_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *ResourceServiceInterfaceMock_ResolveSharingOverlay_Call) Return(resolvedOverlay sharing.ResolvedOverlay, serviceError *common.ServiceError) *ResourceServiceInterfaceMock_ResolveSharingOverlay_Call {
+	_c.Call.Return(resolvedOverlay, serviceError)
+	return _c
+}
+
+func (_c *ResourceServiceInterfaceMock_ResolveSharingOverlay_Call) RunAndReturn(run func(ctx context.Context, resourceServerID string, ouID string) (sharing.ResolvedOverlay, *common.ServiceError)) *ResourceServiceInterfaceMock_ResolveSharingOverlay_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -1879,6 +2247,86 @@ func (_c *ResourceServiceInterfaceMock_UpdateResourceServer_Call) Return(resourc
 }
 
 func (_c *ResourceServiceInterfaceMock_UpdateResourceServer_Call) RunAndReturn(run func(ctx context.Context, id string, rs providers.ResourceServer) (*providers.ResourceServer, *common.ServiceError)) *ResourceServiceInterfaceMock_UpdateResourceServer_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdateSharingPolicy provides a mock function for the type ResourceServiceInterfaceMock
+func (_mock *ResourceServiceInterfaceMock) UpdateSharingPolicy(ctx context.Context, resourceServerID string, policyID string, req sharing.PolicyRequest) (sharing.Policy, *common.ServiceError) {
+	ret := _mock.Called(ctx, resourceServerID, policyID, req)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateSharingPolicy")
+	}
+
+	var r0 sharing.Policy
+	var r1 *common.ServiceError
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, sharing.PolicyRequest) (sharing.Policy, *common.ServiceError)); ok {
+		return returnFunc(ctx, resourceServerID, policyID, req)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, sharing.PolicyRequest) sharing.Policy); ok {
+		r0 = returnFunc(ctx, resourceServerID, policyID, req)
+	} else {
+		r0 = ret.Get(0).(sharing.Policy)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, sharing.PolicyRequest) *common.ServiceError); ok {
+		r1 = returnFunc(ctx, resourceServerID, policyID, req)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*common.ServiceError)
+		}
+	}
+	return r0, r1
+}
+
+// ResourceServiceInterfaceMock_UpdateSharingPolicy_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateSharingPolicy'
+type ResourceServiceInterfaceMock_UpdateSharingPolicy_Call struct {
+	*mock.Call
+}
+
+// UpdateSharingPolicy is a helper method to define mock.On call
+//   - ctx context.Context
+//   - resourceServerID string
+//   - policyID string
+//   - req sharing.PolicyRequest
+func (_e *ResourceServiceInterfaceMock_Expecter) UpdateSharingPolicy(ctx any, resourceServerID any, policyID any, req any) *ResourceServiceInterfaceMock_UpdateSharingPolicy_Call {
+	return &ResourceServiceInterfaceMock_UpdateSharingPolicy_Call{Call: _e.mock.On("UpdateSharingPolicy", ctx, resourceServerID, policyID, req)}
+}
+
+func (_c *ResourceServiceInterfaceMock_UpdateSharingPolicy_Call) Run(run func(ctx context.Context, resourceServerID string, policyID string, req sharing.PolicyRequest)) *ResourceServiceInterfaceMock_UpdateSharingPolicy_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 sharing.PolicyRequest
+		if args[3] != nil {
+			arg3 = args[3].(sharing.PolicyRequest)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
+func (_c *ResourceServiceInterfaceMock_UpdateSharingPolicy_Call) Return(policy sharing.Policy, serviceError *common.ServiceError) *ResourceServiceInterfaceMock_UpdateSharingPolicy_Call {
+	_c.Call.Return(policy, serviceError)
+	return _c
+}
+
+func (_c *ResourceServiceInterfaceMock_UpdateSharingPolicy_Call) RunAndReturn(run func(ctx context.Context, resourceServerID string, policyID string, req sharing.PolicyRequest) (sharing.Policy, *common.ServiceError)) *ResourceServiceInterfaceMock_UpdateSharingPolicy_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -147,4 +147,9 @@ export interface AccessSwitch {
    * again. Organization units granted again afterwards can assign the role.
    */
   losesAssignmentsOff: boolean;
+  /**
+   * Whether saving the switch deletes the saved policy, or replaces it with a new one. A resource that revokes on
+   * unsharing then revokes in every organization unit the saved policy reached, the ones reached again included.
+   */
+  replacesPolicy: boolean;
 }

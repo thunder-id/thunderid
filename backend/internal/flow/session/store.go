@@ -160,11 +160,11 @@ func (st *store) TouchAuthenticatedAt(ctx context.Context, sessionID string, aut
 }
 
 // SlideIdleDeadline implements sessionStore.
-func (st *store) SlideIdleDeadline(ctx context.Context, sessionID string, now, idleExpiresAt,
-	refreshedBefore time.Time) error {
+func (st *store) SlideIdleDeadline(ctx context.Context, sessionID string, slide idleSlide) error {
 	return withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
 		_, err := dbClient.ExecuteContext(ctx, querySlideIdleDeadline,
-			now, nullableTime(idleExpiresAt), sessionID, string(StateActive), refreshedBefore, st.deploymentID)
+			slide.now, nullableTime(slide.idleExpiresAt), sessionID, string(StateActive), slide.refreshedBefore,
+			slide.activeAfter, slide.createdAfter, st.deploymentID)
 		if err != nil {
 			return fmt.Errorf("failed to slide session idle deadline: %w", err)
 		}
@@ -277,16 +277,41 @@ func (st *store) buildSessionContextFromRow(row map[string]interface{}) (*Sessio
 	}, nil
 }
 
-// Record inserts or refreshes a participant under the upsert query.
-func (st *store) Record(ctx context.Context, p Participant) error {
-	return withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
-		_, err := dbClient.ExecuteContext(ctx, queryUpsertParticipant,
+// Record upserts a participant and returns the token family id it holds.
+func (st *store) Record(ctx context.Context, p Participant) (string, error) {
+	var tokenFamilyID string
+	err := withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
+		results, err := dbClient.QueryContext(ctx, queryUpsertParticipant,
 			p.SessionID, st.deploymentID, p.AppID, p.OUID, p.FirstJoinedAt, p.LastActiveAt, p.TokenFamilyID)
 		if err != nil {
 			return fmt.Errorf("failed to record session participant: %w", err)
 		}
+		if len(results) != 1 {
+			return fmt.Errorf("unexpected number of results: %d", len(results))
+		}
+		tokenFamilyID = parseNullableString(results[0]["tfid"])
 		return nil
 	})
+	return tokenFamilyID, err
+}
+
+// ReplaceTokenFamily moves the participant from currentTokenFamilyID to p.TokenFamilyID.
+func (st *store) ReplaceTokenFamily(ctx context.Context, p Participant, currentTokenFamilyID string) (
+	string, error) {
+	var tokenFamilyID string
+	err := withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
+		results, err := dbClient.QueryContext(ctx, queryReplaceParticipantTokenFamily,
+			currentTokenFamilyID, p.TokenFamilyID, p.SessionID, p.AppID, p.OUID, st.deploymentID)
+		if err != nil {
+			return fmt.Errorf("failed to replace session participant token family: %w", err)
+		}
+		if len(results) != 1 {
+			return fmt.Errorf("unexpected number of results: %d", len(results))
+		}
+		tokenFamilyID = parseNullableString(results[0]["tfid"])
+		return nil
+	})
+	return tokenFamilyID, err
 }
 
 // ListBySessionID returns the participants of a session, oldest first.
@@ -394,6 +419,128 @@ func (st *store) DeleteParticipant(ctx context.Context, sessionID, appID, ouID s
 		}
 		return nil
 	})
+}
+
+// ListLiveBySubject returns one page of the subject's live sessions, most recently active first.
+func (st *store) ListLiveBySubject(ctx context.Context, subjectID string, ouID *string, now time.Time,
+	limit, offset int) ([]Session, error) {
+	if ouID != nil {
+		return st.listLive(ctx, queryListLiveSessionsBySubjectInOU, now, limit, offset, subjectID, *ouID)
+	}
+	return st.listLive(ctx, queryListLiveSessionsBySubject, now, limit, offset, subjectID)
+}
+
+// CountLiveBySubject counts the subject's live sessions.
+func (st *store) CountLiveBySubject(ctx context.Context, subjectID string, ouID *string,
+	now time.Time) (int, error) {
+	if ouID != nil {
+		return st.countLive(ctx, queryCountLiveSessionsBySubjectInOU, now, subjectID, *ouID)
+	}
+	return st.countLive(ctx, queryCountLiveSessionsBySubject, now, subjectID)
+}
+
+// ListLiveByApp returns one page of the live sessions the application has joined, most recently
+// active first.
+func (st *store) ListLiveByApp(ctx context.Context, appID string, ouID *string, now time.Time,
+	limit, offset int) ([]Session, error) {
+	if ouID != nil {
+		return st.listLive(ctx, queryListLiveSessionsByAppInOU, now, limit, offset, appID, *ouID)
+	}
+	return st.listLive(ctx, queryListLiveSessionsByApp, now, limit, offset, appID)
+}
+
+// CountLiveByApp counts the live sessions the application has joined.
+func (st *store) CountLiveByApp(ctx context.Context, appID string, ouID *string, now time.Time) (int, error) {
+	if ouID != nil {
+		return st.countLive(ctx, queryCountLiveSessionsByAppInOU, now, appID, *ouID)
+	}
+	return st.countLive(ctx, queryCountLiveSessionsByApp, now, appID)
+}
+
+// GetSubjectParticipantByTokenFamily returns the participant of one of the subject's sessions, SSO or direct,
+// that holds the token family, or nil when none does.
+func (st *store) GetSubjectParticipantByTokenFamily(ctx context.Context, subjectID, tokenFamilyID string) (
+	*Participant, error) {
+	var participant *Participant
+	err := withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
+		rows, err := dbClient.QueryContext(ctx, queryGetSubjectParticipantByTokenFamily, tokenFamilyID, subjectID,
+			st.deploymentID)
+		if err != nil {
+			return fmt.Errorf("failed to get participant by token family: %w", err)
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		p, buildErr := buildParticipantFromRow(rows[0])
+		if buildErr != nil {
+			return buildErr
+		}
+		participant = &p
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return participant, nil
+}
+
+// listLive runs a paginated live-session query. keys are its leading arguments: the subject or application
+// id, then the organization unit id for a query confined to one.
+func (st *store) listLive(ctx context.Context, query model.DBQuery, now time.Time, limit, offset int,
+	keys ...string) ([]Session, error) {
+	result := make([]Session, 0)
+	err := withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
+		args := make([]any, 0, len(keys)+4)
+		for _, key := range keys {
+			args = append(args, key)
+		}
+		args = append(args, now, limit, offset, st.deploymentID)
+		rows, err := dbClient.QueryContext(ctx, query, args...)
+		if err != nil {
+			return fmt.Errorf("failed to list live sessions: %w", err)
+		}
+		for _, row := range rows {
+			sess, buildErr := buildSessionFromRow(row)
+			if buildErr != nil {
+				return buildErr
+			}
+			result = append(result, *sess)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// countLive runs a live-session count query. keys are its leading arguments, as in listLive.
+func (st *store) countLive(ctx context.Context, query model.DBQuery, now time.Time, keys ...string) (int, error) {
+	total := 0
+	err := withRuntimePersistentDBClient(st.dbProvider, func(dbClient provider.DBClientInterface) error {
+		args := make([]any, 0, len(keys)+2)
+		for _, key := range keys {
+			args = append(args, key)
+		}
+		args = append(args, now, st.deploymentID)
+		rows, err := dbClient.QueryContext(ctx, query, args...)
+		if err != nil {
+			return fmt.Errorf("failed to count live sessions: %w", err)
+		}
+		if len(rows) != 1 {
+			return fmt.Errorf("unexpected number of results: %d", len(rows))
+		}
+		parsed, parseErr := parseInt(rows[0]["total"], "total")
+		if parseErr != nil {
+			return parseErr
+		}
+		total = parsed
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return total, nil
 }
 
 // buildParticipantFromRow maps a database result row into a Participant.

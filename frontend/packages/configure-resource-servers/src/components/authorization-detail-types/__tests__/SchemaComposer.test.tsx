@@ -339,6 +339,103 @@ describe('SchemaComposer', () => {
     expect(lastSchema(onSchema)).toEqual({type: 'object', properties: {note: {type: 'string'}}});
   });
 
+  it('restricts a text field to a pattern, a length range and allowed values, with a fixed value', async () => {
+    const user = userEvent.setup();
+    const onSchema = vi.fn();
+    renderWithProviders(<Harness initial={[{...newField('string'), name: 'currency'}]} onSchema={onSchema} />);
+
+    await user.click(screen.getByRole('treeitem', {name: 'currency'}));
+    await user.type(screen.getByLabelText('Description'), 'ISO 4217 code');
+    await openSection(user, 'Limits');
+    await user.type(screen.getByLabelText('Minimum length'), '3');
+    await user.type(screen.getByLabelText('Maximum length'), '3');
+    // userEvent reads [ and { as key names, so they are typed doubled.
+    await user.type(screen.getByLabelText('Pattern'), '^[[A-Z]{{3}$');
+    // A section sums up its settings in its header once it is collapsed.
+    await openSection(user, 'Limits');
+    expect(screen.getByRole('button', {name: /^Limits/})).toHaveTextContent('3 to 3 characters · Pattern');
+    await openSection(user, 'Limits');
+    await openSection(user, 'Allowed values');
+    await user.type(screen.getByRole('combobox', {name: 'Allowed values'}), 'USD{Enter}EUR{Enter}');
+    await user.type(screen.getByLabelText('Fixed value'), 'USD');
+
+    expect(lastSchema(onSchema)).toEqual({
+      type: 'object',
+      properties: {
+        currency: {
+          type: 'string',
+          description: 'ISO 4217 code',
+          minLength: 3,
+          maxLength: 3,
+          pattern: '^[A-Z]{3}$',
+          enum: ['USD', 'EUR'],
+          const: 'USD',
+        },
+      },
+    });
+
+    // The server accepts a fixed value outside the allowed values, so the composer does too.
+    await user.clear(screen.getByLabelText('Fixed value'));
+    await user.type(screen.getByLabelText('Fixed value'), 'GBP');
+    expect(lastSchema(onSchema)).toMatchObject({properties: {currency: {const: 'GBP'}}});
+  });
+
+  it('gives a number a step and an exclusive bound', async () => {
+    const user = userEvent.setup();
+    const onSchema = vi.fn();
+    renderWithProviders(<Harness initial={[{...newField('number'), name: 'amount'}]} onSchema={onSchema} />);
+
+    await user.click(screen.getByRole('treeitem', {name: 'amount'}));
+    await openSection(user, 'Limits');
+    await user.type(screen.getByLabelText('Minimum'), '0');
+    // The minimum reads as a comparison; more than leaves the limit itself out.
+    await user.click(screen.getByRole('combobox', {name: 'Minimum comparison'}));
+    await user.click(screen.getByRole('option', {name: 'More than'}));
+    await user.type(screen.getByLabelText('Step'), '0.01');
+    // A section sums up its settings in its header once it is collapsed.
+    await openSection(user, 'Limits');
+    expect(screen.getByRole('button', {name: /^Limits/})).toHaveTextContent('Above 0 · Steps of 0.01');
+    await openSection(user, 'Limits');
+    expect(lastSchema(onSchema)).toEqual({
+      type: 'object',
+      properties: {amount: {type: 'number', exclusiveMinimum: 0, multipleOf: 0.01}},
+    });
+
+    await user.type(screen.getByLabelText('Maximum'), '100');
+    await openSection(user, 'Limits');
+    expect(screen.getByRole('button', {name: /^Limits/})).toHaveTextContent('Above 0, up to 100');
+    await openSection(user, 'Limits');
+    await user.click(screen.getByRole('combobox', {name: 'Minimum comparison'}));
+    await user.click(screen.getByRole('option', {name: 'At least'}));
+    expect(lastSchema(onSchema)).toEqual({
+      type: 'object',
+      properties: {amount: {type: 'number', minimum: 0, maximum: 100, multipleOf: 0.01}},
+    });
+
+    await user.clear(screen.getByLabelText('Step'));
+    await user.type(screen.getByLabelText('Step'), '0');
+    expect(screen.getByText('Enter the step as a number greater than 0.')).toBeInTheDocument();
+  });
+
+  it('caps a list and allows each item only once', async () => {
+    const user = userEvent.setup();
+    const onSchema = vi.fn();
+    renderWithProviders(<Harness initial={[{...newField('array'), name: 'tags'}]} onSchema={onSchema} />);
+
+    await user.click(screen.getByRole('treeitem', {name: 'tags'}));
+    await openSection(user, 'Limits');
+    await user.type(screen.getByLabelText('Maximum number of items'), '5');
+    await user.click(screen.getByRole('checkbox', {name: 'Each item can appear only once'}));
+    // A section sums up its settings in its header once it is collapsed.
+    await openSection(user, 'Limits');
+    expect(screen.getByRole('button', {name: /^Limits/})).toHaveTextContent('Up to 5 items · Each item once');
+    await openSection(user, 'Limits');
+    expect(lastSchema(onSchema)).toEqual({
+      type: 'object',
+      properties: {tags: {type: 'array', items: {type: 'string'}, maxItems: 5, uniqueItems: true}},
+    });
+  });
+
   it('nests fields in objects, adds fields into an object, and removes them together', async () => {
     const user = userEvent.setup();
     const onSchema = vi.fn();
@@ -1363,12 +1460,12 @@ describe('SchemaComposer, after review', () => {
     expect(screen.getByLabelText(/^Field name/), 'it can still be selected and edited').toHaveValue('type');
   });
 
-  it('refuses a space inside a field name, and says when the summary has text in braces that is not a placeholder', async () => {
+  it('accepts a space inside a field name, and says when the summary has text in braces that is not a placeholder', async () => {
     const user = userEvent.setup();
     renderWithProviders(<Harness initial={[{...newField(), name: 'z z'}]} template="{{z z}} Send" />);
 
     await user.click(screen.getByRole('treeitem', {name: 'z z'}));
-    expect(screen.getByText('A field name cannot contain a space.')).toBeInTheDocument();
+    expect(screen.queryByText('A field name cannot contain a space.')).not.toBeInTheDocument();
     await user.click(screen.getByTestId('canvas-summary'));
     expect(screen.getByTestId('template-malformed')).toHaveTextContent(
       '{{z z}} is not a field placeholder. Write a field name in double braces, with no spaces inside.',
@@ -1451,6 +1548,26 @@ describe('SchemaComposer, after review', () => {
       type: 'object',
       properties: {tags: {type: 'array', items: {type: 'string', enum: ['x', 'y']}}},
     });
+    // U+FEFF is not white space the server trims, so a value ending in it is kept as typed.
+    await user.type(input, 'z\uFEFF{Enter}');
+    expect(lastSchema(onSchema)).toEqual({
+      type: 'object',
+      properties: {tags: {type: 'array', items: {type: 'string', enum: ['x', 'y', 'z\uFEFF']}}},
+    });
+  });
+
+  it("reads a field's description with its row", () => {
+    renderWithProviders(
+      <Harness
+        initial={[
+          {...newField('string'), name: 'currency', description: 'ISO 4217 code'},
+          {...newField('string'), name: 'payee'},
+        ]}
+      />,
+    );
+
+    expect(screen.getByRole('treeitem', {name: 'currency'})).toHaveAccessibleDescription(/ISO 4217 code/);
+    expect(screen.getByRole('treeitem', {name: 'payee'}).getAttribute('aria-describedby')).not.toContain('caption');
   });
 
   it('warns when two rows of the consent screen would show the same label', async () => {

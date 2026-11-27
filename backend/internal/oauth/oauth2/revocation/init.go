@@ -41,7 +41,8 @@ func Initialize(
 	store := newRevocationStore()
 	return newEnforcementService(observabilitySvc, store), newRevocationService(
 		jwtService, store, tokenFamilyRevocationTTL, validationLeeway,
-		revocationCfg.TokenFamily.OnExplicitRevokeEnabled(), observabilitySvc, maxEntriesPerChange), nil
+		revocationCfg.TokenFamily.OnExplicitRevokeEnabled(), cfg.OAuth.TokenRevocation.IsEnabled(), observabilitySvc,
+		maxEntriesPerChange), nil
 }
 
 // RegisterRoutes registers the RFC 7009 revocation endpoint using the shared revocation service. Every

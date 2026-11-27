@@ -56,6 +56,8 @@ type AccessTokenBuildContext struct {
 	// ValidityPeriod is the subject's configured access-token validity in seconds (0 to use the
 	// global default), resolved by the grant handler from the subject's access token sub-config.
 	ValidityPeriod int64
+	// AuthTime, when set, is the Unix time the subject authenticated, emitted as `auth_time` (RFC 9068).
+	AuthTime int64
 	// DPoPJkt, when set, sender-constrains the access token to the supplied JWK thumbprint.
 	// The token receives a `cnf.jkt` claim and is issued with `token_type=DPoP`.
 	DPoPJkt string
@@ -100,6 +102,8 @@ type RefreshTokenBuildContext struct {
 	// OUID, when set, is the organization unit the grant was issued in, stamped on the refresh token and
 	// copied unchanged across rotation.
 	OUID string
+	// AuthTime, when set, is the subject's auth_time, copied onto every access token minted on refresh.
+	AuthTime int64
 	// ExpiresAt, when set, is the Unix expiry the rotated token inherits from the token it replaces,
 	// so a grant cannot outlive its original issuance window. Zero starts a fresh validity period,
 	// which is what first issuance does.
@@ -214,8 +218,10 @@ type RefreshTokenClaims struct {
 	SessionID string
 	// OUID is the organization unit the grant was issued in, which scopes re-authorization on refresh.
 	// Empty when none was known at issuance.
-	OUID   string
-	Claims map[string]interface{}
+	OUID string
+	// AuthTime is the Unix time the subject authenticated for the grant. Zero if unknown.
+	AuthTime int64
+	Claims   map[string]interface{}
 	// AuthorizationDetails holds the granted authorization details carried on the refresh token.
 	AuthorizationDetails []providers.AuthorizationDetail
 }
@@ -251,6 +257,8 @@ type SubjectTokenClaims struct {
 	// TokenFamilyID is the subject token's token family id (tfid), if any. Token exchange may inherit
 	// it onto the exchanged token so the two share a revocation family.
 	TokenFamilyID string
+	// AuthTime is the Unix time the subject authenticated, set only for a token or auth assertion this server issued.
+	AuthTime int64
 	// AttributeCacheID is the attribute cache entry (aci) a self-issued token references, which names
 	// the token's subject when its sub is a mapped attribute rather than a resource ID. Empty for
 	// externally-issued tokens.

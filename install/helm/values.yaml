@@ -594,11 +594,18 @@ configuration:
     # Leave empty to inherit the global declarativeResources.enabled setting.
     store: ""
 
-  # Session tracking. Set enabled to false to record no session for a login through a flow without a
-  # Session node. A flow with a Session node still records its SSO session.
+  # Session configuration. Set tracking.enabled to false to record no session for a login through a flow
+  # without a Session node; a flow with a Session node still records its SSO session. The SSO session
+  # timeouts are runtime settings in the session server-config section; activityRefreshIntervalSeconds is
+  # the shortest time between two writes of a session's activity, which an idle timeout must exceed, and
+  # maxIdleTimeoutSeconds and maxAbsoluteTimeoutSeconds are the longest timeouts the section may set (30
+  # and 365 days).
   session:
     tracking:
       enabled: true
+    activityRefreshIntervalSeconds: 60
+    maxIdleTimeoutSeconds: 2592000
+    maxAbsoluteTimeoutSeconds: 31536000
 
   # Direct API authentication endpoints (/auth/**, /register/passkey/**). Set enabled to false to
   # remove them from the server. AuthZEN access endpoints are not affected.
@@ -752,6 +759,12 @@ configuration:
   # organization_unit, identity_provider, application, server_config, resource,
   # authorization_detail_type, http_connection, notification_template.
   stores: {}
+
+  # A self-service change that proves no current credential (setting a credential the user does not hold yet,
+  # changing an email or mobile attribute, or setting a personal agent's credentials) needs a sign-in within
+  # this many seconds. Unset uses the server default (180); 0 turns the check off.
+  # userSelfService:
+  #   maxAuthenticationAgeSeconds: 180
 
   # Notification template content-length limits (in characters). Unset keys use the server defaults
   # (subject 1000, email body 50000, SMS body 4096). A negative value fails startup.

@@ -105,6 +105,8 @@ The `flow`, `role`, `rs`, `authzdetail`, and `app` permissions are high impact. 
 
 `system:serverconfig:update` changes deployment-wide security settings such as CORS, the content security policy, and sessions.
 
+`org:session:view` lists the sessions that have an application signed in under the organization unit the caller holds it in, and shows only those applications. A session's own details, such as its last active time and IP address, come from activity in every organization unit. Only the `system` permission lists the sessions of every user and application in the deployment. Only a data plane serves sessions. Users list their own sessions without any system permission, and see only the sessions and applications of the organization unit they signed in under.
+
 The MCP tools require the same permissions as the matching APIs. The MCP server itself requires a token that carries at least one system permission.
 
 If you set `server.security.system_permission_prefix`, the management APIs expect every system permission to start with that prefix, for example `mgmt:system:user:view`. The permissions declared on the System resource server don't include the prefix. To grant the prefixed permissions, declare them on a resource server of your own, for example with a root resource `mgmt` that holds `system` and its resources, and add them to your roles.
@@ -218,6 +220,8 @@ A role assignment grants the role's permissions to a principal. Principals can b
 | `app` | An application principal. |
 | `agent` | An agent principal. |
 
+A personal agent acts only on behalf of its owner, so it cannot be assigned a role. Such a request fails with `ROL-1046`, and the Console does not list personal agents.
+
 ### View Assignments
 
 Open the role from the **Roles** list and select the **Assignments** tab to see all current assignments organized by type.
@@ -272,6 +276,8 @@ To share a role from the Console:
 4. Click **Save changes**.
 
 The Console cannot create a policy that reaches every organization unit in the deployment or the root of every other tree. Only a resource file or an import can set those. A policy that the role's resource file declares is read-only in the Console.
+
+Taking the role away from an organization unit, by narrowing or deleting a policy, revokes the role's permissions from the tokens of those holding it there through an assignment made in that unit. Changing how a policy reaches its units in the Console, such as from chosen child organization units to all of them, deletes the policy and creates a new one, so it revokes in every organization unit the old policy reached. See [Unsharing](../protocols/oauth-oidc/token-revocation.mdx#unsharing).
 
 ### Assignments Turned Off
 

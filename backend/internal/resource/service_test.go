@@ -21,6 +21,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/connection/authzenpdp"
 	oupkg "github.com/thunder-id/thunderid/internal/ou"
 	"github.com/thunder-id/thunderid/internal/revocation"
+	"github.com/thunder-id/thunderid/internal/sharing"
 	"github.com/thunder-id/thunderid/internal/system/config"
 	serverconst "github.com/thunder-id/thunderid/internal/system/constants"
 	"github.com/thunder-id/thunderid/internal/system/log"
@@ -29,6 +30,7 @@ import (
 	"github.com/thunder-id/thunderid/internal/system/security"
 	"github.com/thunder-id/thunderid/internal/system/sysauthz"
 	"github.com/thunder-id/thunderid/tests/mocks/oumock"
+	"github.com/thunder-id/thunderid/tests/mocks/sharingmock"
 	"github.com/thunder-id/thunderid/tests/mocks/sysauthzmock"
 )
 
@@ -127,6 +129,7 @@ type ResourceServiceTestSuite struct {
 	mockStore         *resourceStoreInterfaceMock
 	mockOU            *oumock.OrganizationUnitServiceInterfaceMock
 	mockTransactioner *fakeTransactioner
+	mockSharing       *sharingmock.SharingServiceInterfaceMock
 	service           ResourceServiceInterface
 }
 
@@ -167,9 +170,10 @@ func (suite *ResourceServiceTestSuite) SetupTest() {
 	suite.mockStore = newResourceStoreInterfaceMock(suite.T())
 	suite.mockOU = new(oumock.OrganizationUnitServiceInterfaceMock)
 	suite.mockTransactioner = &fakeTransactioner{}
+	suite.mockSharing = sharingmock.NewSharingServiceInterfaceMock(suite.T())
 	suite.service, err = newResourceService(
 		suite.mockOU, suite.mockStore, suite.mockTransactioner, nil, nil, nil, discardingBus{},
-		allowAllAuthz(suite.T()),
+		allowAllAuthz(suite.T()), suite.mockSharing,
 	)
 	suite.NoError(err)
 	// The resource service is its own dependency provider: deletion consults the registry, which
@@ -212,7 +216,7 @@ func (suite *ResourceServiceTestSuite) TestNewResourceService_InvalidDelimiter()
 
 	mockTransactioner := &fakeTransactioner{}
 	service, err := newResourceService(mockOU, mockStore, mockTransactioner, nil, nil, nil, discardingBus{},
-		allowAllAuthz(suite.T()))
+		allowAllAuthz(suite.T()), sharingmock.NewSharingServiceInterfaceMock(suite.T()))
 
 	suite.Error(err)
 	suite.Nil(service)
@@ -410,7 +414,8 @@ func (suite *ResourceServiceTestSuite) TestCreateResourceServer_MCPIdentifierRef
 			mockStore := newResourceStoreInterfaceMock(suite.T())
 			mockOU := new(oumock.OrganizationUnitServiceInterfaceMock)
 			service, err := newResourceService(mockOU, mockStore, &fakeTransactioner{}, nil, nil, nil,
-				discardingBus{}, allowAllAuthz(suite.T()), tc.options...)
+				discardingBus{}, allowAllAuthz(suite.T()), sharingmock.NewSharingServiceInterfaceMock(suite.T()),
+				tc.options...)
 			suite.Require().NoError(err)
 			if tc.accepted {
 				mockOU.On("GetOrganizationUnit", mock.Anything, "ou-123").
@@ -447,7 +452,7 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_ControlPlaneMCPI
 	mockOU := new(oumock.OrganizationUnitServiceInterfaceMock)
 	service, err := newResourceService(
 		mockOU, mockStore, &fakeTransactioner{}, nil, nil, nil, discardingBus{}, allowAllAuthz(suite.T()),
-		KeepingValueReferences(),
+		sharingmock.NewSharingServiceInterfaceMock(suite.T()), KeepingValueReferences(),
 	)
 	suite.Require().NoError(err)
 	mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(providers.ResourceServer{
@@ -1046,6 +1051,8 @@ func (suite *ResourceServiceTestSuite) TestDeleteResourceServer_Success() {
 		"rs-123").Return(false, nil)
 	suite.mockStore.On("DeleteResourceServer", mock.Anything,
 		"rs-123").Return(nil)
+	suite.mockSharing.On("DeletePoliciesForResource", mock.Anything, ResourceServerSharingType, "rs-123").
+		Return(nil).Once()
 
 	err := suite.service.DeleteResourceServer(context.Background(), "rs-123")
 
@@ -1065,6 +1072,8 @@ func (suite *ResourceServiceTestSuite) TestDeleteResourceServer_CascadesToDepend
 		"rs-123").Return(false, nil)
 	suite.mockStore.On("DeleteResourceServer", mock.Anything, "rs-123").Return(nil).
 		Run(func(_ mock.Arguments) { order = append(order, "delete") })
+	suite.mockSharing.On("DeletePoliciesForResource", mock.Anything, ResourceServerSharingType, "rs-123").
+		Return(nil)
 
 	err := suite.service.DeleteResourceServer(context.Background(), "rs-123")
 
@@ -1083,6 +1092,8 @@ func (suite *ResourceServiceTestSuite) TestDeleteResourceServer_CascadeFailureAb
 	suite.mockStore.On("CheckResourceServerHasDependencies", mock.Anything,
 		"rs-123").Return(false, nil)
 	suite.mockStore.On("DeleteResourceServer", mock.Anything, "rs-123").Return(nil)
+	suite.mockSharing.On("DeletePoliciesForResource", mock.Anything, ResourceServerSharingType, "rs-123").
+		Return(nil)
 
 	err := suite.service.DeleteResourceServer(context.Background(), "rs-123")
 
@@ -1101,6 +1112,8 @@ func (suite *ResourceServiceTestSuite) TestDeleteResourceServer_FailsWhenRegistr
 	// Drop the registry once the blocking check has passed, isolating the cascade's own guard.
 	suite.mockStore.On("DeleteResourceServer", mock.Anything, "rs-123").Return(nil).
 		Run(func(_ mock.Arguments) { suite.service.SetDependencyRegistry(nil) })
+	suite.mockSharing.On("DeletePoliciesForResource", mock.Anything, ResourceServerSharingType, "rs-123").
+		Return(nil)
 
 	svcErr := suite.service.DeleteResourceServer(context.Background(), "rs-123")
 
@@ -4970,6 +4983,7 @@ func (suite *ResourceServiceTestSuite) TestValidatePermissions() {
 			mockTransactioner := &fakeTransactioner{}
 			svc, err := newResourceService(
 				mockOU, mockStore, mockTransactioner, nil, nil, nil, discardingBus{}, allowAllAuthz(suite.T()),
+				sharingmock.NewSharingServiceInterfaceMock(suite.T()),
 			)
 			suite.Require().NoError(err)
 
@@ -5114,6 +5128,8 @@ func (suite *ResourceServiceTestSuite) TestDeleteResourceServer_MutableResource(
 		Return(providers.ResourceServer{ID: resourceServerID}, nil)
 	suite.mockStore.On("CheckResourceServerHasDependencies", mock.Anything, resourceServerID).Return(false, nil)
 	suite.mockStore.On("DeleteResourceServer", mock.Anything, resourceServerID).Return(nil)
+	suite.mockSharing.On("DeletePoliciesForResource", mock.Anything, ResourceServerSharingType, resourceServerID).
+		Return(nil)
 
 	// Execute the test
 	svcErr := suite.service.DeleteResourceServer(context.Background(), resourceServerID)
@@ -5734,7 +5750,7 @@ ouHandle: default
 func (suite *ResourceServiceTestSuite) newProjectAwareService() (ResourceServiceInterface, *projectOUValidatorMock) {
 	validator := newProjectOUValidatorMock(suite.T())
 	service, err := newResourceService(suite.mockOU, suite.mockStore, suite.mockTransactioner, nil, nil, validator,
-		discardingBus{}, allowAllAuthz(suite.T()))
+		discardingBus{}, allowAllAuthz(suite.T()), suite.mockSharing)
 	suite.Require().NoError(err)
 	return service, validator
 }
@@ -5897,6 +5913,8 @@ func (suite *ResourceServiceTestSuite) TestUpdateResourceServer_ProjectChanges()
 			service, validator := suite.newProjectAwareService()
 			if tc.checksProject {
 				validator.On("ValidateProjectOU", mock.Anything, tc.expectedProjectID, testSystemOUID).Return(nil)
+				suite.mockSharing.On("ListPolicies", mock.Anything, ResourceServerSharingType, "rs-123").
+					Return([]sharing.Policy{}, nil).Once()
 			}
 			suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").Return(providers.ResourceServer{
 				ID: "rs-123", Name: "my-rs", Identifier: "test-identifier", OUID: testSystemOUID,
@@ -6231,7 +6249,8 @@ func (suite *ResourceServiceTestSuite) TestValidateDeleteAction_RequiresTheUpdat
 				&sysauthz.ActionContext{ResourceType: security.ResourceTypeResourceServer, OUID: "ou-rs"}).
 				Return(false, authzErr)
 			service, err := newResourceService(
-				suite.mockOU, suite.mockStore, suite.mockTransactioner, nil, nil, nil, discardingBus{}, authz)
+				suite.mockOU, suite.mockStore, suite.mockTransactioner, nil, nil, nil, discardingBus{}, authz,
+				suite.mockSharing)
 			suite.Require().NoError(err)
 			suite.mockStore.On("IsResourceServerDeclarative", "rs-123").Return(false)
 			suite.mockStore.On("GetResourceServer", mock.Anything, "rs-123").

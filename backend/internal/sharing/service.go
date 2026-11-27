@@ -178,6 +178,9 @@ type sharingService struct {
 	overlayRuleCache cache.CacheInterface[ResolvedOverlay]
 
 	allowChildOUCrossTreeSharing bool
+
+	// systemFlows runs the revocation flows around a change; nil where system flows are off.
+	systemFlows systemFlowProvider
 }
 
 // declaredHalf returns the file store as an interface, keeping a nil one nil: a typed nil in an
@@ -1148,6 +1151,23 @@ func (s *sharingService) initiatorEffectiveRules(
 func (s *sharingService) ReplacePoliciesForResource(
 	ctx context.Context, rt ResourceType, resourceID, owningOUID string, requests []PolicyRequest,
 ) (PolicyReplay, *PolicyReplayError) {
+	var (
+		replay    PolicyReplay
+		replayErr *PolicyReplayError
+	)
+	if svcErr := s.revokeAround(ctx, rt, resourceID, func(ctx context.Context) bool {
+		replay, replayErr = s.replacePoliciesForResource(ctx, rt, resourceID, owningOUID, requests)
+		return replayErr == nil
+	}); svcErr != nil {
+		return PolicyReplay{}, &PolicyReplayError{Err: svcErr, Whole: true}
+	}
+	return replay, replayErr
+}
+
+// replacePoliciesForResource is ReplacePoliciesForResource without revoking what the change takes away.
+func (s *sharingService) replacePoliciesForResource(
+	ctx context.Context, rt ResourceType, resourceID, owningOUID string, requests []PolicyRequest,
+) (PolicyReplay, *PolicyReplayError) {
 	var replay PolicyReplay
 	if len(requests) == 0 {
 		return replay, nil
@@ -1198,6 +1218,23 @@ func (s *sharingService) ReplacePoliciesForResource(
 // in the two, the owner as an explicit id in one and left blank in the other, reads as dropped when it is not.
 // Both lists are resolved against the owner the resource really has, and a unit in both is kept.
 func (s *sharingService) RemovePolicies(
+	ctx context.Context, rt ResourceType, resourceID string, initiatingOUIDs, stillNamed []string,
+) (PolicyReplay, *PolicyReplayError) {
+	var (
+		replay    PolicyReplay
+		replayErr *PolicyReplayError
+	)
+	if svcErr := s.revokeAround(ctx, rt, resourceID, func(ctx context.Context) bool {
+		replay, replayErr = s.removePolicies(ctx, rt, resourceID, initiatingOUIDs, stillNamed)
+		return replayErr == nil
+	}); svcErr != nil {
+		return PolicyReplay{}, &PolicyReplayError{Err: svcErr, Whole: true}
+	}
+	return replay, replayErr
+}
+
+// removePolicies is RemovePolicies without revoking what the removal takes away.
+func (s *sharingService) removePolicies(
 	ctx context.Context, rt ResourceType, resourceID string, initiatingOUIDs, stillNamed []string,
 ) (PolicyReplay, *PolicyReplayError) {
 	var replay PolicyReplay
@@ -1369,7 +1406,18 @@ func (s *sharingService) replayPolicies(
 func (s *sharingService) UpdatePolicy(
 	ctx context.Context, policyID string, req PolicyRequest,
 ) (Policy, *tidcommon.ServiceError) {
-	return s.updatePolicy(ctx, policyID, req, false)
+	current, svcErr := s.GetPolicy(ctx, policyID)
+	if svcErr != nil {
+		return Policy{}, svcErr
+	}
+	var updated Policy
+	if revokeErr := s.revokeAround(ctx, current.ResourceType, current.ResourceID, func(ctx context.Context) bool {
+		updated, svcErr = s.updatePolicy(ctx, policyID, req, false)
+		return svcErr == nil
+	}); revokeErr != nil {
+		return Policy{}, revokeErr
+	}
+	return updated, svcErr
 }
 
 // updatePolicy is UpdatePolicy. A replacing edit is one a source of truth makes, so it skips the
@@ -1723,7 +1771,40 @@ func (s *sharingService) DeletePolicy(ctx context.Context, policyID string) *tid
 	if svcErr != nil {
 		return svcErr
 	}
-	return s.deletePolicy(ctx, policy)
+	if revokeErr := s.revokeAround(ctx, policy.ResourceType, policy.ResourceID, func(ctx context.Context) bool {
+		svcErr = s.deleteCurrentPolicy(ctx, policyID)
+		return svcErr == nil
+	}); revokeErr != nil {
+		return revokeErr
+	}
+	return svcErr
+}
+
+// deleteCurrentPolicy reads the policy again in the delete's own transaction and deletes it as it stands, so the
+// cleanup, and the revocation's re-check, also cover a unit an edit added after DeletePolicy first read it.
+func (s *sharingService) deleteCurrentPolicy(ctx context.Context, policyID string) *tidcommon.ServiceError {
+	var refusal *tidcommon.ServiceError
+	err := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		current, svcErr := s.GetPolicy(txCtx, policyID)
+		if svcErr == nil {
+			svcErr = s.deletePolicy(txCtx, current)
+		}
+		if svcErr != nil {
+			refusal = svcErr
+			return errPolicyDeleteRefused
+		}
+		return nil
+	})
+	// The delete inside cleared the caches before the transaction ended, so they are cleared again.
+	s.clearCaches(ctx)
+	if refusal != nil {
+		return refusal
+	}
+	if err != nil {
+		s.logger.Error(ctx, "Failed to delete sharing policy", log.Error(err))
+		return &tidcommon.InternalServerError
+	}
+	return nil
 }
 
 // deletePolicy is DeletePolicy for a policy already read.
@@ -1876,10 +1957,15 @@ func (s *sharingService) cleanUpLostVisibility(ctx context.Context, changed Poli
 			s.logger.Debug(ctx, "Cleaning up after an organization unit that no longer exists",
 				log.String("ouID", ouID))
 		}
-
-		if err := s.clearOverlayValues(ctx, changed.ResourceType, changed.ResourceID, ouID); err != nil {
+		if err := recordLoss(ctx, changed, ouID); err != nil {
 			return err
 		}
+
+		holders, err := s.clearOverlayValues(ctx, changed.ResourceType, changed.ResourceID, ouID)
+		if err != nil {
+			return err
+		}
+		recordRemovedHolders(ctx, changed, ouID, holders)
 		if err := s.notifyVisibilityLost(
 			ctx, changed.ResourceType, changed.ResourceID, ouID); err != nil {
 			return err
@@ -1918,25 +2004,27 @@ func (s *sharingService) candidatesFrom(ctx context.Context, p Policy) ([]string
 	return s.ousReachedBy(ctx, p)
 }
 
-// clearOverlayValues drops the values a unit chose for a resource it can no longer see.
+// clearOverlayValues drops the values a unit chose for a resource it can no longer see, and returns the entities
+// whose access there a resource type's own cleanup took away.
 //
 // A resource type that keeps those values in its own storage rather than the framework's implements
 // OverlayCleaner and is called instead, since the framework's table holds nothing for it to delete.
 func (s *sharingService) clearOverlayValues(
 	ctx context.Context, rt ResourceType, resourceID, ouID string,
-) error {
+) ([]string, error) {
 	if decl, ok := s.registry.get(rt); ok {
 		if cleaner, ok := decl.(OverlayCleaner); ok {
-			if err := cleaner.DeleteOverlayValues(ctx, resourceID, ouID); err != nil {
-				return fmt.Errorf("failed to clear overlay values for %s: %w", ouID, err)
+			holders, err := cleaner.DeleteOverlayValues(ctx, resourceID, ouID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to clear overlay values for %s: %w", ouID, err)
 			}
-			return nil
+			return holders, nil
 		}
 	}
 	if err := s.store.DeleteOverlayValuesForOU(ctx, rt, resourceID, ouID); err != nil {
-		return fmt.Errorf("failed to clear overlay values for %s: %w", ouID, err)
+		return nil, fmt.Errorf("failed to clear overlay values for %s: %w", ouID, err)
 	}
-	return nil
+	return nil, nil
 }
 
 // notifyVisibilityLost tells a resource type to clean up its own state for one unit, if it asked to
@@ -1966,22 +2054,32 @@ func (s *sharingService) policyWriteHooks(rt ResourceType) (PolicyWriteHooks, bo
 	return hooks, ok
 }
 
-// notifyPolicyWritten tells a resource type that one of its policies was written, if it asked to be told.
+// notifyPolicyWritten tells a resource type that one of its policies was written, if it asked to be told, and
+// requires the revocations it answers with.
 func (s *sharingService) notifyPolicyWritten(ctx context.Context, p Policy) error {
 	hooks, ok := s.policyWriteHooks(p.ResourceType)
 	if !ok {
 		return nil
 	}
-	return NewResourceTypeError(hooks.OnPolicyWritten(ctx, p))
+	revocations, svcErr := hooks.OnPolicyWritten(ctx, p)
+	if svcErr != nil {
+		return NewResourceTypeError(svcErr)
+	}
+	return requireRevocations(ctx, revocations)
 }
 
-// notifyPolicyRemoved tells a resource type that one of its policies was removed, if it asked to be told.
+// notifyPolicyRemoved tells a resource type that one of its policies was removed, if it asked to be told, and
+// requires the revocations it answers with.
 func (s *sharingService) notifyPolicyRemoved(ctx context.Context, p Policy) error {
 	hooks, ok := s.policyWriteHooks(p.ResourceType)
 	if !ok {
 		return nil
 	}
-	return NewResourceTypeError(hooks.OnPolicyRemoved(ctx, p))
+	revocations, svcErr := hooks.OnPolicyRemoved(ctx, p)
+	if svcErr != nil {
+		return NewResourceTypeError(svcErr)
+	}
+	return requireRevocations(ctx, revocations)
 }
 
 // notifyDeclaredPolicy tells a resource type that a declared policy was written, in a transaction of its own since
@@ -2227,7 +2325,7 @@ func (s *sharingService) IsVisible(
 	}
 
 	visible, _ := evaluateChain(chain, policies)
-	if s.visibilityCache != nil {
+	if s.visibilityCache != nil && cachesReads(ctx) {
 		if err := s.visibilityCache.Set(ctx, key, visible); err != nil {
 			s.logger.Warn(ctx, "Failed to cache visibility", log.Error(err))
 		}
@@ -2312,7 +2410,8 @@ func (s *sharingService) shareIntoChild(
 		_, svcErr = s.CreatePolicy(ctx, rt, resourceID, owner, req)
 		return svcErr
 	}
-	_, svcErr = s.UpdatePolicy(ctx, ownerPolicy.ID, req)
+	// Adding a child takes the resource from no unit, so there is nothing to revoke around the edit.
+	_, svcErr = s.updatePolicy(ctx, ownerPolicy.ID, req, false)
 	return svcErr
 }
 
@@ -2394,7 +2493,7 @@ func (s *sharingService) ResolveOverlayRules(
 		return ResolvedOverlay{}, svcErr
 	}
 
-	if s.overlayRuleCache != nil {
+	if s.overlayRuleCache != nil && cachesReads(ctx) {
 		if err := s.overlayRuleCache.Set(ctx, key, out); err != nil {
 			s.logger.Warn(ctx, "Failed to cache resolved overlay", log.Error(err))
 		}

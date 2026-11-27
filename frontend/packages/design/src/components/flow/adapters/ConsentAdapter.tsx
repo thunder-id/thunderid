@@ -11,6 +11,7 @@ import {
   formatConsentDetailValue,
   isConsentDetailStructured,
   isConsentDetailTextClamped,
+  getConsentDetailDescriptionId,
   getConsentOptionalKey,
   getConsentValidityChoices,
   getConsentValidityCustomMax,
@@ -450,7 +451,11 @@ export function AuthorizationDetailValue({
         slotProps={{
           htmlInput: {
             'aria-label': label,
-            ...(field.kind === 'number' && {step: 'any'}),
+            // The description, and the error once there is one, describe the input. Passing the attribute
+            // replaces the one the text field sets for its error, so both are named here.
+            'aria-describedby':
+              [field.descriptionId, field.error && `${inputId}-helper-text`].filter(Boolean).join(' ') || undefined,
+            ...(field.kind === 'number' && {step: field.step ?? 'any'}),
             max: field.max,
             min: field.min,
           },
@@ -462,13 +467,13 @@ export function AuthorizationDetailValue({
 
   if (field.kind === 'removeItems') {
     return (
-      <Box role="group" aria-label={label} sx={groupSx}>
+      <Box role="group" aria-label={label} aria-describedby={field.descriptionId} sx={groupSx}>
         {collapse(
           field.items.map(({selected, toggleable, value}, index) => {
             const toggle = toggleable ? (): void => field.handleToggle(value) : undefined;
-            // The whole chip toggles the item: a kept item is removed, except the last one, since to grant
-            // none of them the user declines the detail instead. A removed item stays visible so the user can
-            // add it back.
+            // The whole chip toggles the item: a kept item is removed while more than the fewest the field
+            // must keep remain, and never the last one, since to grant none of them the user declines the
+            // detail instead. A removed item stays visible so the user can add it back.
             return (
               <Chip
                 key={String(value)}
@@ -519,9 +524,9 @@ export function AuthorizationDetailValue({
     // The items shown cannot be removed, since removing one would grant more. Items the user adds can be
     // taken out again before approving, and the values the type allows are offered to add.
     return (
-      <Box role="group" aria-label={label} sx={groupSx}>
+      <Box role="group" aria-label={label} aria-describedby={field.descriptionId} sx={groupSx}>
         {collapse(
-          field.items.map(({origin, value}, index) => {
+          field.items.map(({origin, toggleable, value}, index) => {
             if (origin === 'shown') {
               return (
                 <Chip
@@ -560,6 +565,7 @@ export function AuthorizationDetailValue({
                 />
               );
             }
+            // An offered value cannot be added once the list holds the most items its type allows.
             return (
               <Chip
                 key={`offered-${String(value)}`}
@@ -574,7 +580,8 @@ export function AuthorizationDetailValue({
                   {item: String(value)},
                   '{{item}}, add',
                 )}
-                onClick={toggle}
+                disabled={!toggleable}
+                onClick={toggleable ? toggle : undefined}
                 sx={{...CHIP_SX, '&&': {borderStyle: 'dashed', borderColor: 'divider', color: 'text.secondary'}}}
               />
             );
@@ -597,6 +604,7 @@ export function AuthorizationDetailValue({
             slotProps={{
               htmlInput: {
                 'aria-label': detailText('consent.authorization_details.new_item', {label}, '{{label}}, add'),
+                'aria-describedby': field.descriptionId,
               },
             }}
             sx={{maxWidth: 140}}
@@ -695,9 +703,27 @@ function AuthorizationDetailCard({
                 const layout = getAuthorizationDetailRowLayout(row);
                 return (
                   <Box key={row.path ?? rowIdx} sx={layout.row}>
-                    <Typography className={cn('Text--body2')} variant="body2" color="text.secondary" sx={layout.label}>
-                      {row.label || row.path}
-                    </Typography>
+                    <Box sx={{...layout.label, display: 'flex', flexDirection: 'column'}}>
+                      <Typography
+                        className={cn('Text--body2')}
+                        variant="body2"
+                        color="text.secondary"
+                        sx={{lineHeight: 'inherit'}}
+                      >
+                        {row.label || row.path}
+                      </Typography>
+                      {row.description && (
+                        <Typography
+                          id={getConsentDetailDescriptionId(purposeId, detailId, row.path)}
+                          className={cn('Text--caption', 'Flow--consent-detail-description')}
+                          variant="caption"
+                          color="text.secondary"
+                          sx={{lineHeight: 1.4}}
+                        >
+                          {row.description}
+                        </Typography>
+                      )}
+                    </Box>
                     <Box sx={layout.value}>
                       <AuthorizationDetailValue
                         align={layout.stacked ? 'start' : 'end'}

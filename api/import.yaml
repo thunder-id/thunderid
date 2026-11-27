@@ -391,7 +391,9 @@ components:
           description: >
             Sharing policies the content no longer carries for the resources it writes. Each is
             removed once its resource is written, a flow's just before it is written. A policy left
-            out of a document is never removed otherwise.
+            out of a document is never removed otherwise. Removing a policy, or narrowing one the
+            document carries, revokes what was issued in the organization units a user, application,
+            or role loses, as the sharing policies API does.
           items:
             type: object
             required: [resourceType, id]

@@ -43,7 +43,13 @@ vi.mock('@thunderid/configure-users/pages/UserAddRoute', () => ({
 }));
 
 vi.mock('@thunderid/configure-users/pages/UserEditPage', () => ({
-  default: () => <div data-testid="user-edit-page">User Edit Page</div>,
+  default: ({renderSessions = undefined}: {renderSessions?: (userId: string) => React.ReactNode}) => (
+    <div data-testid="user-edit-page">User Edit Page{renderSessions?.('user-123')}</div>
+  ),
+}));
+
+vi.mock('@thunderid/configure-sessions/components/SessionsPanel', () => ({
+  default: ({filter}: {filter: {userId: string}}) => <div data-testid="sessions-panel">{filter.userId}</div>,
 }));
 
 vi.mock('@thunderid/configure-users/pages/UsersListPage', () => ({
@@ -142,6 +148,12 @@ describe('App', () => {
     await waitFor(() => {
       expect(screen.getByTestId('user-edit-page')).toBeInTheDocument();
     });
+  });
+
+  it('gives UserEditPage the sessions of the user it shows', async () => {
+    window.history.pushState({}, '', '/users/user-123');
+    render(<App />);
+    expect(await screen.findByTestId('sessions-panel')).toHaveTextContent('user-123');
   });
 
   it('loads UserAddPage lazily at /users/add', async () => {
