@@ -2,24 +2,30 @@
 displayed_sidebar: null
 title: CookieConfig
 docType: reference
-description: Session cookie name constants used by the Express SDK to configure secure HTTP-only session cookies.
+description: Default session cookie values used by the Express SDK, and how the SDK names its secure, HTTP-only session cookie.
 ---
 
 # `CookieConfig`
 
-The Express SDK exports `CookieConfig` and `SESSION_COOKIE_NAME` for the session cookie behavior used by the SDK.
+The Express SDK exports `CookieConfig` with the default values of the session cookie.
 
 ## Import
 
 ```js
-const {CookieConfig, SESSION_COOKIE_NAME} = require('@thunderid/express');
+const {CookieConfig} = require('@thunderid/express');
 ```
 
 ## Session Cookie Name
 
-| Export | Value | Description |
-| :--- | :--- | :--- |
-| `SESSION_COOKIE_NAME` | `'THUNDERID_SESSION_ID'` | Session cookie key used by the Express SDK |
+The session cookie name depends on the environment and the configuration:
+
+| Condition | Name |
+| :--- | :--- |
+| `sessionCookie.name` is set | That name, as it is |
+| The cookie is `Secure`, which is the default when `NODE_ENV` is `production` | `__Host-thunderid-session` |
+| The cookie is not `Secure` | `thunderid-session` |
+
+A custom `vendor` replaces `thunderid` in the default name. Read the name the SDK uses from `req.thunderIDAuth.getSessionCookieName()`.
 
 ## Default Cookie Values
 
@@ -27,18 +33,19 @@ const {CookieConfig, SESSION_COOKIE_NAME} = require('@thunderid/express');
 | :--- | :--- |
 | `defaultExpirySeconds` | `86400` |
 | `defaultHttpOnly` | `true` |
-| `defaultSameSite` | `'lax'` |
-| `defaultSecure` | `false` |
+| `defaultSameSite` | `'strict'` |
+| `defaultSecure` | `false`. Deprecated and no longer read: the cookie is `Secure` by default when `NODE_ENV` is `production` |
 
 ## Usage
 
 You do not need to set these values directly when `sessionCookie` options are omitted from `ExpressClientConfig`. The SDK uses these defaults automatically.
 
 ```js title="index.js" showLineNumbers
-const {SESSION_COOKIE_NAME} = require('@thunderid/express');
+// Reports whether the request is signed in. The cookie's value is a credential, so it is never returned.
+app.get('/signed-in', async (req, res) => {
+  const sessionId = req.cookies?.[req.thunderIDAuth.getSessionCookieName()];
 
-app.get('/session-id', (req, res) => {
-  res.json({sessionId: req.cookies?.[SESSION_COOKIE_NAME] ?? null});
+  res.json({isSignedIn: Boolean(sessionId && (await req.thunderIDAuth.isSignedIn(sessionId)))});
 });
 ```
 

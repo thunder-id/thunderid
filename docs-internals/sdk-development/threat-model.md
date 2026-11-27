@@ -579,6 +579,71 @@ sequenceDiagram
 | 4 | [Tampering] | The application shows an attribute as verified that the server never recorded | [No] | Status comes only from the read-only `verifiedAttributes` of `/users/me`, re-read after `COMPLETE`; the SDK never marks an attribute verified locally, and an absent field shows neither status (AC10.4) |
 | 5 | [Information Disclosure] | The code reaches a log or a crash report | [No] | The code is a credential under interaction 03 and is never logged (AC10.5) |
 
+#### 09: Serving the BFF contract to a browser
+
+**Description**
+
+A server-side SDK acts as the Backend for Frontend of a browser-based application, as the
+[BFF contract specification](../bff/spec.md) defines. It runs sign-in as a confidential client,
+keeps the session in an encrypted cookie or in its session store, and serves the session
+endpoints and the API proxy under `/api/auth` on the application's origin. The browser holds only
+an `HttpOnly` cookie and calls the endpoints with `X-Requested-With: XMLHttpRequest`.
+
+**Assets involved**
+
+| Initiator | Intermediate | Target |
+| --- | --- | --- |
+| Browser, or a cross-site page in it | Network, the application's HTTP stack | BFF endpoints, session cookie, session store, the API |
+
+**Data flow**
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant B as Browser
+  participant F as BFF
+  participant T as ThunderID server
+  participant A as API
+  B->>F: GET /signin
+  F->>B: 302 to authorize, temporary cookie
+  B->>T: authorize
+  T->>B: 302 to /callback with code
+  B->>F: GET /callback
+  F->>T: token request with client secret
+  T->>F: tokens
+  F->>B: 302, encrypted session cookie
+  B->>F: GET /proxy/users/me, cookie, X-Requested-With
+  F->>A: Bearer access token
+  A->>F: response
+  F->>B: response, no token
+```
+
+**Security considerations**
+
+| Area | Response | Comments |
+| --- | --- | --- |
+| Data confidentiality | [C-High] | The cookie carries, or points to, the user's tokens |
+| Communication medium | [M-NT] | |
+| Transport security | [TLS] | The cookie is `Secure` in production |
+| Authentication | Session cookie, plus the request header and origin checks | |
+| Accessibility | [Public] | Any page the browser loads can send requests to the endpoints |
+| Authorization and Access Control | The session's access token, attached by the BFF | The browser never chooses the API's address |
+
+**Threat assessment**
+
+| ID | Category | Threat | Materializable | Mitigation / comment |
+| --- | --- | --- | --- | --- |
+| 1 | [Information Disclosure] | Whoever holds the cookie, through a log, a proxy or a browser extension, reads the tokens in it | [No] | A session kept in the cookie is encrypted with a key derived from a secret of at least 32 bytes; a signed-only cookie is not allowed (AC11.2) |
+| 2 | [Tampering] | A cookie is altered or forged to change the session's user or scopes | [No] | AES-GCM authenticates the ciphertext and the header; a cookie that does not decrypt is no session. Only `dir` with `A256GCM` is accepted, and compression is refused |
+| 3 | [Spoofing] | A page on another site uses the user's cookie to sign them out, switch their organization unit, refresh, or call the API through the proxy | [No] | `SameSite=Strict` keeps the cookie off every request another site starts (an application that chose `Lax` keeps it off cross-site `POST`s), the required request header forces a preflight the BFF never answers, and a cross-site `Sec-Fetch-Site` or a disallowed `Origin` is refused |
+| 4 | [Tampering] | A sibling subdomain sets or overwrites the session cookie (cookie tossing) | [No] | In production the cookie is `Secure` and named `__Host-`, so the browser accepts it only from the origin itself, on `Path=/`, with no `Domain` |
+| 5 | [Information Disclosure] | A session response is cached by the browser or an intermediary and shown to the next user | [No] | Every response is `Cache-Control: no-store` |
+| 6 | [Spoofing] | Sign-in is started with a `returnTo` that sends the user to an attacker's site afterwards | [No] | Only a path on the application is kept; anything else returns to `/` |
+| 7 | [Elevation of Privilege] | The proxy is asked for a path outside the API, or another host, to send the access token elsewhere | [No] | The target is built from the configured API base only, and a path that resolves outside it is refused |
+| 8 | [Information Disclosure] | The application turns on the token endpoint, and script in the page reads the access token | [Yes] | Off by default. When on, it returns the access token only, never the refresh token, which is the token-mediating pattern RFC 10017 permits only when a BFF is not possible. Recorded as a residual |
+| 9 | [Security Risk] | The session secret leaks, so every cookie can be read and forged | [Yes] | The secret is read from the environment and never logged. Rotating it signs every user out. Recorded as a residual |
+| 10 | [Denial of Service] | A sign-in in progress kept in memory is lost when the callback reaches another instance | [Yes] | The PKCE verifier and `state` are held in the SDK's store between `signin` and `callback`. Several instances need sticky sessions or a shared store. Recorded as a residual |
+
 ## Security Review Checklist
 
 ### Security considerations
@@ -668,6 +733,14 @@ identifiers a user supplies during authentication and recovery.
   lifetime, and is accepted.
 - An SDK that cannot decrypt an encrypted logout token does not support back-channel logout for
   a client configured for ID token encryption. Each such SDK documents it.
+- A BFF whose application turns on the token endpoint hands the access token to the page, where
+  script can read it until it expires. It is off by default, and the refresh token never leaves
+  the BFF.
+- Anyone with a BFF's session secret can read and forge its session cookies. Rotating the secret
+  ends every session. The secret's custody is the deployment's.
+- A sign-in in progress is held in the SDK's store between `signin` and `callback`, so a
+  deployment with several instances needs sticky sessions or a shared store for sign-in to
+  complete.
 - Each self user attribute verification sends a message to the user's contact. The server caps
   codes per execution, not new executions, so send volume across executions is limited by the
   deployment's rate limits and the provider's quotas.
@@ -694,3 +767,4 @@ identifiers a user supplies during authentication and recovery.
 | 0.3 | 2026-10-12 | Interaction 07 added for a federated redirect inside an embedded flow. A callback without a `state` is never submitted, and mobile SDKs reject one that does not echo the request's `state`. Authorization codes, and callback URLs that carry one, are never logged. |
 | 0.4 | 2026-11-03 | Interaction 08 added for starting a self user attribute verification. |
 | 0.5 | 2026-11-10 | Interaction 08: the built-in profile waits for Verify after a contact save, which limits threat 3 (AC10.6). |
+| 0.6 | 2026-11-27 | Interaction 09 added for serving the BFF contract to a browser: the encrypted session cookie, the request rules and the proxy (#7095). |

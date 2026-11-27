@@ -78,9 +78,9 @@ The <ProductName /> SDKs that run on a server implement the receiving side. Each
 
 | SDK | What to add | Reference |
 |---|---|---|
-| Express | `app.post('/backchannel-logout', handleBackchannelLogout())` | [`handleBackchannelLogout()`](../../../sdks-and-tools/express/apis/middleware/handle-backchannel-logout.mdx) |
+| Express | `app.post('/backchannel-logout', handleBackchannelLogout())`, or `app.use(thunderIDBff())`, which serves it at `/api/auth/backchannel-logout` | [`handleBackchannelLogout()`](../../../sdks-and-tools/express/apis/middleware/handle-backchannel-logout.mdx), [`thunderIDBff()`](../../../sdks-and-tools/express/apis/middleware/thunderid-bff.mdx) |
 | Node | `client.handleBackchannelLogout(logoutToken)` behind a route of the application's own | [`ThunderIDNodeClient`](../../../sdks-and-tools/node/apis/clients/thunderid-node-client.mdx#handlebackchannellogoutlogouttoken) |
-| Next.js | `export const {POST} = backchannelLogout()` in a route handler | [`backchannelLogout()`](../../../sdks-and-tools/nextjs/apis/backchannel-logout.mdx) |
+| Next.js | `export const {POST} = backchannelLogout()` in a route handler, or `thunderIDBff()` in `app/api/auth/[...thunderid]/route.ts`, which serves it at `/api/auth/backchannel-logout` | [`backchannelLogout()`](../../../sdks-and-tools/nextjs/apis/backchannel-logout.mdx), [`thunderIDBff()`](../../../sdks-and-tools/nextjs/apis/bff.mdx) |
 | Nuxt | `thunderid: {backchannelLogout: {enabled: true}}` in `nuxt.config.ts` | [Module Configuration](../../../sdks-and-tools/nuxt/apis/configuration/module-configuration.mdx#backchannellogout) |
 | Spring Security | `.oidcLogout(logout -> logout.backChannel(Customizer.withDefaults()))` | [Spring Security](/sdks-and-tools/spring-security) |
 

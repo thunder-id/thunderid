@@ -77,7 +77,7 @@ sections:
         NEXT_PUBLIC_THUNDERID_BASE_URL=https://localhost:8090
         NEXT_PUBLIC_THUNDERID_CLIENT_ID=<your-client-id>
         THUNDERID_CLIENT_SECRET=<your-client-secret>
-        THUNDERID_SECRET=<a-random-secret-for-session-signing>
+        THUNDERID_SESSION_SECRET=<a-random-secret-for-session-encryption>
     - group: Functions
       kind: function
       name: Middleware
@@ -100,6 +100,16 @@ sections:
         export const config = {
           matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
         }
+    - group: Functions
+      kind: function
+      name: thunderIDBff()
+      description: The `thunderIDBff()` function returns catch-all route handlers that serve the Backend for Frontend
+        (BFF) endpoints under `/api/auth`, so a browser app in `backend` mode can use the Next.js app as its BFF.
+      example: |-
+        // app/api/auth/[...thunderid]/route.ts
+        import { thunderIDBff } from '@thunderid/nextjs/server'
+
+        export const { GET, POST, PUT, PATCH, DELETE } = thunderIDBff()
     - group: Functions
       kind: function
       name: Server Actions

@@ -25,7 +25,7 @@ I have a Nuxt 3 application and I want to integrate {{productName}}'s authentica
 - All configuration is read from environment variables with NUXT_PUBLIC_ prefix for public values
 - Required env vars: NUXT_PUBLIC_THUNDERID_BASE_URL, NUXT_PUBLIC_THUNDERID_APPLICATION_ID, NUXT_PUBLIC_THUNDERID_SIGN_IN_URL, NUXT_PUBLIC_THUNDERID_SIGN_UP_URL, THUNDERID_CLIENT_SECRET, THUNDERID_SESSION_SECRET (the last two without the NUXT_PUBLIC_ prefix)
 - Never ask the developer to type or paste the Client Secret into this conversation. If it is not supplied above, add a `THUNDERID_CLIENT_SECRET` placeholder to `.env` and tell the developer to fill it in locally before running the app
-- Generate `THUNDERID_SESSION_SECRET` locally as a random, high-entropy value of at least 32 characters (e.g. `openssl rand -base64 32`) — never ask the developer for this value or guess one
+- Generate `THUNDERID_SESSION_SECRET` locally as a random, high-entropy value of at least 32 bytes (e.g. `openssl rand -base64 32`). Never ask the developer for this value or guess one
 - Wrap <NuxtPage /> with <ThunderIDRoot> in app.vue
 - All components are auto-registered under their bare names (`SignedIn`, `SignedOut`, `SignIn`, `SignUp`, `SignInButton`, `SignOutButton`, `UserDropdown`, `User`), matching the names exported from `@thunderid/vue`/`@thunderid/react`, and composables are auto-imported — no manual import needed. `ThunderIDRoot` is the one exception
 - The `<SignIn>`/`<SignUp>` components mirror the Vue SDK's `SignIn`/`SignUp` and drive the embedded (app-native) Flow Execution API directly — they replace `window.location` navigation with Nuxt's `navigateTo` internally, so no manual redirect handling is needed

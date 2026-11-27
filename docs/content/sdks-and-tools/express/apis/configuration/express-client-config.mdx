@@ -36,8 +36,6 @@ app.use(
     sessionCookie: {
       expiryTime: 28800,
       httpOnly: true,
-      sameSite: 'lax',
-      secure: false,
     },
   }),
 );
@@ -126,8 +124,25 @@ The `sessionCookie` field is inherited from `ThunderIDNodeConfig`.
 | :--- | :--- | :--- | :--- |
 | `expiryTime` | `number` | `86400` | Session lifetime in seconds |
 | `httpOnly` | `boolean` | `true` | Makes the cookie inaccessible to JavaScript |
-| `sameSite` | `'lax' \| 'strict' \| 'none'` | `'lax'` | SameSite policy for the session cookie |
-| `secure` | `boolean` | `false` | Requires HTTPS when `true` |
+| `sameSite` | `'lax' \| 'strict' \| 'none'` | `'strict'`, or `THUNDERID_SESSION_COOKIE_SAME_SITE` | SameSite policy for the session cookie. See the warning below before you change it |
+| `secure` | `boolean` | `true` when `NODE_ENV` is `production`, otherwise `false` | Requires HTTPS when `true` |
+| `name` | `string` | `thunderid-session`, or `__Host-thunderid-session` when `secure` is `true` | Session cookie name. A name you set is used as it is, without the `__Host-` prefix |
+
+The session cookie is always set with `Path=/` and no `Domain`. When it is `Secure` and you have not set `name`, its name takes the `__Host-` prefix, so the browser keeps it to the host that set it, and a subdomain cannot set or overwrite it. A `Secure` cookie needs HTTPS, so serve the app over HTTPS in production, or set `secure: false` when it runs on plain HTTP.
+
+The SDK sets these cookies:
+
+| Cookie | Name in production | Name in development | `SameSite` | Lifetime | Purpose |
+|--------|--------------------|---------------------|------------|----------|---------|
+| Session cookie | `__Host-thunderid-session` | `thunderid-session` | `sameSite`, `Strict` by default | `expiryTime` | Holds the session ID. The tokens stay on the server, in the session store |
+| Sign-in cookie | `__Host-thunderid-session-state` | `thunderid-session-state` | `Lax` | 15 minutes, deleted when sign-in completes | Holds the session ID the sign-in's `state` and PKCE verifier are stored under, so the callback can check the `state` |
+| Return-to cookie | `__Host-thunderid-return-to` | `thunderid-return-to` | `Lax` | 10 minutes, deleted when sign-in completes | Set only by [`thunderIDBff()`](../../middleware/thunderid-bff): the path to return to after sign-in |
+
+The production names apply when the cookie is `Secure`. The sign-in and return-to cookies are `Lax`, so they come back on the redirect to your sign-in path. The session cookie is set only once sign-in completes. When the session cookie is `strict`, a redirect from your `onSignIn` handler is answered with a page that moves the browser on, so the browser sends the new cookie.
+
+:::warning
+Setting `sameSite: 'lax'` deviates from RFC 10017. The browser then also sends the session cookie when the user follows a link to your app from another site. RFC 10017 recommends `strict` for a Backend for Frontend (BFF), so choose `lax` only when such links must land signed in, and the SDK logs a warning when you do. Cross-site request forgery is still refused by the SDK's request checks.
+:::
 
 ## Notes
 

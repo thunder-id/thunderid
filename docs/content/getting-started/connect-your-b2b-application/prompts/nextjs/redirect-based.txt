@@ -18,8 +18,8 @@ I have a Next.js application (App Router) for a business-to-business (B2B) produ
 - **App URL**: http://localhost:3000 (the only redirect URI)
 
 ## IMPORTANT Configuration Rules
-- Configure with `.env`, not provider props: NEXT_PUBLIC_THUNDERID_BASE_URL, NEXT_PUBLIC_THUNDERID_CLIENT_ID, THUNDERID_CLIENT_SECRET, NEXT_PUBLIC_THUNDERID_AFTER_SIGN_IN_URL and NEXT_PUBLIC_THUNDERID_AFTER_SIGN_OUT_URL (both http://localhost:3000), NEXT_PUBLIC_THUNDERID_SCOPES=openid profile email roles ou org device_sso, THUNDERID_SECRET (from `openssl rand -base64 32`), and NEXT_PUBLIC_THUNDERID_SIGN_IN_FLOW_ID (read by the app's own code, not the SDK)
-- Never ask me to paste the client secret or THUNDERID_SECRET here. Add placeholders to `.env` and tell me to fill them in
+- Configure with `.env`, not provider props: NEXT_PUBLIC_THUNDERID_BASE_URL, NEXT_PUBLIC_THUNDERID_CLIENT_ID, THUNDERID_CLIENT_SECRET, NEXT_PUBLIC_THUNDERID_AFTER_SIGN_IN_URL and NEXT_PUBLIC_THUNDERID_AFTER_SIGN_OUT_URL (both http://localhost:3000), NEXT_PUBLIC_THUNDERID_SCOPES=openid profile email roles ou org device_sso, THUNDERID_SESSION_SECRET (from `openssl rand -base64 32`), and NEXT_PUBLIC_THUNDERID_SIGN_IN_FLOW_ID (read by the app's own code, not the SDK)
+- Never ask me to paste the client secret or THUNDERID_SESSION_SECRET here. Add placeholders to `.env` and tell me to fill them in
 - A local instance at https://localhost:8090 uses a self-signed certificate, so put NODE_TLS_REJECT_UNAUTHORIZED=0 in `.env.development`, which only `next dev` loads. Never put it in `.env` or use it in production
 - Import ThunderIDProvider, thunderIDProxy and thunderid from '@thunderid/nextjs/server', and components and hooks from '@thunderid/nextjs'
 - In `app/layout.tsx`, render the provider with `preferences={{ user: { fetchUserProfile: false } }}` from an async component that awaits `connection()` from 'next/server', inside <Suspense>. Do not use `export const dynamic`

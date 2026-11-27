@@ -109,7 +109,7 @@ Create a `.env` file in your project root with the values the import set up:
 
 :::warning Configuration
 Replace `<your-client-secret>` with the client secret you set as `NEXTJS_B2B_CLIENT_SECRET`. Generate a random string
-for `THUNDERID_SECRET` (at least 32 characters):
+for `THUNDERID_SESSION_SECRET` (at least 32 bytes):
 
 ```bash
 openssl rand -base64 32
@@ -124,7 +124,7 @@ NEXT_PUBLIC_THUNDERID_AFTER_SIGN_IN_URL=http://localhost:3000
 NEXT_PUBLIC_THUNDERID_AFTER_SIGN_OUT_URL=http://localhost:3000
 NEXT_PUBLIC_THUNDERID_SCOPES=openid profile email roles ou org device_sso
 NEXT_PUBLIC_THUNDERID_SIGN_IN_FLOW_ID=019f0b20-0000-7000-8000-000000000021
-THUNDERID_SECRET=<a-random-secret-for-session-signing>
+THUNDERID_SESSION_SECRET=<a-random-secret-for-session-encryption>
 # DANGER: Disables ALL TLS verification. Only for local development with self-signed certs. NEVER use in production.
 NODE_TLS_REJECT_UNAUTHORIZED=0
 ```

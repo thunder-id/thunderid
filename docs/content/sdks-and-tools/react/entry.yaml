@@ -1468,7 +1468,7 @@ guides:
       - cells:
         - Where tokens live
         - Browser sessionStorage
-        - The BFF. The browser gets an access token only if the app asks for one
+        - The BFF. The browser gets an access token only if the BFF turns on `POST /token`
       - cells:
         - Single logout
         - Not supported
@@ -1521,9 +1521,11 @@ guides:
             THUNDERID_CLIENT_ID=<your-client-id>
             THUNDERID_CLIENT_SECRET=<your-client-secret>
             APP_URL=http://localhost:5173
-      - title: Mount the SDK and receive back-channel logout
-        description: Mount `thunderID()` under `/api/auth` and add the back-channel logout route. The SDK stores the
-          tokens on the server and sets the `HttpOnly` session cookie. Start the server with
+      - title: Mount the SDK and the BFF endpoints
+        description: Mount `cookieParser()`, then `thunderID()`, then `thunderIDBff()`. `thunderIDBff()` serves every
+          endpoint the React SDK calls under `/api/auth`, including back-channel logout, and passes other requests on.
+          The SDK stores the tokens on the server and sets the `HttpOnly` session cookie. In production the cookie is
+          `Secure` and named with the `__Host-` prefix, so serve the app over HTTPS. Start the server with
           `node --env-file=.env index.mjs`.
         code:
           file: server/index.mjs
@@ -1531,31 +1533,27 @@ guides:
           content: |-
             import express from 'express'
             import cookieParser from 'cookie-parser'
-            import { thunderID, handleBackchannelLogout } from '@thunderid/express'
+            import { thunderID, thunderIDBff } from '@thunderid/express'
 
             const appUrl = process.env.APP_URL
 
             const app = express()
             app.use(cookieParser())
 
-            const auth = express.Router()
-            app.use('/api/auth', auth)
-
-            auth.use(
+            app.use(
               thunderID({
                 baseUrl: process.env.THUNDERID_BASE_URL,
                 clientId: process.env.THUNDERID_CLIENT_ID,
                 clientSecret: process.env.THUNDERID_CLIENT_SECRET,
+                // Must be the BFF's callback endpoint on the app's origin.
                 afterSignInUrl: `${appUrl}/api/auth/callback`,
                 afterSignOutUrl: appUrl,
-                sessionCookie: { httpOnly: true, sameSite: 'lax' },
+                sessionCookie: { httpOnly: true },
               }),
             )
 
-            // ThunderID posts a logout token here when the user's session ends elsewhere.
-            auth.post('/backchannel-logout', handleBackchannelLogout())
-
-            // Add the endpoints the React SDK calls. See "Endpoints the React SDK calls".
+            // Serves the endpoints under /api/auth, including the back-channel logout {{ProductName}} posts to.
+            app.use(thunderIDBff())
 
             app.listen(3001)
 
@@ -1601,9 +1599,13 @@ guides:
     - type: table
       id: endpoints
       title: Endpoints the React SDK calls
-      intro: 'The BFF serves these under /api/auth. The SDK sends the header X-Requested-With: XMLHttpRequest on every
-        request it makes with fetch. Reject requests without it, except the sign-in redirects, so a page on another site
-        cannot use the session cookie.'
+      intro: 'thunderIDBff() serves these under /api/auth. The SDK sends the header X-Requested-With: XMLHttpRequest
+        on every request it makes with fetch. The BFF answers 403 to a request without it, to one whose Sec-Fetch-Site
+        is neither same-origin nor none, and to a state-changing request whose Origin is not the app''s origin. The
+        sign-in redirects, back-channel logout, and GET /proxy/flow/meta are exempt. A request without Sec-Fetch-Site
+        or Origin is not refused for that alone, but still needs the header. So a page on another site cannot use the
+        session cookie. Every response carries Cache-Control: no-store, and none carries a token except
+        POST /token.'
       showHeader: true
       columns:
       - label: Endpoint
@@ -1613,17 +1615,22 @@ guides:
       rows:
       - cells: [GET /signin, Starts sign-in. The browser navigates here]
       - cells: [GET /callback, The redirect URI. Exchanges the code and sets the session cookie]
-      - cells: [GET /session, Returns the signed-in user]
-      - cells: [GET /checksession, Tells the app whether the session is still live. Must not refresh the session]
-      - cells: [POST /refresh, Refreshes the access token on the server]
+      - cells: [GET /session, 'Returns the signed-in user, when the access token expires (expiresAt), and the granted
+            scope. Refreshes an expired access token when it can']
+      - cells: [GET /checksession, Tells the app whether the session is still live. Does not refresh the session]
+      - cells: [POST /refresh, 'Refreshes the access token on the server. Answers 401 with login_required when it
+            cannot, and the session is over']
       - cells: [POST /signout, Ends the session and returns the end-session URL]
-      - cells: [POST /token, Returns an access token for APIs the app calls directly. Leave it out if the app sends every
-            call through the proxy]
+      - cells: [POST /token, 'Returns an access token for APIs the app calls directly. Off unless you pass
+            thunderIDBff({exposeAccessToken: true}), and answers 404 otherwise. Never returns the refresh token']
       - cells: [POST /switch, 'Switches the session to another organization unit. The SDK sends the unit as ?ouId=<id>
             and as the JSON body {"ouId": "<id>"}, then reads /session again. To refuse, answer with an OAuth error in a
             JSON body. On 401, or an error that means the user has to sign in, such as interaction_required, the browser
             goes to /signin with ouId. Set its path with endpoints.backend.ouSwitch']
-      - cells: ['ALL /proxy/*', Forwards API calls with the access token]
+      - cells: [POST /backchannel-logout, 'Receives the logout token {{ProductName}} posts when the user''s session
+            ends elsewhere, and ends the matching session']
+      - cells: ['ALL /proxy/*', 'Forwards API calls with the access token, to the {{ProductName}} base URL unless you set
+            apiBaseUrl. A 401 from the API passes through and does not sign the user out']
 
     - type: steps
       id: try-single-logout

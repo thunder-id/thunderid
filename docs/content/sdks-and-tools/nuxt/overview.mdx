@@ -133,11 +133,18 @@ The module automatically registers the following server routes under `/api/auth`
 | `/api/auth/signup` | `POST` | Handle embedded sign-up step |
 | `/api/auth/callback` | `GET / POST` | OAuth callback handler |
 | `/api/auth/signout` | `POST` | Sign out and return redirect URL |
-| `/api/auth/session` | `GET` | Get current auth state |
+| `/api/auth/switch` | `POST` | Switch the session to another organization unit without a redirect |
+| `/api/auth/session` | `GET` | Get current auth state, including when the access token expires (`expiresAt`) and the granted `scope` |
+| `/api/auth/checksession` | `GET` | Report whether the session is still live, without refreshing it |
+| `/api/auth/refresh` | `POST` | Refresh the session's tokens. Answers `401` with `login_required` when it cannot |
+| `/api/auth/proxy/**` | Any | Forward an API call to <ProductName /> with the session's access token |
+| `/api/auth/backchannel-logout` | `POST` | Receive a back-channel logout token. Served only when [`backchannelLogout`](../apis/configuration/module-configuration#backchannellogout) is enabled |
 | `/api/auth/token` | `GET` | Get client-safe access token |
 | `/api/auth/user` | `GET` | Get user object |
 | `/api/auth/user/profile` | `GET / PATCH` | Get or update user profile |
 | `/api/auth/branding` | `GET` | Get tenant branding preference |
+
+The `signout`, `switch`, `checksession`, `refresh`, and `proxy/**` routes, except the public `GET /api/auth/proxy/flow/meta`, refuse a request with `403` when it lacks the `X-Requested-With: XMLHttpRequest` header, when its `Sec-Fetch-Site` header is neither `same-origin` nor `none`, or when a state-changing request comes from another origin. A request without `Sec-Fetch-Site` or `Origin` is not refused for that reason, since browsers can leave them out and other clients never send them. It still needs the header. The module's own composables and components send the header. Call these routes from your own code with it too. With these routes, a React or Vue app in `backend` mode can use the Nuxt app as its Backend for Frontend (BFF).
 
 ## Package Exports
 

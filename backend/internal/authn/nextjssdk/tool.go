@@ -86,12 +86,12 @@ Create a ~.env.local~ file in your project root:
 NEXT_PUBLIC_THUNDERID_BASE_URL=https://localhost:8090
 NEXT_PUBLIC_THUNDERID_CLIENT_ID=<your-client-id>
 THUNDERID_CLIENT_SECRET=<your-client-secret>
-THUNDERID_SECRET=<a-random-secret-at-least-32-chars>
+THUNDERID_SESSION_SECRET=<a-random-secret-at-least-32-bytes>
 # DANGER: Disables ALL TLS verification. Only for local development with self-signed certs. NEVER use in production.
 NODE_TLS_REJECT_UNAUTHORIZED=0
 ~~~
 
-Generate a random value for ~THUNDERID_SECRET~:
+Generate a random value for ~THUNDERID_SESSION_SECRET~, which encrypts the session cookie:
 
 ~~~bash
 openssl rand -base64 32

@@ -50,10 +50,10 @@ For end-to-end setup instructions, see the [Express quickstart guide](../../../g
 
 This SDK section focuses on the Express-specific public surface exported by `@thunderid/express`:
 
-- Middleware and handlers: [`thunderID()`](../apis/middleware/thunderid), [`handleSignIn()`](../apis/middleware/handle-sign-in), [`handleSignOut()`](../apis/middleware/handle-sign-out), [`protect()`](../apis/middleware/protect), and [`handleFlow()`](../apis/middleware/handle-flow)
+- Middleware and handlers: [`thunderID()`](../apis/middleware/thunderid), [`handleSignIn()`](../apis/middleware/handle-sign-in), [`handleSignOut()`](../apis/middleware/handle-sign-out), [`protect()`](../apis/middleware/protect), [`handleFlow()`](../apis/middleware/handle-flow), and [`thunderIDBff()`](../apis/middleware/thunderid-bff)
 - Client additions: [`ThunderIDExpressClient`](../apis/client/thunderid-express-client)
 - Configuration types: [`ExpressClientConfig`](../apis/configuration/express-client-config), `StrictExpressClientConfig`, and `ThunderIDExpressConfig`
-- Constants: [`CookieConfig`](../apis/constants/cookie-config) and `SESSION_COOKIE_NAME`
+- Constants: [`CookieConfig`](../apis/constants/cookie-config)
 
 :::note
 `@thunderid/express` also re-exports the `@thunderid/node` surface. This Express SDK section only documents the inherited Node and JavaScript SDK behavior that directly affects Express integration.
@@ -63,10 +63,10 @@ This SDK section focuses on the Express-specific public surface exported by `@th
 
 | Export Group | Members |
 | :--- | :--- |
-| Middleware | `thunderID`, `handleSignIn`, `handleSignOut`, `protect`, `handleFlow` |
+| Middleware | `thunderID`, `handleSignIn`, `handleSignOut`, `protect`, `handleFlow`, `thunderIDBff` |
 | Client | `ThunderIDExpressClient` |
 | Types | `ExpressClientConfig`, `ThunderIDExpressConfig`, `StrictExpressClientConfig` |
-| Constants | `CookieConfig`, `SESSION_COOKIE_NAME` |
+| Constants | `CookieConfig` |
 | Re-exports | Public exports from `@thunderid/node` |
 
 ## Choose a Flow
@@ -152,5 +152,5 @@ See the [embedded sign-in guide](/sdks-and-tools/express/guides/embedded-sign-in
 - Session cookie defaults come from `CookieConfig`:
   - `defaultExpirySeconds = 86400`
   - `defaultHttpOnly = true`
-  - `defaultSameSite = 'lax'`
-  - `defaultSecure = false`
+  - `defaultSameSite = 'strict'`
+- The session cookie is `Secure` by default when `NODE_ENV` is `production`, and its default name then takes the `__Host-` prefix
