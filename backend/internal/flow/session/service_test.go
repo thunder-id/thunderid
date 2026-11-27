@@ -2150,6 +2150,7 @@ func listedSession(id string) Session {
 	base := time.Date(2026, 6, 16, 10, 0, 0, 0, time.UTC)
 	return Session{
 		SessionID:         id,
+		Type:              TypeSSO,
 		SubjectID:         "user-1",
 		FlowID:            "flow-1",
 		HandleID:          "handle-secret",
@@ -2238,6 +2239,7 @@ func (suite *ServiceTestSuite) TestListSessions_ByUser() {
 	suite.Require().Len(resp.Sessions, 1)
 	got := resp.Sessions[0]
 	suite.Equal("sess-1", got.ID)
+	suite.Equal(TypeSSO, got.Type)
 	suite.Equal("user-1", got.UserID)
 	suite.Equal("Alice", got.UserDisplayName)
 	suite.Equal("Mozilla/5.0", got.UserAgent)
@@ -2250,6 +2252,27 @@ func (suite *ServiceTestSuite) TestListSessions_ByUser() {
 		{AppID: "app-a", AppName: "App A", AppLogoURL: "https://example.com/app-a.png"},
 		{AppID: "app-b"},
 	}, got.Participants)
+}
+
+// A user's direct sessions are listed with their SSO sessions, each with its type.
+func (suite *ServiceTestSuite) TestListSessions_ListsDirectSessions() {
+	svc, m := suite.newService()
+	direct := listedSession("sess-2")
+	direct.Type = TypeDirect
+	expectLivePage(m, false, "user-1", noOU, 30, 0, 2, []Session{listedSession("sess-1"), direct},
+		Participant{SessionID: "sess-1", AppID: "app-a"}, Participant{SessionID: "sess-2", AppID: "app-b"})
+	expectUserDisplay(m, "Alice")
+	expectApp(m, "app-a", "App A")
+	expectApp(m, "app-b", "App B")
+
+	resp, svcErr := svc.ListSessions(adminContext("", "system"), "user-1", "", 30, 0)
+
+	suite.Require().Nil(svcErr)
+	suite.Equal(2, resp.TotalResults)
+	suite.Require().Len(resp.Sessions, 2)
+	suite.Equal(TypeSSO, resp.Sessions[0].Type)
+	suite.Equal(TypeDirect, resp.Sessions[1].Type)
+	suite.Equal([]participantResponse{{AppID: "app-b", AppName: "App B"}}, resp.Sessions[1].Participants)
 }
 
 func (suite *ServiceTestSuite) TestListSessions_ByAppResolvesEachNameOnce() {
@@ -2333,13 +2356,16 @@ func (suite *ServiceTestSuite) TestListSessions_StoreError() {
 }
 
 // The caller sees the sessions of the organization unit its own participant was recorded under, whatever its
-// token's claims say, and the session that holds its token family is marked as current.
+// token's claims say, and the session that holds its token family is marked as current. Here that is a direct
+// session, listed with the caller's SSO session.
 func (suite *ServiceTestSuite) TestListOwnSessions_ScopedByTheTokensParticipant() {
 	svc, m := suite.newService()
 	m.store.EXPECT().GetSubjectParticipantByTokenFamily(mock.Anything, "user-1", "tfid-mine").
 		Return(&Participant{SessionID: "sess-2", AppID: "app-a", OUID: "ou-1"}, nil)
+	direct := listedSession("sess-2")
+	direct.Type = TypeDirect
 	expectLivePage(m, false, "user-1", new("ou-1"), 30, 0, 2,
-		[]Session{listedSession("sess-1"), listedSession("sess-2")},
+		[]Session{listedSession("sess-1"), direct},
 		Participant{SessionID: "sess-1", AppID: "app-a", OUID: "ou-1", TokenFamilyID: "tfid-other"},
 		Participant{SessionID: "sess-2", AppID: "app-a", OUID: "ou-1", TokenFamilyID: "tfid-mine"})
 	expectApp(m, "app-a", "App A")
@@ -2348,8 +2374,10 @@ func (suite *ServiceTestSuite) TestListOwnSessions_ScopedByTheTokensParticipant(
 
 	suite.Require().Nil(svcErr)
 	suite.Require().Len(resp.Sessions, 2)
+	suite.Equal(TypeSSO, resp.Sessions[0].Type)
 	suite.Require().NotNil(resp.Sessions[0].IsCurrent)
 	suite.False(*resp.Sessions[0].IsCurrent)
+	suite.Equal(TypeDirect, resp.Sessions[1].Type)
 	suite.Require().NotNil(resp.Sessions[1].IsCurrent)
 	suite.True(*resp.Sessions[1].IsCurrent)
 	suite.Empty(resp.Sessions[1].UserDisplayName, "own sessions don't resolve the user's name")
@@ -2370,7 +2398,7 @@ func (suite *ServiceTestSuite) TestListOwnSessions_NoOUParticipant() {
 	suite.Empty(resp.Sessions)
 }
 
-// A token without a family, or one no participant of an SSO session holds, sees no session.
+// A token without a family, or one no participant holds, sees no session.
 func (suite *ServiceTestSuite) TestListOwnSessions_TokenWithoutAParticipantSeesNothing() {
 	svc, m := suite.newService()
 

@@ -24,23 +24,23 @@ type sessionStore interface {
 	// GetByExecutionID fetches the session established by the given flow execution, or (nil, nil)
 	// when that execution has not established one.
 	GetByExecutionID(ctx context.Context, flowExecutionID string) (*Session, error)
-	// ListBySubject returns every SSO session belonging to the subject.
+	// ListBySubject returns every session belonging to the subject, SSO and direct.
 	ListBySubject(ctx context.Context, subjectID string) ([]Session, error)
-	// ListLiveBySubject returns one page of the subject's live SSO sessions at now, most recently active
-	// first. A non-nil ouID keeps only the sessions with an application signed in under it.
+	// ListLiveBySubject returns one page of the subject's live sessions at now, SSO and direct, most recently
+	// active first. A non-nil ouID keeps only the sessions with an application signed in under it.
 	ListLiveBySubject(ctx context.Context, subjectID string, ouID *string, now time.Time, limit, offset int) (
 		[]Session, error)
-	// CountLiveBySubject counts the subject's live SSO sessions at now, under ouID when it is not nil.
+	// CountLiveBySubject counts the subject's live sessions at now, under ouID when it is not nil.
 	CountLiveBySubject(ctx context.Context, subjectID string, ouID *string, now time.Time) (int, error)
-	// ListLiveByApp returns one page of the live SSO sessions at now that the application has joined, most
-	// recently active first. A non-nil ouID keeps only the sessions it joined under that unit.
+	// ListLiveByApp returns one page of the live sessions at now that the application has joined, SSO and
+	// direct, most recently active first. A non-nil ouID keeps only the sessions it joined under that unit.
 	ListLiveByApp(ctx context.Context, appID string, ouID *string, now time.Time, limit, offset int) (
 		[]Session, error)
-	// CountLiveByApp counts the live SSO sessions at now that the application has joined, under ouID when it
-	// is not nil.
+	// CountLiveByApp counts the live sessions at now that the application has joined, under ouID when it is
+	// not nil.
 	CountLiveByApp(ctx context.Context, appID string, ouID *string, now time.Time) (int, error)
-	// GetSubjectParticipantByTokenFamily returns the participant of one of the subject's SSO sessions that
-	// holds the token family, or nil when none does.
+	// GetSubjectParticipantByTokenFamily returns the participant of one of the subject's sessions, SSO or
+	// direct, that holds the token family, or nil when none does.
 	GetSubjectParticipantByTokenFamily(ctx context.Context, subjectID, tokenFamilyID string) (*Participant, error)
 	// Update writes the mutable fields of an existing session under an optimistic-lock guard. It
 	// returns errVersionConflict when the stored version no longer matches, and bumps the in-memory

@@ -2,7 +2,7 @@ openapi: 3.0.3
 info:
   title: Session Management API
   version: "1.0"
-  description: List live SSO sessions. Administrators list the sessions of a user or of an application, and signed-in users list their own. Only SSO sessions are listed, which are recorded for sign-ins through flows with SSO enabled. A sign-in through a flow without SSO is not listed, and only live sessions are returned.
+  description: List live sessions. Administrators list the sessions of a user or of an application, and signed-in users list their own. A sign-in through a flow with SSO records an SSO session, which later sign-ins can reuse, and a sign-in through a flow without SSO records a direct session of its own, unless the deployment turns session tracking off. Both are listed, each with its `type`, and only live sessions are returned.
   license:
     name: Apache 2.0
     url: https://www.apache.org/licenses/LICENSE-2.0.html
@@ -17,7 +17,7 @@ servers:
 
 tags:
   - name: Sessions
-    description: List the live SSO sessions of users and applications.
+    description: List the live sessions of users and applications.
   - name: Self
     description: Self-service operations that the authenticated user performs on their own profile.
 
@@ -65,6 +65,7 @@ paths:
                 count: 1
                 sessions:
                   - id: "019a1b2c-3d4e-7f60-8a9b-0c1d2e3f4a5b"
+                    type: "SSO"
                     userId: "019a1b2c-0000-7000-8000-000000000001"
                     userDisplayName: "alice"
                     userAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
@@ -241,11 +242,15 @@ components:
   schemas:
     Session:
       type: object
-      required: [id, userId, authenticatedAt, createdAt, lastActiveAt, participants]
+      required: [id, type, userId, authenticatedAt, createdAt, lastActiveAt, participants]
       properties:
         id:
           type: string
           description: The session ID.
+        type:
+          type: string
+          enum: [SSO, DIRECT]
+          description: The kind of session. `SSO` is recorded by a sign-in through a flow with SSO, and later sign-ins through the flow can reuse it. `DIRECT` is recorded by a sign-in through a flow without SSO, for that sign-in alone, and has one participant.
         userId:
           type: string
           description: The ID of the user the session belongs to.

@@ -802,7 +802,7 @@ func (s *service) DetachApplication(ctx context.Context, appID string) error {
 	return nil
 }
 
-// listLiveBySubject returns one page of the subject's live SSO sessions at now, most recently active first,
+// listLiveBySubject returns one page of the subject's live sessions at now, most recently active first,
 // each with the applications that have joined it. A non-nil ouID keeps only the sessions with an application
 // signed in under that organization unit, and only those participants. The sessions carry the handle, so
 // callers must never expose it.
@@ -822,7 +822,7 @@ func (s *service) listLiveBySubject(ctx context.Context, subjectID string, ouID 
 	return s.page(ctx, sessions, total, ouID)
 }
 
-// listLiveByApp returns one page of the live SSO sessions at now that the application has joined, most
+// listLiveByApp returns one page of the live sessions at now that the application has joined, most
 // recently active first, each with the applications that have joined it. A non-nil ouID keeps only the
 // sessions the application joined under that organization unit, and only the participants signed in under it.
 func (s *service) listLiveByApp(ctx context.Context, appID string, ouID *string, now time.Time,
@@ -841,8 +841,8 @@ func (s *service) listLiveByApp(ctx context.Context, appID string, ouID *string,
 	return s.page(ctx, sessions, total, ouID)
 }
 
-// getSubjectParticipantByTokenFamily returns the participant of one of the subject's SSO sessions that holds
-// the token family, or nil when none does.
+// getSubjectParticipantByTokenFamily returns the participant of one of the subject's sessions, SSO or direct,
+// that holds the token family, or nil when none does.
 func (s *service) getSubjectParticipantByTokenFamily(ctx context.Context, subjectID, tokenFamilyID string) (
 	*Participant, error) {
 	participant, err := s.store.GetSubjectParticipantByTokenFamily(ctx, subjectID, tokenFamilyID)
@@ -912,7 +912,7 @@ func (s *service) ListOwnSessions(ctx context.Context, limit, offset int) (
 	// sign-in was recorded under, and only those applications, so an application in one unit can't see the
 	// user's sign-ins in another. The unit is read from the participant that holds the token's family, not
 	// from the token's claims, which the application's token configuration decides. A token that no
-	// participant of an SSO session holds, such as one from a direct session's sign-in, sees no session.
+	// participant holds, such as one from a sign-in that recorded no session, sees no session.
 	tokenFamilyID, _ := security.GetAttribute(ctx, oauth2const.ClaimTokenFamilyID).(string)
 	if tokenFamilyID == "" {
 		return s.buildListResponse([]sessionResponse{}, 0, "/users/me/sessions", limit, offset, ""), nil

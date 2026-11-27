@@ -25,7 +25,7 @@ On a fresh sign-in, the flow runs those steps and saves the checkpoint under the
 
 ## Sign-Ins Without SSO
 
-A flow without the session nodes still records a session for each sign-in, called a direct session, and the ID token names it in the `sid` claim. A direct session has no handle and no checkpoints, so no later sign-in reuses it. Every sign-in through the flow authenticates the user again and records a new direct session.
+A flow without the session nodes still records a session for each sign-in, called a direct session, and the ID token names it in the `sid` claim. A direct session has no handle and no checkpoints, so no later sign-in reuses it. Every sign-in through the flow authenticates the user again and records a new direct session. The session management API lists direct sessions alongside SSO sessions, each with its type.
 
 An administrator can turn direct sessions off by setting `session.tracking.enabled` to `false` in the deployment configuration. A sign-in through a flow without the session nodes then records no session, so it cannot be listed or ended, and its tokens carry no `sid` claim. A flow with the session nodes still records its SSO session, so SSO is not affected. The setting applies to new sign-ins: sessions recorded earlier keep working until they end. See [Session Configuration](../../../deployment/configuration#session-configuration).
 

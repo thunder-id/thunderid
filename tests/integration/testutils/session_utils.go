@@ -13,6 +13,7 @@ import (
 // SessionView is the part of a session in the session management API's responses that tests read.
 type SessionView struct {
 	ID              string `json:"id"`
+	Type            string `json:"type"`
 	UserID          string `json:"userId"`
 	UserDisplayName string `json:"userDisplayName"`
 	UserAgent       string `json:"userAgent"`
@@ -35,6 +36,25 @@ type SessionListView struct {
 		Href string `json:"href"`
 		Rel  string `json:"rel"`
 	} `json:"links"`
+}
+
+// ListedSession returns the session with the ID from a GET for path to the session management API, or nil when
+// the page doesn't list it.
+func ListedSession(client *http.Client, path, sessionID string) (*SessionView, error) {
+	var list SessionListView
+	status, raw, err := GetSessions(client, path, &list)
+	if err != nil {
+		return nil, err
+	}
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("session listing %s returned %d: %s", path, status, raw)
+	}
+	for i := range list.Sessions {
+		if list.Sessions[i].ID == sessionID {
+			return &list.Sessions[i], nil
+		}
+	}
+	return nil, nil
 }
 
 // GetSessions sends a GET for path to the session management API with client. It decodes a 200 response

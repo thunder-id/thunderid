@@ -457,8 +457,8 @@ func (st *store) CountLiveByApp(ctx context.Context, appID string, ouID *string,
 	return st.countLive(ctx, queryCountLiveSessionsByApp, now, appID)
 }
 
-// GetSubjectParticipantByTokenFamily returns the participant of one of the subject's SSO sessions that holds
-// the token family, or nil when none does.
+// GetSubjectParticipantByTokenFamily returns the participant of one of the subject's sessions, SSO or direct,
+// that holds the token family, or nil when none does.
 func (st *store) GetSubjectParticipantByTokenFamily(ctx context.Context, subjectID, tokenFamilyID string) (
 	*Participant, error) {
 	var participant *Participant

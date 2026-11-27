@@ -21,6 +21,7 @@ func toSessionResponse(sess sessionDetail, displays map[string]string, apps map[
 	}
 	return sessionResponse{
 		ID:                sess.SessionID,
+		Type:              sess.Type,
 		UserID:            sess.SubjectID,
 		UserDisplayName:   displays[sess.SubjectID],
 		UserAgent:         sess.Properties.UserAgent,

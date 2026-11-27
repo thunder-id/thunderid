@@ -1,8 +1,8 @@
 // Copyright 2026 The ThunderID Authors
 // SPDX-License-Identifier: Apache-2.0
 
-// Package session holds integration tests for the session management API: listing the live SSO sessions of a
-// user or an application as an administrator, and listing your own.
+// Package session holds integration tests for the session management API: listing the live sessions of a user
+// or an application as an administrator, and listing your own.
 package session
 
 import (
@@ -32,9 +32,15 @@ const (
 	// ouClientID is an application shared into child organization units, which joins a session under one of
 	// them by exchanging a device secret.
 	ouClientID = "session_api_ou_client"
+	// ouDirectClientID is an application on a flow without a session step, shared into a child unit.
+	ouDirectClientID = "session_api_ou_direct_client"
 
 	// directClientID is an application on a flow without a session step.
 	directClientID = "session_api_direct_client"
+	// refreshClientID is an application on a flow without a session step that refreshes its tokens.
+	refreshClientID = "session_api_refresh_client"
+	// nativeClientID is an app-native application on a flow without a session step.
+	nativeClientID = "session_api_native_client"
 
 	deviceSSOScope     = "openid device_sso"
 	tokenExchangeGrant = "urn:ietf:params:oauth:grant-type:token-exchange"
@@ -123,7 +129,7 @@ var (
 		},
 	}
 
-	// directAuthFlow signs a user in without a session step, so its sign-ins record no SSO session.
+	// directAuthFlow signs a user in without a session step, so each sign-in records a direct session.
 	directAuthFlow = testutils.Flow{
 		Name:     "Session API Test Direct Sign-In Flow",
 		FlowType: "AUTHENTICATION",
@@ -187,6 +193,7 @@ type SessionAPITestSuite struct {
 	suite.Suite
 	userTypeID    string
 	authFlowID    string
+	directFlowID  string
 	signOutFlowID string
 	applicationID string
 	userIDs       []string
@@ -209,6 +216,8 @@ func (ts *SessionAPITestSuite) SetupSuite() {
 
 	ts.authFlowID, err = testutils.CreateFlow(ssoAuthFlow)
 	ts.Require().NoError(err, "Failed to create the SSO sign-in flow")
+	ts.directFlowID, err = testutils.CreateFlow(directAuthFlow)
+	ts.Require().NoError(err, "Failed to create the sign-in flow without a session step")
 	ts.signOutFlowID, err = testutils.CreateFlow(signOutFlow)
 	ts.Require().NoError(err, "Failed to create the sign-out flow")
 
@@ -226,7 +235,9 @@ func (ts *SessionAPITestSuite) TearDownSuite() {
 	for _, ouID := range ts.childOUIDs {
 		ts.logCleanup("organization unit", ouID, testutils.DeleteOrganizationUnit)
 	}
-	for kind, id := range map[string]string{"sign-in flow": ts.authFlowID, "sign-out flow": ts.signOutFlowID} {
+	for kind, id := range map[string]string{
+		"sign-in flow": ts.authFlowID, "direct sign-in flow": ts.directFlowID, "sign-out flow": ts.signOutFlowID,
+	} {
 		if id != "" {
 			ts.logCleanup(kind, id, testutils.DeleteFlow)
 		}
@@ -252,6 +263,7 @@ func (ts *SessionAPITestSuite) TestAdminListsUserSessions() {
 	ts.Require().Equal(1, list.TotalResults, "one sign-in makes one session")
 	ts.Require().Len(list.Sessions, 1)
 	got := list.Sessions[0]
+	ts.Equal("SSO", got.Type, "a sign-in through the session step records an SSO session")
 	ts.Equal(userID, got.UserID)
 	ts.Equal("session_api_admin_user", got.UserDisplayName, "the user's display attribute is resolved")
 	ts.NotEmpty(got.UserAgent, "the sign-in's User-Agent is recorded")
@@ -349,28 +361,70 @@ func (ts *SessionAPITestSuite) TestSelfListMarksCurrentSession() {
 	ts.Equal(1, current, "exactly the session behind the token is current")
 }
 
-// A token that no SSO participant holds lists no session, even when its user has live sessions. Here the token
-// comes from a flow without a session step, which records a direct session rather than an SSO one.
-func (ts *SessionAPITestSuite) TestSelfListWithoutAnSSOParticipantIsEmpty() {
+// An authorization code sign-in through a flow without a session step records a direct session, which is listed
+// with the user's SSO session, each with its type. The code grant's token finds its own session, so the user's list,
+// which holds both sessions, marks the direct one as current.
+func (ts *SessionAPITestSuite) TestDirectSessionIsListed() {
 	const username = "session_api_direct_user"
-	ts.createUser(username)
-	ts.signIn(ts.newSessionClient(), username, "openid", "direct_1")
-	directFlowID, err := testutils.CreateFlow(directAuthFlow)
-	ts.Require().NoError(err, "create the flow without a session step")
-	defer ts.logCleanup("sign-in flow", directFlowID, testutils.DeleteFlow)
-	directAppID := ts.createApplication("SessionAPIDirectApp", directClientID, clientSecret, directFlowID,
+	userID := ts.createUser(username)
+	ssoTokens := ts.signIn(ts.newSessionClient(), username, "openid", "direct_1")
+	ssoID := ts.tokenClaim(ssoTokens.IDToken, "sid")
+	ts.Require().NotEmpty(ssoID, "the SSO sign-in's ID token names its session")
+	directAppID := ts.createApplication("SessionAPIDirectApp", directClientID, clientSecret, ts.directFlowID,
 		[]string{"authorization_code"})
 	defer ts.logCleanup("application", directAppID, testutils.DeleteApplication)
 
 	tokens := ts.signInAs(ts.newSessionClient(), directClientID, clientSecret, username, "openid", "direct_2")
 	ts.Require().NotEmpty(ts.tokenClaim(tokens.AccessToken, "tfid"), "the token must carry a token family")
 
-	var list testutils.SessionListView
-	status, raw := ts.getSessions(testutils.GetHTTPClientWithToken(tokens.AccessToken), "/users/me/sessions", &list)
+	directID := ts.assertDirectSessionListed(directAppID, userID, tokens.AccessToken)
+	for path, client := range map[string]*http.Client{
+		"/sessions?userId=" + url.QueryEscape(userID): testutils.GetHTTPClient(),
+		"/users/me/sessions":                          testutils.GetHTTPClientWithToken(tokens.AccessToken),
+	} {
+		var list testutils.SessionListView
+		status, raw := ts.getSessions(client, path, &list)
+		ts.Require().Equal(http.StatusOK, status, raw)
+		ts.Require().Len(list.Sessions, 2, "%s lists two sessions: %s", path, raw)
+		typeByID := map[string]string{}
+		for _, s := range list.Sessions {
+			ts.Equal(userID, s.UserID, "%s lists only the user's sessions", path)
+			typeByID[s.ID] = s.Type
+		}
+		ts.Equal(map[string]string{ssoID: "SSO", directID: "DIRECT"}, typeByID,
+			"%s lists the SSO and the direct session, each with its type: %s", path, raw)
+	}
+}
 
-	ts.Require().Equal(http.StatusOK, status, raw)
-	ts.Zero(list.TotalResults, "the user's SSO session isn't listed for a token it didn't issue: %s", raw)
-	ts.Empty(list.Sessions)
+// A refresh keeps the grant in its direct session: the session is still listed once, and the refreshed access
+// token finds it as the user's current session.
+func (ts *SessionAPITestSuite) TestDirectSessionIsListedAfterRefresh() {
+	const username = "session_api_refresh_user"
+	userID := ts.createUser(username)
+	appID := ts.createApplication("SessionAPIRefreshApp", refreshClientID, clientSecret, ts.directFlowID,
+		[]string{"authorization_code", "refresh_token"})
+	defer ts.logCleanup("application", appID, testutils.DeleteApplication)
+	tokens := ts.signInAs(ts.newSessionClient(), refreshClientID, clientSecret, username, "openid", "refresh_1")
+	ts.Require().NotEmpty(tokens.RefreshToken, "the sign-in should issue a refresh token")
+	before := ts.assertDirectSessionListed(appID, userID, tokens.AccessToken)
+
+	refreshed := ts.refresh(refreshClientID, clientSecret, tokens.RefreshToken)
+
+	ts.Equal(before, ts.assertDirectSessionListed(appID, userID, refreshed.AccessToken),
+		"the refreshed grant stays in the same session")
+}
+
+// An app-native sign-in through a flow without a session step records a direct session, and the access token the
+// application gets for its assertion finds that session as the user's current one.
+func (ts *SessionAPITestSuite) TestAppNativeDirectSessionIsListed() {
+	const username = "session_api_native_user"
+	userID := ts.createUser(username)
+	appID := ts.createAppNativeApplication("SessionAPINativeApp", nativeClientID, clientSecret, ts.directFlowID)
+	defer ts.logCleanup("application", appID, testutils.DeleteApplication)
+
+	tokens := ts.signInAppNative(appID, nativeClientID, clientSecret, username)
+
+	ts.assertDirectSessionListed(appID, userID, tokens.AccessToken)
 }
 
 // A session that has been signed out no longer appears in either listing.
@@ -415,10 +469,12 @@ func (ts *SessionAPITestSuite) TestRegularUserCannotListOthers() {
 // session with only the child's participant, and the system permission sees every participant, with the
 // application listed once by application. The user's token in each unit sees only the participants of the unit
 // its own sign-in was recorded under, which the server reads from the participant holding the token's family,
-// not from the token's claims.
+// not from the token's claims. Another user's direct sign-in under the child is listed for the child's
+// administrator by application too.
 func (ts *SessionAPITestSuite) TestOrgAdminSeesOnlyItsOU() {
 	const (
 		listedUser = "session_api_ou_user"
+		directUser = "session_api_ou_direct_user"
 		orgAdmin   = "session_api_ou_admin"
 		identifier = "https://session-api-ou.example.com/system"
 	)
@@ -440,6 +496,14 @@ func (ts *SessionAPITestSuite) TestOrgAdminSeesOnlyItsOU() {
 	ts.Require().True(ts.ssoSatisfies(client, ouClientID, "ou_2"), "the app joins the session under the parent")
 	childToken := ts.exchangeDeviceSecret("/ou/"+childOUID+"/oauth2/token", ouClientID, clientSecret,
 		first.DeviceSecret)
+
+	directUserID := ts.createUser(directUser)
+	ts.shareUserInto(directUserID, childOUID)
+	directAppID := ts.createApplication("SessionAPIOUDirectApp", ouDirectClientID, clientSecret, ts.directFlowID,
+		[]string{"authorization_code"})
+	defer ts.logCleanup("application", directAppID, testutils.DeleteApplication)
+	ts.Require().NoError(testutils.ShareApplicationWithChildUnits(directAppID), "share the direct app into the child")
+	ts.signInUnder(ts.newSessionClient(), childOUID, ouDirectClientID, directUser, "ou_direct")
 
 	adminID := ts.createUser(orgAdmin)
 	ts.shareUserInto(adminID, childOUID)
@@ -482,6 +546,16 @@ func (ts *SessionAPITestSuite) TestOrgAdminSeesOnlyItsOU() {
 	ts.Require().Equal(1, byApp.TotalResults, raw)
 	ts.Require().Len(byApp.Sessions[0].Participants, 1, "only the app's participant in the child is shown")
 	ts.Equal(childOUID, byApp.Sessions[0].Participants[0].OUID)
+
+	var byDirectApp testutils.SessionListView
+	status, raw = ts.getSessions(orgClient, "/sessions?appId="+url.QueryEscape(directAppID), &byDirectApp)
+	ts.Require().Equal(http.StatusOK, status, raw)
+	ts.Require().Equal(1, byDirectApp.TotalResults, raw)
+	ts.Require().Len(byDirectApp.Sessions, 1, raw)
+	ts.Equal("DIRECT", byDirectApp.Sessions[0].Type, "the direct sign-in under the child is listed")
+	ts.Equal(directUserID, byDirectApp.Sessions[0].UserID)
+	ts.Require().Len(byDirectApp.Sessions[0].Participants, 1)
+	ts.Equal(childOUID, byDirectApp.Sessions[0].Participants[0].OUID)
 
 	var all testutils.SessionListView
 	status, raw = ts.getSessions(testutils.GetHTTPClient(), "/sessions?userId="+url.QueryEscape(userID), &all)
