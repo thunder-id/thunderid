@@ -1,0 +1,312 @@
+[
+  {
+    "name": "the first true rule decides",
+    "decision": {"rules": [
+      {"id": "first", "when": {"op": "exists", "signal": "input.email"}, "nextNode": "n_first"},
+      {"id": "second", "when": {"op": "exists", "signal": "input.email"}, "nextNode": "n_second"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "values": {"input.email": ["a@example.com"]},
+    "expect": {"selectedBy": "RULE", "ruleId": "first", "nextNode": "n_first"}
+  },
+  {
+    "name": "false rules fall through to the default arm",
+    "decision": {"rules": [
+      {"id": "corp", "when": {"op": "eq", "signal": "request.network", "value": "corporate"}, "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "values": {"request.network": ["public"]},
+    "expect": {"selectedBy": "DEFAULT", "nextNode": "d"}
+  },
+  {
+    "name": "an unknown rule takes the unknown arm",
+    "decision": {"rules": [
+      {"id": "adult", "when": {"op": "gte", "signal": "external.age", "value": 18}, "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "unresolved": ["external.age"],
+    "expect": {"selectedBy": "UNKNOWN", "ruleId": "adult", "nextNode": "u"}
+  },
+  {
+    "name": "an unknown rule stops the walk before a later true rule",
+    "decision": {"rules": [
+      {"id": "adult", "when": {"op": "gte", "signal": "external.age", "value": 18}, "nextNode": "n_adult"},
+      {"id": "email", "when": {"op": "exists", "signal": "input.email"}, "nextNode": "n_email"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "values": {"input.email": ["a@example.com"]},
+    "unresolved": ["external.age"],
+    "expect": {"selectedBy": "UNKNOWN", "ruleId": "adult", "nextNode": "u"}
+  },
+  {
+    "name": "a comparison on an absent signal is unknown",
+    "decision": {"rules": [
+      {"id": "note", "when": {"op": "eq", "signal": "input.note", "value": "x"}, "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "absent": ["input.note"],
+    "expect": {"selectedBy": "UNKNOWN", "ruleId": "note", "nextNode": "u"}
+  },
+  {
+    "name": "exists on an absent signal is false",
+    "decision": {"rules": [
+      {"id": "note", "when": {"op": "exists", "signal": "input.note"}, "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "absent": ["input.note"],
+    "expect": {"selectedBy": "DEFAULT", "nextNode": "d"}
+  },
+  {
+    "name": "exists on an unresolved signal is unknown",
+    "decision": {"rules": [
+      {"id": "note", "when": {"op": "exists", "signal": "input.note"}, "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "unresolved": ["input.note"],
+    "expect": {"selectedBy": "UNKNOWN", "ruleId": "note", "nextNode": "u"}
+  },
+  {
+    "name": "isEmpty is true when every value is blank",
+    "decision": {"rules": [
+      {"id": "blank", "when": {"op": "isEmpty", "signal": "input.note"}, "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "values": {"input.note": [" ", ""]},
+    "expect": {"selectedBy": "RULE", "ruleId": "blank", "nextNode": "n"}
+  },
+  {
+    "name": "numbers compare by value, not by spelling",
+    "decision": {"rules": [
+      {"id": "limit", "when": {"op": "eq", "signal": "external.limit", "value": 10}, "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "values": {"external.limit": ["10.00"]},
+    "expect": {"selectedBy": "RULE", "ruleId": "limit", "nextNode": "n"}
+  },
+  {
+    "name": "numbers order numerically, not alphabetically",
+    "decision": {"rules": [
+      {"id": "older", "when": {"op": "gt", "signal": "external.age", "value": 9}, "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "values": {"external.age": ["10"]},
+    "expect": {"selectedBy": "RULE", "ruleId": "older", "nextNode": "n"}
+  },
+  {
+    "name": "instants order in time",
+    "decision": {"rules": [
+      {"id": "after", "when": {"op": "gt", "signal": "input.when", "value": "2026-01-05"}, "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "values": {"input.when": ["2026-01-05T00:00:01Z"]},
+    "expect": {"selectedBy": "RULE", "ruleId": "after", "nextNode": "n"}
+  },
+  {
+    "name": "durations order by length",
+    "decision": {"rules": [
+      {"id": "longer", "when": {"op": "gt", "signal": "input.period", "value": "P1D"}, "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "values": {"input.period": ["PT25H"]},
+    "expect": {"selectedBy": "RULE", "ruleId": "longer", "nextNode": "n"}
+  },
+  {
+    "name": "values of different kinds are incomparable",
+    "decision": {"rules": [
+      {"id": "adult", "when": {"op": "gt", "signal": "external.age", "value": 18}, "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "values": {"external.age": ["eighteen"]},
+    "expect": {"selectedBy": "UNKNOWN", "ruleId": "adult", "nextNode": "u"}
+  },
+  {
+    "name": "an undeclared signal reads numbers as numbers",
+    "decision": {"rules": [
+      {"id": "seven", "when": {"op": "eq", "signal": "input.note", "value": 7}, "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "values": {"input.note": ["007"]},
+    "expect": {"selectedBy": "RULE", "ruleId": "seven", "nextNode": "n"}
+  },
+  {
+    "name": "a signal declared as text compares spelling",
+    "decision": {"rules": [
+      {"id": "seven", "when": {"op": "eq", "signal": "user.postalCode", "value": "7"}, "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "values": {"user.postalCode": ["007"]},
+    "expect": {"selectedBy": "DEFAULT", "nextNode": "d"}
+  },
+  {
+    "name": "equality is case-sensitive by default",
+    "decision": {"rules": [
+      {"id": "alice", "when": {"op": "eq", "signal": "input.email", "value": "Alice@Example.com"}, "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "values": {"input.email": ["alice@example.com"]},
+    "expect": {"selectedBy": "DEFAULT", "nextNode": "d"}
+  },
+  {
+    "name": "ci makes equality case-insensitive",
+    "decision": {"rules": [
+      {"id": "alice", "when": {"op": "eq", "signal": "input.email", "value": "Alice@Example.com", "ci": true},
+        "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "values": {"input.email": ["alice@example.com"]},
+    "expect": {"selectedBy": "RULE", "ruleId": "alice", "nextNode": "n"}
+  },
+  {
+    "name": "endsWith with ci",
+    "decision": {"rules": [
+      {"id": "domain", "when": {"op": "endsWith", "signal": "input.email", "value": "@example.com", "ci": true},
+        "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "values": {"input.email": ["BOB@EXAMPLE.COM"]},
+    "expect": {"selectedBy": "RULE", "ruleId": "domain", "nextNode": "n"}
+  },
+  {
+    "name": "contains on a number the signal declares is incomparable",
+    "decision": {"rules": [
+      {"id": "grade", "when": {"op": "contains", "signal": "user.grade", "value": "1"}, "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "values": {"user.grade": ["12"]},
+    "expect": {"selectedBy": "UNKNOWN", "ruleId": "grade", "nextNode": "u"}
+  },
+  {
+    "name": "some value matching is enough by default",
+    "decision": {"rules": [
+      {"id": "treasury", "when": {"op": "eq", "signal": "user.groups", "value": "treasury"}, "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "values": {"user.groups": ["staff", "treasury"]},
+    "expect": {"selectedBy": "RULE", "ruleId": "treasury", "nextNode": "n"}
+  },
+  {
+    "name": "every needs all values to match",
+    "decision": {"rules": [
+      {"id": "treasury", "when": {"op": "eq", "signal": "user.groups", "value": "treasury", "every": true},
+        "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "values": {"user.groups": ["staff", "treasury"]},
+    "expect": {"selectedBy": "DEFAULT", "nextNode": "d"}
+  },
+  {
+    "name": "every over no values is unknown",
+    "decision": {"rules": [
+      {"id": "treasury", "when": {"op": "eq", "signal": "user.groups", "value": "treasury", "every": true},
+        "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "values": {"user.groups": []},
+    "expect": {"selectedBy": "UNKNOWN", "ruleId": "treasury", "nextNode": "u"}
+  },
+  {
+    "name": "a scale orders by position",
+    "decision": {"rules": [
+      {"id": "strong", "when": {"op": "gte", "signal": "request.acr", "value": "aal2"}, "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "values": {"request.acr": ["aal3"]},
+    "expect": {"selectedBy": "RULE", "ruleId": "strong", "nextNode": "n"}
+  },
+  {
+    "name": "a value outside the scale is incomparable",
+    "decision": {"rules": [
+      {"id": "strong", "when": {"op": "gte", "signal": "request.acr", "value": "aal2"}, "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "values": {"request.acr": ["aal9"]},
+    "expect": {"selectedBy": "UNKNOWN", "ruleId": "strong", "nextNode": "u"}
+  },
+  {
+    "name": "olderThan is true for an old instant",
+    "decision": {"rules": [
+      {"id": "stale", "when": {"op": "olderThan", "signal": "session.authTime", "value": "PT1H"}, "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "values": {"session.authTime": ["2026-11-18T10:00:00Z"]},
+    "expect": {"selectedBy": "RULE", "ruleId": "stale", "nextNode": "n"}
+  },
+  {
+    "name": "olderThan with hours beyond a duration's range stays in the past",
+    "decision": {"rules": [
+      {"id": "stale", "when": {"op": "olderThan", "signal": "session.authTime", "value": "PT3000000H"},
+        "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "values": {"session.authTime": ["2026-11-18T12:00:00Z"]},
+    "expect": {"selectedBy": "DEFAULT", "nextNode": "d"}
+  },
+  {
+    "name": "olderThan is false for a recent instant",
+    "decision": {"rules": [
+      {"id": "stale", "when": {"op": "olderThan", "signal": "session.authTime", "value": "PT1H"}, "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "values": {"session.authTime": ["2026-11-18T11:30:00Z"]},
+    "expect": {"selectedBy": "DEFAULT", "nextNode": "d"}
+  },
+  {
+    "name": "not of unknown is unknown",
+    "decision": {"rules": [
+      {"id": "other", "when": {"op": "not", "of": {"op": "eq", "signal": "input.note", "value": "x"}}, "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "unresolved": ["input.note"],
+    "expect": {"selectedBy": "UNKNOWN", "ruleId": "other", "nextNode": "u"}
+  },
+  {
+    "name": "all with a false child is false even when another child is unknown",
+    "decision": {"rules": [
+      {"id": "both", "when": {"op": "all", "of": [
+        {"op": "eq", "signal": "input.note", "value": "x"},
+        {"op": "exists", "signal": "input.email"}]}, "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "absent": ["input.email"],
+    "unresolved": ["input.note"],
+    "expect": {"selectedBy": "DEFAULT", "nextNode": "d"}
+  },
+  {
+    "name": "any with a true child is true even when another child is unknown",
+    "decision": {"rules": [
+      {"id": "either", "when": {"op": "any", "of": [
+        {"op": "eq", "signal": "input.note", "value": "x"},
+        {"op": "exists", "signal": "input.email"}]}, "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "values": {"input.email": ["a@example.com"]},
+    "unresolved": ["input.note"],
+    "expect": {"selectedBy": "RULE", "ruleId": "either", "nextNode": "n"}
+  },
+  {
+    "name": "ref compares two signals",
+    "decision": {"rules": [
+      {"id": "same", "when": {"op": "eq", "signal": "user.manager", "ref": "user.otherManager"}, "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "values": {"user.manager": ["kim"], "user.otherManager": ["kim"]},
+    "expect": {"selectedBy": "RULE", "ruleId": "same", "nextNode": "n"}
+  },
+  {
+    "name": "ref to an absent signal is unknown",
+    "decision": {"rules": [
+      {"id": "same", "when": {"op": "eq", "signal": "user.manager", "ref": "user.otherManager"}, "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "values": {"user.manager": ["kim"]},
+    "absent": ["user.otherManager"],
+    "expect": {"selectedBy": "UNKNOWN", "ruleId": "same", "nextNode": "u"}
+  },
+  {
+    "name": "a long list matches exactly",
+    "decision": {"rules": [
+      {"id": "colour", "when": {"op": "eq", "signal": "input.colours",
+        "value": ["red", "green", "blue", "teal", "cyan", "pink", "gold", "grey"]}, "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "values": {"input.colours": ["Teal", "teal"]},
+    "expect": {"selectedBy": "RULE", "ruleId": "colour", "nextNode": "n"}
+  },
+  {
+    "name": "a declared boolean matches true",
+    "decision": {"rules": [
+      {"id": "active", "when": {"op": "eq", "signal": "user.active", "value": true}, "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "values": {"user.active": ["true"]},
+    "expect": {"selectedBy": "RULE", "ruleId": "active", "nextNode": "n"}
+  },
+  {
+    "name": "a declared boolean cannot read other words",
+    "decision": {"rules": [
+      {"id": "active", "when": {"op": "eq", "signal": "user.active", "value": true}, "nextNode": "n"}],
+      "default": {"nextNode": "d"}, "unknown": {"nextNode": "u"}},
+    "values": {"user.active": ["yes"]},
+    "expect": {"selectedBy": "UNKNOWN", "ruleId": "active", "nextNode": "u"}
+  },
+  {
+    "name": "missing data never grants access",
+    "decision": {"rules": [
+      {"id": "privileged", "when": {"op": "all", "of": [
+        {"op": "eq", "signal": "user.groups", "value": ["payments-approver", "treasury"]},
+        {"op": "not", "of": {"op": "eq", "signal": "request.network", "value": "corporate", "ci": true}}]},
+        "nextNode": "mfa_prompt"},
+      {"id": "under_age", "when": {"op": "not", "of": {"op": "gte", "signal": "external.age", "value": 18}},
+        "nextNode": "deny_access"}],
+      "default": {"nextNode": "issue_token"}, "unknown": {"nextNode": "deny_access"}},
+    "values": {"request.network": ["public"], "external.age": ["30"]},
+    "unresolved": ["user.groups"],
+    "expect": {"selectedBy": "UNKNOWN", "ruleId": "privileged", "nextNode": "deny_access"}
+  }
+]
