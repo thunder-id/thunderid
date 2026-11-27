@@ -1205,7 +1205,7 @@ components:
           description: The resource's id, or its name for a resource exported without one.
         sourceVersion:
           type: string
-          description: The hash of the version the apply that wrote the resource sent it from.
+          description: The hash of the newest version applied to the gateway that holds the resource as the gateway runs it, or, for one no applied version holds that way, of the version the apply that wrote it sent it from.
         resource:
           type: object
           additionalProperties: true
@@ -1811,7 +1811,7 @@ components:
           description: The SHA-256 of the document as the master holds it; none for a removed resource or one the gateway never accepted.
         sourceVersion:
           type: string
-          description: The hash of the version the last apply of this resource sent it from.
+          description: The hash of the newest version applied forward to the gateway that holds the resource as the master does, or, for a removed resource, that does not hold it either; otherwise the version the apply that wrote the entry sent it from. A revert keeps the source the master it returns to records.
         origin:
           type: string
           description: The `origin` that apply gave, as given.

@@ -141,14 +141,67 @@ func (s *VersionStoreTestSuite) TestReadsAreDeploymentScoped() {
 	s.Equal(2, latest)
 }
 
-// Pruning spares a version a gateway holds or could revert to, and one a master names as where a resource
-// came from, which the statement decides.
-func (s *VersionStoreTestSuite) TestPruneNamesTheBoundAndTheDeployment() {
-	s.dbClientMock.On("ExecuteContext", mock.Anything, queryPruneVersions, 4,
-		storeDeploymentID, storeDeploymentID, storeDeploymentID, storeDeploymentID).Return(int64(1), nil).Once()
+// manifestNaming is a stored manifest with one entry per state, each naming its own source.
+func manifestNaming(deployed, failed, removed string) string {
+	manifest, err := manifestOf([]MasterEntry{
+		{Key: "organization_unit/ou-a", ResourceType: "organization_unit", ID: "ou-a", State: EntryDeployed,
+			SourceVersion: deployed},
+		{Key: "organization_unit/ou-b", ResourceType: "organization_unit", ID: "ou-b", State: EntryFailed,
+			SourceVersion: failed},
+		{Key: "organization_unit/ou-c", ResourceType: "organization_unit", ID: "ou-c", State: EntryRemoved,
+			SourceVersion: removed},
+	})
+	if err != nil {
+		panic(err)
+	}
+	return manifest
+}
+
+// Pruning removes the versions past the bound that no gateway holds or could revert to, except one a kept
+// master records a deployed resource as coming from. A refused or removed resource's source keeps nothing.
+func (s *VersionStoreTestSuite) TestPruneKeepsOnlyTheVersionsDeployedResourcesCameFrom() {
+	s.dbClientMock.On("QueryContext", mock.Anything, queryPrunableVersions, 4,
+		storeDeploymentID, storeDeploymentID, storeDeploymentID).
+		Return([]map[string]interface{}{{"seq": int64(1), "hash": "h1"}, {"seq": int64(2), "hash": "h2"},
+			{"seq": int64(3), "hash": "h3"}, {"seq": int64(4), "hash": "h4"}}, nil).Once()
+	s.dbClientMock.On("QueryContext", mock.Anything, queryMasterManifests, storeDeploymentID).
+		Return([]map[string]interface{}{{"manifest": manifestNaming("h1", "h2", "h3")},
+			{"manifest": ""}}, nil).Once()
+	for _, version := range []struct {
+		seq  int
+		hash string
+	}{{2, "h2"}, {3, "h3"}, {4, "h4"}} {
+		s.dbClientMock.On("ExecuteContext", mock.Anything, queryPruneVersion, version.seq, version.hash,
+			storeDeploymentID, storeDeploymentID, storeDeploymentID).Return(int64(1), nil).Once()
+	}
 
 	s.Require().NoError(s.store.Prune(scoped(), 4))
+
+	s.dbClientMock.AssertNotCalled(s.T(), "ExecuteContext", mock.Anything, queryPruneVersion, 1, "h1",
+		storeDeploymentID, storeDeploymentID, storeDeploymentID)
 	s.Require().NoError(s.store.Prune(scoped(), 0), "nothing to prune below the bound")
+}
+
+// A manifest that cannot be read stops the pruning: a version it names could otherwise go.
+func (s *VersionStoreTestSuite) TestPruneRemovesNothingWhenAMasterCannotBeRead() {
+	s.dbClientMock.On("QueryContext", mock.Anything, queryPrunableVersions, 4,
+		storeDeploymentID, storeDeploymentID, storeDeploymentID).
+		Return([]map[string]interface{}{{"seq": int64(1), "hash": "h1"}}, nil).Once()
+	s.dbClientMock.On("QueryContext", mock.Anything, queryMasterManifests, storeDeploymentID).
+		Return([]map[string]interface{}{{"manifest": "not json"}}, nil).Once()
+
+	s.Error(s.store.Prune(scoped(), 4))
+	s.dbClientMock.AssertNotCalled(s.T(), "ExecuteContext", mock.Anything, queryPruneVersion,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything)
+}
+
+// With nothing past the bound to prune, the masters are not read.
+func (s *VersionStoreTestSuite) TestPruneReadsNoMasterWhenNothingIsPrunable() {
+	s.dbClientMock.On("QueryContext", mock.Anything, queryPrunableVersions, 4,
+		storeDeploymentID, storeDeploymentID, storeDeploymentID).Return([]map[string]interface{}{}, nil).Once()
+
+	s.Require().NoError(s.store.Prune(scoped(), 4))
+	s.dbClientMock.AssertNotCalled(s.T(), "QueryContext", mock.Anything, queryMasterManifests, mock.Anything)
 }
 
 // A row an earlier build wrote holds no master and no partial apply: it reads as the version held

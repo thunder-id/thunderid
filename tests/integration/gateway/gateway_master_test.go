@@ -108,11 +108,13 @@ func (ts *GatewayVersionsTestSuite) TestEachApplyRecordsTheMasterResourceByResou
 		ts.Equal(withoutUnit.Version, entry.SourceVersion)
 		ts.Empty(entry.ContentHash)
 	}
-	// A resource the gateway refuses on every apply is recorded from each; the rest did not change.
+	// A resource the gateway refuses on every apply is recorded from each. The rest did not change, and
+	// the version just applied holds them as they are, so they name it, and the earlier version is no
+	// longer needed to say where they came from.
 	for _, entry := range held.Entries {
 		if entry.Key != key && entry.State == "deployed" {
-			ts.Equal(withUnit.Version, entry.SourceVersion,
-				"%s did not change, yet it was recorded from the new version", entry.Key)
+			ts.Equal(withoutUnit.Version, entry.SourceVersion,
+				"%s is held as the applied version has it, yet it still names the earlier version", entry.Key)
 		}
 	}
 
