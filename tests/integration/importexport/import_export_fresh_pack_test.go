@@ -1537,7 +1537,8 @@ delimiter: ":"
 func (s *GroupRoleResourceImportExportSuite) TestImportResourceServerUpsertNestedResources() {
 	identifier := "upsert-rs-" + s.handleSuffix
 
-	buildYAML := func(id string) string {
+	// readDescription marks the parent's Read action; the upsert changes it, as a deploy does.
+	buildYAML := func(id, readDescription string) string {
 		idLine := ""
 		if id != "" {
 			idLine = "id: " + id + "\n"
@@ -1554,6 +1555,7 @@ resources:
     actions:
       - name: Read
         handle: read
+        description: %s
   - name: Upsert Child
     handle: upsert-child-%s
     parent: upsert-parent-%s
@@ -1561,12 +1563,12 @@ resources:
       - name: Write
         handle: write
 `, idLine, s.handleSuffix, identifier, s.ouID,
-			s.handleSuffix, s.handleSuffix, s.handleSuffix)
+			s.handleSuffix, readDescription, s.handleSuffix, s.handleSuffix)
 	}
 
 	// First import — creates the resource server and resources (no id in YAML).
 	resp, err := s.importResources(testutils.ImportRequest{
-		Content: buildYAML(""),
+		Content: buildYAML("", "Reads the parent"),
 		Options: testutils.ImportOptions{
 			Upsert:          false,
 			ContinueOnError: false,
@@ -1581,7 +1583,7 @@ resources:
 
 	// Second import (upsert) — include the ID so the upsert path triggers an update.
 	resp2, err := s.importResources(testutils.ImportRequest{
-		Content: buildYAML(rsID),
+		Content: buildYAML(rsID, "Reads the parent resource"),
 		Options: testutils.ImportOptions{
 			Upsert:          true,
 			ContinueOnError: false,
@@ -1606,6 +1608,13 @@ resources:
 	s.Require().NoError(err)
 	s.Require().Len(children, 1)
 	s.Equal("Upsert Child", children[0].Name)
+
+	// The upsert gives the existing Read action the document's description.
+	actions, err := s.getActionsForResource(rsID, topLevel[0].ID)
+	s.Require().NoError(err)
+	s.Require().Len(actions, 1)
+	s.Equal("read", actions[0].Handle)
+	s.Equal("Reads the parent resource", actions[0].Description)
 }
 
 func (s *GroupRoleResourceImportExportSuite) importResources(reqBody testutils.ImportRequest) (*testutils.ImportResponse, error) {
@@ -1724,6 +1733,39 @@ func (s *GroupRoleResourceImportExportSuite) addGroupMember(groupID, memberID, m
 }
 
 // getResourcesForServer lists resources under a resource server, optionally scoped to a parent.
+func (s *GroupRoleResourceImportExportSuite) getActionsForResource(
+	serverID, resourceID string,
+) ([]testutils.Action, error) {
+	req, err := http.NewRequest(http.MethodGet,
+		testutils.TestServerURL+"/resource-servers/"+serverID+"/resources/"+resourceID+"/actions", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create action list request: %w", err)
+	}
+
+	resp, err := testutils.GetHTTPClient().Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list actions: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read action list response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("list actions failed with status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var listResp struct {
+		Actions []testutils.Action `json:"actions"`
+	}
+	if err := json.Unmarshal(body, &listResp); err != nil {
+		return nil, fmt.Errorf("failed to parse action list response: %w", err)
+	}
+	return listResp.Actions, nil
+}
+
 func (s *GroupRoleResourceImportExportSuite) getResourcesForServer(serverID, parentID string) ([]resourceItem, error) {
 	url := testutils.TestServerURL + "/resource-servers/" + serverID + "/resources"
 	if parentID != "" {

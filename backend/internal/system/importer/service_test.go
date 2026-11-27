@@ -4288,6 +4288,14 @@ type fakeResourceServerService struct {
 	storedActions map[string][]providers.Action
 	// deleted records, in order, what was removed: "resource:<id>", "action:<id>" or "server:<id>".
 	deleted []string
+	// updatedActions are the actions an import updated, as "<resource ID>/<action ID>", the resource ID empty
+	// for an action of the server itself.
+	updatedActions []string
+	// updatedTo are the values the updated actions were given, in the same order.
+	updatedTo []providers.Action
+	// listActionsErr and updateActionErr, when set, are returned by GetActionList and UpdateAction.
+	listActionsErr  *tidcommon.ServiceError
+	updateActionErr *tidcommon.ServiceError
 }
 
 // importedAction is an action an import created, with the ID of the resource it was created under.
@@ -4370,7 +4378,26 @@ func (f *fakeResourceServerService) GetActionList(
 	if resourceID != nil {
 		key = *resourceID
 	}
+	if f.listActionsErr != nil {
+		return nil, f.listActionsErr
+	}
 	return &resource.ActionList{Actions: f.storedActions[key]}, nil
+}
+
+func (f *fakeResourceServerService) UpdateAction(
+	_ context.Context, _ string, resourceID *string, id string, action providers.Action,
+) (*providers.Action, *tidcommon.ServiceError) {
+	key := ""
+	if resourceID != nil {
+		key = *resourceID
+	}
+	if f.updateActionErr != nil {
+		return nil, f.updateActionErr
+	}
+	f.updatedActions = append(f.updatedActions, key+"/"+id)
+	f.updatedTo = append(f.updatedTo, action)
+	action.ID = id
+	return &action, nil
 }
 
 func (f *fakeResourceServerService) DeleteResource(_ context.Context, _, id string) *tidcommon.ServiceError {
@@ -5262,6 +5289,130 @@ func TestImportResourceServer_UpsertAddsActionsToExistingResource(t *testing.T) 
 	}, rsSvc.actions)
 }
 
+// An upsert gives an action that already exists the document's name and description, and leaves an action
+// that already matches untouched. A document without a kind does not force an update.
+func TestImportResourceServer_UpsertUpdatesExistingActions(t *testing.T) {
+	appID := "id-existing-app"
+	rsSvc := &fakeResourceServerService{
+		servers:      []string{"rs-system"},
+		resourceErrs: map[string]*tidcommon.ServiceError{"app": &resource.ErrorHandleConflict},
+		existing:     []providers.Resource{{ID: appID, Handle: "app"}},
+		actionErrs: map[string]*tidcommon.ServiceError{
+			"read_all": &resource.ErrorHandleConflict,
+			"view":     &resource.ErrorHandleConflict,
+			"update":   &resource.ErrorHandleConflict,
+		},
+		storedActions: map[string][]providers.Action{
+			"": {{ID: "act-read-all", Name: "Read", Handle: "read_all"}},
+			appID: {
+				{ID: "act-view", Name: "View", Handle: "view", Kind: "tool"},
+				{ID: "act-update", Name: "Update", Handle: "update", Kind: "tool"},
+			},
+		},
+	}
+	svc := newImportService(
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, rsSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+		discardingBus{})
+
+	content := strings.Join([]string{
+		"resource_type: resource_server",
+		"id: rs-system",
+		"name: System",
+		"identifier: system-rs",
+		"ouId: ou-explicit",
+		"delimiter: \":\"",
+		"actions:",
+		"  - { name: Read All, handle: read_all }",
+		"resources:",
+		"  - name: Applications",
+		"    handle: app",
+		"    actions:",
+		"      - { name: View, handle: view }",
+		"      - { name: Update, handle: update, description: Changes an application }",
+		"",
+	}, "\n")
+
+	resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+		Content: content,
+		Options: &ImportOptions{Upsert: boolPtr(true)},
+	})
+
+	require.Nil(t, err)
+	require.Len(t, resp.Results, 1)
+	assert.Equal(t, statusSuccess, resp.Results[0].Status, resp.Results[0].Message)
+	assert.Empty(t, rsSvc.actions)
+	assert.Equal(t, []string{"/act-read-all", appID + "/act-update"}, rsSvc.updatedActions)
+	assert.Equal(t, []providers.Action{
+		{Name: "Read All", Handle: "read_all", Permission: "read_all"},
+		{Name: "Update", Handle: "update", Description: "Changes an application", Permission: "app:update"},
+	}, rsSvc.updatedTo)
+}
+
+// An upsert fails when the existing actions cannot be listed or an existing action cannot be updated, and
+// skips a conflicting handle that the list does not hold.
+func TestImportResourceServer_UpsertExistingActionOutcomes(t *testing.T) {
+	tests := []struct {
+		name            string
+		storedActions   map[string][]providers.Action
+		listActionsErr  *tidcommon.ServiceError
+		updateActionErr *tidcommon.ServiceError
+		expectedStatus  string
+	}{
+		{
+			name:           "listing fails",
+			listActionsErr: &tidcommon.InternalServerError,
+			expectedStatus: statusFailed,
+		},
+		{
+			name: "update fails",
+			storedActions: map[string][]providers.Action{
+				"": {{ID: "act-read-all", Name: "Read", Handle: "read_all"}},
+			},
+			updateActionErr: &tidcommon.InternalServerError,
+			expectedStatus:  statusFailed,
+		},
+		{
+			name:           "handle not listed",
+			expectedStatus: statusSuccess,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			rsSvc := &fakeResourceServerService{
+				servers:         []string{"rs-system"},
+				actionErrs:      map[string]*tidcommon.ServiceError{"read_all": &resource.ErrorHandleConflict},
+				storedActions:   tc.storedActions,
+				listActionsErr:  tc.listActionsErr,
+				updateActionErr: tc.updateActionErr,
+			}
+			svc := newImportService(
+				nil, nil, nil, nil, nil, nil, nil, nil, nil, rsSvc, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+				discardingBus{})
+
+			content := strings.Join([]string{
+				"resource_type: resource_server",
+				"id: rs-system",
+				"name: System",
+				"identifier: system-rs",
+				"ouId: ou-explicit",
+				"actions:",
+				"  - { name: Read All, handle: read_all }",
+				"",
+			}, "\n")
+
+			resp, err := svc.ImportResources(context.Background(), &ImportRequest{
+				Content: content,
+				Options: &ImportOptions{Upsert: boolPtr(true)},
+			})
+
+			require.Nil(t, err)
+			require.Len(t, resp.Results, 1)
+			assert.Equal(t, tc.expectedStatus, resp.Results[0].Status, resp.Results[0].Message)
+			assert.Empty(t, rsSvc.updatedActions)
+		})
+	}
+}
+
 // An upsert of a resource server that does not exist looks it up rather than attempting an update, so
 // the create is not preceded by a failed update.
 func TestImportResourceServer_UpsertOfAMissingServerAttemptsNoUpdate(t *testing.T) {
@@ -5285,7 +5436,7 @@ func TestImportResourceServer_UpsertOfAMissingServerAttemptsNoUpdate(t *testing.
 
 // TestImportResourceServer_ServerActions verifies that the actions declared on a resource server
 // itself are created at the server level, with or without resources, and that an action whose handle
-// already exists is skipped.
+// already exists, and already matches, is not created again.
 func TestImportResourceServer_ServerActions(t *testing.T) {
 	tests := []struct {
 		name      string
