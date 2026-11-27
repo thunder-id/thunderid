@@ -838,11 +838,12 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithGroups_GetUserGroupsFa
 	suite.mockEntityProvider.AssertExpectations(suite.T())
 }
 
-func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_ConsentRecordedWithoutConsentedKey() {
+func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_EmptyConsentedAttributes() {
 	ctx := &providers.NodeContext{
 		ExecutionID: "flow-123",
 		RuntimeData: map[string]string{
-			common.RuntimeKeyConsentID: "consent-123",
+			common.RuntimeKeyRequiredEssentialAttributes: "email name",
+			common.RuntimeKeyConsentedAttributes:         "",
 		},
 	}
 
@@ -851,18 +852,41 @@ func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_ConsentR
 	assert.Empty(suite.T(), result)
 }
 
-func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_ConsentRecordedWithConsentedKey() {
-	ctx := &providers.NodeContext{
-		ExecutionID: "flow-123",
-		RuntimeData: map[string]string{
-			common.RuntimeKeyConsentID:           "consent-123",
-			common.RuntimeKeyConsentedAttributes: "email name",
-		},
-	}
+func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_ConsentedAttributesIntersectRequested() {
+	suite.Run("runtime attributes", func() {
+		ctx := &providers.NodeContext{
+			ExecutionID: "flow-123",
+			RuntimeData: map[string]string{
+				common.RuntimeKeyRequiredEssentialAttributes: "email",
+				common.RuntimeKeyRequiredOptionalAttributes:  "address name",
+				common.RuntimeKeyConsentedAttributes:         "phone email name",
+			},
+		}
 
-	result := suite.executor.getRequiredUserAttributes(ctx)
+		result := suite.executor.getRequiredUserAttributes(ctx)
 
-	assert.Equal(suite.T(), []string{"email", "name"}, result)
+		suite.Equal([]string{"email", "name"}, result)
+	})
+
+	suite.Run("application assertion attributes", func() {
+		assertionAttrs := []string{"email", "address"}
+		ctx := &providers.NodeContext{
+			ExecutionID: "flow-123",
+			RuntimeData: map[string]string{
+				common.RuntimeKeyConsentedAttributes: "email phone",
+			},
+			Application: providers.Application{
+				InboundAuthProfile: providers.InboundAuthProfile{
+					Assertion: &inboundmodel.AssertionConfig{UserAttributes: assertionAttrs},
+				},
+			},
+		}
+
+		result := suite.executor.getRequiredUserAttributes(ctx)
+
+		suite.Equal([]string{"email"}, result)
+		suite.Equal([]string{"email", "address"}, assertionAttrs)
+	})
 }
 
 func (suite *AuthAssertExecutorTestSuite) TestGetRequiredUserAttributes_RuntimeEssentialOnly() {
@@ -942,7 +966,6 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithConsentedAttributes_Fi
 		FlowType:    providers.FlowTypeAuthentication,
 		AuthUser:    newTestAuthenticatedAuthUser(),
 		RuntimeData: map[string]string{
-			common.RuntimeKeyConsentID:           "consent-123",
 			common.RuntimeKeyConsentedAttributes: "email name",
 		},
 		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
@@ -987,7 +1010,6 @@ func (suite *AuthAssertExecutorTestSuite) TestExecute_WithEmptyConsentedAttribut
 		FlowType:    providers.FlowTypeAuthentication,
 		AuthUser:    newTestAuthenticatedAuthUser(),
 		RuntimeData: map[string]string{
-			common.RuntimeKeyConsentID:           "consent-456",
 			common.RuntimeKeyConsentedAttributes: "", // Consent ran but no attrs approved
 		},
 		ExecutionHistory: map[string]*providers.NodeExecutionRecord{},
@@ -1731,6 +1753,13 @@ func (suite *AuthAssertExecutorTestSuite) TestResolvePermissionsForClaim_Consent
 	ctx := &providers.NodeContext{RuntimeData: map[string]string{
 		common.RuntimeKeyConsentedPermissions: "",
 		"authorized_permissions":              "booking:read",
+	}}
+	assert.Equal(suite.T(), "", (&authAssertExecutor{}).resolvePermissionsForClaim(ctx))
+}
+
+func (suite *AuthAssertExecutorTestSuite) TestResolvePermissionsForClaim_ConsentedWithoutAuthorizedReturnsEmpty() {
+	ctx := &providers.NodeContext{RuntimeData: map[string]string{
+		common.RuntimeKeyConsentedPermissions: "booking:read",
 	}}
 	assert.Equal(suite.T(), "", (&authAssertExecutor{}).resolvePermissionsForClaim(ctx))
 }
