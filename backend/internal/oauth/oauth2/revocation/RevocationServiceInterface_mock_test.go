@@ -237,22 +237,22 @@ func (_c *RevocationServiceInterfaceMock_RevokeRefreshToken_Call) RunAndReturn(r
 }
 
 // RevokeToken provides a mock function for the type RevocationServiceInterfaceMock
-func (_mock *RevocationServiceInterfaceMock) RevokeToken(ctx context.Context, token string, tokenTypeHint string, authenticatedClientID string) (RevokeOutcome, error) {
+func (_mock *RevocationServiceInterfaceMock) RevokeToken(ctx context.Context, token string, tokenTypeHint string, authenticatedClientID string) (RevokeResult, error) {
 	ret := _mock.Called(ctx, token, tokenTypeHint, authenticatedClientID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for RevokeToken")
 	}
 
-	var r0 RevokeOutcome
+	var r0 RevokeResult
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) (RevokeOutcome, error)); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) (RevokeResult, error)); ok {
 		return returnFunc(ctx, token, tokenTypeHint, authenticatedClientID)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) RevokeOutcome); ok {
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) RevokeResult); ok {
 		r0 = returnFunc(ctx, token, tokenTypeHint, authenticatedClientID)
 	} else {
-		r0 = ret.Get(0).(RevokeOutcome)
+		r0 = ret.Get(0).(RevokeResult)
 	}
 	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string) error); ok {
 		r1 = returnFunc(ctx, token, tokenTypeHint, authenticatedClientID)
@@ -304,12 +304,12 @@ func (_c *RevocationServiceInterfaceMock_RevokeToken_Call) Run(run func(ctx cont
 	return _c
 }
 
-func (_c *RevocationServiceInterfaceMock_RevokeToken_Call) Return(revokeOutcome RevokeOutcome, err error) *RevocationServiceInterfaceMock_RevokeToken_Call {
-	_c.Call.Return(revokeOutcome, err)
+func (_c *RevocationServiceInterfaceMock_RevokeToken_Call) Return(revokeResult RevokeResult, err error) *RevocationServiceInterfaceMock_RevokeToken_Call {
+	_c.Call.Return(revokeResult, err)
 	return _c
 }
 
-func (_c *RevocationServiceInterfaceMock_RevokeToken_Call) RunAndReturn(run func(ctx context.Context, token string, tokenTypeHint string, authenticatedClientID string) (RevokeOutcome, error)) *RevocationServiceInterfaceMock_RevokeToken_Call {
+func (_c *RevocationServiceInterfaceMock_RevokeToken_Call) RunAndReturn(run func(ctx context.Context, token string, tokenTypeHint string, authenticatedClientID string) (RevokeResult, error)) *RevocationServiceInterfaceMock_RevokeToken_Call {
 	_c.Call.Return(run)
 	return _c
 }

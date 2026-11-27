@@ -266,6 +266,9 @@ func New(mux *http.ServeMux, opts ...Option) *Engine {
 	if err != nil {
 		logger.Fatal(ctx, "Failed to initialize revocation service", log.Error(err))
 	}
+	if err = revocation.SetActorProvider(revocationService, engineCtx.actorProvider); err != nil {
+		logger.Fatal(ctx, "Failed to inject the actor provider into the revocation service", log.Error(err))
+	}
 
 	// CORS origins come from the engine's static OriginConfig; unlike the full server there is no
 	// server-config store to back a dynamic matcher. An empty config leaves CORS disabled (matcher

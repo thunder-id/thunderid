@@ -21,13 +21,28 @@ const (
 	auditClientSecret      = "AuditOAuthClientSecret0123456789"
 	auditOtherClientSecret = "AuditOAuthOtherSecret0123456789"
 	auditWrongSecret       = "AuditOAuthWrongSecret0123456789"
+
+	authorizationCodeGrant = "authorization_code"
+	refreshTokenGrant      = "refresh_token"
+	auditRedirectURI       = "https://localhost:3000/audit-callback"
+	auditUserPassword      = "AuditSignIn123!"
 )
 
 // auditClient is an OAuth client the suite created, with the ID of the application it belongs to.
+// credentialsInBody sends its credentials in the form instead of Basic credentials.
 type auditClient struct {
-	appID    string
-	clientID string
-	secret   string
+	appID             string
+	clientID          string
+	secret            string
+	credentialsInBody bool
+}
+
+// signedInUser is a user of an organization unit of its own who signed in through client, and the tokens
+// the sign-in returned.
+type signedInUser struct {
+	client auditClient
+	userID string
+	tokens *testutils.TokenResponse
 }
 
 // oauthLine is the part of an audit line only the OAuth events fill.
@@ -224,6 +239,9 @@ func (ts *AuditLogTestSuite) TestEveryRefusedTokenRequestRecordsItsOutcome() {
 // Every revocation request writes one token.revoke line by the client. A revoked token and one the
 // server never issued succeed alike, so the log never tells whether a token existed; another client's
 // token is denied. No line carries the token.
+//
+// A revoked token issued to a local user, access or refresh, names that user as subject. Every other line
+// names nobody, and a refusal never reveals whose token was presented.
 func (ts *AuditLogTestSuite) TestEveryRevocationRecordsItsOutcome() {
 	owner := ts.createClient("revoke-owner", auditClientSecret, clientCredentialsGrant)
 	other := ts.createClient("revoke-other", auditOtherClientSecret, clientCredentialsGrant)
@@ -232,20 +250,49 @@ func (ts *AuditLogTestSuite) TestEveryRevocationRecordsItsOutcome() {
 	ownerToken := ts.accessTokenOf(body)
 	const unknownToken = "eyJhbGciOiJSUzI1NiJ9.eyJqdGkiOiJ1bmtub3duIn0.dW5rbm93bi1zaWduYXR1cmU"
 
+	user := ts.signInUser("revoke-user", auditClientSecret)
+	userToken, refreshToken := user.tokens.AccessToken, user.tokens.RefreshToken
+	// Exchanged before any revocation: revoking the sign-in's access token drops its token family.
+	exchanged, body := ts.oauthCall("/oauth2/token", url.Values{
+		"grant_type":         {tokenExchangeGrant},
+		"subject_token":      {userToken},
+		"subject_token_type": {accessTokenType},
+	}, user.client, nil)
+	ts.Require().Equal(http.StatusOK, exchanged.StatusCode, string(body))
+	exchangedToken := ts.accessTokenOf(body)
+	userSubject := testutils.AuditRef{Type: "user", ID: user.userID}
+
 	cases := []struct {
 		name    string
 		client  auditClient
 		form    url.Values
 		status  int
 		outcome map[string]string
+		subject testutils.AuditRef
 	}{
 		{
 			name: "another client's token", client: other, form: url.Values{"token": {ownerToken}},
 			status: http.StatusBadRequest, outcome: map[string]string{"result": "denied", "reason": "invalid_grant"},
 		},
 		{
+			name: "another client's user token", client: other, form: url.Values{"token": {userToken}},
+			status: http.StatusBadRequest, outcome: map[string]string{"result": "denied", "reason": "invalid_grant"},
+		},
+		{
 			name: "the client's own token", client: owner, form: url.Values{"token": {ownerToken}},
 			status: http.StatusOK, outcome: map[string]string{"result": "succeeded"},
+		},
+		{
+			name: "an exchanged user token", client: user.client, form: url.Values{"token": {exchangedToken}},
+			status: http.StatusOK, outcome: map[string]string{"result": "succeeded"}, subject: userSubject,
+		},
+		{
+			name: "a signed-in user's token", client: user.client, form: url.Values{"token": {userToken}},
+			status: http.StatusOK, outcome: map[string]string{"result": "succeeded"}, subject: userSubject,
+		},
+		{
+			name: "a signed-in user's refresh token", client: user.client, form: url.Values{"token": {refreshToken}},
+			status: http.StatusOK, outcome: map[string]string{"result": "succeeded"}, subject: userSubject,
 		},
 		{
 			name: "a token the server never issued", client: owner, form: url.Values{"token": {unknownToken}},
@@ -271,12 +318,52 @@ func (ts *AuditLogTestSuite) TestEveryRevocationRecordsItsOutcome() {
 		ts.Equal("revoke", line.Action, tc.name)
 		ts.Equal(testutils.AuditRef{Type: "application", ID: tc.client.appID}, line.Actor, tc.name)
 		ts.Equal(testutils.AuditRef{Type: "token"}, line.Target, tc.name)
-		ts.Equal(testutils.AuditRef{}, line.Subject, tc.name)
+		ts.Equal(tc.subject, line.Subject, "%s: only a revoked local user's token names a subject", tc.name)
 		ts.Equal(tc.outcome, line.Outcome, tc.name)
 		ts.Empty(ts.detailsOf(line), tc.name)
 		ts.NotContains(line.Raw, unknownToken, "%s: a token is never recorded", tc.name)
 		ts.requireNoCredential(line, owner, ownerToken)
 		ts.requireNoCredential(line, other)
+		ts.requireNoCredential(line, user.client, userToken, refreshToken, exchangedToken)
+	}
+}
+
+// signInUser creates a confidential client that may use the authorization code, refresh token and token
+// exchange grants, in an organization unit of its own with a user who signs in through it, all removed
+// when the test ends. The client sends its credentials in the form, as the sign-in helper does.
+func (ts *AuditLogTestSuite) signInUser(name, secret string) signedInUser {
+	ts.T().Helper()
+	ouID := ts.createOrganizationUnit(name)
+	userType := ts.createUserTypeIn(ouID, name)
+	username := ts.prefix + name
+	userID := ts.createUser(ouID, userType, username, auditUserPassword)
+
+	clientID := ts.prefix + name
+	appID, err := testutils.CreateApplication(testutils.Application{
+		OUID: ouID,
+		Name: "Audit OAuth " + ts.prefix + name,
+		Type: "fullstack",
+		InboundAuthConfig: []map[string]interface{}{{"type": "oauth2", "config": map[string]interface{}{
+			"clientId":                clientID,
+			"clientSecret":            secret,
+			"redirectUris":            []string{auditRedirectURI},
+			"grantTypes":              []string{authorizationCodeGrant, refreshTokenGrant, tokenExchangeGrant},
+			"responseTypes":           []string{"code"},
+			"tokenEndpointAuthMethod": "client_secret_post",
+		}}},
+	})
+	ts.Require().NoError(err, "failed to create the application of client %s", name)
+	ts.T().Cleanup(func() { _ = testutils.DeleteApplication(appID) })
+
+	tokens, err := testutils.ObtainAccessTokenWithPassword(clientID, auditRedirectURI, "openid", username,
+		auditUserPassword, true, secret)
+	ts.Require().NoError(err, "user %s failed to sign in through client %s", username, name)
+	ts.Require().NotEmpty(tokens.AccessToken, "the sign-in returned no access token")
+	ts.Require().NotEmpty(tokens.RefreshToken, "the sign-in returned no refresh token")
+	return signedInUser{
+		client: auditClient{appID: appID, clientID: clientID, secret: secret, credentialsInBody: true},
+		userID: userID,
+		tokens: tokens,
 	}
 }
 
@@ -300,11 +387,18 @@ func (ts *AuditLogTestSuite) createClient(name, secret string, grantTypes ...str
 	return auditClient{appID: appID, clientID: clientID, secret: secret}
 }
 
-// oauthCall posts form to an OAuth endpoint at path, with the Basic credentials of client when it has a
-// client ID, and returns the response and its body.
+// oauthCall posts form to an OAuth endpoint at path, with the credentials of client when it has a client
+// ID, and returns the response and its body.
 func (ts *AuditLogTestSuite) oauthCall(path string, form url.Values, client auditClient, header http.Header) (
 	*http.Response, []byte) {
 	ts.T().Helper()
+	if client.credentialsInBody {
+		withCredentials := url.Values{"client_id": {client.clientID}, "client_secret": {client.secret}}
+		for key, values := range form {
+			withCredentials[key] = values
+		}
+		form = withCredentials
+	}
 	req, err := http.NewRequest(http.MethodPost, testutils.TestServerURL+path, strings.NewReader(form.Encode()))
 	ts.Require().NoError(err)
 	for key, values := range header {
@@ -314,7 +408,7 @@ func (ts *AuditLogTestSuite) oauthCall(path string, form url.Values, client audi
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("User-Agent", testUserAgent)
-	if client.clientID != "" {
+	if client.clientID != "" && !client.credentialsInBody {
 		req.SetBasicAuth(client.clientID, client.secret)
 	}
 	resp, err := testutils.GetRawHTTPClient().Do(req)

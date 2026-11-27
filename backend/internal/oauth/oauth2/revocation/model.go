@@ -20,6 +20,13 @@ const (
 	RevokeOutcomeNotOwned
 )
 
+// RevokeResult is what RevokeToken reports about a revocation request.
+type RevokeResult struct {
+	Outcome RevokeOutcome
+	// TokenSubject is the local user whose token was revoked, empty unless the revocation took effect.
+	TokenSubject string
+}
+
 // RevocationReason enumerates why a single token was revoked.
 type RevocationReason = sharedrevocation.Reason
 
