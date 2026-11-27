@@ -375,20 +375,31 @@ func (_c *sessionStoreMock_Delete_Call) RunAndReturn(run func(ctx context.Contex
 }
 
 // DeleteBySessionID provides a mock function for the type sessionStoreMock
-func (_mock *sessionStoreMock) DeleteBySessionID(ctx context.Context, sessionID string) error {
+func (_mock *sessionStoreMock) DeleteBySessionID(ctx context.Context, sessionID string) ([]Participant, error) {
 	ret := _mock.Called(ctx, sessionID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DeleteBySessionID")
 	}
 
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
+	var r0 []Participant
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) ([]Participant, error)); ok {
+		return returnFunc(ctx, sessionID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) []Participant); ok {
 		r0 = returnFunc(ctx, sessionID)
 	} else {
-		r0 = ret.Error(0)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]Participant)
+		}
 	}
-	return r0
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, sessionID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
 }
 
 // sessionStoreMock_DeleteBySessionID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'DeleteBySessionID'
@@ -421,12 +432,12 @@ func (_c *sessionStoreMock_DeleteBySessionID_Call) Run(run func(ctx context.Cont
 	return _c
 }
 
-func (_c *sessionStoreMock_DeleteBySessionID_Call) Return(err error) *sessionStoreMock_DeleteBySessionID_Call {
-	_c.Call.Return(err)
+func (_c *sessionStoreMock_DeleteBySessionID_Call) Return(participants []Participant, err error) *sessionStoreMock_DeleteBySessionID_Call {
+	_c.Call.Return(participants, err)
 	return _c
 }
 
-func (_c *sessionStoreMock_DeleteBySessionID_Call) RunAndReturn(run func(ctx context.Context, sessionID string) error) *sessionStoreMock_DeleteBySessionID_Call {
+func (_c *sessionStoreMock_DeleteBySessionID_Call) RunAndReturn(run func(ctx context.Context, sessionID string) ([]Participant, error)) *sessionStoreMock_DeleteBySessionID_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -1028,7 +1028,7 @@ func (suite *ServiceTestSuite) TestTerminate_DeletesSessionAndPurges() {
 	runTx(m)
 	m.store.EXPECT().DeleteSession(mock.Anything, "sess-1").Return(true, nil)
 	m.store.EXPECT().Delete(mock.Anything, "sess-1").Return(nil)
-	m.store.EXPECT().DeleteBySessionID(mock.Anything, "sess-1").Return(nil)
+	m.store.EXPECT().DeleteBySessionID(mock.Anything, "sess-1").Return(nil, nil)
 
 	got, err := svc.Terminate(context.Background(), "handle-abc", "flow-1")
 
@@ -1054,16 +1054,15 @@ func (suite *ServiceTestSuite) TestTerminate_RevokesParticipantFamilies() {
 
 	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(liveStoreSession(), nil)
 	runTx(m)
-	// Families are revoked before the deletes, one per participant.
-	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return([]Participant{
+	m.store.EXPECT().DeleteSession(mock.Anything, "sess-1").Return(true, nil)
+	m.store.EXPECT().Delete(mock.Anything, "sess-1").Return(nil)
+	// Families are revoked from the rows the participant delete returns, one per participant.
+	m.store.EXPECT().DeleteBySessionID(mock.Anything, "sess-1").Return([]Participant{
 		{SessionID: "sess-1", AppID: "app-1", TokenFamilyID: "tfid-a"},
 		{SessionID: "sess-1", AppID: "app-2", TokenFamilyID: "tfid-b"},
 	}, nil)
 	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-a").Return(nil)
 	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-b").Return(nil)
-	m.store.EXPECT().DeleteSession(mock.Anything, "sess-1").Return(true, nil)
-	m.store.EXPECT().Delete(mock.Anything, "sess-1").Return(nil)
-	m.store.EXPECT().DeleteBySessionID(mock.Anything, "sess-1").Return(nil)
 
 	got, err := svc.Terminate(context.Background(), "handle-abc", "flow-1")
 
@@ -1077,15 +1076,43 @@ func (suite *ServiceTestSuite) TestTerminate_RevokesTheFamilyOfEveryOURow() {
 	svc, m, revoker := suite.newServiceWithRevoker()
 	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(liveStoreSession(), nil)
 	runTx(m)
-	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return([]Participant{
+	m.store.EXPECT().DeleteSession(mock.Anything, "sess-1").Return(true, nil)
+	m.store.EXPECT().Delete(mock.Anything, "sess-1").Return(nil)
+	m.store.EXPECT().DeleteBySessionID(mock.Anything, "sess-1").Return([]Participant{
 		{SessionID: "sess-1", AppID: "app-1", OUID: "ou-x", TokenFamilyID: "tfid-x"},
 		{SessionID: "sess-1", AppID: "app-1", OUID: "ou-y", TokenFamilyID: "tfid-y"},
 	}, nil)
 	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-x").Return(nil).Once()
 	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-y").Return(nil).Once()
+
+	_, err := svc.Terminate(context.Background(), "handle-abc", "flow-1")
+
+	suite.Require().NoError(err)
+}
+
+// A participant that joins after a read of the session's participants is still among the rows the delete
+// removes, so it is revoked and notified too.
+func (suite *ServiceTestSuite) TestTerminate_RevokesAndNotifiesAParticipantThatJoinedBeforeTheDelete() {
+	revoker := NewCriteriaRevokerMock(suite.T())
+	svc, m, listener := suite.newServiceWithListener(revoker)
+	early := Participant{SessionID: "sess-1", AppID: "app-1", TokenFamilyID: "tfid-a"}
+	late := Participant{SessionID: "sess-1", AppID: "app-2", TokenFamilyID: "tfid-late"}
+
+	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(liveStoreSession(), nil)
+	runTx(m)
+	// A read taken before the delete sees only the early participant.
+	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return([]Participant{early}, nil).Maybe()
 	m.store.EXPECT().DeleteSession(mock.Anything, "sess-1").Return(true, nil)
 	m.store.EXPECT().Delete(mock.Anything, "sess-1").Return(nil)
-	m.store.EXPECT().DeleteBySessionID(mock.Anything, "sess-1").Return(nil)
+	m.store.EXPECT().DeleteBySessionID(mock.Anything, "sess-1").Return([]Participant{early, late}, nil)
+	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-a").Return(nil).Once()
+	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-late").Return(nil).Once()
+	listener.EXPECT().OnEvent(mock.Anything, TerminatedSession{
+		SessionID:    "sess-1",
+		SubjectID:    "user-1",
+		Participants: []Participant{early, late},
+		Reason:       TerminationReasonSignOut,
+	}).Once()
 
 	_, err := svc.Terminate(context.Background(), "handle-abc", "flow-1")
 
@@ -1120,7 +1147,9 @@ func (suite *ServiceTestSuite) TestTerminateBySubject_DeletesAllSessionsInOneTra
 	for _, sessionID := range []string{"sess-1", "sess-2"} {
 		m.store.EXPECT().DeleteSession(mock.Anything, sessionID).Return(true, nil)
 		m.store.EXPECT().Delete(mock.Anything, sessionID).Return(nil)
-		m.store.EXPECT().DeleteBySessionID(mock.Anything, sessionID).Return(nil)
+		m.store.EXPECT().DeleteBySessionID(mock.Anything, sessionID).Return([]Participant{
+			{SessionID: sessionID, AppID: "app-1", TokenFamilyID: "tfid-" + sessionID},
+		}, nil)
 	}
 
 	err := svc.TerminateBySubject(context.Background(), "user-1")
@@ -1637,13 +1666,15 @@ func (suite *ServiceTestSuite) TestTerminate_NotifiesListenerAfterCommit() {
 			committed = err == nil
 			return err
 		}).Once()
-	// One read serves both the revoker and the listener.
-	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return(participants, nil).Once()
-	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-a").Return(nil)
-	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-b").Return(nil)
 	m.store.EXPECT().DeleteSession(mock.Anything, "sess-1").Return(true, nil)
 	m.store.EXPECT().Delete(mock.Anything, "sess-1").Return(nil)
-	m.store.EXPECT().DeleteBySessionID(mock.Anything, "sess-1").Return(nil)
+	// The rows the participant delete returns serve both the revoker and the listener.
+	m.store.EXPECT().DeleteBySessionID(mock.Anything, "sess-1").Return(participants, nil).Once()
+	for _, tfid := range []string{"tfid-a", "tfid-b"} {
+		revoker.EXPECT().RevokeTokenFamily(mock.Anything, tfid).Return(nil).Run(func(context.Context, string) {
+			suite.False(committed, "families are revoked inside the terminating transaction")
+		}).Once()
+	}
 	listener.EXPECT().OnEvent(mock.Anything, TerminatedSession{
 		SessionID:    "sess-1",
 		SubjectID:    "user-1",
@@ -1665,11 +1696,9 @@ func (suite *ServiceTestSuite) TestTerminate_ListenerWithoutRevokerStillGetsPart
 
 	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(liveStoreSession(), nil)
 	runTx(m)
-	// Without a revoker the read still happens, because the listener needs the list.
-	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return(participants, nil).Once()
 	m.store.EXPECT().DeleteSession(mock.Anything, "sess-1").Return(true, nil)
 	m.store.EXPECT().Delete(mock.Anything, "sess-1").Return(nil)
-	m.store.EXPECT().DeleteBySessionID(mock.Anything, "sess-1").Return(nil)
+	m.store.EXPECT().DeleteBySessionID(mock.Anything, "sess-1").Return(participants, nil)
 	listener.EXPECT().OnEvent(mock.Anything, mock.MatchedBy(func(ended TerminatedSession) bool {
 		return ended.SessionID == "sess-1" && len(ended.Participants) == 1 &&
 			ended.Reason == TerminationReasonSignOut
@@ -1680,25 +1709,10 @@ func (suite *ServiceTestSuite) TestTerminate_ListenerWithoutRevokerStillGetsPart
 	suite.Require().NoError(err)
 }
 
-func (suite *ServiceTestSuite) TestTerminate_NoListenerNoRevokerReadsNoParticipants() {
-	svc, m := suite.newService()
-	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(liveStoreSession(), nil)
-	runTx(m)
-	m.store.EXPECT().DeleteSession(mock.Anything, "sess-1").Return(true, nil)
-	m.store.EXPECT().Delete(mock.Anything, "sess-1").Return(nil)
-	m.store.EXPECT().DeleteBySessionID(mock.Anything, "sess-1").Return(nil)
-
-	_, err := svc.Terminate(context.Background(), "handle-abc", "flow-1")
-
-	suite.Require().NoError(err)
-	m.store.AssertNotCalled(suite.T(), "ListBySessionID", mock.Anything, mock.Anything)
-}
-
 func (suite *ServiceTestSuite) TestTerminate_TransactionFailureDoesNotNotify() {
 	svc, m, listener := suite.newServiceWithListener(nil)
 	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(liveStoreSession(), nil)
 	runTx(m)
-	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return([]Participant{{AppID: "app-1"}}, nil)
 	m.store.EXPECT().DeleteSession(mock.Anything, "sess-1").Return(false, errors.New("db down"))
 
 	_, err := svc.Terminate(context.Background(), "handle-abc", "flow-1")
@@ -1707,33 +1721,40 @@ func (suite *ServiceTestSuite) TestTerminate_TransactionFailureDoesNotNotify() {
 	listener.AssertNotCalled(suite.T(), "OnEvent", mock.Anything, mock.Anything)
 }
 
-func (suite *ServiceTestSuite) TestTerminate_ListenerOnlyParticipantReadErrorStillTerminates() {
-	svc, m, listener := suite.newServiceWithListener(nil)
-	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(liveStoreSession(), nil)
-	runTx(m)
-	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return(nil, errors.New("db down"))
-	m.store.EXPECT().DeleteSession(mock.Anything, "sess-1").Return(true, nil)
-	m.store.EXPECT().Delete(mock.Anything, "sess-1").Return(nil)
-	m.store.EXPECT().DeleteBySessionID(mock.Anything, "sess-1").Return(nil)
-
-	got, err := svc.Terminate(context.Background(), "handle-abc", "flow-1")
-
-	suite.Require().NoError(err, "a read that only the listener needs must not block sign-out")
-	suite.Require().NotNil(got)
-	listener.AssertNotCalled(suite.T(), "OnEvent", mock.Anything, mock.Anything)
-}
-
-func (suite *ServiceTestSuite) TestTerminate_ParticipantReadErrorWithRevokerFailsBeforeDeletes() {
+func (suite *ServiceTestSuite) TestTerminate_ParticipantDeleteErrorFailsTheTermination() {
 	revoker := NewCriteriaRevokerMock(suite.T())
 	svc, m, listener := suite.newServiceWithListener(revoker)
 	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(liveStoreSession(), nil)
 	runTx(m)
-	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return(nil, errors.New("db down"))
+	m.store.EXPECT().DeleteSession(mock.Anything, "sess-1").Return(true, nil)
+	m.store.EXPECT().Delete(mock.Anything, "sess-1").Return(nil)
+	m.store.EXPECT().DeleteBySessionID(mock.Anything, "sess-1").Return(nil, errors.New("db down"))
 
 	_, err := svc.Terminate(context.Background(), "handle-abc", "flow-1")
 
-	suite.Require().Error(err, "the revoker cannot run without the list, so the session must stay")
-	m.store.AssertNotCalled(suite.T(), "DeleteSession", mock.Anything, mock.Anything)
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "failed to terminate session")
+	revoker.AssertNotCalled(suite.T(), "RevokeTokenFamily", mock.Anything, mock.Anything)
+	listener.AssertNotCalled(suite.T(), "OnEvent", mock.Anything, mock.Anything)
+}
+
+// A family that cannot be revoked fails the transaction, so the deletes roll back with it.
+func (suite *ServiceTestSuite) TestTerminate_RevocationFailureFailsTheTermination() {
+	revoker := NewCriteriaRevokerMock(suite.T())
+	svc, m, listener := suite.newServiceWithListener(revoker)
+	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(liveStoreSession(), nil)
+	runTx(m)
+	m.store.EXPECT().DeleteSession(mock.Anything, "sess-1").Return(true, nil)
+	m.store.EXPECT().Delete(mock.Anything, "sess-1").Return(nil)
+	m.store.EXPECT().DeleteBySessionID(mock.Anything, "sess-1").Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-1", TokenFamilyID: "tfid-a"},
+	}, nil)
+	revoker.EXPECT().RevokeTokenFamily(mock.Anything, "tfid-a").Return(errors.New("deny list unavailable"))
+
+	_, err := svc.Terminate(context.Background(), "handle-abc", "flow-1")
+
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "failed to terminate session")
 	listener.AssertNotCalled(suite.T(), "OnEvent", mock.Anything, mock.Anything)
 }
 
@@ -1743,12 +1764,6 @@ func (suite *ServiceTestSuite) TestTerminateBySubject_NotifiesOncePerSessionAfte
 		{SessionID: "sess-1", SubjectID: "user-1"},
 		{SessionID: "sess-2", SubjectID: "user-1"},
 	}, nil)
-	// One bulk read before the transaction covers every session.
-	m.store.EXPECT().ListBySessionIDs(mock.Anything, []string{"sess-1", "sess-2"}).Return([]Participant{
-		{SessionID: "sess-1", AppID: "app-1", TokenFamilyID: "tfid-a"},
-		{SessionID: "sess-1", AppID: "app-2", TokenFamilyID: "tfid-b"},
-		{SessionID: "sess-2", AppID: "app-1", TokenFamilyID: "tfid-c"},
-	}, nil).Once()
 	committed := false
 	m.tx.EXPECT().Transact(mock.Anything, mock.Anything).RunAndReturn(
 		func(ctx context.Context, fn func(context.Context) error) error {
@@ -1759,8 +1774,15 @@ func (suite *ServiceTestSuite) TestTerminateBySubject_NotifiesOncePerSessionAfte
 	for _, sessionID := range []string{"sess-1", "sess-2"} {
 		m.store.EXPECT().DeleteSession(mock.Anything, sessionID).Return(true, nil)
 		m.store.EXPECT().Delete(mock.Anything, sessionID).Return(nil)
-		m.store.EXPECT().DeleteBySessionID(mock.Anything, sessionID).Return(nil)
 	}
+	// Each session's participant delete returns the rows that session's notification lists.
+	m.store.EXPECT().DeleteBySessionID(mock.Anything, "sess-1").Return([]Participant{
+		{SessionID: "sess-1", AppID: "app-1", TokenFamilyID: "tfid-a"},
+		{SessionID: "sess-1", AppID: "app-2", TokenFamilyID: "tfid-b"},
+	}, nil).Once()
+	m.store.EXPECT().DeleteBySessionID(mock.Anything, "sess-2").Return([]Participant{
+		{SessionID: "sess-2", AppID: "app-1", TokenFamilyID: "tfid-c"},
+	}, nil).Once()
 	var notified []TerminatedSession
 	listener.EXPECT().OnEvent(mock.Anything, mock.Anything).Run(
 		func(_ context.Context, ended TerminatedSession) {
@@ -1780,42 +1802,54 @@ func (suite *ServiceTestSuite) TestTerminateBySubject_NotifiesOncePerSessionAfte
 	suite.Len(notified[1].Participants, 1)
 	suite.Equal("tfid-c", notified[1].Participants[0].TokenFamilyID)
 	m.store.AssertNotCalled(suite.T(), "ListBySessionID", mock.Anything, mock.Anything)
+	m.store.AssertNotCalled(suite.T(), "ListBySessionIDs", mock.Anything, mock.Anything)
 }
 
-func (suite *ServiceTestSuite) TestTerminateBySubject_NoListenerSkipsParticipantRead() {
-	svc, m := suite.newService()
-	m.store.EXPECT().ListBySubject(mock.Anything, "user-1").Return([]Session{{SessionID: "sess-1"}}, nil)
+// A participant that joins after a read of the sessions' participants is still among the rows the delete
+// removes, so the notification names it.
+func (suite *ServiceTestSuite) TestTerminateBySubject_NotifiesAParticipantThatJoinedBeforeTheDelete() {
+	svc, m, listener := suite.newServiceWithListener(nil)
+	early := Participant{SessionID: "sess-1", AppID: "app-1", TokenFamilyID: "tfid-a"}
+	late := Participant{SessionID: "sess-1", AppID: "app-2", TokenFamilyID: "tfid-late"}
+	m.store.EXPECT().ListBySubject(mock.Anything, "user-1").Return([]Session{
+		{SessionID: "sess-1", SubjectID: "user-1"},
+	}, nil)
+	// A read taken before the delete sees only the early participant.
+	m.store.EXPECT().ListBySessionIDs(mock.Anything, []string{"sess-1"}).Return([]Participant{early}, nil).Maybe()
 	runTx(m)
 	m.store.EXPECT().DeleteSession(mock.Anything, "sess-1").Return(true, nil)
 	m.store.EXPECT().Delete(mock.Anything, "sess-1").Return(nil)
-	m.store.EXPECT().DeleteBySessionID(mock.Anything, "sess-1").Return(nil)
+	m.store.EXPECT().DeleteBySessionID(mock.Anything, "sess-1").Return([]Participant{early, late}, nil)
+	listener.EXPECT().OnEvent(mock.Anything, TerminatedSession{
+		SessionID:    "sess-1",
+		SubjectID:    "user-1",
+		Participants: []Participant{early, late},
+		Reason:       TerminationReasonSubjectRevocation,
+	}).Once()
 
 	err := svc.TerminateBySubject(context.Background(), "user-1")
 
 	suite.Require().NoError(err)
-	m.store.AssertNotCalled(suite.T(), "ListBySessionIDs", mock.Anything, mock.Anything)
 }
 
-func (suite *ServiceTestSuite) TestTerminateBySubject_ParticipantReadErrorStillTerminates() {
+func (suite *ServiceTestSuite) TestTerminateBySubject_ParticipantDeleteErrorFailsTheBatch() {
 	svc, m, listener := suite.newServiceWithListener(nil)
 	m.store.EXPECT().ListBySubject(mock.Anything, "user-1").Return([]Session{{SessionID: "sess-1"}}, nil)
-	m.store.EXPECT().ListBySessionIDs(mock.Anything, []string{"sess-1"}).Return(nil, errors.New("db down"))
 	runTx(m)
 	m.store.EXPECT().DeleteSession(mock.Anything, "sess-1").Return(true, nil)
 	m.store.EXPECT().Delete(mock.Anything, "sess-1").Return(nil)
-	m.store.EXPECT().DeleteBySessionID(mock.Anything, "sess-1").Return(nil)
+	m.store.EXPECT().DeleteBySessionID(mock.Anything, "sess-1").Return(nil, errors.New("db down"))
 
 	err := svc.TerminateBySubject(context.Background(), "user-1")
 
-	suite.Require().NoError(err, "a failed participant read must not block the revocation")
+	suite.Require().Error(err)
+	suite.Contains(err.Error(), "failed to terminate subject sessions")
 	listener.AssertNotCalled(suite.T(), "OnEvent", mock.Anything, mock.Anything)
 }
 
 func (suite *ServiceTestSuite) TestTerminateBySubject_TransactionFailureDoesNotNotify() {
 	svc, m, listener := suite.newServiceWithListener(nil)
 	m.store.EXPECT().ListBySubject(mock.Anything, "user-1").Return([]Session{{SessionID: "sess-1"}}, nil)
-	m.store.EXPECT().ListBySessionIDs(mock.Anything, []string{"sess-1"}).
-		Return([]Participant{{SessionID: "sess-1", AppID: "app-1"}}, nil)
 	runTx(m)
 	m.store.EXPECT().DeleteSession(mock.Anything, "sess-1").Return(false, errors.New("db down"))
 
@@ -1830,10 +1864,9 @@ func (suite *ServiceTestSuite) TestTerminate_DoesNotNotifyWhenAnotherTermination
 	svc, m, listener := suite.newServiceWithListener(nil)
 	m.store.EXPECT().GetByHandle(mock.Anything, "handle-abc").Return(liveStoreSession(), nil)
 	runTx(m)
-	m.store.EXPECT().ListBySessionID(mock.Anything, "sess-1").Return([]Participant{{AppID: "app-1"}}, nil)
 	m.store.EXPECT().DeleteSession(mock.Anything, "sess-1").Return(false, nil)
 	m.store.EXPECT().Delete(mock.Anything, "sess-1").Return(nil)
-	m.store.EXPECT().DeleteBySessionID(mock.Anything, "sess-1").Return(nil)
+	m.store.EXPECT().DeleteBySessionID(mock.Anything, "sess-1").Return(nil, nil)
 
 	got, err := svc.Terminate(context.Background(), "handle-abc", "flow-1")
 
@@ -1849,17 +1882,16 @@ func (suite *ServiceTestSuite) TestTerminateBySubject_NotifiesOnlyForRowsItRemov
 		{SessionID: "sess-1", SubjectID: "user-1"},
 		{SessionID: "sess-2", SubjectID: "user-1"},
 	}, nil)
-	m.store.EXPECT().ListBySessionIDs(mock.Anything, []string{"sess-1", "sess-2"}).Return([]Participant{
-		{SessionID: "sess-1", AppID: "app-1"},
-		{SessionID: "sess-2", AppID: "app-1"},
-	}, nil)
 	runTx(m)
 	m.store.EXPECT().DeleteSession(mock.Anything, "sess-1").Return(false, nil)
 	m.store.EXPECT().DeleteSession(mock.Anything, "sess-2").Return(true, nil)
 	for _, sessionID := range []string{"sess-1", "sess-2"} {
 		m.store.EXPECT().Delete(mock.Anything, sessionID).Return(nil)
-		m.store.EXPECT().DeleteBySessionID(mock.Anything, sessionID).Return(nil)
 	}
+	m.store.EXPECT().DeleteBySessionID(mock.Anything, "sess-1").Return(nil, nil)
+	m.store.EXPECT().DeleteBySessionID(mock.Anything, "sess-2").Return([]Participant{
+		{SessionID: "sess-2", AppID: "app-1"},
+	}, nil)
 	listener.EXPECT().OnEvent(mock.Anything, mock.MatchedBy(func(ended TerminatedSession) bool {
 		return ended.SessionID == "sess-2"
 	})).Once()
@@ -1881,12 +1913,13 @@ func (suite *ServiceTestSuite) TestTerminateBySubject_NotifiesOnlyForLiveSession
 		{SessionID: "shortened", LastActiveAt: now.Add(-31 * 24 * time.Hour), IdleExpiresAt: now.Add(time.Hour),
 			AbsoluteExpiresAt: now.Add(2 * time.Hour)},
 	}, nil)
-	m.store.EXPECT().ListBySessionIDs(mock.Anything, []string{"live", "idle", "ended", "shortened"}).Return(nil, nil)
 	runTx(m)
 	for _, sessionID := range []string{"live", "idle", "ended", "shortened"} {
 		m.store.EXPECT().DeleteSession(mock.Anything, sessionID).Return(true, nil)
 		m.store.EXPECT().Delete(mock.Anything, sessionID).Return(nil)
-		m.store.EXPECT().DeleteBySessionID(mock.Anything, sessionID).Return(nil)
+		m.store.EXPECT().DeleteBySessionID(mock.Anything, sessionID).Return([]Participant{
+			{SessionID: sessionID, AppID: "app-1"},
+		}, nil)
 	}
 	listener.EXPECT().OnEvent(mock.Anything, mock.MatchedBy(func(ended TerminatedSession) bool {
 		return ended.SessionID == "live"

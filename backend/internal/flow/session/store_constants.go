@@ -117,10 +117,12 @@ var (
 			`FROM "SESSION_PARTICIPANT" WHERE SESSION_ID = $1 AND DEPLOYMENT_ID = $2 ORDER BY FIRST_JOINED_AT`,
 	}
 
-	// queryDeleteParticipantsBySessionID removes all participants of a session.
+	// queryDeleteParticipantsBySessionID removes all participants of a session and returns the rows it removed.
+	// The DELETE ... RETURNING form is valid in both PostgreSQL and SQLite.
 	queryDeleteParticipantsBySessionID = model.DBQuery{
-		ID:    "SEQ-SESS-11",
-		Query: `DELETE FROM "SESSION_PARTICIPANT" WHERE SESSION_ID = $1 AND DEPLOYMENT_ID = $2`,
+		ID: "SEQ-SESS-11",
+		Query: `DELETE FROM "SESSION_PARTICIPANT" WHERE SESSION_ID = $1 AND DEPLOYMENT_ID = $2 ` +
+			`RETURNING SESSION_ID, APP_ID, OU_ID, FIRST_JOINED_AT, LAST_ACTIVE_AT, TFID`,
 	}
 
 	// queryDeleteSession removes the session row itself.

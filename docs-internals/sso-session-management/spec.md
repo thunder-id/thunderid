@@ -1,7 +1,7 @@
 # SSO Session Management Specification
 
 - **Status:** Draft
-- **Version:** 0.5
+- **Version:** 0.6
 - **Related documents:** [Feature issue #3400: Self-service and admin session management](https://github.com/thunder-id/thunderid/issues/3400), [Design discussion #4130: Session visibility](https://github.com/thunder-id/thunderid/discussions/4130), [Revised design: session visibility and revocation](https://github.com/thunder-id/thunderid/discussions/4130#discussioncomment-18580774), [Client IP design](https://github.com/thunder-id/thunderid/discussions/4130#discussioncomment-18771408), [Design discussion #6322: Session tracking, token lifecycle and session management](https://github.com/thunder-id/thunderid/discussions/6322), [OIDC back-channel logout specification](../back-channel-logout/spec.md)
 
 ## Summary
@@ -120,11 +120,10 @@ The access token carries the token family id (`tfid`) of the grant it was issued
 
 A revocation runs the same termination as sign-out, in one transaction per call:
 
-1. Read the session's participants.
-2. Revoke each participant's current token family through the criteria revoker.
-3. Delete the session row, its checkpoint contexts, and its participants.
+1. Delete the session row, its checkpoint contexts, and its participants. The participant delete returns the rows it removed.
+2. Revoke the current token family of each participant the delete returned, through the criteria revoker.
 
-After commit, termination listeners are notified with the reason `session_revocation`, only for sessions this call removed. Back-channel logout uses this to notify each participating application that registered an endpoint. Because revocation shares the sign-out path, Single Logout (#3399) and the session and token policy (#3403) apply to it once they land.
+A participant that joins after the session was read is among the rows the delete returns, so it is revoked and notified too. After commit, termination listeners are notified with the reason `session_revocation` and the participants the delete returned, only for sessions this call removed. Back-channel logout uses this to notify each participating application that registered an endpoint. Because revocation shares the sign-out path, Single Logout (#3399) and the session and token policy (#3403) apply to it once they land.
 
 - Revoking a session signs it out: the next sign-in to its applications asks for credentials again.
 - A direct session is revoked the same way. Sign-out never ends one, since it has no handle for the sign-out flow to send, so a revocation is the way to end it on purpose.
@@ -359,6 +358,7 @@ The key is also exposed through the Helm chart as `configuration.server.trustedP
 ## Known limitations
 
 - A revocation revokes only each application's latest grant in the session. Tokens from an earlier grant of the same application stay valid until they expire. Tracked in #3403.
+- A sign-in that resolved the session before it ended and records its participant after the delete is neither revoked nor notified, since its row names a session that no longer exists.
 - An access token from an earlier grant matches no session, so no session is marked current and `exceptCurrent=true` returns `SSM-1006` without revoking anything. Tracked in #3403.
 - Access token use doesn't move `lastActiveAt`, so a session whose application only calls APIs with an unexpired access token looks idle until its next refresh or sign-in.
 - Expired sessions stay in the database until they are cleaned up. On PostgreSQL, the cleanup procedure removes sessions past their absolute deadline when the operator schedules it.
@@ -376,3 +376,4 @@ The key is also exposed through the Helm chart as `configuration.server.trustedP
 | 0.3 | 2026-11-24 | Session listing by organization unit: `org:session:view` and `org:session:delete`, with only `system` reaching every unit, the self-service listing confined to the unit its own participant was recorded under, the participant's `ouId`, `userDisplayName` in place of `userName`, display names resolved for users and agents, only SSO sessions listed, the management API made part of the session service, with its routes registered in `Initialize`, the `?appId=` listing under an organization unit and the `session` capability made explicit. |
 | 0.4 | 2026-11-26 | The application page shows the Sessions tab whatever its grant types, and the Console re-reads the list every 30 seconds until a `403`. |
 | 0.5 | 2026-11-26 | Direct sessions are listed with SSO sessions, each with its `type`, a token from a direct session's sign-in finds its own session, except a CIBA or device grant token until #7072, and a direct session is revoked the same way. |
+| 0.6 | 2026-11-27 | Termination deletes first and revokes the token families of the participants its delete returns, so a participant that joins before the delete is revoked and notified. |
