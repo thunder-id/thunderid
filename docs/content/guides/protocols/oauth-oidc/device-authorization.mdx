@@ -60,7 +60,7 @@ sequenceDiagram
 | Authentication and consent | The Device Grant flow calls the application's configured Authentication flow. That flow controls sign-in and whether consent is shown. |
 | Default request lifetime | 600 seconds. |
 | Default polling interval | 5 seconds. |
-| Polling responses | `authorization_pending` while approval is in progress; on an early poll, <ProductName /> returns `slow_down` and adds five seconds to the request's stored minimum polling interval; terminal errors for denied, expired, failed, or consumed requests |
+| Polling responses | `authorization_pending` while approval is in progress; on an early poll, <ProductName /> returns `slow_down` and adds five seconds to the request's stored minimum polling interval; terminal errors for denied, expired, failed, or consumed requests; `invalid_grant` when <ProductName /> refuses to issue the tokens, for example because the user was suspended after approving |
 | Token response | An access token after approval, an ID token when `openid` is authorized, and a refresh token when the application allows the `refresh_token` grant. |
 
 ## Configure the Device Grant Flow
