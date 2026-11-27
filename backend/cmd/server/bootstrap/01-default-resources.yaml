@@ -6431,6 +6431,9 @@ translations:
     forms.passkey.add.description: Would you like to add a passkey to your account for faster and more secure sign-ins?
     forms.passkey.add.actions.add.label: Add Passkey
     forms.passkey.add.actions.skip.label: Skip for now
+    forms.passkey.retry.title: Create a Passkey
+    forms.passkey.retry.description: Your passkey was not created. Try again to finish signing up.
+    forms.passkey.retry.actions.retry.label: Try Again
     forms.user_type.title: Sign Up
     forms.user_type.fields.user_type.label: User Type
     forms.user_type.fields.user_type.placeholder: Select your user type

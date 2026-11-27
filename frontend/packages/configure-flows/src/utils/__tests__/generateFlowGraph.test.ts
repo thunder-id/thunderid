@@ -286,6 +286,14 @@ describe('generateFlowGraph', () => {
       expect(credentialsAuth?.onIncomplete).toBe(promptNode?.id);
     });
 
+    it('should route a failed passkey check back to the sign-in prompt', () => {
+      const request = generateFlowGraph({hasCredentialsAuth: true, hasPasskey: true, hasSmsOtp: false});
+
+      const passkeyVerify = request.nodes.find((n) => n.id === 'passkey_verify');
+      const promptNode = request.nodes.find((n) => n.type === FlowNodeType.PROMPT);
+      expect(passkeyVerify?.onFailure).toBe(promptNode?.id);
+    });
+
     it('should route passkey and social provisioning success into MFA too', () => {
       const request = generateFlowGraph({
         hasCredentialsAuth: false,

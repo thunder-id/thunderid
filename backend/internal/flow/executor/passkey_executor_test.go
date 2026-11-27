@@ -374,6 +374,9 @@ func (suite *PasskeyAuthExecutorTestSuite) TestExecuteVerify_MissingInputs() {
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
+	assert.Contains(suite.T(), resp.Inputs,
+		providers.Input{Identifier: inputPasskeyError, Required: false},
+		"The client should be able to report a failed passkey prompt")
 }
 
 func (suite *PasskeyAuthExecutorTestSuite) TestExecuteVerify_MissingSessionToken() {
@@ -417,17 +420,24 @@ func (suite *PasskeyAuthExecutorTestSuite) TestExecuteVerify_InvalidPasskey_Clie
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
-	assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
-	assert.Equal(suite.T(), ErrInvalidPasskey.Error.DefaultValue, resp.Error.Error.DefaultValue)
-	assert.NotEmpty(suite.T(), resp.Inputs)
-	inputIDs := make([]string, 0, len(resp.Inputs))
-	for _, input := range resp.Inputs {
-		inputIDs = append(inputIDs, input.Identifier)
-	}
-	assert.Contains(suite.T(), inputIDs, inputCredentialID)
-	assert.Contains(suite.T(), inputIDs, inputClientDataJSON)
-	assert.Contains(suite.T(), inputIDs, inputAuthenticatorData)
-	assert.Contains(suite.T(), inputIDs, inputSignature)
+	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
+	assert.Equal(suite.T(), ErrInvalidPasskey.Code, resp.Error.Code)
+	assert.Empty(suite.T(), ctx.UserInputs, "The rejected response must not be checked again on the next attempt")
+}
+
+func (suite *PasskeyAuthExecutorTestSuite) TestExecuteVerify_ClientReportedFailure() {
+	ctx := createPasskeyNodeContext(passkeyExecutorModeVerify, providers.FlowTypeAuthentication)
+	ctx.RuntimeData[runtimePasskeySessionToken] = testSessionToken
+	ctx.UserInputs = map[string]string{inputPasskeyError: "NotAllowedError"}
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
+	assert.Equal(suite.T(), ErrPasskeyAuthFailed.Code, resp.Error.Code)
+	assert.Empty(suite.T(), ctx.UserInputs)
+	suite.mockAuthnProvider.AssertNotCalled(suite.T(), "AuthenticateUser", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 func (suite *PasskeyAuthExecutorTestSuite) TestExecuteVerify_IdentityHeld_RepromptsWithSuspension() {
@@ -452,7 +462,7 @@ func (suite *PasskeyAuthExecutorTestSuite) TestExecuteVerify_IdentityHeld_Reprom
 	assert.NotNil(suite.T(), resp)
 	assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
 	assert.Equal(suite.T(), ErrAccountSuspended.Code, resp.Error.Code)
-	assert.NotEmpty(suite.T(), resp.Inputs)
+	assert.Contains(suite.T(), resp.Inputs, providers.Input{Identifier: inputPasskeyError, Required: false})
 }
 
 func (suite *PasskeyAuthExecutorTestSuite) TestExecuteVerify_ServiceError_Server() {
@@ -776,17 +786,26 @@ func (suite *PasskeyAuthExecutorTestSuite) TestExecuteRegisterFinish_ServiceErro
 
 	assert.NoError(suite.T(), err)
 	assert.NotNil(suite.T(), resp)
-	assert.Equal(suite.T(), providers.ExecUserInputRequired, resp.Status)
+	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
+	assert.Equal(suite.T(), ErrPasskeyRegistrationFailed.Code, resp.Error.Code)
 	assert.Contains(suite.T(), resp.Error.ErrorDescription.DefaultValue, "Invalid attestation object")
-	// Client must receive the full input list so it can re-prompt the user
-	assert.NotEmpty(suite.T(), resp.Inputs)
-	inputIDs := make([]string, 0, len(resp.Inputs))
-	for _, input := range resp.Inputs {
-		inputIDs = append(inputIDs, input.Identifier)
-	}
-	assert.Contains(suite.T(), inputIDs, inputCredentialID)
-	assert.Contains(suite.T(), inputIDs, inputClientDataJSON)
-	assert.Contains(suite.T(), inputIDs, inputAttestationObject)
+	assert.Empty(suite.T(), ctx.UserInputs, "The rejected response must not be checked again on the next attempt")
+}
+
+func (suite *PasskeyAuthExecutorTestSuite) TestExecuteRegisterFinish_ClientReportedFailure() {
+	ctx := createPasskeyNodeContext(passkeyExecutorModeRegFinish, providers.FlowTypeRegistration)
+	ctx.RuntimeData[userAttributeUserID] = testPasskeyUserID
+	ctx.RuntimeData[runtimePasskeySessionToken] = testSessionToken
+	ctx.UserInputs = map[string]string{inputPasskeyError: "NotAllowedError"}
+
+	resp, err := suite.executor.Execute(ctx)
+
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), providers.ExecFailure, resp.Status)
+	assert.Equal(suite.T(), ErrPasskeyRegistrationFailed.Code, resp.Error.Code)
+	assert.Empty(suite.T(), ctx.UserInputs)
+	suite.mockAuthnProvider.AssertNotCalled(suite.T(), "Enroll", mock.Anything, mock.Anything,
+		mock.Anything, mock.Anything, mock.Anything, mock.Anything)
 }
 
 // The start fails the step; the finish re-prompts, as a failed registration does.
