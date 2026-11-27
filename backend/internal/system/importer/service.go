@@ -153,6 +153,7 @@ type ouAdapter interface {
 		ou.OrganizationUnit,
 		*tidcommon.ServiceError)
 	DeleteOrganizationUnit(ctx context.Context, id string) *tidcommon.ServiceError
+	GetSystemOUID(ctx context.Context) (string, *tidcommon.ServiceError)
 }
 
 // ProjectAdapter imports declared projects. Only the Control Plane serves projects, so the all-in-one
@@ -1249,6 +1250,29 @@ func (s *importService) updateImportedFlow(
 	return s.flowService.UpdateFlowWithSharing(ctx, flowID, flowDef, policies)
 }
 
+// resolveFlowOU resolves the unit a flow is owned by. The same dry run creates the project first, as the real import
+// finds it, so a project it plans is left out of the check. A flow that names only the project is owned by the
+// system unit, which is then taken as the real resolution takes it.
+func (s *importService) resolveFlowOU(ctx context.Context, flowDef *flowmgt.FlowDefinition) *tidcommon.ServiceError {
+	svcErr := s.flowService.ResolveFlowOU(ctx, flowDef)
+	if svcErr == nil || svcErr.Code != flowmgt.ErrorInvalidProject.Code || s.ouService == nil ||
+		!plannedUnitsOf(ctx).hasProject(flowDef.ProjectID) {
+		return svcErr
+	}
+	if flowDef.OUID == "" && flowDef.OUHandle == "" {
+		systemOUID, svcErr := s.ouService.GetSystemOUID(ctx)
+		if svcErr != nil {
+			return svcErr
+		}
+		flowDef.OUID = systemOUID
+		return nil
+	}
+	projectID := flowDef.ProjectID
+	flowDef.ProjectID = ""
+	defer func() { flowDef.ProjectID = projectID }()
+	return s.flowService.ResolveFlowOU(ctx, flowDef)
+}
+
 // importFlowDefinition creates or updates the flow a "flow" document describes.
 func (s *importService) importFlowDefinition(
 	ctx context.Context, doc parsedDocument, options *ImportOptions, dryRun bool, policies []sharing.PolicyRequest,
@@ -1286,7 +1310,8 @@ func (s *importService) importFlowDefinition(
 		ProjectID: req.ProjectID,
 	}
 
-	if svcErr := s.flowService.ResolveFlowOU(ctx, flowDef); svcErr != nil {
+	svcErr := s.resolveFlowOU(ctx, flowDef)
+	if svcErr != nil {
 		// A dry run takes a unit the same import creates first as there, as the real import finds it.
 		planned, ok := plannedUnitsOf(ctx).resolve(flowDef.OUID, flowDef.OUHandle)
 		if !dryRun || !ok || svcErr.Code != flowmgt.ErrorInvalidFlowOU.Code {
