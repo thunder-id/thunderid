@@ -343,6 +343,29 @@ func (suite *DiscoveryTestSuite) TestClientIDMetadataDocumentSupported() {
 		ClientIDMetadataDocumentSupported)
 }
 
+func (suite *DiscoveryTestSuite) TestProtectedResources() {
+	oauth2Meta := suite.discoveryService.GetOAuth2AuthorizationServerMetadata(context.Background())
+	body, err := json.Marshal(oauth2Meta)
+	assert.NoError(suite.T(), err)
+	assert.NotContains(suite.T(), string(body), "protected_resources")
+
+	config.ResetServerRuntime()
+	resources := []string{"https://shop.example.com", "https://mcp.example.com"}
+	testConfig := &config.Config{
+		Server: engineconfig.ServerConfig{Hostname: "localhost", Port: 8080},
+		JWT:    engineconfig.JWTConfig{Issuer: "https://auth.example.com"},
+		OAuth:  config.OAuthConfig{ProtectedResources: resources},
+	}
+	_ = config.InitializeServerRuntime("test", testConfig)
+	defer config.ResetServerRuntime()
+
+	svc := newDiscoveryService(
+		suite.cryptoMock, newTestJWEService(suite.cryptoMock), nil,
+		suite.oauthCfgFromServerConfig(testConfig))
+	assert.Equal(suite.T(), resources,
+		svc.GetOAuth2AuthorizationServerMetadata(context.Background()).ProtectedResources)
+}
+
 // TestGrantTypeIsValid tests the GrantType.IsValid() method
 // This is a standalone test for constants - doesn't require discovery service setup
 func TestGrantTypeIsValid(t *testing.T) {

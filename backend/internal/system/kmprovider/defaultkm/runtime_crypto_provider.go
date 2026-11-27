@@ -336,7 +336,7 @@ func (s *runtimeCryptoService) GetTLSMaterial(
 // GetSupportedSigningAlgorithms returns the list of signing algorithms supported by Sign and Verify.
 func (s *runtimeCryptoService) GetSupportedSigningAlgorithms() []string {
 	return []string{
-		string(RS256), string(RS512), string(PS256),
+		string(RS256), string(RS512), string(PS256), string(PS384),
 		string(ES256), string(ES384), string(ES512),
 		string(EdDSA), string(MLDSA44), string(MLDSA65), string(MLDSA87),
 	}

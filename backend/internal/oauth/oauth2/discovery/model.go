@@ -35,6 +35,7 @@ type OAuth2AuthorizationServerMetadata struct {
 	ClientIDMetadataDocumentSupported          bool     `json:"client_id_metadata_document_supported,omitempty"`
 	AuthorizationDetailsTypesSupported         []string `json:"authorization_details_types_supported,omitempty"`
 	AuthorizationDetailsTypesEndpoint          string   `json:"authorization_details_types_endpoint,omitempty"`
+	ProtectedResources                         []string `json:"protected_resources,omitempty"`
 }
 
 // OIDCProviderMetadata represents OpenID Connect Provider Metadata (OIDC Discovery 1.0)

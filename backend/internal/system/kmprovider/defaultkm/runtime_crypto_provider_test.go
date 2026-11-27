@@ -970,7 +970,7 @@ func TestGetSupportedSigningAlgorithms(t *testing.T) {
 	svc := &runtimeCryptoService{}
 	algs := svc.GetSupportedSigningAlgorithms()
 	assert.ElementsMatch(t, []string{
-		string(RS256), string(RS512), string(PS256),
+		string(RS256), string(RS512), string(PS256), string(PS384),
 		string(ES256), string(ES384), string(ES512),
 		string(EdDSA), string(MLDSA44), string(MLDSA65), string(MLDSA87),
 	}, algs)

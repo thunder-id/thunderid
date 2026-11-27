@@ -35,6 +35,8 @@ func SignAlgorithmFor(alg Algorithm) (SignAlgorithm, error) {
 		return RSASHA512, nil
 	case AlgorithmPS256:
 		return RSAPSSSHA256, nil
+	case AlgorithmPS384:
+		return RSAPSSSHA384, nil
 	case AlgorithmES256:
 		return ECDSASHA256, nil
 	case AlgorithmES384:
@@ -61,7 +63,7 @@ func Generate(data []byte, alg SignAlgorithm, privateKey crypto.PrivateKey) ([]b
 	switch alg {
 	case RSASHA256, RSASHA512:
 		return newRSASign(hashed, hashFunc, privateKey)
-	case RSAPSSSHA256:
+	case RSAPSSSHA256, RSAPSSSHA384:
 		return newRSAPSSSign(hashed, hashFunc, privateKey)
 	case ECDSASHA256, ECDSASHA384, ECDSASHA512:
 		return newECDSASign(hashed, privateKey)
@@ -81,7 +83,7 @@ func Verify(data []byte, signature []byte, alg SignAlgorithm, publicKey crypto.P
 	switch alg {
 	case RSASHA256, RSASHA512:
 		return verifyRSA(hashed, signature, hashFunc, publicKey)
-	case RSAPSSSHA256:
+	case RSAPSSSHA256, RSAPSSSHA384:
 		return verifyRSAPSS(hashed, signature, hashFunc, publicKey)
 	case ECDSASHA256, ECDSASHA384, ECDSASHA512:
 		return verifyECDSA(hashed, signature, publicKey)
@@ -107,7 +109,7 @@ func hashData(data []byte, alg SignAlgorithm) ([]byte, crypto.Hash) {
 	case RSASHA512, ECDSASHA512:
 		h = sha512.New()
 		hashFunc = crypto.SHA512
-	case ECDSASHA384:
+	case RSAPSSSHA384, ECDSASHA384:
 		h = sha512.New384()
 		hashFunc = crypto.SHA384
 	case ED25519, MLDSA44, MLDSA65, MLDSA87:
