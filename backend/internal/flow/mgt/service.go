@@ -1181,19 +1181,28 @@ func (s *flowMgtService) deleteFlow(ctx context.Context, flowID string) *tidcomm
 		return svcErr
 	}
 
-	err = s.store.DeleteFlow(ctx, flowID)
-	if err != nil {
-		logger.Error(ctx, "Failed to delete flow", log.Error(err))
+	var sharingSvcErr *tidcommon.ServiceError
+	txErr := s.transactioner.Transact(ctx, func(txCtx context.Context) error {
+		if err := s.store.DeleteFlow(txCtx, flowID); err != nil {
+			return err
+		}
+		if sharingSvcErr = s.removeSharing(txCtx, flowID); sharingSvcErr != nil {
+			return errClientValidation
+		}
+		return nil
+	})
+	if txErr != nil {
+		if errors.Is(txErr, errClientValidation) {
+			logger.Error(ctx, "Failed to remove the sharing policies of a deleted flow",
+				log.String("code", sharingSvcErr.Code))
+			return sharingSvcErr
+		}
+		logger.Error(ctx, "Failed to delete flow", log.Error(txErr))
 		return &tidcommon.InternalServerError
 	}
 
 	// Invalidate the cached graph since the flow has been deleted
 	s.graphBuilder.InvalidateCache(ctx, flowID)
-
-	if svcErr := s.removeSharing(ctx, flowID); svcErr != nil {
-		logger.Error(ctx, "Failed to remove the sharing policies of a deleted flow", log.String("code", svcErr.Code))
-		return svcErr
-	}
 
 	logger.Debug(ctx, "Flow deleted successfully")
 
@@ -1349,9 +1358,8 @@ func (s *flowMgtService) restoreFlowVersion(ctx context.Context, flowID string, 
 }
 
 // publishFlowEvent publishes the audit event of an attempt on the flow with flowID, after the change
-// committed or was refused. Neither the definition nor the version restored is recorded. A delete whose
-// sharing cleanup fails after the flow is removed is recorded as failed, and the registration flow
-// inferred from a created authentication flow is created without an event of its own: known limitations.
+// committed or was refused. Neither the definition nor the version restored is recorded. The registration flow
+// inferred from a created authentication flow is created without an event of its own: a known limitation.
 func (s *flowMgtService) publishFlowEvent(ctx context.Context, name string, action audit.Action,
 	flowID string, svcErr *tidcommon.ServiceError) {
 	// A failed attempt keeps the ID the caller asked for, even one that matches no flow, as forensic
@@ -2462,17 +2470,16 @@ func (s *flowMgtService) ValidateSharingPolicies(
 	return nil
 }
 
-// removeSharing drops every sharing policy of a flow that has just been deleted, so a flow later created with the same
-// id does not come back already shared. It runs after the flow's own delete, because only that delete knows whether it
-// will be refused. The two cannot share a transaction, so a failure here leaves policies behind a flow that is gone.
-// The caller is told, and retrying the delete removes them (see purgeOrphanedSharing).
+// removeSharing drops every sharing policy of a flow that is being deleted, so a flow later created with the same id
+// does not come back already shared. It runs in the transaction of the flow's own delete, so a failure here undoes
+// the delete too.
 func (s *flowMgtService) removeSharing(ctx context.Context, flowID string) *tidcommon.ServiceError {
 	return translateSharingError(s.sharingSvc.DeletePoliciesForResource(ctx, FlowSharingType, flowID))
 }
 
-// purgeOrphanedSharing finishes a delete whose policy cleanup failed. It is called when a delete finds the flow already
-// gone: policies still recorded for it are removed and the delete succeeds, since the flow being gone is what the
-// caller asked for.
+// purgeOrphanedSharing finishes a delete that an earlier version left half done, when the flow was removed and its
+// policy cleanup failed. It is called when a delete finds the flow already gone: policies still recorded for it are
+// removed and the delete succeeds, since the flow being gone is what the caller asked for.
 func (s *flowMgtService) purgeOrphanedSharing(ctx context.Context, flowID string) *tidcommon.ServiceError {
 	policies, svcErr := s.sharingSvc.ListPolicies(ctx, FlowSharingType, flowID)
 	if svcErr != nil {
