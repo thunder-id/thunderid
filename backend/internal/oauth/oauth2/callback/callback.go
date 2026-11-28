@@ -210,7 +210,8 @@ func (
 	}
 	redirectURI, err := oauth2utils.GetURIWithQueryParams(errorPageURL, queryParams)
 	if err != nil {
-		http.Error(w, "Failed to redirect to error page", http.StatusInternalServerError)
+		utils.WriteJSONError(ctx, w, oauth2const.ErrorServerError, "Failed to redirect to error page",
+			http.StatusInternalServerError, nil)
 		return
 	}
 	utils.WriteSuccessResponse(ctx, w, http.StatusOK, oauth2authz.AuthZPostResponse{RedirectURI: redirectURI})

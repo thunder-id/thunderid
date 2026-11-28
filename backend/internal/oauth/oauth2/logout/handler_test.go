@@ -43,6 +43,16 @@ func (suite *LogoutHandlerTestSuite) TearDownTest() {
 	config.ResetServerRuntime()
 }
 
+func (suite *LogoutHandlerTestSuite) assertJSONError(rec *httptest.ResponseRecorder, wantStatus int,
+	wantCode string) {
+	suite.Equal(wantStatus, rec.Code)
+	suite.Equal("application/json", rec.Header().Get("Content-Type"))
+	var body map[string]string
+	suite.Require().NoError(json.NewDecoder(rec.Body).Decode(&body))
+	suite.Equal(wantCode, body["error"])
+	suite.NotEmpty(body["error_description"])
+}
+
 func gateConfig() oauthconfig.Config {
 	return oauthconfig.Config{
 		GateClient: engineconfig.GateClientConfig{
@@ -148,6 +158,9 @@ func (suite *LogoutHandlerTestSuite) TestHandleLogout_FlowInitiationError_MapsSt
 			handler.HandleLogout(rec, req)
 
 			suite.Equal(tc.wantStatus, rec.Code)
+			if tc.errType == tidcommon.ServerErrorType {
+				suite.assertJSONError(rec, tc.wantStatus, constants.ErrorServerError)
+			}
 			suite.Empty(rec.Header().Get("Location"), "must not redirect when flow initiation fails")
 		})
 	}
@@ -251,7 +264,7 @@ func (suite *LogoutHandlerTestSuite) TestHandleLogoutCallback_CompletionError() 
 
 	handler.HandleLogoutCallback(rec, req)
 
-	suite.Equal(http.StatusInternalServerError, rec.Code)
+	suite.assertJSONError(rec, http.StatusInternalServerError, constants.ErrorServerError)
 }
 
 func (suite *LogoutHandlerTestSuite) TestHandleLogoutCallback_InvalidRequest() {

@@ -71,17 +71,17 @@ func (h *logoutHandler) HandleLogout(w http.ResponseWriter, r *http.Request) {
 
 	initiation, svcErr := h.service.InitiateSignOutFlow(r.Context(), resolution)
 	if svcErr != nil {
-		status := http.StatusInternalServerError
 		if svcErr.Type == tidcommon.ClientErrorType {
 			// Client errors are the caller's fault; log at debug, not error.
-			status = http.StatusBadRequest
 			h.logger.Debug(r.Context(), "Rejected sign-out flow initiation",
 				log.String("appID", resolution.AppID), log.String("error", svcErr.Error.DefaultValue))
-		} else {
-			h.logger.Error(r.Context(), "Failed to initiate sign-out flow",
-				log.String("appID", resolution.AppID), log.String("error", svcErr.Error.DefaultValue))
+			http.Error(w, "logout failed", http.StatusBadRequest)
+			return
 		}
-		http.Error(w, "logout failed", status)
+		h.logger.Error(r.Context(), "Failed to initiate sign-out flow",
+			log.String("appID", resolution.AppID), log.String("error", svcErr.Error.DefaultValue))
+		sysutils.WriteJSONError(r.Context(), w, constants.ErrorServerError, "Logout failed",
+			http.StatusInternalServerError, nil)
 		return
 	}
 
@@ -92,7 +92,8 @@ func (h *logoutHandler) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	})
 	if buildErr != nil {
 		h.logger.Error(r.Context(), "Failed to build gate sign-out redirect", log.Error(buildErr))
-		http.Error(w, "logout failed", http.StatusInternalServerError)
+		sysutils.WriteJSONError(r.Context(), w, constants.ErrorServerError, "Logout failed",
+			http.StatusInternalServerError, nil)
 		return
 	}
 
@@ -114,7 +115,8 @@ func (h *logoutHandler) HandleLogoutCallback(w http.ResponseWriter, r *http.Requ
 	redirectURI, err := h.service.CompleteSignOut(r.Context(), body.LogoutID)
 	if err != nil {
 		h.logger.Error(r.Context(), "Failed to complete sign-out", log.Error(err))
-		http.Error(w, "logout failed", http.StatusInternalServerError)
+		sysutils.WriteJSONError(r.Context(), w, constants.ErrorServerError, "Logout failed",
+			http.StatusInternalServerError, nil)
 		return
 	}
 
