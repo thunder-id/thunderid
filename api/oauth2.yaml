@@ -172,6 +172,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OAuthError'
+        "500":
+          description: Internal server error, the redirect to the error page could not be built.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
 
   /ou/{ouId}/oauth2/authorize:
     parameters:
@@ -208,6 +214,12 @@ paths:
           description: >-
             Bad Request: malformed or duplicate query parameters, or a blank organization unit
             (`invalid_request`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+        "500":
+          description: Internal server error, the redirect to the error page could not be built.
           content:
             application/json:
               schema:
@@ -272,6 +284,12 @@ paths:
                     status: "OK"
         "400":
           description: Bad Request, a body that is not JSON or is over 1 MiB, or a missing authId or assertion.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthError'
+        "500":
+          description: Internal server error, the redirect to the error page could not be built.
           content:
             application/json:
               schema:

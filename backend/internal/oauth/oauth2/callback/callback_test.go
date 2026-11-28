@@ -397,6 +397,24 @@ func (suite *CallbackDispatcherTestSuite) TestWriteErrorPageRedirect_WithoutStat
 	suite.NotContains(resp.RedirectURI, "state=")
 }
 
+func (suite *CallbackDispatcherTestSuite) TestWriteErrorPageRedirect_InvalidErrorPageURL() {
+	suite.dispatcher.cfg.GateClient.Hostname = "bad host"
+	w := httptest.NewRecorder()
+	suite.dispatcher.writeErrorPageRedirect(
+		context.Background(),
+		w,
+		oauth2const.ErrorServerError,
+		"something broke",
+		"")
+
+	suite.Equal(http.StatusInternalServerError, w.Code)
+	suite.Equal("application/json", w.Header().Get("Content-Type"))
+	var body map[string]string
+	suite.NoError(json.NewDecoder(w.Body).Decode(&body))
+	suite.Equal(oauth2const.ErrorServerError, body["error"])
+	suite.Equal("Failed to redirect to error page", body["error_description"])
+}
+
 // --- handleFlowCallback: failure outcomes ---
 //
 // Success and failure assertions share the assertion field, and the dispatcher passes it through

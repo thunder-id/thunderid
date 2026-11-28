@@ -215,7 +215,8 @@ func (ah *authorizeHandler) redirectToErrorPage(w http.ResponseWriter, r *http.R
 	redirectURL, err := getErrorPageRedirectURL(ah.cfg, code, msg)
 	if err != nil {
 		logger.Error(ctx, "Failed to construct error page URL", log.Error(err))
-		http.Error(w, "Failed to redirect to error page", http.StatusInternalServerError)
+		sysutils.WriteJSONError(ctx, w, oauth2const.ErrorServerError, "Failed to redirect to error page",
+			http.StatusInternalServerError, nil)
 		return
 	}
 	logger.Debug(ctx, "Redirecting to error page")

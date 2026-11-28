@@ -439,6 +439,20 @@ func (suite *AuthorizeHandlerTestSuite) TestRedirectToErrorPage_NilRequest() {
 	assert.Equal(suite.T(), http.StatusOK, rr.Code)
 }
 
+func (suite *AuthorizeHandlerTestSuite) TestRedirectToErrorPage_InvalidErrorPageURL() {
+	suite.handler.cfg.GateClient.Hostname = "bad host"
+	req := httptest.NewRequest(http.MethodGet, "/auth", nil)
+	rr := httptest.NewRecorder()
+
+	suite.handler.redirectToErrorPage(rr, req, "error_code", "error message")
+
+	assert.Equal(suite.T(), http.StatusInternalServerError, rr.Code)
+	assert.Equal(suite.T(), "application/json", rr.Header().Get("Content-Type"))
+	assert.Empty(suite.T(), rr.Header().Get("Location"))
+	assert.JSONEq(suite.T(), `{"error":"`+oauth2const.ErrorServerError+`",`+
+		`"error_description":"Failed to redirect to error page"}`, rr.Body.String())
+}
+
 func (suite *AuthorizeHandlerTestSuite) TestGetLoginPageRedirectURI_Success() {
 	queryParams := map[string]string{
 		"authId": "test-key",
