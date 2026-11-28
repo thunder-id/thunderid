@@ -359,6 +359,39 @@ func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_Authenticated_NoProofLea
 	suite.Equal("access-token", resp.AccessToken.Token)
 }
 
+func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_Authenticated_CarriesTheTokenFamily() {
+	record := suite.boundAuthenticatedRecord(testScopeRead)
+	record.TokenFamilyID = testGrantTokenFamilyID
+	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(record, nil)
+	suite.expectResourceServer()
+	suite.mockTokenBuilder.EXPECT().BuildAccessToken(mock.Anything, mock.MatchedBy(
+		func(ctx *tokenservice.AccessTokenBuildContext) bool {
+			return ctx.TokenFamilyID == testGrantTokenFamilyID
+		})).Return(&model.TokenDTO{Token: "access-token"}, nil)
+	suite.mockCIBAService.EXPECT().MarkConsumed(mock.Anything, "auth-req-1").Return(true, nil)
+
+	resp, errResp := suite.handler.HandleGrant(context.Background(), suite.tokenReq, suite.oauthApp)
+	suite.Nil(errResp)
+	suite.NotNil(resp)
+}
+
+func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_RevokedTokenFamilyIsRefused() {
+	record := suite.boundAuthenticatedRecord(testScopeRead)
+	record.TokenFamilyID = testGrantTokenFamilyID
+	record.AuthTime = time.Now().Add(-time.Minute)
+
+	resp, errResp := suite.pollAgainstDenyList(record, denyListLookup(revocation.CriteriaRevocation{
+		Criterion: revocation.Criterion{Type: revocation.CriterionTypeTokenFamily, Value: testGrantTokenFamilyID},
+		Reason:    revocation.RevocationReasonSessionLogout,
+		Cutoff:    record.AuthTime.Add(30 * time.Second),
+	}))
+
+	suite.Nil(resp)
+	suite.Require().NotNil(errResp)
+	suite.Equal(constants.ErrorInvalidGrant, errResp.Error)
+	suite.mockTokenBuilder.AssertNotCalled(suite.T(), "BuildAccessToken", mock.Anything, mock.Anything)
+}
+
 func (suite *CIBAGrantHandlerTestSuite) TestHandleGrant_Authenticated_NoOpenIDSkipsIDToken() {
 	record := suite.boundAuthenticatedRecord(testScopeRead)
 	suite.mockCIBAService.EXPECT().GetByAuthReqID(mock.Anything, "auth-req-1").Return(record, nil)

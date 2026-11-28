@@ -67,11 +67,10 @@ Revoking one token of a grant usually should not leave its siblings working. Fiv
 
 | Flow | Behavior |
 |---|---|
-| Authorization code with SSO | Generated when the application first joins the session and stored against its session participant, which is what makes sign-out revocation possible. Later sign-ins by the same application in that session and organization unit, such as from a second tab or a silent `prompt=none` request, reuse the family. Sign-out revokes all of them, and so does any trigger in [What Revokes a Family](#what-revokes-a-family) that fires for one of them, such as revoking one of their tokens or replaying a refresh token or authorization code. If the family has been revoked, the next sign-in gets a new one |
-| Authorization code without SSO | Minted when the authorization code is created, so the grant is still revocable |
+| Authorization code, CIBA, device code | The family of the application's participant in the sign-in's session, generated when the session records the participant, which is what makes sign-out revocation possible. Later sign-ins by the same application in that SSO session and organization unit, such as from a second tab or a silent `prompt=none` request, reuse the family. Sign-out revokes all of them, and so does any trigger in [What Revokes a Family](#what-revokes-a-family) that fires for one of them, such as revoking one of their tokens or replaying a refresh token or authorization code. If the family has been revoked, the next sign-in gets a new one. A sign-in that recorded no session, for example with session tracking off, gets a new family when the grant is created, so the grant is still revocable |
 | Refresh | Copied to the new tokens, so a family survives rotation |
 | Token exchange | Copied from a subject token issued by this server, with or without an `actor_token`. Revoking the grant the subject token came from also revokes the exchanged token. A subject token with no `tfid`, or one issued by another server, gives an exchanged token with none |
-| Client credentials, CIBA | No `tfid`. There is no user grant to group, so family-scoped revocation does not apply |
+| Client credentials | No `tfid`. There is no user grant to group, so family-scoped revocation does not apply |
 
 ### What Revokes a Family
 

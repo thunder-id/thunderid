@@ -239,6 +239,7 @@ func (s *deviceAuthStore) MarkApproved(ctx context.Context, requestID string, ap
 	record.AttributeCacheID = approval.AttributeCacheID
 	record.CompletedACR = approval.CompletedACR
 	record.SessionID = approval.SessionID
+	record.TokenFamilyID = approval.TokenFamilyID
 	record.AuthTime = approval.AuthTime
 	record.SessionData = approval.SessionData
 

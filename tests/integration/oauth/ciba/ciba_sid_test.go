@@ -4,6 +4,7 @@
 package ciba
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"time"
@@ -50,8 +51,10 @@ func cibaSessionFlowNodes(senderID string) []map[string]interface{} {
 		})
 }
 
-// cibaIDTokenFor runs a full CIBA request as the given client and returns the issued ID token.
-func (ts *CIBATestSuite) cibaIDTokenFor(clientID, clientSecret string) string {
+// cibaTokensFor runs a full CIBA request as the given client and returns the issued tokens and the sessions its
+// approval started, as the approving browser holds them.
+func (ts *CIBATestSuite) cibaTokensFor(clientID, clientSecret string) (
+	cibaTokenResult, []testutils.FlowSessionData) {
 	form := url.Values{}
 	form.Set("login_hint", cibaTestUsername)
 	form.Set("scope", "openid")
@@ -59,7 +62,12 @@ func (ts *CIBATestSuite) cibaIDTokenFor(clientID, clientSecret string) string {
 	ts.Require().Equal(http.StatusOK, status, "bc-authorize should succeed")
 	ts.Require().NotEmpty(bcResp.AuthReqID)
 
-	ts.completeCIBAFlow(bcResp.AuthReqID)
+	executionID, inviteToken := ts.recoverCIBAInvite(bcResp.AuthReqID)
+	approval := ts.driveCIBAFlowStep(executionID, inviteToken, bcResp.AuthReqID)
+	sessions := make([]testutils.FlowSessionData, 0, len(approval.SessionData))
+	for _, issued := range approval.SessionData {
+		sessions = append(sessions, issued.FlowSessionData)
+	}
 
 	tokenRes := ts.cibaPollTokenAs(bcResp.AuthReqID, "", clientID, clientSecret)
 	if tokenRes.statusCode == http.StatusBadRequest && tokenRes.errorCode == "slow_down" {
@@ -68,12 +76,11 @@ func (ts *CIBATestSuite) cibaIDTokenFor(clientID, clientSecret string) string {
 	}
 	ts.Require().Equal(http.StatusOK, tokenRes.statusCode, "AUTHENTICATED request should issue tokens")
 	ts.Require().NotEmpty(tokenRes.idToken, "openid scope should yield an ID token")
-	return tokenRes.idToken
+	return tokenRes, sessions
 }
 
-// TestCIBAIDTokenCarriesSidWhenFlowHasSession verifies the CIBA grant carries the session id as sid: the SSO
-// session's when the authentication flow establishes one, and the direct session's when the flow has none.
-func (ts *CIBATestSuite) TestCIBAIDTokenCarriesSidWhenFlowHasSession() {
+// createCIBASessionApp creates the CIBA application on a flow with a Session node, removed when the test ends.
+func (ts *CIBATestSuite) createCIBASessionApp() {
 	flowID, err := testutils.CreateFlow(testutils.Flow{
 		Name:     "CIBA Session Test Flow",
 		FlowType: "AUTHENTICATION",
@@ -85,18 +92,54 @@ func (ts *CIBATestSuite) TestCIBAIDTokenCarriesSidWhenFlowHasSession() {
 	appID := ts.createCIBAApp("CIBASessionTestApp", cibaSessionClientID, cibaSessionClientSecret,
 		[]string{cibaGrantType, "refresh_token"}, flowID)
 	ts.T().Cleanup(func() { _ = testutils.DeleteApplication(appID) })
+}
 
-	withSession := ts.cibaIDTokenFor(cibaSessionClientID, cibaSessionClientSecret)
-	claims, err := testutils.DecodeJWTPayloadMap(withSession)
+// assertCarriesTheParticipantsFamily checks the tokens name a session and carry the token family its participant
+// holds, so ending the session ends them. It returns the session id.
+func (ts *CIBATestSuite) assertCarriesTheParticipantsFamily(tokens cibaTokenResult) string {
+	idClaims, err := testutils.DecodeJWTPayloadMap(tokens.idToken)
 	ts.Require().NoError(err)
-	sid, _ := claims["sid"].(string)
-	ts.NotEmpty(sid, "a CIBA flow with a Session node must issue an ID token carrying sid")
+	sid, _ := idClaims["sid"].(string)
+	ts.Require().NotEmpty(sid, "the ID token must name the session")
+	accessClaims, err := testutils.DecodeJWTPayloadMap(tokens.accessToken)
+	ts.Require().NoError(err)
+	tfid, _ := accessClaims["tfid"].(string)
+	ts.Require().NotEmpty(tfid, "the access token must carry its token family")
 
-	// The suite's main flow has no Session node, so its ID token names the direct session the login recorded.
-	withoutSession := ts.cibaIDTokenFor(cibaClientID, cibaClientSecret)
-	claims, err = testutils.DecodeJWTPayloadMap(withoutSession)
+	participant, err := testutils.QueryRuntimeDB(fmt.Sprintf(
+		`SELECT TFID FROM "SESSION_PARTICIPANT" WHERE SESSION_ID = '%s';`, sid))
 	ts.Require().NoError(err)
-	directSid, _ := claims["sid"].(string)
-	ts.NotEmpty(directSid, "a CIBA flow without a Session node must name its direct session with sid")
+	ts.Equal(tfid, participant, "the tokens must carry the participant's token family")
+	return sid
+}
+
+// TestCIBATokensCarryTheirSessionAndFamily verifies CIBA tokens name the session and carry its participant's token
+// family: the SSO session's when the flow establishes one, and the direct session's when it has none.
+func (ts *CIBATestSuite) TestCIBATokensCarryTheirSessionAndFamily() {
+	ts.createCIBASessionApp()
+
+	tokens, _ := ts.cibaTokensFor(cibaSessionClientID, cibaSessionClientSecret)
+	sid := ts.assertCarriesTheParticipantsFamily(tokens)
+
+	// The suite's main flow has no Session node, so its tokens name the direct session the login recorded.
+	directTokens, _ := ts.cibaTokensFor(cibaClientID, cibaClientSecret)
+	directSid := ts.assertCarriesTheParticipantsFamily(directTokens)
 	ts.NotEqual(sid, directSid, "the two logins record different sessions")
+}
+
+// TestSigningOutRevokesCIBATokens verifies that signing out with the session a CIBA approval started revokes the
+// request's tokens, since they carry that session's token family.
+func (ts *CIBATestSuite) TestSigningOutRevokesCIBATokens() {
+	ts.createCIBASessionApp()
+	tokens, sessions := ts.cibaTokensFor(cibaSessionClientID, cibaSessionClientSecret)
+	ts.Require().Len(sessions, 1, "the approval started one session")
+	active, err := testutils.IntrospectActive(tokens.accessToken, cibaSessionClientID, cibaSessionClientSecret)
+	ts.Require().NoError(err)
+	ts.Require().True(active, "the access token should be active before sign-out")
+
+	ts.Require().NoError(testutils.SignOutWithSessions(tokens.idToken, sessions))
+
+	active, err = testutils.IntrospectActive(tokens.accessToken, cibaSessionClientID, cibaSessionClientSecret)
+	ts.Require().NoError(err)
+	ts.False(active, "signing out must revoke the CIBA tokens")
 }

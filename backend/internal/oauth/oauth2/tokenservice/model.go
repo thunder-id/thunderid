@@ -302,3 +302,9 @@ type AccessTokenClaims struct {
 	ClientID  string
 	Claims    map[string]interface{}
 }
+
+// SessionBinding is the session and token family a grant's tokens carry.
+type SessionBinding struct {
+	SessionID     string
+	TokenFamilyID string
+}

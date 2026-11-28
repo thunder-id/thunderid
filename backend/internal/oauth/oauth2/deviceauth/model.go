@@ -49,6 +49,7 @@ type DeviceAuthRequest struct {
 	CompletedACR                  string
 	AuthTime                      time.Time
 	SessionID                     string
+	TokenFamilyID                 string
 	SessionData                   []oauth2model.SessionData
 	LastPolledAt                  time.Time
 	PollInterval                  int64
@@ -64,6 +65,7 @@ type DeviceApproval struct {
 	AttributeCacheID string
 	CompletedACR     string
 	SessionID        string
+	TokenFamilyID    string
 	AuthTime         time.Time
 	SessionData      []oauth2model.SessionData
 }
@@ -102,6 +104,7 @@ type assertionClaims struct {
 	attributeCacheID      string
 	completedACR          string
 	sessionID             string
+	tokenFamilyID         string
 	requestID             string
 	authorizedPermissions string
 	flowErrorType         string

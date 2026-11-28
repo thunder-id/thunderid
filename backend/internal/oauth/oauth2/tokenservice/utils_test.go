@@ -1590,3 +1590,70 @@ func (suite *UtilsTestSuite) TestResolveUserAttributesCacheTTL() {
 		})
 	}
 }
+
+func (suite *UtilsTestSuite) TestResolveBinding() {
+	presented := SessionBinding{SessionID: "sess-1", TokenFamilyID: "tfid-1"}
+	family := SessionBinding{TokenFamilyID: presented.TokenFamilyID}
+
+	tests := []struct {
+		name      string
+		grantType providers.GrantType
+		from      SessionBinding
+		want      SessionBinding
+	}{
+		{"code keeps the assertion's binding", providers.GrantTypeAuthorizationCode, presented, presented},
+		{"CIBA keeps the assertion's binding", providers.GrantTypeCIBA, presented, presented},
+		{"device code keeps the assertion's binding", providers.GrantTypeDeviceCode, presented, presented},
+		{"refresh keeps the refresh token's binding", providers.GrantTypeRefreshToken, presented, presented},
+		{"token exchange keeps the subject token's family", providers.GrantTypeTokenExchange, family, family},
+		{"token exchange of an unbound token stays unbound", providers.GrantTypeTokenExchange,
+			SessionBinding{}, SessionBinding{}},
+		{"client credentials bind nothing", providers.GrantTypeClientCredentials, presented, SessionBinding{}},
+		{"JWT bearer binds nothing", providers.GrantTypeJWTBearer, presented, SessionBinding{}},
+	}
+	for _, tc := range tests {
+		suite.Run(tc.name, func() {
+			binding, err := ResolveBinding(tc.grantType, tc.from)
+
+			suite.Require().NoError(err)
+			suite.Equal(tc.want, binding)
+		})
+	}
+}
+
+func (suite *UtilsTestSuite) TestResolveBinding_GivesALoginWithoutASessionANewFamily() {
+	for _, grantType := range []providers.GrantType{
+		providers.GrantTypeAuthorizationCode, providers.GrantTypeCIBA, providers.GrantTypeDeviceCode,
+	} {
+		suite.Run(string(grantType), func() {
+			first, err := ResolveBinding(grantType, SessionBinding{})
+			suite.Require().NoError(err)
+			second, err := ResolveBinding(grantType, SessionBinding{})
+			suite.Require().NoError(err)
+
+			suite.Empty(first.SessionID)
+			suite.NotEmpty(first.TokenFamilyID)
+			suite.NotEqual(first.TokenFamilyID, second.TokenFamilyID)
+		})
+	}
+}
+
+func (suite *UtilsTestSuite) TestResolveBinding_KeepsTheSessionWhenOnlyTheFamilyIsMissing() {
+	for _, grantType := range []providers.GrantType{
+		providers.GrantTypeAuthorizationCode, providers.GrantTypeCIBA, providers.GrantTypeDeviceCode,
+	} {
+		suite.Run(string(grantType), func() {
+			binding, err := ResolveBinding(grantType, SessionBinding{SessionID: "sess-1"})
+
+			suite.Require().NoError(err)
+			suite.Equal("sess-1", binding.SessionID)
+			suite.NotEmpty(binding.TokenFamilyID)
+		})
+	}
+}
+
+func (suite *UtilsTestSuite) TestResolveBinding_RefusesAGrantTypeWithoutARule() {
+	_, err := ResolveBinding(providers.GrantType("implicit"), SessionBinding{})
+
+	suite.Error(err)
+}

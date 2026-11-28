@@ -22,9 +22,7 @@ const cibaStateField = "State"
 type CIBARequestStoreInterface interface {
 	Add(ctx context.Context, request *CIBAAuthRequest) error
 	GetByID(ctx context.Context, authReqID string) (*CIBAAuthRequest, error)
-	MarkAuthenticated(ctx context.Context, authReqID, userID, subjectID, subjectCategory, authorizedScopes,
-		attributeCacheID, completedACR, sessionID string, authTime time.Time,
-		authorizationDetails []providers.AuthorizationDetail) error
+	MarkAuthenticated(ctx context.Context, authReqID string, approval *CIBAApproval) error
 	MarkConsumed(ctx context.Context, authReqID string) (bool, error)
 	UpdateLastPolled(ctx context.Context, authReqID string, polledAt time.Time) error
 	UpdateState(ctx context.Context, authReqID string, state CIBARequestState) error
@@ -83,14 +81,10 @@ func (s *cibaStore) GetByID(ctx context.Context, authReqID string) (*CIBAAuthReq
 	return &request, nil
 }
 
-// MarkAuthenticated transitions a pending request to authenticated and records the user ID (from
-// the assertion sub claim), the authenticated entity's resource ID and category, authorized scopes,
-// attribute cache ID, completed ACR, SSO session id, authentication time, approved authorization
-// details, and the time of this transition. The compare-and-swap on the State field prevents a
-// double-callback race condition.
-func (s *cibaStore) MarkAuthenticated(ctx context.Context, authReqID, userID, subjectID, subjectCategory,
-	authorizedScopes, attributeCacheID, completedACR, sessionID string, authTime time.Time,
-	authorizationDetails []providers.AuthorizationDetail) error {
+// MarkAuthenticated transitions a pending request to authenticated and records the approval and the
+// time of this transition. The compare-and-swap on the State field prevents a double-callback race
+// condition.
+func (s *cibaStore) MarkAuthenticated(ctx context.Context, authReqID string, approval *CIBAApproval) error {
 	record, err := s.GetByID(ctx, authReqID)
 	if err != nil {
 		return err
@@ -100,16 +94,17 @@ func (s *cibaStore) MarkAuthenticated(ctx context.Context, authReqID, userID, su
 	}
 
 	record.State = CIBAStateAuthenticated
-	record.UserID = userID
-	record.SubjectID = subjectID
-	record.SubjectCategory = subjectCategory
-	record.AuthorizedScopes = authorizedScopes
-	record.AttributeCacheID = attributeCacheID
-	record.CompletedACR = completedACR
-	record.SessionID = sessionID
-	record.AuthTime = authTime
+	record.UserID = approval.UserID
+	record.SubjectID = approval.SubjectID
+	record.SubjectCategory = approval.SubjectCategory
+	record.AuthorizedScopes = approval.AuthorizedScopes
+	record.AttributeCacheID = approval.AttributeCacheID
+	record.CompletedACR = approval.CompletedACR
+	record.SessionID = approval.SessionID
+	record.TokenFamilyID = approval.TokenFamilyID
+	record.AuthTime = approval.AuthTime
 	record.AuthorizedAt = time.Now()
-	record.AuthorizationDetails = authorizationDetails
+	record.AuthorizationDetails = approval.AuthorizationDetails
 
 	data, err := json.Marshal(record)
 	if err != nil {

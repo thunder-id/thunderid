@@ -189,6 +189,11 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		}
 	}
 
+	binding, err := tokenservice.ResolveBinding(providers.GrantTypeClientCredentials, tokenservice.SessionBinding{})
+	if err != nil {
+		return nil, tokenBuildErrorResponse(ctx, logger, err, "Failed to generate token")
+	}
+
 	accessToken, err := h.tokenBuilder.BuildAccessToken(ctx, &tokenservice.AccessTokenBuildContext{
 		Subject:              oauthApp.ID,
 		Audiences:            audiences,
@@ -200,6 +205,7 @@ func (h *clientCredentialsGrantHandler) HandleGrant(ctx context.Context, tokenRe
 		OAuthApp:             oauthApp,
 		ValidityPeriod:       oauthApp.ClientAccessTokenConfig().ValidityPeriodOrZero(),
 		DPoPJkt:              dpop.GetJkt(ctx),
+		TokenFamilyID:        binding.TokenFamilyID,
 		AuthorizationDetails: authorizationDetails,
 	})
 	if err != nil {

@@ -402,6 +402,17 @@ func (ts *DeviceGrantTestSuite) TestDeviceGrantLifecycle() {
 	// The application is not shared, so the sign-in is fixed to its own organization unit.
 	ts.Equal(ts.ouID, accessTokenClaims.OUID)
 
+	// The tokens carry the token family of the session's participant, so ending the session ends them.
+	idTokenClaims, err := testutils.DecodeJWTPayloadMap(tokens.idToken)
+	ts.Require().NoError(err)
+	ts.Require().NotEmpty(idTokenClaims["sid"], "the ID token must name the session")
+	tfid, _ := accessTokenClaims.Additional["tfid"].(string)
+	ts.Require().NotEmpty(tfid, "the access token must carry its token family")
+	participant, err := testutils.QueryRuntimeDB(fmt.Sprintf(
+		`SELECT TFID FROM "SESSION_PARTICIPANT" WHERE SESSION_ID = '%s';`, idTokenClaims["sid"]))
+	ts.Require().NoError(err)
+	ts.Equal(tfid, participant, "the tokens must carry the participant's token family")
+
 	reuse := ts.pollToken(authResponse.DeviceCode)
 	ts.Equal(http.StatusBadRequest, reuse.statusCode)
 	ts.Equal("invalid_grant", reuse.errorCode)

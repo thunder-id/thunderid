@@ -1348,6 +1348,11 @@ func (ts *CIBATestSuite) recoverCIBAInvite(authReqID string) (executionID, invit
 // (asserting it is accepted), and returns the assertion so the caller can reuse it (for example
 // against a different auth_req_id, to test the cross-bound-assertion rejection).
 func (ts *CIBATestSuite) driveCIBAFlow(executionID, inviteToken, authReqID string) string {
+	return ts.driveCIBAFlowStep(executionID, inviteToken, authReqID).Assertion
+}
+
+// driveCIBAFlowStep drives the flow as driveCIBAFlow does and returns its completing step.
+func (ts *CIBATestSuite) driveCIBAFlowStep(executionID, inviteToken, authReqID string) *testutils.FlowStep {
 	resumeStep, err := testutils.ExecuteAuthenticationFlow(executionID,
 		map[string]string{"inviteToken": inviteToken}, "")
 	ts.Require().NoError(err, "should resume the flow with the invite token")
@@ -1363,7 +1368,7 @@ func (ts *CIBATestSuite) driveCIBAFlow(executionID, inviteToken, authReqID strin
 	status, errorCode := ts.cibaPostCallback(authReqID, flowStep.Assertion)
 	ts.Require().Equal(http.StatusOK, status, "CIBA callback should accept the assertion: %s", errorCode)
 
-	return flowStep.Assertion
+	return flowStep
 }
 
 // completeCIBAFlow recovers the executionId/inviteToken of the server-initiated flow for authReqID

@@ -279,8 +279,9 @@ func (s *DeviceAuthTestSuite) TestHandleCallbackApprovesRedeemingRequest() {
 	assertion := buildDeviceAssertion(s.T(), map[string]interface{}{
 		"sub": "user-1", "aci": "cache-1", "completed_auth_class": "urn:acr:pwd",
 		"authorization_request_id": "request-1", "authorized_permissions": "booking:read",
-		oauth2const.ClaimSessionID: "session-1",
-		"iat":                      float64(time.Now().Unix()),
+		oauth2const.ClaimSessionID:     "session-1",
+		oauth2const.ClaimTokenFamilyID: "family-1",
+		"iat":                          float64(time.Now().Unix()),
 	})
 	jwtService := jwtmock.NewJWTServiceInterfaceMock(s.T())
 	jwtService.EXPECT().VerifyJWT(mock.Anything, assertion, "application-1", "").Return(nil)
@@ -295,6 +296,7 @@ func (s *DeviceAuthTestSuite) TestHandleCallbackApprovesRedeemingRequest() {
 	s.Require().Equal("cache-1", stored.AttributeCacheID)
 	s.Require().Equal("urn:acr:pwd", stored.CompletedACR)
 	s.Require().Equal("session-1", stored.SessionID)
+	s.Require().Equal("family-1", stored.TokenFamilyID)
 }
 
 func (s *DeviceAuthTestSuite) TestHandleCallbackKeepsPostedSessionsForDeviceSSO() {
@@ -350,6 +352,8 @@ func (s *DeviceAuthTestSuite) TestHandleCallbackApprovesWithoutConsentClaims() {
 	stored, getErr := store.GetByRequestID(context.Background(), "request-1")
 	s.Require().NoError(getErr)
 	s.Require().Equal(DeviceStateApproved, stored.State)
+	s.Empty(stored.SessionID)
+	s.NotEmpty(stored.TokenFamilyID, "a login without a session still gets a token family")
 }
 
 func (s *DeviceAuthTestSuite) TestHandleCallbackDeniesRedeemingRequest() {

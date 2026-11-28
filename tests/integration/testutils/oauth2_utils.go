@@ -1852,3 +1852,73 @@ func CreateClientAssertion(opts ClientAssertionOptions) string {
 
 	return signingInput + "." + base64.RawURLEncoding.EncodeToString(sig)
 }
+
+// SignOutWithSessions runs RP-initiated logout for the ID token's application, then its sign-out flow with the
+// given SSO sessions, as a browser that holds them does.
+func SignOutWithSessions(idTokenHint string, sessions []FlowSessionData) error {
+	client := GetRawHTTPClient()
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+
+	resp, err := client.PostForm(TestServerURL+"/oauth2/logout", url.Values{"id_token_hint": {idTokenHint}})
+	if err != nil {
+		return fmt.Errorf("logout request failed: %w", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusFound {
+		return fmt.Errorf("logout returned %d, not a redirect to the sign-out page", resp.StatusCode)
+	}
+	location, err := url.Parse(resp.Header.Get("Location"))
+	if err != nil {
+		return fmt.Errorf("failed to parse the sign-out redirect: %w", err)
+	}
+
+	status, body, err := ExecuteFlowRaw(client, "", map[string]interface{}{
+		"executionId": location.Query().Get("executionId"),
+		"sessionData": sessions,
+	})
+	if err != nil {
+		return fmt.Errorf("sign-out flow request failed: %w", err)
+	}
+	var step FlowStep
+	if status != http.StatusOK || json.Unmarshal(body, &step) != nil || step.FlowStatus != "COMPLETE" {
+		return fmt.Errorf("sign-out flow did not complete: %d %s", status, string(body))
+	}
+
+	callback, err := client.Post(TestServerURL+"/oauth2/logout/callback", "application/json",
+		strings.NewReader(`{"logoutId":"`+location.Query().Get("logoutId")+`"}`))
+	if err != nil {
+		return fmt.Errorf("logout callback request failed: %w", err)
+	}
+	_ = callback.Body.Close()
+	if callback.StatusCode != http.StatusOK {
+		return fmt.Errorf("logout callback returned %d", callback.StatusCode)
+	}
+	return nil
+}
+
+// IntrospectActive reports whether introspection, with the given client's credentials, finds the token active.
+func IntrospectActive(token, clientID, clientSecret string) (bool, error) {
+	req, err := http.NewRequest(http.MethodPost, TestServerURL+"/oauth2/introspect",
+		strings.NewReader(url.Values{"token": {token}}.Encode()))
+	if err != nil {
+		return false, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.SetBasicAuth(clientID, clientSecret)
+
+	resp, err := GetRawHTTPClient().Do(req)
+	if err != nil {
+		return false, fmt.Errorf("introspection request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("introspection returned %d", resp.StatusCode)
+	}
+	var out struct {
+		Active bool `json:"active"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return false, fmt.Errorf("failed to decode the introspection response: %w", err)
+	}
+	return out.Active, nil
+}

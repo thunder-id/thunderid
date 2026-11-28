@@ -395,9 +395,28 @@ func (s *cibaService) handleSuccessCallback(ctx context.Context, record *CIBAAut
 		grantedDetails = claims.grantedAuthorizationDetails
 	}
 
-	if markErr := s.store.MarkAuthenticated(ctx, authReqID, claims.userID, claims.subjectID,
-		claims.subjectCategory, authorizedScopes, claims.attributeCacheID, claims.completedACR, claims.sessionID,
-		authTime, grantedDetails); markErr != nil {
+	binding, err := tokenservice.ResolveBinding(providers.GrantTypeCIBA,
+		tokenservice.SessionBinding{SessionID: claims.sessionID, TokenFamilyID: claims.tokenFamilyID})
+	if err != nil {
+		s.logger.Error(ctx, "Failed to resolve the CIBA grant's binding", log.Error(err))
+		return &CIBAError{
+			Code:    oauth2const.ErrorServerError,
+			Message: "Failed to process backchannel authentication callback",
+		}
+	}
+
+	if markErr := s.store.MarkAuthenticated(ctx, authReqID, &CIBAApproval{
+		UserID:               claims.userID,
+		SubjectID:            claims.subjectID,
+		SubjectCategory:      claims.subjectCategory,
+		AuthorizedScopes:     authorizedScopes,
+		AttributeCacheID:     claims.attributeCacheID,
+		CompletedACR:         claims.completedACR,
+		SessionID:            binding.SessionID,
+		TokenFamilyID:        binding.TokenFamilyID,
+		AuthTime:             authTime,
+		AuthorizationDetails: grantedDetails,
+	}); markErr != nil {
 		s.logger.Error(ctx, "Failed to mark CIBA authentication request as authenticated",
 			log.Error(markErr))
 		return &CIBAError{
@@ -708,6 +727,8 @@ func decodeAttributesFromAssertion(assertion string) (assertionClaims, time.Time
 		subjectID:        base.SubjectID,
 		attributeCacheID: base.AttributeCacheID,
 		completedACR:     base.CompletedACR,
+		sessionID:        base.SessionID,
+		tokenFamilyID:    base.TokenFamilyID,
 	}
 
 	if v, ok := payload[oauth2const.ClaimSubjectType].(string); ok {
@@ -724,10 +745,6 @@ func decodeAttributesFromAssertion(assertion string) (assertionClaims, time.Time
 
 	if v, ok := payload["authorized_permissions"].(string); ok {
 		claims.authorizedPermissions = v
-	}
-
-	if v, ok := payload[oauth2const.ClaimSessionID].(string); ok {
-		claims.sessionID = v
 	}
 
 	// Read from the claim's JSON text so numbers are kept exactly.

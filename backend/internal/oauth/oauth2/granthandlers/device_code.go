@@ -195,6 +195,7 @@ func (h *deviceCodeGrantHandler) issueTokens(
 	scopes, revocationErr := excludeRevokedScopes(ctx, h.enforcementService, revocation.RevocationIdentity{
 		EstablishedAt: record.AuthTime,
 		Criteria: []revocation.Criterion{
+			{Type: revocation.CriterionTypeTokenFamily, Value: record.TokenFamilyID},
 			{Type: revocation.CriterionTypeSubject, Value: record.UserID},
 			{Type: revocation.CriterionTypeApplicationKey, Value: record.ClientID},
 		},
@@ -210,7 +211,8 @@ func (h *deviceCodeGrantHandler) issueTokens(
 		SubjectAttributes: tokenservice.FilterAttributesByAllowList(attrs, userSubConfig),
 		AttributeCacheID:  record.AttributeCacheID, GrantType: string(providers.GrantTypeDeviceCode),
 		OAuthApp: oauthApp, ValidityPeriod: userSubConfig.ValidityPeriodOrZero(), DPoPJkt: dpop.GetJkt(ctx),
-		AuthTime: record.AuthTime.Unix(),
+		AuthTime:      record.AuthTime.Unix(),
+		TokenFamilyID: record.TokenFamilyID,
 	}
 	if oauthApp.ShouldAppendActorClaim() {
 		accessTokenCtx.ActorClaims = &tokenservice.SubjectTokenClaims{Sub: oauthApp.ID}

@@ -256,6 +256,7 @@ func (h *cibaGrantHandler) issueTokens(ctx context.Context, tokenRequest *model.
 		OAuthApp:             oauthApp,
 		ValidityPeriod:       userSubConfig.ValidityPeriodOrZero(),
 		DPoPJkt:              dpop.GetJkt(ctx),
+		TokenFamilyID:        record.TokenFamilyID,
 		AuthorizationDetails: authorizationDetails,
 		AuthTime:             record.AuthTime.Unix(),
 	}
@@ -364,6 +365,7 @@ func (h *cibaGrantHandler) resolveIssuedAudiencesAndScopes(ctx context.Context,
 	scopes, errResp := excludeRevokedScopes(ctx, h.enforcementService, revocation.RevocationIdentity{
 		EstablishedAt: establishedAt,
 		Criteria: []revocation.Criterion{
+			{Type: revocation.CriterionTypeTokenFamily, Value: record.TokenFamilyID},
 			{Type: revocation.CriterionTypeSubject, Value: record.UserID},
 			{Type: revocation.CriterionTypeApplicationKey, Value: record.ClientID},
 		},

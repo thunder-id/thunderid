@@ -1370,6 +1370,8 @@ func decodeAttributesFromAssertion(assertion string) (assertionClaims, time.Time
 		subjectID:        base.SubjectID,
 		attributeCacheID: base.AttributeCacheID,
 		completedACR:     base.CompletedACR,
+		sessionID:        base.SessionID,
+		tokenFamilyID:    base.TokenFamilyID,
 	}
 
 	if v, ok := payload[oauth2const.ClaimAuthorizedPermissions].(string); ok {
@@ -1382,14 +1384,6 @@ func decodeAttributesFromAssertion(assertion string) (assertionClaims, time.Time
 
 	if v, ok := payload[oauth2const.ClaimExp].(float64); ok {
 		claims.expiresAt = time.Unix(int64(v), 0)
-	}
-
-	if v, ok := payload[oauth2const.ClaimTokenFamilyID].(string); ok {
-		claims.tokenFamilyID = v
-	}
-
-	if v, ok := payload[oauth2const.ClaimSessionID].(string); ok {
-		claims.sessionID = v
 	}
 
 	if v, ok := payload[oauth2const.ClaimCorrelationID].(string); ok {
@@ -1472,16 +1466,10 @@ func createAuthorizationCode(
 		return AuthorizationCode{}, errors.New("failed to generate UUID")
 	}
 
-	// Fall back to minting the token family id here when the login flow did not (a flow without an SSO
-	// SessionExecutor node never mints one). Every authorization code then anchors a revocable family,
-	// so grant-scoped revocation works regardless of whether SSO was enabled. SSO flows already carry
-	// the tfid minted at the session node, so this preserves their session-participant linkage.
-	tokenFamilyID := claims.tokenFamilyID
-	if tokenFamilyID == "" {
-		tokenFamilyID, err = utils.GenerateUUIDv7()
-		if err != nil {
-			return AuthorizationCode{}, errors.New("failed to generate token family id")
-		}
+	binding, err := tokenservice.ResolveBinding(providers.GrantTypeAuthorizationCode,
+		tokenservice.SessionBinding{SessionID: claims.sessionID, TokenFamilyID: claims.tokenFamilyID})
+	if err != nil {
+		return AuthorizationCode{}, err
 	}
 
 	code, err := oauth2utils.GenerateAuthorizationCode()
@@ -1510,11 +1498,11 @@ func createAuthorizationCode(
 		Nonce:               authRequestCtx.OAuthParameters.Nonce,
 		CompletedACR:        claims.completedACR,
 		DPoPJkt:             authRequestCtx.OAuthParameters.DPoPJkt,
-		TokenFamilyID:       tokenFamilyID,
+		TokenFamilyID:       binding.TokenFamilyID,
 		CorrelationID:       claims.correlationID,
 		SubjectID:           claims.subjectID,
 		SubjectCategory:     claims.subjectCategory,
-		SessionID:           claims.sessionID,
+		SessionID:           binding.SessionID,
 	}, nil
 }
 
